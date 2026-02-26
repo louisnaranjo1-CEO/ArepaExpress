@@ -1,0 +1,36 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // User profiles
+    match /users/{userId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+    
+    // Public Data
+    match /restaurants/{restaurantId} {
+      allow read: if true;
+      allow write: if false; // Only admins/seed script
+      
+      match /products/{productId} {
+      	allow read: if true;
+        allow write: if false;
+      }
+    }
+    
+    // User orders
+    match /orders/{orderId} {
+      // Users can only read their own orders
+      allow read: if request.auth != null && request.auth.uid == resource.data.userId;
+      // Users can only create orders for themselves
+      allow create: if request.auth != null && request.auth.uid == request.resource.data.userId;
+      allow update, delete: if false; // Prevent modification after checkout
+    }
+
+    // Default deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
