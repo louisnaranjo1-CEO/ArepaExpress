@@ -2,7 +2,7 @@ import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 
 export default function AdminApp() {
     const isDevAdminPath = window.location.pathname.startsWith('/admin');
-    const isAdminSubdomain = window.location.hostname.startsWith('admin.');
+    const isAdminSubdomain = window.location.hostname.startsWith('restaurante.');
 
     const basename = isDevAdminPath && !isAdminSubdomain ? '/admin' : '/';
 
