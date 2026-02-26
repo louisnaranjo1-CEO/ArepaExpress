@@ -1,6 +1,6 @@
 {
     "$schema": "node_modules/wrangler/config-schema.json",
-    "name": "arepa-express",
+    "name": "arepaexpress",
     "pages_build_output_dir": "dist",
     "assets": {
         "directory": "./dist"

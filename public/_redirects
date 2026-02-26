@@ -1,1 +1,7 @@
-/* /index.html 200!
+/search /index.html 200
+/cart /index.html 200
+/favorites /index.html 200
+/profile /index.html 200
+/restaurant/* /index.html 200
+/admin/* /index.html 200
+/admin /index.html 200
