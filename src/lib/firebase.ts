@@ -4,13 +4,12 @@ import { getFirestore } from "firebase/firestore";
 import { getStorage } from "firebase/storage";
 
 const firebaseConfig = {
-    apiKey: "AIzaSyAF-5vjY-F5vzSnTYDdQulEWDo98npvoyA",
-    authDomain: "r911grill.firebaseapp.com",
-    projectId: "r911grill",
-    storageBucket: "r911grill.firebasestorage.app",
-    messagingSenderId: "800295673260",
-    appId: "1:800295673260:web:9a19b28be981316a37ee09",
-    measurementId: "G-481V9T5DRZ"
+    apiKey: "AIzaSyCb1c-p1R6AZGetk8YzKiLuxjaxjmPqJX8",
+    authDomain: "arepa-express-ve-2026.firebaseapp.com",
+    projectId: "arepa-express-ve-2026",
+    storageBucket: "arepa-express-ve-2026.firebasestorage.app",
+    messagingSenderId: "549258124406",
+    appId: "1:549258124406:web:ec869512afd46a11ea9357"
 };
 
 // Initialize Firebase
