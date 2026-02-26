@@ -12,22 +12,21 @@ export default function BottomNav() {
           <Home className={`w-6 h-6 transition-transform group-hover:scale-110 ${currentPath === '/' ? 'text-primary fill-primary/20' : 'text-slate-400 group-hover:text-primary'}`} />
           <span className={`text-[10px] font-bold ${currentPath === '/' ? 'text-primary' : 'text-slate-400 group-hover:text-primary'}`}>Inicio</span>
         </Link>
-        <Link to="/" className="flex flex-col items-center gap-1 flex-1 group">
-          <Search className="w-6 h-6 text-slate-400 group-hover:text-primary transition-colors" />
-          <span className="text-[10px] font-medium text-slate-400 group-hover:text-primary transition-colors">Buscar</span>
+        <Link to="/search" className="flex flex-col items-center gap-1 flex-1 group">
+          <Search className={`w-6 h-6 transition-transform group-hover:scale-110 ${currentPath === '/search' ? 'text-primary' : 'text-slate-400 group-hover:text-primary'}`} />
+          <span className={`text-[10px] font-bold ${currentPath === '/search' ? 'text-primary' : 'text-slate-400 group-hover:text-primary'}`}>Buscar</span>
         </Link>
         <Link to="/cart" className="relative flex flex-col items-center gap-1 flex-1 group">
-          <div className="absolute -top-1 right-6 h-2 w-2 rounded-full bg-accent"></div>
-          <ShoppingBag className={`w-6 h-6 transition-colors ${currentPath === '/cart' ? 'text-primary fill-primary/20' : 'text-slate-400 group-hover:text-primary'}`} />
-          <span className={`text-[10px] font-medium transition-colors ${currentPath === '/cart' ? 'text-primary' : 'text-slate-400 group-hover:text-primary'}`}>Pedidos</span>
+          <ShoppingBag className={`w-6 h-6 transition-transform group-hover:scale-110 ${currentPath === '/cart' ? 'text-primary' : 'text-slate-400 group-hover:text-primary'}`} />
+          <span className={`text-[10px] font-bold ${currentPath === '/cart' ? 'text-primary' : 'text-slate-400 group-hover:text-primary'}`}>Pedidos</span>
         </Link>
-        <Link to="/" className="flex flex-col items-center gap-1 flex-1 group">
-          <Heart className="w-6 h-6 text-slate-400 group-hover:text-primary transition-colors" />
-          <span className="text-[10px] font-medium text-slate-400 group-hover:text-primary transition-colors">Favoritos</span>
+        <Link to="/favorites" className="flex flex-col items-center gap-1 flex-1 group">
+          <Heart className={`w-6 h-6 transition-transform group-hover:scale-110 ${currentPath === '/favorites' ? 'text-primary fill-primary/20' : 'text-slate-400 group-hover:text-primary'}`} />
+          <span className={`text-[10px] font-bold ${currentPath === '/favorites' ? 'text-primary' : 'text-slate-400 group-hover:text-primary'}`}>Favoritos</span>
         </Link>
-        <Link to="/" className="flex flex-col items-center gap-1 flex-1 group">
-          <User className="w-6 h-6 text-slate-400 group-hover:text-primary transition-colors" />
-          <span className="text-[10px] font-medium text-slate-400 group-hover:text-primary transition-colors">Perfil</span>
+        <Link to="/profile" className="flex flex-col items-center gap-1 flex-1 group">
+          <User className={`w-6 h-6 transition-transform group-hover:scale-110 ${currentPath === '/profile' ? 'text-primary fill-primary/20' : 'text-slate-400 group-hover:text-primary'}`} />
+          <span className={`text-[10px] font-bold ${currentPath === '/profile' ? 'text-primary' : 'text-slate-400 group-hover:text-primary'}`}>Perfil</span>
         </Link>
       </div>
     </nav>
