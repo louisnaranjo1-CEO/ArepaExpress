@@ -4,7 +4,7 @@ import { auth, db } from '../lib/firebase';
 import { useNavigate } from 'react-router-dom';
 import { signInWithGoogle } from '../lib/auth-service';
 import { useState, useEffect } from 'react';
-import { collection, query, where, orderBy, getDocs, doc, updateDoc } from 'firebase/firestore';
+import { collection, query, where, orderBy, getDocs, doc, setDoc } from 'firebase/firestore';
 import AddressPicker from '../components/AddressPicker';
 
 interface OrderInfo {
@@ -16,7 +16,7 @@ interface OrderInfo {
 }
 
 export default function Profile() {
-    const { user } = useAuth();
+    const { user, userData } = useAuth();
     const navigate = useNavigate();
     const [isSigningIn, setIsSigningIn] = useState(false);
     const [orders, setOrders] = useState<OrderInfo[]>([]);
@@ -156,12 +156,25 @@ export default function Profile() {
                         </div>
                         <div
                             onClick={() => setShowAddressPicker(true)}
-                            className="bg-blue-50 p-4 rounded-2xl flex flex-col items-center gap-2 group cursor-pointer hover:bg-blue-100 transition-colors"
+                            className={`p-4 rounded-2xl flex flex-col items-center gap-2 group cursor-pointer transition-colors ${userData?.address ? 'bg-green-50 hover:bg-green-100' : 'bg-blue-50 hover:bg-blue-100'}`}
                         >
-                            <MapPin className="w-6 h-6 text-blue-500 group-hover:scale-110 transition-transform" />
-                            <span className="text-xs font-bold text-slate-600">Direcciones</span>
+                            <MapPin className={`w-6 h-6 group-hover:scale-110 transition-transform ${userData?.address ? 'text-green-500' : 'text-blue-500'}`} />
+                            <span className="text-xs font-bold text-slate-600">
+                                {userData?.address ? 'Cambiar Dirección' : 'Direcciones'}
+                            </span>
                         </div>
                     </div>
+
+                    {userData?.address && (
+                        <div className="bg-slate-50 border border-slate-100 p-4 rounded-2xl space-y-1">
+                            <div className="flex items-center gap-2 text-xs font-black text-slate-400 uppercase tracking-widest">
+                                <MapPin className="w-3 h-3" />
+                                Dirección Guardada
+                            </div>
+                            <p className="text-sm font-bold text-slate-700 truncate">{userData.address.reference}</p>
+                            <p className="text-[10px] text-slate-400 font-medium">GPS: {userData.address.lat.toFixed(4)}, {userData.address.lng.toFixed(4)}</p>
+                        </div>
+                    )}
 
                     {/* Order History */}
                     <div className="space-y-4 pt-2">
@@ -252,15 +265,16 @@ export default function Profile() {
                     onSave={async (addressData) => {
                         try {
                             const userRef = doc(db, 'users', user.uid);
-                            await updateDoc(userRef, {
+                            await setDoc(userRef, {
                                 address: addressData
-                            });
+                            }, { merge: true });
                             setShowAddressPicker(false);
                         } catch (err) {
                             console.error("Error saving address:", err);
+                            alert("No se pudo guardar la dirección. Por favor intenta de nuevo.");
                         }
                     }}
-                    initialData={(user as any).address}
+                    initialData={userData?.address}
                 />
             )}
         </div>

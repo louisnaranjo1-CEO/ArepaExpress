@@ -2,19 +2,76 @@ import { ArrowLeft, ShoppingCart, MapPin, CreditCard, Trash2, Minus, Plus, Arrow
 import { Link, useNavigate } from 'react-router-dom';
 import { useCart } from '../context/CartContext';
 import { useAuth } from '../context/AuthContext';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { collection, addDoc, serverTimestamp, doc, getDoc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
+import { calculateDistance, formatDistance } from '../lib/geo';
 
 export default function Cart() {
   const { items, totalPrice, updateQuantity, removeItem, clearCart } = useCart();
-  const { user } = useAuth();
+  const { user, userData } = useAuth();
   const navigate = useNavigate();
   const [isCheckingOut, setIsCheckingOut] = useState(false);
   const [checkoutSuccess, setCheckoutSuccess] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [restaurantData, setRestaurantData] = useState<any>(null);
+  const [distance, setDistance] = useState<number | null>(null);
+  const [loadingDistance, setLoadingDistance] = useState(false);
 
-  const deliveryFee = 2.00;
+  useEffect(() => {
+    const fetchRest = async () => {
+      if (items.length > 0) {
+        setLoadingDistance(true);
+        try {
+          const rDoc = await getDoc(doc(db, 'restaurants', items[0].restaurantId));
+          if (rDoc.exists()) {
+            const data = rDoc.data();
+            setRestaurantData(data);
+
+            if (userData?.address && data.location?.coords) {
+              const d = calculateDistance(
+                userData.address!.lat,
+                userData.address!.lng,
+                data.location.coords.lat,
+                data.location.coords.lng
+              );
+              setDistance(d);
+            }
+          }
+        } catch (err) {
+          console.error("Error fetching restaurant for distance:", err);
+        } finally {
+          setLoadingDistance(false);
+        }
+      }
+    };
+    fetchRest();
+  }, [items, userData]);
+
+  const calculateDeliveryFee = () => {
+    if (!distance) return 2.00;
+
+    if (restaurantData?.ownDelivery && restaurantData?.deliveryRates && restaurantData.deliveryRates.length > 0) {
+      // Find matching rate in table
+      const matchingRate = restaurantData.deliveryRates.find(
+        (rate: any) => distance >= rate.minKm && distance <= rate.maxKm
+      );
+      if (matchingRate) return matchingRate.price;
+
+      // Fallback if distance exceeds all ranges
+      const maxRange = Math.max(...restaurantData.deliveryRates.map((r: any) => r.maxKm));
+      if (distance > maxRange) {
+        const lastRate = restaurantData.deliveryRates.sort((a: any, b: any) => b.maxKm - a.maxKm)[0];
+        // Scale price or use last one? Let's use last one + extra per km
+        return lastRate.price + (distance - maxRange) * 0.5;
+      }
+    }
+
+    // Default system fee
+    return Math.max(1, 1 + distance * 0.5);
+  };
+
+  const deliveryFee = calculateDeliveryFee();
   const finalTotal = totalPrice + deliveryFee;
 
   const handleCheckout = async () => {
@@ -37,11 +94,9 @@ export default function Cart() {
         throw new Error("El restaurante no tiene un número de WhatsApp configurado.");
       }
 
-      // Fetch user's address from their profile
-      const userDoc = await getDoc(doc(db, 'users', user.uid));
-      const userData = userDoc.exists() ? userDoc.data() : null;
+      // Use user's address from context if available
       const userAddress = userData?.address || {};
-      const address = userAddress.fullAddress || "Casa Principal - Av. Francisco de Miranda, Edificio Torre Europa, Piso 4, Chacao, Caracas."; // Use user's full address or default
+      const address = userAddress.reference || "Recoger en local";
 
       const orderData = {
         userId: user.uid,
@@ -56,11 +111,11 @@ export default function Cart() {
           quantity: item.quantity,
           image: item.image
         })),
-        subtotal: totalPrice, // Renamed from 'subtotal' to 'totalPrice' for consistency with context
+        subtotal: totalPrice,
         deliveryFee: deliveryFee,
         total: finalTotal,
         status: 'pending',
-        deliveryAddress: address || 'Recoger en local',
+        deliveryAddress: address,
         userCoordinates: userAddress.lat ? { lat: userAddress.lat, lng: userAddress.lng } : null,
         addressReference: userAddress.reference || '',
         createdAt: serverTimestamp()
@@ -214,24 +269,37 @@ export default function Cart() {
             <div className="bg-surface-light p-4 rounded-xl shadow-sm border border-neutral-light/50">
               <div className="flex justify-between items-center mb-3">
                 <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider opacity-70">Entrega en</h3>
-                <button className="text-primary text-xs font-bold hover:underline">Cambiar</button>
+                <Link to="/profile" className="text-primary text-xs font-bold hover:underline">Cambiar</Link>
               </div>
               <div className="flex gap-4 items-start">
                 <div className="relative w-20 h-20 shrink-0 rounded-lg overflow-hidden bg-neutral-light">
-                  <div
-                    className="absolute inset-0 bg-cover bg-center opacity-80"
-                    style={{ backgroundImage: "url('https://lh3.googleusercontent.com/aida-public/AB6AXuD8yatRRQcmxjAOtEnOyP8_gRaWx6tJ_xdH-k2LqjtvrkbKToEdDFMwhmWPpQjPzPN2KYK2IeT44f5AZSsYtDbRcJ-VqmjOBGJzbEFB98DcpFbNJPg7d9ukrg1NIYAnMrAymyjB0yD3zISMMgG0iP-qrfzzo25U1_Pn3VzqczRRf_-0CmShfJhRiivqWEGRiP2j6OKY7GGy3oqnn-wXCg2X9ryTYKKhMd0gLO-gCWSQToNS6VDClfsbXBdiXQwTTie49ky_rga9aV0')" }}
-                  ></div>
-                  <div className="absolute inset-0 flex items-center justify-center bg-black/10">
-                    <MapPin className="w-6 h-6 text-white drop-shadow-md" />
-                  </div>
+                  {userData?.address ? (
+                    <img
+                      src={`https://maps.googleapis.com/maps/api/staticmap?center=${userData.address.lat},${userData.address.lng}&zoom=15&size=200x200&markers=color:red%7C${userData.address.lat},${userData.address.lng}&key=AIzaSyCb1c-p1R6AZGetk8YzKiLuxjaxjmPqJX8`}
+                      alt="Mapa"
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center bg-slate-100">
+                      <MapPin className="w-6 h-6 text-slate-300" />
+                    </div>
+                  )}
                 </div>
                 <div className="flex-1 flex flex-col justify-center gap-1">
-                  <p className="font-bold text-slate-800 text-sm">Casa Principal</p>
-                  <p className="text-xs text-slate-500 leading-relaxed">Av. Francisco de Miranda, Edificio Torre Europa, Piso 4, Chacao, Caracas.</p>
+                  <p className="font-bold text-slate-800 text-sm">
+                    {userData?.address ? "Mi Ubicación" : "Sin Dirección"}
+                  </p>
+                  <p className="text-xs text-slate-500 leading-relaxed line-clamp-2">
+                    {userData?.address ? userData.address.reference : "Por favor, configura tu dirección en el perfil."}
+                  </p>
                   <div className="flex items-center gap-1 mt-1 text-primary">
                     <Clock className="w-4 h-4" />
-                    <span className="text-xs font-semibold">15 - 25 min</span>
+                    <span className="text-xs font-semibold">
+                      {distance ? `${Math.round(15 + distance * 5)} - ${Math.round(25 + distance * 5)} min` : "15 - 25 min"}
+                    </span>
+                    {distance && (
+                      <span className="text-[10px] text-slate-400 font-bold ml-2">({formatDistance(distance)})</span>
+                    )}
                   </div>
                 </div>
               </div>

@@ -22,13 +22,21 @@ import { doc, getDoc, updateDoc, collection, getDocs, orderBy, query } from 'fir
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { useAuth } from '../../context/AuthContext';
 import AddressPicker from '../../components/AddressPicker';
+import { VENEZUELA_DATA, VENEZUELA_STATES } from '../../lib/venezuelaData';
 
 interface Location {
     address: string;
     city: string;
+    state: string;
     coords?: { lat: number; lng: number };
     type: 'principal' | 'sucursal';
     reference?: string;
+}
+
+interface DeliveryRate {
+    minKm: number;
+    maxKm: number;
+    price: number;
 }
 
 export default function RestaurantProfile() {
@@ -45,7 +53,8 @@ export default function RestaurantProfile() {
     const [deliveryTime, setDeliveryTime] = useState('30-45 min');
     const [logoUrl, setLogoUrl] = useState('');
     const [coverUrl, setCoverUrl] = useState('');
-    const [locations, setLocations] = useState<Location[]>([]);
+    const [location, setLocation] = useState<Location | null>(null);
+    const [deliveryRates, setDeliveryRates] = useState<DeliveryRate[]>([]);
     const [followerCount, setFollowerCount] = useState(0);
     const [followers, setFollowers] = useState<any[]>([]);
 
@@ -75,7 +84,8 @@ export default function RestaurantProfile() {
                     setDeliveryTime(data.deliveryTime || '30-45 min');
                     setLogoUrl(data.logoUrl || '');
                     setCoverUrl(data.coverUrl || '');
-                    setLocations(data.locations || []);
+                    setLocation(data.location || (data.locations && data.locations.length > 0 ? data.locations[0] : null));
+                    setDeliveryRates(data.deliveryRates || []);
                     setFollowerCount(data.followerCount || 0);
 
                     // Fetch followers list
@@ -135,7 +145,8 @@ export default function RestaurantProfile() {
                 deliveryTime,
                 logoUrl: currentLogoUrl,
                 coverUrl: currentCoverUrl,
-                locations,
+                location,
+                deliveryRates,
                 updatedAt: new Date()
             });
 
@@ -152,8 +163,18 @@ export default function RestaurantProfile() {
         }
     };
 
-    const addLocation = () => {
-        setLocations([...locations, { address: '', city: 'Caracas', type: 'sucursal' }]);
+    const addDeliveryRate = () => {
+        setDeliveryRates([...deliveryRates, { minKm: 0, maxKm: 5, price: 1.0 }]);
+    };
+
+    const removeDeliveryRate = (index: number) => {
+        setDeliveryRates(deliveryRates.filter((_, i) => i !== index));
+    };
+
+    const updateDeliveryRate = (index: number, field: keyof DeliveryRate, value: number) => {
+        const newRates = [...deliveryRates];
+        newRates[index] = { ...newRates[index], [field]: value };
+        setDeliveryRates(newRates);
     };
 
     const handleLogoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -170,16 +191,6 @@ export default function RestaurantProfile() {
             setCoverFile(file);
             setCoverPreviewUrl(URL.createObjectURL(file));
         }
-    };
-
-    const removeLocation = (index: number) => {
-        setLocations(locations.filter((_, i) => i !== index));
-    };
-
-    const updateLocation = (index: number, field: keyof Location, value: any) => {
-        const newLocations = [...locations];
-        (newLocations[index] as any)[field] = value;
-        setLocations(newLocations);
     };
 
     if (loading) {
@@ -341,94 +352,92 @@ export default function RestaurantProfile() {
                     </section>
 
                     <section className="bg-white p-8 rounded-[40px] shadow-sm border border-slate-100 space-y-6">
-                        <div className="flex justify-between items-center">
-                            <h2 className="text-xl font-black text-slate-900 flex items-center gap-2">
-                                <MapPin className="w-6 h-6 text-primary" />
-                                Sucursales / Ubicaciones
-                            </h2>
-                            <button
-                                onClick={addLocation}
-                                className="text-primary font-bold flex items-center gap-1 hover:underline"
-                            >
-                                <Plus className="w-4 h-4" />
-                                Añadir Sucursal
-                            </button>
-                        </div>
+                        <h2 className="text-xl font-black text-slate-900 flex items-center gap-2">
+                            <MapPin className="w-6 h-6 text-primary" />
+                            Ubicación de la Sede
+                        </h2>
 
-                        <div className="space-y-4">
-                            {locations.length === 0 ? (
-                                <div className="p-12 text-center border-2 border-dashed border-slate-100 rounded-[30px] grayscale opacity-50">
-                                    <MapPin className="w-12 h-12 text-slate-300 mx-auto mb-4" />
-                                    <p className="text-slate-400 font-bold">Añade al menos una ubicación para que los clientes te encuentren.</p>
+                        <div className="bg-slate-50 p-6 rounded-3xl border border-slate-100 space-y-6 group relative">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div className="space-y-1">
+                                    <label className="text-[10px] font-black text-slate-400 uppercase ml-1">Estado</label>
+                                    <select
+                                        value={location?.state || ''}
+                                        onChange={(e) => {
+                                            const newState = e.target.value;
+                                            const newCity = (VENEZUELA_DATA[newState] && VENEZUELA_DATA[newState].length > 0) ? VENEZUELA_DATA[newState][0] : '';
+                                            setLocation({
+                                                ...(location || { address: '', type: 'principal' }),
+                                                state: newState,
+                                                city: newCity
+                                            });
+                                        }}
+                                        className="w-full bg-white border border-slate-200 p-3 rounded-xl outline-none focus:border-primary font-bold text-slate-700 text-sm"
+                                    >
+                                        <option value="">Selecciona un Estado</option>
+                                        {VENEZUELA_STATES.map(s => (
+                                            <option key={s} value={s}>{s}</option>
+                                        ))}
+                                    </select>
                                 </div>
-                            ) : (
-                                locations.map((loc, idx) => (
-                                    <div key={idx} className="bg-slate-50 p-6 rounded-3xl border border-slate-100 space-y-4 group relative">
-                                        <button
-                                            onClick={() => removeLocation(idx)}
-                                            className="absolute top-4 right-4 p-2 text-slate-300 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100"
-                                        >
-                                            <Trash2 className="w-5 h-5" />
-                                        </button>
-                                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                            <div className="space-y-1">
-                                                <label className="text-[10px] font-black text-slate-400 uppercase ml-1">Tipo de Sede</label>
-                                                <select
-                                                    value={loc.type}
-                                                    onChange={(e) => updateLocation(idx, 'type', e.target.value as any)}
-                                                    className="w-full bg-white border border-slate-200 p-3 rounded-xl outline-none focus:border-primary font-bold text-slate-700 text-sm appearance-none"
-                                                >
-                                                    <option value="principal">Casa Matriz</option>
-                                                    <option value="sucursal">Sucursal</option>
-                                                </select>
-                                            </div>
-                                            <div className="space-y-1">
-                                                <label className="text-[10px] font-black text-slate-400 uppercase ml-1">Ciudad</label>
-                                                <input
-                                                    type="text"
-                                                    value={loc.city}
-                                                    onChange={(e) => updateLocation(idx, 'city', e.target.value)}
-                                                    className="w-full bg-white border border-slate-200 p-3 rounded-xl outline-none focus:border-primary font-bold text-slate-700 text-sm"
-                                                    placeholder="Ej: Caracas"
-                                                />
-                                            </div>
-                                            <div className="space-y-1 relative">
-                                                <label className="text-[10px] font-black text-slate-400 uppercase ml-1">Ubicación GPS</label>
-                                                <button
-                                                    onClick={() => setShowPicker(idx)}
-                                                    className={`w-full p-3 rounded-xl border font-bold text-sm flex items-center gap-2 justify-center transition-all ${loc.coords ? 'border-primary bg-primary/5 text-primary' : 'border-slate-200 bg-white text-slate-500 hover:border-primary hover:text-primary'}`}
-                                                >
-                                                    <MapIcon className="w-4 h-4" />
-                                                    {loc.coords ? 'Reubicar en Mapa' : 'Marcar en Mapa'}
-                                                </button>
-                                            </div>
-                                        </div>
+                                <div className="space-y-1">
+                                    <label className="text-[10px] font-black text-slate-400 uppercase ml-1">Ciudad</label>
+                                    <select
+                                        value={location?.city || ''}
+                                        onChange={(e) => setLocation({
+                                            ...(location || { address: '', state: '', type: 'principal' }),
+                                            city: e.target.value
+                                        })}
+                                        className="w-full bg-white border border-slate-200 p-3 rounded-xl outline-none focus:border-primary font-bold text-slate-700 text-sm"
+                                        disabled={!location?.state}
+                                    >
+                                        <option value="">Selecciona una Ciudad</option>
+                                        {location?.state && VENEZUELA_DATA[location.state]?.map(c => (
+                                            <option key={c} value={c}>{c}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                            </div>
 
-                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                            <div className="space-y-1">
-                                                <label className="text-[10px] font-black text-slate-400 uppercase ml-1">Dirección Detallada</label>
-                                                <input
-                                                    type="text"
-                                                    value={loc.address}
-                                                    onChange={(e) => updateLocation(idx, 'address', e.target.value)}
-                                                    className="w-full bg-white border border-slate-200 p-3 rounded-xl outline-none focus:border-primary font-bold text-slate-700 text-sm"
-                                                    placeholder="Ej: Av. Principal de El Rosal"
-                                                />
-                                            </div>
-                                            <div className="space-y-1">
-                                                <label className="text-[10px] font-black text-slate-400 uppercase ml-1">Referencia (Opcional)</label>
-                                                <input
-                                                    type="text"
-                                                    value={loc.reference || ''}
-                                                    onChange={(e) => updateLocation(idx, 'reference', e.target.value)}
-                                                    className="w-full bg-white border border-slate-200 p-3 rounded-xl outline-none focus:border-primary font-bold text-slate-700 text-sm"
-                                                    placeholder="Ej: Frente a la plaza"
-                                                />
-                                            </div>
-                                        </div>
-                                    </div>
-                                ))
-                            )}
+                            <div className="space-y-1 relative">
+                                <label className="text-[10px] font-black text-slate-400 uppercase ml-1">Ubicación GPS</label>
+                                <button
+                                    onClick={() => setShowPicker(0)}
+                                    className={`w-full p-4 rounded-xl border font-bold text-sm flex items-center gap-2 justify-center transition-all ${location?.coords ? 'border-primary bg-primary/5 text-primary' : 'border-slate-200 bg-white text-slate-500 hover:border-primary hover:text-primary'}`}
+                                >
+                                    <MapIcon className="w-4 h-4" />
+                                    {location?.coords ? 'Ubicación Marcada (Haz clic para reubicar)' : 'Marcar Ubicación en el Mapa'}
+                                </button>
+                            </div>
+
+                            <div className="grid grid-cols-1 md:grid-cols-1 gap-4">
+                                <div className="space-y-1">
+                                    <label className="text-[10px] font-black text-slate-400 uppercase ml-1">Dirección Detallada</label>
+                                    <input
+                                        type="text"
+                                        value={location?.address || ''}
+                                        onChange={(e) => setLocation({
+                                            ...(location || { city: '', state: '', type: 'principal' }),
+                                            address: e.target.value
+                                        })}
+                                        className="w-full bg-white border border-slate-200 p-3 rounded-xl outline-none focus:border-primary font-bold text-slate-700 text-sm"
+                                        placeholder="Ej: Av. Principal de El Rosal, Edif. Centro"
+                                    />
+                                </div>
+                                <div className="space-y-1">
+                                    <label className="text-[10px] font-black text-slate-400 uppercase ml-1">Referencia (Opcional)</label>
+                                    <input
+                                        type="text"
+                                        value={location?.reference || ''}
+                                        onChange={(e) => setLocation({
+                                            ...(location || { address: '', city: '', state: '', type: 'principal' }),
+                                            reference: e.target.value
+                                        })}
+                                        className="w-full bg-white border border-slate-200 p-3 rounded-xl outline-none focus:border-primary font-bold text-slate-700 text-sm"
+                                        placeholder="Ej: Frente a la plaza, diagonal al banco"
+                                    />
+                                </div>
+                            </div>
                         </div>
                     </section>
                 </div>
@@ -445,11 +454,68 @@ export default function RestaurantProfile() {
                             className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl cursor-pointer group"
                             onClick={() => setOwnDelivery(!ownDelivery)}
                         >
-                            <span className="font-bold text-slate-700">Delivery Propio</span>
+                            <span className="font-bold text-slate-700">Servicio de Delivery Propio</span>
                             <div className={`w-12 h-6 rounded-full relative transition-colors ${ownDelivery ? 'bg-primary' : 'bg-slate-200'}`}>
                                 <div className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow-sm transition-all ${ownDelivery ? 'left-7' : 'left-1'}`}></div>
                             </div>
                         </div>
+
+                        {ownDelivery && (
+                            <div className="space-y-4 pt-2">
+                                <div className="flex justify-between items-center">
+                                    <h3 className="text-sm font-black text-slate-400 uppercase tracking-wider">Tarifas por Distancia</h3>
+                                    <button
+                                        onClick={addDeliveryRate}
+                                        className="text-primary text-xs font-bold flex items-center gap-1 hover:underline"
+                                    >
+                                        <Plus className="w-3 h-3" />
+                                        Añadir Rango
+                                    </button>
+                                </div>
+
+                                {deliveryRates.length === 0 ? (
+                                    <p className="text-xs text-slate-400 italic text-center py-4 bg-slate-50 rounded-xl">No hay tarifas configuradas. Se aplicará tarifa fija.</p>
+                                ) : (
+                                    <div className="space-y-3">
+                                        {deliveryRates.map((rate, idx) => (
+                                            <div key={idx} className="flex items-center gap-3 bg-white p-3 rounded-xl border border-slate-100 shadow-sm">
+                                                <div className="flex-1 flex items-center gap-2">
+                                                    <input
+                                                        type="number"
+                                                        value={rate.minKm}
+                                                        onChange={(e) => updateDeliveryRate(idx, 'minKm', parseFloat(e.target.value))}
+                                                        className="w-16 bg-slate-50 p-2 rounded-lg text-xs font-bold text-center outline-none focus:border-primary border border-transparent"
+                                                    />
+                                                    <span className="text-slate-400 text-[10px] font-bold">A</span>
+                                                    <input
+                                                        type="number"
+                                                        value={rate.maxKm}
+                                                        onChange={(e) => updateDeliveryRate(idx, 'maxKm', parseFloat(e.target.value))}
+                                                        className="w-16 bg-slate-50 p-2 rounded-lg text-xs font-bold text-center outline-none focus:border-primary border border-transparent"
+                                                    />
+                                                    <span className="text-slate-400 text-[10px] font-bold uppercase">KM</span>
+                                                </div>
+                                                <div className="flex items-center gap-1 bg-green-50 px-3 py-2 rounded-lg border border-green-100">
+                                                    <span className="text-green-600 text-[10px] font-black">$</span>
+                                                    <input
+                                                        type="number"
+                                                        value={rate.price}
+                                                        onChange={(e) => updateDeliveryRate(idx, 'price', parseFloat(e.target.value))}
+                                                        className="w-16 bg-transparent text-xs font-black text-green-700 outline-none"
+                                                    />
+                                                </div>
+                                                <button
+                                                    onClick={() => removeDeliveryRate(idx)}
+                                                    className="p-2 text-slate-300 hover:text-red-500 transition-colors"
+                                                >
+                                                    <Trash2 className="w-4 h-4" />
+                                                </button>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                        )}
 
                         <div className="space-y-2">
                             <label className="text-sm font-bold text-slate-500 ml-2">Tiempo Prep. Promedio</label>
@@ -475,12 +541,13 @@ export default function RestaurantProfile() {
             {showPicker !== null && (
                 <AddressPicker
                     onClose={() => setShowPicker(null)}
-                    initialData={locations[showPicker]?.coords ? { ...locations[showPicker].coords!, reference: locations[showPicker].reference || '' } : undefined}
+                    initialData={location?.coords ? { ...location.coords!, reference: location.reference || '' } : undefined}
                     onSave={(data) => {
-                        updateLocation(showPicker, 'coords', { lat: data.lat, lng: data.lng });
-                        if (data.reference && !locations[showPicker].reference) {
-                            updateLocation(showPicker, 'reference', data.reference);
-                        }
+                        setLocation({
+                            ...(location || { address: '', city: 'Caracas', state: 'Distrito Capital', type: 'principal' }),
+                            coords: { lat: data.lat, lng: data.lng },
+                            reference: data.reference || location?.reference || ''
+                        });
                         setShowPicker(null);
                     }}
                 />

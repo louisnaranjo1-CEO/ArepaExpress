@@ -2,8 +2,9 @@ import { Search as SearchIcon, SlidersHorizontal, MapPin, Star, Clock } from 'lu
 import { useState, useEffect, useMemo } from 'react';
 import { collection, getDocs } from 'firebase/firestore';
 import { db } from '../lib/firebase';
-import { Restaurant } from '../lib/seed';
-import { Link } from 'react-router-dom';
+import { Restaurant, Product } from '../lib/seed';
+import { Link, useLocation } from 'react-router-dom';
+import FilterModal, { FilterState } from '../components/FilterModal';
 
 import arepaImg from '../assets/categories/arepa.png';
 import burgerImg from '../assets/categories/burger.png';
@@ -12,7 +13,7 @@ import pizzaImg from '../assets/categories/pizza.png';
 import chinoImg from '../assets/categories/chino.png';
 import postresImg from '../assets/categories/postres.png';
 
-const CATEGORIES = [
+export const CATEGORIES = [
     { id: 'arepas', name: 'Comida Venezolana', image: arepaImg, color: 'bg-orange-50 text-orange-600', shortName: 'Arepas' },
     { id: 'burgers', name: 'Hamburguesas', image: burgerImg, color: 'bg-red-50 text-red-600', shortName: 'Burgers' },
     { id: 'sushi', name: 'Sushi', image: sushiImg, color: 'bg-pink-50 text-pink-600', shortName: 'Sushi' },
@@ -27,14 +28,32 @@ export default function Search() {
     const [loading, setLoading] = useState(true);
     const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
 
+    const location = useLocation();
+    const [isFilterOpen, setIsFilterOpen] = useState(location.state?.openFilters || false);
+    const [filters, setFilters] = useState<FilterState>({
+        category: null,
+        minPrice: '',
+        maxPrice: '',
+        onlyPromotions: false
+    });
+
     useEffect(() => {
         const fetchRestaurants = async () => {
             try {
                 const querySnapshot = await getDocs(collection(db, 'restaurants'));
-                const fetched = querySnapshot.docs.map(doc => ({
-                    id: doc.id,
-                    ...doc.data()
-                })) as Restaurant[];
+                const fetched = await Promise.all(querySnapshot.docs.map(async (docSnap) => {
+                    const data = docSnap.data();
+
+                    // Fetch products to support filtering by price/promotions
+                    const productsSnapshot = await getDocs(collection(db, 'restaurants', docSnap.id, 'products'));
+                    const products = productsSnapshot.docs.map(p => p.data() as Product);
+
+                    return {
+                        id: docSnap.id,
+                        ...data,
+                        products
+                    } as Restaurant;
+                }));
                 setRestaurants(fetched);
             } catch (error) {
                 console.error("Error fetching restaurants:", error);
@@ -48,13 +67,41 @@ export default function Search() {
 
     const filteredRestaurants = useMemo(() => {
         return restaurants.filter(res => {
+            // Search query
             const matchesQuery = query === '' ||
                 res.name.toLowerCase().includes(query.toLowerCase()) ||
                 res.category.toLowerCase().includes(query.toLowerCase());
-            const matchesCategory = !selectedCategory || res.category === selectedCategory;
-            return matchesQuery && matchesCategory;
+
+            // Category filter (combined from quick tags or modal)
+            const activeCategory = filters.category || selectedCategory;
+            const matchesCategory = !activeCategory || res.category === activeCategory;
+
+            // Price Range Filter
+            let matchesPrice = true;
+            if (filters.minPrice !== '' || filters.maxPrice !== '') {
+                matchesPrice = false;
+                if (res.products && res.products.length > 0) {
+                    const minP = filters.minPrice !== '' ? filters.minPrice : 0;
+                    const maxP = filters.maxPrice !== '' ? filters.maxPrice : Infinity;
+                    matchesPrice = res.products.some((p) => {
+                        const price = p.promoPrice && p.promoPrice > 0 ? p.promoPrice : p.price;
+                        return price >= minP && price <= maxP;
+                    });
+                }
+            }
+
+            // Promotions Filter
+            let matchesPromotions = true;
+            if (filters.onlyPromotions) {
+                matchesPromotions = false;
+                if (res.products && res.products.length > 0) {
+                    matchesPromotions = res.products.some((p) => p.promoPrice && p.promoPrice > 0);
+                }
+            }
+
+            return matchesQuery && matchesCategory && matchesPrice && matchesPromotions;
         });
-    }, [restaurants, query, selectedCategory]);
+    }, [restaurants, query, selectedCategory, filters]);
 
     return (
         <div className="pb-24 animate-in fade-in duration-500 min-h-screen bg-slate-50">
@@ -71,6 +118,17 @@ export default function Search() {
                             className="w-full bg-slate-100 border-none rounded-2xl py-4 pl-12 pr-4 font-medium focus:ring-2 focus:ring-primary focus:bg-white transition-all shadow-inner outline-none"
                         />
                     </div>
+
+                    {/* Filter Trigger Button */}
+                    <button
+                        onClick={() => setIsFilterOpen(true)}
+                        className={`p-4 rounded-2xl flex items-center justify-center transition-all ${(filters.category || filters.minPrice !== '' || filters.maxPrice !== '' || filters.onlyPromotions)
+                            ? 'bg-primary text-white shadow-md shadow-primary/30'
+                            : 'bg-white text-slate-500 shadow-sm border border-slate-100 hover:bg-slate-50'
+                            }`}
+                    >
+                        <SlidersHorizontal className="w-6 h-6" />
+                    </button>
                 </div>
             </div>
 
@@ -150,21 +208,39 @@ export default function Search() {
                                 </Link>
                             ))
                         ) : (
-                            <div className="bg-white border text-center border-slate-100 p-8 rounded-3xl flex flex-col items-center justify-center space-y-3 shadow-sm">
-                                <div className="text-4xl">🔍</div>
-                                <h3 className="text-lg font-black text-slate-800">No encontramos resultados</h3>
-                                <p className="text-slate-500 text-sm">Intenta buscar con otros términos o elige otra categoría.</p>
-                                <button
-                                    onClick={() => { setQuery(''); setSelectedCategory(null); }}
-                                    className="mt-4 bg-primary/10 text-primary px-6 py-2 rounded-xl font-bold hover:bg-primary/20 transition-colors"
-                                >
-                                    Ver todos los restaurantes
-                                </button>
+                            <div className="text-center py-12 text-slate-500 font-medium">
+                                No se encontraron resultados.
                             </div>
                         )}
                     </div>
                 </section>
             </div>
+
+            <FilterModal
+                isOpen={isFilterOpen}
+                onClose={() => setIsFilterOpen(false)}
+                onApply={(newFilters) => setFilters(newFilters)}
+                initialFilters={filters}
+            />
         </div>
+    );
+}                            ))
+                        ) : (
+    <div className="bg-white border text-center border-slate-100 p-8 rounded-3xl flex flex-col items-center justify-center space-y-3 shadow-sm">
+        <div className="text-4xl">🔍</div>
+        <h3 className="text-lg font-black text-slate-800">No encontramos resultados</h3>
+        <p className="text-slate-500 text-sm">Intenta buscar con otros términos o elige otra categoría.</p>
+        <button
+            onClick={() => { setQuery(''); setSelectedCategory(null); }}
+            className="mt-4 bg-primary/10 text-primary px-6 py-2 rounded-xl font-bold hover:bg-primary/20 transition-colors"
+        >
+            Ver todos los restaurantes
+        </button>
+    </div>
+)}
+                    </div >
+                </section >
+            </div >
+        </div >
     );
 }

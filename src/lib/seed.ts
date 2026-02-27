@@ -18,9 +18,16 @@ export interface Product {
 export interface Location {
     address: string;
     city: string;
+    state: string;
     coords?: { lat: number; lng: number };
     type: 'principal' | 'sucursal';
     reference?: string;
+}
+
+export interface DeliveryRate {
+    minKm: number;
+    maxKm: number;
+    price: number;
 }
 
 export interface Restaurant {
@@ -38,7 +45,10 @@ export interface Restaurant {
     followerCount?: number;
     followers?: string[];
     products?: Product[];
-    locations?: Location[];
+    location?: Location;
+    ownDelivery?: boolean;
+    deliveryRates?: DeliveryRate[];
+    whatsapp?: string;
 }
 
 const MOCK_RESTAURANTS: Restaurant[] = [

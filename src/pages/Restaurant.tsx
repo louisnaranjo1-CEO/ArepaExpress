@@ -16,7 +16,6 @@ export default function RestaurantPage() {
   const [error, setError] = useState<string | null>(null);
   const [activeCategory, setActiveCategory] = useState<string>('Todos');
   const [isFavorite, setIsFavorite] = useState(false);
-  const [showLocations, setShowLocations] = useState(false);
   const [isFollowing, setIsFollowing] = useState(false);
   const [followerCount, setFollowerCount] = useState(0);
   const { user } = useAuth();
@@ -272,31 +271,45 @@ export default function RestaurantPage() {
                   WhatsApp
                 </button>
               )}
+              {restaurant.location?.coords && (
+                <a
+                  href={`https://www.google.com/maps/search/?api=1&query=${restaurant.location.coords.lat},${restaurant.location.coords.lng}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-1 bg-blue-50 text-blue-600 px-3 py-1.5 rounded-full text-xs font-bold border border-blue-100 hover:bg-blue-100 transition-colors"
+                >
+                  <MapPin className="w-3.5 h-3.5" />
+                  Mapa
+                </a>
+              )}
             </div>
           </div>
 
-          {restaurant.locations && restaurant.locations.length > 0 && (
-            <div className="mt-1 border-t border-slate-50 pt-3">
-              <button
-                onClick={() => setShowLocations(!showLocations)}
-                className="flex items-center justify-between w-full text-slate-500 text-sm font-bold hover:text-slate-900 transition-colors"
-              >
-                <div className="flex items-center gap-2">
-                  <MapPin className="w-4 h-4 text-primary" />
-                  Ver sucursales ({restaurant.locations.length})
+          {restaurant.location && (
+            <div className="mt-1 border-t border-slate-50 pt-3 flex flex-col gap-2">
+              <div className="flex items-start gap-2">
+                <MapPin className="w-4 h-4 text-primary mt-1 shrink-0" />
+                <div className="flex-1">
+                  <p className="font-bold text-slate-700 text-sm">
+                    {restaurant.location.city}, {restaurant.location.state}
+                  </p>
+                  <p className="text-xs text-slate-500">{restaurant.location.address}</p>
+                  {restaurant.location.reference && (
+                    <p className="text-[10px] text-slate-400 italic mt-0.5">Ref: {restaurant.location.reference}</p>
+                  )}
                 </div>
-                <ChevronRight className={`w-4 h-4 transition-transform ${showLocations ? 'rotate-90' : ''}`} />
-              </button>
+              </div>
 
-              {showLocations && (
-                <div className="mt-3 space-y-2 animate-in fade-in slide-in-from-top-2 duration-300">
-                  {restaurant.locations.map((loc: any, i: number) => (
-                    <div key={i} className="bg-slate-50 p-3 rounded-xl border border-slate-100">
-                      <p className="font-bold text-slate-700 text-sm">{loc.city}</p>
-                      <p className="text-xs text-slate-500">{loc.address}</p>
-                    </div>
-                  ))}
-                </div>
+              {restaurant.location.coords && (
+                <a
+                  href={`https://www.google.com/maps/search/?api=1&query=${restaurant.location.coords.lat},${restaurant.location.coords.lng}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 text-primary text-xs font-bold hover:underline bg-primary/5 w-fit px-3 py-1.5 rounded-lg"
+                >
+                  <ChevronRight className="w-3.5 h-3.5" />
+                  Ver en el mapa
+                </a>
               )}
             </div>
           )}

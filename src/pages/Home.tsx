@@ -7,27 +7,27 @@ import { useState, useEffect } from 'react';
 import { collection, getDocs, query, where } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { Restaurant } from '../lib/seed';
+import { useAuth } from '../context/AuthContext';
+import { calculateDistance, formatDistance } from '../lib/geo';
 
 export default function Home() {
+  const { userData } = useAuth();
   const [restaurants, setRestaurants] = useState<Restaurant[]>([]);
   const [loading, setLoading] = useState(true);
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [locationName, setLocationName] = useState('Caracas, VE');
 
-  const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number) => {
-    const R = 6371; // Radius of the earth in km
-    const dLat = (lat2 - lat1) * Math.PI / 180;
-    const dLon = (lon2 - lon1) * Math.PI / 180;
-    const a =
-      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-      Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
-      Math.sin(dLon / 2) * Math.sin(dLon / 2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-    return R * c; // Distance in km
-  };
 
   useEffect(() => {
-    // Detect location
+    // If we have a saved address, use it. Otherwise, try to detect.
+    if (userData?.address) {
+      const coords = { lat: userData.address.lat, lng: userData.address.lng };
+      setUserLocation(coords);
+      setLocationName(userData.address.reference.split(',')[0]); // Use first part of reference as name
+      return;
+    }
+
+    // Detect location if no saved address
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
         async (position) => {
@@ -37,7 +37,7 @@ export default function Home() {
           };
           setUserLocation(coords);
 
-          // Reverse geocoding (mock for now or use Google Maps API if available)
+          // Reverse geocoding
           try {
             const response = await fetch(`https://maps.googleapis.com/maps/api/geocode/json?latlng=${coords.lat},${coords.lng}&key=AIzaSyCb1c-p1R6AZGetk8YzKiLuxjaxjmPqJX8`);
             const data = await response.json();
@@ -57,7 +57,7 @@ export default function Home() {
         }
       );
     }
-  }, []);
+  }, [userData]);
 
   useEffect(() => {
     const fetchRestaurants = async () => {
@@ -69,40 +69,29 @@ export default function Home() {
           ...doc.data()
         })) as Restaurant[];
 
-        // Sort by distance if user location is available
+        // Update distance strings and sort if user location is available
         if (userLocation) {
-          const sorted = [...fetchedRestaurants].sort((a, b) => {
-            const distA = a.locations?.reduce((min, loc) => {
-              if (!loc.coords) return min;
-              const d = calculateDistance(userLocation.lat, userLocation.lng, loc.coords.lat, loc.coords.lng);
-              return Math.min(min, d);
-            }, Infinity) || 999;
-
-            const distB = b.locations?.reduce((min, loc) => {
-              if (!loc.coords) return min;
-              const d = calculateDistance(userLocation.lat, userLocation.lng, loc.coords.lat, loc.coords.lng);
-              return Math.min(min, d);
-            }, Infinity) || 999;
-
-            return distA - distB;
-          });
-
-          // Update distance strings
-          const withDistances = sorted.map(rest => {
-            const minDistance = rest.locations?.reduce((min, loc) => {
-              if (!loc.coords) return min;
-              return Math.min(min, calculateDistance(userLocation.lat, userLocation.lng, loc.coords.lat, loc.coords.lng));
-            }, Infinity);
+          const withDistances = fetchedRestaurants.map(rest => {
+            let dist = 999;
+            if (rest.location?.coords) {
+              dist = calculateDistance(
+                userLocation.lat,
+                userLocation.lng,
+                rest.location.coords.lat,
+                rest.location.coords.lng
+              );
+            }
 
             return {
               ...rest,
-              distance: minDistance && minDistance !== Infinity
-                ? minDistance < 1 ? `${(minDistance * 1000).toFixed(0)} m` : `${minDistance.toFixed(1)} km`
-                : rest.distance
+              distance: dist !== 999 ? formatDistance(dist) : 'Distancia desconocida',
+              _rawDistance: dist
             };
           });
 
-          setRestaurants(withDistances);
+          // Sort by distance
+          const sorted = withDistances.sort((a, b) => (a._rawDistance as number) - (b._rawDistance as number));
+          setRestaurants(sorted);
         } else {
           setRestaurants(fetchedRestaurants);
         }
@@ -140,19 +129,21 @@ export default function Home() {
         </div>
 
         {/* Search Bar */}
-        <Link to="/search" className="relative group block">
-          <div className="absolute inset-y-0 left-0 flex items-center pl-4 pointer-events-none">
-            <Search className="w-5 h-5 text-slate-400 group-hover:text-primary transition-colors" />
-          </div>
-          <div className="flex w-full p-4 pl-12 text-sm text-slate-500 border border-slate-200 rounded-xl bg-slate-50 shadow-sm cursor-text">
-            Buscar arepas, sushi, hamburguesas...
-          </div>
+        <div className="relative group block">
+          <Link to="/search" className="block">
+            <div className="absolute inset-y-0 left-0 flex items-center pl-4 pointer-events-none">
+              <Search className="w-5 h-5 text-slate-400 group-hover:text-primary transition-colors" />
+            </div>
+            <div className="flex w-full p-4 pl-12 pr-12 text-sm text-slate-500 border border-slate-200 rounded-xl bg-slate-50 shadow-sm cursor-text hover:border-primary/30 transition-colors">
+              Buscar arepas, sushi, hamburguesas...
+            </div>
+          </Link>
           <div className="absolute inset-y-0 right-0 flex items-center pr-3">
-            <button className="p-2 text-slate-400 hover:text-primary transition-colors">
+            <Link to="/search" state={{ openFilters: true }} className="p-2 text-slate-400 hover:text-primary transition-colors rounded-full hover:bg-slate-100">
               <SlidersHorizontal className="w-5 h-5" />
-            </button>
+            </Link>
           </div>
-        </Link>
+        </div>
       </header>
 
       {/* Categories */}
