@@ -5,11 +5,13 @@ import { useAuth } from '../context/AuthContext';
 import { doc, getDoc, collection, getDocs } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { Restaurant } from '../lib/seed';
+import { requestNotificationPermission } from '../lib/notifications';
 
 export default function Favorites() {
-    const { user } = useAuth();
+    const { user, userData } = useAuth();
     const [favorites, setFavorites] = useState<Restaurant[]>([]);
     const [loading, setLoading] = useState(true);
+    const [activatingNotifications, setActivatingNotifications] = useState(false);
 
     useEffect(() => {
         const fetchFavorites = async () => {
@@ -51,6 +53,28 @@ export default function Favorites() {
 
         fetchFavorites();
     }, [user]);
+
+    const handleActivateNotifications = async () => {
+        if (!user) {
+            alert("Debes iniciar sesión para activar las notificaciones.");
+            return;
+        }
+
+        setActivatingNotifications(true);
+        try {
+            const success = await requestNotificationPermission(user.uid);
+            if (success) {
+                alert("¡Notificaciones activadas con éxito! 🎉");
+            } else {
+                alert("No pudimos activar las notificaciones. Asegúrate de dar los permisos necesarios en tu navegador.");
+            }
+        } catch (error) {
+            console.error("Error activating notifications:", error);
+            alert("Ocurrió un error al activar las notificaciones.");
+        } finally {
+            setActivatingNotifications(false);
+        }
+    };
 
     const hasFavorites = favorites.length > 0;
 
@@ -127,8 +151,18 @@ export default function Favorites() {
                 <div className="bg-gradient-to-r from-orange-400 to-primary rounded-[32px] p-8 text-white shadow-xl hover:-translate-y-1 transition-transform cursor-pointer">
                     <h3 className="text-xl font-black leading-tight mb-2">¿Quieres más <br />Arepa Express? 🤩</h3>
                     <p className="text-white/80 text-sm font-medium mb-6">Activa las notificaciones para no perderte las mejores promos.</p>
-                    <button className="bg-white text-primary font-black px-6 py-3 rounded-xl shadow-lg hover:scale-[1.02] transition-transform active:scale-[0.98] uppercase text-xs tracking-widest w-full">
-                        ACTIVAR AHORA
+                    <button
+                        onClick={handleActivateNotifications}
+                        disabled={activatingNotifications || (userData?.fcmTokens && userData.fcmTokens.length > 0)}
+                        className="bg-white text-primary font-black px-6 py-3 rounded-xl shadow-lg hover:scale-[1.02] transition-transform active:scale-[0.98] uppercase text-xs tracking-widest w-full flex items-center justify-center gap-2 disabled:opacity-70"
+                    >
+                        {activatingNotifications ? (
+                            <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin"></div>
+                        ) : (userData?.fcmTokens && userData.fcmTokens.length > 0) ? (
+                            'YA ACTIVADAS ✅'
+                        ) : (
+                            'ACTIVAR AHORA'
+                        )}
                     </button>
                 </div>
             </div>
