@@ -224,23 +224,5 @@ export default function Search() {
             />
         </div>
     );
-}                            ))
-                        ) : (
-    <div className="bg-white border text-center border-slate-100 p-8 rounded-3xl flex flex-col items-center justify-center space-y-3 shadow-sm">
-        <div className="text-4xl">🔍</div>
-        <h3 className="text-lg font-black text-slate-800">No encontramos resultados</h3>
-        <p className="text-slate-500 text-sm">Intenta buscar con otros términos o elige otra categoría.</p>
-        <button
-            onClick={() => { setQuery(''); setSelectedCategory(null); }}
-            className="mt-4 bg-primary/10 text-primary px-6 py-2 rounded-xl font-bold hover:bg-primary/20 transition-colors"
-        >
-            Ver todos los restaurantes
-        </button>
-    </div>
-)}
-                    </div >
-                </section >
-            </div >
-        </div >
-    );
 }
+
