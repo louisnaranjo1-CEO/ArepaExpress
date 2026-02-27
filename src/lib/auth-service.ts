@@ -30,13 +30,19 @@ export const signInWithGoogle = async (): Promise<User | null> => {
                 email: user.email,
                 photoURL: user.photoURL,
                 createdAt: serverTimestamp(),
-                favorites: [] // Initialize empty favorites array
+                favorites: [], // Initialize empty favorites array
+                birthday: null, // Google doesn't provide birthday by default
+                role: 'user'
             });
         }
 
         return user;
-    } catch (error) {
-        console.error("Error signing in with Google:", error);
+    } catch (error: any) {
+        console.error("Error signing in with Google:", error.code, error.message);
+        // Special case for unauthorized domains
+        if (error.code === 'auth/unauthorized-domain') {
+            throw new Error("Este dominio no está autorizado en Firebase Console (Authentication > Settings > Authorized Domains)");
+        }
         throw error;
     }
 };
@@ -81,6 +87,45 @@ export const signInAdmin = async (email: string, pass: string): Promise<User> =>
         return result.user;
     } catch (error) {
         console.error("Error signing in as admin:", error);
+        throw error;
+    }
+};
+export const signInAdminWithGoogle = async (): Promise<User | null> => {
+    try {
+        const result = await signInWithPopup(auth, googleProvider);
+        const user = result.user;
+
+        // Check if restaurant document already exists
+        const restaurantRef = doc(db, 'restaurants', user.uid);
+        const restaurantSnap = await getDoc(restaurantRef);
+
+        if (!restaurantSnap.exists()) {
+            // Create a placeholder restaurant document
+            await setDoc(restaurantRef, {
+                name: user.displayName || 'Mi Restaurante',
+                rif: 'PROVISIONAL',
+                ownerUid: user.uid,
+                email: user.email,
+                createdAt: serverTimestamp(),
+                locations: [],
+                whatsapp: '',
+                ownDelivery: false,
+                isApproved: false,
+                rating: 5.0,
+                image: 'https://images.unsplash.com/photo-1513104890138-7c749659a591?auto=format&fit=crop&q=80',
+                deliveryTime: '30-45 min',
+                deliveryFee: 1.5,
+                category: 'Varios',
+                birthday: null // Added birthday placeholder
+            });
+        }
+
+        return user;
+    } catch (error: any) {
+        console.error("Error signing in admin with Google:", error.code, error.message);
+        if (error.code === 'auth/unauthorized-domain') {
+            throw new Error("Este dominio no está autorizado en Firebase Console (Authentication > Settings > Authorized Domains)");
+        }
         throw error;
     }
 };

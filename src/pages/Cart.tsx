@@ -37,17 +37,33 @@ export default function Cart() {
         throw new Error("El restaurante no tiene un número de WhatsApp configurado.");
       }
 
+      // Fetch user's address from their profile
+      const userDoc = await getDoc(doc(db, 'users', user.uid));
+      const userData = userDoc.exists() ? userDoc.data() : null;
+      const userAddress = userData?.address || {};
+      const address = userAddress.fullAddress || "Casa Principal - Av. Francisco de Miranda, Edificio Torre Europa, Piso 4, Chacao, Caracas."; // Use user's full address or default
+
       const orderData = {
         userId: user.uid,
         userName: user.displayName || 'Cliente',
+        userEmail: user.email,
         restaurantId: restaurantId,
-        items: items,
-        total: finalTotal,
-        subtotal: totalPrice,
+        restaurantName: items[0].restaurantName,
+        items: items.map(item => ({
+          id: item.id,
+          name: item.name,
+          price: item.price,
+          quantity: item.quantity,
+          image: item.image
+        })),
+        subtotal: totalPrice, // Renamed from 'subtotal' to 'totalPrice' for consistency with context
         deliveryFee: deliveryFee,
+        total: finalTotal,
         status: 'pending',
-        createdAt: serverTimestamp(),
-        deliveryAddress: "Casa Principal - Av. Francisco de Miranda, Edificio Torre Europa, Piso 4, Chacao, Caracas."
+        deliveryAddress: address || 'Recoger en local',
+        userCoordinates: userAddress.lat ? { lat: userAddress.lat, lng: userAddress.lng } : null,
+        addressReference: userAddress.reference || '',
+        createdAt: serverTimestamp()
       };
 
       // 2. Save to Firestore
@@ -55,12 +71,21 @@ export default function Cart() {
 
       // 3. Generate WhatsApp Message
       const itemsList = items.map(item => `• ${item.quantity}x ${item.name} ($${(item.price * item.quantity).toFixed(2)})`).join('\n');
+
+      let locationText = `*Dirección:* ${orderData.deliveryAddress}`;
+      if (orderData.addressReference) {
+        locationText += `\n*Referencia:* ${orderData.addressReference}`;
+      }
+      if (orderData.userCoordinates) {
+        locationText += `\n*Ubicación GPS:* https://www.google.com/maps?q=${orderData.userCoordinates.lat},${orderData.userCoordinates.lng}`;
+      }
+
       const message = encodeURIComponent(
         `*NUEVO PEDIDO # ${docRef.id.slice(-6).toUpperCase()}*\n\n` +
         `*Cliente:* ${orderData.userName}\n` +
         `*Resumen:*\n${itemsList}\n\n` +
         `*Total:* $${finalTotal.toFixed(2)}\n` +
-        `*Dirección:* ${orderData.deliveryAddress}\n\n` +
+        `${locationText}\n\n` +
         `_Enviado desde VenCome App_`
       );
 

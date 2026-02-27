@@ -4,7 +4,8 @@ import { auth, db } from '../lib/firebase';
 import { useNavigate } from 'react-router-dom';
 import { signInWithGoogle } from '../lib/auth-service';
 import { useState, useEffect } from 'react';
-import { collection, query, where, orderBy, getDocs } from 'firebase/firestore';
+import { collection, query, where, orderBy, getDocs, doc, updateDoc } from 'firebase/firestore';
+import AddressPicker from '../components/AddressPicker';
 
 interface OrderInfo {
     id: string;
@@ -20,6 +21,7 @@ export default function Profile() {
     const [isSigningIn, setIsSigningIn] = useState(false);
     const [orders, setOrders] = useState<OrderInfo[]>([]);
     const [loadingOrders, setLoadingOrders] = useState(false);
+    const [showAddressPicker, setShowAddressPicker] = useState(false);
 
     useEffect(() => {
         const fetchOrders = async () => {
@@ -49,13 +51,16 @@ export default function Profile() {
         }
     }, [user]);
 
+    const [error, setError] = useState<string | null>(null);
+
     const handleGoogleSignIn = async () => {
         setIsSigningIn(true);
+        setError(null);
         try {
             await signInWithGoogle();
-            // AuthContext will automatically redirect or re-render
-        } catch (error) {
-            console.error("Failed to sign in", error);
+        } catch (err: any) {
+            console.error("Failed to sign in", err);
+            setError(err.message || "Error al iniciar sesión con Google");
         } finally {
             setIsSigningIn(false);
         }
@@ -76,6 +81,11 @@ export default function Profile() {
                 <p className="text-slate-500 mb-8 max-w-[280px]">
                     Ingresa para guardar tus restaurantes favoritos y pedir lo que más te gusta.
                 </p>
+                {error && (
+                    <div className="mb-4 p-4 bg-red-50 text-red-600 rounded-2xl text-xs font-bold animate-in shake-in duration-300">
+                        {error}
+                    </div>
+                )}
                 <div className="space-y-4 w-full max-w-xs relative">
                     <button
                         onClick={handleGoogleSignIn}
@@ -144,7 +154,10 @@ export default function Profile() {
                             <ShoppingBag className="w-6 h-6 text-orange-500 group-hover:scale-110 transition-transform" />
                             <span className="text-xs font-bold text-slate-600">Mis Pedidos</span>
                         </div>
-                        <div className="bg-blue-50 p-4 rounded-2xl flex flex-col items-center gap-2 group cursor-pointer hover:bg-blue-100 transition-colors">
+                        <div
+                            onClick={() => setShowAddressPicker(true)}
+                            className="bg-blue-50 p-4 rounded-2xl flex flex-col items-center gap-2 group cursor-pointer hover:bg-blue-100 transition-colors"
+                        >
                             <MapPin className="w-6 h-6 text-blue-500 group-hover:scale-110 transition-transform" />
                             <span className="text-xs font-bold text-slate-600">Direcciones</span>
                         </div>
@@ -174,8 +187,8 @@ export default function Profile() {
                                                 </div>
                                             </div>
                                             <span className={`px-2 py-1 rounded text-xs font-bold ${order.status === 'pending' ? 'bg-orange-100 text-orange-600' :
-                                                    order.status === 'completed' ? 'bg-green-100 text-green-600' :
-                                                        'bg-slate-200 text-slate-600'
+                                                order.status === 'completed' ? 'bg-green-100 text-green-600' :
+                                                    'bg-slate-200 text-slate-600'
                                                 }`}>
                                                 {order.status === 'pending' ? 'Pendiente' :
                                                     order.status === 'completed' ? 'Completado' : 'Cancelado'}
@@ -205,15 +218,6 @@ export default function Profile() {
                         <div className="space-y-1">
                             <div className="flex items-center justify-between p-4 hover:bg-slate-50 rounded-2xl transition-colors cursor-pointer group">
                                 <div className="flex items-center gap-3">
-                                    <div className="w-10 h-10 bg-purple-50 rounded-xl flex items-center justify-center">
-                                        <CreditCard className="w-5 h-5 text-purple-500" />
-                                    </div>
-                                    <span className="font-bold text-slate-700">Métodos de Pago</span>
-                                </div>
-                                <ChevronRight className="w-5 h-5 text-slate-300 group-hover:text-primary transition-colors" />
-                            </div>
-                            <div className="flex items-center justify-between p-4 hover:bg-slate-50 rounded-2xl transition-colors cursor-pointer group">
-                                <div className="flex items-center gap-3">
                                     <div className="w-10 h-10 bg-slate-100 rounded-xl flex items-center justify-center">
                                         <Settings className="w-5 h-5 text-slate-500" />
                                     </div>
@@ -241,6 +245,24 @@ export default function Profile() {
                     <p className="text-[10px] uppercase tracking-widest font-bold text-slate-400">Hecho con ❤️ en Venezuela</p>
                 </div>
             </div>
+
+            {showAddressPicker && user && (
+                <AddressPicker
+                    onClose={() => setShowAddressPicker(false)}
+                    onSave={async (addressData) => {
+                        try {
+                            const userRef = doc(db, 'users', user.uid);
+                            await updateDoc(userRef, {
+                                address: addressData
+                            });
+                            setShowAddressPicker(false);
+                        } catch (err) {
+                            console.error("Error saving address:", err);
+                        }
+                    }}
+                    initialData={(user as any).address}
+                />
+            )}
         </div>
     );
 }
