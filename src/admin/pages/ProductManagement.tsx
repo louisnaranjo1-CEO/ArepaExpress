@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { UtensilsCrossed, Plus, Search, Filter, Edit2, Trash2, Image as ImageIcon, Check, ChevronDown, X, Loader2, DollarSign, Tag, TrendingUp } from 'lucide-react';
-import { db } from '../../lib/firebase';
+import { db, storage } from '../../lib/firebase';
 import { collection, query, getDocs, doc, deleteDoc, updateDoc, addDoc } from 'firebase/firestore';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { useAuth } from '../../context/AuthContext';
+import { GLOBAL_CATEGORIES, DEVELOPER_WHATSAPP } from '../../lib/constants';
 
 interface Product {
     id: string;
@@ -10,7 +12,9 @@ interface Product {
     description: string;
     price: number;
     category: string;
-    image: string;
+    image: string; // Keep for backward compatibility/thumbnail
+    images: string[];
+    socialMediaLink?: string;
     isActive: boolean;
     investment?: number;
 }
@@ -30,11 +34,14 @@ export default function ProductManagement() {
         name: '',
         description: '',
         price: '',
-        category: 'Comida',
-        image: '',
+        category: GLOBAL_CATEGORIES[0],
         isActive: true,
-        investment: ''
+        investment: '',
+        socialMediaLink: ''
     });
+    const [existingImages, setExistingImages] = useState<string[]>([]);
+    const [newImageFiles, setNewImageFiles] = useState<File[]>([]);
+    const [previewUrls, setPreviewUrls] = useState<string[]>([]);
 
     useEffect(() => {
         if (!user) return;
@@ -66,21 +73,27 @@ export default function ProductManagement() {
                 description: product.description,
                 price: product.price.toString(),
                 category: product.category,
-                image: product.image,
                 isActive: product.isActive,
-                investment: product.investment?.toString() || ''
+                investment: product.investment?.toString() || '',
+                socialMediaLink: product.socialMediaLink || ''
             });
+            setExistingImages(product.images || (product.image ? [product.image] : []));
+            setNewImageFiles([]);
+            setPreviewUrls([]);
         } else {
             setEditingProduct(null);
             setFormData({
                 name: '',
                 description: '',
                 price: '',
-                category: 'Comida',
-                image: '',
+                category: GLOBAL_CATEGORIES[0],
                 isActive: true,
-                investment: ''
+                investment: '',
+                socialMediaLink: ''
             });
+            setExistingImages([]);
+            setNewImageFiles([]);
+            setPreviewUrls([]);
         }
         setIsModalOpen(true);
     };
@@ -91,10 +104,23 @@ export default function ProductManagement() {
         setSubmitting(true);
 
         try {
+            // 1. Upload new images if any
+            const uploadedUrls: string[] = [];
+            for (const file of newImageFiles) {
+                const storageRef = ref(storage, `restaurants/${user.uid}/products/${Date.now()}_${file.name}`);
+                const snapshot = await uploadBytes(storageRef, file);
+                const url = await getDownloadURL(snapshot.ref);
+                uploadedUrls.push(url);
+            }
+
+            const allImages = [...existingImages, ...uploadedUrls];
+
             const productData = {
                 ...formData,
                 price: parseFloat(formData.price),
                 investment: formData.investment ? parseFloat(formData.investment) : 0,
+                images: allImages,
+                image: allImages[0] || '', // Principal image
                 updatedAt: new Date()
             };
 
@@ -111,7 +137,10 @@ export default function ProductManagement() {
 
             setIsModalOpen(false);
             setEditingProduct(null);
-            setFormData({ name: '', description: '', price: '', category: 'Comida', image: '', investment: '', isActive: true });
+            setFormData({ name: '', description: '', price: '', category: GLOBAL_CATEGORIES[0], investment: '', isActive: true, socialMediaLink: '' });
+            setNewImageFiles([]);
+            setExistingImages([]);
+            setPreviewUrls([]);
             fetchProducts();
         } catch (error) {
             console.error("Error saving product:", error);
@@ -131,7 +160,33 @@ export default function ProductManagement() {
         }
     };
 
-    const categories = ['Todos', ...Array.from(new Set(products.map(p => p.category)))];
+    const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const files = Array.from(e.target.files || []) as File[];
+        const totalAllowed = 6 - (existingImages.length + newImageFiles.length);
+
+        if (files.length > totalAllowed) {
+            alert(`Solo puedes añadir ${totalAllowed} imágenes más.`);
+            return;
+        }
+
+        const newFiles = files.slice(0, totalAllowed);
+        setNewImageFiles(prev => [...prev, ...newFiles]);
+
+        const newPreviewUrls = newFiles.map(file => URL.createObjectURL(file));
+        setPreviewUrls(prev => [...prev, ...newPreviewUrls]);
+    };
+
+    const removeExistingImage = (index: number) => {
+        setExistingImages(prev => prev.filter((_, i) => i !== index));
+    };
+
+    const removeNewImage = (index: number) => {
+        URL.revokeObjectURL(previewUrls[index]);
+        setPreviewUrls(prev => prev.filter((_, i) => i !== index));
+        setNewImageFiles(prev => prev.filter((_, i) => i !== index));
+    };
+
+    const activeCategories = ['Todos', ...GLOBAL_CATEGORIES.filter(cat => products.some(p => p.category === cat))];
 
     const filteredProducts = products.filter(p => {
         const matchesSearch = p.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -179,13 +234,13 @@ export default function ProductManagement() {
 
                 {/* Categories Tabs */}
                 <div className="flex overflow-x-auto gap-2 pb-2 md:pb-0 scrollbar-hide">
-                    {categories.map((cat) => (
+                    {activeCategories.map((cat) => (
                         <button
                             key={cat}
                             onClick={() => setActiveCategory(cat)}
                             className={`px-6 py-4 rounded-2xl font-bold whitespace-nowrap transition-all border ${activeCategory === cat
-                                    ? 'bg-primary text-white border-primary shadow-lg shadow-primary/20'
-                                    : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50'
+                                ? 'bg-primary text-white border-primary shadow-lg shadow-primary/20'
+                                : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50'
                                 }`}
                         >
                             {cat}
@@ -324,29 +379,86 @@ export default function ProductManagement() {
                                 </div>
                             </div>
 
+                            <div className="space-y-2">
+                                <label className="text-xs font-black text-slate-400 uppercase ml-2 flex items-center gap-1">
+                                    <ImageIcon className="w-3 h-3" /> Imágenes ({existingImages.length + newImageFiles.length}/6)
+                                </label>
+
+                                <div className="grid grid-cols-3 gap-3">
+                                    {existingImages.map((url, i) => (
+                                        <div key={`existing-${i}`} className="relative group aspect-square rounded-2xl overflow-hidden bg-slate-100">
+                                            <img src={url} className="w-full h-full object-cover" />
+                                            <button
+                                                type="button"
+                                                onClick={() => removeExistingImage(i)}
+                                                className="absolute top-1 right-1 p-1 bg-red-500 text-white rounded-lg opacity-0 group-hover:opacity-100 transition-opacity"
+                                            >
+                                                <X className="w-4 h-4" />
+                                            </button>
+                                        </div>
+                                    ))}
+                                    {previewUrls.map((url, i) => (
+                                        <div key={`new-${i}`} className="relative group aspect-square rounded-2xl overflow-hidden bg-slate-100 border-2 border-primary/20">
+                                            <img src={url} className="w-full h-full object-cover" />
+                                            <button
+                                                type="button"
+                                                onClick={() => removeNewImage(i)}
+                                                className="absolute top-1 right-1 p-1 bg-red-500 text-white rounded-lg opacity-0 group-hover:opacity-100 transition-opacity"
+                                            >
+                                                <X className="w-4 h-4" />
+                                            </button>
+                                        </div>
+                                    ))}
+                                    {(existingImages.length + newImageFiles.length) < 6 && (
+                                        <label className="aspect-square rounded-2xl bg-slate-50 border-2 border-dashed border-slate-200 flex flex-col items-center justify-center cursor-pointer hover:bg-slate-100 hover:border-primary/30 transition-all text-slate-400 hover:text-primary">
+                                            <Plus className="w-6 h-6 mb-1" />
+                                            <span className="text-[10px] font-black uppercase">Subir</span>
+                                            <input
+                                                type="file"
+                                                multiple
+                                                accept="image/*"
+                                                className="hidden"
+                                                onChange={handleFileChange}
+                                            />
+                                        </label>
+                                    )}
+                                </div>
+                            </div>
+
                             <div className="space-y-1">
-                                <label className="text-xs font-black text-slate-400 uppercase ml-2">URL Imagen</label>
+                                <label className="text-xs font-black text-slate-400 uppercase ml-2 flex items-center gap-1">
+                                    <ImageIcon className="w-3 h-3" /> Link Redes Sociales (Instagram/TikTok)
+                                </label>
                                 <input
-                                    type="text"
-                                    placeholder="https://..."
-                                    value={formData.image}
-                                    onChange={(e) => setFormData({ ...formData, image: e.target.value })}
+                                    type="url"
+                                    placeholder="https://instagram.com/..."
+                                    value={formData.socialMediaLink}
+                                    onChange={(e) => setFormData({ ...formData, socialMediaLink: e.target.value })}
                                     className="w-full bg-slate-50 border-2 border-transparent focus:border-primary p-3 rounded-2xl outline-none font-bold text-slate-700"
                                 />
                             </div>
 
                             <div className="grid grid-cols-2 gap-4">
                                 <div className="space-y-1">
-                                    <label className="text-xs font-black text-slate-400 uppercase ml-2">Categoría</label>
+                                    <label className="text-xs font-black text-slate-400 uppercase ml-2 flex justify-between items-center">
+                                        <span>Categoría</span>
+                                        <a
+                                            href={`https://wa.me/${DEVELOPER_WHATSAPP}?text=Hola, me gustaría solicitar una nueva categoría para mi menú: `}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="text-[9px] text-primary hover:underline lowercase"
+                                        >
+                                            ¿Falta una?
+                                        </a>
+                                    </label>
                                     <select
                                         value={formData.category}
                                         onChange={(e) => setFormData({ ...formData, category: e.target.value })}
                                         className="w-full bg-slate-50 border-2 border-transparent focus:border-primary p-3 rounded-2xl outline-none font-bold text-slate-700"
                                     >
-                                        <option>Comida</option>
-                                        <option>Bebidas</option>
-                                        <option>Postres</option>
-                                        <option>Otros</option>
+                                        {GLOBAL_CATEGORIES.map(cat => (
+                                            <option key={cat} value={cat}>{cat}</option>
+                                        ))}
                                     </select>
                                 </div>
                                 <div className="space-y-1">

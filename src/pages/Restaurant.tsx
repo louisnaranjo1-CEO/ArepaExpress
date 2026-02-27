@@ -1,4 +1,5 @@
-import { ArrowLeft, Search, Heart, Star, Clock, Plus, AlertCircle, MessageSquare, MapPin, ChevronRight, Phone } from 'lucide-react';
+import { ArrowLeft, Search, Heart, Star, Clock, Plus, AlertCircle, MessageSquare, MapPin, ChevronRight, Phone, Instagram } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { Link, useParams } from 'react-router-dom';
 import { useState, useEffect } from 'react';
 import { doc, getDoc, collection, getDocs, updateDoc, arrayUnion, arrayRemove } from 'firebase/firestore';
@@ -137,7 +138,7 @@ export default function RestaurantPage() {
         <div
           className="absolute inset-0 bg-cover bg-center"
           style={{
-            backgroundImage: `linear-gradient(180deg, rgba(0,0,0,0.4) 0%, rgba(0,0,0,0) 40%, rgba(0,0,0,0.6) 100%), url("${restaurant.image}?q=80&w=1200&auto=format&fit=crop")`
+            backgroundImage: `linear-gradient(180deg, rgba(0,0,0,0.5) 0%, rgba(0,0,0,0.2) 50%, rgba(0,0,0,0.7) 100%), url("${restaurant.coverUrl || restaurant.image || 'https://images.unsplash.com/photo-1504674900247-0877df9cc836?q=80&w=1200'}")`
           }}
         ></div>
 
@@ -147,18 +148,40 @@ export default function RestaurantPage() {
             <ArrowLeft className="w-6 h-6" />
           </Link>
           <div className="flex gap-3">
-            <Heart
+            <button
               onClick={toggleFavorite}
-              className={`w-6 h-6 cursor-pointer drop-shadow-md transition-all active:scale-90 ${isFavorite ? 'text-red-500 fill-red-500 hover:scale-110' : 'text-white hover:text-red-500 hover:fill-red-500'}`}
-            />
+              className="flex items-center justify-center w-10 h-10 rounded-full bg-white/20 backdrop-blur-md text-white hover:bg-white/30 transition-colors"
+            >
+              <Heart
+                className={`w-6 h-6 transition-all ${isFavorite ? 'text-red-500 fill-red-500' : 'text-white'}`}
+              />
+            </button>
           </div>
         </div>
 
-        {/* Restaurant Title overlay */}
-        <div className="absolute bottom-0 left-0 w-full p-5 text-white">
-          <h1 className="text-3xl md:text-4xl font-extrabold tracking-tight leading-tight drop-shadow-md">{restaurant.name}</h1>
+        {/* Restaurant Branding Overlay - Redesigned to be more modern */}
+        <div className="absolute -bottom-6 left-0 w-full px-5 flex items-end gap-4 z-30">
+          {restaurant.logoUrl && (
+            <div className="relative shrink-0">
+              <div className="w-24 h-24 md:w-28 md:h-28 bg-white rounded-full p-1.5 shadow-xl border-4 border-white overflow-hidden animate-in zoom-in-95 duration-500">
+                <img src={restaurant.logoUrl} alt={restaurant.name} className="w-full h-full object-contain rounded-full" />
+              </div>
+              {restaurant.rating && (
+                <div className="absolute -bottom-1 -right-1 bg-white px-2 py-0.5 rounded-full shadow-md flex items-center gap-1 border border-slate-100">
+                  <Star className="w-3 h-3 text-primary fill-primary" />
+                  <span className="text-[10px] font-black text-slate-700">{restaurant.rating}</span>
+                </div>
+              )}
+            </div>
+          )}
+          <div className="pb-8 flex-1">
+            <h1 className="text-2xl md:text-4xl font-black text-white drop-shadow-[0_2px_4px_rgba(0,0,0,0.5)] leading-tight">{restaurant.name}</h1>
+          </div>
         </div>
       </div>
+
+      {/* Spacing for the overlapping logo */}
+      <div className="h-6 shrink-0"></div>
 
       {/* Restaurant Info */}
       <div className="px-5 py-4 bg-white -mt-4 rounded-t-3xl relative z-20 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)]">
@@ -239,34 +262,85 @@ export default function RestaurantPage() {
       {/* Menu List */}
       <div className="px-5 pb-32 flex-1 mt-4">
         {filteredProducts.length > 0 ? (
-          filteredProducts.map((product) => (
-            <div key={product.id} className="flex gap-4 py-5 border-b border-slate-100 group">
-              <div className="flex-1 flex flex-col justify-between">
-                <div>
-                  <h3 className="font-bold text-slate-900 text-base mb-1">{product.name}</h3>
-                  <p className="text-sm text-slate-500 line-clamp-2">{product.description}</p>
+          filteredProducts.map((product) => {
+            const productImages = product.images && product.images.length > 0 ? product.images : [product.image];
+
+            return (
+              <div key={product.id} className="flex gap-4 py-5 border-b border-slate-100 group">
+                <div className="flex-1 flex flex-col justify-between">
+                  <div>
+                    <div className="flex items-center gap-2 mb-1">
+                      <h3 className="font-bold text-slate-900 text-base">{product.name}</h3>
+                      {product.socialMediaLink && (
+                        <a
+                          href={product.socialMediaLink}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="p-1 bg-gradient-to-tr from-yellow-400 via-red-500 to-purple-600 text-white rounded-lg hover:scale-110 active:scale-90 transition-all shadow-sm shadow-purple-200"
+                        >
+                          <Instagram className="w-3.5 h-3.5" />
+                        </a>
+                      )}
+                    </div>
+                    <p className="text-sm text-slate-500 line-clamp-2">{product.description}</p>
+                  </div>
+                  <div className="flex items-center gap-3 mt-3">
+                    <span className="font-bold text-slate-900 text-base">${product.price.toFixed(2)}</span>
+                    {product.popular && (
+                      <span className="px-2 py-0.5 bg-orange-100 text-orange-600 text-[10px] uppercase font-bold tracking-wider rounded">Popular</span>
+                    )}
+                  </div>
                 </div>
-                <div className="flex items-center gap-3 mt-3">
-                  <span className="font-bold text-slate-900 text-base">${product.price.toFixed(2)}</span>
-                  {product.popular && (
-                    <span className="px-2 py-0.5 bg-orange-100 text-orange-600 text-[10px] uppercase font-bold tracking-wider rounded">Popular</span>
+
+                <div className="relative shrink-0 w-32 h-32 group/img">
+                  {productImages.length > 1 ? (
+                    <div className="w-full h-full overflow-x-auto flex snap-x snap-mandatory scrollbar-hide rounded-2xl bg-slate-100">
+                      {productImages.map((img, idx) => (
+                        <div key={idx} className="min-w-full h-full snap-start">
+                          <img
+                            src={img}
+                            alt={`${product.name} ${idx + 1}`}
+                            className="w-full h-full object-cover"
+                          />
+                        </div>
+                      ))}
+                      {/* Pagination indicator */}
+                      <div className="absolute bottom-1.5 left-0 w-full flex justify-center gap-1 px-2">
+                        {productImages.map((_, idx) => (
+                          <div key={idx} className="w-1 h-1 rounded-full bg-white/60 shadow-sm" />
+                        ))}
+                      </div>
+                    </div>
+                  ) : (
+                    <div
+                      className="w-full h-full rounded-2xl bg-cover bg-center shadow-sm bg-slate-100"
+                      style={{ backgroundImage: `url("${product.image || 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&q=80'}")` }}
+                    ></div>
+                  )}
+
+                  {/* Restaurant Logo Overlay on Product */}
+                  {restaurant.logoUrl && (
+                    <div className="absolute top-2 right-2 w-8 h-8 bg-white/90 backdrop-blur-sm rounded-lg p-1 shadow-sm border border-white/50 z-10 pointer-events-none group-hover/img:scale-110 transition-transform">
+                      <img src={restaurant.logoUrl} alt="Logo" className="w-full h-full object-contain" />
+                    </div>
+                  )}
+
+                  <button
+                    onClick={() => handleAddToCart(product)}
+                    className="absolute -bottom-2 -right-2 w-10 h-10 bg-white border border-slate-100 rounded-full flex items-center justify-center text-primary shadow-lg hover:scale-110 active:scale-95 transition-all z-10"
+                  >
+                    <Plus className="w-5 h-5 font-bold" />
+                  </button>
+
+                  {productImages.length > 1 && (
+                    <div className="absolute top-2 left-2 bg-black/40 backdrop-blur-md px-2 py-0.5 rounded-full text-[8px] font-black text-white uppercase tracking-tighter">
+                      {productImages.length} fotos
+                    </div>
                   )}
                 </div>
               </div>
-              <div className="relative shrink-0 w-28 h-28">
-                <div
-                  className="w-full h-full rounded-2xl bg-cover bg-center shadow-sm"
-                  style={{ backgroundImage: `url("${product.image}?q=80&w=400&auto=format&fit=crop")` }}
-                ></div>
-                <button
-                  onClick={() => handleAddToCart(product)}
-                  className="absolute -bottom-2 -right-2 w-10 h-10 bg-white border border-slate-100 rounded-full flex items-center justify-center text-primary shadow-lg hover:scale-110 active:scale-95 transition-all"
-                >
-                  <Plus className="w-5 h-5 font-bold" />
-                </button>
-              </div>
-            </div>
-          ))
+            );
+          })
         ) : (
           <div className="text-center py-12 text-slate-500">
             No hay productos en esta categoría.

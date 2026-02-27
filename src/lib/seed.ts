@@ -7,8 +7,18 @@ export interface Product {
     description: string;
     price: number;
     image: string;
+    images?: string[];
+    socialMediaLink?: string;
     category: string;
     popular?: boolean;
+}
+
+export interface Location {
+    address: string;
+    city: string;
+    coords?: { lat: number; lng: number };
+    type: 'principal' | 'sucursal';
+    reference?: string;
 }
 
 export interface Restaurant {
@@ -20,8 +30,11 @@ export interface Restaurant {
     deliveryTime: string;
     distance: string;
     image: string;
+    logoUrl?: string;
+    coverUrl?: string;
     featured: boolean;
     products?: Product[];
+    locations?: Location[];
 }
 
 const MOCK_RESTAURANTS: Restaurant[] = [
@@ -83,7 +96,7 @@ const MOCK_RESTAURANTS: Restaurant[] = [
                 description: "Papas fritas crujientes bañadas en aceite de trufa y queso parmesano.",
                 price: 4.50,
                 image: "https://images.unsplash.com/photo-1571091718767-18b5b1457add",
-                category: "Acompañantes"
+                category: "Almuerzos"
             }
         ]
     },
@@ -102,7 +115,7 @@ const MOCK_RESTAURANTS: Restaurant[] = [
                 description: "Langostino tempura, queso crema, aguacate, cubierto con plátano maduro y salsa anguila.",
                 price: 12.00,
                 image: "https://images.unsplash.com/photo-1579871494447-9811cf80d66c",
-                category: "Roles Especiales",
+                category: "Sushi",
                 popular: true
             },
             {
@@ -110,7 +123,7 @@ const MOCK_RESTAURANTS: Restaurant[] = [
                 description: "Frijoles de soya al vapor con sal marina.",
                 price: 3.00,
                 image: "https://images.unsplash.com/photo-1579871494447-9811cf80d66c",
-                category: "Entradas"
+                category: "Sushi"
             }
         ]
     },

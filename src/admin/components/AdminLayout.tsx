@@ -1,8 +1,11 @@
 import React from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, Store, UtensilsCrossed, ClipboardList, LogOut, ChevronRight, Menu, X } from 'lucide-react';
-import { auth } from '../../lib/firebase';
+import { LayoutDashboard, Store, UtensilsCrossed, ClipboardList, LogOut, ChevronRight, Menu, X, Settings, HelpCircle, Trash2, User, ChevronUp } from 'lucide-react';
+import { auth, db } from '../../lib/firebase';
 import { useAuth } from '../../context/AuthContext';
+import { doc, getDoc, deleteDoc } from 'firebase/firestore';
+import { format } from 'date-fns';
+import { es } from 'date-fns/locale';
 
 interface AdminLayoutProps {
     children: React.ReactNode;
@@ -12,10 +15,43 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
     const { user } = useAuth();
     const navigate = useNavigate();
     const [isSidebarOpen, setIsSidebarOpen] = React.useState(false);
+    const [isProfileMenuOpen, setIsProfileMenuOpen] = React.useState(false);
+    const [restaurantName, setRestaurantName] = React.useState('Mi Negocio');
+    const [createdAt, setCreatedAt] = React.useState<Date | null>(null);
+    const [showDeleteConfirm, setShowDeleteConfirm] = React.useState(false);
+
+    React.useEffect(() => {
+        if (!user) return;
+        const fetchRestaurant = async () => {
+            const docRef = doc(db, 'restaurants', user.uid);
+            const docSnap = await getDoc(docRef);
+            if (docSnap.exists()) {
+                const data = docSnap.data();
+                setRestaurantName(data.name || 'Mi Negocio');
+                if (data.createdAt) {
+                    setCreatedAt(data.createdAt.toDate());
+                }
+            }
+        };
+        fetchRestaurant();
+    }, [user]);
 
     const handleLogout = async () => {
         await auth.signOut();
         navigate('/');
+    };
+
+    const handleDeleteAccount = async () => {
+        if (!user) return;
+        try {
+            await deleteDoc(doc(db, 'restaurants', user.uid));
+            // In a real app, we'd also delete the auth user, but for demo we just sign out
+            await auth.signOut();
+            navigate('/');
+        } catch (error) {
+            console.error("Error deleting account:", error);
+            alert("Error al eliminar la cuenta");
+        }
     };
 
     const navItems = [
@@ -78,24 +114,88 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
                     </nav>
 
                     {/* Sidebar Footer */}
-                    <div className="p-4 border-t border-slate-100 italic">
-                        <div className="p-4 bg-slate-50 rounded-2xl flex items-center gap-3 mb-3 overflow-hidden">
+                    <div className="p-4 border-t border-slate-100 relative">
+                        {/* Profile Menu Dropdown */}
+                        {isProfileMenuOpen && (
+                            <div className="absolute bottom-full left-4 right-4 mb-2 bg-white rounded-3xl shadow-2xl border border-slate-100 p-2 overflow-hidden animate-in slide-in-from-bottom-4 duration-300 z-50">
+                                <div className="p-4 border-b border-slate-50 italic">
+                                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Miembro desde</p>
+                                    <p className="text-sm font-bold text-slate-700 capitalize">
+                                        {createdAt ? format(createdAt, "MMMM yyyy", { locale: es }) : 'Reciente'}
+                                    </p>
+                                </div>
+                                <div className="py-2">
+                                    <a
+                                        href="https://wa.me/584243258536"
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="w-full flex items-center gap-3 px-4 py-3 text-slate-600 font-bold hover:bg-slate-50 rounded-xl transition-colors"
+                                    >
+                                        <HelpCircle className="w-5 h-5 text-primary" />
+                                        <span>Soporte Técnico</span>
+                                    </a>
+                                    <button
+                                        onClick={() => setShowDeleteConfirm(true)}
+                                        className="w-full flex items-center gap-3 px-4 py-3 text-red-500 font-bold hover:bg-red-50 rounded-xl transition-colors"
+                                    >
+                                        <Trash2 className="w-5 h-5" />
+                                        <span>Eliminar Cuenta</span>
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+
+                        <button
+                            onClick={() => setIsProfileMenuOpen(!isProfileMenuOpen)}
+                            className={`w-full p-4 rounded-2xl flex items-center gap-3 mb-3 transition-all ${isProfileMenuOpen ? 'bg-primary/5 ring-2 ring-primary/20' : 'bg-slate-50 hover:bg-slate-100'}`}
+                        >
                             <div className="w-10 h-10 bg-white rounded-full flex items-center justify-center border border-slate-200 shadow-sm flex-shrink-0">
-                                <span className="text-primary font-black">{user?.displayName?.[0] || 'R'}</span>
+                                <span className="text-primary font-black">{restaurantName[0]}</span>
                             </div>
-                            <div className="min-w-0">
-                                <p className="text-sm font-bold text-slate-900 truncate">{user?.displayName || 'Restaurante'}</p>
-                                <p className="text-[10px] text-slate-500 truncate">{user?.email}</p>
+                            <div className="min-w-0 flex-1 text-left">
+                                <p className="text-sm font-bold text-slate-900 truncate">{restaurantName}</p>
+                                <p className="text-[10px] text-slate-500 truncate capitalize">Business Manager</p>
                             </div>
-                        </div>
+                            <ChevronUp className={`w-4 h-4 text-slate-400 transition-transform ${isProfileMenuOpen ? 'rotate-180' : ''}`} />
+                        </button>
+
                         <button
                             onClick={handleLogout}
-                            className="w-full flex items-center gap-3 px-4 py-3 text-red-500 font-bold hover:bg-red-50 rounded-xl transition-colors"
+                            className="w-full flex items-center gap-3 px-4 py-3 text-slate-500 font-bold hover:bg-red-50 hover:text-red-500 rounded-xl transition-colors"
                         >
                             <LogOut className="w-5 h-5" />
                             <span>Cerrar Sesión</span>
                         </button>
                     </div>
+
+                    {/* Delete Confirmation Modal */}
+                    {showDeleteConfirm && (
+                        <div className="fixed inset-0 z-[100] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+                            <div className="bg-white rounded-[40px] p-8 max-w-sm w-full space-y-6 animate-in zoom-in-95 duration-300 shadow-2xl italic">
+                                <div className="w-16 h-16 bg-red-50 rounded-full flex items-center justify-center mx-auto">
+                                    <Trash2 className="w-8 h-8 text-red-500" />
+                                </div>
+                                <div className="text-center space-y-2">
+                                    <h3 className="text-xl font-black text-slate-900">¿Eliminar cuenta?</h3>
+                                    <p className="text-slate-500 font-medium leading-relaxed">Esta acción borrará toda tu información y productos de forma permanente. No podrás deshacerlo.</p>
+                                </div>
+                                <div className="flex flex-col gap-3">
+                                    <button
+                                        onClick={handleDeleteAccount}
+                                        className="w-full bg-red-500 text-white py-4 rounded-2xl font-black shadow-lg shadow-red-500/20 hover:scale-[1.02] active:scale-[0.98] transition-all"
+                                    >
+                                        Sí, eliminar cuenta
+                                    </button>
+                                    <button
+                                        onClick={() => setShowDeleteConfirm(false)}
+                                        className="w-full bg-slate-50 text-slate-900 py-4 rounded-2xl font-black hover:bg-slate-100 transition-all"
+                                    >
+                                        Cancelar
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
                 </div>
             </aside>
 

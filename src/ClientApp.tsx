@@ -14,7 +14,7 @@ export default function ClientApp() {
         <Router>
             <AuthProvider>
                 <CartProvider>
-                    <div className="min-h-screen bg-slate-50 font-sans max-w-md mx-auto shadow-2xl relative overflow-hidden flex flex-col">
+                    <div className="h-[100dvh] bg-slate-50 font-sans max-w-md mx-auto shadow-2xl relative overflow-hidden flex flex-col">
                         <div className="flex-1 overflow-y-auto">
                             <Routes>
                                 <Route path="/" element={<Home />} />

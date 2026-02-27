@@ -8,6 +8,53 @@ import { Restaurant } from '../lib/seed';
 export default function Home() {
   const [restaurants, setRestaurants] = useState<Restaurant[]>([]);
   const [loading, setLoading] = useState(true);
+  const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
+  const [locationName, setLocationName] = useState('Caracas, VE');
+
+  const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number) => {
+    const R = 6371; // Radius of the earth in km
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLon = (lon2 - lon1) * Math.PI / 180;
+    const a =
+      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+      Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+      Math.sin(dLon / 2) * Math.sin(dLon / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return R * c; // Distance in km
+  };
+
+  useEffect(() => {
+    // Detect location
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        async (position) => {
+          const coords = {
+            lat: position.coords.latitude,
+            lng: position.coords.longitude
+          };
+          setUserLocation(coords);
+
+          // Reverse geocoding (mock for now or use Google Maps API if available)
+          try {
+            const response = await fetch(`https://maps.googleapis.com/maps/api/geocode/json?latlng=${coords.lat},${coords.lng}&key=AIzaSyDDEpf7x5W24gRAI3HJ0PjZBzXBZcwV8gA`);
+            const data = await response.json();
+            if (data.results && data.results[0]) {
+              const addressComponents = data.results[0].address_components;
+              const city = addressComponents.find((c: any) => c.types.includes('locality'))?.long_name ||
+                addressComponents.find((c: any) => c.types.includes('administrative_area_level_2'))?.long_name;
+              const state = addressComponents.find((c: any) => c.types.includes('administrative_area_level_1'))?.short_name;
+              if (city && state) setLocationName(`${city}, ${state}`);
+            }
+          } catch (error) {
+            console.error("Geocoding error:", error);
+          }
+        },
+        (error) => {
+          console.error("Error getting location:", error);
+        }
+      );
+    }
+  }, []);
 
   useEffect(() => {
     const fetchRestaurants = async () => {
@@ -18,7 +65,44 @@ export default function Home() {
           id: doc.id,
           ...doc.data()
         })) as Restaurant[];
-        setRestaurants(fetchedRestaurants);
+
+        // Sort by distance if user location is available
+        if (userLocation) {
+          const sorted = [...fetchedRestaurants].sort((a, b) => {
+            const distA = a.locations?.reduce((min, loc) => {
+              if (!loc.coords) return min;
+              const d = calculateDistance(userLocation.lat, userLocation.lng, loc.coords.lat, loc.coords.lng);
+              return Math.min(min, d);
+            }, Infinity) || 999;
+
+            const distB = b.locations?.reduce((min, loc) => {
+              if (!loc.coords) return min;
+              const d = calculateDistance(userLocation.lat, userLocation.lng, loc.coords.lat, loc.coords.lng);
+              return Math.min(min, d);
+            }, Infinity) || 999;
+
+            return distA - distB;
+          });
+
+          // Update distance strings
+          const withDistances = sorted.map(rest => {
+            const minDistance = rest.locations?.reduce((min, loc) => {
+              if (!loc.coords) return min;
+              return Math.min(min, calculateDistance(userLocation.lat, userLocation.lng, loc.coords.lat, loc.coords.lng));
+            }, Infinity);
+
+            return {
+              ...rest,
+              distance: minDistance && minDistance !== Infinity
+                ? minDistance < 1 ? `${(minDistance * 1000).toFixed(0)} m` : `${minDistance.toFixed(1)} km`
+                : rest.distance
+            };
+          });
+
+          setRestaurants(withDistances);
+        } else {
+          setRestaurants(fetchedRestaurants);
+        }
       } catch (error) {
         console.error("Error fetching restaurants: ", error);
       } finally {
@@ -27,7 +111,7 @@ export default function Home() {
     };
 
     fetchRestaurants();
-  }, []);
+  }, [userLocation]);
 
   return (
     <div className="relative flex h-full w-full flex-col overflow-x-hidden bg-white">
@@ -41,7 +125,7 @@ export default function Home() {
             <div>
               <p className="text-xs font-medium text-slate-500">Ubicación actual</p>
               <div className="flex items-center gap-1 cursor-pointer group">
-                <h2 className="text-slate-900 text-lg font-bold leading-tight group-hover:text-primary transition-colors">Caracas, VE</h2>
+                <h2 className="text-slate-900 text-lg font-bold leading-tight group-hover:text-primary transition-colors">{locationName}</h2>
                 <ChevronDown className="w-4 h-4 text-primary font-bold" />
               </div>
             </div>
@@ -92,7 +176,7 @@ export default function Home() {
                 style={{ backgroundImage: "url('https://images.unsplash.com/photo-1568901346375-23c9450c58cd?w=200&h=200&fit=crop')" }}
               ></div>
             </div>
-            <span className="text-xs font-medium text-slate-700 group-hover:text-primary transition-colors">Burgers</span>
+            <span className="text-xs font-medium text-slate-700 group-hover:text-primary transition-colors">Hamburguesas</span>
           </Link>
           {/* Category 3 */}
           <Link to="/search" className="flex flex-col items-center gap-2 group min-w-[72px]">
