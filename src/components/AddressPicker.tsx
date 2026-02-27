@@ -84,14 +84,7 @@ export default function AddressPicker({ onClose, onSave, initialData }: AddressP
                             onClick={onClick}
                             options={{
                                 disableDefaultUI: true,
-                                zoomControl: true,
-                                styles: [
-                                    {
-                                        "featureType": "poi",
-                                        "elementType": "labels",
-                                        "stylers": [{ "visibility": "off" }]
-                                    }
-                                ]
+                                zoomControl: true
                             }}
                         >
                             <Marker
