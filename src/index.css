@@ -19,19 +19,29 @@
   .hide-scrollbar::-webkit-scrollbar {
     display: none;
   }
+
   .hide-scrollbar {
     -ms-overflow-style: none;
     scrollbar-width: none;
   }
+
   .food-pattern {
     background-image: radial-gradient(#f48c25 1px, transparent 1px);
     background-size: 20px 20px;
   }
 }
 
+html,
+body {
+  height: 100%;
+  overflow: hidden;
+  margin: 0;
+  padding: 0;
+}
+
 body {
   font-family: var(--font-display);
   background-color: var(--color-background-light);
   color: #0f172a;
-  min-height: 100dvh;
+  height: 100dvh;
 }

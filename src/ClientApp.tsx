@@ -15,8 +15,8 @@ export default function ClientApp() {
         <Router>
             <AuthProvider>
                 <CartProvider>
-                    <div className="min-h-screen bg-slate-100 flex justify-center">
-                        <div className="bg-white w-full max-w-md flex flex-col shadow-2xl min-h-screen relative">
+                    <div className="h-screen bg-slate-100 flex justify-center overflow-hidden">
+                        <div className="bg-white w-full max-w-md flex flex-col shadow-2xl h-full relative overflow-hidden">
                             <div className="flex-1 overflow-y-auto hide-scrollbar">
                                 <Routes>
                                     <Route path="/" element={<Home />} />
