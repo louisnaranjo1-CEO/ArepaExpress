@@ -36,6 +36,9 @@ export const signInWithGoogle = async (): Promise<User | null> => {
             });
         }
 
+        // Esta línea permite que el programa de PC "lea" quién eres
+        localStorage.setItem('deliexpress_uid', user.uid);
+
         return user;
     } catch (error: any) {
         console.error("Error signing in with Google:", error.code, error.message);
@@ -119,6 +122,9 @@ export const signInAdminWithGoogle = async (): Promise<User | null> => {
                 birthday: null // Added birthday placeholder
             });
         }
+
+        // Esta línea permite que el programa de PC "lea" quién eres
+        localStorage.setItem('deliexpress_uid', user.uid);
 
         return user;
     } catch (error: any) {

@@ -107,7 +107,7 @@ export default function Profile() {
         if (!user) return;
         setUpdatingNotifications(true);
         try {
-            const isEnabled = userData?.fcmTokens && userData.fcmTokens.length > 0;
+            const isEnabled = userData?.notificationsEnabled || (userData?.fcmTokens && userData.fcmTokens.length > 0);
             if (isEnabled) {
                 await disableNotifications(user.uid);
                 alert("Notificaciones desactivadas.");
@@ -326,11 +326,11 @@ export default function Profile() {
                                 <button
                                     onClick={handleToggleNotifications}
                                     disabled={updatingNotifications}
-                                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${userData?.fcmTokens && userData.fcmTokens.length > 0 ? 'bg-primary' : 'bg-slate-300'
+                                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${userData?.notificationsEnabled || (userData?.fcmTokens && userData.fcmTokens.length > 0) ? 'bg-green-500' : 'bg-slate-300'
                                         }`}
                                 >
                                     <span
-                                        className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${userData?.fcmTokens && userData.fcmTokens.length > 0 ? 'translate-x-6' : 'translate-x-1'
+                                        className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${userData?.notificationsEnabled || (userData?.fcmTokens && userData.fcmTokens.length > 0) ? 'translate-x-6' : 'translate-x-1'
                                             }`}
                                     />
                                 </button>

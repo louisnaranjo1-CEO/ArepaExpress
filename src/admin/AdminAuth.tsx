@@ -26,7 +26,7 @@ export default function AdminAuth() {
             } else {
                 await registerRestaurant(email, password, restaurantName, rif);
             }
-            navigate('/'); // Redirect to dashboard
+            navigate('/stations');
         } catch (err: any) {
             console.error("Auth error:", err);
             setError(err.message || "Ocurrió un error en la autenticación");
@@ -40,7 +40,7 @@ export default function AdminAuth() {
         setError(null);
         try {
             await signInAdminWithGoogle();
-            navigate('/');
+            navigate('/stations');
         } catch (err: any) {
             console.error("Google auth error:", err);
             setError(err.message || "Error al conectar con Google");
