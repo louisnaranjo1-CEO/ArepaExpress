@@ -139,13 +139,16 @@ export default function RestaurantProfile() {
                 updatedAt: new Date()
             });
 
+            console.log("Restaurant profile updated successfully");
             setSaved(true);
             setTimeout(() => setSaved(false), 3000);
         } catch (error) {
             console.error("Error updating restaurant:", error);
-            alert("Error al guardar los cambios");
+            alert("Error al guardar los cambios. Por favor, verifica tu conexión o los permisos de almacenamiento.");
         } finally {
             setIsSaving(false);
+            setUploadingLogo(false);
+            setUploadingCover(false);
         }
     };
 

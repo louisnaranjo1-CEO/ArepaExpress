@@ -422,13 +422,16 @@ export default function RestaurantPage() {
 
       {/* Floating Cart Button */}
       {totalItems > 0 && (
-        <div className="fixed bottom-6 left-1/2 transform -translate-x-1/2 w-full px-5 max-w-md z-50 animate-in slide-in-from-bottom-4 fade-in duration-300">
-          <Link to="/cart" className="w-full bg-primary hover:bg-orange-600 text-white rounded-2xl p-4 shadow-xl shadow-orange-500/30 flex items-center justify-between transition-colors">
+        <div className="fixed bottom-24 left-1/2 transform -translate-x-1/2 w-full px-5 max-w-md z-[60] animate-in slide-in-from-bottom-4 fade-in duration-300">
+          <Link to="/cart" className="w-full bg-primary hover:bg-orange-600 text-white rounded-2xl p-4 shadow-xl shadow-orange-500/40 flex items-center justify-between transition-colors ring-4 ring-white/10 backdrop-blur-sm">
             <div className="flex items-center gap-3">
-              <div className="bg-white/20 px-3 py-1 rounded-lg text-sm font-bold flex items-center justify-center min-w-[32px]">{totalItems}</div>
-              <span className="font-bold text-base">Ver orden</span>
+              <div className="bg-white/20 px-3 py-1 rounded-lg text-sm font-black flex items-center justify-center min-w-[36px]">{totalItems}</div>
+              <span className="font-black text-base uppercase tracking-wider">Ver mi orden</span>
             </div>
-            <span className="font-bold text-lg leading-none">${totalPrice.toFixed(2)}</span>
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] font-bold opacity-80 uppercase tracking-widest">Total</span>
+              <span className="font-black text-xl leading-none">${totalPrice.toFixed(2)}</span>
+            </div>
           </Link>
         </div>
       )}

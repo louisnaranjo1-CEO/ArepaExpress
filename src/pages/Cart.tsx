@@ -151,9 +151,12 @@ export default function Cart() {
 
       {/* Sticky Header */}
       <div className="sticky top-0 z-20 bg-surface-light/80 backdrop-blur-md px-4 pb-2 pt-4 flex items-center justify-between border-b border-neutral-light">
-        <Link to="/restaurant" className="text-slate-900 flex size-12 shrink-0 items-center justify-center rounded-full hover:bg-neutral-light transition-colors cursor-pointer">
+        <button
+          onClick={() => navigate(-1)}
+          className="text-slate-900 flex size-12 shrink-0 items-center justify-center rounded-full hover:bg-neutral-light transition-colors cursor-pointer"
+        >
           <ArrowLeft className="w-6 h-6" />
-        </Link>
+        </button>
         <h2 className="text-slate-900 text-lg font-bold leading-tight tracking-[-0.015em] flex-1 text-center pr-12">
           Mi Carrito
         </h2>
