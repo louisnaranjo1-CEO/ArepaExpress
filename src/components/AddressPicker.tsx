@@ -14,8 +14,8 @@ const defaultCenter = {
 
 interface AddressPickerProps {
     onClose: () => void;
-    onSave: (data: { lat: number; lng: number; reference: string }) => void;
-    initialData?: { lat: number; lng: number; reference: string };
+    onSave: (data: { name: string; lat: number; lng: number; reference: string }) => void;
+    initialData?: { name: string; lat: number; lng: number; reference: string };
 }
 
 export default function AddressPicker({ onClose, onSave, initialData }: AddressPickerProps) {
@@ -26,6 +26,7 @@ export default function AddressPicker({ onClose, onSave, initialData }: AddressP
 
     const [position, setPosition] = useState(initialData ? { lat: initialData.lat, lng: initialData.lng } : defaultCenter);
     const [reference, setReference] = useState(initialData?.reference || '');
+    const [name, setName] = useState(initialData?.name || 'Casa');
     const [map, setMap] = useState<google.maps.Map | null>(null);
 
     const onLoad = useCallback(function callback(map: google.maps.Map) {
@@ -46,8 +47,11 @@ export default function AddressPicker({ onClose, onSave, initialData }: AddressP
     };
 
     const handleSave = () => {
+        if (!position || !name.trim()) return;
         onSave({
-            ...position,
+            name: name,
+            lat: position.lat,
+            lng: position.lng,
             reference
         });
     };
@@ -123,6 +127,18 @@ export default function AddressPicker({ onClose, onSave, initialData }: AddressP
 
                 {/* Reference Input */}
                 <div className="p-6 space-y-4">
+                    <div className="space-y-2">
+                        <label className="text-xs font-black text-slate-400 uppercase tracking-widest ml-1">Nombre (Ej. Casa)</label>
+                        <div className="relative">
+                            <input
+                                type="text"
+                                placeholder="Casa, Trabajo..."
+                                value={name}
+                                onChange={(e) => setName(e.target.value)}
+                                className="w-full bg-slate-50 border-2 border-transparent focus:border-primary focus:bg-white p-4 rounded-2xl outline-none font-bold text-slate-700 transition-all"
+                            />
+                        </div>
+                    </div>
                     <div className="space-y-2">
                         <label className="text-xs font-black text-slate-400 uppercase tracking-widest ml-1">Punto de Referencia</label>
                         <div className="relative">

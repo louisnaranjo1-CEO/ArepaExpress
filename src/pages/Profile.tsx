@@ -66,6 +66,31 @@ export default function Profile() {
         }
     };
 
+    const handleDeleteAddress = async (addressId: string) => {
+        if (!user || (!userData?.addresses)) return;
+        const newAddresses = userData.addresses.filter(a => a.id !== addressId);
+        try {
+            await setDoc(doc(db, 'users', user.uid), { addresses: newAddresses }, { merge: true });
+        } catch (e) {
+            console.error("Error deleting address", e);
+            alert("No se pudo eliminar la dirección.");
+        }
+    };
+
+    const handleSetDefaultAddress = async (addressId: string) => {
+        if (!user || (!userData?.addresses)) return;
+        const newAddresses = userData.addresses.map(a => ({
+            ...a,
+            isDefault: a.id === addressId
+        }));
+        try {
+            await setDoc(doc(db, 'users', user.uid), { addresses: newAddresses }, { merge: true });
+        } catch (e) {
+            console.error("Error setting default address", e);
+            alert("No se pudo establecer como predeterminada.");
+        }
+    };
+
     const handleLogout = async () => {
         await auth.signOut();
         navigate('/');
@@ -165,14 +190,42 @@ export default function Profile() {
                         </div>
                     </div>
 
-                    {userData?.address && (
-                        <div className="bg-slate-50 border border-slate-100 p-4 rounded-2xl space-y-1">
-                            <div className="flex items-center gap-2 text-xs font-black text-slate-400 uppercase tracking-widest">
-                                <MapPin className="w-3 h-3" />
-                                Dirección Guardada
+                    {(userData?.addresses && userData.addresses.length > 0) && (
+                        <div className="space-y-3 mt-4">
+                            <div className="flex items-center justify-between">
+                                <h3 className="text-lg font-black text-slate-900 px-2 flex items-center gap-2">
+                                    <MapPin className="w-5 h-5 text-primary" />
+                                    Mis Direcciones
+                                </h3>
                             </div>
-                            <p className="text-sm font-bold text-slate-700 truncate">{userData.address.reference}</p>
-                            <p className="text-[10px] text-slate-400 font-medium">GPS: {userData.address.lat.toFixed(4)}, {userData.address.lng.toFixed(4)}</p>
+                            <div className="grid gap-3">
+                                {userData.addresses.map(addr => (
+                                    <div key={addr.id} className={`p-4 rounded-2xl border ${addr.isDefault ? 'bg-green-50 border-green-200' : 'bg-slate-50 border-slate-100'} transition-colors`}>
+                                        <div className="flex justify-between items-start mb-2">
+                                            <div className="flex items-center gap-2">
+                                                <span className={`px-2 py-0.5 rounded text-xs font-bold ${addr.isDefault ? 'bg-green-100 text-green-700' : 'bg-slate-200 text-slate-700'}`}>
+                                                    {addr.name}
+                                                </span>
+                                                {addr.isDefault && (
+                                                    <span className="text-[10px] uppercase font-bold text-green-600 tracking-wider">Predeterminada</span>
+                                                )}
+                                            </div>
+                                            <div className="flex gap-2">
+                                                {!addr.isDefault && (
+                                                    <button onClick={() => handleSetDefaultAddress(addr.id)} className="text-xs font-bold text-blue-500 hover:text-blue-600 transition-colors">
+                                                        Fijar
+                                                    </button>
+                                                )}
+                                                <button onClick={() => handleDeleteAddress(addr.id)} className="text-xs font-bold text-red-400 hover:text-red-500 transition-colors">
+                                                    Eliminar
+                                                </button>
+                                            </div>
+                                        </div>
+                                        <p className="text-sm font-bold text-slate-700 leading-tight">{addr.reference}</p>
+                                        <p className="text-[10px] text-slate-400 font-medium mt-1">GPS: {addr.lat.toFixed(4)}, {addr.lng.toFixed(4)}</p>
+                                    </div>
+                                ))}
+                            </div>
                         </div>
                     )}
 
@@ -264,9 +317,21 @@ export default function Profile() {
                     onClose={() => setShowAddressPicker(false)}
                     onSave={async (addressData) => {
                         try {
+                            const currentAddresses = userData?.addresses || [];
+                            const isFirst = currentAddresses.length === 0 && !userData?.address;
+
+                            const newAddress = {
+                                id: Date.now().toString(),
+                                name: addressData.name,
+                                lat: addressData.lat,
+                                lng: addressData.lng,
+                                reference: addressData.reference,
+                                isDefault: isFirst || currentAddresses.length === 0
+                            };
+
                             const userRef = doc(db, 'users', user.uid);
                             await setDoc(userRef, {
-                                address: addressData
+                                addresses: [...currentAddresses, newAddress]
                             }, { merge: true });
                             setShowAddressPicker(false);
                         } catch (err) {
@@ -274,7 +339,6 @@ export default function Profile() {
                             alert("No se pudo guardar la dirección. Por favor intenta de nuevo.");
                         }
                     }}
-                    initialData={userData?.address}
                 />
             )}
         </div>

@@ -3,12 +3,22 @@ import { onAuthStateChanged, User } from 'firebase/auth';
 import { auth, db } from '../lib/firebase';
 import { doc, onSnapshot } from 'firebase/firestore';
 
+export interface UserAddress {
+    id: string; // Unique ID (could be timestamp)
+    name: string; // "Casa", "Trabajo", etc.
+    lat: number;
+    lng: number;
+    reference: string;
+    isDefault: boolean;
+}
+
 interface UserData {
     address?: {
         lat: number;
         lng: number;
         reference: string;
-    };
+    }; // Legacy field
+    addresses?: UserAddress[];
     role?: string;
     displayName?: string;
     email?: string;
@@ -40,7 +50,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 // Listen to Firestore user document
                 unsubscribeDoc = onSnapshot(doc(db, 'users', firebaseUser.uid), (docSnap) => {
                     if (docSnap.exists()) {
-                        setUserData(docSnap.data() as UserData);
+                        const data = docSnap.data() as UserData;
+                        // Migration logic: if old address exists but no addresses array, migrate it
+                        if (data.address && (!data.addresses || data.addresses.length === 0)) {
+                            const newAddress: UserAddress = {
+                                id: Date.now().toString(),
+                                name: "Casa",
+                                lat: data.address.lat,
+                                lng: data.address.lng,
+                                reference: data.address.reference,
+                                isDefault: true
+                            };
+                            data.addresses = [newAddress];
+                        }
+                        setUserData(data);
                     } else {
                         // Document might not exist locally yet if not created after Google Sign In
                         setUserData(null);

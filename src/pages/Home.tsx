@@ -9,26 +9,41 @@ import { db } from '../lib/firebase';
 import { Restaurant } from '../lib/seed';
 import { useAuth } from '../context/AuthContext';
 import { calculateDistance, formatDistance } from '../lib/geo';
+import CitySelectorModal from '../components/CitySelectorModal';
 
 export default function Home() {
   const { userData } = useAuth();
   const [restaurants, setRestaurants] = useState<Restaurant[]>([]);
+  const [banners, setBanners] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
-  const [locationName, setLocationName] = useState('Caracas, VE');
+
+  const [manualState, setManualState] = useState<string>(() => localStorage.getItem('userState') || '');
+  const [manualCity, setManualCity] = useState<string>(() => localStorage.getItem('userCity') || '');
+  const [locationName, setLocationName] = useState(() => {
+    return localStorage.getItem('userCity') ? `${localStorage.getItem('userCity')}` : 'Buscando...';
+  });
+  const [isCityModalOpen, setIsCityModalOpen] = useState(false);
 
 
   useEffect(() => {
-    // If we have a saved address, use it. Otherwise, try to detect.
-    if (userData?.address) {
-      const coords = { lat: userData.address.lat, lng: userData.address.lng };
+    // If user has manually selected a city, we prioritize that
+    if (manualCity && manualState) {
+      setLocationName(`${manualCity}`);
+      return; // Don't override with GPS if manual is set
+    }
+
+    // If we have a saved address, use it.
+    const defaultAddress = userData?.addresses?.find((a: any) => a.isDefault) || userData?.address;
+    if (defaultAddress) {
+      const coords = { lat: defaultAddress.lat, lng: defaultAddress.lng };
       setUserLocation(coords);
-      setLocationName(userData.address.reference.split(',')[0]); // Use first part of reference as name
+      setLocationName(defaultAddress.reference.split(',')[0]);
       return;
     }
 
-    // Detect location if no saved address
-    if (navigator.geolocation) {
+    // Detect location if no saved address and no manual city
+    if (navigator.geolocation && !manualCity) {
       navigator.geolocation.getCurrentPosition(
         async (position) => {
           const coords = {
@@ -46,18 +61,22 @@ export default function Home() {
               const city = addressComponents.find((c: any) => c.types.includes('locality'))?.long_name ||
                 addressComponents.find((c: any) => c.types.includes('administrative_area_level_2'))?.long_name;
               const state = addressComponents.find((c: any) => c.types.includes('administrative_area_level_1'))?.short_name;
-              if (city && state) setLocationName(`${city}, ${state}`);
+              if (city && state) setLocationName(`${city}`);
             }
           } catch (error) {
             console.error("Geocoding error:", error);
+            setLocationName('Ubicación Desconocida');
           }
         },
         (error) => {
           console.error("Error getting location:", error);
+          setLocationName('Ubicación Desconocida');
         }
       );
+    } else if (!manualCity) {
+      setLocationName('Ubicación Desconocida');
     }
-  }, [userData]);
+  }, [userData, manualCity, manualState]);
 
   useEffect(() => {
     const fetchRestaurants = async () => {
@@ -69,32 +88,35 @@ export default function Home() {
           ...doc.data()
         })) as Restaurant[];
 
-        // Update distance strings and sort if user location is available
-        if (userLocation) {
-          const withDistances = fetchedRestaurants.map(rest => {
-            let dist = 999;
-            if (rest.location?.coords) {
-              dist = calculateDistance(
-                userLocation.lat,
-                userLocation.lng,
-                rest.location.coords.lat,
-                rest.location.coords.lng
-              );
-            }
+        // Update distance strings and compute sorting weights
+        const processed = fetchedRestaurants.map(rest => {
+          let dist = 999;
+          if (userLocation && rest.location?.coords) {
+            dist = calculateDistance(
+              userLocation.lat,
+              userLocation.lng,
+              rest.location.coords.lat,
+              rest.location.coords.lng
+            );
+          }
 
-            return {
-              ...rest,
-              distance: dist !== 999 ? formatDistance(dist) : 'Distancia desconocida',
-              _rawDistance: dist
-            };
-          });
+          let cityMatchScore = 0;
+          if (manualCity && rest.location?.city === manualCity) {
+            cityMatchScore = -10000; // Prioritize manual city match over anything else
+          }
 
-          // Sort by distance
-          const sorted = withDistances.sort((a, b) => (a._rawDistance as number) - (b._rawDistance as number));
-          setRestaurants(sorted);
-        } else {
-          setRestaurants(fetchedRestaurants);
-        }
+          return {
+            ...rest,
+            distance: dist !== 999 ? formatDistance(dist) : 'Distancia desconocida',
+            _rawDistance: dist,
+            _sortScore: cityMatchScore + dist // Combine city score and real distance 
+          };
+        });
+
+        // Sort by computed score (city match first, then distance)
+        const sorted = processed.sort((a, b) => (a._sortScore as number) - (b._sortScore as number));
+        setRestaurants(sorted);
+
       } catch (error) {
         console.error("Error fetching restaurants: ", error);
       } finally {
@@ -102,8 +124,32 @@ export default function Home() {
       }
     };
 
+    const fetchBanners = async () => {
+      try {
+        const querySnapshot = await getDocs(collection(db, 'banners'));
+        const fetchedBanners = querySnapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data()
+        }));
+        setBanners(fetchedBanners.filter((b: any) => b.isActive));
+      } catch (error) {
+        console.error("Error fetching banners: ", error);
+      }
+    };
+
+    fetchBanners();
     fetchRestaurants();
-  }, [userLocation]);
+  }, [userLocation, manualCity]);
+
+  const handleCitySelect = (state: string, city: string) => {
+    localStorage.setItem('userState', state);
+    localStorage.setItem('userCity', city);
+    setManualState(state);
+    setManualCity(city);
+    setLocationName(`${city}`);
+    // Clear GPS coordinates so distance doesn't mess up sorting if user is physically far away
+    setUserLocation(null);
+  };
 
   return (
     <div className="relative flex h-full w-full flex-col overflow-x-hidden bg-white">
@@ -111,18 +157,18 @@ export default function Home() {
       <header className="sticky top-0 z-40 bg-white/90 backdrop-blur-md px-5 pt-6 pb-2">
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-2">
-            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 text-primary">
+            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 text-primary shrink-0">
               <MapPin className="w-6 h-6" />
             </div>
-            <div>
-              <p className="text-xs font-medium text-slate-500">Ubicación actual</p>
-              <div className="flex items-center gap-1 cursor-pointer group">
-                <h2 className="text-slate-900 text-lg font-bold leading-tight group-hover:text-primary transition-colors">{locationName}</h2>
-                <ChevronDown className="w-4 h-4 text-primary font-bold" />
+            <div onClick={() => setIsCityModalOpen(true)} className="cursor-pointer group overflow-hidden">
+              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1">Ubicación actual</p>
+              <div className="flex items-center gap-1 group">
+                <h2 className="text-slate-900 text-base font-black leading-tight group-hover:text-primary transition-colors truncate max-w-[150px]">{locationName}</h2>
+                <ChevronDown className="w-3.5 h-3.5 text-primary font-bold transition-transform group-hover:translate-y-0.5 shrink-0" />
               </div>
             </div>
           </div>
-          <Link to="/notifications" className="relative p-2 text-slate-900 hover:bg-slate-100 rounded-full transition-colors">
+          <Link to="/notifications" className="relative p-2 text-slate-900 hover:bg-slate-100 rounded-full transition-colors shrink-0">
             <Bell className="w-6 h-6" />
             <span className="absolute top-2 right-2 h-2.5 w-2.5 rounded-full bg-accent border-2 border-white"></span>
           </Link>
@@ -145,6 +191,33 @@ export default function Home() {
           </div>
         </div>
       </header>
+
+      <CitySelectorModal
+        isOpen={isCityModalOpen}
+        onClose={() => setIsCityModalOpen(false)}
+        onSelect={handleCitySelect}
+        initialState={manualState}
+        initialCity={manualCity}
+      />
+
+      {/* Promotional Banners */}
+      {banners.length > 0 && (
+        <section className="mt-4 px-5">
+          <div className="flex gap-4 overflow-x-auto hide-scrollbar snap-x snap-mandatory">
+            {banners.map((banner) => (
+              <a
+                key={banner.id}
+                href={banner.linkUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex-none w-[85vw] max-w-[400px] aspect-[21/9] rounded-2xl overflow-hidden snap-center relative"
+              >
+                <img src={banner.imageUrl} alt={banner.title} className="w-full h-full object-cover" />
+              </a>
+            ))}
+          </div>
+        </section>
+      )}
 
       {/* Categories */}
       <section className="mt-4 pl-5">

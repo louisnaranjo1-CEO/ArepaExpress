@@ -3,7 +3,7 @@ import { NavLink, useNavigate } from 'react-router-dom';
 import { LayoutDashboard, Store, UtensilsCrossed, ClipboardList, LogOut, ChevronRight, Menu, X, Settings, HelpCircle, Trash2, User, ChevronUp, Users } from 'lucide-react';
 import { auth, db } from '../../lib/firebase';
 import { useAuth } from '../../context/AuthContext';
-import { doc, getDoc, deleteDoc } from 'firebase/firestore';
+import { doc, getDoc, deleteDoc, collection, query, where, onSnapshot } from 'firebase/firestore';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 
@@ -19,6 +19,26 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
     const [restaurantName, setRestaurantName] = React.useState('Mi Negocio');
     const [createdAt, setCreatedAt] = React.useState<Date | null>(null);
     const [showDeleteConfirm, setShowDeleteConfirm] = React.useState(false);
+    const [notifications, setNotifications] = React.useState<any[]>([]);
+
+    // Sound for notifications (optional, if you have an asset, but we can rely on visual for now)
+    const playNotificationSound = () => {
+        try {
+            // Just a simple beep using Web Audio API if browser allows
+            const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+            const oscillator = audioCtx.createOscillator();
+            const gainNode = audioCtx.createGain();
+            oscillator.connect(gainNode);
+            gainNode.connect(audioCtx.destination);
+            oscillator.type = 'sine';
+            oscillator.frequency.value = 800;
+            gainNode.gain.setValueAtTime(0.1, audioCtx.currentTime);
+            oscillator.start();
+            setTimeout(() => oscillator.stop(), 200);
+        } catch (e) {
+            console.log('Audio disabled by browser auto-play policy');
+        }
+    };
 
     React.useEffect(() => {
         if (!user) return;
@@ -32,8 +52,44 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
                     setCreatedAt(data.createdAt.toDate());
                 }
             }
-        };
+        }
         fetchRestaurant();
+
+        // Listen for new orders
+        const q = query(collection(db, 'orders'), where('restaurantId', '==', user.uid));
+        let initialLoad = true;
+
+        const unsubscribe = onSnapshot(q, (snapshot) => {
+            if (initialLoad) {
+                initialLoad = false;
+                return;
+            }
+
+            snapshot.docChanges().forEach((change) => {
+                if (change.type === 'added') {
+                    const data = change.doc.data();
+                    // Solo notificar si el estado es 'pending' o 'confirmed' (nuevos)
+                    if (data.status === 'pending' || data.status === 'confirmed') {
+                        const newNotification = {
+                            id: change.doc.id,
+                            title: '¡Nuevo Pedido!',
+                            message: `Has recibido un nuevo pedido de ${data.userName} por $${data.total.toFixed(2)}`,
+                            createdAt: new Date().getTime(),
+                        };
+
+                        setNotifications(prev => [...prev, newNotification]);
+                        playNotificationSound();
+
+                        // Auto-dismiss after 8 seconds
+                        setTimeout(() => {
+                            setNotifications(prev => prev.filter(n => n.id !== change.doc.id));
+                        }, 8000);
+                    }
+                }
+            });
+        });
+
+        return () => unsubscribe();
     }, [user]);
 
     const handleLogout = async () => {
@@ -211,9 +267,30 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
                         <Menu className="w-6 h-6" />
                     </button>
                     <div className="flex items-center gap-4">
-                        {/* Notifications or search can go here */}
+                        {/* Notifications indicator could go here */}
                     </div>
                 </header>
+
+                {/* Notifications Toast Container */}
+                <div className="fixed top-24 right-6 z-[100] flex flex-col gap-3 pointer-events-none">
+                    {notifications.map(notification => (
+                        <div key={notification.id} className="bg-white rounded-2xl shadow-2xl border border-primary/20 p-4 w-80 animate-in slide-in-from-right-8 fade-in pointer-events-auto flex gap-3 items-start">
+                            <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+                                <ClipboardList className="w-5 h-5 text-primary" />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                                <h4 className="font-black text-slate-900 text-sm">{notification.title}</h4>
+                                <p className="text-xs font-medium text-slate-500 mt-0.5 line-clamp-2">{notification.message}</p>
+                            </div>
+                            <button
+                                onClick={() => setNotifications(prev => prev.filter(n => n.id !== notification.id))}
+                                className="text-slate-400 hover:text-slate-600"
+                            >
+                                <X className="w-4 h-4" />
+                            </button>
+                        </div>
+                    ))}
+                </div>
 
                 <div className="p-6 md:p-8">
                     {children}

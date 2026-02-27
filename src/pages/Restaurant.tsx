@@ -173,7 +173,7 @@ export default function RestaurantPage() {
   const openWhatsApp = () => {
     if (restaurant.whatsapp) {
       const number = restaurant.whatsapp.replace(/\D/g, '');
-      window.open(`https://wa.me/${number}?text=Hola, vengo de VenCome y me gustaría hacer un pedido.`, '_blank');
+      window.open(`https://wa.me/${number}?text=Hola, vengo de Deli Express y me gustaría hacer un pedido.`, '_blank');
     }
   };
 
@@ -285,15 +285,17 @@ export default function RestaurantPage() {
             </div>
           </div>
 
-          {restaurant.location && (
+          {restaurant.location && (restaurant.location.address || restaurant.location.city) && (
             <div className="mt-1 border-t border-slate-50 pt-3 flex flex-col gap-2">
               <div className="flex items-start gap-2">
                 <MapPin className="w-4 h-4 text-primary mt-1 shrink-0" />
                 <div className="flex-1">
                   <p className="font-bold text-slate-700 text-sm">
-                    {restaurant.location.city}, {restaurant.location.state}
+                    {restaurant.location.city && restaurant.location.state
+                      ? `${restaurant.location.city}, ${restaurant.location.state}`
+                      : (restaurant.location.city || restaurant.location.state || '')}
                   </p>
-                  <p className="text-xs text-slate-500">{restaurant.location.address}</p>
+                  {restaurant.location.address && <p className="text-xs text-slate-500">{restaurant.location.address}</p>}
                   {restaurant.location.reference && (
                     <p className="text-[10px] text-slate-400 italic mt-0.5">Ref: {restaurant.location.reference}</p>
                   )}
@@ -359,8 +361,10 @@ export default function RestaurantPage() {
                     </div>
                     <p className="text-sm text-slate-500 line-clamp-2">{product.description}</p>
                   </div>
-                  <div className="flex items-center gap-3 mt-3">
-                    {product.promoPrice && product.promoPrice > 0 ? (
+                  <div className="flex items-center gap-2 mt-3 flex-wrap">
+                    {product.price === 0 || !product.price ? (
+                      <span className="font-bold text-emerald-600 text-xs bg-emerald-50 px-2 py-1 rounded-lg border border-emerald-100">Consultar precio</span>
+                    ) : product.promoPrice && product.promoPrice > 0 ? (
                       <>
                         <span className="font-bold text-slate-900 text-base">${product.promoPrice.toFixed(2)}</span>
                         <span className="text-xs text-slate-400 line-through">${product.price.toFixed(2)}</span>
