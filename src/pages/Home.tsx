@@ -39,7 +39,7 @@ export default function Home() {
 
           // Reverse geocoding (mock for now or use Google Maps API if available)
           try {
-            const response = await fetch(`https://maps.googleapis.com/maps/api/geocode/json?latlng=${coords.lat},${coords.lng}&key=AIzaSyCbTOS3JniuffmDbCnuukHCWSdZmWHFfgE`);
+            const response = await fetch(`https://maps.googleapis.com/maps/api/geocode/json?latlng=${coords.lat},${coords.lng}&key=AIzaSyCb1c-p1R6AZGetk8YzKiLuxjaxjmPqJX8`);
             const data = await response.json();
             if (data.results && data.results[0]) {
               const addressComponents = data.results[0].address_components;
