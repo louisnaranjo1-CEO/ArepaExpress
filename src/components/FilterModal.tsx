@@ -44,9 +44,9 @@ export default function FilterModal({ isOpen, onClose, onApply, initialFilters }
     };
 
     return (
-        <div className="fixed inset-0 z-[100] flex flex-col justify-end bg-black/60 backdrop-blur-sm animate-in fade-in duration-300">
+        <div className="fixed inset-0 z-[100] flex flex-col justify-end md:justify-center bg-black/60 backdrop-blur-sm animate-in fade-in duration-300 md:p-4">
             {/* Modal Body */}
-            <div className="bg-white rounded-t-[40px] w-full max-h-[90vh] overflow-hidden flex flex-col animate-in slide-in-from-bottom-[100%] duration-500">
+            <div className="bg-white rounded-t-[40px] md:rounded-3xl w-full max-w-md mx-auto max-h-[90vh] overflow-hidden flex flex-col relative animate-in slide-in-from-bottom-[100%] md:slide-in-from-bottom-10 duration-500 shadow-2xl">
                 {/* Header */}
                 <div className="flex items-center justify-between px-6 pl-8 py-5 border-b border-slate-100">
                     <h2 className="text-xl font-black text-slate-900 flex items-center gap-2">
@@ -73,8 +73,8 @@ export default function FilterModal({ isOpen, onClose, onApply, initialFilters }
                                     key={cat.id}
                                     onClick={() => setFilters(prev => ({ ...prev, category: prev.category === cat.name ? null : cat.name }))}
                                     className={`px-4 py-2.5 rounded-2xl text-sm font-bold transition-all border ${filters.category === cat.name
-                                            ? 'bg-primary border-primary text-white shadow-md shadow-primary/20'
-                                            : 'bg-white border-slate-200 text-slate-600 hover:border-primary/50'
+                                        ? 'bg-primary border-primary text-white shadow-md shadow-primary/20'
+                                        : 'bg-white border-slate-200 text-slate-600 hover:border-primary/50'
                                         }`}
                                 >
                                     {cat.shortName}
@@ -130,7 +130,7 @@ export default function FilterModal({ isOpen, onClose, onApply, initialFilters }
                 </div>
 
                 {/* Footer fixed */}
-                <div className="absolute bottom-0 left-0 w-full p-6 bg-white border-t border-slate-100 flex gap-3">
+                <div className="sticky bottom-0 left-0 w-full p-6 bg-white border-t border-slate-100 flex gap-3 z-10">
                     <button
                         onClick={handleClear}
                         className="flex-1 py-4 rounded-2xl font-black text-slate-500 bg-slate-100 hover:bg-slate-200 transition-colors flex justify-center items-center gap-2"

@@ -3,7 +3,7 @@ import { useAuth } from '../context/AuthContext';
 import { auth, db } from '../lib/firebase';
 import { useNavigate } from 'react-router-dom';
 import { signInWithGoogle } from '../lib/auth-service';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { collection, query, where, orderBy, getDocs, doc, setDoc } from 'firebase/firestore';
 import AddressPicker from '../components/AddressPicker';
 
@@ -22,6 +22,11 @@ export default function Profile() {
     const [orders, setOrders] = useState<OrderInfo[]>([]);
     const [loadingOrders, setLoadingOrders] = useState(false);
     const [showAddressPicker, setShowAddressPicker] = useState(false);
+    const ordersRef = useRef<HTMLDivElement>(null);
+
+    const scrollToOrders = () => {
+        ordersRef.current?.scrollIntoView({ behavior: 'smooth' });
+    };
 
     useEffect(() => {
         const fetchOrders = async () => {
@@ -175,7 +180,10 @@ export default function Profile() {
             <div className="px-6 -mt-8">
                 <div className="bg-white rounded-3xl p-6 shadow-xl shadow-slate-200/50 space-y-6">
                     <div className="grid grid-cols-2 gap-4">
-                        <div className="bg-orange-50 p-4 rounded-2xl flex flex-col items-center gap-2 group cursor-pointer hover:bg-orange-100 transition-colors">
+                        <div
+                            onClick={scrollToOrders}
+                            className="bg-orange-50 p-4 rounded-2xl flex flex-col items-center gap-2 group cursor-pointer hover:bg-orange-100 transition-colors"
+                        >
                             <ShoppingBag className="w-6 h-6 text-orange-500 group-hover:scale-110 transition-transform" />
                             <span className="text-xs font-bold text-slate-600">Mis Pedidos</span>
                         </div>
@@ -230,7 +238,7 @@ export default function Profile() {
                     )}
 
                     {/* Order History */}
-                    <div className="space-y-4 pt-2">
+                    <div ref={ordersRef} className="space-y-4 pt-2">
                         <h3 className="text-lg font-black text-slate-900 px-2 flex items-center gap-2">
                             <FileText className="w-5 h-5 text-primary" />
                             Últimos Pedidos
@@ -282,15 +290,7 @@ export default function Profile() {
                     <div className="space-y-2 pt-2 border-t border-slate-100">
                         <h3 className="text-lg font-black text-slate-900 px-2">Ajustes</h3>
                         <div className="space-y-1">
-                            <div className="flex items-center justify-between p-4 hover:bg-slate-50 rounded-2xl transition-colors cursor-pointer group">
-                                <div className="flex items-center gap-3">
-                                    <div className="w-10 h-10 bg-slate-100 rounded-xl flex items-center justify-center">
-                                        <Settings className="w-5 h-5 text-slate-500" />
-                                    </div>
-                                    <span className="font-bold text-slate-700">Preferencias</span>
-                                </div>
-                                <ChevronRight className="w-5 h-5 text-slate-300 group-hover:text-primary transition-colors" />
-                            </div>
+
                             <button
                                 onClick={handleLogout}
                                 className="w-full flex items-center justify-between p-4 hover:bg-red-50 rounded-2xl transition-colors cursor-pointer group mt-4"
