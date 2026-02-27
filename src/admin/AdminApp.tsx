@@ -8,6 +8,9 @@ import Orders from './pages/Orders';
 import ProductManagement from './pages/ProductManagement';
 import RestaurantProfile from './pages/RestaurantProfile';
 import Clients from './pages/Clients';
+import WaitersManager from './pages/WaitersManager';
+import PrintersManager from './pages/PrintersManager';
+import KitchenDisplay from './pages/KitchenDisplay';
 
 function AdminRoutes() {
     const { user, loading } = useAuth();
@@ -31,6 +34,9 @@ function AdminRoutes() {
                 <Route path="/orders" element={<Orders />} />
                 <Route path="/products" element={<ProductManagement />} />
                 <Route path="/clients" element={<Clients />} />
+                <Route path="/waiters" element={<WaitersManager />} />
+                <Route path="/stations" element={<PrintersManager />} />
+                <Route path="/kds" element={<KitchenDisplay />} />
                 <Route path="/profile" element={<RestaurantProfile />} />
                 <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>

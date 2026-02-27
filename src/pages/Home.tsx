@@ -1,4 +1,4 @@
-import { MapPin, ChevronDown, Bell, Search, SlidersHorizontal, Utensils, Star, Heart, Clock, Sandwich, Soup, Store } from 'lucide-react';
+import { MapPin, ChevronDown, Bell, Search, SlidersHorizontal, Utensils, Star, Heart, Clock, Sandwich, Soup, Store, Truck } from 'lucide-react';
 import arepaImg from '../assets/categories/arepa.png';
 import burgerImg from '../assets/categories/burger.png';
 import sushiImg from '../assets/categories/sushi.png';
@@ -307,13 +307,18 @@ export default function Home() {
                       </div>
                     )}
 
-                    <div className="absolute bottom-3 left-3 z-20 flex gap-2">
+                    <div className="absolute bottom-3 left-3 z-20 flex flex-wrap gap-2">
                       {restaurant.featured && (
                         <span className="bg-primary text-white text-[10px] font-bold px-2 py-1 rounded-lg">Destacado</span>
                       )}
                       <span className="bg-white/90 backdrop-blur-md text-slate-900 text-[10px] font-bold px-2 py-1 rounded-lg flex items-center gap-1">
                         <Clock className="w-3.5 h-3.5" /> {restaurant.deliveryTime}
                       </span>
+                      {(restaurant as any).deliveryRates?.find((r: any) => r.price === 0) && (
+                        <span className="bg-emerald-500 text-white text-[10px] font-bold px-2 py-1 rounded-lg flex items-center gap-1 shadow-lg shadow-emerald-500/20">
+                          <Truck className="w-3.5 h-3.5" /> Gratis
+                        </span>
+                      )}
                     </div>
                   </div>
                   <div className="px-1 flex items-center gap-3">

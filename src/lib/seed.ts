@@ -1,6 +1,11 @@
 import { collection, writeBatch, doc } from 'firebase/firestore';
 import { db } from './firebase';
 
+export interface ProductVariant {
+    name: string;
+    price: number;
+}
+
 export interface Product {
     id?: string;
     name: string;
@@ -13,6 +18,7 @@ export interface Product {
     popular?: boolean;
     promoPrice?: number;
     isAvailable?: boolean;
+    variants?: ProductVariant[];
 }
 
 export interface Location {

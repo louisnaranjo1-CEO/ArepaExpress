@@ -1,6 +1,6 @@
 import React from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, Store, UtensilsCrossed, ClipboardList, LogOut, ChevronRight, Menu, X, Settings, HelpCircle, Trash2, User, ChevronUp, Users } from 'lucide-react';
+import { LayoutDashboard, Store, UtensilsCrossed, ClipboardList, LogOut, ChevronRight, Menu, X, Settings, HelpCircle, Trash2, User, ChevronUp, Users, UserCheck, Printer } from 'lucide-react';
 import { auth, db } from '../../lib/firebase';
 import { useAuth } from '../../context/AuthContext';
 import { doc, getDoc, deleteDoc, collection, query, where, onSnapshot } from 'firebase/firestore';
@@ -115,6 +115,8 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
         { path: '/orders', icon: ClipboardList, label: 'Pedidos' },
         { path: '/products', icon: UtensilsCrossed, label: 'Productos' },
         { path: '/clients', icon: Users, label: 'Clientes' },
+        { path: '/waiters', icon: UserCheck, label: 'Meseros' },
+        { path: '/stations', icon: Printer, label: 'Estaciones' },
         { path: '/profile', icon: Store, label: 'Mi Negocio' },
     ];
 

@@ -1,4 +1,4 @@
-import { ArrowLeft, Search, Heart, Star, Clock, Plus, AlertCircle, MessageSquare, MapPin, ChevronRight, Phone, Instagram, UserPlus, UserCheck, Store } from 'lucide-react';
+import { ArrowLeft, Search, Heart, Star, Clock, Plus, AlertCircle, MessageSquare, MapPin, ChevronRight, Phone, Instagram, UserPlus, UserCheck, Store, Truck, CheckCircle } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Link, useParams } from 'react-router-dom';
 import { useState, useEffect } from 'react';
@@ -255,6 +255,22 @@ export default function RestaurantPage() {
             </div>
           </div>
 
+          {/* Free Delivery Badge */}
+          {restaurant.deliveryRates?.find((r: any) => r.price === 0) && (
+            <div className="flex items-center gap-2 bg-emerald-50 text-emerald-600 px-4 py-3 rounded-2xl border border-emerald-100 shadow-sm animate-in fade-in slide-in-from-left-4 duration-1000">
+              <div className="w-10 h-10 rounded-xl bg-emerald-100 flex items-center justify-center shrink-0">
+                <Truck className="w-6 h-6" />
+              </div>
+              <div className="flex-1">
+                <p className="text-[10px] font-black uppercase tracking-[0.2em] leading-none mb-1 opacity-70">Logística de Entrega</p>
+                <h4 className="font-black text-sm flex items-center gap-1.5">
+                  Envío GRATIS <span className="text-emerald-500/50">•</span> hasta {restaurant.deliveryRates.find((r: any) => r.price === 0).maxKm} km
+                </h4>
+              </div>
+              <CheckCircle className="w-5 h-5 opacity-40 shrink-0" />
+            </div>
+          )}
+
           <div className="flex items-center justify-between">
             <p className="text-slate-600 text-sm leading-relaxed">
               {restaurant.category} • {restaurant.distance || "Cerca de ti"}
@@ -370,18 +386,37 @@ export default function RestaurantPage() {
                     <p className="text-sm text-slate-500 line-clamp-2">{product.description}</p>
                   </div>
                   <div className="flex items-center gap-2 mt-3 flex-wrap">
-                    {product.price === 0 || !product.price ? (
-                      <span className="font-bold text-emerald-600 text-xs bg-emerald-50 px-2 py-1 rounded-lg border border-emerald-100">Consultar precio</span>
-                    ) : product.promoPrice && product.promoPrice > 0 ? (
-                      <>
-                        <span className="font-bold text-slate-900 text-base">${product.promoPrice.toFixed(2)}</span>
-                        <span className="text-xs text-slate-400 line-through">${product.price.toFixed(2)}</span>
-                        <span className="px-2 py-0.5 bg-orange-500 text-white text-[9px] font-black rounded-full shadow-sm">
-                          -{Math.round(((product.price - product.promoPrice) / product.price) * 100)}%
-                        </span>
-                      </>
+                    {product.variants && product.variants.length > 0 ? (
+                      <div className="w-full flex flex-col gap-2">
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tight">Desde</span>
+                          <span className="font-black text-slate-900 text-lg">${Math.min(...product.variants.map(v => v.price)).toFixed(2)}</span>
+                        </div>
+                        <div className="flex gap-2 flex-wrap">
+                          {product.variants.map((v, idx) => (
+                            <div key={idx} className="bg-slate-50 border border-slate-100 px-3 py-1.5 rounded-xl flex flex-col gap-0.5 min-w-[70px]">
+                              <span className="text-[9px] font-black uppercase text-slate-400 leading-none">{v.name}</span>
+                              <span className="text-sm font-black text-slate-800 leading-none">${v.price.toFixed(2)}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
                     ) : (
-                      <span className="font-bold text-slate-900 text-base">${product.price.toFixed(2)}</span>
+                      <>
+                        {product.price === 0 || !product.price ? (
+                          <span className="font-bold text-emerald-600 text-xs bg-emerald-50 px-2 py-1 rounded-lg border border-emerald-100">Consultar precio</span>
+                        ) : product.promoPrice && product.promoPrice > 0 ? (
+                          <>
+                            <span className="font-bold text-slate-900 text-base">${product.promoPrice.toFixed(2)}</span>
+                            <span className="text-xs text-slate-400 line-through">${product.price.toFixed(2)}</span>
+                            <span className="px-2 py-0.5 bg-orange-500 text-white text-[9px] font-black rounded-full shadow-sm">
+                              -{Math.round(((product.price - product.promoPrice) / product.price) * 100)}%
+                            </span>
+                          </>
+                        ) : (
+                          <span className="font-bold text-slate-900 text-base">${product.price.toFixed(2)}</span>
+                        )}
+                      </>
                     )}
                     {product.popular && (
                       <span className="px-2 py-0.5 bg-orange-100 text-orange-600 text-[10px] uppercase font-bold tracking-wider rounded">Popular</span>

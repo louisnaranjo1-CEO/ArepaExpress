@@ -495,14 +495,17 @@ export default function RestaurantProfile() {
                                                     />
                                                     <span className="text-slate-400 text-[10px] font-bold uppercase">KM</span>
                                                 </div>
-                                                <div className="flex items-center gap-1 bg-green-50 px-3 py-2 rounded-lg border border-green-100">
-                                                    <span className="text-green-600 text-[10px] font-black">$</span>
+                                                <div className={`flex items-center gap-1 px-3 py-2 rounded-lg border transition-all ${rate.price === 0 ? 'bg-emerald-50 border-emerald-100 ring-2 ring-emerald-500/20' : 'bg-green-50 border-green-100'}`}>
+                                                    <span className={`${rate.price === 0 ? 'text-emerald-600' : 'text-green-600'} text-[10px] font-black`}>$</span>
                                                     <input
                                                         type="number"
                                                         value={rate.price}
                                                         onChange={(e) => updateDeliveryRate(idx, 'price', parseFloat(e.target.value))}
-                                                        className="w-16 bg-transparent text-xs font-black text-green-700 outline-none"
+                                                        className={`w-16 bg-transparent text-xs font-black outline-none ${rate.price === 0 ? 'text-emerald-700' : 'text-green-700'}`}
                                                     />
+                                                    {rate.price === 0 && (
+                                                        <span className="text-[9px] font-black text-emerald-500 uppercase tracking-tighter ml-1">GRATIS</span>
+                                                    )}
                                                 </div>
                                                 <button
                                                     onClick={() => removeDeliveryRate(idx)}

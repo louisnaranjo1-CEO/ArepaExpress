@@ -4,6 +4,7 @@ import CpanelLayout from './components/CpanelLayout';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import RestaurantsManager from './pages/RestaurantsManager';
+import RestaurantProfile from './pages/RestaurantProfile';
 import UsersManager from './pages/UsersManager';
 import BannersManager from './pages/BannersManager';
 
@@ -55,6 +56,7 @@ export default function CpanelApp() {
                 <Routes>
                     <Route path="/" element={<Dashboard />} />
                     <Route path="/restaurants" element={<RestaurantsManager />} />
+                    <Route path="/restaurants/:id" element={<RestaurantProfile />} />
                     <Route path="/users" element={<UsersManager />} />
                     <Route path="/banners" element={<BannersManager />} />
                     <Route path="*" element={<Navigate to="/" replace />} />
