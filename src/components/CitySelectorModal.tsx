@@ -31,8 +31,8 @@ export default function CitySelectorModal({ isOpen, onClose, onSelect, initialSt
     };
 
     return (
-        <div className="fixed inset-0 z-[100] flex flex-col justify-end bg-black/60 backdrop-blur-sm animate-in fade-in duration-300">
-            <div className="bg-white rounded-t-[40px] w-full max-h-[90vh] overflow-hidden flex flex-col animate-in slide-in-from-bottom-[100%] duration-500">
+        <div className="fixed inset-0 z-[100] flex flex-col justify-end md:justify-center p-0 md:p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-300">
+            <div className="bg-white rounded-t-[40px] md:rounded-2xl w-full max-w-md mx-auto max-h-[90vh] md:max-h-[85vh] overflow-hidden flex flex-col animate-in slide-in-from-bottom-[100%] duration-500 relative">
                 {/* Header */}
                 <div className="flex items-center justify-between px-6 pl-8 py-5 border-b border-slate-100">
                     <h2 className="text-xl font-black text-slate-900 flex items-center gap-2">
