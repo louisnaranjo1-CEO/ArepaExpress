@@ -15,19 +15,21 @@ export default function ClientApp() {
         <Router>
             <AuthProvider>
                 <CartProvider>
-                    <div className="min-h-screen bg-white font-sans flex flex-col">
-                        <div className="flex-1 overflow-y-auto hide-scrollbar">
-                            <Routes>
-                                <Route path="/" element={<Home />} />
-                                <Route path="/search" element={<Search />} />
-                                <Route path="/restaurant/:id" element={<Restaurant />} />
-                                <Route path="/cart" element={<Cart />} />
-                                <Route path="/favorites" element={<Favorites />} />
-                                <Route path="/profile" element={<Profile />} />
-                                <Route path="/notifications" element={<Notifications />} />
-                            </Routes>
+                    <div className="min-h-screen bg-slate-100 flex justify-center">
+                        <div className="bg-white w-full max-w-md flex flex-col shadow-2xl min-h-screen relative">
+                            <div className="flex-1 overflow-y-auto hide-scrollbar">
+                                <Routes>
+                                    <Route path="/" element={<Home />} />
+                                    <Route path="/search" element={<Search />} />
+                                    <Route path="/restaurant/:id" element={<Restaurant />} />
+                                    <Route path="/cart" element={<Cart />} />
+                                    <Route path="/favorites" element={<Favorites />} />
+                                    <Route path="/profile" element={<Profile />} />
+                                    <Route path="/notifications" element={<Notifications />} />
+                                </Routes>
+                            </div>
+                            <BottomNav />
                         </div>
-                        <BottomNav />
                     </div>
                 </CartProvider>
             </AuthProvider>
