@@ -2,7 +2,10 @@ import { auth, db } from './firebase';
 import {
     GoogleAuthProvider,
     signInWithPopup,
-    User
+    User,
+    createUserWithEmailAndPassword,
+    signInWithEmailAndPassword,
+    updateProfile
 } from 'firebase/auth';
 import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 
@@ -34,6 +37,50 @@ export const signInWithGoogle = async (): Promise<User | null> => {
         return user;
     } catch (error) {
         console.error("Error signing in with Google:", error);
+        throw error;
+    }
+};
+
+export const registerRestaurant = async (email: string, pass: string, restaurantName: string, rif: string): Promise<User> => {
+    try {
+        const result = await createUserWithEmailAndPassword(auth, email, pass);
+        const user = result.user;
+
+        // Update profile with restaurant name for display
+        await updateProfile(user, { displayName: restaurantName });
+
+        // Create the restaurant document
+        const restaurantRef = doc(db, 'restaurants', user.uid); // Using UID as ID for the main branch/owner
+        await setDoc(restaurantRef, {
+            name: restaurantName,
+            rif: rif,
+            ownerUid: user.uid,
+            email: email,
+            createdAt: serverTimestamp(),
+            locations: [], // Will be filled in RestaurantProfile
+            whatsapp: '',
+            ownDelivery: false,
+            isApproved: false, // Default to false until admin approval if needed
+            rating: 5.0,
+            image: 'https://images.unsplash.com/photo-1513104890138-7c749659a591?auto=format&fit=crop&q=80', // Default placeholder
+            deliveryTime: '30-45 min',
+            deliveryFee: 1.5,
+            category: 'Varios'
+        });
+
+        return user;
+    } catch (error) {
+        console.error("Error registering restaurant:", error);
+        throw error;
+    }
+};
+
+export const signInAdmin = async (email: string, pass: string): Promise<User> => {
+    try {
+        const result = await signInWithEmailAndPassword(auth, email, pass);
+        return result.user;
+    } catch (error) {
+        console.error("Error signing in as admin:", error);
         throw error;
     }
 };

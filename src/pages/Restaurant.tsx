@@ -1,4 +1,4 @@
-import { ArrowLeft, Search, Heart, Star, Clock, Plus, AlertCircle } from 'lucide-react';
+import { ArrowLeft, Search, Heart, Star, Clock, Plus, AlertCircle, MessageSquare, MapPin, ChevronRight, Phone } from 'lucide-react';
 import { Link, useParams } from 'react-router-dom';
 import { useState, useEffect } from 'react';
 import { doc, getDoc, collection, getDocs, updateDoc, arrayUnion, arrayRemove } from 'firebase/firestore';
@@ -9,12 +9,13 @@ import { useAuth } from '../context/AuthContext';
 
 export default function RestaurantPage() {
   const { id } = useParams<{ id: string }>();
-  const [restaurant, setRestaurant] = useState<Restaurant | null>(null);
+  const [restaurant, setRestaurant] = useState<any | null>(null);
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activeCategory, setActiveCategory] = useState<string>('Todos');
   const [isFavorite, setIsFavorite] = useState(false);
+  const [showLocations, setShowLocations] = useState(false);
   const { user } = useAuth();
 
   const { addItem, totalItems, totalPrice } = useCart();
@@ -30,7 +31,7 @@ export default function RestaurantPage() {
         const docSnap = await getDoc(docRef);
 
         if (docSnap.exists()) {
-          setRestaurant({ id: docSnap.id, ...docSnap.data() } as Restaurant);
+          setRestaurant({ id: docSnap.id, ...docSnap.data() });
 
           // Fetch products subcollection
           const productsRef = collection(db, 'restaurants', id, 'products');
@@ -122,6 +123,13 @@ export default function RestaurantPage() {
     }
   };
 
+  const openWhatsApp = () => {
+    if (restaurant.whatsapp) {
+      const number = restaurant.whatsapp.replace(/\D/g, '');
+      window.open(`https://wa.me/${number}?text=Hola, vengo de VenCome y me gustaría hacer un pedido.`, '_blank');
+    }
+  };
+
   return (
     <div className="relative w-full min-h-screen bg-white group/design-root overflow-x-hidden flex flex-col">
       {/* Hero Image & Navigation */}
@@ -154,21 +162,59 @@ export default function RestaurantPage() {
 
       {/* Restaurant Info */}
       <div className="px-5 py-4 bg-white -mt-4 rounded-t-3xl relative z-20 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)]">
-        <div className="flex flex-col gap-2">
+        <div className="flex flex-col gap-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-1.5 text-primary text-sm font-bold">
               <Star className="w-5 h-5 fill-primary" />
-              <span>{restaurant.rating}</span>
-              <span className="text-slate-500 font-normal">({restaurant.reviews}+ reseñas)</span>
+              <span>{restaurant.rating || "Nuevo"}</span>
+              <span className="text-slate-500 font-normal">({restaurant.reviews || 0}+ reseñas)</span>
             </div>
             <div className="flex items-center gap-1 text-slate-500 text-sm">
               <Clock className="w-4 h-4" />
-              <span>{restaurant.deliveryTime}</span>
+              <span>{restaurant.deliveryTime || restaurant.avgPrepTime + ' min' || "30-45 min"}</span>
             </div>
           </div>
-          <p className="text-slate-600 text-sm leading-relaxed">
-            {restaurant.category} • {restaurant.distance}
-          </p>
+
+          <div className="flex items-center justify-between">
+            <p className="text-slate-600 text-sm leading-relaxed">
+              {restaurant.category} • {restaurant.distance || "Cerca de ti"}
+            </p>
+            {restaurant.whatsapp && (
+              <button
+                onClick={openWhatsApp}
+                className="flex items-center gap-1 bg-green-50 text-green-600 px-3 py-1.5 rounded-full text-xs font-bold border border-green-100 hover:bg-green-100 transition-colors"
+              >
+                <MessageSquare className="w-3.5 h-3.5" />
+                WhatsApp
+              </button>
+            )}
+          </div>
+
+          {restaurant.locations && restaurant.locations.length > 0 && (
+            <div className="mt-1 border-t border-slate-50 pt-3">
+              <button
+                onClick={() => setShowLocations(!showLocations)}
+                className="flex items-center justify-between w-full text-slate-500 text-sm font-bold hover:text-slate-900 transition-colors"
+              >
+                <div className="flex items-center gap-2">
+                  <MapPin className="w-4 h-4 text-primary" />
+                  Ver sucursales ({restaurant.locations.length})
+                </div>
+                <ChevronRight className={`w-4 h-4 transition-transform ${showLocations ? 'rotate-90' : ''}`} />
+              </button>
+
+              {showLocations && (
+                <div className="mt-3 space-y-2 animate-in fade-in slide-in-from-top-2 duration-300">
+                  {restaurant.locations.map((loc: any, i: number) => (
+                    <div key={i} className="bg-slate-50 p-3 rounded-xl border border-slate-100">
+                      <p className="font-bold text-slate-700 text-sm">{loc.city}</p>
+                      <p className="text-xs text-slate-500">{loc.address}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </div>
 

@@ -3,7 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useCart } from '../context/CartContext';
 import { useAuth } from '../context/AuthContext';
 import { useState } from 'react';
-import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, addDoc, serverTimestamp, doc, getDoc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 
 export default function Cart() {
@@ -19,7 +19,7 @@ export default function Cart() {
 
   const handleCheckout = async () => {
     if (!user) {
-      navigate('/profile'); // Redirect to profile/login if not logged in
+      navigate('/profile');
       return;
     }
     if (items.length === 0) return;
@@ -28,9 +28,19 @@ export default function Cart() {
     setError(null);
 
     try {
+      // 1. Fetch restaurant data (specifically WhatsApp)
+      const restaurantId = items[0].restaurantId;
+      const restaurantDoc = await getDoc(doc(db, 'restaurants', restaurantId));
+      const restaurantData = restaurantDoc.exists() ? restaurantDoc.data() : null;
+
+      if (!restaurantData?.whatsapp) {
+        throw new Error("El restaurante no tiene un número de WhatsApp configurado.");
+      }
+
       const orderData = {
         userId: user.uid,
-        restaurantId: items[0].restaurantId, // Assuming all items from same restaurant for now
+        userName: user.displayName || 'Cliente',
+        restaurantId: restaurantId,
         items: items,
         total: finalTotal,
         subtotal: totalPrice,
@@ -40,13 +50,29 @@ export default function Cart() {
         deliveryAddress: "Casa Principal - Av. Francisco de Miranda, Edificio Torre Europa, Piso 4, Chacao, Caracas."
       };
 
-      await addDoc(collection(db, 'orders'), orderData);
+      // 2. Save to Firestore
+      const docRef = await addDoc(collection(db, 'orders'), orderData);
+
+      // 3. Generate WhatsApp Message
+      const itemsList = items.map(item => `• ${item.quantity}x ${item.name} ($${(item.price * item.quantity).toFixed(2)})`).join('\n');
+      const message = encodeURIComponent(
+        `*NUEVO PEDIDO # ${docRef.id.slice(-6).toUpperCase()}*\n\n` +
+        `*Cliente:* ${orderData.userName}\n` +
+        `*Resumen:*\n${itemsList}\n\n` +
+        `*Total:* $${finalTotal.toFixed(2)}\n` +
+        `*Dirección:* ${orderData.deliveryAddress}\n\n` +
+        `_Enviado desde VenCome App_`
+      );
+
+      // 4. Redirect
+      const whatsappNumber = restaurantData.whatsapp.replace(/\D/g, '');
+      window.open(`https://wa.me/${whatsappNumber}?text=${message}`, '_blank');
 
       clearCart();
       setCheckoutSuccess(true);
-    } catch (err) {
+    } catch (err: any) {
       console.error("Error confirming order:", err);
-      setError("Hubo un error al procesar tu orden. Inténtalo de nuevo.");
+      setError(err.message || "Hubo un error al procesar tu orden. Inténtalo de nuevo.");
     } finally {
       setIsCheckingOut(false);
     }
