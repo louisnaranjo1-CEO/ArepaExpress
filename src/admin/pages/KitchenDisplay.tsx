@@ -9,6 +9,7 @@ interface OrderItem {
     name: string;
     quantity: number;
     price: number;
+    category?: string;
     printerId?: string;
 }
 
@@ -19,20 +20,24 @@ interface Order {
     createdAt: any;
     tableNumber?: string;
     userName?: string;
+    userPhone?: string;
     notes?: string;
 }
 
 interface Station {
     id: string;
     name: string;
+    categories?: string[];
 }
 
 export default function KitchenDisplay() {
     const { user } = useAuth();
     const [orders, setOrders] = useState<Order[]>([]);
     const [stations, setStations] = useState<Station[]>([]);
-    const [selectedStation, setSelectedStation] = useState<string>('all');
+    const [selectedStation, setSelectedStation] = useState<string>(() => localStorage.getItem('selectedStation') || 'all');
+    const [autoPrint, setAutoPrint] = useState(true);
     const [loading, setLoading] = useState(true);
+    const [lastProcessedOrderId, setLastProcessedOrderId] = useState<string | null>(null);
 
     useEffect(() => {
         if (!user) return;
@@ -68,6 +73,48 @@ export default function KitchenDisplay() {
         return () => unsubscribe();
     }, [user]);
 
+    // Save selected station
+    useEffect(() => {
+        if (selectedStation) {
+            localStorage.setItem('selectedStation', selectedStation);
+        }
+    }, [selectedStation]);
+
+    const activeStation = stations.find(s => s.id === selectedStation);
+
+    // Filter items logic
+    const getStationItems = (items: OrderItem[]) => {
+        return items.filter(item => {
+            if (selectedStation === 'all') return true;
+
+            // Match by printerId
+            if (item.printerId === selectedStation) return true;
+
+            // Fallsback to category match
+            if (activeStation?.categories?.includes(item.category || '')) return true;
+
+            return false;
+        });
+    };
+
+    // Auto-print logic
+    useEffect(() => {
+        if (!autoPrint || selectedStation === 'all' || orders.length === 0) return;
+
+        const latestPendingOrder = [...orders]
+            .filter(o => o.status === 'pending')
+            .sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0))[0];
+
+        if (latestPendingOrder && latestPendingOrder.id !== lastProcessedOrderId) {
+            const stationItems = getStationItems(latestPendingOrder.items);
+            if (stationItems.length > 0) {
+                console.log("Auto-printing latest order:", latestPendingOrder.id);
+                handlePrint(latestPendingOrder, stationItems);
+                setLastProcessedOrderId(latestPendingOrder.id);
+            }
+        }
+    }, [orders, autoPrint, selectedStation]);
+
     const handlePrint = (order: Order, stationItems: OrderItem[]) => {
         const printWindow = window.open('', '_blank');
         if (!printWindow) return;
@@ -79,29 +126,39 @@ export default function KitchenDisplay() {
                 <head>
                     <style>
                         body { font-family: 'Courier New', Courier, monospace; width: 80mm; padding: 10px; margin: 0; }
-                        h1 { text-align: center; font-size: 20px; margin-bottom: 5px; }
-                        .header { text-align: center; margin-bottom: 20px; border-bottom: 1px dashed #000; padding-bottom: 10px; }
-                        .item { display: flex; justify-content: space-between; margin-bottom: 10px; font-weight: bold; font-size: 18px; }
-                        .quantity { margin-right: 15px; }
-                        .notes { font-style: italic; font-size: 14px; margin-top: 5px; color: #333; }
-                        .footer { margin-top: 20px; border-top: 1px dashed #000; padding-top: 10px; font-size: 12px; }
+                        h1 { text-align: center; font-size: 20px; margin-bottom: 5px; text-transform: uppercase; }
+                        .header { text-align: center; margin-bottom: 15px; border-bottom: 2px dashed #000; padding-bottom: 10px; }
+                        .client-info { background: #f0f0f0; padding: 5px; margin-bottom: 15px; border: 1px solid #000; text-align: center; }
+                        .item { display: flex; justify-content: space-between; margin-bottom: 15px; font-weight: bold; font-size: 18px; border-bottom: 1px dotted #ccc; padding-bottom: 5px; }
+                        .quantity { margin-right: 15px; background: #000; color: #fff; padding: 0 5px; }
+                        .notes { font-style: italic; font-size: 16px; margin-top: 10px; color: #000; background: #eee; padding: 5px; border-left: 5px solid #000; }
+                        .footer { margin-top: 20px; border-top: 2px dashed #000; padding-top: 10px; font-size: 12px; text-align: center; }
+                        .time { font-size: 14px; margin-top: 5px; }
                     </style>
                 </head>
                 <body>
                     <div class="header">
-                        <h1>COMANDA: ${stationName}</h1>
-                        <p>Orden ID: ${order.id.slice(-6).toUpperCase()}</p>
-                        ${order.tableNumber ? `<p style="font-size: 24px; font-weight: 900;">MESA: ${order.tableNumber}</p>` : ''}
-                        <p>${new Date().toLocaleTimeString()}</p>
+                        <h1>${stationName}</h1>
+                        <p style="font-size: 22px; font-weight: 900;">#${order.id.slice(-4).toUpperCase()}</p>
+                        ${order.tableNumber ? `<div style="font-size: 26px; font-weight: 900; background: #000; color: #fff; padding: 5px; margin: 5px 0;">MESA: ${order.tableNumber}</div>` : '<div style="font-size: 20px; font-weight: 900; border: 2px solid #000; padding: 5px; margin: 5px 0;">PARA LLEVAR</div>'}
+                        <div class="time">${new Date().toLocaleTimeString('es-VE')} - ${new Date().toLocaleDateString('es-VE')}</div>
                     </div>
+
+                    <div class="client-info">
+                        <strong>CLIENTE:</strong> ${order.userName || 'CLIENTE GENERAL'}<br/>
+                        ${order.userPhone ? `<strong>TEL:</strong> ${order.userPhone}` : ''}
+                    </div>
+
                     ${stationItems.map(item => `
                         <div class="item">
-                            <div><span class="quantity">${item.quantity}x</span> ${item.name}</div>
+                            <div><span class="quantity">${item.quantity}</span> ${item.name}</div>
                         </div>
                     `).join('')}
-                    ${order.notes ? `<div class="notes">NOTAS: ${order.notes}</div>` : ''}
+
+                    ${order.notes ? `<div class="notes"><strong>NOTAS:</strong> ${order.notes}</div>` : ''}
+
                     <div class="footer">
-                        <p>DeliExpress Cloud Print</p>
+                        <p>*** DeliExpress - Comanda de Servicio ***</p>
                     </div>
                     <script>
                         window.print();
@@ -128,9 +185,7 @@ export default function KitchenDisplay() {
 
     // Filter orders and their items based on selected station
     const filteredOrders = orders.map(order => {
-        const filteredItems = order.items.filter(item =>
-            selectedStation === 'all' || item.printerId === selectedStation
-        );
+        const filteredItems = getStationItems(order.items);
         return { ...order, items: filteredItems };
     }).filter(order => order.items.length > 0);
 
@@ -151,18 +206,31 @@ export default function KitchenDisplay() {
                     <p className="text-slate-500 font-medium">Visualización y control de preparación por estación</p>
                 </div>
 
-                <div className="flex items-center gap-3 bg-white p-2 rounded-[2rem] shadow-lg shadow-slate-200/50 border border-slate-100">
-                    <Filter className="w-5 h-5 ml-4 text-slate-400" />
-                    <select
-                        value={selectedStation}
-                        onChange={(e) => setSelectedStation(e.target.value)}
-                        className="bg-transparent border-none font-black text-slate-800 focus:ring-0 pr-8"
+                <div className="flex flex-wrap items-center gap-4">
+                    <button
+                        onClick={() => setAutoPrint(!autoPrint)}
+                        className={`flex items-center gap-2 px-6 py-3 rounded-2xl font-bold transition-all shadow-lg ${autoPrint
+                            ? 'bg-emerald-500 text-white shadow-emerald-200'
+                            : 'bg-white text-slate-400 border border-slate-100'
+                            }`}
                     >
-                        <option value="all">Todas las Estaciones</option>
-                        {stations.map(s => (
-                            <option key={s.id} value={s.id}>{s.name}</option>
-                        ))}
-                    </select>
+                        <Printer className="w-5 h-5" />
+                        Impresión Automática: {autoPrint ? 'ON' : 'OFF'}
+                    </button>
+
+                    <div className="flex items-center gap-3 bg-white p-2 rounded-[2rem] shadow-lg shadow-slate-200/50 border border-slate-100">
+                        <Filter className="w-5 h-5 ml-4 text-slate-400" />
+                        <select
+                            value={selectedStation}
+                            onChange={(e) => setSelectedStation(e.target.value)}
+                            className="bg-transparent border-none font-black text-slate-800 focus:ring-0 pr-8"
+                        >
+                            <option value="all">Todas las Estaciones</option>
+                            {stations.map(s => (
+                                <option key={s.id} value={s.id}>{s.name}</option>
+                            ))}
+                        </select>
+                    </div>
                 </div>
             </header>
 

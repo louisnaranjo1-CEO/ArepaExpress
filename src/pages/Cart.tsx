@@ -20,6 +20,7 @@ export default function Cart() {
   const [orderNote, setOrderNote] = useState('');
   const [orderId, setOrderId] = useState<string | null>(null);
   const [purchaseConfirmed, setPurchaseConfirmed] = useState<boolean | null>(null);
+  const [restaurantData, setRestaurantData] = useState<any>(null);
 
   const defaultAddress = userData?.addresses?.find((a: any) => a.isDefault) || userData?.address;
   const [selectedAddress, setSelectedAddress] = useState<any>(null);
@@ -145,6 +146,7 @@ export default function Cart() {
       const orderData = {
         userId: user.uid,
         userName: user.displayName || 'Cliente',
+        userPhone: userData?.phone || '',
         userEmail: user.email,
         restaurantId: restaurantId,
         restaurantName: items[0].restaurantName,
@@ -153,7 +155,9 @@ export default function Cart() {
           name: item.name,
           price: item.price,
           quantity: item.quantity,
-          image: item.image
+          image: item.image,
+          category: item.category,
+          printerId: item.printerId
         })),
         subtotal: totalPrice,
         deliveryFee: deliveryFee,

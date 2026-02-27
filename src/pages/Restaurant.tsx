@@ -111,7 +111,9 @@ export default function RestaurantPage() {
       name: product.name,
       price: finalPrice,
       quantity: 1,
-      image: product.image
+      image: product.image,
+      category: product.category,
+      printerId: (product as any).printerId
     });
   };
 

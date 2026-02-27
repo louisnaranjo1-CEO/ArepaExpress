@@ -7,6 +7,7 @@ import { useAuth } from '../../context/AuthContext';
 interface Station {
     id: string;
     name: string;
+    categories: string[];
     isActive: boolean;
     createdAt: any;
 }
@@ -22,6 +23,7 @@ export default function PrintersManager() {
 
     const [formData, setFormData] = useState({
         name: '',
+        categories: [] as string[],
         isActive: true
     });
 
@@ -48,12 +50,14 @@ export default function PrintersManager() {
             setEditingStation(station);
             setFormData({
                 name: station.name,
+                categories: station.categories || [],
                 isActive: station.isActive
             });
         } else {
             setEditingStation(null);
             setFormData({
                 name: '',
+                categories: [],
                 isActive: true
             });
         }
@@ -219,6 +223,37 @@ export default function PrintersManager() {
                                         placeholder="Ej: Cocina Principal, Barra de Bebidas..."
                                         className="w-full px-6 py-4 bg-slate-50 border-none rounded-[1.5rem] focus:ring-4 focus:ring-primary/10 font-bold text-lg"
                                     />
+                                </div>
+
+                                <div className="space-y-3">
+                                    <label className="text-sm font-black text-slate-500 uppercase tracking-widest ml-1">Categorías Asignadas</label>
+                                    <div className="grid grid-cols-2 gap-2 bg-slate-50 p-4 rounded-[1.5rem] max-h-[200px] overflow-y-auto hide-scrollbar border-2 border-transparent focus-within:border-primary/10 transition-all">
+                                        {['Arepas', 'Burgers', 'Sushi', 'Pizzas', 'Bebidas', 'Postres', 'Desayunos', 'Almuerzos', 'Cenas', 'Snacks', 'Jugos Naturales', 'Promociones', 'Combos'].map(cat => (
+                                            <button
+                                                key={cat}
+                                                type="button"
+                                                onClick={() => {
+                                                    const exists = formData.categories.includes(cat);
+                                                    setFormData({
+                                                        ...formData,
+                                                        categories: exists
+                                                            ? formData.categories.filter(c => c !== cat)
+                                                            : [...formData.categories, cat]
+                                                    });
+                                                }}
+                                                className={`flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-bold transition-all ${formData.categories.includes(cat)
+                                                        ? 'bg-primary text-white shadow-lg shadow-primary/20'
+                                                        : 'bg-white text-slate-500 border border-slate-100'
+                                                    }`}
+                                            >
+                                                {cat}
+                                                {formData.categories.includes(cat) && <Check className="w-3 h-3" />}
+                                            </button>
+                                        ))}
+                                    </div>
+                                    <p className="text-[10px] text-slate-400 font-medium px-2 italic">
+                                        * Los productos de estas categorías se enviarán automáticamente a esta estación.
+                                    </p>
                                 </div>
 
                                 <div className="flex items-center gap-3 p-4 bg-slate-50 rounded-[1.5rem]">
