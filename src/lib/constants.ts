@@ -20,7 +20,9 @@ export const GLOBAL_CATEGORIES = [
     'Pollo a la Broaster',
     'Pollo Asado',
     'Postres',
-    'Sushi'
+    'Sushi',
+    'Perros Calientes',
+    'Promociones'
 ];
 
 export const DEVELOPER_WHATSAPP = '584243258536';

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { UtensilsCrossed, Plus, Search, Filter, Edit2, Trash2, Image as ImageIcon, Check, ChevronDown, X, Loader2, DollarSign, Tag, TrendingUp } from 'lucide-react';
 import { db, storage } from '../../lib/firebase';
-import { collection, query, getDocs, doc, deleteDoc, updateDoc, addDoc } from 'firebase/firestore';
+import { collection, query, getDocs, doc, deleteDoc, updateDoc, addDoc, getDoc, writeBatch } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { useAuth } from '../../context/AuthContext';
 import { GLOBAL_CATEGORIES, DEVELOPER_WHATSAPP } from '../../lib/constants';
@@ -16,7 +16,9 @@ interface Product {
     images: string[];
     socialMediaLink?: string;
     isActive: boolean;
+    isAvailable: boolean;
     investment?: number;
+    promoPrice?: number;
 }
 
 export default function ProductManagement() {
@@ -36,7 +38,9 @@ export default function ProductManagement() {
         price: '',
         category: GLOBAL_CATEGORIES[0],
         isActive: true,
+        isAvailable: true,
         investment: '',
+        promoPrice: '',
         socialMediaLink: ''
     });
     const [existingImages, setExistingImages] = useState<string[]>([]);
@@ -74,7 +78,9 @@ export default function ProductManagement() {
                 price: product.price.toString(),
                 category: product.category,
                 isActive: product.isActive,
+                isAvailable: product.isAvailable ?? true,
                 investment: product.investment?.toString() || '',
+                promoPrice: product.promoPrice?.toString() || '',
                 socialMediaLink: product.socialMediaLink || ''
             });
             setExistingImages(product.images || (product.image ? [product.image] : []));
@@ -88,7 +94,9 @@ export default function ProductManagement() {
                 price: '',
                 category: GLOBAL_CATEGORIES[0],
                 isActive: true,
+                isAvailable: true,
                 investment: '',
+                promoPrice: '',
                 socialMediaLink: ''
             });
             setExistingImages([]);
@@ -107,37 +115,73 @@ export default function ProductManagement() {
             // 1. Upload new images if any
             const uploadedUrls: string[] = [];
             for (const file of newImageFiles) {
-                const storageRef = ref(storage, `restaurants/${user.uid}/products/${Date.now()}_${file.name}`);
-                const snapshot = await uploadBytes(storageRef, file);
-                const url = await getDownloadURL(snapshot.ref);
-                uploadedUrls.push(url);
+                try {
+                    console.log(`Uploading file: ${file.name}`);
+                    const sanitizedName = file.name.replace(/[^a-z0-9.]/gi, '_').toLowerCase();
+                    const storageRef = ref(storage, `restaurants/${user.uid}/products/${Date.now()}_${sanitizedName}`);
+                    const snapshot = await uploadBytes(storageRef, file);
+                    const url = await getDownloadURL(snapshot.ref);
+                    uploadedUrls.push(url);
+                    console.log(`File uploaded: ${url}`);
+                } catch (uploadError) {
+                    console.error(`Error uploading ${file.name}:`, uploadError);
+                    throw new Error(`Error al subir la imagen ${file.name}`);
+                }
             }
 
             const allImages = [...existingImages, ...uploadedUrls];
+            const price = parseFloat(formData.price);
+            const investment = formData.investment ? parseFloat(formData.investment) : 0;
+            const promoPrice = formData.promoPrice ? parseFloat(formData.promoPrice) : undefined;
+
+            if (isNaN(price)) {
+                alert("Por favor, ingresa un precio válido");
+                setSubmitting(false);
+                return;
+            }
 
             const productData = {
                 ...formData,
-                price: parseFloat(formData.price),
-                investment: formData.investment ? parseFloat(formData.investment) : 0,
+                price,
+                investment,
+                promoPrice: promoPrice || 0,
                 images: allImages,
                 image: allImages[0] || '', // Principal image
                 updatedAt: new Date()
             };
 
+            console.log("Saving product data:", productData);
+
             if (editingProduct) {
                 const productRef = doc(db, 'restaurants', user.uid, 'products', editingProduct.id);
                 await updateDoc(productRef, productData);
+
+                // Notification for price drop
+                if (productData.promoPrice && productData.promoPrice > 0 &&
+                    (!editingProduct.promoPrice || productData.promoPrice < editingProduct.promoPrice)) {
+                    notifyFollowers(
+                        "¡Bajó de precio!",
+                        `El producto "${productData.name}" ahora está en oferta por solo $${productData.promoPrice.toFixed(2)}.`
+                    );
+                }
             } else {
                 const productsRef = collection(db, 'restaurants', user.uid, 'products');
                 await addDoc(productsRef, {
                     ...productData,
                     createdAt: new Date()
                 });
+
+                // Notification for new product
+                notifyFollowers(
+                    "¡Nuevo en el menú!",
+                    `Hemos añadido "${productData.name}" a nuestra lista de productos. ¡Ven a probarlo!`
+                );
             }
 
+            console.log("Product saved successfully");
             setIsModalOpen(false);
             setEditingProduct(null);
-            setFormData({ name: '', description: '', price: '', category: GLOBAL_CATEGORIES[0], investment: '', isActive: true, socialMediaLink: '' });
+            setFormData({ name: '', description: '', price: '', category: GLOBAL_CATEGORIES[0], investment: '', promoPrice: '', isActive: true, isAvailable: true, socialMediaLink: '' });
             setNewImageFiles([]);
             setExistingImages([]);
             setPreviewUrls([]);
@@ -157,6 +201,17 @@ export default function ProductManagement() {
             fetchProducts();
         } catch (error) {
             console.error("Error deleting product:", error);
+        }
+    };
+
+    const toggleAvailability = async (product: Product) => {
+        if (!user) return;
+        try {
+            const productRef = doc(db, 'restaurants', user.uid, 'products', product.id);
+            await updateDoc(productRef, { isAvailable: !product.isAvailable });
+            fetchProducts();
+        } catch (error) {
+            console.error("Error toggling availability:", error);
         }
     };
 
@@ -181,9 +236,43 @@ export default function ProductManagement() {
     };
 
     const removeNewImage = (index: number) => {
-        URL.revokeObjectURL(previewUrls[index]);
+        if (previewUrls[index]) {
+            URL.revokeObjectURL(previewUrls[index]);
+        }
         setPreviewUrls(prev => prev.filter((_, i) => i !== index));
         setNewImageFiles(prev => prev.filter((_, i) => i !== index));
+    };
+
+    const notifyFollowers = async (title: string, body: string) => {
+        if (!user) return;
+        try {
+            // Fetch restaurant name
+            const resSnap = await getDoc(doc(db, 'restaurants', user.uid));
+            const restaurantName = resSnap.data()?.name || 'Un restaurante que sigues';
+
+            const followersRef = collection(db, 'restaurants', user.uid, 'followers');
+            const followersSnap = await getDocs(followersRef);
+
+            if (followersSnap.empty) return;
+
+            const batch = writeBatch(db);
+            followersSnap.docs.forEach(followerDoc => {
+                const userId = followerDoc.id;
+                const notifRef = doc(collection(db, 'notifications'));
+                batch.set(notifRef, {
+                    userId,
+                    restaurantId: user.uid,
+                    restaurantName,
+                    title,
+                    body,
+                    read: false,
+                    createdAt: new Date()
+                });
+            });
+            await batch.commit();
+        } catch (e) {
+            console.error("Error notifying followers:", e);
+        }
     };
 
     const activeCategories = ['Todos', ...GLOBAL_CATEGORIES.filter(cat => products.some(p => p.category === cat))];
@@ -278,8 +367,15 @@ export default function ProductManagement() {
                             </div>
                             <div className="p-6 space-y-4">
                                 <div>
-                                    <div className="flex items-center gap-2 mb-1">
+                                    <div className="flex items-center justify-between gap-2 mb-1">
                                         <span className="bg-slate-50 text-slate-500 text-[10px] font-black px-2 py-1 rounded-lg uppercase tracking-wider">{p.category}</span>
+                                        <button
+                                            onClick={() => toggleAvailability(p)}
+                                            className={`p-1.5 rounded-lg transition-all ${p.isAvailable ? 'bg-green-50 text-green-600 hover:bg-green-100' : 'bg-slate-100 text-slate-400 hover:bg-slate-200'}`}
+                                            title={p.isAvailable ? 'Disponible' : 'No disponible'}
+                                        >
+                                            <Check className={`w-3.5 h-3.5 ${p.isAvailable ? 'opacity-100' : 'opacity-40'}`} />
+                                        </button>
                                     </div>
                                     <h3 className="text-lg font-black text-slate-900 line-clamp-1">{p.name}</h3>
                                     <p className="text-sm text-slate-400 line-clamp-2 mt-1">{p.description}</p>
@@ -300,12 +396,15 @@ export default function ProductManagement() {
                                             <Trash2 className="w-4 h-4" />
                                         </button>
                                     </div>
-                                    {p.investment && (
-                                        <div className="text-right">
-                                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Utilidad</p>
-                                            <p className="text-sm font-black text-green-500">+${(p.price - p.investment).toFixed(2)}</p>
-                                        </div>
-                                    )}
+                                    <div className="text-right">
+                                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Utilidad</p>
+                                        <p className="text-sm font-black text-green-500">
+                                            +${((p.promoPrice && p.promoPrice > 0 ? p.promoPrice : p.price) - (p.investment || 0)).toFixed(2)}
+                                        </p>
+                                        {p.promoPrice && p.promoPrice > 0 && (
+                                            <p className="text-[9px] font-bold text-orange-400">En promoción</p>
+                                        )}
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -351,7 +450,7 @@ export default function ProductManagement() {
                                 />
                             </div>
 
-                            <div className="grid grid-cols-2 gap-4">
+                            <div className="grid grid-cols-3 gap-4">
                                 <div className="space-y-1">
                                     <label className="text-xs font-black text-slate-400 uppercase ml-2 flex items-center gap-1">
                                         <DollarSign className="w-3 h-3" /> Precio Venta
@@ -374,6 +473,18 @@ export default function ProductManagement() {
                                         step="0.01"
                                         value={formData.investment}
                                         onChange={(e) => setFormData({ ...formData, investment: e.target.value })}
+                                        className="w-full bg-slate-50 border-2 border-transparent focus:border-primary p-3 rounded-2xl outline-none font-bold text-slate-700"
+                                    />
+                                </div>
+                                <div className="space-y-1">
+                                    <label className="text-xs font-black text-slate-400 uppercase ml-2 flex items-center gap-1">
+                                        <TrendingUp className="w-3 h-3" /> Precio Promo
+                                    </label>
+                                    <input
+                                        type="number"
+                                        step="0.01"
+                                        value={formData.promoPrice}
+                                        onChange={(e) => setFormData({ ...formData, promoPrice: e.target.value })}
                                         className="w-full bg-slate-50 border-2 border-transparent focus:border-primary p-3 rounded-2xl outline-none font-bold text-slate-700"
                                     />
                                 </div>
@@ -462,14 +573,14 @@ export default function ProductManagement() {
                                     </select>
                                 </div>
                                 <div className="space-y-1">
-                                    <label className="text-xs font-black text-slate-400 uppercase ml-2">Estado</label>
+                                    <label className="text-xs font-black text-slate-400 uppercase ml-2">Disponible</label>
                                     <div
-                                        onClick={() => setFormData({ ...formData, isActive: !formData.isActive })}
+                                        onClick={() => setFormData({ ...formData, isAvailable: !formData.isAvailable })}
                                         className="flex items-center justify-between p-3 bg-slate-50 rounded-2xl cursor-pointer"
                                     >
-                                        <span className="font-bold text-sm text-slate-600">{formData.isActive ? 'Activo' : 'Inactivo'}</span>
-                                        <div className={`w-10 h-5 rounded-full relative transition-colors ${formData.isActive ? 'bg-primary' : 'bg-slate-300'}`}>
-                                            <div className={`absolute top-1 w-3 h-3 bg-white rounded-full shadow-sm transition-all ${formData.isActive ? 'left-6' : 'left-1'}`}></div>
+                                        <span className="font-bold text-sm text-slate-600">{formData.isAvailable ? 'Disponible' : 'Agotado'}</span>
+                                        <div className={`w-10 h-5 rounded-full relative transition-colors ${formData.isAvailable ? 'bg-green-500' : 'bg-slate-300'}`}>
+                                            <div className={`absolute top-1 w-3 h-3 bg-white rounded-full shadow-sm transition-all ${formData.isAvailable ? 'left-6' : 'left-1'}`}></div>
                                         </div>
                                     </div>
                                 </div>

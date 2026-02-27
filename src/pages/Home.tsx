@@ -1,4 +1,7 @@
 import { MapPin, ChevronDown, Bell, Search, SlidersHorizontal, Utensils, Star, Heart, Clock, Sandwich, Soup } from 'lucide-react';
+import arepaImg from '../assets/categories/arepa.png';
+import burgerImg from '../assets/categories/burger.png';
+import sushiImg from '../assets/categories/sushi.png';
 import { Link } from 'react-router-dom';
 import { useState, useEffect } from 'react';
 import { collection, getDocs, query, where } from 'firebase/firestore';
@@ -36,7 +39,7 @@ export default function Home() {
 
           // Reverse geocoding (mock for now or use Google Maps API if available)
           try {
-            const response = await fetch(`https://maps.googleapis.com/maps/api/geocode/json?latlng=${coords.lat},${coords.lng}&key=AIzaSyDDEpf7x5W24gRAI3HJ0PjZBzXBZcwV8gA`);
+            const response = await fetch(`https://maps.googleapis.com/maps/api/geocode/json?latlng=${coords.lat},${coords.lng}&key=AIzaSyCbTOS3JniuffmDbCnuukHCWSdZmWHFfgE`);
             const data = await response.json();
             if (data.results && data.results[0]) {
               const addressComponents = data.results[0].address_components;
@@ -130,10 +133,10 @@ export default function Home() {
               </div>
             </div>
           </div>
-          <button className="relative p-2 text-slate-900 hover:bg-slate-100 rounded-full transition-colors">
+          <Link to="/notifications" className="relative p-2 text-slate-900 hover:bg-slate-100 rounded-full transition-colors">
             <Bell className="w-6 h-6" />
             <span className="absolute top-2 right-2 h-2.5 w-2.5 rounded-full bg-accent border-2 border-white"></span>
-          </button>
+          </Link>
         </div>
 
         {/* Search Bar */}
@@ -160,42 +163,33 @@ export default function Home() {
         <div className="flex gap-4 overflow-x-auto hide-scrollbar pr-5 pb-2">
           {/* Category 1 */}
           <Link to="/search" className="flex flex-col items-center gap-2 group min-w-[72px]">
-            <div className="h-[72px] w-[72px] rounded-full bg-highlight/20 border-2 border-highlight/30 p-1 group-hover:scale-105 transition-transform duration-300 overflow-hidden relative">
-              <div
-                className="w-full h-full rounded-full bg-cover bg-center"
-                style={{ backgroundImage: "url('https://images.unsplash.com/photo-1541544741938-0af808871cc0?w=200&h=200&fit=crop')" }}
-              ></div>
+            <div className="h-[72px] w-[72px] rounded-full bg-orange-50 border-2 border-orange-100 p-2 group-hover:scale-105 transition-transform duration-300 flex items-center justify-center">
+              <img src={arepaImg} alt="Arepas" className="w-full h-full object-contain" />
             </div>
-            <span className="text-xs font-medium text-slate-700 group-hover:text-primary transition-colors">Arepas</span>
+            <span className="text-[10px] font-black text-slate-700 uppercase tracking-wider group-hover:text-primary transition-colors">Arepas</span>
           </Link>
           {/* Category 2 */}
           <Link to="/search" className="flex flex-col items-center gap-2 group min-w-[72px]">
-            <div className="h-[72px] w-[72px] rounded-full bg-secondary/10 border-2 border-secondary/20 p-1 group-hover:scale-105 transition-transform duration-300 overflow-hidden relative">
-              <div
-                className="w-full h-full rounded-full bg-cover bg-center"
-                style={{ backgroundImage: "url('https://images.unsplash.com/photo-1568901346375-23c9450c58cd?w=200&h=200&fit=crop')" }}
-              ></div>
+            <div className="h-[72px] w-[72px] rounded-full bg-red-50 border-2 border-red-100 p-2 group-hover:scale-105 transition-transform duration-300 flex items-center justify-center">
+              <img src={burgerImg} alt="Burgers" className="w-full h-full object-contain" />
             </div>
-            <span className="text-xs font-medium text-slate-700 group-hover:text-primary transition-colors">Hamburguesas</span>
+            <span className="text-[10px] font-black text-slate-700 uppercase tracking-wider group-hover:text-primary transition-colors">Burgers</span>
           </Link>
           {/* Category 3 */}
           <Link to="/search" className="flex flex-col items-center gap-2 group min-w-[72px]">
-            <div className="h-[72px] w-[72px] rounded-full bg-blue-100 border-2 border-blue-200 p-1 group-hover:scale-105 transition-transform duration-300 overflow-hidden relative">
-              <div
-                className="w-full h-full rounded-full bg-cover bg-center"
-                style={{ backgroundImage: "url('https://images.unsplash.com/photo-1579871494447-9811cf80d66c?w=200&h=200&fit=crop')" }}
-              ></div>
+            <div className="h-[72px] w-[72px] rounded-full bg-pink-50 border-2 border-pink-100 p-2 group-hover:scale-105 transition-transform duration-300 flex items-center justify-center">
+              <img src={sushiImg} alt="Sushi" className="w-full h-full object-contain" />
             </div>
-            <span className="text-xs font-medium text-slate-700 group-hover:text-primary transition-colors">Sushi</span>
+            <span className="text-[10px] font-black text-slate-700 uppercase tracking-wider group-hover:text-primary transition-colors">Sushi</span>
           </Link>
           {/* Category 4 */}
           <Link to="/search" className="flex flex-col items-center gap-2 group min-w-[72px]">
-            <div className="h-[72px] w-[72px] rounded-full bg-slate-100 border-2 border-slate-200 p-1 group-hover:scale-105 transition-transform duration-300 overflow-hidden relative flex items-center justify-center">
+            <div className="h-[72px] w-[72px] rounded-full bg-slate-50 border-2 border-slate-100 p-1 group-hover:scale-105 transition-transform duration-300 flex items-center justify-center">
               <div className="w-full h-full rounded-full bg-white flex items-center justify-center text-slate-400">
                 <Utensils className="w-6 h-6" />
               </div>
             </div>
-            <span className="text-xs font-medium text-slate-700 group-hover:text-primary transition-colors">Ver todo</span>
+            <span className="text-[10px] font-black text-slate-700 uppercase tracking-wider group-hover:text-primary transition-colors">Ver todo</span>
           </Link>
         </div>
       </section>

@@ -11,6 +11,8 @@ export interface Product {
     socialMediaLink?: string;
     category: string;
     popular?: boolean;
+    promoPrice?: number;
+    isAvailable?: boolean;
 }
 
 export interface Location {
@@ -32,7 +34,9 @@ export interface Restaurant {
     image: string;
     logoUrl?: string;
     coverUrl?: string;
-    featured: boolean;
+    featured?: boolean;
+    followerCount?: number;
+    followers?: string[];
     products?: Product[];
     locations?: Location[];
 }

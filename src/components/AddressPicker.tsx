@@ -21,7 +21,7 @@ interface AddressPickerProps {
 export default function AddressPicker({ onClose, onSave, initialData }: AddressPickerProps) {
     const { isLoaded } = useJsApiLoader({
         id: 'google-map-script',
-        googleMapsApiKey: "AIzaSyDDEpf7x5W24gRAI3HJ0PjZBzXBZcwV8gA"
+        googleMapsApiKey: "AIzaSyCbTOS3JniuffmDbCnuukHCWSdZmWHFfgE"
     });
 
     const [position, setPosition] = useState(initialData ? { lat: initialData.lat, lng: initialData.lng } : defaultCenter);

@@ -5,6 +5,7 @@ import Search from './pages/Search';
 import Cart from './pages/Cart';
 import Favorites from './pages/Favorites';
 import Profile from './pages/Profile';
+import Notifications from './pages/Notifications';
 import Restaurant from './pages/Restaurant';
 import { AuthProvider } from './context/AuthContext';
 import { CartProvider } from './context/CartContext';
@@ -23,6 +24,7 @@ export default function ClientApp() {
                                 <Route path="/cart" element={<Cart />} />
                                 <Route path="/favorites" element={<Favorites />} />
                                 <Route path="/profile" element={<Profile />} />
+                                <Route path="/notifications" element={<Notifications />} />
                             </Routes>
                         </div>
                         <BottomNav />

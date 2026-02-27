@@ -7,6 +7,7 @@ import Dashboard from './pages/Dashboard';
 import Orders from './pages/Orders';
 import ProductManagement from './pages/ProductManagement';
 import RestaurantProfile from './pages/RestaurantProfile';
+import Clients from './pages/Clients';
 
 function AdminRoutes() {
     const { user, loading } = useAuth();
@@ -29,6 +30,7 @@ function AdminRoutes() {
                 <Route path="/" element={<Dashboard />} />
                 <Route path="/orders" element={<Orders />} />
                 <Route path="/products" element={<ProductManagement />} />
+                <Route path="/clients" element={<Clients />} />
                 <Route path="/profile" element={<RestaurantProfile />} />
                 <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>

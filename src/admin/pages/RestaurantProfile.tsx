@@ -18,7 +18,7 @@ import {
     Upload
 } from 'lucide-react';
 import { db, storage } from '../../lib/firebase';
-import { doc, getDoc, updateDoc } from 'firebase/firestore';
+import { doc, getDoc, updateDoc, collection, getDocs, orderBy, query } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { useAuth } from '../../context/AuthContext';
 import AddressPicker from '../../components/AddressPicker';
@@ -46,6 +46,8 @@ export default function RestaurantProfile() {
     const [logoUrl, setLogoUrl] = useState('');
     const [coverUrl, setCoverUrl] = useState('');
     const [locations, setLocations] = useState<Location[]>([]);
+    const [followerCount, setFollowerCount] = useState(0);
+    const [followers, setFollowers] = useState<any[]>([]);
 
     // UI states for image uploads
     const [logoFile, setLogoFile] = useState<File | null>(null);
@@ -74,6 +76,14 @@ export default function RestaurantProfile() {
                     setLogoUrl(data.logoUrl || '');
                     setCoverUrl(data.coverUrl || '');
                     setLocations(data.locations || []);
+                    setFollowerCount(data.followerCount || 0);
+
+                    // Fetch followers list
+                    const followersRef = collection(db, 'restaurants', user.uid, 'followers');
+                    const followersQuery = query(followersRef, orderBy('followedAt', 'desc'));
+                    const followersSnap = await getDocs(followersQuery);
+                    const followersList = followersSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                    setFollowers(followersList);
                 }
             } catch (error) {
                 console.error("Error fetching restaurant:", error);
@@ -238,11 +248,11 @@ export default function RestaurantProfile() {
                                                     disabled={uploadingLogo}
                                                 />
                                                 {uploadingLogo && (
-                                                    <div className="absolute inset-0 bg-white/80 backdrop-blur-sm flex items-center justify-center rounded-2xl">
+                                                    <div className="absolute inset-0 bg-white/80 backdrop-blur-sm flex items-center justify-center rounded-2xl z-10 pointer-events-none">
                                                         <Loader2 className="w-6 h-6 text-primary animate-spin" />
                                                     </div>
                                                 )}
-                                                <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                                                <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
                                                     <Camera className="w-6 h-6 text-white" />
                                                 </div>
                                             </div>
@@ -274,11 +284,11 @@ export default function RestaurantProfile() {
                                                     disabled={uploadingCover}
                                                 />
                                                 {uploadingCover && (
-                                                    <div className="absolute inset-0 bg-white/80 backdrop-blur-sm flex items-center justify-center rounded-2xl">
+                                                    <div className="absolute inset-0 bg-white/80 backdrop-blur-sm flex items-center justify-center rounded-2xl z-10 pointer-events-none">
                                                         <Loader2 className="w-6 h-6 text-primary animate-spin" />
                                                     </div>
                                                 )}
-                                                <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                                                <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
                                                     <Camera className="w-6 h-6 text-white" />
                                                 </div>
                                             </div>

@@ -1,8 +1,8 @@
-import { ArrowLeft, Search, Heart, Star, Clock, Plus, AlertCircle, MessageSquare, MapPin, ChevronRight, Phone, Instagram } from 'lucide-react';
+import { ArrowLeft, Search, Heart, Star, Clock, Plus, AlertCircle, MessageSquare, MapPin, ChevronRight, Phone, Instagram, UserPlus, UserCheck } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Link, useParams } from 'react-router-dom';
 import { useState, useEffect } from 'react';
-import { doc, getDoc, collection, getDocs, updateDoc, arrayUnion, arrayRemove } from 'firebase/firestore';
+import { doc, getDoc, collection, getDocs, updateDoc, arrayUnion, arrayRemove, setDoc, deleteDoc, increment } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { Restaurant, Product } from '../lib/seed';
 import { useCart } from '../context/CartContext';
@@ -17,6 +17,8 @@ export default function RestaurantPage() {
   const [activeCategory, setActiveCategory] = useState<string>('Todos');
   const [isFavorite, setIsFavorite] = useState(false);
   const [showLocations, setShowLocations] = useState(false);
+  const [isFollowing, setIsFollowing] = useState(false);
+  const [followerCount, setFollowerCount] = useState(0);
   const { user } = useAuth();
 
   const { addItem, totalItems, totalPrice } = useCart();
@@ -33,6 +35,14 @@ export default function RestaurantPage() {
 
         if (docSnap.exists()) {
           setRestaurant({ id: docSnap.id, ...docSnap.data() });
+          setFollowerCount(docSnap.data().followerCount || 0);
+
+          // Check if it's in user following
+          if (user) {
+            const followRef = doc(db, 'restaurants', id, 'followers', user.uid);
+            const followSnap = await getDoc(followRef);
+            setIsFollowing(followSnap.exists());
+          }
 
           // Fetch products subcollection
           const productsRef = collection(db, 'restaurants', id, 'products');
@@ -86,18 +96,21 @@ export default function RestaurantPage() {
   // Extract unique product categories for tabs
   const categories = ['Todos', ...Array.from(new Set(products.map(p => p.category)))];
 
-  // Filter products by active category
-  const filteredProducts = activeCategory === 'Todos'
-    ? products
-    : products.filter(p => p.category === activeCategory);
+  // Filter products by active category and availability
+  const filteredProducts = products.filter(p => {
+    const matchesCategory = activeCategory === 'Todos' || p.category === activeCategory;
+    const isAvailable = p.isAvailable !== false; // Default to true if undefined
+    return matchesCategory && isAvailable;
+  });
 
   const handleAddToCart = (product: Product) => {
+    const finalPrice = product.promoPrice && product.promoPrice > 0 ? product.promoPrice : product.price;
     addItem({
       id: `${product.id}`,
       productId: product.id!,
       restaurantId: restaurant.id!,
       name: product.name,
-      price: product.price,
+      price: finalPrice,
       quantity: 1,
       image: product.image
     });
@@ -121,6 +134,40 @@ export default function RestaurantPage() {
       console.error("Error toggling favorite:", e);
       // Revert on error
       setIsFavorite(!isFavorite);
+    }
+  };
+
+  const toggleFollow = async () => {
+    if (!user) {
+      alert("Inicia sesión para seguir a tus locales favoritos.");
+      return;
+    }
+    if (!id) return;
+
+    try {
+      const resRef = doc(db, 'restaurants', id);
+      const followerRef = doc(db, 'restaurants', id, 'followers', user.uid);
+
+      if (isFollowing) {
+        setIsFollowing(false);
+        setFollowerCount(prev => Math.max(0, prev - 1));
+        await deleteDoc(followerRef);
+        await updateDoc(resRef, { followerCount: increment(-1) });
+      } else {
+        setIsFollowing(true);
+        setFollowerCount(prev => prev + 1);
+        await setDoc(followerRef, {
+          uid: user.uid,
+          displayName: user.displayName || 'Usuario',
+          photoURL: user.photoURL || '',
+          followedAt: new Date()
+        });
+        await updateDoc(resRef, { followerCount: increment(1) });
+      }
+    } catch (e) {
+      console.error("Error toggling follow:", e);
+      setIsFollowing(!isFollowing);
+      setFollowerCount(prev => isFollowing ? prev + 1 : prev - 1);
     }
   };
 
@@ -176,6 +223,9 @@ export default function RestaurantPage() {
           )}
           <div className="pb-8 flex-1">
             <h1 className="text-2xl md:text-4xl font-black text-white drop-shadow-[0_2px_4px_rgba(0,0,0,0.5)] leading-tight">{restaurant.name}</h1>
+            <div className="flex items-center gap-2 mt-1">
+              <span className="text-[10px] font-black text-white/80 uppercase tracking-widest">{followerCount} seguidores</span>
+            </div>
           </div>
         </div>
       </div>
@@ -202,15 +252,27 @@ export default function RestaurantPage() {
             <p className="text-slate-600 text-sm leading-relaxed">
               {restaurant.category} • {restaurant.distance || "Cerca de ti"}
             </p>
-            {restaurant.whatsapp && (
+            <div className="flex items-center gap-2">
               <button
-                onClick={openWhatsApp}
-                className="flex items-center gap-1 bg-green-50 text-green-600 px-3 py-1.5 rounded-full text-xs font-bold border border-green-100 hover:bg-green-100 transition-colors"
+                onClick={toggleFollow}
+                className={`flex items-center gap-2 px-4 py-2 rounded-full text-xs font-black transition-all ${isFollowing
+                  ? 'bg-slate-100 text-slate-500 border border-slate-200'
+                  : 'bg-primary text-white shadow-lg shadow-primary/20 scale-105 hover:scale-110'
+                  }`}
               >
-                <MessageSquare className="w-3.5 h-3.5" />
-                WhatsApp
+                {isFollowing ? <UserCheck className="w-4 h-4" /> : <UserPlus className="w-4 h-4" />}
+                {isFollowing ? 'Siguiendo' : 'Seguir'}
               </button>
-            )}
+              {restaurant.whatsapp && (
+                <button
+                  onClick={openWhatsApp}
+                  className="flex items-center gap-1 bg-green-50 text-green-600 px-3 py-1.5 rounded-full text-xs font-bold border border-green-100 hover:bg-green-100 transition-colors"
+                >
+                  <MessageSquare className="w-3.5 h-3.5" />
+                  WhatsApp
+                </button>
+              )}
+            </div>
           </div>
 
           {restaurant.locations && restaurant.locations.length > 0 && (
@@ -285,7 +347,17 @@ export default function RestaurantPage() {
                     <p className="text-sm text-slate-500 line-clamp-2">{product.description}</p>
                   </div>
                   <div className="flex items-center gap-3 mt-3">
-                    <span className="font-bold text-slate-900 text-base">${product.price.toFixed(2)}</span>
+                    {product.promoPrice && product.promoPrice > 0 ? (
+                      <>
+                        <span className="font-bold text-slate-900 text-base">${product.promoPrice.toFixed(2)}</span>
+                        <span className="text-xs text-slate-400 line-through">${product.price.toFixed(2)}</span>
+                        <span className="px-2 py-0.5 bg-orange-500 text-white text-[9px] font-black rounded-full shadow-sm">
+                          -{Math.round(((product.price - product.promoPrice) / product.price) * 100)}%
+                        </span>
+                      </>
+                    ) : (
+                      <span className="font-bold text-slate-900 text-base">${product.price.toFixed(2)}</span>
+                    )}
                     {product.popular && (
                       <span className="px-2 py-0.5 bg-orange-100 text-orange-600 text-[10px] uppercase font-bold tracking-wider rounded">Popular</span>
                     )}

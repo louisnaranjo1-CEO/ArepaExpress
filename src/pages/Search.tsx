@@ -5,13 +5,20 @@ import { db } from '../lib/firebase';
 import { Restaurant } from '../lib/seed';
 import { Link } from 'react-router-dom';
 
+import arepaImg from '../assets/categories/arepa.png';
+import burgerImg from '../assets/categories/burger.png';
+import sushiImg from '../assets/categories/sushi.png';
+import pizzaImg from '../assets/categories/pizza.png';
+import chinoImg from '../assets/categories/chino.png';
+import postresImg from '../assets/categories/postres.png';
+
 const CATEGORIES = [
-    { id: 'arepas', name: 'Comida Venezolana', emoji: '🫓', color: 'bg-orange-100 text-orange-600', shortName: 'Arepas' },
-    { id: 'burgers', name: 'Hamburguesas', emoji: '🍔', color: 'bg-red-100 text-red-600', shortName: 'Burgers' },
-    { id: 'sushi', name: 'Sushi', emoji: '🍣', color: 'bg-pink-100 text-pink-600', shortName: 'Sushi' },
-    { id: 'pizza', name: 'Pizza', emoji: '🍕', color: 'bg-yellow-100 text-yellow-600', shortName: 'Pizza' },
-    { id: 'chinesse', name: 'Chino', emoji: '🍜', color: 'bg-blue-100 text-blue-600', shortName: 'Chino' },
-    { id: 'desserts', name: 'Postres', emoji: '🍰', color: 'bg-purple-100 text-purple-600', shortName: 'Postres' },
+    { id: 'arepas', name: 'Comida Venezolana', image: arepaImg, color: 'bg-orange-50 text-orange-600', shortName: 'Arepas' },
+    { id: 'burgers', name: 'Hamburguesas', image: burgerImg, color: 'bg-red-50 text-red-600', shortName: 'Burgers' },
+    { id: 'sushi', name: 'Sushi', image: sushiImg, color: 'bg-pink-50 text-pink-600', shortName: 'Sushi' },
+    { id: 'pizza', name: 'Pizza', image: pizzaImg, color: 'bg-yellow-50 text-yellow-600', shortName: 'Pizza' },
+    { id: 'chinesse', name: 'Chino', image: chinoImg, color: 'bg-blue-50 text-blue-600', shortName: 'Chino' },
+    { id: 'desserts', name: 'Postres', image: postresImg, color: 'bg-purple-50 text-purple-600', shortName: 'Postres' },
 ];
 
 export default function Search() {
@@ -79,8 +86,10 @@ export default function Search() {
                                     onClick={() => setSelectedCategory(selectedCategory === cat.name ? null : cat.name)}
                                     className={`${cat.color} ${selectedCategory === cat.name ? 'ring-4 ring-primary/30 scale-95' : 'hover:scale-105'} p-4 rounded-3xl flex flex-col items-center gap-2 active:scale-95 transition-all shadow-sm border border-black/5`}
                                 >
-                                    <span className="text-3xl">{cat.emoji}</span>
-                                    <span className="text-xs font-bold uppercase tracking-wider">{cat.shortName}</span>
+                                    <div className="w-16 h-16 flex items-center justify-center p-1">
+                                        <img src={cat.image} alt={cat.shortName} className="w-full h-full object-contain group-hover:scale-110 transition-transform" />
+                                    </div>
+                                    <span className="text-[10px] font-black uppercase tracking-wider">{cat.shortName}</span>
                                 </button>
                             ))}
                         </div>
