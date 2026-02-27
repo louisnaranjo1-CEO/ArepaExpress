@@ -182,36 +182,48 @@ export default function Dashboard() {
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-50">
-                                {topRestaurants.map((res, index) => (
-                                    <tr key={res.id} className="group hover:bg-slate-50/80 transition-all cursor-default">
-                                        <td className="px-8 py-5">
-                                            <div className="flex items-center gap-3">
-                                                <span className={`w-8 h-8 rounded-full flex items-center justify-center font-black text-sm ${index === 0 ? 'bg-yellow-400 text-white' :
-                                                        index === 1 ? 'bg-slate-300 text-white' :
-                                                            index === 2 ? 'bg-orange-300 text-white' : 'bg-slate-100 text-slate-500'
-                                                    }`}>
-                                                    {index + 1}
-                                                </span>
-                                            </div>
-                                        </td>
-                                        <td className="px-8 py-5">
-                                            <div className="flex items-center gap-4">
-                                                <div className="w-12 h-12 rounded-2xl bg-slate-100 overflow-hidden border border-slate-200/50 shrink-0">
-                                                    <img src={res.logo || '/placeholder-res.png'} alt={res.name} className="w-full h-full object-cover" />
+                                {topRestaurants.map((res, index) => {
+                                    const logoImg = res.logo;
+
+                                    return (
+                                        <tr key={res.id} className="group hover:bg-slate-50/80 transition-all cursor-default">
+                                            <td className="px-8 py-5">
+                                                <div className="flex items-center gap-3">
+                                                    <span className={`w-8 h-8 rounded-full flex items-center justify-center font-black text-sm ${index === 0 ? 'bg-yellow-400 text-white shadow-lg shadow-yellow-200' :
+                                                        index === 1 ? 'bg-slate-300 text-white shadow-lg shadow-slate-200' :
+                                                            index === 2 ? 'bg-orange-300 text-white shadow-lg shadow-orange-200' : 'bg-slate-100 text-slate-500'
+                                                        }`}>
+                                                        {index + 1}
+                                                    </span>
                                                 </div>
-                                                <span className="font-bold text-slate-800 group-hover:text-primary transition-colors">{res.name}</span>
-                                            </div>
-                                        </td>
-                                        <td className="px-8 py-5 text-center">
-                                            <span className="px-3 py-1 bg-slate-100 rounded-full text-xs font-black text-slate-600">
-                                                {res.orderCount}
-                                            </span>
-                                        </td>
-                                        <td className="px-8 py-5 text-right font-black text-slate-900 text-lg">
-                                            ${res.sales.toLocaleString()}
-                                        </td>
-                                    </tr>
-                                ))}
+                                            </td>
+                                            <td className="px-8 py-5">
+                                                <div className="flex items-center gap-4">
+                                                    <div className="w-12 h-12 rounded-full bg-slate-100 overflow-hidden border-2 border-white shadow-sm shrink-0">
+                                                        {logoImg ? (
+                                                            <img src={logoImg} alt={res.name} className="w-full h-full object-cover" />
+                                                        ) : (
+                                                            <div className="w-full h-full flex items-center justify-center bg-slate-50">
+                                                                <Store className="w-6 h-6 text-slate-200" />
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                    <span className="font-bold text-slate-800 group-hover:text-primary transition-colors">{res.name}</span>
+                                                </div>
+                                            </td>
+
+                                            <td className="px-8 py-5 text-center">
+                                                <span className="px-3 py-1 bg-slate-100 rounded-full text-xs font-black text-slate-600">
+                                                    {res.orderCount}
+                                                </span>
+                                            </td>
+                                            <td className="px-8 py-5 text-right font-black text-slate-900 text-lg">
+                                                ${res.sales.toLocaleString()}
+                                            </td>
+                                        </tr>
+                                    );
+                                })}
+
                             </tbody>
                         </table>
                     </div>

@@ -1,4 +1,4 @@
-import { MapPin, ChevronDown, Bell, Search, SlidersHorizontal, Utensils, Star, Heart, Clock, Sandwich, Soup } from 'lucide-react';
+import { MapPin, ChevronDown, Bell, Search, SlidersHorizontal, Utensils, Star, Heart, Clock, Sandwich, Soup, Store } from 'lucide-react';
 import arepaImg from '../assets/categories/arepa.png';
 import burgerImg from '../assets/categories/burger.png';
 import sushiImg from '../assets/categories/sushi.png';
@@ -210,7 +210,7 @@ export default function Home() {
                 href={banner.linkUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="flex-none w-[85vw] max-w-[400px] aspect-[21/9] rounded-2xl overflow-hidden snap-center relative"
+                className="flex-none w-[92%] aspect-[21/9] rounded-2xl overflow-hidden snap-center relative shadow-md"
               >
                 <img src={banner.imageUrl} alt={banner.title} className="w-full h-full object-cover" />
               </a>
@@ -278,50 +278,67 @@ export default function Home() {
               </div>
             ))
           ) : restaurants.length > 0 ? (
-            restaurants.map((restaurant) => (
-              <Link key={restaurant.id} to={`/restaurant/${restaurant.id}`} className="group relative flex flex-col gap-3">
-                <div className="relative w-full aspect-[16/10] overflow-hidden rounded-xl shadow-sm">
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent z-10"></div>
-                  <div className="absolute top-3 left-3 z-20 bg-white/90 backdrop-blur-sm px-2.5 py-1 rounded-full flex items-center gap-1 shadow-sm">
-                    <Star className="w-4 h-4 text-highlight fill-highlight" />
-                    <span className="text-xs font-bold text-slate-900">{restaurant.rating}</span>
-                    <span className="text-[10px] text-slate-500">({restaurant.reviews}+)</span>
-                  </div>
-                  <div className="absolute top-3 right-3 z-20 bg-white p-1.5 rounded-full shadow-sm cursor-pointer hover:scale-110 transition-transform">
-                    <Heart className={`w-5 h-5 transition-colors ${false ? 'text-accent fill-accent' : 'text-slate-400 hover:text-accent hover:fill-accent'}`} />
-                  </div>
-                  <div
-                    className="w-full h-full bg-cover bg-center group-hover:scale-105 transition-transform duration-500 ease-out"
-                    style={{ backgroundImage: `url('${restaurant.image}?q=80&w=800&auto=format&fit=crop')` }}
-                  ></div>
-                  <div className="absolute bottom-3 left-3 z-20 flex gap-2">
-                    {restaurant.featured && (
-                      <span className="bg-primary text-white text-[10px] font-bold px-2 py-1 rounded-lg">Destacado</span>
-                    )}
-                    <span className="bg-white/90 backdrop-blur-md text-slate-900 text-[10px] font-bold px-2 py-1 rounded-lg flex items-center gap-1">
-                      <Clock className="w-3.5 h-3.5" /> {restaurant.deliveryTime}
-                    </span>
-                  </div>
-                </div>
-                <div className="px-1">
-                  <h3 className="text-lg font-bold text-slate-900 leading-tight mb-1">{restaurant.name}</h3>
-                  <div className="flex items-center gap-2 text-sm text-slate-500">
-                    {restaurant.category.includes('Arepa') || restaurant.category.includes('Venezolana') ? (
-                      <Sandwich className="w-4 h-4 text-primary" />
-                    ) : restaurant.category.includes('Sushi') ? (
-                      <Soup className="w-4 h-4 text-primary" />
+            restaurants.map((restaurant) => {
+              const coverImg = (restaurant as any).coverUrl || restaurant.image;
+              const logoImg = (restaurant as any).logoUrl || restaurant.image;
+
+              return (
+                <Link key={restaurant.id} to={`/restaurant/${restaurant.id}`} className="group relative flex flex-col gap-3">
+                  <div className="relative w-full aspect-[16/10] overflow-hidden rounded-xl shadow-sm bg-slate-100">
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent z-10"></div>
+                    <div className="absolute top-3 left-3 z-20 bg-white/90 backdrop-blur-sm px-2.5 py-1 rounded-full flex items-center gap-1 shadow-sm">
+                      <Star className="w-4 h-4 text-highlight fill-highlight" />
+                      <span className="text-xs font-bold text-slate-900">{restaurant.rating}</span>
+                      <span className="text-[10px] text-slate-500">({restaurant.reviews}+)</span>
+                    </div>
+                    <div className="absolute top-3 right-3 z-20 bg-white p-1.5 rounded-full shadow-sm cursor-pointer hover:scale-110 transition-transform">
+                      <Heart className={`w-5 h-5 transition-colors ${false ? 'text-accent fill-accent' : 'text-slate-400 hover:text-accent hover:fill-accent'}`} />
+                    </div>
+
+                    {coverImg ? (
+                      <div
+                        className="w-full h-full bg-cover bg-center group-hover:scale-105 transition-transform duration-500 ease-out"
+                        style={{ backgroundImage: `url('${coverImg}?q=80&w=800&auto=format&fit=crop')` }}
+                      ></div>
                     ) : (
-                      <Utensils className="w-4 h-4 text-primary" />
+                      <div className="w-full h-full flex flex-col items-center justify-center bg-slate-50 text-slate-300">
+                        <Store className="w-12 h-12 mb-2 opacity-50" />
+                        <span className="text-[10px] font-bold uppercase tracking-widest opacity-50">{restaurant.name}</span>
+                      </div>
                     )}
-                    <span>{restaurant.category}</span>
-                    <span className="w-1 h-1 rounded-full bg-slate-300"></span>
-                    <span>$$</span>
-                    <span className="w-1 h-1 rounded-full bg-slate-300"></span>
-                    <span>{restaurant.distance}</span>
+
+                    <div className="absolute bottom-3 left-3 z-20 flex gap-2">
+                      {restaurant.featured && (
+                        <span className="bg-primary text-white text-[10px] font-bold px-2 py-1 rounded-lg">Destacado</span>
+                      )}
+                      <span className="bg-white/90 backdrop-blur-md text-slate-900 text-[10px] font-bold px-2 py-1 rounded-lg flex items-center gap-1">
+                        <Clock className="w-3.5 h-3.5" /> {restaurant.deliveryTime}
+                      </span>
+                    </div>
                   </div>
-                </div>
-              </Link>
-            ))
+                  <div className="px-1 flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-full border-2 border-white shadow-sm overflow-hidden shrink-0 bg-slate-50 flex items-center justify-center">
+                      {logoImg ? (
+                        <img src={logoImg} alt="" className="w-full h-full object-cover" />
+                      ) : (
+                        <Store className="w-5 h-5 text-slate-300" />
+                      )}
+                    </div>
+                    <div>
+                      <h3 className="text-lg font-bold text-slate-900 leading-tight">{restaurant.name}</h3>
+                      <div className="flex items-center gap-2 text-[11px] text-slate-500 font-medium">
+                        {restaurant.category}
+                        <span className="w-1 h-1 rounded-full bg-slate-300"></span>
+                        <span>$$</span>
+                        <span className="w-1 h-1 rounded-full bg-slate-300"></span>
+                        <span>{restaurant.distance}</span>
+                      </div>
+                    </div>
+                  </div>
+                </Link>
+              );
+            })
+
           ) : (
             <div className="text-center py-12 text-slate-500">
               No hay restaurantes disponibles en este momento.

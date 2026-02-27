@@ -10,7 +10,14 @@ export const VENEZUELA_DATA: Record<string, string[]> = {
     "Delta Amacuro": ["Tucupita", "Pedernales", "Curiapo", "Sierra Imataca"],
     "Distrito Capital": ["Caracas", "Antímano", "Caricuao", "Catia", "Coche", "El Junquito", "El Paraíso", "La Candelaria", "La Florida", "La Pastora", "La Vega", "Macarao", "Petare Norte"],
     "Falcón": ["Coro", "Punto Fijo", "Santa Ana de Coro", "Dabajuro", "Churuguara", "Tucacas", "Chichiriviche", "Capadare", "Mirimire", "San Juan de los Cayos", "Adícora", "Pueblo Nuevo", "Los Taques"],
-    "Guárico": ["San Juan de los Morros", "Calabozo", "Valle de la Pascua", "Altagracia de Orituco", "Zaraza", "Tucupido", "El Sombrero", "Camaguán", "Chaguaramas", "El Socorro", "San José de Guaribe"],
+    "Guárico": [
+        "San Juan de los Morros", "Calabozo", "Valle de la Pascua", "Altagracia de Orituco", "Zaraza",
+        "Tucupido", "El Sombrero", "Camaguán", "Chaguaramas", "El Socorro", "San José de Guaribe",
+        "Ortiz", "Santa María de Ipire", "Cabruta", "Las Mercedes del Llano", "El Calvario", "El Rastro",
+        "Guardatinajas", "Cantagallo", "Parapara", "San Francisco de Tiznados", "San José de Tiznados",
+        "San Lorenzo de Tiznados", "Sosa", "Puerto Miranda", "Uverito", "Paso Real de Macaira",
+        "San Francisco de Macaira", "San Rafael de Orituco", "Libertad de Orituco", "Lezama", "Espino"
+    ],
     "Lara": ["Barquisimeto", "Cabudare", "Carora", "El Tocuyo", "Quíbor", "Duaca", "Sanare", "Siquisique", "Sarare", "Cubiro", "Tintorero"],
     "Mérida": ["Mérida", "El Vigía", "Ejido", "Tovar", "Lagunillas", "Mucuchíes", "Timotes", "Bailadores", "Tabay", "Santo Domingo", "Nueva Bolivia", "Santa Cruz de Mora"],
     "Miranda": ["Los Teques", "Chacao", "Baruta", "El Hatillo", "Guatire", "Guarenas", "Carrizal", "San Antonio de los Altos", "Caucagua", "Higuerote", "Río Chico", "Charallave", "Cúa", "Ocumare del Tuy", "Santa Teresa del Tuy", "Petare"],

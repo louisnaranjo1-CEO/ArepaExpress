@@ -1,4 +1,5 @@
-import { User, Mail, MapPin, CreditCard, LogOut, ShoppingBag, Settings, ChevronRight, Clock, FileText } from 'lucide-react';
+import { User, Mail, MapPin, CreditCard, LogOut, ShoppingBag, Settings, ChevronRight, Clock, FileText, Bell } from 'lucide-react';
+import { requestNotificationPermission, disableNotifications } from '../lib/notifications';
 import { useAuth } from '../context/AuthContext';
 import { auth, db } from '../lib/firebase';
 import { useNavigate } from 'react-router-dom';
@@ -22,6 +23,7 @@ export default function Profile() {
     const [orders, setOrders] = useState<OrderInfo[]>([]);
     const [loadingOrders, setLoadingOrders] = useState(false);
     const [showAddressPicker, setShowAddressPicker] = useState(false);
+    const [updatingNotifications, setUpdatingNotifications] = useState(false);
     const ordersRef = useRef<HTMLDivElement>(null);
 
     const scrollToOrders = () => {
@@ -99,6 +101,27 @@ export default function Profile() {
     const handleLogout = async () => {
         await auth.signOut();
         navigate('/');
+    };
+
+    const handleToggleNotifications = async () => {
+        if (!user) return;
+        setUpdatingNotifications(true);
+        try {
+            const isEnabled = userData?.fcmTokens && userData.fcmTokens.length > 0;
+            if (isEnabled) {
+                await disableNotifications(user.uid);
+                alert("Notificaciones desactivadas.");
+            } else {
+                const success = await requestNotificationPermission(user.uid);
+                if (success) {
+                    alert("Notificaciones activadas con éxito! 🎉");
+                }
+            }
+        } catch (err) {
+            console.error("Error toggling notifications", err);
+        } finally {
+            setUpdatingNotifications(false);
+        }
     };
 
     if (!user) {
@@ -290,8 +313,31 @@ export default function Profile() {
                     <div className="space-y-2 pt-2 border-t border-slate-100">
                         <h3 className="text-lg font-black text-slate-900 px-2">Ajustes</h3>
                         <div className="space-y-1">
+                            <div className="w-full flex items-center justify-between p-4 bg-slate-50 rounded-2xl transition-colors">
+                                <div className="flex items-center gap-3">
+                                    <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center shadow-sm">
+                                        <Bell className="w-5 h-5 text-blue-500" />
+                                    </div>
+                                    <div className="flex flex-col">
+                                        <span className="font-bold text-slate-700">Notificaciones</span>
+                                        <span className="text-[10px] text-slate-400 font-medium">Recibe promos y actualizaciones</span>
+                                    </div>
+                                </div>
+                                <button
+                                    onClick={handleToggleNotifications}
+                                    disabled={updatingNotifications}
+                                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${userData?.fcmTokens && userData.fcmTokens.length > 0 ? 'bg-primary' : 'bg-slate-300'
+                                        }`}
+                                >
+                                    <span
+                                        className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${userData?.fcmTokens && userData.fcmTokens.length > 0 ? 'translate-x-6' : 'translate-x-1'
+                                            }`}
+                                    />
+                                </button>
+                            </div>
 
                             <button
+
                                 onClick={handleLogout}
                                 className="w-full flex items-center justify-between p-4 hover:bg-red-50 rounded-2xl transition-colors cursor-pointer group mt-4"
                             >

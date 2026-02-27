@@ -41,3 +41,17 @@ export const requestNotificationPermission = async (userId: string) => {
         return false;
     }
 };
+
+export const disableNotifications = async (userId: string) => {
+    try {
+        const userRef = doc(db, 'users', userId);
+        await updateDoc(userRef, {
+            fcmTokens: [],
+            notificationsEnabled: false
+        });
+        return true;
+    } catch (error) {
+        console.error('An error occurred while disabling notifications:', error);
+        return false;
+    }
+};

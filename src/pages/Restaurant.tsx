@@ -1,4 +1,4 @@
-import { ArrowLeft, Search, Heart, Star, Clock, Plus, AlertCircle, MessageSquare, MapPin, ChevronRight, Phone, Instagram, UserPlus, UserCheck } from 'lucide-react';
+import { ArrowLeft, Search, Heart, Star, Clock, Plus, AlertCircle, MessageSquare, MapPin, ChevronRight, Phone, Instagram, UserPlus, UserCheck, Store } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Link, useParams } from 'react-router-dom';
 import { useState, useEffect } from 'react';
@@ -180,13 +180,19 @@ export default function RestaurantPage() {
   return (
     <div className="relative w-full min-h-screen bg-white group/design-root overflow-x-hidden flex flex-col">
       {/* Hero Image & Navigation */}
-      <div className="relative w-full h-64 md:h-80 shrink-0">
+      <div className="relative w-full h-64 md:h-80 shrink-0 bg-slate-100">
         <div
           className="absolute inset-0 bg-cover bg-center"
           style={{
-            backgroundImage: `linear-gradient(180deg, rgba(0,0,0,0.5) 0%, rgba(0,0,0,0.2) 50%, rgba(0,0,0,0.7) 100%), url("${restaurant.coverUrl || restaurant.image || 'https://images.unsplash.com/photo-1504674900247-0877df9cc836?q=80&w=1200'}")`
+            backgroundImage: `linear-gradient(180deg, rgba(0,0,0,0.5) 0%, rgba(0,0,0,0.2) 50%, rgba(0,0,0,0.7) 100%)${restaurant.coverUrl || restaurant.image ? `, url("${restaurant.coverUrl || restaurant.image}")` : ''}`
           }}
-        ></div>
+        >
+          {!(restaurant.coverUrl || restaurant.image) && (
+            <div className="w-full h-full flex flex-col items-center justify-center text-white/20">
+              <Store className="w-16 h-16 mb-2" />
+            </div>
+          )}
+        </div>
 
         {/* Nav Icons */}
         <div className="absolute top-0 left-0 w-full p-4 pt-12 flex justify-between items-center z-10">
@@ -207,19 +213,21 @@ export default function RestaurantPage() {
 
         {/* Restaurant Branding Overlay - Redesigned to be more modern */}
         <div className="absolute -bottom-6 left-0 w-full px-5 flex items-end gap-4 z-30">
-          {restaurant.logoUrl && (
-            <div className="relative shrink-0">
-              <div className="w-24 h-24 md:w-28 md:h-28 bg-white rounded-full p-1.5 shadow-xl border-4 border-white overflow-hidden animate-in zoom-in-95 duration-500">
+          <div className="relative shrink-0">
+            <div className="w-24 h-24 md:w-28 md:h-28 bg-white rounded-full p-1.5 shadow-xl border-4 border-white overflow-hidden animate-in zoom-in-95 duration-500 flex items-center justify-center">
+              {restaurant.logoUrl ? (
                 <img src={restaurant.logoUrl} alt={restaurant.name} className="w-full h-full object-contain rounded-full" />
-              </div>
-              {restaurant.rating && (
-                <div className="absolute -bottom-1 -right-1 bg-white px-2 py-0.5 rounded-full shadow-md flex items-center gap-1 border border-slate-100">
-                  <Star className="w-3 h-3 text-primary fill-primary" />
-                  <span className="text-[10px] font-black text-slate-700">{restaurant.rating}</span>
-                </div>
+              ) : (
+                <Store className="w-10 h-10 text-slate-300" />
               )}
             </div>
-          )}
+            {restaurant.rating && (
+              <div className="absolute -bottom-1 -right-1 bg-white px-2 py-0.5 rounded-full shadow-md flex items-center gap-1 border border-slate-100">
+                <Star className="w-3 h-3 text-primary fill-primary" />
+                <span className="text-[10px] font-black text-slate-700">{restaurant.rating}</span>
+              </div>
+            )}
+          </div>
           <div className="pb-8 flex-1">
             <h1 className="text-2xl md:text-4xl font-black text-white drop-shadow-[0_2px_4px_rgba(0,0,0,0.5)] leading-tight">{restaurant.name}</h1>
             <div className="flex items-center gap-2 mt-1">

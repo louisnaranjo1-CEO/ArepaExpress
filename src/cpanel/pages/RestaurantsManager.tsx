@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { collection, getDocs, doc, updateDoc, query, where } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
-import { Store, CheckCircle, XCircle, ChevronRight, X, Phone, MapPin, Tag, Box, Star, Users } from 'lucide-react';
+import { Store, CheckCircle, XCircle, ChevronRight, X, Phone, MapPin, Tag, Box, Star, Users, ShoppingBag } from 'lucide-react';
 import { Restaurant } from '../../lib/seed';
 
 interface RestaurantDetail extends Restaurant {
@@ -92,7 +92,6 @@ export default function RestaurantsManager() {
                         <tbody className="divide-y divide-slate-50">
                             {restaurants.map((restaurant) => {
                                 const isActive = restaurant.isActive !== false;
-                                // Use logoUrl first, then image
                                 const logo = (restaurant as any).logoUrl || restaurant.image;
 
                                 return (
@@ -104,7 +103,13 @@ export default function RestaurantsManager() {
                                         <td className="px-8 py-5">
                                             <div className="flex items-center gap-4">
                                                 <div className="w-12 h-12 rounded-2xl bg-slate-100 overflow-hidden border border-slate-100 shrink-0">
-                                                    <img src={logo} alt={restaurant.name} className="w-full h-full object-cover" />
+                                                    {logo ? (
+                                                        <img src={logo} alt={restaurant.name} className="w-full h-full object-cover" />
+                                                    ) : (
+                                                        <div className="w-full h-full flex items-center justify-center bg-slate-100">
+                                                            <Store className="w-6 h-6 text-slate-300" />
+                                                        </div>
+                                                    )}
                                                 </div>
                                                 <div>
                                                     <div className="font-bold text-slate-900 group-hover:text-primary transition-colors">{restaurant.name}</div>
@@ -135,6 +140,7 @@ export default function RestaurantsManager() {
                                     </tr>
                                 );
                             })}
+
                         </tbody>
                     </table>
                 </div>
@@ -225,7 +231,7 @@ export default function RestaurantsManager() {
                                 <div className="space-y-4">
                                     <h5 className="text-sm font-black text-slate-900 uppercase tracking-wider flex items-center gap-2">
                                         <Phone className="w-4 h-4 text-primary" /> Contacto
-                                    </h4>
+                                    </h5>
                                     <p className="text-slate-500 font-medium">0412-7786837</p>
                                 </div>
                             </div>

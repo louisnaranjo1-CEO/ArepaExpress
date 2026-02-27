@@ -68,7 +68,7 @@ export const registerRestaurant = async (email: string, pass: string, restaurant
             ownDelivery: false,
             isApproved: false, // Default to false until admin approval if needed
             rating: 5.0,
-            image: 'https://images.unsplash.com/photo-1513104890138-7c749659a591?auto=format&fit=crop&q=80', // Default placeholder
+            image: '', // No default image, only what the restaurant uploads
             deliveryTime: '30-45 min',
             deliveryFee: 1.5,
             category: 'Varios'

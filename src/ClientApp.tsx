@@ -15,19 +15,21 @@ export default function ClientApp() {
         <Router>
             <AuthProvider>
                 <CartProvider>
-                    <div className="h-[100dvh] bg-slate-50 font-sans max-w-md mx-auto shadow-2xl relative overflow-hidden flex flex-col">
-                        <div className="flex-1 overflow-y-auto">
-                            <Routes>
-                                <Route path="/" element={<Home />} />
-                                <Route path="/search" element={<Search />} />
-                                <Route path="/restaurant/:id" element={<Restaurant />} />
-                                <Route path="/cart" element={<Cart />} />
-                                <Route path="/favorites" element={<Favorites />} />
-                                <Route path="/profile" element={<Profile />} />
-                                <Route path="/notifications" element={<Notifications />} />
-                            </Routes>
+                    <div className="min-h-screen bg-slate-200 flex justify-center items-center p-0 md:p-4">
+                        <div className="h-[100dvh] md:h-[90vh] md:rounded-[3rem] md:border-[12px] md:border-slate-900 bg-white font-sans w-full max-w-md mx-auto shadow-2xl relative overflow-hidden flex flex-col scale-[0.98] md:scale-100 transition-all origin-center">
+                            <div className="flex-1 overflow-y-auto hide-scrollbar">
+                                <Routes>
+                                    <Route path="/" element={<Home />} />
+                                    <Route path="/search" element={<Search />} />
+                                    <Route path="/restaurant/:id" element={<Restaurant />} />
+                                    <Route path="/cart" element={<Cart />} />
+                                    <Route path="/favorites" element={<Favorites />} />
+                                    <Route path="/profile" element={<Profile />} />
+                                    <Route path="/notifications" element={<Notifications />} />
+                                </Routes>
+                            </div>
+                            <BottomNav />
                         </div>
-                        <BottomNav />
                     </div>
                 </CartProvider>
             </AuthProvider>

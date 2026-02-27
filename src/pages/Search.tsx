@@ -1,4 +1,4 @@
-import { Search as SearchIcon, SlidersHorizontal, MapPin, Star, Clock } from 'lucide-react';
+import { Search as SearchIcon, SlidersHorizontal, MapPin, Star, Clock, Store } from 'lucide-react';
 import { useState, useEffect, useMemo } from 'react';
 import { collection, getDocs } from 'firebase/firestore';
 import { db } from '../lib/firebase';
@@ -179,34 +179,55 @@ export default function Search() {
                                 </div>
                             ))
                         ) : filteredRestaurants.length > 0 ? (
-                            filteredRestaurants.map((res) => (
-                                <Link to={`/restaurant/${res.id}`} key={res.id} className="block group relative bg-white rounded-[32px] overflow-hidden shadow-xl shadow-slate-200/50 border border-slate-100 hover:border-primary/20 transition-all hover:scale-[1.01] active:scale-[0.99] cursor-pointer">
-                                    <div className="relative h-48 overflow-hidden">
-                                        <img src={res.image} alt={res.name} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" />
-                                        <div className="absolute top-4 left-4 bg-white/90 backdrop-blur px-3 py-1.5 rounded-full flex items-center gap-1 shadow-sm border border-white/50">
-                                            <Star className="w-4 h-4 text-yellow-500 fill-yellow-500" />
-                                            <span className="text-xs font-black text-slate-800">{res.rating}</span>
-                                            <span className="text-[10px] text-slate-400 font-bold">({res.reviews}+)</span>
-                                        </div>
-                                    </div>
-                                    <div className="p-6 space-y-1">
-                                        <h3 className="text-lg font-black text-slate-900 group-hover:text-primary transition-colors">{res.name}</h3>
-                                        <div className="flex items-center gap-2 text-sm font-bold text-slate-400 uppercase tracking-tighter">
-                                            <span>{res.category}</span>
-                                            <span>•</span>
-                                            <div className="flex items-center gap-1 text-primary">
-                                                <Clock className="w-3 h-3" />
-                                                <span>{res.deliveryTime}</span>
-                                            </div>
-                                            <span>•</span>
-                                            <div className="flex items-center gap-1 text-blue-500">
-                                                <MapPin className="w-3 h-3" />
-                                                <span>{res.distance}</span>
+                            filteredRestaurants.map((res) => {
+                                const coverImg = (res as any).coverUrl || res.image;
+                                const logoImg = (res as any).logoUrl || res.image;
+
+                                return (
+                                    <Link to={`/restaurant/${res.id}`} key={res.id} className="block group relative bg-white rounded-[32px] overflow-hidden shadow-xl shadow-slate-200/50 border border-slate-100 hover:border-primary/20 transition-all hover:scale-[1.01] active:scale-[0.99] cursor-pointer">
+                                        <div className="relative h-48 overflow-hidden bg-slate-100">
+                                            {coverImg ? (
+                                                <img src={coverImg} alt={res.name} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" />
+                                            ) : (
+                                                <div className="w-full h-full flex flex-col items-center justify-center bg-slate-50 text-slate-300">
+                                                    <Store className="w-12 h-12 mb-2 opacity-50" />
+                                                </div>
+                                            )}
+                                            <div className="absolute top-4 left-4 bg-white/90 backdrop-blur px-3 py-1.5 rounded-full flex items-center gap-1 shadow-sm border border-white/50">
+                                                <Star className="w-4 h-4 text-yellow-500 fill-yellow-500" />
+                                                <span className="text-xs font-black text-slate-800">{res.rating}</span>
+                                                <span className="text-[10px] text-slate-400 font-bold">({res.reviews}+)</span>
                                             </div>
                                         </div>
-                                    </div>
-                                </Link>
-                            ))
+                                        <div className="p-6 flex items-center gap-4">
+                                            <div className="w-12 h-12 rounded-full border-2 border-white shadow-sm overflow-hidden shrink-0 bg-slate-50 flex items-center justify-center">
+                                                {logoImg ? (
+                                                    <img src={logoImg} alt="" className="w-full h-full object-cover" />
+                                                ) : (
+                                                    <Store className="w-6 h-6 text-slate-300" />
+                                                )}
+                                            </div>
+                                            <div className="space-y-0.5">
+                                                <h3 className="text-lg font-black text-slate-900 group-hover:text-primary transition-colors leading-tight">{res.name}</h3>
+                                                <div className="flex items-center gap-2 text-[10px] font-bold text-slate-400 uppercase tracking-tighter">
+                                                    <span>{res.category}</span>
+                                                    <span>•</span>
+                                                    <div className="flex items-center gap-1 text-primary">
+                                                        <Clock className="w-3 h-3" />
+                                                        <span>{res.deliveryTime}</span>
+                                                    </div>
+                                                    <span>•</span>
+                                                    <div className="flex items-center gap-1 text-blue-500">
+                                                        <MapPin className="w-3 h-3" />
+                                                        <span>{res.distance}</span>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </Link>
+                                );
+                            })
+
                         ) : (
                             <div className="text-center py-12 text-slate-500 font-medium">
                                 No se encontraron resultados.

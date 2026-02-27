@@ -147,25 +147,26 @@ export default function Favorites() {
                 )}
             </div>
 
-            <div className="px-6 mt-8 mb-4 max-w-sm mx-auto">
-                <div className="bg-gradient-to-r from-orange-400 to-primary rounded-[32px] p-8 text-white shadow-xl hover:-translate-y-1 transition-transform cursor-pointer">
-                    <h3 className="text-xl font-black leading-tight mb-2">¿Quieres más <br />Arepa Express? 🤩</h3>
-                    <p className="text-white/80 text-sm font-medium mb-6">Activa las notificaciones para no perderte las mejores promos.</p>
-                    <button
-                        onClick={handleActivateNotifications}
-                        disabled={activatingNotifications || (userData?.fcmTokens && userData.fcmTokens.length > 0)}
-                        className="bg-white text-primary font-black px-6 py-3 rounded-xl shadow-lg hover:scale-[1.02] transition-transform active:scale-[0.98] uppercase text-xs tracking-widest w-full flex items-center justify-center gap-2 disabled:opacity-70"
-                    >
-                        {activatingNotifications ? (
-                            <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin"></div>
-                        ) : (userData?.fcmTokens && userData.fcmTokens.length > 0) ? (
-                            'YA ACTIVADAS ✅'
-                        ) : (
-                            'ACTIVAR AHORA'
-                        )}
-                    </button>
+            {!(userData?.fcmTokens && userData.fcmTokens.length > 0) && (
+                <div className="px-6 mt-8 mb-4 max-w-sm mx-auto">
+                    <div className="bg-gradient-to-r from-orange-400 to-primary rounded-[32px] p-8 text-white shadow-xl hover:-translate-y-1 transition-transform cursor-pointer">
+                        <h3 className="text-xl font-black leading-tight mb-2">¿Quieres ver más <br />restaurantes?</h3>
+                        <p className="text-white/80 text-sm font-medium mb-6">Activa las notificaciones para estar al tanto de todo.</p>
+                        <button
+                            onClick={handleActivateNotifications}
+                            disabled={activatingNotifications}
+                            className="bg-white text-primary font-black px-6 py-3 rounded-xl shadow-lg hover:scale-[1.02] transition-transform active:scale-[0.98] uppercase text-xs tracking-widest w-full flex items-center justify-center gap-2 disabled:opacity-70"
+                        >
+                            {activatingNotifications ? (
+                                <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin"></div>
+                            ) : (
+                                'ACTIVAR AHORA'
+                            )}
+                        </button>
+                    </div>
                 </div>
-            </div>
+            )}
+
         </div>
     );
 }
