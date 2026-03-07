@@ -22,7 +22,7 @@ export default function CpanelApp() {
 
     useEffect(() => {
         const token = localStorage.getItem('cpanel_auth');
-        if (token === '725826loquillo') {
+        if (token?.trim() === '725826loquillo') {
             signInAnonymously(auth).then(() => {
                 setIsAuthenticated(true);
                 setIsLoading(false);
@@ -36,15 +36,16 @@ export default function CpanelApp() {
     }, []);
 
     const login = async (password: string) => {
-        if (password === '725826loquillo') {
+        if (password.trim() === '725826loquillo') {
             try {
                 await signInAnonymously(auth);
-                localStorage.setItem('cpanel_auth', password);
+                localStorage.setItem('cpanel_auth', password.trim());
                 setIsAuthenticated(true);
                 return true;
-            } catch (err) {
+            } catch (err: any) {
                 console.error("Login Error:", err);
-                return false;
+                // Throwing so Login.tsx catch can catch it
+                throw new Error("No se pudo conectar con Firebase: " + (err.code || err.message));
             }
         }
         return false;
