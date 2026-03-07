@@ -5,9 +5,13 @@ import {
     User,
     createUserWithEmailAndPassword,
     signInWithEmailAndPassword,
-    updateProfile
+    updateProfile,
+    updateEmail,
+    updatePassword,
+    reauthenticateWithCredential,
+    EmailAuthProvider
 } from 'firebase/auth';
-import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { doc, getDoc, setDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
 
 const googleProvider = new GoogleAuthProvider();
 // Ensure we get the display name and email
@@ -132,6 +136,44 @@ export const signInAdminWithGoogle = async (): Promise<User | null> => {
         if (error.code === 'auth/unauthorized-domain') {
             throw new Error("Este dominio no está autorizado en Firebase Console (Authentication > Settings > Authorized Domains)");
         }
+        throw error;
+    }
+};
+
+export const updateUserEmail = async (newEmail: string): Promise<void> => {
+    const user = auth.currentUser;
+    if (!user) throw new Error("No user logged in");
+
+    try {
+        await updateEmail(user, newEmail);
+
+        // Also update Firestore if the user is a restaurant
+        const restaurantRef = doc(db, 'restaurants', user.uid);
+        const restaurantSnap = await getDoc(restaurantRef);
+        if (restaurantSnap.exists()) {
+            await updateDoc(restaurantRef, { email: newEmail });
+        }
+
+        // Also update the 'users' collection if they exist there
+        const userRef = doc(db, 'users', user.uid);
+        const userSnap = await getDoc(userRef);
+        if (userSnap.exists()) {
+            await updateDoc(userRef, { email: newEmail });
+        }
+    } catch (error) {
+        console.error("Error updating email:", error);
+        throw error;
+    }
+};
+
+export const updateUserPassword = async (newPassword: string): Promise<void> => {
+    const user = auth.currentUser;
+    if (!user) throw new Error("No user logged in");
+
+    try {
+        await updatePassword(user, newPassword);
+    } catch (error) {
+        console.error("Error updating password:", error);
         throw error;
     }
 };

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, Store, Users, Image as ImageIcon, LogOut, ChevronRight, Menu, X } from 'lucide-react';
+import { LayoutDashboard, Store, Users, Image as ImageIcon, LogOut, ChevronRight, Menu, X, Tag, Truck } from 'lucide-react';
 
 interface CpanelLayoutProps {
     children: React.ReactNode;
@@ -21,10 +21,12 @@ export default function CpanelLayout({ children, onLogout }: CpanelLayoutProps) 
         { path: '/restaurants', icon: Store, label: 'Restaurantes' },
         { path: '/users', icon: Users, label: 'Usuarios' },
         { path: '/banners', icon: ImageIcon, label: 'Banners' },
+        { path: '/categories', icon: Tag, label: 'Categorías' },
+        { path: '/delivery', icon: Truck, label: 'Delivery Express' },
     ];
 
     return (
-        <div className="min-h-screen bg-slate-50 flex">
+        <div className="h-screen bg-slate-50 flex overflow-hidden">
             {/* Mobile Sidebar Backdrop */}
             {isSidebarOpen && (
                 <div
@@ -53,7 +55,7 @@ export default function CpanelLayout({ children, onLogout }: CpanelLayoutProps) 
                     </div>
 
                     {/* Nav Items */}
-                    <nav className="flex-1 p-4 space-y-1">
+                    <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
                         {navItems.map((item) => (
                             <NavLink
                                 key={item.path}
@@ -89,9 +91,9 @@ export default function CpanelLayout({ children, onLogout }: CpanelLayoutProps) 
             </aside>
 
             {/* Main Content */}
-            <main className="flex-1 flex flex-col min-w-0">
+            <main className="flex-1 flex flex-col min-w-0 overflow-hidden">
                 {/* Top Header */}
-                <header className="h-20 bg-white border-b border-slate-200 px-6 flex items-center justify-between sticky top-0 z-30">
+                <header className="h-20 bg-white border-b border-slate-200 px-6 flex items-center justify-between flex-shrink-0">
                     <button
                         className="md:hidden p-2 text-slate-500"
                         onClick={() => setIsSidebarOpen(true)}
@@ -103,7 +105,7 @@ export default function CpanelLayout({ children, onLogout }: CpanelLayoutProps) 
                     </div>
                 </header>
 
-                <div className="p-6 md:p-8">
+                <div className="flex-1 overflow-y-auto p-6 md:p-8">
                     {children}
                 </div>
             </main>

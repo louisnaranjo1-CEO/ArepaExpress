@@ -1,4 +1,4 @@
-import { User, Mail, MapPin, CreditCard, LogOut, ShoppingBag, Settings, ChevronRight, Clock, FileText, Bell } from 'lucide-react';
+import { User, Mail, MapPin, CreditCard, LogOut, ShoppingBag, Settings, ChevronRight, Clock, FileText, Bell, Navigation } from 'lucide-react';
 import { requestNotificationPermission, disableNotifications } from '../lib/notifications';
 import { useAuth } from '../context/AuthContext';
 import { auth, db } from '../lib/firebase';
@@ -14,6 +14,7 @@ interface OrderInfo {
     status: string;
     createdAt: any;
     items: any[];
+    deliveryMethod?: string;
 }
 
 export default function Profile() {
@@ -298,6 +299,15 @@ export default function Profile() {
                                             </div>
                                             <span className="font-black text-primary text-base">${order.total.toFixed(2)}</span>
                                         </div>
+                                        {/* Tracking Button for App Delivery */}
+                                        {order.deliveryMethod === 'app_delivery' && (order.status === 'finding_driver' || order.status === 'driver_assigned' || order.status === 'in_transit') && (
+                                            <button
+                                                onClick={() => navigate(`/track/${order.id}`)}
+                                                className="mt-2 w-full bg-indigo-50 text-indigo-600 font-bold py-3 rounded-xl flex justify-center items-center gap-2 active:scale-95 transition-transform"
+                                            >
+                                                <Navigation className="w-4 h-4" /> Rastrear Pedido
+                                            </button>
+                                        )}
                                     </div>
                                 ))}
                             </div>

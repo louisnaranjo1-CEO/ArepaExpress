@@ -1,8 +1,9 @@
 import React from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, Store, UtensilsCrossed, ClipboardList, LogOut, ChevronRight, Menu, X, Settings, HelpCircle, Trash2, User, ChevronUp, Users, UserCheck, Printer } from 'lucide-react';
+import { LayoutDashboard, Store, UtensilsCrossed, ClipboardList, LogOut, ChevronRight, Menu, X, Settings, HelpCircle, Trash2, User, ChevronUp, Users, UserCheck, Printer, Key, Mail as MailIcon } from 'lucide-react';
 import { auth, db } from '../../lib/firebase';
 import { useAuth } from '../../context/AuthContext';
+import { updateUserEmail, updateUserPassword } from '../../lib/auth-service';
 import { doc, getDoc, deleteDoc, collection, query, where, onSnapshot } from 'firebase/firestore';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -19,6 +20,10 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
     const [restaurantName, setRestaurantName] = React.useState('Mi Negocio');
     const [createdAt, setCreatedAt] = React.useState<Date | null>(null);
     const [showDeleteConfirm, setShowDeleteConfirm] = React.useState(false);
+    const [showConfigMenu, setShowConfigMenu] = React.useState(false);
+    const [configMode, setConfigMode] = React.useState<'none' | 'email' | 'password'>('none');
+    const [newValue, setNewValue] = React.useState('');
+    const [isUpdating, setIsUpdating] = React.useState(false);
     const [notifications, setNotifications] = React.useState<any[]>([]);
 
     // Sound for notifications (optional, if you have an asset, but we can rely on visual for now)
@@ -97,6 +102,31 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
         navigate('/');
     };
 
+    const handleUpdateConfig = async () => {
+        if (!newValue) return;
+        setIsUpdating(true);
+        try {
+            if (configMode === 'email') {
+                await updateUserEmail(newValue);
+                alert("Correo actualizado con éxito. Es posible que debas iniciar sesión de nuevo.");
+            } else if (configMode === 'password') {
+                await updateUserPassword(newValue);
+                alert("Contraseña actualizada con éxito.");
+            }
+            setConfigMode('none');
+            setNewValue('');
+        } catch (error: any) {
+            console.error("Error updating config:", error);
+            if (error.code === 'auth/requires-recent-login') {
+                alert("Por seguridad, esta acción requiere que hayas iniciado sesión recientemente. Por favor, cierra sesión e ingresa de nuevo.");
+            } else {
+                alert(`Error: ${error.message || "No se pudo actualizar"}`);
+            }
+        } finally {
+            setIsUpdating(false);
+        }
+    };
+
     const handleDeleteAccount = async () => {
         if (!user) return;
         try {
@@ -121,7 +151,7 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
     ];
 
     return (
-        <div className="min-h-screen bg-slate-50 flex">
+        <div className="h-screen bg-slate-50 flex overflow-hidden">
             {/* Mobile Sidebar Backdrop */}
             {isSidebarOpen && (
                 <div
@@ -150,7 +180,7 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
                     </div>
 
                     {/* Nav Items */}
-                    <nav className="flex-1 p-4 space-y-1">
+                    <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
                         {navItems.map((item) => (
                             <NavLink
                                 key={item.path}
@@ -200,6 +230,25 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
                                         <Trash2 className="w-5 h-5" />
                                         <span>Eliminar Cuenta</span>
                                     </button>
+                                </div>
+                                <div className="p-4 bg-slate-50 border-t border-slate-100 italic">
+                                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">Configuración de Cuenta</p>
+                                    <div className="space-y-2">
+                                        <button
+                                            onClick={() => { setConfigMode('email'); setShowConfigMenu(true); setIsProfileMenuOpen(false); }}
+                                            className="w-full flex items-center gap-3 p-3 bg-white border border-slate-200 rounded-xl text-slate-600 font-bold hover:border-primary transition-all text-sm"
+                                        >
+                                            <MailIcon className="w-4 h-4 text-primary" />
+                                            <span>Cambiar Correo</span>
+                                        </button>
+                                        <button
+                                            onClick={() => { setConfigMode('password'); setShowConfigMenu(true); setIsProfileMenuOpen(false); }}
+                                            className="w-full flex items-center gap-3 p-3 bg-white border border-slate-200 rounded-xl text-slate-600 font-bold hover:border-primary transition-all text-sm"
+                                        >
+                                            <Key className="w-4 h-4 text-primary" />
+                                            <span>Cambiar Contraseña</span>
+                                        </button>
+                                    </div>
                                 </div>
                             </div>
                         )}
@@ -255,13 +304,56 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
                             </div>
                         </div>
                     )}
+
+                    {/* Config Modal */}
+                    {showConfigMenu && configMode !== 'none' && (
+                        <div className="fixed inset-0 z-[100] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+                            <div className="bg-white rounded-[40px] p-8 max-w-sm w-full space-y-6 animate-in zoom-in-95 duration-300 shadow-2xl italic">
+                                <div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center mx-auto">
+                                    {configMode === 'email' ? <MailIcon className="w-8 h-8 text-primary" /> : <Key className="w-8 h-8 text-primary" />}
+                                </div>
+                                <div className="text-center space-y-2">
+                                    <h3 className="text-xl font-black text-slate-900">
+                                        {configMode === 'email' ? 'Cambiar Correo' : 'Cambiar Contraseña'}
+                                    </h3>
+                                    <p className="text-slate-500 font-medium leading-relaxed">
+                                        Ingresa {configMode === 'email' ? 'tu nuevo correo electrónico' : 'tu nueva contraseña'}.
+                                    </p>
+                                </div>
+                                <div className="space-y-4">
+                                    <input
+                                        type={configMode === 'email' ? 'email' : 'password'}
+                                        value={newValue}
+                                        onChange={(e) => setNewValue(e.target.value)}
+                                        placeholder={configMode === 'email' ? 'nuevo@correo.com' : '••••••••'}
+                                        className="w-full bg-slate-50 border-2 border-transparent focus:border-primary focus:bg-white p-4 rounded-2xl outline-none transition-all font-bold text-slate-700"
+                                    />
+                                    <div className="flex flex-col gap-3">
+                                        <button
+                                            onClick={handleUpdateConfig}
+                                            disabled={isUpdating || !newValue}
+                                            className="w-full bg-primary text-white py-4 rounded-2xl font-black shadow-lg shadow-primary/20 hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-70"
+                                        >
+                                            {isUpdating ? 'Actualizando...' : 'confirmar cambio'}
+                                        </button>
+                                        <button
+                                            onClick={() => { setShowConfigMenu(false); setConfigMode('none'); setNewValue(''); }}
+                                            className="w-full bg-slate-50 text-slate-900 py-4 rounded-2xl font-black hover:bg-slate-100 transition-all"
+                                        >
+                                            Cancelar
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    )}
                 </div>
             </aside>
 
             {/* Main Content */}
-            <main className="flex-1 flex flex-col min-w-0">
+            <main className="flex-1 flex flex-col min-w-0 overflow-hidden">
                 {/* Top Header */}
-                <header className="h-20 bg-white border-b border-slate-200 px-6 flex items-center justify-between sticky top-0 z-30">
+                <header className="h-20 bg-white border-b border-slate-200 px-6 flex items-center justify-between flex-shrink-0">
                     <button
                         className="md:hidden p-2 text-slate-500"
                         onClick={() => setIsSidebarOpen(true)}
@@ -294,7 +386,7 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
                     ))}
                 </div>
 
-                <div className="p-6 md:p-8">
+                <div className="flex-1 overflow-y-auto p-6 md:p-8">
                     {children}
                 </div>
             </main>

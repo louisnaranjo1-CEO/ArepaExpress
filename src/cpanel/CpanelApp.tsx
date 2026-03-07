@@ -7,6 +7,8 @@ import RestaurantsManager from './pages/RestaurantsManager';
 import RestaurantProfile from './pages/RestaurantProfile';
 import UsersManager from './pages/UsersManager';
 import BannersManager from './pages/BannersManager';
+import CategoriesManager from './pages/CategoriesManager';
+import DeliveryManagement from './pages/DeliveryManagement';
 
 export default function CpanelApp() {
     const isDevAdminPath = window.location.pathname.startsWith('/cpanel');
@@ -59,6 +61,8 @@ export default function CpanelApp() {
                     <Route path="/restaurants/:id" element={<RestaurantProfile />} />
                     <Route path="/users" element={<UsersManager />} />
                     <Route path="/banners" element={<BannersManager />} />
+                    <Route path="/categories" element={<CategoriesManager />} />
+                    <Route path="/delivery" element={<DeliveryManagement />} />
                     <Route path="*" element={<Navigate to="/" replace />} />
                 </Routes>
             </CpanelLayout>
