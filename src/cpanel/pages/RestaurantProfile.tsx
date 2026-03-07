@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { doc, getDoc, collection, getDocs, query, where, orderBy, limit } from 'firebase/firestore';
-import { db } from '../../lib/firebase';
+import { db, storage } from '../../lib/firebase';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import {
     ArrowLeft, Store, Star, Tag, MapPin, Phone,
     ShoppingBag, Box, Users, TrendingUp, Calendar,
@@ -25,6 +26,9 @@ interface RestaurantData {
     coverUrl?: string;
     whatsapp?: string;
     isActive?: boolean;
+    status?: 'active' | 'busy' | 'unavailable';
+    billingDay?: number;
+    billingAmount?: number;
     location?: {
         city: string;
         state: string;
@@ -78,6 +82,10 @@ export default function RestaurantProfile() {
     const [isEditModalOpen, setIsEditModalOpen] = useState(false);
     const [editData, setEditData] = useState<Partial<RestaurantData>>({});
     const [isUpdating, setIsUpdating] = useState(false);
+    const [logoFile, setLogoFile] = useState<File | null>(null);
+    const [logoPreview, setLogoPreview] = useState<string | null>(null);
+
+    const [confirmStatus, setConfirmStatus] = useState<'active' | 'busy' | 'unavailable' | null>(null);
 
     useEffect(() => {
         const fetchData = async () => {
@@ -134,9 +142,20 @@ export default function RestaurantProfile() {
 
         setIsUpdating(true);
         try {
-            await updateDoc(doc(db, 'restaurants', id), editData);
-            setRestaurant({ ...restaurant, ...editData } as RestaurantData);
+            let finalData = { ...editData };
+
+            if (logoFile) {
+                const storageRef = ref(storage, `restaurants/${id}/logo_${Date.now()}`);
+                const snapshot = await uploadBytes(storageRef, logoFile);
+                const downloadURL = await getDownloadURL(snapshot.ref);
+                finalData.logoUrl = downloadURL;
+            }
+
+            await updateDoc(doc(db, 'restaurants', id), finalData);
+            setRestaurant({ ...restaurant, ...finalData } as RestaurantData);
             setIsEditModalOpen(false);
+            setLogoFile(null);
+            setLogoPreview(null);
         } catch (error) {
             console.error("Error updating restaurant:", error);
             alert("Error al actualizar el perfil");
@@ -147,13 +166,18 @@ export default function RestaurantProfile() {
 
     const openEditModal = () => {
         if (!restaurant) return;
+        setLogoFile(null);
+        setLogoPreview(null);
         setEditData({
             name: restaurant.name,
             category: restaurant.category,
             whatsapp: restaurant.whatsapp,
             logoUrl: restaurant.logoUrl,
             coverUrl: restaurant.coverUrl,
-            isActive: restaurant.isActive,
+            isActive: restaurant.status === 'unavailable' ? false : (restaurant.isActive !== false),
+            status: restaurant.status || (restaurant.isActive !== false ? 'active' : 'unavailable'),
+            billingDay: restaurant.billingDay || 1,
+            billingAmount: restaurant.billingAmount || 0,
             location: {
                 city: restaurant.location?.city || '',
                 state: restaurant.location?.state || '',
@@ -473,13 +497,67 @@ export default function RestaurantProfile() {
                                             />
                                         </div>
 
-                                        <div className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl border border-slate-100 group hover:border-emerald-200 transition-all cursor-pointer" onClick={() => setEditData({ ...editData, isActive: !editData.isActive })}>
-                                            <div>
-                                                <p className="font-black text-slate-900 text-sm">Estado del Local</p>
-                                                <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-0.5">Visible en la App</p>
+                                        <div className="space-y-3">
+                                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Estado del Local</label>
+                                            <div className="grid grid-cols-3 gap-2 bg-slate-50 p-2 rounded-3xl border border-slate-100 relative">
+                                                <div
+                                                    className={`absolute top-2 bottom-2 w-[calc(33.333%-10.6px)] bg-white rounded-2xl shadow-md transition-all duration-300 ease-spring`}
+                                                    style={{
+                                                        left: editData.status === 'active' || !editData.status ? '8px' :
+                                                            editData.status === 'busy' ? 'calc(33.333% + 4px)' :
+                                                                'calc(66.666%)'
+                                                    }}
+                                                />
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setConfirmStatus('active')}
+                                                    className={`relative z-10 py-3 rounded-2xl text-xs font-black uppercase tracking-widest transition-all duration-300 ${editData.status === 'active' || !editData.status ? 'text-emerald-500' : 'text-slate-400 hover:text-slate-600'}`}
+                                                >
+                                                    Activo
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setConfirmStatus('busy')}
+                                                    className={`relative z-10 py-3 rounded-2xl text-xs font-black uppercase tracking-widest transition-all duration-300 ${editData.status === 'busy' ? 'text-amber-500' : 'text-slate-400 hover:text-slate-600'}`}
+                                                >
+                                                    Ocupado
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setConfirmStatus('unavailable')}
+                                                    className={`relative z-10 py-3 rounded-2xl text-xs font-black uppercase tracking-widest transition-all duration-300 ${editData.status === 'unavailable' ? 'text-slate-500' : 'text-slate-400 hover:text-slate-600'}`}
+                                                >
+                                                    No Disp.
+                                                </button>
                                             </div>
-                                            <div className={`w-14 h-7 rounded-full relative transition-all duration-300 ${editData.isActive !== false ? 'bg-emerald-500' : 'bg-slate-300'}`}>
-                                                <div className={`absolute top-1 w-5 h-5 bg-white rounded-full shadow-md transition-all duration-300 ${editData.isActive !== false ? 'left-8' : 'left-1'}`}></div>
+                                        </div>
+                                        <h3 className="text-xs font-black text-slate-400 uppercase tracking-[0.2em] flex items-center gap-2 pt-6 border-t border-slate-100">
+                                            <DollarSign className="w-4 h-4" /> Suscripción (Cobro)
+                                        </h3>
+                                        <div className="grid grid-cols-2 gap-4">
+                                            <div className="space-y-2">
+                                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Fecha de Corte</label>
+                                                <select
+                                                    value={editData.billingDay || 1}
+                                                    onChange={(e) => setEditData({ ...editData, billingDay: Number(e.target.value) })}
+                                                    className="w-full bg-slate-50 border border-slate-100 rounded-2xl p-4 font-bold text-slate-700 focus:bg-white focus:border-primary transition-all outline-none appearance-none"
+                                                >
+                                                    {Array.from({ length: 28 }, (_, i) => i + 1).map(day => (
+                                                        <option key={day} value={day}>Día {day}</option>
+                                                    ))}
+                                                </select>
+                                            </div>
+                                            <div className="space-y-2">
+                                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Monto Mensual ($)</label>
+                                                <input
+                                                    type="number"
+                                                    min="0"
+                                                    step="0.01"
+                                                    value={editData.billingAmount || ''}
+                                                    onChange={(e) => setEditData({ ...editData, billingAmount: parseFloat(e.target.value) || 0 })}
+                                                    className="w-full bg-slate-50 border border-slate-100 rounded-2xl p-4 font-bold text-slate-700 focus:bg-white focus:border-primary transition-all outline-none"
+                                                    placeholder="Ej: 30.00"
+                                                />
                                             </div>
                                         </div>
                                     </div>
@@ -531,15 +609,46 @@ export default function RestaurantProfile() {
 
                                         <div className="space-y-4 pt-4 border-t border-slate-100">
                                             <div className="flex items-center justify-between">
-                                                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Logo (URL)</p>
-                                                <ImageIcon className="w-4 h-4 text-slate-300" />
+                                                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Logo del Restaurante</p>
+                                                <Upload className="w-4 h-4 text-primary" />
                                             </div>
-                                            <input
-                                                type="text"
-                                                value={editData.logoUrl}
-                                                onChange={(e) => setEditData({ ...editData, logoUrl: e.target.value })}
-                                                className="w-full bg-slate-50 border border-slate-100 rounded-2xl p-4 font-bold text-slate-700 focus:bg-white focus:border-primary transition-all outline-none"
-                                            />
+
+                                            <div className="relative group/logo">
+                                                <div className="w-full h-32 rounded-2xl bg-slate-50 border-2 border-dashed border-slate-200 flex flex-col items-center justify-center overflow-hidden transition-all group-hover/logo:border-primary/50">
+                                                    {(logoPreview || editData.logoUrl) ? (
+                                                        <img
+                                                            src={logoPreview || editData.logoUrl}
+                                                            alt="Logo Preview"
+                                                            className="w-full h-full object-contain p-2"
+                                                        />
+                                                    ) : (
+                                                        <div className="flex flex-col items-center gap-2 text-slate-400">
+                                                            <ImageIcon className="w-8 h-8" />
+                                                            <span className="text-[10px] font-bold uppercase tracking-widest">Subir Imagen</span>
+                                                        </div>
+                                                    )}
+
+                                                    <input
+                                                        type="file"
+                                                        accept="image/*"
+                                                        onChange={(e) => {
+                                                            const file = e.target.files?.[0];
+                                                            if (file) {
+                                                                setLogoFile(file);
+                                                                setLogoPreview(URL.createObjectURL(file));
+                                                            }
+                                                        }}
+                                                        className="absolute inset-0 opacity-0 cursor-pointer z-10"
+                                                    />
+
+                                                    {(logoPreview || editData.logoUrl) && (
+                                                        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover/logo:opacity-100 transition-opacity flex items-center justify-center">
+                                                            <Upload className="w-6 h-6 text-white" />
+                                                        </div>
+                                                    )}
+                                                </div>
+                                                <p className="text-[9px] text-slate-400 font-bold mt-2 text-center uppercase tracking-tighter italic">Recomendado: 512x512px (PNG Transparente)</p>
+                                            </div>
                                         </div>
                                     </div>
                                 </div>

@@ -22,6 +22,13 @@ export default function Cart() {
   const [purchaseConfirmed, setPurchaseConfirmed] = useState<boolean | null>(null);
   const [restaurantData, setRestaurantData] = useState<any>(null);
 
+  const isWaiter = localStorage.getItem('isWaiter') === 'true';
+  const waiterData = JSON.parse(localStorage.getItem('waiterData') || '{}');
+  const waiterRestaurantId = localStorage.getItem('waiterRestaurantId');
+  const [tableNumber, setTableNumber] = useState('');
+  const [customerName, setCustomerName] = useState('');
+  const [paymentStatus, setPaymentStatus] = useState<'pending' | 'paid'>('pending');
+
   const defaultAddress = userData?.addresses?.find((a: any) => a.isDefault) || userData?.address;
   const [selectedAddress, setSelectedAddress] = useState<any>(null);
   const [showAddressSelector, setShowAddressSelector] = useState(false);
@@ -117,11 +124,11 @@ export default function Cart() {
     return Math.max(1, 1 + distance * 0.5);
   };
 
-  const deliveryFee = calculateDeliveryFee();
+  const deliveryFee = isWaiter ? 0 : calculateDeliveryFee();
   const finalTotal = totalPrice + deliveryFee;
 
   const handleCheckout = async () => {
-    if (!user) {
+    if (!isWaiter && !user) {
       navigate('/profile');
       return;
     }
@@ -136,20 +143,25 @@ export default function Cart() {
       const restaurantDoc = await getDoc(doc(db, 'restaurants', restaurantId));
       const restaurantData = restaurantDoc.exists() ? restaurantDoc.data() : null;
 
-      if (!restaurantData?.whatsapp) {
+      if (!isWaiter && !restaurantData?.whatsapp) {
         throw new Error("El restaurante no tiene un número de WhatsApp configurado.");
       }
 
       // Use user's address from context if available
-      const address = selectedAddress?.reference || "Recoger en local";
+      const address = isWaiter ? `Mesa: ${tableNumber}` : (selectedAddress?.reference || "Recoger en local");
 
       const orderData = {
-        userId: user.uid,
-        userName: user.displayName || 'Cliente',
-        userPhone: userData?.phone || '',
-        userEmail: user.email,
+        userId: isWaiter ? waiterData.id : (user?.uid || ''),
+        userName: isWaiter ? (customerName || `Cliente Mesa ${tableNumber}`) : (user?.displayName || 'Cliente'),
+        userPhone: isWaiter ? '' : (userData?.phone || ''),
+        userEmail: isWaiter ? waiterData.email : (user?.email || ''),
         restaurantId: restaurantId,
         restaurantName: items[0].restaurantName,
+        source: isWaiter ? 'waiter' : 'client',
+        waiterId: isWaiter ? waiterData.id : null,
+        waiterName: isWaiter ? waiterData.name : null,
+        paymentStatus: isWaiter ? paymentStatus : 'pending',
+        table: isWaiter ? tableNumber : null,
         items: items.map(item => ({
           id: item.id,
           name: item.name,
@@ -162,10 +174,10 @@ export default function Cart() {
         subtotal: totalPrice,
         deliveryFee: deliveryFee,
         total: finalTotal,
-        status: 'pending',
+        status: isWaiter ? (paymentStatus === 'paid' ? 'kitchen' : 'pending') : 'pending',
         deliveryAddress: address,
-        userCoordinates: selectedAddress?.lat ? { lat: selectedAddress.lat, lng: selectedAddress.lng } : null,
-        addressReference: selectedAddress?.reference || '',
+        userCoordinates: (!isWaiter && selectedAddress?.lat) ? { lat: selectedAddress.lat, lng: selectedAddress.lng } : null,
+        addressReference: isWaiter ? `Atendido por: ${waiterData.name}` : (selectedAddress?.reference || ''),
         orderNote: orderNote.trim(),
         createdAt: serverTimestamp()
       };
@@ -173,6 +185,13 @@ export default function Cart() {
       // 2. Save to Firestore
       const docRef = await addDoc(collection(db, 'orders'), orderData);
       setOrderId(docRef.id);
+
+      if (isWaiter) {
+        clearCart();
+        setCheckoutSuccess(true);
+        setPurchaseConfirmed(true);
+        return;
+      }
 
       // 3. Generate WhatsApp Message
       const itemsList = items.map(item => {
@@ -280,15 +299,17 @@ export default function Cart() {
         </h1>
         <p className="text-slate-500 mb-8 max-w-[280px]">
           {purchaseConfirmed
-            ? 'Tu orden está siendo preparada y llegará pronto a tu puerta.'
+            ? (isWaiter ? 'La comanda ha sido enviada con éxito a cocina/sistema.' : 'Tu orden está siendo preparada y llegará pronto a tu puerta.')
             : 'Tu orden no fue procesada. Puedes volver a intentarlo cuando quieras.'}
         </p>
-        <Link to="/profile" className="w-full max-w-xs bg-primary hover:bg-orange-600 text-white py-4 rounded-2xl font-bold shadow-lg shadow-orange-500/30 transition-all flex items-center justify-center gap-2">
-          Ver mis pedidos
+        <Link to={isWaiter ? `/restaurant/${waiterRestaurantId || ''}` : "/profile"} className="w-full max-w-xs bg-primary hover:bg-orange-600 text-white py-4 rounded-2xl font-bold shadow-lg shadow-orange-500/30 transition-all flex items-center justify-center gap-2">
+          {isWaiter ? 'Volver al Menú' : 'Ver mis pedidos'}
         </Link>
-        <Link to="/" className="mt-4 text-slate-500 font-bold hover:text-primary transition-colors">
-          Volver al inicio
-        </Link>
+        {!isWaiter && (
+          <Link to="/" className="mt-4 text-slate-500 font-bold hover:text-primary transition-colors">
+            Volver al inicio
+          </Link>
+        )}
       </div>
     );
   }
@@ -351,7 +372,7 @@ export default function Cart() {
             <div className={`size-8 rounded-full flex items-center justify-center ring-4 ring-background-light ${currentStep >= 2 ? 'bg-primary text-white' : 'bg-neutral-light text-slate-400'}`}>
               <MapPin className="w-4 h-4" />
             </div>
-            <span className={`text-xs ${currentStep >= 2 ? 'font-semibold text-primary' : 'font-medium text-slate-400'}`}>Dirección</span>
+            <span className={`text-xs ${currentStep >= 2 ? 'font-semibold text-primary' : 'font-medium text-slate-400'}`}>{isWaiter ? 'Mesa' : 'Dirección'}</span>
           </div>
 
           {/* Step 3: Payment */}
@@ -472,63 +493,89 @@ export default function Cart() {
                 >
                   <ArrowLeft className="w-4 h-4" /> Volver a mi pedido
                 </button>
-                <div className="bg-surface-light p-4 rounded-xl shadow-sm border border-neutral-light/50">
-                  <div className="flex justify-between items-center mb-3">
-                    <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider opacity-70">Entrega en</h3>
-                    {userData?.addresses && userData.addresses.length > 0 ? (
-                      <button onClick={() => setShowAddressSelector(true)} className="text-primary text-xs font-bold hover:underline">Cambiar</button>
-                    ) : (
-                      <Link to="/profile" className="text-primary text-xs font-bold hover:underline">Cambiar</Link>
-                    )}
+                {isWaiter ? (
+                  <div className="bg-surface-light p-5 rounded-2xl shadow-sm border border-neutral-light/50 space-y-4">
+                    <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider opacity-70 mb-2">Datos de la Orden</h3>
+                    <div>
+                      <label className="text-xs font-bold text-slate-500 mb-1 block">Número de Mesa / Para llevar</label>
+                      <input
+                        type="text"
+                        placeholder="Ej. Mesa 5"
+                        value={tableNumber}
+                        onChange={(e) => setTableNumber(e.target.value)}
+                        className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-primary"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs font-bold text-slate-500 mb-1 block">Nombre del Cliente (Opcional)</label>
+                      <input
+                        type="text"
+                        placeholder="Ej. Juan Pérez"
+                        value={customerName}
+                        onChange={(e) => setCustomerName(e.target.value)}
+                        className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-primary"
+                      />
+                    </div>
                   </div>
-                  <div className="flex gap-4 items-start">
-                    <div className="relative w-20 h-20 shrink-0 rounded-lg overflow-hidden bg-neutral-light">
-                      {selectedAddress ? (
-                        <img
-                          src={`https://maps.googleapis.com/maps/api/staticmap?center=${selectedAddress.lat},${selectedAddress.lng}&zoom=15&size=200x200&markers=color:red%7C${selectedAddress.lat},${selectedAddress.lng}&key=AIzaSyCb1c-p1R6AZGetk8YzKiLuxjaxjmPqJX8`}
-                          alt="Mapa"
-                          className="w-full h-full object-cover"
-                        />
+                ) : (
+                  <div className="bg-surface-light p-4 rounded-xl shadow-sm border border-neutral-light/50">
+                    <div className="flex justify-between items-center mb-3">
+                      <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider opacity-70">Entrega en</h3>
+                      {userData?.addresses && userData.addresses.length > 0 ? (
+                        <button onClick={() => setShowAddressSelector(true)} className="text-primary text-xs font-bold hover:underline">Cambiar</button>
                       ) : (
-                        <div className="w-full h-full flex items-center justify-center bg-slate-100">
-                          <MapPin className="w-6 h-6 text-slate-300" />
-                        </div>
+                        <Link to="/profile" className="text-primary text-xs font-bold hover:underline">Cambiar</Link>
                       )}
                     </div>
-                    <div className="flex flex-col justify-center min-h-[5rem]">
-                      <p className="text-slate-900 text-sm font-bold flex items-center gap-1">
-                        {selectedAddress?.name || "Mi Ubicación"}
-                        {loadingDistance && <span className="w-2 h-2 rounded-full bg-primary animate-pulse ml-1"></span>}
-                      </p>
-                      <p className="text-slate-500 text-xs font-medium leading-relaxed mt-0.5 line-clamp-2">
-                        {selectedAddress?.reference || "Agrega tu dirección en el perfil"}
-                      </p>
-                      <div className="flex items-center gap-1 mt-2 text-primary">
-                        <Clock className="w-3.5 h-3.5 fill-primary/20" />
-                        <span className="text-xs font-bold">
-                          {distance ? `${Math.round(15 + distance * 5)} - ${Math.round(25 + distance * 5)} min` : "15 - 25 min"}
-                        </span>
-                        {distance && (
-                          <span className="text-[10px] text-slate-400 font-bold ml-2">({formatDistance(distance)})</span>
+                    <div className="flex gap-4 items-start">
+                      <div className="relative w-20 h-20 shrink-0 rounded-lg overflow-hidden bg-neutral-light">
+                        {selectedAddress ? (
+                          <img
+                            src={`https://maps.googleapis.com/maps/api/staticmap?center=${selectedAddress.lat},${selectedAddress.lng}&zoom=15&size=200x200&markers=color:red%7C${selectedAddress.lat},${selectedAddress.lng}&key=AIzaSyCb1c-p1R6AZGetk8YzKiLuxjaxjmPqJX8`}
+                            alt="Mapa"
+                            className="w-full h-full object-cover"
+                          />
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center bg-slate-100">
+                            <MapPin className="w-6 h-6 text-slate-300" />
+                          </div>
                         )}
+                      </div>
+                      <div className="flex flex-col justify-center min-h-[5rem]">
+                        <p className="text-slate-900 text-sm font-bold flex items-center gap-1">
+                          {selectedAddress?.name || "Mi Ubicación"}
+                          {loadingDistance && <span className="w-2 h-2 rounded-full bg-primary animate-pulse ml-1"></span>}
+                        </p>
+                        <p className="text-slate-500 text-xs font-medium leading-relaxed mt-0.5 line-clamp-2">
+                          {selectedAddress?.reference || "Agrega tu dirección en el perfil"}
+                        </p>
+                        <div className="flex items-center gap-1 mt-2 text-primary">
+                          <Clock className="w-3.5 h-3.5 fill-primary/20" />
+                          <span className="text-xs font-bold">
+                            {distance ? `${Math.round(15 + distance * 5)} - ${Math.round(25 + distance * 5)} min` : "15 - 25 min"}
+                          </span>
+                          {distance && (
+                            <span className="text-[10px] text-slate-400 font-bold ml-2">({formatDistance(distance)})</span>
+                          )}
+                        </div>
                       </div>
                     </div>
                   </div>
-                </div>
+                )}
 
                 <div className="sticky bottom-6 mt-6">
                   <button
                     onClick={() => {
-                      if (!user) {
+                      if (!isWaiter && !user) {
                         navigate('/profile');
                       } else {
                         setCurrentStep(3);
                       }
                     }}
-                    disabled={!selectedAddress}
+                    disabled={isWaiter ? !tableNumber : !selectedAddress}
                     className="w-full bg-primary hover:bg-orange-600 disabled:bg-slate-300 disabled:text-slate-500 text-white font-bold text-lg py-4 rounded-2xl shadow-lg shadow-orange-500/30 transition-all transform active:scale-95 flex items-center justify-center gap-2 group"
                   >
-                    Confirmar Ubicación
+                    {isWaiter ? 'Continuar al Pago' : 'Confirmar Ubicación'}
                     <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
                   </button>
                 </div>
@@ -548,10 +595,12 @@ export default function Cart() {
                     <span className="text-slate-500">Subtotal</span>
                     <span className="font-semibold text-slate-900">${totalPrice.toFixed(2)}</span>
                   </div>
-                  <div className="flex justify-between text-sm">
-                    <span className="text-slate-500">Delivery</span>
-                    <span className="font-semibold text-slate-900">${deliveryFee.toFixed(2)}</span>
-                  </div>
+                  {!isWaiter && (
+                    <div className="flex justify-between text-sm">
+                      <span className="text-slate-500">Delivery</span>
+                      <span className="font-semibold text-slate-900">${deliveryFee.toFixed(2)}</span>
+                    </div>
+                  )}
                   <div className="h-px bg-neutral-light w-full my-2"></div>
                   <div className="flex justify-between items-end">
                     <span className="text-slate-900 font-bold text-lg">Total</span>
@@ -560,6 +609,16 @@ export default function Cart() {
                     </div>
                   </div>
                 </div>
+
+                {isWaiter && (
+                  <div className="bg-surface-light p-4 rounded-xl shadow-sm border border-neutral-light/50 space-y-3 mt-4">
+                    <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider opacity-70 mb-2">Estado de Pago</h3>
+                    <div className="flex gap-2">
+                      <button onClick={() => setPaymentStatus('pending')} className={`flex-1 py-3 rounded-xl font-bold border-2 transition-all ${paymentStatus === 'pending' ? 'border-amber-500 bg-amber-50 text-amber-700' : 'border-slate-100 bg-slate-50 text-slate-400'}`}>Por Pagar</button>
+                      <button onClick={() => setPaymentStatus('paid')} className={`flex-1 py-3 rounded-xl font-bold border-2 transition-all ${paymentStatus === 'paid' ? 'border-emerald-500 bg-emerald-50 text-emerald-700' : 'border-slate-100 bg-slate-50 text-slate-400'}`}>Pagado</button>
+                    </div>
+                  </div>
+                )}
 
                 {error && (
                   <p className="text-red-500 text-sm font-bold text-center mt-4 bg-red-50 p-3 rounded-lg">{error}</p>
@@ -575,7 +634,7 @@ export default function Cart() {
                       <div className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
                     ) : (
                       <>
-                        Confirmar Pago en WhatsApp
+                        {isWaiter ? 'Enviar Comanda a Cocina' : 'Confirmar Pago en WhatsApp'}
                         <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
                       </>
                     )}

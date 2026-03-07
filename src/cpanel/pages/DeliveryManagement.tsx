@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { collection, query, getDocs, doc, updateDoc, onSnapshot, where, writeBatch } from 'firebase/firestore';
+import { collection, query, getDocs, doc, updateDoc, onSnapshot, where, writeBatch, setDoc } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import { DeliveryDriver } from '../../lib/delivery-service';
 import { Truck, CheckCircle2, XCircle, FileText, User, DollarSign, ExternalLink } from 'lucide-react';
@@ -14,6 +14,13 @@ export default function DeliveryManagement() {
     const [driverPendingBalance, setDriverPendingBalance] = useState({ total: 0, count: 0 });
     const [payingDriver, setPayingDriver] = useState(false);
     const [updateRequests, setUpdateRequests] = useState<any[]>([]);
+    const [settings, setSettings] = useState({
+        driverBaseFee: 2.00,
+        driverPerKmFee: 0.50,
+        clientBaseFee: 2.50,
+        clientPerKmFee: 0.60
+    });
+    const [savingSettings, setSavingSettings] = useState(false);
 
     useEffect(() => {
         const q = query(collection(db, 'delivery_drivers'));
@@ -29,9 +36,17 @@ export default function DeliveryManagement() {
             setUpdateRequests(data);
         });
 
+        const qSettings = doc(db, 'global_settings', 'delivery');
+        const unsubscribeSettings = onSnapshot(qSettings, (docSnap) => {
+            if (docSnap.exists()) {
+                setSettings(docSnap.data() as any);
+            }
+        });
+
         return () => {
             unsubscribe();
             unsubscribeUpdates();
+            unsubscribeSettings();
         };
     }, []);
 
@@ -130,6 +145,19 @@ export default function DeliveryManagement() {
             alert("Error al registrar el pago.");
         } finally {
             setPayingDriver(false);
+        }
+    };
+
+    const handleSaveSettings = async () => {
+        setSavingSettings(true);
+        try {
+            await setDoc(doc(db, 'global_settings', 'delivery'), settings, { merge: true });
+            alert('Configuraciones guardadas correctamente.');
+        } catch (error) {
+            console.error("Error saving settings:", error);
+            alert("Error al guardar configuraciones.");
+        } finally {
+            setSavingSettings(false);
         }
     };
 
@@ -345,41 +373,87 @@ export default function DeliveryManagement() {
 
             {/* TAB: FINANCES */}
             {activeTab === 'finances' && (
-                <div className="max-w-xl">
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                    {/* Tarifas de Pilotos */}
                     <div className="bg-white p-8 rounded-[32px] border border-slate-200 shadow-sm space-y-6">
                         <div className="flex items-center gap-4">
                             <div className="w-12 h-12 bg-indigo-50 text-indigo-600 rounded-2xl flex items-center justify-center">
-                                <DollarSign className="w-6 h-6" />
+                                <Truck className="w-6 h-6" />
                             </div>
                             <div>
-                                <h3 className="text-xl font-black text-slate-900">Configuración de Tarifas</h3>
-                                <p className="text-sm font-medium text-slate-500">Define cómo se le paga a los pilotos.</p>
+                                <h3 className="text-xl font-black text-slate-900">Tarifas de Pilotos</h3>
+                                <p className="text-sm font-medium text-slate-500">Lo que se le paga al repartidor.</p>
                             </div>
                         </div>
 
                         <div className="space-y-4">
                             <div>
-                                <label className="block text-xs font-black text-slate-400 uppercase tracking-widest ml-1 mb-2">Tarifa Base por Viaje ($)</label>
+                                <label className="block text-xs font-black text-slate-400 uppercase tracking-widest ml-1 mb-2">Pago Base por Viaje ($)</label>
                                 <input
                                     type="number"
+                                    step="0.01"
+                                    value={settings.driverBaseFee}
+                                    onChange={(e) => setSettings({ ...settings, driverBaseFee: parseFloat(e.target.value) || 0 })}
                                     className="w-full bg-slate-50 border-2 border-transparent focus:border-indigo-500 px-4 py-3 rounded-2xl outline-none transition-all font-bold text-slate-700"
-                                    placeholder="2.00"
-                                    defaultValue="2.00"
                                 />
                             </div>
                             <div>
-                                <label className="block text-xs font-black text-slate-400 uppercase tracking-widest ml-1 mb-2">Adicional por Kilómetro ($)</label>
+                                <label className="block text-xs font-black text-slate-400 uppercase tracking-widest ml-1 mb-2">Pago por Kilómetro ($)</label>
                                 <input
                                     type="number"
+                                    step="0.01"
+                                    value={settings.driverPerKmFee}
+                                    onChange={(e) => setSettings({ ...settings, driverPerKmFee: parseFloat(e.target.value) || 0 })}
                                     className="w-full bg-slate-50 border-2 border-transparent focus:border-indigo-500 px-4 py-3 rounded-2xl outline-none transition-all font-bold text-slate-700"
-                                    placeholder="0.50"
-                                    defaultValue="0.50"
                                 />
                             </div>
-                            <button className="w-full bg-indigo-600 text-white font-black py-4 rounded-xl shadow-lg shadow-indigo-600/20 active:scale-95 transition-transform">
-                                Guardar Configuraciones
-                            </button>
                         </div>
+                    </div>
+
+                    {/* Tarifas de Clientes */}
+                    <div className="bg-white p-8 rounded-[32px] border border-slate-200 shadow-sm space-y-6">
+                        <div className="flex items-center gap-4">
+                            <div className="w-12 h-12 bg-emerald-50 text-emerald-600 rounded-2xl flex items-center justify-center">
+                                <DollarSign className="w-6 h-6" />
+                            </div>
+                            <div>
+                                <h3 className="text-xl font-black text-slate-900">Tarifas de Clientes</h3>
+                                <p className="text-sm font-medium text-slate-500">Lo que se le cobra al cliente.</p>
+                            </div>
+                        </div>
+
+                        <div className="space-y-4">
+                            <div>
+                                <label className="block text-xs font-black text-slate-400 uppercase tracking-widest ml-1 mb-2">Costo Base de Delivery ($)</label>
+                                <input
+                                    type="number"
+                                    step="0.01"
+                                    value={settings.clientBaseFee}
+                                    onChange={(e) => setSettings({ ...settings, clientBaseFee: parseFloat(e.target.value) || 0 })}
+                                    className="w-full bg-slate-50 border-2 border-transparent focus:border-emerald-500 px-4 py-3 rounded-2xl outline-none transition-all font-bold text-slate-700"
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-xs font-black text-slate-400 uppercase tracking-widest ml-1 mb-2">Costo por Kilómetro ($)</label>
+                                <input
+                                    type="number"
+                                    step="0.01"
+                                    value={settings.clientPerKmFee}
+                                    onChange={(e) => setSettings({ ...settings, clientPerKmFee: parseFloat(e.target.value) || 0 })}
+                                    className="w-full bg-slate-50 border-2 border-transparent focus:border-emerald-500 px-4 py-3 rounded-2xl outline-none transition-all font-bold text-slate-700"
+                                />
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="lg:col-span-2">
+                        <button
+                            onClick={handleSaveSettings}
+                            disabled={savingSettings}
+                            className="w-full bg-indigo-600 text-white font-black py-4 rounded-2xl shadow-lg shadow-indigo-600/20 active:scale-[0.98] transition-all disabled:opacity-50"
+                        >
+                            {savingSettings ? 'Guardando...' : 'Guardar Todas las Configuraciones'}
+                        </button>
                     </div>
                 </div>
             )}

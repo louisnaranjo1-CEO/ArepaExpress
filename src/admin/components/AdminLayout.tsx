@@ -1,6 +1,6 @@
 import React from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, Store, UtensilsCrossed, ClipboardList, LogOut, ChevronRight, Menu, X, Settings, HelpCircle, Trash2, User, ChevronUp, Users, UserCheck, Printer, Key, Mail as MailIcon } from 'lucide-react';
+import { LayoutDashboard, Store, UtensilsCrossed, ClipboardList, LogOut, ChevronRight, Menu, X, Settings, HelpCircle, Trash2, User, ChevronUp, Users, UserCheck, Printer, Key, Mail as MailIcon, AlertTriangle } from 'lucide-react';
 import { auth, db } from '../../lib/firebase';
 import { useAuth } from '../../context/AuthContext';
 import { updateUserEmail, updateUserPassword } from '../../lib/auth-service';
@@ -25,6 +25,7 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
     const [newValue, setNewValue] = React.useState('');
     const [isUpdating, setIsUpdating] = React.useState(false);
     const [notifications, setNotifications] = React.useState<any[]>([]);
+    const [billingInfo, setBillingInfo] = React.useState<{ type: 'warning' | 'danger' | 'none', daysLeft?: number, daysLate?: number, amount?: number }>({ type: 'none' });
 
     // Sound for notifications (optional, if you have an asset, but we can rely on visual for now)
     const playNotificationSound = () => {
@@ -55,6 +56,9 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
                 setRestaurantName(data.name || 'Mi Negocio');
                 if (data.createdAt) {
                     setCreatedAt(data.createdAt.toDate());
+                }
+                if (data.billingDay && data.billingAmount) {
+                    calculateBilling(data.billingDay, data.billingAmount);
                 }
             }
         }
@@ -96,6 +100,39 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
 
         return () => unsubscribe();
     }, [user]);
+
+    const calculateBilling = (billingDay: number, amount: number) => {
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
+        let currentMonthRef = new Date(today.getFullYear(), today.getMonth(), billingDay);
+        let diffDays = Math.round((currentMonthRef.getTime() - today.getTime()) / (1000 * 3600 * 24));
+
+        let lastMonthRef = new Date(today.getFullYear(), today.getMonth() - 1, billingDay);
+        let diffDaysLastMonth = Math.round((lastMonthRef.getTime() - today.getTime()) / (1000 * 3600 * 24));
+
+        let nextMonthRef = new Date(today.getFullYear(), today.getMonth() + 1, billingDay);
+        let diffDaysNextMonth = Math.round((nextMonthRef.getTime() - today.getTime()) / (1000 * 3600 * 24));
+
+        if (diffDaysLastMonth <= 0 && diffDaysLastMonth >= -10) {
+            setBillingInfo({ type: 'danger', daysLate: Math.abs(diffDaysLastMonth), amount });
+            return;
+        }
+        if (diffDays <= 0 && diffDays >= -10) {
+            setBillingInfo({ type: 'danger', daysLate: Math.abs(diffDays), amount });
+            return;
+        }
+        if (diffDays > 0 && diffDays <= 5) {
+            setBillingInfo({ type: 'warning', daysLeft: diffDays, amount });
+            return;
+        }
+        if (diffDaysNextMonth > 0 && diffDaysNextMonth <= 5) {
+            setBillingInfo({ type: 'warning', daysLeft: diffDaysNextMonth, amount });
+            return;
+        }
+
+        setBillingInfo({ type: 'none' });
+    };
 
     const handleLogout = async () => {
         await auth.signOut();
@@ -364,6 +401,20 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
                         {/* Notifications indicator could go here */}
                     </div>
                 </header>
+
+                {/* Billing Banner */}
+                {billingInfo.type === 'danger' && (
+                    <div className="bg-red-500 text-white px-4 py-3 flex items-center justify-center gap-3 text-sm font-bold flex-shrink-0 animate-in slide-in-from-top duration-500 z-10 shadow-md">
+                        <AlertTriangle className="w-5 h-5 flex-shrink-0" />
+                        <span className="text-center">¡Aviso Importante! Su suscripción mensual de ${billingInfo.amount?.toFixed(2)} está vencida por {billingInfo.daysLate} {billingInfo.daysLate === 1 ? 'día' : 'días'}. Por favor, realice el pago para evitar suspensión del servicio.</span>
+                    </div>
+                )}
+                {billingInfo.type === 'warning' && (
+                    <div className="bg-amber-400 text-amber-950 px-4 py-3 flex items-center justify-center gap-3 text-sm font-bold flex-shrink-0 animate-in slide-in-from-top duration-500 z-10 shadow-md">
+                        <AlertTriangle className="w-5 h-5 flex-shrink-0" />
+                        <span className="text-center">Recordatorio: Su suscripción mensual de ${billingInfo.amount?.toFixed(2)} vence en {billingInfo.daysLeft} {billingInfo.daysLeft === 1 ? 'día' : 'días'}.</span>
+                    </div>
+                )}
 
                 {/* Notifications Toast Container */}
                 <div className="fixed top-24 right-6 z-[100] flex flex-col gap-3 pointer-events-none">

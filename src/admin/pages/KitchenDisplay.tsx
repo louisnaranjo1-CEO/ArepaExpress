@@ -21,7 +21,7 @@ interface Order {
     tableNumber?: string;
     userName?: string;
     userPhone?: string;
-    notes?: string;
+    orderNote?: string;
 }
 
 interface Station {
@@ -57,7 +57,7 @@ export default function KitchenDisplay() {
         const q = query(
             ordersRef,
             where('restaurantId', '==', user.uid),
-            where('status', 'in', ['pending', 'preparing']),
+            where('status', 'in', ['pending', 'preparing', 'kitchen']),
             orderBy('createdAt', 'asc')
         );
 
@@ -102,7 +102,7 @@ export default function KitchenDisplay() {
         if (!autoPrint || selectedStation === 'all' || orders.length === 0) return;
 
         const latestPendingOrder = [...orders]
-            .filter(o => o.status === 'pending')
+            .filter(o => o.status === 'pending' || o.status === 'kitchen')
             .sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0))[0];
 
         if (latestPendingOrder && latestPendingOrder.id !== lastProcessedOrderId) {
@@ -155,7 +155,7 @@ export default function KitchenDisplay() {
                         </div>
                     `).join('')}
 
-                    ${order.notes ? `<div class="notes"><strong>NOTAS:</strong> ${order.notes}</div>` : ''}
+                    ${order.orderNote ? `<div class="notes"><strong>NOTAS:</strong> ${order.orderNote}</div>` : ''}
 
                     <div class="footer">
                         <p>*** DeliExpress - Comanda de Servicio ***</p>
@@ -277,10 +277,10 @@ export default function KitchenDisplay() {
                                     </div>
                                 ))}
 
-                                {order.notes && (
+                                {order.orderNote && (
                                     <div className="p-4 bg-amber-50 rounded-2xl border border-amber-100">
                                         <p className="text-xs font-black uppercase tracking-widest text-amber-600 mb-1">Notas</p>
-                                        <p className="text-sm font-bold text-amber-800 leading-tight">{order.notes}</p>
+                                        <p className="text-sm font-bold text-amber-800 leading-tight">{order.orderNote}</p>
                                     </div>
                                 )}
                             </div>

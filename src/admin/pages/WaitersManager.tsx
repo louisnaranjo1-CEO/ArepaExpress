@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { UserCheck, Plus, Search, Trash2, Edit2, Loader2, Save, X, User } from 'lucide-react';
+import { Plus, Search, Trash2, Edit2, Loader2, Save, X, User } from 'lucide-react';
 import { db } from '../../lib/firebase';
 import { useAuth } from '../../context/AuthContext';
-import { collection, addDoc, getDocs, deleteDoc, doc, updateDoc, query, orderBy } from 'firebase/firestore';
+import { collection, addDoc, getDocs, deleteDoc, doc, query } from 'firebase/firestore';
 
 interface Waiter {
     id: string;
@@ -22,6 +22,7 @@ export default function WaitersManager() {
     // New Waiter form state
     const [newName, setNewName] = useState('');
     const [newEmail, setNewEmail] = useState('');
+    const [newPassword, setNewPassword] = useState('');
     const [newShift, setNewShift] = useState<Waiter['shift']>('mañana');
     const [isSaving, setIsSaving] = useState(false);
 
@@ -47,13 +48,14 @@ export default function WaitersManager() {
     };
 
     const handleAddWaiter = async () => {
-        if (!user || !newName || !newEmail) return;
+        if (!user || !newName || !newEmail || !newPassword) return;
         setIsSaving(true);
         try {
             const waitersRef = collection(db, 'restaurants', user.uid, 'waiters');
             await addDoc(waitersRef, {
                 name: newName,
                 email: newEmail,
+                password: newPassword, // En un sistema de prod, esto debería estar hasheado en el backend
                 shift: newShift,
                 status: 'active',
                 createdAt: new Date()
@@ -62,6 +64,7 @@ export default function WaitersManager() {
             // Reset form and refresh list
             setNewName('');
             setNewEmail('');
+            setNewPassword('');
             setIsAdding(false);
             fetchWaiters();
         } catch (error) {
@@ -141,6 +144,16 @@ export default function WaitersManager() {
                                 <p className="text-[10px] text-slate-400 italic ml-2">* Se usará para iniciar sesión en la app de meseros.</p>
                             </div>
                             <div className="space-y-2">
+                                <label className="text-sm font-bold text-slate-500 ml-2">Contraseña</label>
+                                <input
+                                    type="text"
+                                    value={newPassword}
+                                    onChange={(e) => setNewPassword(e.target.value)}
+                                    className="w-full bg-slate-50 border-2 border-transparent focus:border-primary focus:bg-white p-4 rounded-2xl outline-none transition-all font-bold text-slate-700"
+                                    placeholder="Contraseña o PIN numérico"
+                                />
+                            </div>
+                            <div className="space-y-2">
                                 <label className="text-sm font-bold text-slate-500 ml-2">Turno Asignado</label>
                                 <select
                                     value={newShift}
@@ -156,7 +169,7 @@ export default function WaitersManager() {
 
                         <button
                             onClick={handleAddWaiter}
-                            disabled={isSaving || !newName || !newEmail}
+                            disabled={isSaving || !newName || !newEmail || !newPassword}
                             className="w-full bg-primary text-white py-4 rounded-2xl font-black shadow-xl shadow-primary/20 flex items-center justify-center gap-2 disabled:opacity-50"
                         >
                             {isSaving ? <Loader2 className="w-5 h-5 animate-spin" /> : <Save className="w-5 h-5" />}

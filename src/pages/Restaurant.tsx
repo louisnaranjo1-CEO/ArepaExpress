@@ -21,6 +21,9 @@ export default function RestaurantPage() {
   const [followerCount, setFollowerCount] = useState(0);
   const { user } = useAuth();
 
+  const isWaiter = localStorage.getItem('isWaiter') === 'true';
+  const waiterData = JSON.parse(localStorage.getItem('waiterData') || '{}');
+
   const { addItem, totalItems, totalPrice } = useCart();
 
   useEffect(() => {
@@ -182,6 +185,12 @@ export default function RestaurantPage() {
 
   return (
     <div className="relative w-full min-h-screen bg-white group/design-root overflow-x-hidden flex flex-col">
+      {isWaiter && (
+        <div className="bg-amber-500 text-white text-center py-1.5 text-[10px] font-black uppercase tracking-[0.2em] shadow-sm z-50 relative flex justify-center items-center gap-2">
+          <UserCheck className="w-3.5 h-3.5" />
+          MESERO: {waiterData.name || 'Personal'}
+        </div>
+      )}
       {/* Hero Image & Navigation */}
       <div className="relative w-full h-64 md:h-80 shrink-0 bg-slate-100">
         <div
@@ -505,7 +514,7 @@ export default function RestaurantPage() {
           <Link to="/cart" className="w-full bg-primary hover:bg-orange-600 text-white rounded-2xl p-4 shadow-xl shadow-orange-500/40 flex items-center justify-between transition-colors ring-4 ring-white/10 backdrop-blur-sm">
             <div className="flex items-center gap-3">
               <div className="bg-white/20 px-3 py-1 rounded-lg text-sm font-black flex items-center justify-center min-w-[36px]">{totalItems}</div>
-              <span className="font-black text-base uppercase tracking-wider">Ver mi orden</span>
+              <span className="font-black text-base uppercase tracking-wider">{isWaiter ? 'Ver Comanda' : 'Ver mi orden'}</span>
             </div>
             <div className="flex items-center gap-2">
               <span className="text-[10px] font-bold opacity-80 uppercase tracking-widest">Total</span>

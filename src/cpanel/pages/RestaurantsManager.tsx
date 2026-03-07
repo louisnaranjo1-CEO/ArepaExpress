@@ -9,6 +9,7 @@ interface RestaurantDetail extends Restaurant {
     followersCount?: number;
     productsCount?: number;
     totalOrders?: number;
+    status?: 'active' | 'busy' | 'unavailable';
 }
 
 export default function RestaurantsManager() {
@@ -106,9 +107,19 @@ export default function RestaurantsManager() {
                                             <span className="text-sm font-medium text-slate-600">{restaurant.category}</span>
                                         </td>
                                         <td className="px-8 py-5 text-center">
-                                            <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest ${isActive ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}`}>
-                                                {isActive ? <CheckCircle className="w-3.5 h-3.5" /> : <XCircle className="w-3.5 h-3.5" />}
-                                                {isActive ? 'Activo' : 'Suspendido'}
+                                            <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest ${!isActive ? 'bg-slate-100 text-slate-700' :
+                                                    restaurant.status === 'busy' ? 'bg-amber-100 text-amber-700' :
+                                                        restaurant.status === 'unavailable' ? 'bg-red-100 text-red-700' :
+                                                            'bg-emerald-100 text-emerald-700'
+                                                }`}>
+                                                {!isActive ? <XCircle className="w-3.5 h-3.5" /> :
+                                                    restaurant.status === 'busy' ? <Store className="w-3.5 h-3.5" /> :
+                                                        restaurant.status === 'unavailable' ? <XCircle className="w-3.5 h-3.5" /> :
+                                                            <CheckCircle className="w-3.5 h-3.5" />}
+
+                                                {!isActive ? 'Suspendido' :
+                                                    restaurant.status === 'busy' ? 'Ocupado' :
+                                                        restaurant.status === 'unavailable' ? 'No Disponible' : 'Activo'}
                                             </span>
                                         </td>
                                         <td className="px-8 py-5 text-right">

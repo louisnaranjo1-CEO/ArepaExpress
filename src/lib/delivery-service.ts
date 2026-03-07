@@ -15,6 +15,7 @@ import {
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 
 export type DeliveryStatus = 'pending' | 'active' | 'rejected' | 'inactive';
+export type AvailabilityStatus = 'active' | 'busy' | 'offline';
 export type VehicleType = 'moto' | 'carro' | 'bicicleta';
 
 export interface DeliveryDriver {
@@ -29,6 +30,7 @@ export interface DeliveryDriver {
     vehiclePlate: string;
     status: DeliveryStatus;
     isOnline: boolean;
+    availability?: AvailabilityStatus;
     currentLocation?: GeoPoint | null;
     documents: {
         selfieUrl: string;
@@ -68,6 +70,7 @@ export const registerDriver = async (
         ...data,
         status: 'pending',
         isOnline: false,
+        availability: 'offline',
         currentLocation: null,
         documents: {
             selfieUrl,
@@ -111,6 +114,16 @@ export const setDriverOnlineStatus = async (uid: string, isOnline: boolean) => {
     const docRef = doc(db, 'delivery_drivers', uid);
     await updateDoc(docRef, {
         isOnline,
+        availability: isOnline ? 'active' : 'offline',
+        updatedAt: serverTimestamp()
+    });
+};
+
+export const setDriverAvailability = async (uid: string, availability: AvailabilityStatus) => {
+    const docRef = doc(db, 'delivery_drivers', uid);
+    await updateDoc(docRef, {
+        availability,
+        isOnline: availability !== 'offline',
         updatedAt: serverTimestamp()
     });
 };
