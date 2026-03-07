@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { collection, query, getDocs, doc, updateDoc, onSnapshot } from 'firebase/firestore';
+import { collection, query, getDocs, doc, updateDoc, onSnapshot, where, writeBatch } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import { DeliveryDriver } from '../../lib/delivery-service';
 import { Truck, CheckCircle2, XCircle, FileText, User, DollarSign, ExternalLink } from 'lucide-react';
@@ -10,6 +10,10 @@ export default function DeliveryManagement() {
     const [loading, setLoading] = useState(true);
     const [activeTab, setActiveTab] = useState<'requests' | 'active' | 'finances'>('requests');
     const [selectedDriver, setSelectedDriver] = useState<DeliveryDriver | null>(null);
+    const [selectedDriverFinance, setSelectedDriverFinance] = useState<DeliveryDriver | null>(null);
+    const [driverPendingBalance, setDriverPendingBalance] = useState({ total: 0, count: 0 });
+    const [payingDriver, setPayingDriver] = useState(false);
+    const [updateRequests, setUpdateRequests] = useState<any[]>([]);
 
     useEffect(() => {
         const q = query(collection(db, 'delivery_drivers'));
@@ -18,7 +22,17 @@ export default function DeliveryManagement() {
             setDrivers(data);
             setLoading(false);
         });
-        return () => unsubscribe();
+
+        const qUpdates = query(collection(db, 'delivery_update_requests'), where('status', '==', 'pending'));
+        const unsubscribeUpdates = onSnapshot(qUpdates, (snapshot) => {
+            const data = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+            setUpdateRequests(data);
+        });
+
+        return () => {
+            unsubscribe();
+            unsubscribeUpdates();
+        };
     }, []);
 
     const pendingDrivers = drivers.filter(d => d.status === 'pending');
@@ -33,6 +47,89 @@ export default function DeliveryManagement() {
         } catch (error) {
             console.error("Error updating driver status:", error);
             alert("Error al actualizar estado");
+        }
+    };
+
+    const handleApproveUpdateRequest = async (request: any) => {
+        if (!window.confirm(`¿Aprobar actualización de datos para ${request.driverName}?`)) return;
+        try {
+            const batch = writeBatch(db);
+            const driverRef = doc(db, 'delivery_drivers', request.driverId);
+            batch.update(driverRef, {
+                cedula: request.newData.cedula,
+                vehicleType: request.newData.vehicleType,
+                vehiclePlate: request.newData.vehiclePlate
+            });
+
+            const requestRef = doc(db, 'delivery_update_requests', request.id);
+            batch.update(requestRef, { status: 'approved' });
+
+            await batch.commit();
+            alert('Datos actualizados correctamente.');
+        } catch (error) {
+            console.error(error);
+            alert('Error al aprobar la actualización.');
+        }
+    };
+
+    const handleRejectUpdateRequest = async (requestId: string) => {
+        if (!window.confirm('¿Rechazar esta solicitud de actualización?')) return;
+        try {
+            await updateDoc(doc(db, 'delivery_update_requests', requestId), { status: 'rejected' });
+        } catch (error) {
+            console.error(error);
+        }
+    };
+
+    const handleOpenFinanceModal = async (driver: DeliveryDriver) => {
+        setSelectedDriverFinance(driver);
+        setDriverPendingBalance({ total: 0, count: 0 }); // Reset while loading
+
+        try {
+            const q = query(
+                collection(db, 'orders'),
+                where('deliveryDriverId', '==', driver.id),
+                where('status', '==', 'completed')
+            );
+            const snapshot = await getDocs(q);
+            const pending = snapshot.docs.filter(doc => !doc.data().deliveryPaid);
+
+            const total = pending.reduce((sum, doc) => sum + (doc.data().deliveryFee || 0), 0);
+            setDriverPendingBalance({ total, count: pending.length });
+        } catch (error) {
+            console.error("Error fetching driver balance:", error);
+        }
+    };
+
+    const handlePayDriver = async () => {
+        if (!selectedDriverFinance || driverPendingBalance.count === 0) return;
+
+        if (!window.confirm(`¿Confirmas el pago de $${driverPendingBalance.total.toFixed(2)} al repartidor ${selectedDriverFinance.fullName}?`)) return;
+
+        setPayingDriver(true);
+        try {
+            // Find all pending orders for this driver again just to be safe
+            const q = query(
+                collection(db, 'orders'),
+                where('deliveryDriverId', '==', selectedDriverFinance.id),
+                where('status', '==', 'completed')
+            );
+            const snapshot = await getDocs(q);
+            const pendingDocs = snapshot.docs.filter(doc => !doc.data().deliveryPaid);
+
+            const batch = writeBatch(db);
+            pendingDocs.forEach(d => {
+                batch.update(d.ref, { deliveryPaid: true });
+            });
+
+            await batch.commit();
+            alert('¡Pago registrado con éxito! El historial del piloto ha sido actualizado.');
+            setSelectedDriverFinance(null);
+        } catch (error) {
+            console.error("Error paying driver:", error);
+            alert("Error al registrar el pago.");
+        } finally {
+            setPayingDriver(false);
         }
     };
 
@@ -78,62 +175,101 @@ export default function DeliveryManagement() {
 
             {/* TAB: REQUESTS */}
             {activeTab === 'requests' && (
-                <div className="space-y-4">
-                    {pendingDrivers.length === 0 ? (
-                        <div className="text-center py-20 bg-white rounded-[32px] border border-slate-100 shadow-sm">
-                            <div className="w-20 h-20 bg-emerald-50 text-emerald-500 rounded-full flex items-center justify-center mx-auto mb-4">
-                                <CheckCircle2 className="w-10 h-10" />
+                <div className="space-y-8">
+                    {/* Actualizaciones de Datos */}
+                    {updateRequests.length > 0 && (
+                        <div>
+                            <h3 className="text-xl font-black text-slate-800 mb-4">Actualizaciones de Datos ({updateRequests.length})</h3>
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                                {updateRequests.map(req => (
+                                    <div key={req.id} className="bg-amber-50 rounded-[24px] border border-amber-200 overflow-hidden shadow-sm">
+                                        <div className="p-5 border-b border-amber-200/50">
+                                            <h3 className="font-bold text-slate-900 leading-tight mb-3">{req.driverName}</h3>
+                                            <div className="space-y-2 text-sm bg-white p-3 rounded-xl border border-amber-100">
+                                                <p className="flex justify-between"><span className="text-slate-500 font-medium">Cédula:</span> <span className="font-bold text-slate-800">{req.newData.cedula}</span></p>
+                                                <p className="flex justify-between"><span className="text-slate-500 font-medium">Vehículo:</span> <span className="font-bold text-slate-800 capitalize">{req.newData.vehicleType}</span></p>
+                                                <p className="flex justify-between"><span className="text-slate-500 font-medium">Placa:</span> <span className="font-bold text-slate-800 uppercase">{req.newData.vehiclePlate}</span></p>
+                                            </div>
+                                        </div>
+                                        <div className="p-4 grid grid-cols-2 gap-3">
+                                            <button
+                                                onClick={() => handleRejectUpdateRequest(req.id)}
+                                                className="bg-white border-2 border-red-100 text-red-600 font-bold py-2 rounded-xl text-sm"
+                                            >
+                                                Rechazar
+                                            </button>
+                                            <button
+                                                onClick={() => handleApproveUpdateRequest(req)}
+                                                className="bg-emerald-500 text-white font-bold py-2 rounded-xl text-sm"
+                                            >
+                                                Aprobar
+                                            </button>
+                                        </div>
+                                    </div>
+                                ))}
                             </div>
-                            <h3 className="text-xl font-black text-slate-900">Al Día</h3>
-                            <p className="text-slate-500">No hay solicitudes de pilotos pendientes por revisar.</p>
-                        </div>
-                    ) : (
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                            {pendingDrivers.map(driver => (
-                                <div key={driver.id} className="bg-white rounded-[24px] border border-slate-200 overflow-hidden shadow-sm hover:shadow-md transition-all">
-                                    <div className="p-5 border-b border-slate-100">
-                                        <div className="flex items-center gap-4 mb-4">
-                                            <img src={driver.documents.selfieUrl} alt="Selfie" className="w-16 h-16 rounded-full object-cover bg-slate-100" />
-                                            <div>
-                                                <h3 className="font-bold text-slate-900 leading-tight">{driver.fullName}</h3>
-                                                <p className="text-xs text-slate-500">{driver.phone} • {driver.age} años</p>
-                                            </div>
-                                        </div>
-                                        <div className="grid grid-cols-2 gap-2 text-xs">
-                                            <div className="bg-slate-50 p-2 rounded-lg">
-                                                <span className="text-slate-400 font-bold uppercase tracking-wider block mb-0.5">Cédula</span>
-                                                <span className="font-bold text-slate-700">{driver.cedula}</span>
-                                            </div>
-                                            <div className="bg-slate-50 p-2 rounded-lg">
-                                                <span className="text-slate-400 font-bold uppercase tracking-wider block mb-0.5">Vehículo</span>
-                                                <span className="font-bold text-slate-700 capitalize">{driver.vehicleType}</span>
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <div className="p-4 bg-slate-50 grid grid-cols-2 gap-3">
-                                        <button
-                                            onClick={() => setSelectedDriver(driver)}
-                                            className="col-span-2 bg-white border border-slate-200 text-slate-700 font-bold py-2 rounded-xl text-sm"
-                                        >
-                                            Revisar Documentos
-                                        </button>
-                                        <button
-                                            onClick={() => handleUpdateStatus(driver.id, 'rejected')}
-                                            className="bg-red-100 text-red-600 font-bold py-2 rounded-xl text-sm"
-                                        >
-                                            Rechazar
-                                        </button>
-                                        <button
-                                            onClick={() => handleUpdateStatus(driver.id, 'active')}
-                                            className="bg-emerald-500 text-white font-bold py-2 rounded-xl text-sm"
-                                        >
-                                            Aprobar Piloto
-                                        </button>
-                                    </div>
-                                </div>
-                            ))}
                         </div>
                     )}
+
+                    {/* Nuevos Pilotos */}
+                    <div>
+                        <h3 className="text-xl font-black text-slate-800 mb-4">Nuevos Pilotos ({pendingDrivers.length})</h3>
+                        {pendingDrivers.length === 0 ? (
+                            <div className="text-center py-20 bg-white rounded-[32px] border border-slate-100 shadow-sm">
+                                <div className="w-20 h-20 bg-emerald-50 text-emerald-500 rounded-full flex items-center justify-center mx-auto mb-4">
+                                    <CheckCircle2 className="w-10 h-10" />
+                                </div>
+                                <h3 className="text-xl font-black text-slate-900">Al Día</h3>
+                                <p className="text-slate-500">No hay solicitudes de pilotos pendientes por revisar.</p>
+                            </div>
+                        ) : (
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                                {pendingDrivers.map(driver => (
+                                    <div key={driver.id} className="bg-white rounded-[24px] border border-slate-200 overflow-hidden shadow-sm hover:shadow-md transition-all">
+                                        <div className="p-5 border-b border-slate-100">
+                                            <div className="flex items-center gap-4 mb-4">
+                                                <img src={driver.documents.selfieUrl} alt="Selfie" className="w-16 h-16 rounded-full object-cover bg-slate-100" />
+                                                <div>
+                                                    <h3 className="font-bold text-slate-900 leading-tight">{driver.fullName}</h3>
+                                                    <p className="text-xs text-slate-500">{driver.phone} • {driver.age} años</p>
+                                                </div>
+                                            </div>
+                                            <div className="grid grid-cols-2 gap-2 text-xs">
+                                                <div className="bg-slate-50 p-2 rounded-lg">
+                                                    <span className="text-slate-400 font-bold uppercase tracking-wider block mb-0.5">Cédula</span>
+                                                    <span className="font-bold text-slate-700">{driver.cedula}</span>
+                                                </div>
+                                                <div className="bg-slate-50 p-2 rounded-lg">
+                                                    <span className="text-slate-400 font-bold uppercase tracking-wider block mb-0.5">Vehículo</span>
+                                                    <span className="font-bold text-slate-700 capitalize">{driver.vehicleType}</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div className="p-4 bg-slate-50 grid grid-cols-2 gap-3">
+                                            <button
+                                                onClick={() => setSelectedDriver(driver)}
+                                                className="col-span-2 bg-white border border-slate-200 text-slate-700 font-bold py-2 rounded-xl text-sm"
+                                            >
+                                                Revisar Documentos
+                                            </button>
+                                            <button
+                                                onClick={() => handleUpdateStatus(driver.id, 'rejected')}
+                                                className="bg-red-100 text-red-600 font-bold py-2 rounded-xl text-sm"
+                                            >
+                                                Rechazar
+                                            </button>
+                                            <button
+                                                onClick={() => handleUpdateStatus(driver.id, 'active')}
+                                                className="bg-emerald-500 text-white font-bold py-2 rounded-xl text-sm"
+                                            >
+                                                Aprobar Piloto
+                                            </button>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </div>
                 </div>
             )}
 
@@ -185,7 +321,13 @@ export default function DeliveryManagement() {
                                                 {driver.isOnline ? 'En Línea' : 'Desconectado'}
                                             </span>
                                         </td>
-                                        <td className="p-4 pr-6 text-right">
+                                        <td className="p-4 pr-6 text-right space-x-3">
+                                            <button
+                                                onClick={() => handleOpenFinanceModal(driver)}
+                                                className="text-indigo-600 text-xs font-bold hover:underline opacity-0 group-hover:opacity-100 transition-opacity"
+                                            >
+                                                Finanzas
+                                            </button>
                                             <button
                                                 onClick={() => handleUpdateStatus(driver.id, 'inactive')}
                                                 className="text-red-500 text-xs font-bold hover:underline opacity-0 group-hover:opacity-100 transition-opacity"
@@ -309,6 +451,60 @@ export default function DeliveryManagement() {
                                     className="flex-1 bg-emerald-500 text-white font-black py-4 rounded-2xl shadow-lg shadow-emerald-500/20 active:scale-95 transition-all"
                                 >
                                     Aprobar Piloto
+                                </button>
+                            </div>
+                        </motion.div>
+                    </motion.div>
+                )}
+
+                {/* Finance Modal */}
+                {selectedDriverFinance && (
+                    <motion.div
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+                    >
+                        <motion.div
+                            initial={{ scale: 0.95, y: 20 }}
+                            animate={{ scale: 1, y: 0 }}
+                            exit={{ scale: 0.95, y: 20 }}
+                            className="bg-white w-full max-w-md rounded-[32px] shadow-2xl overflow-hidden"
+                        >
+                            <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
+                                <div>
+                                    <h3 className="text-xl font-black text-slate-900">Pago a Repartidor</h3>
+                                    <p className="text-sm font-medium text-slate-500">{selectedDriverFinance.fullName}</p>
+                                </div>
+                                <button onClick={() => setSelectedDriverFinance(null)} className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-full transition-colors">
+                                    <XCircle className="w-6 h-6" />
+                                </button>
+                            </div>
+
+                            <div className="p-8 text-center space-y-4">
+                                <div className="w-20 h-20 bg-indigo-50 rounded-full flex items-center justify-center mx-auto text-indigo-600">
+                                    <DollarSign className="w-10 h-10" />
+                                </div>
+                                <div>
+                                    <p className="text-slate-500 font-medium uppercase tracking-widest text-xs mb-1">Deuda Pendiente</p>
+                                    <h4 className="text-5xl font-black text-slate-900 tracking-tighter">${driverPendingBalance.total.toFixed(2)}</h4>
+                                    <p className="text-sm text-slate-500 mt-2 font-medium">Correspondiente a {driverPendingBalance.count} pedidos sin liquidar.</p>
+                                </div>
+                            </div>
+
+                            <div className="p-6 bg-slate-50 border-t border-slate-100 space-y-3">
+                                <button
+                                    onClick={handlePayDriver}
+                                    disabled={driverPendingBalance.count === 0 || payingDriver}
+                                    className="w-full bg-emerald-500 hover:bg-emerald-600 text-white font-black py-4 rounded-2xl shadow-lg shadow-emerald-500/20 active:scale-95 transition-all disabled:opacity-50 disabled:active:scale-100 disabled:shadow-none"
+                                >
+                                    {payingDriver ? 'Procesando...' : 'Marcar Saldo como Pagado'}
+                                </button>
+                                <button
+                                    onClick={() => setSelectedDriverFinance(null)}
+                                    className="w-full bg-white border-2 border-slate-200 text-slate-600 font-bold py-3.5 rounded-2xl hover:bg-slate-50 transition-colors"
+                                >
+                                    Cancelar
                                 </button>
                             </div>
                         </motion.div>

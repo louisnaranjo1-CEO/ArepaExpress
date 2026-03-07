@@ -151,7 +151,7 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
     ];
 
     return (
-        <div className="h-screen bg-slate-50 flex overflow-hidden">
+        <div className="h-[100dvh] bg-slate-50 flex overflow-hidden">
             {/* Mobile Sidebar Backdrop */}
             {isSidebarOpen && (
                 <div
@@ -386,7 +386,7 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
                     ))}
                 </div>
 
-                <div className="flex-1 overflow-y-auto p-6 md:p-8">
+                <div className="flex-1 overflow-y-auto p-4 md:p-8 relative">
                     {children}
                 </div>
             </main>
