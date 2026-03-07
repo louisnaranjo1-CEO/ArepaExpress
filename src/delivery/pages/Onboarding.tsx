@@ -1,11 +1,13 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { registerDriver } from '../../lib/delivery-service';
 import { Upload, ChevronRight, CheckCircle2, AlertCircle } from 'lucide-react';
+import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { db } from '../../lib/firebase';
 
 export default function Onboarding() {
-    const { user } = useAuth();
+    const { user, userData } = useAuth();
     const navigate = useNavigate();
     const [loading, setLoading] = useState(false);
     const [step, setStep] = useState(1);
@@ -20,6 +22,16 @@ export default function Onboarding() {
         vehicleType: 'moto' as 'moto' | 'carro' | 'bicicleta',
         vehiclePlate: ''
     });
+
+    useEffect(() => {
+        if (user) {
+            setFormData(prev => ({
+                ...prev,
+                fullName: prev.fullName || user.displayName || '',
+                phone: prev.phone || userData?.phone || ''
+            }));
+        }
+    }, [user, userData]);
 
     const [files, setFiles] = useState<{
         selfie: File | null;
@@ -82,6 +94,13 @@ export default function Onboarding() {
                     license: files.license!,
                 }
             );
+
+            // También actualizar la colección global de usuarios
+            await setDoc(doc(db, 'users', user.uid), {
+                displayName: formData.fullName,
+                phone: formData.phone,
+                updatedAt: serverTimestamp()
+            }, { merge: true });
 
             // Forzar recarga completa para que App.tsx detecte el nuevo rol
             window.location.href = '/delivery/pending';
@@ -197,8 +216,8 @@ export default function Onboarding() {
                                             key={type}
                                             onClick={() => setFormData({ ...formData, vehicleType: type })}
                                             className={`py-3 px-2 rounded-2xl border-2 font-black text-xs uppercase tracking-wider transition-all ${formData.vehicleType === type
-                                                    ? 'bg-indigo-50 border-indigo-600 text-indigo-700'
-                                                    : 'bg-white border-slate-200 text-slate-400 hover:border-slate-300'
+                                                ? 'bg-indigo-50 border-indigo-600 text-indigo-700'
+                                                : 'bg-white border-slate-200 text-slate-400 hover:border-slate-300'
                                                 }`}
                                         >
                                             {type}

@@ -16,6 +16,9 @@ function DeliveryRoutes() {
     const [driverProfile, setDriverProfile] = useState<any>(null);
     const [loadingDriver, setLoadingDriver] = useState(true);
 
+    const isProfileComplete = !!(userData?.displayName && userData?.phone);
+    const isDriverProfileComplete = !!(userData?.displayName && userData?.phone);
+
     useEffect(() => {
         if (!user) {
             setLoadingDriver(false);
@@ -60,6 +63,16 @@ function DeliveryRoutes() {
                 <Routes>
                     <Route path="/pending" element={<PendingApproval />} />
                     <Route path="*" element={<Navigate to="/pending" replace />} />
+                </Routes>
+            );
+        }
+
+        // Si está activo pero le faltan datos básicos (nombre/teléfono)
+        if (!isDriverProfileComplete) {
+            return (
+                <Routes>
+                    <Route path="/onboarding" element={<Onboarding />} />
+                    <Route path="*" element={<Navigate to="/onboarding" replace />} />
                 </Routes>
             );
         }

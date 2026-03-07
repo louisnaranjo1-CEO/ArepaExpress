@@ -1,21 +1,25 @@
 import { messaging, db } from './firebase';
-import { getToken } from 'firebase/messaging';
+import { getToken, isSupported } from 'firebase/messaging';
 import { doc, updateDoc, arrayUnion } from 'firebase/firestore';
 
 export const requestNotificationPermission = async (userId: string) => {
     try {
-        if (!messaging) return false;
+        const supported = await isSupported();
+        if (!supported || !messaging) {
+            console.warn('Notifications not supported in this browser.');
+            return { success: false, error: 'Tu navegador no soporta notificaciones push.' };
+        }
 
         const permission = await Notification.requestPermission();
         if (permission === 'granted') {
             console.log('Notification permission granted.');
 
             // Get FCM Token
-            // NOTE: You need to replace this VAPID_KEY with the one from your Firebase Console
-            // Project Settings -> Cloud Messaging -> Web Push certificates -> Key Pair
             const VAPID_KEY = "BPrn5pkkct8Vf4Q8mxZf6q9z7E477VHzoqlmjF-74G__fslZmWQs50fDeZ7DvvB4e4BKS2abbJ_iDBsHBigluH4";
 
-            const token = await getToken(messaging, { vapidKey: VAPID_KEY });
+            const token = await getToken(messaging, {
+                vapidKey: VAPID_KEY,
+            });
 
             if (token) {
                 console.log('FCM Token:', token);
@@ -27,18 +31,19 @@ export const requestNotificationPermission = async (userId: string) => {
                     notificationsEnabled: true
                 });
 
-                return true;
+                return { success: true };
             } else {
-                console.warn('No registration token available. Request permission to generate one.');
-                return false;
+                console.warn('No registration token available.');
+                return { success: false, error: 'No se pudo generar el token de notificación.' };
             }
+        } else if (permission === 'denied') {
+            return { success: false, error: 'Has bloqueado las notificaciones. Debes habilitarlas en la configuración de tu navegador.' };
         } else {
-            console.warn('Unable to get permission to notify.');
-            return false;
+            return { success: false, error: 'Permiso de notificaciones no concedido.' };
         }
-    } catch (error) {
+    } catch (error: any) {
         console.error('An error occurred while retrieving token:', error);
-        return false;
+        return { success: false, error: error.message || 'Error desconocido al solicitar permisos.' };
     }
 };
 

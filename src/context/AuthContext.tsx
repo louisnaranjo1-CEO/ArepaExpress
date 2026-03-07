@@ -23,15 +23,19 @@ interface UserData {
     displayName?: string;
     email?: string;
     photoURL?: string;
+    notificationsEnabled?: boolean;
+    fcmTokens?: string[];
+    phone?: string;
 }
 
 interface AuthContextType {
     user: User | null;
     userData: UserData | null;
     loading: boolean;
+    isProfileComplete: boolean;
 }
 
-const AuthContext = createContext<AuthContextType>({ user: null, userData: null, loading: true });
+const AuthContext = createContext<AuthContextType>({ user: null, userData: null, loading: true, isProfileComplete: false });
 
 export const useAuth = () => useContext(AuthContext);
 
@@ -83,8 +87,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         };
     }, []);
 
+    const isProfileComplete = !!(userData?.displayName && userData?.phone);
+
     return (
-        <AuthContext.Provider value={{ user, userData, loading }}>
+        <AuthContext.Provider value={{ user, userData, loading, isProfileComplete }}>
             {!loading && children}
         </AuthContext.Provider>
     );

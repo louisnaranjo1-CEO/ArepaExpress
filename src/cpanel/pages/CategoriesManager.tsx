@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { collection, getDocs, addDoc, deleteDoc, doc, updateDoc, query, orderBy } from 'firebase/firestore';
+import { collection, getDocs, addDoc, deleteDoc, doc, updateDoc, query, orderBy, writeBatch } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
-import { Trash2, Plus, Tag, Edit3, Save, X, Search } from 'lucide-react';
+import { Trash2, Plus, Tag, Edit3, Save, X, Search, RefreshCw } from 'lucide-react';
+import { GLOBAL_CATEGORIES } from '../../lib/constants';
 import { motion, AnimatePresence } from 'framer-motion';
 
 interface Category {
@@ -32,11 +33,82 @@ export default function CategoriesManager() {
                 id: doc.id,
                 ...doc.data()
             })) as Category[];
-            setCategories(data);
+
+            if (data.length === 0) {
+                // If empty, sync defaults automatically the first time
+                await syncDefaults(true);
+            } else {
+                setCategories(data);
+            }
         } catch (error) {
             console.error("Error fetching categories: ", error);
         } finally {
             setLoading(false);
+        }
+    };
+
+    const syncDefaults = async (isAuto = false) => {
+        if (!isAuto && !window.confirm("¿Deseas importar las categorías por defecto?")) return;
+
+        try {
+            const batch = writeBatch(db);
+            const iconsMap: Record<string, string> = {
+                'Arepas': '🫓',
+                'Hamburguesas': '🍔',
+                'Sushi': '🍣',
+                'Pizza': '🍕',
+                'Bebidas': '🥤',
+                'Postres': '🍰',
+                'Almuerzos': '🍱',
+                'Cachapas': '🌽',
+                'Carne Asada': '🥩',
+                'Cenas': '🍽️',
+                'Cerveza': '🍺',
+                'Desayunos': '🍳',
+                'Empanadas': '🥟',
+                'Ensaladas': '🥗',
+                'Gaseosas': '🥤',
+                'Jugos': '🍹',
+                'Marisquería': '🦐',
+                'Parrillas': '🍖',
+                'Pollo': '🍗',
+                'Pollo a la Broaster': '🍗',
+                'Pollo Asado': '🍗',
+                'Perros Calientes': '🌭',
+                'Promociones': '🏷️',
+                'Chino': '🥡',
+                'Comida Venezolana': '🇻🇪'
+            };
+
+            for (const catName of GLOBAL_CATEGORIES) {
+                // Check if already exists in local state (if any) or assume empty if isAuto
+                const alreadyExists = categories.find(c => c.name.toLowerCase() === catName.toLowerCase());
+                if (!alreadyExists) {
+                    const newDocRef = doc(collection(db, 'global_categories'));
+                    batch.set(newDocRef, {
+                        name: catName,
+                        description: `Categoría de ${catName}`,
+                        icon: iconsMap[catName] || '🏷️',
+                        isActive: true,
+                        createdAt: new Date(),
+                    });
+                }
+            }
+            await batch.commit();
+
+            // Re-fetch to update state
+            const q = query(collection(db, 'global_categories'), orderBy('name', 'asc'));
+            const querySnapshot = await getDocs(q);
+            const data = querySnapshot.docs.map(doc => ({
+                id: doc.id,
+                ...doc.data()
+            })) as Category[];
+            setCategories(data);
+
+            if (!isAuto) alert("Categorías sincronizadas exitosamente");
+        } catch (error) {
+            console.error("Error syncing categories:", error);
+            if (!isAuto) alert("Error al sincronizar categorías");
         }
     };
 
@@ -103,6 +175,12 @@ export default function CategoriesManager() {
         });
     };
 
+    const handleSyncDefaults = async () => {
+        setLoading(true);
+        await syncDefaults();
+        setLoading(false);
+    };
+
     const filteredCategories = categories.filter(c =>
         c.name.toLowerCase().includes(searchTerm.toLowerCase())
     );
@@ -122,13 +200,22 @@ export default function CategoriesManager() {
                     <h1 className="text-3xl font-black text-slate-900">Categorías Globales</h1>
                     <p className="text-slate-500 font-medium">Administra las etiquetas que definen los tipos de negocio en la plataforma.</p>
                 </div>
-                <button
-                    onClick={() => setIsAdding(!isAdding)}
-                    className="flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-3 rounded-2xl transition-all font-black shadow-lg shadow-indigo-200 active:scale-95"
-                >
-                    <Plus className="w-5 h-5" />
-                    Nueva Categoría
-                </button>
+                <div className="flex items-center gap-3">
+                    <button
+                        onClick={handleSyncDefaults}
+                        className="flex items-center justify-center gap-2 bg-slate-100 hover:bg-slate-200 text-slate-600 px-6 py-3 rounded-2xl transition-all font-black"
+                    >
+                        <RefreshCw className="w-5 h-5 text-indigo-600" />
+                        Sincronizar Defaults
+                    </button>
+                    <button
+                        onClick={() => setIsAdding(!isAdding)}
+                        className="flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-3 rounded-2xl transition-all font-black shadow-lg shadow-indigo-200 active:scale-95"
+                    >
+                        <Plus className="w-5 h-5" />
+                        Nueva Categoría
+                    </button>
+                </div>
             </div>
 
             {/* Search Bar */}

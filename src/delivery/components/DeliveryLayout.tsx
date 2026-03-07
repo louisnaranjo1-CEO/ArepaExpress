@@ -8,9 +8,9 @@ interface DeliveryLayoutProps {
 
 export default function DeliveryLayout({ children }: DeliveryLayoutProps) {
     const navItems = [
-        { path: '/delivery/radar', icon: Compass, label: 'Radar' },
-        { path: '/delivery/earnings', icon: DollarSign, label: 'Ganancias' },
-        { path: '/delivery/profile', icon: User, label: 'Perfil' },
+        { path: '/radar', icon: Compass, label: 'Radar' },
+        { path: '/earnings', icon: DollarSign, label: 'Ganancias' },
+        { path: '/profile', icon: User, label: 'Perfil' },
     ];
 
     return (

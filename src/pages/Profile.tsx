@@ -1,11 +1,11 @@
+import React, { useState, useEffect, useRef } from 'react';
 import { User, Mail, MapPin, CreditCard, LogOut, ShoppingBag, Settings, ChevronRight, Clock, FileText, Bell, Navigation } from 'lucide-react';
 import { requestNotificationPermission, disableNotifications } from '../lib/notifications';
 import { useAuth } from '../context/AuthContext';
 import { auth, db } from '../lib/firebase';
 import { useNavigate } from 'react-router-dom';
 import { signInWithGoogle } from '../lib/auth-service';
-import { useState, useEffect, useRef } from 'react';
-import { collection, query, where, orderBy, getDocs, doc, setDoc } from 'firebase/firestore';
+import { collection, query, where, orderBy, getDocs, doc, setDoc, serverTimestamp } from 'firebase/firestore';
 import AddressPicker from '../components/AddressPicker';
 
 interface OrderInfo {
@@ -18,14 +18,30 @@ interface OrderInfo {
 }
 
 export default function Profile() {
-    const { user, userData } = useAuth();
+    const { user, userData, isProfileComplete } = useAuth();
     const navigate = useNavigate();
     const [isSigningIn, setIsSigningIn] = useState(false);
     const [orders, setOrders] = useState<OrderInfo[]>([]);
     const [loadingOrders, setLoadingOrders] = useState(false);
     const [showAddressPicker, setShowAddressPicker] = useState(false);
     const [updatingNotifications, setUpdatingNotifications] = useState(false);
+    const [completingProfile, setCompletingProfile] = useState(false);
     const ordersRef = useRef<HTMLDivElement>(null);
+
+    // Profile completion form state
+    const [profileForm, setProfileForm] = useState({
+        displayName: '',
+        phone: ''
+    });
+
+    useEffect(() => {
+        if (userData) {
+            setProfileForm({
+                displayName: userData.displayName || user?.displayName || '',
+                phone: userData.phone || ''
+            });
+        }
+    }, [userData, user]);
 
     const scrollToOrders = () => {
         ordersRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -113,15 +129,41 @@ export default function Profile() {
                 await disableNotifications(user.uid);
                 alert("Notificaciones desactivadas.");
             } else {
-                const success = await requestNotificationPermission(user.uid);
-                if (success) {
+                const result = await requestNotificationPermission(user.uid);
+                if (result.success) {
                     alert("Notificaciones activadas con éxito! 🎉");
+                } else if (result.error) {
+                    alert(result.error);
                 }
             }
         } catch (err) {
             console.error("Error toggling notifications", err);
+            alert("Ocurrió un error al procesar tu solicitud.");
         } finally {
             setUpdatingNotifications(false);
+        }
+    };
+
+    const handleCompleteProfile = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!user) return;
+        if (!profileForm.displayName || !profileForm.phone) {
+            alert("Por favor completa todos los campos.");
+            return;
+        }
+
+        setCompletingProfile(true);
+        try {
+            await setDoc(doc(db, 'users', user.uid), {
+                displayName: profileForm.displayName,
+                phone: profileForm.phone,
+                updatedAt: serverTimestamp()
+            }, { merge: true });
+        } catch (e) {
+            console.error("Error updating profile", e);
+            alert("Ocurrió un error al guardar tus datos.");
+        } finally {
+            setCompletingProfile(false);
         }
     };
 
@@ -176,6 +218,66 @@ export default function Profile() {
                         Crear Cuenta
                     </button>
                 </div>
+            </div>
+        );
+    }
+
+    // Profile Completion Overlay/View
+    if (user && !isProfileComplete) {
+        return (
+            <div className="flex flex-col items-center justify-center min-h-[80vh] px-6 py-12 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                <div className="w-24 h-24 bg-primary/10 rounded-full flex items-center justify-center mb-6">
+                    <User className="w-12 h-12 text-primary" />
+                </div>
+                <h1 className="text-2xl font-black text-slate-900 mb-2 text-center">¡Un paso más! 🚀</h1>
+                <p className="text-slate-500 mb-8 max-w-[280px] text-center">
+                    Necesitamos estos datos para poder procesar tus pedidos correctamente.
+                </p>
+
+                <form onSubmit={handleCompleteProfile} className="w-full max-w-sm space-y-4">
+                    <div className="space-y-1">
+                        <label className="text-xs font-bold text-slate-500 uppercase tracking-wider ml-1">Nombre Completo</label>
+                        <input
+                            type="text"
+                            required
+                            value={profileForm.displayName}
+                            onChange={(e) => setProfileForm({ ...profileForm, displayName: e.target.value })}
+                            className="w-full bg-slate-50 border-2 border-slate-100 focus:border-primary px-4 py-4 rounded-2xl outline-none font-bold text-slate-700 transition-all"
+                            placeholder="Ej. Juan Pérez"
+                        />
+                    </div>
+
+                    <div className="space-y-1">
+                        <label className="text-xs font-bold text-slate-500 uppercase tracking-wider ml-1">Número de Celular</label>
+                        <input
+                            type="tel"
+                            required
+                            value={profileForm.phone}
+                            onChange={(e) => setProfileForm({ ...profileForm, phone: e.target.value })}
+                            className="w-full bg-slate-50 border-2 border-slate-100 focus:border-primary px-4 py-4 rounded-2xl outline-none font-bold text-slate-700 transition-all"
+                            placeholder="Ej. 04141234567"
+                        />
+                    </div>
+
+                    <button
+                        type="submit"
+                        disabled={completingProfile}
+                        className="w-full bg-primary text-white py-4 rounded-2xl font-bold shadow-lg shadow-primary/30 hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-70 mt-4 flex items-center justify-center gap-2"
+                    >
+                        {completingProfile ? (
+                            <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                        ) : (
+                            "Completar Mi Perfil"
+                        )}
+                    </button>
+                </form>
+
+                <button
+                    onClick={handleLogout}
+                    className="mt-6 text-slate-400 font-bold hover:text-red-500 transition-colors text-sm"
+                >
+                    Cerrar Sesión
+                </button>
             </div>
         );
     }
@@ -323,7 +425,10 @@ export default function Profile() {
                     <div className="space-y-2 pt-2 border-t border-slate-100">
                         <h3 className="text-lg font-black text-slate-900 px-2">Ajustes</h3>
                         <div className="space-y-1">
-                            <div className="w-full flex items-center justify-between p-4 bg-slate-50 rounded-2xl transition-colors">
+                            <div
+                                onClick={handleToggleNotifications}
+                                className={`w-full flex items-center justify-between p-4 bg-slate-50 rounded-2xl transition-all cursor-pointer hover:bg-slate-100 ${updatingNotifications ? 'opacity-70 pointer-events-none' : ''}`}
+                            >
                                 <div className="flex items-center gap-3">
                                     <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center shadow-sm">
                                         <Bell className="w-5 h-5 text-blue-500" />
@@ -333,17 +438,19 @@ export default function Profile() {
                                         <span className="text-[10px] text-slate-400 font-medium">Recibe promos y actualizaciones</span>
                                     </div>
                                 </div>
-                                <button
-                                    onClick={handleToggleNotifications}
-                                    disabled={updatingNotifications}
+                                <div
                                     className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${userData?.notificationsEnabled || (userData?.fcmTokens && userData.fcmTokens.length > 0) ? 'bg-green-500' : 'bg-slate-300'
                                         }`}
                                 >
-                                    <span
-                                        className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${userData?.notificationsEnabled || (userData?.fcmTokens && userData.fcmTokens.length > 0) ? 'translate-x-6' : 'translate-x-1'
-                                            }`}
-                                    />
-                                </button>
+                                    {updatingNotifications ? (
+                                        <div className="ml-1 w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                                    ) : (
+                                        <span
+                                            className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${userData?.notificationsEnabled || (userData?.fcmTokens && userData.fcmTokens.length > 0) ? 'translate-x-6' : 'translate-x-1'
+                                                }`}
+                                        />
+                                    )}
+                                </div>
                             </div>
 
                             <button
