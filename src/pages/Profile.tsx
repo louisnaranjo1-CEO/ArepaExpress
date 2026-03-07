@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { User, Mail, MapPin, CreditCard, LogOut, ShoppingBag, Settings, ChevronRight, Clock, FileText, Bell, Navigation, X } from 'lucide-react';
+import { User, Mail, MapPin, CreditCard, LogOut, ShoppingBag, Settings, ChevronRight, Clock, FileText, Bell, Navigation, X, Shield } from 'lucide-react';
 import { requestNotificationPermission, disableNotifications } from '../lib/notifications';
 import { useAuth } from '../context/AuthContext';
 import { auth, db } from '../lib/firebase';
@@ -335,11 +335,17 @@ export default function Profile() {
                     >
                         Crear Cuenta
                     </button>
+                    <div className="flex items-center gap-4 my-2">
+                        <div className="h-px bg-slate-100 flex-1"></div>
+                        <span className="text-[10px] font-black text-slate-300 uppercase tracking-widest">Personal</span>
+                        <div className="h-px bg-slate-100 flex-1"></div>
+                    </div>
                     <button
                         onClick={() => setShowWaiterLogin(true)}
-                        className="w-full text-slate-400 font-bold py-2 mt-2 hover:text-primary transition-colors text-sm"
+                        className="w-full bg-slate-50 text-slate-500 py-4 rounded-2xl font-bold hover:bg-slate-100 transition-colors flex items-center justify-center gap-2"
                     >
-                        Ingreso para Personal / Mesero
+                        <Shield className="w-5 h-5 opacity-50" />
+                        Acceso Meseros
                     </button>
                 </div>
 
