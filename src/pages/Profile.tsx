@@ -4,7 +4,7 @@ import { requestNotificationPermission, disableNotifications } from '../lib/noti
 import { useAuth } from '../context/AuthContext';
 import { auth, db } from '../lib/firebase';
 import { useNavigate } from 'react-router-dom';
-import { signInWithGoogle } from '../lib/auth-service';
+import { signInWithGoogle, signInWithEmail, signUpWithEmail } from '../lib/auth-service';
 import { collection, query, where, orderBy, getDocs, doc, setDoc, serverTimestamp, collectionGroup } from 'firebase/firestore';
 import AddressPicker from '../components/AddressPicker';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -41,6 +41,14 @@ export default function Profile() {
     const [waiterEmail, setWaiterEmail] = useState('');
     const [waiterPassword, setWaiterPassword] = useState('');
     const [isWaiterSigningIn, setIsWaiterSigningIn] = useState(false);
+
+    // Email Login/Signup State
+    const [showEmailModal, setShowEmailModal] = useState(false);
+    const [isLoginMode, setIsLoginMode] = useState(true);
+    const [email, setEmail] = useState('');
+    const [password, setPassword] = useState('');
+    const [fullName, setFullName] = useState('');
+    const [isEmailAuthLoading, setIsEmailAuthLoading] = useState(false);
 
     useEffect(() => {
         if (userData) {
@@ -174,6 +182,34 @@ export default function Profile() {
         }
     };
 
+    const handleEmailAuthSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        setIsEmailAuthLoading(true);
+        setError(null);
+        try {
+            if (isLoginMode) {
+                await signInWithEmail(email, password);
+            } else {
+                if (!fullName) {
+                    setError("Por favor ingresa tu nombre completo.");
+                    setIsEmailAuthLoading(false);
+                    return;
+                }
+                await signUpWithEmail(email, password, fullName);
+            }
+            setShowEmailModal(false);
+            // Reset form
+            setEmail('');
+            setPassword('');
+            setFullName('');
+        } catch (err: any) {
+            console.error("Email auth error", err);
+            setError(err.message || "Ocurrió un error. Intenta de nuevo.");
+        } finally {
+            setIsEmailAuthLoading(false);
+        }
+    };
+
     const handleLogout = async () => {
         await auth.signOut();
         navigate('/');
@@ -273,7 +309,23 @@ export default function Profile() {
                             </>
                         )}
                     </button>
-                    <button className="w-full bg-white text-primary border-2 border-primary py-4 rounded-2xl font-bold hover:bg-primary/5 transition-colors">
+                    <button
+                        onClick={() => {
+                            setIsLoginMode(true);
+                            setShowEmailModal(true);
+                        }}
+                        className="w-full bg-white text-slate-700 border-2 border-slate-100 py-4 rounded-2xl font-bold hover:bg-slate-50 transition-colors flex items-center justify-center gap-2"
+                    >
+                        <Mail className="w-5 h-5 text-slate-400" />
+                        Entrar con Correo
+                    </button>
+                    <button
+                        onClick={() => {
+                            setIsLoginMode(false);
+                            setShowEmailModal(true);
+                        }}
+                        className="w-full bg-white text-primary border-2 border-primary py-4 rounded-2xl font-bold hover:bg-primary/5 transition-colors"
+                    >
                         Crear Cuenta
                     </button>
                     <button
@@ -283,6 +335,94 @@ export default function Profile() {
                         Ingreso para Personal / Mesero
                     </button>
                 </div>
+
+                {/* Email Login/Signup Modal */}
+                <AnimatePresence>
+                    {showEmailModal && (
+                        <div className="fixed inset-0 z-[110] flex items-center justify-center p-6 bg-black/60 backdrop-blur-sm">
+                            <motion.div
+                                initial={{ opacity: 0, scale: 0.9, y: 20 }}
+                                animate={{ opacity: 1, scale: 1, y: 0 }}
+                                exit={{ opacity: 0, scale: 0.9, y: 20 }}
+                                className="bg-white rounded-[32px] w-full max-w-sm shadow-2xl overflow-hidden"
+                            >
+                                <div className="p-8 border-b border-slate-50 flex items-center justify-between bg-slate-50/50">
+                                    <div>
+                                        <h3 className="text-xl font-black text-slate-900">
+                                            {isLoginMode ? "Iniciar Sesión" : "Crear Cuenta"}
+                                        </h3>
+                                        <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-0.5">
+                                            Arepa Lover 🫓
+                                        </p>
+                                    </div>
+                                    <button onClick={() => setShowEmailModal(false)} className="p-2 hover:bg-slate-200 rounded-xl transition-all">
+                                        <X className="w-5 h-5 text-slate-400" />
+                                    </button>
+                                </div>
+
+                                <form onSubmit={handleEmailAuthSubmit} className="p-8 space-y-4">
+                                    {!isLoginMode && (
+                                        <div className="space-y-1">
+                                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Nombre Completo</label>
+                                            <input
+                                                type="text"
+                                                required
+                                                value={fullName}
+                                                onChange={(e) => setFullName(e.target.value)}
+                                                placeholder="Ej: Juan Pérez"
+                                                className="w-full bg-slate-50 border-2 border-slate-100 focus:border-primary px-4 py-3 rounded-2xl outline-none font-bold text-slate-700 transition-all"
+                                            />
+                                        </div>
+                                    )}
+
+                                    <div className="space-y-1">
+                                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Correo Electrónico</label>
+                                        <input
+                                            type="email"
+                                            required
+                                            value={email}
+                                            onChange={(e) => setEmail(e.target.value)}
+                                            placeholder="tu@correo.com"
+                                            className="w-full bg-slate-50 border-2 border-slate-100 focus:border-primary px-4 py-3 rounded-2xl outline-none font-bold text-slate-700 transition-all"
+                                        />
+                                    </div>
+
+                                    <div className="space-y-1">
+                                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Contraseña</label>
+                                        <input
+                                            type="password"
+                                            required
+                                            value={password}
+                                            onChange={(e) => setPassword(e.target.value)}
+                                            placeholder="••••••••"
+                                            className="w-full bg-slate-50 border-2 border-slate-100 focus:border-primary px-4 py-3 rounded-2xl outline-none font-bold text-slate-700 transition-all"
+                                        />
+                                    </div>
+
+                                    <button
+                                        type="submit"
+                                        disabled={isEmailAuthLoading}
+                                        className="w-full bg-primary text-white py-4 rounded-2xl font-bold shadow-lg shadow-primary/30 hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-70 mt-4 flex items-center justify-center gap-2"
+                                    >
+                                        {isEmailAuthLoading ? (
+                                            <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                                        ) : (
+                                            isLoginMode ? "Entrar" : "Registrarme"
+                                        )}
+                                    </button>
+
+                                    <button
+                                        type="button"
+                                        onClick={() => setIsLoginMode(!isLoginMode)}
+                                        className="w-full text-slate-400 font-bold py-2 mt-2 hover:text-primary transition-colors text-xs"
+                                    >
+                                        {isLoginMode ? "¿No tienes cuenta? Regístrate" : "¿Ya tienes cuenta? Inicia sesión"}
+                                    </button>
+                                </form>
+                            </motion.div>
+                        </div>
+                    )}
+                </AnimatePresence>
 
                 {/* Waiter Login Modal */}
                 <AnimatePresence>

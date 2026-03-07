@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Plus, Search, Trash2, Edit2, Loader2, Save, X, User } from 'lucide-react';
 import { db } from '../../lib/firebase';
 import { useAuth } from '../../context/AuthContext';
-import { collection, addDoc, getDocs, deleteDoc, doc, query } from 'firebase/firestore';
+import { collection, addDoc, getDocs, deleteDoc, doc, query, updateDoc } from 'firebase/firestore';
 
 interface Waiter {
     id: string;
@@ -18,13 +18,21 @@ export default function WaitersManager() {
     const [waiters, setWaiters] = useState<Waiter[]>([]);
     const [loading, setLoading] = useState(true);
     const [isAdding, setIsAdding] = useState(false);
+    const [isSaving, setIsSaving] = useState(false);
 
     // New Waiter form state
     const [newName, setNewName] = useState('');
     const [newEmail, setNewEmail] = useState('');
     const [newPassword, setNewPassword] = useState('');
     const [newShift, setNewShift] = useState<Waiter['shift']>('mañana');
-    const [isSaving, setIsSaving] = useState(false);
+
+    // Edit waiter state
+    const [editingWaiter, setEditingWaiter] = useState<Waiter | null>(null);
+    const [editName, setEditName] = useState('');
+    const [editEmail, setEditEmail] = useState('');
+    const [editPassword, setEditPassword] = useState('');
+    const [editShift, setEditShift] = useState<Waiter['shift']>('mañana');
+    const [showPassword, setShowPassword] = useState(false);
 
     useEffect(() => {
         if (!user) return;
@@ -70,6 +78,38 @@ export default function WaitersManager() {
         } catch (error) {
             console.error("Error adding waiter:", error);
             alert("Error al agregar mesero");
+        } finally {
+            setIsSaving(false);
+        }
+    };
+
+    const handleEditClick = (waiter: any) => {
+        setEditingWaiter(waiter);
+        setEditName(waiter.name);
+        setEditEmail(waiter.email);
+        setEditPassword(waiter.password || '');
+        setEditShift(waiter.shift);
+        setShowPassword(false);
+    };
+
+    const handleUpdateWaiter = async () => {
+        if (!user || !editingWaiter || !editName || !editEmail || !editPassword) return;
+        setIsSaving(true);
+        try {
+            const waiterRef = doc(db, 'restaurants', user.uid, 'waiters', editingWaiter.id);
+            await updateDoc(waiterRef, {
+                name: editName,
+                email: editEmail,
+                password: editPassword,
+                shift: editShift,
+                updatedAt: new Date()
+            });
+
+            setEditingWaiter(null);
+            fetchWaiters();
+        } catch (error) {
+            console.error("Error updating waiter:", error);
+            alert("Error al actualizar mesero");
         } finally {
             setIsSaving(false);
         }
@@ -179,6 +219,86 @@ export default function WaitersManager() {
                 </div>
             )}
 
+            {/* Edit Waiter Modal */}
+            {editingWaiter && (
+                <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                    <div className="bg-white w-full max-w-md rounded-[2.5rem] shadow-2xl p-8 space-y-6 animate-in zoom-in-95 duration-200">
+                        <div className="flex justify-between items-center">
+                            <div>
+                                <h2 className="text-2xl font-black text-slate-900">Editar Mesero</h2>
+                                <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">ID: {editingWaiter.id.slice(-6).toUpperCase()}</p>
+                            </div>
+                            <button onClick={() => setEditingWaiter(null)} className="p-2 hover:bg-slate-100 rounded-full">
+                                <X className="w-6 h-6 text-slate-400" />
+                            </button>
+                        </div>
+
+                        <div className="space-y-4">
+                            <div className="space-y-2">
+                                <label className="text-sm font-bold text-slate-500 ml-2">Nombre Completo</label>
+                                <input
+                                    type="text"
+                                    value={editName}
+                                    onChange={(e) => setEditName(e.target.value)}
+                                    className="w-full bg-slate-50 border-2 border-transparent focus:border-primary focus:bg-white p-4 rounded-2xl outline-none transition-all font-bold text-slate-700"
+                                    placeholder="Ej: Juan Pérez"
+                                />
+                            </div>
+                            <div className="space-y-2">
+                                <label className="text-sm font-bold text-slate-500 ml-2">Email / Usuario</label>
+                                <input
+                                    type="email"
+                                    value={editEmail}
+                                    onChange={(e) => setEditEmail(e.target.value)}
+                                    className="w-full bg-slate-50 border-2 border-transparent focus:border-primary focus:bg-white p-4 rounded-2xl outline-none transition-all font-bold text-slate-700"
+                                    placeholder="ejemplo@email.com"
+                                />
+                            </div>
+                            <div className="space-y-2">
+                                <label className="text-sm font-bold text-slate-500 ml-2">Contraseña</label>
+                                <div className="relative">
+                                    <input
+                                        type={showPassword ? "text" : "password"}
+                                        value={editPassword}
+                                        onChange={(e) => setEditPassword(e.target.value)}
+                                        className="w-full bg-slate-50 border-2 border-transparent focus:border-primary focus:bg-white p-4 rounded-2xl pr-14 outline-none transition-all font-bold text-slate-700"
+                                        placeholder="Contraseña o PIN"
+                                    />
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowPassword(!showPassword)}
+                                        className="absolute right-4 top-1/2 -translate-y-1/2 text-[10px] font-black uppercase text-primary bg-primary/10 px-2 py-1 rounded-lg"
+                                    >
+                                        {showPassword ? "Ocultar" : "Ver"}
+                                    </button>
+                                </div>
+                            </div>
+                            <div className="space-y-2">
+                                <label className="text-sm font-bold text-slate-500 ml-2">Turno Asignado</label>
+                                <select
+                                    value={editShift}
+                                    onChange={(e) => setEditShift(e.target.value as Waiter['shift'])}
+                                    className="w-full bg-slate-50 border-2 border-transparent focus:border-primary focus:bg-white p-4 rounded-2xl outline-none transition-all font-bold text-slate-700 appearance-none"
+                                >
+                                    <option value="mañana">Mañana (08:00 - 16:00)</option>
+                                    <option value="tarde">Tarde (16:00 - 00:00)</option>
+                                    <option value="noche">Noche (00:00 - 08:00)</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <button
+                            onClick={handleUpdateWaiter}
+                            disabled={isSaving || !editName || !editEmail || !editPassword}
+                            className="w-full bg-primary text-white py-4 rounded-2xl font-black shadow-xl shadow-primary/20 flex items-center justify-center gap-2 disabled:opacity-50"
+                        >
+                            {isSaving ? <Loader2 className="w-5 h-5 animate-spin" /> : <Save className="w-5 h-5" />}
+                            Actualizar Datos
+                        </button>
+                    </div>
+                </div>
+            )}
+
             {/* Waiters Table/Grid */}
             <div className="bg-white rounded-[2.5rem] shadow-sm border border-slate-100 overflow-hidden">
                 <div className="p-6 border-b border-slate-50 flex items-center justify-between">
@@ -234,7 +354,10 @@ export default function WaitersManager() {
                                     </td>
                                     <td className="px-8 py-4 text-right">
                                         <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                                            <button className="p-2 text-slate-400 hover:text-primary hover:bg-primary/5 rounded-lg transition-colors">
+                                            <button
+                                                onClick={() => handleEditClick(waiter)}
+                                                className="p-2 text-slate-400 hover:text-primary hover:bg-primary/5 rounded-lg transition-colors"
+                                            >
                                                 <Edit2 className="w-5 h-5" />
                                             </button>
                                             <button

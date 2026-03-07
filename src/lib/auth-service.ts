@@ -40,7 +40,6 @@ export const signInWithGoogle = async (): Promise<User | null> => {
             });
         }
 
-        // Esta línea permite que el programa de PC "lea" quién eres
         localStorage.setItem('deliexpress_uid', user.uid);
 
         return user;
@@ -49,6 +48,62 @@ export const signInWithGoogle = async (): Promise<User | null> => {
         // Special case for unauthorized domains
         if (error.code === 'auth/unauthorized-domain') {
             throw new Error("Este dominio no está autorizado en Firebase Console (Authentication > Settings > Authorized Domains)");
+        }
+        throw error;
+    }
+};
+
+export const signInWithEmail = async (email: string, pass: string): Promise<User> => {
+    try {
+        const result = await signInWithEmailAndPassword(auth, email, pass);
+        const user = result.user;
+
+        // Ensure UID is set in localStorage
+        localStorage.setItem('deliexpress_uid', user.uid);
+
+        return user;
+    } catch (error: any) {
+        console.error("Error signing in with email:", error.code, error.message);
+        if (error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password') {
+            throw new Error("Correo o contraseña incorrectos.");
+        }
+        if (error.code === 'auth/invalid-email') {
+            throw new Error("El correo electrónico no es válido.");
+        }
+        throw error;
+    }
+};
+
+export const signUpWithEmail = async (email: string, pass: string, name: string): Promise<User> => {
+    try {
+        const result = await createUserWithEmailAndPassword(auth, email, pass);
+        const user = result.user;
+
+        // Update profile with display name
+        await updateProfile(user, { displayName: name });
+
+        // Create user document in Firestore
+        const userRef = doc(db, 'users', user.uid);
+        await setDoc(userRef, {
+            displayName: name,
+            email: email,
+            photoURL: null,
+            createdAt: serverTimestamp(),
+            favorites: [],
+            birthday: null,
+            role: 'user'
+        });
+
+        localStorage.setItem('deliexpress_uid', user.uid);
+
+        return user;
+    } catch (error: any) {
+        console.error("Error signing up with email:", error.code, error.message);
+        if (error.code === 'auth/email-already-in-use') {
+            throw new Error("El correo electrónico ya está en uso.");
+        }
+        if (error.code === 'auth/weak-password') {
+            throw new Error("La contraseña es muy débil (mínimo 6 caracteres).");
         }
         throw error;
     }
