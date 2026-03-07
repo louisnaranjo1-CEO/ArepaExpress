@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { User, Mail, MapPin, CreditCard, LogOut, ShoppingBag, Settings, ChevronRight, Clock, FileText, Bell, Navigation } from 'lucide-react';
+import { User, Mail, MapPin, CreditCard, LogOut, ShoppingBag, Settings, ChevronRight, Clock, FileText, Bell, Navigation, X } from 'lucide-react';
 import { requestNotificationPermission, disableNotifications } from '../lib/notifications';
 import { useAuth } from '../context/AuthContext';
 import { auth, db } from '../lib/firebase';
@@ -7,6 +7,7 @@ import { useNavigate } from 'react-router-dom';
 import { signInWithGoogle } from '../lib/auth-service';
 import { collection, query, where, orderBy, getDocs, doc, setDoc, serverTimestamp } from 'firebase/firestore';
 import AddressPicker from '../components/AddressPicker';
+import { motion, AnimatePresence } from 'framer-motion';
 
 interface OrderInfo {
     id: string;
@@ -24,6 +25,7 @@ export default function Profile() {
     const [orders, setOrders] = useState<OrderInfo[]>([]);
     const [loadingOrders, setLoadingOrders] = useState(false);
     const [showAddressPicker, setShowAddressPicker] = useState(false);
+    const [showEditProfileModal, setShowEditProfileModal] = useState(false);
     const [updatingNotifications, setUpdatingNotifications] = useState(false);
     const [completingProfile, setCompletingProfile] = useState(false);
     const ordersRef = useRef<HTMLDivElement>(null);
@@ -293,13 +295,19 @@ export default function Profile() {
                             <User className="w-10 h-10 text-white" />
                         )}
                     </div>
-                    <div>
+                    <div className="flex-1">
                         <h2 className="text-2xl font-black">{user.displayName || 'Arepa Fan'}</h2>
                         <div className="flex items-center gap-1 text-white/80 text-sm">
                             <Mail className="w-3 h-3" />
                             <span>{user.email}</span>
                         </div>
                     </div>
+                    <button
+                        onClick={() => setShowEditProfileModal(true)}
+                        className="bg-white/20 backdrop-blur-md p-3 rounded-2xl hover:bg-white/30 transition-all active:scale-95"
+                    >
+                        <Settings className="w-5 h-5 text-white" />
+                    </button>
                 </div>
             </div>
 
@@ -504,6 +512,70 @@ export default function Profile() {
                     }}
                 />
             )}
+
+            {/* Edit Profile Modal */}
+            <AnimatePresence>
+                {showEditProfileModal && (
+                    <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-black/60 backdrop-blur-sm">
+                        <motion.div
+                            initial={{ opacity: 0, scale: 0.9, y: 20 }}
+                            animate={{ opacity: 1, scale: 1, y: 0 }}
+                            exit={{ opacity: 0, scale: 0.9, y: 20 }}
+                            className="bg-white rounded-[32px] w-full max-w-sm shadow-2xl overflow-hidden"
+                        >
+                            <div className="p-8 border-b border-slate-50 flex items-center justify-between bg-slate-50/50">
+                                <div>
+                                    <h3 className="text-xl font-black text-slate-900">Editar Perfil</h3>
+                                    <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-0.5">Actualiza tus datos</p>
+                                </div>
+                                <button onClick={() => setShowEditProfileModal(false)} className="p-2 hover:bg-slate-200 rounded-xl transition-all">
+                                    <X className="w-5 h-5 text-slate-400" />
+                                </button>
+                            </div>
+
+                            <form onSubmit={async (e) => {
+                                e.preventDefault();
+                                await handleCompleteProfile(e);
+                                setShowEditProfileModal(false);
+                            }} className="p-8 space-y-4">
+                                <div className="space-y-1">
+                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Nombre Completo</label>
+                                    <input
+                                        type="text"
+                                        required
+                                        value={profileForm.displayName}
+                                        onChange={(e) => setProfileForm({ ...profileForm, displayName: e.target.value })}
+                                        className="w-full bg-slate-50 border-2 border-slate-100 focus:border-primary px-4 py-3 rounded-2xl outline-none font-bold text-slate-700 transition-all"
+                                    />
+                                </div>
+
+                                <div className="space-y-1">
+                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Número de Celular</label>
+                                    <input
+                                        type="tel"
+                                        required
+                                        value={profileForm.phone}
+                                        onChange={(e) => setProfileForm({ ...profileForm, phone: e.target.value })}
+                                        className="w-full bg-slate-50 border-2 border-slate-100 focus:border-primary px-4 py-3 rounded-2xl outline-none font-bold text-slate-700 transition-all"
+                                    />
+                                </div>
+
+                                <button
+                                    type="submit"
+                                    disabled={completingProfile}
+                                    className="w-full bg-primary text-white py-4 rounded-2xl font-bold shadow-lg shadow-primary/30 hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-70 mt-4 flex items-center justify-center gap-2"
+                                >
+                                    {completingProfile ? (
+                                        <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                                    ) : (
+                                        "Guardar Cambios"
+                                    )}
+                                </button>
+                            </form>
+                        </motion.div>
+                    </div>
+                )}
+            </AnimatePresence>
         </div>
     );
 }

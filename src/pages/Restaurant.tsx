@@ -7,6 +7,7 @@ import { db } from '../lib/firebase';
 import { Restaurant, Product } from '../lib/seed';
 import { useCart } from '../context/CartContext';
 import { useAuth } from '../context/AuthContext';
+import { recommendationsService } from '../lib/recommendations';
 
 export default function RestaurantPage() {
   const { id } = useParams<{ id: string }>();
@@ -370,7 +371,12 @@ export default function RestaurantPage() {
 
             return (
               <div key={product.id} className="flex gap-4 py-5 border-b border-slate-100 group">
-                <div className="flex-1 flex flex-col justify-between">
+                <div
+                  className="flex-1 flex flex-col justify-between cursor-pointer"
+                  onClick={() => {
+                    recommendationsService.recordProductView(product.id!, product.category, restaurant.id!);
+                  }}
+                >
                   <div>
                     <div className="flex items-center gap-2 mb-1">
                       <h3 className="font-bold text-slate-900 text-base">{product.name}</h3>
@@ -379,6 +385,7 @@ export default function RestaurantPage() {
                           href={product.socialMediaLink}
                           target="_blank"
                           rel="noopener noreferrer"
+                          onClick={(e) => e.stopPropagation()}
                           className="p-1 bg-gradient-to-tr from-yellow-400 via-red-500 to-purple-600 text-white rounded-lg hover:scale-110 active:scale-90 transition-all shadow-sm shadow-purple-200"
                         >
                           <Instagram className="w-3.5 h-3.5" />
@@ -426,7 +433,12 @@ export default function RestaurantPage() {
                   </div>
                 </div>
 
-                <div className="relative shrink-0 w-32 h-32 group/img">
+                <div
+                  className="relative shrink-0 w-32 h-32 group/img cursor-pointer"
+                  onClick={() => {
+                    recommendationsService.recordProductView(product.id!, product.category, restaurant.id!);
+                  }}
+                >
                   {productImages.length > 1 ? (
                     <div className="w-full h-full overflow-x-auto flex snap-x snap-mandatory scrollbar-hide rounded-2xl bg-slate-100">
                       {productImages.map((img, idx) => (
@@ -460,7 +472,12 @@ export default function RestaurantPage() {
                   )}
 
                   <button
-                    onClick={() => handleAddToCart(product)}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleAddToCart(product);
+                      // Adding to cart also counts as a strong view
+                      recommendationsService.recordProductView(product.id!, product.category, restaurant.id!);
+                    }}
                     className="absolute -bottom-2 -right-2 w-10 h-10 bg-white border border-slate-100 rounded-full flex items-center justify-center text-primary shadow-lg hover:scale-110 active:scale-95 transition-all z-10"
                   >
                     <Plus className="w-5 h-5 font-bold" />

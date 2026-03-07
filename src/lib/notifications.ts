@@ -1,6 +1,6 @@
 import { messaging, db } from './firebase';
 import { getToken, isSupported } from 'firebase/messaging';
-import { doc, updateDoc, arrayUnion } from 'firebase/firestore';
+import { doc, updateDoc, arrayUnion, setDoc } from 'firebase/firestore';
 
 export const requestNotificationPermission = async (userId: string) => {
     try {
@@ -26,10 +26,10 @@ export const requestNotificationPermission = async (userId: string) => {
 
                 // Save token to user document
                 const userRef = doc(db, 'users', userId);
-                await updateDoc(userRef, {
+                await setDoc(userRef, {
                     fcmTokens: arrayUnion(token),
                     notificationsEnabled: true
-                });
+                }, { merge: true });
 
                 return { success: true };
             } else {

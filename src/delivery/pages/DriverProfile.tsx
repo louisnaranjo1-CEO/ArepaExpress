@@ -230,7 +230,7 @@ export default function DriverProfile() {
                     <ArrowLeft className="w-5 h-5" /> Volver al Perfil
                 </button>
                 <div className="mb-6">
-                    <h2 className="text-2xl font-black text-slate-800 tracking-tight">Actualizar Datos</h2>
+                    <h2 className="text-2xl font-black text-slate-800 tracking-tight">Editar Perfil</h2>
                     <p className="text-sm text-slate-500 mt-2 font-medium leading-relaxed">
                         Si necesitas modificar tu vehículo, placa o documento, envíanos la información nueva. Un administrador revisará la solicitud antes de aplicarla.
                     </p>
@@ -315,7 +315,7 @@ export default function DriverProfile() {
                             <User className="w-5 h-5" />
                         </div>
                         <div className="text-left">
-                            <p className="font-bold text-slate-900">Actualizar Datos</p>
+                            <p className="font-bold text-slate-900">Editar Perfil</p>
                             <p className="text-xs font-medium text-slate-500">Solicitar cambio de Cédula o Vehículo</p>
                         </div>
                     </div>

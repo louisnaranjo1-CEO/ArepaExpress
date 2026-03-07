@@ -1,30 +1,25 @@
-import { Search as SearchIcon, SlidersHorizontal, MapPin, Star, Clock, Store } from 'lucide-react';
+import { Search as SearchIcon, SlidersHorizontal, MapPin, Star, Clock, Store, Zap } from 'lucide-react';
 import { useState, useEffect, useMemo } from 'react';
-import { collection, getDocs } from 'firebase/firestore';
+import { collection, getDocs, doc, updateDoc, increment } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { Restaurant, Product } from '../lib/seed';
 import { Link, useLocation } from 'react-router-dom';
 import FilterModal, { FilterState } from '../components/FilterModal';
 
-import arepaImg from '../assets/categories/arepa.png';
-import burgerImg from '../assets/categories/burger.png';
-import sushiImg from '../assets/categories/sushi.png';
-import pizzaImg from '../assets/categories/pizza.png';
-import chinoImg from '../assets/categories/chino.png';
-import postresImg from '../assets/categories/postres.png';
-
-export const CATEGORIES = [
-    { id: 'arepas', name: 'Comida Venezolana', image: arepaImg, color: 'bg-orange-50 text-orange-600', shortName: 'Arepas' },
-    { id: 'burgers', name: 'Hamburguesas', image: burgerImg, color: 'bg-red-50 text-red-600', shortName: 'Burgers' },
-    { id: 'sushi', name: 'Sushi', image: sushiImg, color: 'bg-pink-50 text-pink-600', shortName: 'Sushi' },
-    { id: 'pizza', name: 'Pizza', image: pizzaImg, color: 'bg-yellow-50 text-yellow-600', shortName: 'Pizza' },
-    { id: 'chinesse', name: 'Chino', image: chinoImg, color: 'bg-blue-50 text-blue-600', shortName: 'Chino' },
-    { id: 'desserts', name: 'Postres', image: postresImg, color: 'bg-purple-50 text-purple-600', shortName: 'Postres' },
-];
+export interface Category {
+    id: string;
+    name: string;
+    icon?: string;
+    imageUrl?: string;
+    isFeatured?: boolean;
+    clickCount?: number;
+    isActive: boolean;
+}
 
 export default function Search() {
     const [query, setQuery] = useState('');
     const [restaurants, setRestaurants] = useState<Restaurant[]>([]);
+    const [categories, setCategories] = useState<Category[]>([]);
     const [loading, setLoading] = useState(true);
     const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
 
@@ -38,6 +33,19 @@ export default function Search() {
     });
 
     useEffect(() => {
+        const fetchCategories = async () => {
+            try {
+                const querySnapshot = await getDocs(collection(db, 'global_categories'));
+                const fetchedCategories = querySnapshot.docs.map(doc => ({
+                    id: doc.id,
+                    ...doc.data()
+                })) as Category[];
+                setCategories(fetchedCategories.filter(c => c.isActive));
+            } catch (error) {
+                console.error("Error fetching categories:", error);
+            }
+        };
+
         const fetchRestaurants = async () => {
             try {
                 const querySnapshot = await getDocs(collection(db, 'restaurants'));
@@ -62,8 +70,31 @@ export default function Search() {
             }
         };
 
+        fetchCategories();
         fetchRestaurants();
+
+        // Handle incoming category from location state
+        if (location.state?.category) {
+            setSelectedCategory(location.state.category);
+        }
     }, []);
+
+    const sortedCategories = useMemo(() => {
+        return [...categories].sort((a, b) => (b.clickCount || 0) - (a.clickCount || 0));
+    }, [categories]);
+
+    const handleCategoryClick = async (category: Category) => {
+        const isSelected = selectedCategory === category.name;
+        if (!isSelected) {
+            // Track popularity
+            updateDoc(doc(db, 'global_categories', category.id), {
+                clickCount: increment(1)
+            });
+            setSelectedCategory(category.name);
+        } else {
+            setSelectedCategory(null);
+        }
+    };
 
     const filteredRestaurants = useMemo(() => {
         return restaurants.filter(res => {
@@ -138,16 +169,22 @@ export default function Search() {
                     <section className="space-y-4">
                         <h2 className="text-xl font-black text-slate-800">Categorías Populares</h2>
                         <div className="grid grid-cols-3 gap-3">
-                            {CATEGORIES.map((cat) => (
+                            {sortedCategories.map((cat) => (
                                 <button
                                     key={cat.id}
-                                    onClick={() => setSelectedCategory(selectedCategory === cat.name ? null : cat.name)}
-                                    className={`${cat.color} ${selectedCategory === cat.name ? 'ring-4 ring-primary/30 scale-95' : 'hover:scale-105'} p-4 rounded-3xl flex flex-col items-center gap-2 active:scale-95 transition-all shadow-sm border border-black/5`}
+                                    onClick={() => handleCategoryClick(cat)}
+                                    className={`p-4 rounded-3xl flex flex-col items-center gap-2 active:scale-95 transition-all shadow-sm border ${selectedCategory === cat.name ? 'bg-primary/10 border-primary ring-2 ring-primary/20 scale-95' : 'bg-white border-slate-100 hover:scale-105'}`}
                                 >
-                                    <div className="w-16 h-16 flex items-center justify-center p-1">
-                                        <img src={cat.image} alt={cat.shortName} className="w-full h-full object-contain group-hover:scale-110 transition-transform" />
+                                    <div className="w-16 h-16 flex items-center justify-center p-1 overflow-hidden">
+                                        {cat.imageUrl ? (
+                                            <img src={cat.imageUrl} alt={cat.name} className="w-full h-full object-cover rounded-2xl group-hover:scale-110 transition-transform" />
+                                        ) : (
+                                            <span className="text-3xl">{cat.icon || '🏷️'}</span>
+                                        )}
                                     </div>
-                                    <span className="text-[10px] font-black uppercase tracking-wider">{cat.shortName}</span>
+                                    <span className={`text-[10px] font-black uppercase tracking-wider text-center truncate w-full ${selectedCategory === cat.name ? 'text-primary' : 'text-slate-500'}`}>
+                                        {cat.name}
+                                    </span>
                                 </button>
                             ))}
                         </div>
@@ -242,6 +279,7 @@ export default function Search() {
                 onClose={() => setIsFilterOpen(false)}
                 onApply={(newFilters) => setFilters(newFilters)}
                 initialFilters={filters}
+                categories={categories}
             />
         </div>
     );

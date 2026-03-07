@@ -1,22 +1,47 @@
-import { MapPin, ChevronDown, Bell, Search, SlidersHorizontal, Utensils, Star, Heart, Clock, Sandwich, Soup, Store, Truck } from 'lucide-react';
-import arepaImg from '../assets/categories/arepa.png';
-import burgerImg from '../assets/categories/burger.png';
-import sushiImg from '../assets/categories/sushi.png';
-import { Link } from 'react-router-dom';
-import { useState, useEffect } from 'react';
-import { collection, getDocs, query, where } from 'firebase/firestore';
+import { MapPin, ChevronDown, Bell, Search, SlidersHorizontal, Utensils, Star, Heart, Clock, Store, Truck, Zap, Tag } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { Link, useNavigate } from 'react-router-dom';
+import { useState, useEffect, useMemo } from 'react';
+import { collection, getDocs, query, where, doc, updateDoc, increment, collectionGroup, limit } from 'firebase/firestore';
 import { db } from '../lib/firebase';
-import { Restaurant } from '../lib/seed';
+import { Restaurant, Product } from '../lib/seed';
 import { useAuth } from '../context/AuthContext';
 import { calculateDistance, formatDistance } from '../lib/geo';
 import CitySelectorModal from '../components/CitySelectorModal';
+import { recommendationsService } from '../lib/recommendations';
+
+interface RecommendedProduct extends Product {
+  restaurantId: string;
+}
+
+interface Category {
+  id: string;
+  name: string;
+  icon?: string;
+  imageUrl?: string;
+  isFeatured?: boolean;
+  clickCount?: number;
+  isActive: boolean;
+}
 
 export default function Home() {
   const { userData } = useAuth();
+  const navigate = useNavigate();
   const [restaurants, setRestaurants] = useState<Restaurant[]>([]);
   const [banners, setBanners] = useState<any[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [categoryMode, setCategoryMode] = useState<'manual' | 'algorithm'>('manual');
   const [loading, setLoading] = useState(true);
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
+  const [currentBannerIndex, setCurrentBannerIndex] = useState(0);
+
+  // Recommendations State
+  const [isNewUser, setIsNewUser] = useState(true);
+  const [recentlyViewed, setRecentlyViewed] = useState<RecommendedProduct[]>([]);
+  const [interestedProducts, setInterestedProducts] = useState<RecommendedProduct[]>([]);
+  const [favoriteProducts, setFavoriteProducts] = useState<RecommendedProduct[]>([]);
+  const [inspiredProducts, setInspiredProducts] = useState<RecommendedProduct[]>([]);
+  const [randomProducts, setRandomProducts] = useState<RecommendedProduct[]>([]);
 
   const [manualState, setManualState] = useState<string>(() => localStorage.getItem('userState') || '');
   const [manualCity, setManualCity] = useState<string>(() => localStorage.getItem('userCity') || '');
@@ -137,9 +162,107 @@ export default function Home() {
       }
     };
 
+    const fetchData = async () => {
+      try {
+        // Fetch Settings
+        const settingsSnap = await getDocs(collection(db, 'settings'));
+        const globalSettings = settingsSnap.docs.find(d => d.id === 'global');
+        if (globalSettings) {
+          setCategoryMode(globalSettings.data().categoryMode || 'manual');
+        }
+
+        // Fetch Categories
+        const categoriesSnap = await getDocs(collection(db, 'global_categories'));
+        const fetchedCategories = categoriesSnap.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data()
+        })) as Category[];
+        setCategories(fetchedCategories.filter(c => c.isActive));
+
+        // Fetch All Products for Recommendations
+        const productsQuery = query(collectionGroup(db, 'products'), limit(150));
+        const productsSnap = await getDocs(productsQuery);
+        const allProducts = productsSnap.docs.map(d => {
+          const pathSegments = d.ref.path.split('/');
+          const restaurantId = pathSegments[pathSegments.length - 3];
+          return { id: d.id, restaurantId, ...d.data() } as RecommendedProduct;
+        });
+
+        const history = recommendationsService.getViewedProductsHistory();
+        const topCategories = recommendationsService.getTopInterestedCategories();
+        const lastCategory = recommendationsService.getLastViewedCategory();
+
+        if (history.length === 0) {
+          setIsNewUser(true);
+          setRandomProducts([...allProducts].sort(() => 0.5 - Math.random()).slice(0, 12));
+        } else {
+          setIsNewUser(false);
+          const recentIds = history.map(h => h.id);
+
+          setRecentlyViewed(
+            history.map(h => allProducts.find(p => p.id === h.id)).filter(Boolean) as RecommendedProduct[]
+          );
+
+          setInterestedProducts(
+            allProducts.filter(p => topCategories.includes(p.category) && !recentIds.includes(p.id!)).slice(0, 10)
+          );
+
+          if (userData?.favorites?.length > 0) {
+            setFavoriteProducts(
+              allProducts.filter(p => userData.favorites.includes(p.restaurantId)).slice(0, 10)
+            );
+          }
+
+          if (lastCategory) {
+            setInspiredProducts(
+              allProducts.filter(p => p.category === lastCategory && !recentIds.includes(p.id!)).slice(0, 10)
+            );
+          }
+        }
+
+      } catch (error) {
+        console.error("Error fetching home data:", error);
+      }
+    };
+
     fetchBanners();
-    fetchRestaurants();
+    fetchData();
   }, [userLocation, manualCity]);
+
+  // Combined effect for Banner Timer
+  useEffect(() => {
+    if (banners.length <= 1) return;
+
+    const currentBanner = banners[currentBannerIndex];
+    const duration = (currentBanner?.duration || 5) * 1000;
+
+    const timer = setTimeout(() => {
+      setCurrentBannerIndex((prev) => (prev + 1) % banners.length);
+    }, duration);
+
+    return () => clearTimeout(timer);
+  }, [currentBannerIndex, banners]);
+
+  const displayCategories = useMemo(() => {
+    if (categoryMode === 'manual') {
+      return categories.filter(c => c.isFeatured).slice(0, 8);
+    } else {
+      return [...categories].sort((a, b) => (b.clickCount || 0) - (a.clickCount || 0)).slice(0, 8);
+    }
+  }, [categories, categoryMode]);
+
+  const handleCategoryClick = async (category: Category) => {
+    try {
+      // Background update (fire and forget)
+      updateDoc(doc(db, 'global_categories', category.id), {
+        clickCount: increment(1)
+      });
+      navigate('/search', { state: { category: category.name } });
+    } catch (error) {
+      console.error("Error tracking click:", error);
+      navigate('/search', { state: { category: category.name } });
+    }
+  };
 
   const handleCitySelect = (state: string, city: string) => {
     localStorage.setItem('userState', state);
@@ -203,18 +326,40 @@ export default function Home() {
       {/* Promotional Banners */}
       {banners.length > 0 && (
         <section className="mt-4 px-5">
-          <div className="flex gap-4 overflow-x-auto hide-scrollbar snap-x snap-mandatory">
-            {banners.map((banner) => (
-              <a
-                key={banner.id}
-                href={banner.linkUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex-none w-[92%] aspect-[21/9] rounded-2xl overflow-hidden snap-center relative shadow-md"
-              >
-                <img src={banner.imageUrl} alt={banner.title} className="w-full h-full object-cover" />
-              </a>
-            ))}
+          <div className="relative w-full aspect-[2/1] rounded-2xl overflow-hidden shadow-lg border border-slate-100">
+            <AnimatePresence mode="wait">
+              {banners.map((banner, index) => (
+                index === currentBannerIndex && (
+                  <motion.a
+                    key={banner.id}
+                    href={banner.linkUrl || '#'}
+                    target={banner.linkUrl ? "_blank" : undefined}
+                    rel="noopener noreferrer"
+                    initial={{ opacity: 0, x: 20 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    exit={{ opacity: 0, x: -20 }}
+                    transition={{ duration: 0.5, ease: "easeOut" }}
+                    className="absolute inset-0 block"
+                  >
+                    <img
+                      src={banner.imageUrl}
+                      alt={banner.title}
+                      className="w-full h-full object-cover"
+                    />
+                    {/* Optional: Indicator Dots */}
+                    <div className="absolute bottom-3 right-3 flex gap-1.5 z-20">
+                      {banners.map((_, i) => (
+                        <div
+                          key={i}
+                          className={`h-1.5 rounded-full transition-all duration-300 ${i === currentBannerIndex ? 'w-4 bg-white' : 'w-1.5 bg-white/50'
+                            }`}
+                        ></div>
+                      ))}
+                    </div>
+                  </motion.a>
+                )
+              ))}
+            </AnimatePresence>
           </div>
         </section>
       )}
@@ -225,37 +370,59 @@ export default function Home() {
           ¿Qué se te antoja? <span className="text-xl">😋</span>
         </h2>
         <div className="flex gap-4 overflow-x-auto hide-scrollbar pr-5 pb-2">
-          {/* Category 1 */}
-          <Link to="/search" className="flex flex-col items-center gap-2 group min-w-[72px]">
-            <div className="h-[72px] w-[72px] rounded-full bg-orange-50 border-2 border-orange-100 p-2 group-hover:scale-105 transition-transform duration-300 flex items-center justify-center">
-              <img src={arepaImg} alt="Arepas" className="w-full h-full object-contain" />
-            </div>
-            <span className="text-[10px] font-black text-slate-700 uppercase tracking-wider group-hover:text-primary transition-colors">Arepas</span>
-          </Link>
-          {/* Category 2 */}
-          <Link to="/search" className="flex flex-col items-center gap-2 group min-w-[72px]">
-            <div className="h-[72px] w-[72px] rounded-full bg-red-50 border-2 border-red-100 p-2 group-hover:scale-105 transition-transform duration-300 flex items-center justify-center">
-              <img src={burgerImg} alt="Burgers" className="w-full h-full object-contain" />
-            </div>
-            <span className="text-[10px] font-black text-slate-700 uppercase tracking-wider group-hover:text-primary transition-colors">Burgers</span>
-          </Link>
-          {/* Category 3 */}
-          <Link to="/search" className="flex flex-col items-center gap-2 group min-w-[72px]">
-            <div className="h-[72px] w-[72px] rounded-full bg-pink-50 border-2 border-pink-100 p-2 group-hover:scale-105 transition-transform duration-300 flex items-center justify-center">
-              <img src={sushiImg} alt="Sushi" className="w-full h-full object-contain" />
-            </div>
-            <span className="text-[10px] font-black text-slate-700 uppercase tracking-wider group-hover:text-primary transition-colors">Sushi</span>
-          </Link>
-          {/* Category 4 */}
+          {displayCategories.map((category) => (
+            <button
+              key={category.id}
+              onClick={() => handleCategoryClick(category)}
+              className="flex flex-col items-center gap-2 group min-w-[72px]"
+            >
+              <div className="h-[72px] w-[72px] rounded-full bg-slate-50 border-2 border-slate-100 group-hover:border-primary/20 group-hover:scale-105 transition-all duration-300 flex items-center justify-center overflow-hidden">
+                {category.imageUrl ? (
+                  <img src={category.imageUrl} alt={category.name} className="w-full h-full object-cover" />
+                ) : (
+                  <span className="text-2xl">{category.icon || '🏷️'}</span>
+                )}
+              </div>
+              <span className="text-[10px] font-black text-slate-700 uppercase tracking-wider group-hover:text-primary transition-colors text-center truncate w-full px-1">
+                {category.name}
+              </span>
+            </button>
+          ))}
+
+          {/* Fallback / View All */}
           <Link to="/search" className="flex flex-col items-center gap-2 group min-w-[72px]">
             <div className="h-[72px] w-[72px] rounded-full bg-slate-50 border-2 border-slate-100 p-1 group-hover:scale-105 transition-transform duration-300 flex items-center justify-center">
               <div className="w-full h-full rounded-full bg-white flex items-center justify-center text-slate-400">
                 <Utensils className="w-6 h-6" />
               </div>
             </div>
-            <span className="text-[10px] font-black text-slate-700 uppercase tracking-wider group-hover:text-primary transition-colors">Ver todo</span>
+            <span className="text-[10px] font-black text-slate-700 uppercase tracking-wider group-hover:text-primary transition-colors text-center w-full px-1">Ver todo</span>
           </Link>
         </div>
+      </section>
+
+      {/* Recommendations engine */}
+      <section className="mt-2 mb-6 flex flex-col gap-6">
+        {isNewUser ? (
+          randomProducts.length > 0 && (
+            <ProductCarousel title="Descubre algo nuevo" products={randomProducts} />
+          )
+        ) : (
+          <>
+            {recentlyViewed.length > 0 && (
+              <ProductCarousel title="Visto recientemente" products={recentlyViewed} />
+            )}
+            {interestedProducts.length > 0 && (
+              <ProductCarousel title="Porque te interesa" products={interestedProducts} />
+            )}
+            {favoriteProducts.length > 0 && (
+              <ProductCarousel title="Llévate tu favorito" products={favoriteProducts} />
+            )}
+            {inspiredProducts.length > 0 && (
+              <ProductCarousel title="Inspirado en lo último que viste" products={inspiredProducts} />
+            )}
+          </>
+        )}
       </section>
 
       {/* Main Content: Restaurants */}
@@ -351,6 +518,72 @@ export default function Home() {
           )}
         </div>
       </main>
+    </div>
+  );
+}
+
+// ----------------------------------------------------------------------
+// Reusable Component for Product Carousels
+// ----------------------------------------------------------------------
+function ProductCarousel({ title, products }: { title: string, products: RecommendedProduct[] }) {
+  const navigate = useNavigate();
+
+  const handleProductClick = (product: RecommendedProduct) => {
+    // Record view and navigate
+    recommendationsService.recordProductView(product.id!, product.category, product.restaurantId);
+    navigate(`/restaurant/${product.restaurantId}`);
+  };
+
+  return (
+    <div className="pl-5 overflow-hidden">
+      <h2 className="text-slate-900 text-lg font-bold mb-3">{title}</h2>
+      <div className="flex gap-4 overflow-x-auto hide-scrollbar pr-5 pb-4 snap-x snap-mandatory">
+        {products.map((product) => {
+          const finalPrice = product.promoPrice && product.promoPrice > 0 ? product.promoPrice : product.price;
+          const displayImg = (product.images && product.images.length > 0) ? product.images[0] : product.image;
+
+          return (
+            <div
+              key={`${product.restaurantId}-${product.id}`}
+              onClick={() => handleProductClick(product)}
+              className="flex-none w-[140px] bg-white rounded-xl shadow-[0_2px_10px_-3px_rgba(0,0,0,0.1)] border border-slate-50 overflow-hidden snap-start cursor-pointer group hover:shadow-md transition-shadow flex flex-col"
+            >
+              <div className="w-full aspect-square bg-slate-50 p-2 overflow-hidden flex items-center justify-center relative">
+                <img
+                  src={displayImg}
+                  alt={product.name}
+                  className="w-full h-full object-contain mix-blend-multiply group-hover:scale-110 transition-transform duration-300"
+                />
+                {!product.price && (
+                  <div className="absolute top-2 left-2 bg-slate-900 text-white text-[8px] font-black px-1.5 py-0.5 rounded">CONSULTAR</div>
+                )}
+              </div>
+
+              <div className="p-3 flex-1 flex flex-col">
+                <h3 className="text-xs text-slate-700 font-medium line-clamp-2 leading-tight mb-auto group-hover:text-primary transition-colors">
+                  {product.name}
+                </h3>
+
+                <div className="mt-3">
+                  {product.price > 0 && (
+                    <div className="flex items-center gap-1.5">
+                      <span className="font-black text-slate-900 text-sm leading-none bg-slate-100/50 px-1 py-0.5 rounded">
+                        ${finalPrice.toFixed(2)}
+                      </span>
+                    </div>
+                  )}
+                  {/* Faux Free Shipping for premium effect, assuming some have it */}
+                  <div className="mt-1.5">
+                    <span className="text-[10px] font-bold text-emerald-600 tracking-tight flex items-center gap-1">
+                      Envío gratis
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }

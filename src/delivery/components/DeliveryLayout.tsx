@@ -1,12 +1,42 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { NavLink } from 'react-router-dom';
 import { Compass, DollarSign, User } from 'lucide-react';
+import { useAuth } from '../../context/AuthContext';
+import { doc, onSnapshot } from 'firebase/firestore';
+import { db } from '../../lib/firebase';
+import { setDriverOnlineStatus } from '../../lib/delivery-service';
 
 interface DeliveryLayoutProps {
     children: React.ReactNode;
 }
 
 export default function DeliveryLayout({ children }: DeliveryLayoutProps) {
+    const { user } = useAuth();
+    const [isOnline, setIsOnline] = useState(false);
+    const [updating, setUpdating] = useState(false);
+
+    useEffect(() => {
+        if (!user) return;
+        const unsub = onSnapshot(doc(db, 'delivery_drivers', user.uid), (snap) => {
+            if (snap.exists()) {
+                setIsOnline(snap.data().isOnline || false);
+            }
+        });
+        return () => unsub();
+    }, [user]);
+
+    const handleToggleStatus = async () => {
+        if (!user || updating) return;
+        setUpdating(true);
+        try {
+            await setDriverOnlineStatus(user.uid, !isOnline);
+        } catch (error) {
+            console.error("Error toggling status", error);
+        } finally {
+            setUpdating(false);
+        }
+    };
+
     const navItems = [
         { path: '/radar', icon: Compass, label: 'Radar' },
         { path: '/earnings', icon: DollarSign, label: 'Ganancias' },
@@ -25,11 +55,18 @@ export default function DeliveryLayout({ children }: DeliveryLayoutProps) {
                     />
                     <h1 className="font-black text-lg tracking-tight">Delivery Express</h1>
                 </div>
-                {/* Status Online/Offline toggle can go here later */}
-                <div className="flex items-center gap-2">
-                    <span className="w-3 h-3 rounded-full bg-emerald-400 animate-pulse"></span>
-                    <span className="text-xs font-bold">Activo</span>
-                </div>
+
+                <button
+                    onClick={handleToggleStatus}
+                    disabled={updating}
+                    className={`flex items-center gap-2 px-3 py-1.5 rounded-full transition-all active:scale-95 ${isOnline ? 'bg-emerald-500/20 text-emerald-300' : 'bg-slate-500/20 text-slate-300'
+                        }`}
+                >
+                    <span className={`w-2 h-2 rounded-full ${isOnline ? 'bg-emerald-400 animate-pulse' : 'bg-slate-400'}`}></span>
+                    <span className="text-[10px] font-black uppercase tracking-widest">
+                        {updating ? '...' : (isOnline ? 'En línea' : 'Desconectado')}
+                    </span>
+                </button>
             </header>
 
             {/* Contenido Principal (Scrollable) */}

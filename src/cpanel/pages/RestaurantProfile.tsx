@@ -6,8 +6,11 @@ import {
     ArrowLeft, Store, Star, Tag, MapPin, Phone,
     ShoppingBag, Box, Users, TrendingUp, Calendar,
     ChevronRight, ExternalLink, Instagram, MessageSquare,
-    DollarSign, Clock, CheckCircle, Package, Truck, X
+    DollarSign, Clock, CheckCircle, Package, Truck, X, Save, Upload,
+    Image as ImageIcon
 } from 'lucide-react';
+import { GLOBAL_CATEGORIES } from '../../lib/constants';
+import { updateDoc } from 'firebase/firestore';
 import { motion, AnimatePresence } from 'framer-motion';
 
 interface RestaurantData {
@@ -72,6 +75,9 @@ export default function RestaurantProfile() {
     const [popularProducts, setPopularProducts] = useState<any[]>([]);
     const [activeTab, setActiveTab] = useState<'overview' | 'products' | 'orders' | 'followers'>('overview');
     const [loading, setLoading] = useState(true);
+    const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+    const [editData, setEditData] = useState<Partial<RestaurantData>>({});
+    const [isUpdating, setIsUpdating] = useState(false);
 
     useEffect(() => {
         const fetchData = async () => {
@@ -122,6 +128,42 @@ export default function RestaurantProfile() {
         fetchData();
     }, [id]);
 
+    const handleUpdateProfile = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!id || !restaurant) return;
+
+        setIsUpdating(true);
+        try {
+            await updateDoc(doc(db, 'restaurants', id), editData);
+            setRestaurant({ ...restaurant, ...editData } as RestaurantData);
+            setIsEditModalOpen(false);
+        } catch (error) {
+            console.error("Error updating restaurant:", error);
+            alert("Error al actualizar el perfil");
+        } finally {
+            setIsUpdating(false);
+        }
+    };
+
+    const openEditModal = () => {
+        if (!restaurant) return;
+        setEditData({
+            name: restaurant.name,
+            category: restaurant.category,
+            whatsapp: restaurant.whatsapp,
+            logoUrl: restaurant.logoUrl,
+            coverUrl: restaurant.coverUrl,
+            isActive: restaurant.isActive,
+            location: {
+                city: restaurant.location?.city || '',
+                state: restaurant.location?.state || '',
+                address: restaurant.location?.address || '',
+                reference: restaurant.location?.reference || ''
+            }
+        });
+        setIsEditModalOpen(true);
+    };
+
     if (loading) {
         return (
             <div className="flex items-center justify-center min-h-screen">
@@ -154,7 +196,10 @@ export default function RestaurantProfile() {
                 </button>
 
                 <div className="flex items-center gap-3">
-                    <button className="px-6 py-3 bg-white border border-slate-200 text-slate-600 rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-slate-50 transition-colors shadow-sm">
+                    <button
+                        onClick={openEditModal}
+                        className="px-6 py-3 bg-white border border-slate-200 text-slate-600 rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-slate-50 transition-all shadow-sm active:scale-95"
+                    >
                         Editar Perfil
                     </button>
                     <button className="px-6 py-3 bg-slate-900 text-white rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-slate-800 transition-colors shadow-lg shadow-slate-900/20">
@@ -354,6 +399,180 @@ export default function RestaurantProfile() {
                     )}
                 </div>
             </div>
+            {/* Edit Modal */}
+            <AnimatePresence>
+                {isEditModalOpen && (
+                    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm overflow-y-auto">
+                        <motion.div
+                            initial={{ opacity: 0, scale: 0.95, y: 20 }}
+                            animate={{ opacity: 1, scale: 1, y: 0 }}
+                            exit={{ opacity: 0, scale: 0.95, y: 20 }}
+                            className="bg-white rounded-[40px] w-full max-w-4xl shadow-2xl overflow-hidden my-auto"
+                        >
+                            {/* Modal Header */}
+                            <div className="p-8 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+                                <div className="flex items-center gap-4">
+                                    <div className="p-3 bg-primary/10 rounded-2xl text-primary">
+                                        <Store className="w-6 h-6" />
+                                    </div>
+                                    <div>
+                                        <h2 className="text-2xl font-black text-slate-900 leading-none">Editar Perfil del Local</h2>
+                                        <p className="text-slate-400 font-bold text-xs uppercase tracking-widest mt-2">Personaliza la información pública</p>
+                                    </div>
+                                </div>
+                                <button
+                                    onClick={() => setIsEditModalOpen(false)}
+                                    className="p-3 hover:bg-slate-200 rounded-2xl transition-all"
+                                >
+                                    <X className="w-6 h-6 text-slate-400" />
+                                </button>
+                            </div>
+
+                            {/* Modal Body */}
+                            <form onSubmit={handleUpdateProfile} className="p-8">
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                                    {/* Basic Info */}
+                                    <div className="space-y-6">
+                                        <h3 className="text-xs font-black text-slate-400 uppercase tracking-[0.2em] flex items-center gap-2">
+                                            <Box className="w-4 h-4" /> Información Básica
+                                        </h3>
+
+                                        <div className="space-y-2">
+                                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Nombre del Local</label>
+                                            <input
+                                                type="text"
+                                                value={editData.name}
+                                                onChange={(e) => setEditData({ ...editData, name: e.target.value })}
+                                                className="w-full bg-slate-50 border border-slate-100 rounded-2xl p-4 font-bold text-slate-700 focus:bg-white focus:border-primary transition-all outline-none"
+                                                required
+                                            />
+                                        </div>
+
+                                        <div className="space-y-2">
+                                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Categoría Principal</label>
+                                            <select
+                                                value={editData.category}
+                                                onChange={(e) => setEditData({ ...editData, category: e.target.value })}
+                                                className="w-full bg-slate-50 border border-slate-100 rounded-2xl p-4 font-bold text-slate-700 focus:bg-white focus:border-primary transition-all outline-none appearance-none"
+                                                required
+                                            >
+                                                {GLOBAL_CATEGORIES.map(cat => (
+                                                    <option key={cat} value={cat}>{cat}</option>
+                                                ))}
+                                            </select>
+                                        </div>
+
+                                        <div className="space-y-2">
+                                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">WhatsApp de Contacto</label>
+                                            <input
+                                                type="text"
+                                                value={editData.whatsapp}
+                                                onChange={(e) => setEditData({ ...editData, whatsapp: e.target.value })}
+                                                className="w-full bg-slate-50 border border-slate-100 rounded-2xl p-4 font-bold text-slate-700 focus:bg-white focus:border-primary transition-all outline-none"
+                                                placeholder="Ej: 584241234567"
+                                            />
+                                        </div>
+
+                                        <div className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl border border-slate-100 group hover:border-emerald-200 transition-all cursor-pointer" onClick={() => setEditData({ ...editData, isActive: !editData.isActive })}>
+                                            <div>
+                                                <p className="font-black text-slate-900 text-sm">Estado del Local</p>
+                                                <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-0.5">Visible en la App</p>
+                                            </div>
+                                            <div className={`w-14 h-7 rounded-full relative transition-all duration-300 ${editData.isActive !== false ? 'bg-emerald-500' : 'bg-slate-300'}`}>
+                                                <div className={`absolute top-1 w-5 h-5 bg-white rounded-full shadow-md transition-all duration-300 ${editData.isActive !== false ? 'left-8' : 'left-1'}`}></div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* Visuals & Location */}
+                                    <div className="space-y-6">
+                                        <h3 className="text-xs font-black text-slate-400 uppercase tracking-[0.2em] flex items-center gap-2">
+                                            <MapPin className="w-4 h-4" /> Ubicación y Visuales
+                                        </h3>
+
+                                        <div className="grid grid-cols-2 gap-4">
+                                            <div className="space-y-2">
+                                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Ciudad</label>
+                                                <input
+                                                    type="text"
+                                                    value={editData.location?.city}
+                                                    onChange={(e) => setEditData({
+                                                        ...editData,
+                                                        location: { ...editData.location!, city: e.target.value }
+                                                    })}
+                                                    className="w-full bg-slate-50 border border-slate-100 rounded-2xl p-4 font-bold text-slate-700 focus:bg-white focus:border-primary transition-all outline-none"
+                                                />
+                                            </div>
+                                            <div className="space-y-2">
+                                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Estado</label>
+                                                <input
+                                                    type="text"
+                                                    value={editData.location?.state}
+                                                    onChange={(e) => setEditData({
+                                                        ...editData,
+                                                        location: { ...editData.location!, state: e.target.value }
+                                                    })}
+                                                    className="w-full bg-slate-50 border border-slate-100 rounded-2xl p-4 font-bold text-slate-700 focus:bg-white focus:border-primary transition-all outline-none"
+                                                />
+                                            </div>
+                                        </div>
+
+                                        <div className="space-y-2">
+                                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Dirección Exacta</label>
+                                            <textarea
+                                                value={editData.location?.address}
+                                                onChange={(e) => setEditData({
+                                                    ...editData,
+                                                    location: { ...editData.location!, address: e.target.value }
+                                                })}
+                                                className="w-full bg-slate-50 border border-slate-100 rounded-2xl p-4 font-bold text-slate-700 focus:bg-white focus:border-primary transition-all outline-none min-h-[100px] resize-none"
+                                            />
+                                        </div>
+
+                                        <div className="space-y-4 pt-4 border-t border-slate-100">
+                                            <div className="flex items-center justify-between">
+                                                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Logo (URL)</p>
+                                                <ImageIcon className="w-4 h-4 text-slate-300" />
+                                            </div>
+                                            <input
+                                                type="text"
+                                                value={editData.logoUrl}
+                                                onChange={(e) => setEditData({ ...editData, logoUrl: e.target.value })}
+                                                className="w-full bg-slate-50 border border-slate-100 rounded-2xl p-4 font-bold text-slate-700 focus:bg-white focus:border-primary transition-all outline-none"
+                                            />
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Modal Footer */}
+                                <div className="mt-12 flex gap-4 pt-8 border-t border-slate-100">
+                                    <button
+                                        type="button"
+                                        onClick={() => setIsEditModalOpen(false)}
+                                        className="flex-1 py-4 bg-slate-100 text-slate-500 rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-slate-200 transition-all shadow-sm active:scale-95"
+                                    >
+                                        Cancelar
+                                    </button>
+                                    <button
+                                        type="submit"
+                                        disabled={isUpdating}
+                                        className="flex-[2] py-4 bg-primary text-white rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-orange-600 transition-all shadow-xl shadow-orange-500/30 flex items-center justify-center gap-2 active:scale-[0.98] disabled:opacity-50"
+                                    >
+                                        {isUpdating ? (
+                                            <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                                        ) : (
+                                            <>
+                                                <Save className="w-4 h-4" /> Guardar Cambios
+                                            </>
+                                        )}
+                                    </button>
+                                </div>
+                            </form>
+                        </motion.div>
+                    </div>
+                )}
+            </AnimatePresence>
         </div>
     );
 }
+

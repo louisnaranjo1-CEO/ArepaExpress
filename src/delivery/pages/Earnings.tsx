@@ -23,6 +23,13 @@ export default function Earnings() {
     const [loading, setLoading] = useState(true);
     const [activeTab, setActiveTab] = useState<'pending' | 'history'>('pending');
 
+    const [stats, setStats] = useState({
+        today: 0,
+        todayCount: 0,
+        week: 0,
+        available: 0
+    });
+
     useEffect(() => {
         if (!user) return;
 
@@ -38,7 +45,7 @@ export default function Earnings() {
                 ...doc.data()
             } as DeliveryOrder));
 
-            // Sort by date descending (client-side since we can't always do composite indexes without creating them first)
+            // Sort by date descending
             fetchedOrders.sort((a, b) => {
                 const dateA = a.createdAt?.seconds || 0;
                 const dateB = b.createdAt?.seconds || 0;
@@ -52,13 +59,34 @@ export default function Earnings() {
         return () => unsubscribe();
     }, [user]);
 
-    const pendingOrders = orders.filter(o => !o.deliveryPaid);
-    const historyOrders = orders.filter(o => o.deliveryPaid);
+    useEffect(() => {
+        if (!orders.length) return;
 
-    const pendingTotal = pendingOrders.reduce((sum, order) => sum + (order.deliveryFee || 0), 0);
+        const now = new Date();
+        const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+
+        // Correct start of week calculation (Sunday relative)
+        const d = new Date(now);
+        const day = d.getDay();
+        const diff = d.getDate() - day; // 0 for Sunday
+        const startOfWeek = new Date(d.setDate(diff)).setHours(0, 0, 0, 0);
+
+        const todayOrders = orders.filter(o => (o.createdAt?.seconds * 1000) >= startOfToday);
+        const weekOrders = orders.filter(o => (o.createdAt?.seconds * 1000) >= startOfWeek);
+        const pendingOrders = orders.filter(o => !o.deliveryPaid);
+
+        setStats({
+            today: todayOrders.reduce((sum, o) => sum + (o.deliveryFee || 0), 0),
+            todayCount: todayOrders.length,
+            week: weekOrders.reduce((sum, o) => sum + (o.deliveryFee || 0), 0),
+            available: pendingOrders.reduce((sum, o) => sum + (o.deliveryFee || 0), 0)
+        });
+    }, [orders]);
+
+    const historyOrders = orders.filter(o => o.deliveryPaid);
     const historyTotal = historyOrders.reduce((sum, order) => sum + (order.deliveryFee || 0), 0);
 
-    const displayOrders = activeTab === 'pending' ? pendingOrders : historyOrders;
+    const displayOrders = activeTab === 'pending' ? orders.filter(o => !o.deliveryPaid) : historyOrders;
 
     // Simulate Distance for UI since we don't have real coords recorded in history
     const getSimulatedDistance = (id: string) => {
@@ -81,37 +109,27 @@ export default function Earnings() {
                 <p className="text-slate-500 font-medium mt-1">Supervisa tus ingresos por delivery</p>
             </div>
 
-            {/* Main Balance Card */}
-            <div className="mx-4 bg-gradient-to-br from-indigo-600 to-indigo-800 rounded-[32px] p-6 text-white shadow-xl shadow-indigo-600/30 relative overflow-hidden">
-                <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full blur-3xl -mr-10 -mt-10"></div>
-
-                <p className="text-indigo-100 font-bold mb-1 opacity-80 uppercase tracking-widest text-xs">
-                    {activeTab === 'pending' ? 'Pendiente por cobrar' : 'Total Histórico Cobrado'}
-                </p>
-                <div className="flex items-end gap-2 mb-6 relative z-10">
-                    <span className="text-5xl font-black tracking-tighter">
-                        ${activeTab === 'pending' ? pendingTotal.toFixed(2) : historyTotal.toFixed(2)}
-                    </span>
-                    {activeTab === 'pending' && pendingTotal > 0 && (
-                        <span className="bg-emerald-500/20 text-emerald-300 px-2 py-1 rounded-lg text-xs font-bold flex items-center gap-1 mb-2">
-                            <ArrowUpRight className="w-3 h-3" /> Listo para pago
-                        </span>
-                    )}
+            {/* Main Stats Grid */}
+            <div className="px-4 grid grid-cols-2 gap-4">
+                <div className="bg-indigo-600 rounded-[32px] p-5 text-white shadow-lg shadow-indigo-600/20 relative overflow-hidden col-span-2">
+                    <div className="absolute top-0 right-0 w-24 h-24 bg-white/10 rounded-full blur-2xl -mr-8 -mt-8"></div>
+                    <p className="text-indigo-100 font-black uppercase tracking-widest text-[10px] opacity-80">Disponible para Cobro</p>
+                    <h3 className="text-4xl font-black mb-1">${stats.available.toFixed(2)}</h3>
+                    <div className="flex items-center gap-1.5 text-indigo-100/70 text-[10px] font-bold">
+                        <PackageCheck className="w-3 h-3" /> {orders.filter(o => !o.deliveryPaid).length} pedidos pendientes
+                    </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-4 border-t border-white/20 pt-4 relative z-10">
-                    <div>
-                        <p className="text-indigo-200 text-xs font-bold uppercase tracking-wider mb-1">Viajes</p>
-                        <p className="font-black text-xl">{activeTab === 'pending' ? pendingOrders.length : historyOrders.length}</p>
-                    </div>
-                    <div>
-                        <p className="text-indigo-200 text-xs font-bold uppercase tracking-wider mb-1">Promedio</p>
-                        <p className="font-black text-xl">
-                            ${displayOrders.length > 0
-                                ? ((activeTab === 'pending' ? pendingTotal : historyTotal) / displayOrders.length).toFixed(2)
-                                : '0.00'}
-                        </p>
-                    </div>
+                <div className="bg-white rounded-[28px] p-5 border border-slate-100 shadow-sm">
+                    <p className="text-slate-400 font-black uppercase tracking-widest text-[9px] mb-1">Hoy</p>
+                    <h4 className="text-xl font-black text-slate-900">${stats.today.toFixed(2)}</h4>
+                    <p className="text-[10px] font-bold text-slate-500">{stats.todayCount} entregas</p>
+                </div>
+
+                <div className="bg-white rounded-[28px] p-5 border border-slate-100 shadow-sm">
+                    <p className="text-slate-400 font-black uppercase tracking-widest text-[9px] mb-1">Esta Semana</p>
+                    <h4 className="text-xl font-black text-slate-900">${stats.week.toFixed(2)}</h4>
+                    <p className="text-[10px] font-bold text-slate-500">Acumulado</p>
                 </div>
             </div>
 

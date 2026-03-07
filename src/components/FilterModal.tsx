@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { X, SlidersHorizontal, Trash2 } from 'lucide-react';
-import { CATEGORIES } from '../pages/Search'; // We will export this from Search.tsx
+import { Category } from '../pages/Search';
 
 export interface FilterState {
     category: string | null;
@@ -14,9 +14,10 @@ interface FilterModalProps {
     onClose: () => void;
     onApply: (filters: FilterState) => void;
     initialFilters: FilterState;
+    categories: Category[];
 }
 
-export default function FilterModal({ isOpen, onClose, onApply, initialFilters }: FilterModalProps) {
+export default function FilterModal({ isOpen, onClose, onApply, initialFilters, categories }: FilterModalProps) {
     const [filters, setFilters] = useState<FilterState>(initialFilters);
 
     useEffect(() => {
@@ -68,7 +69,7 @@ export default function FilterModal({ isOpen, onClose, onApply, initialFilters }
                     <div className="space-y-3">
                         <h3 className="text-sm font-black text-slate-900 uppercase tracking-widest">Categoría</h3>
                         <div className="flex flex-wrap gap-2">
-                            {CATEGORIES.map((cat) => (
+                            {categories.map((cat) => (
                                 <button
                                     key={cat.id}
                                     onClick={() => setFilters(prev => ({ ...prev, category: prev.category === cat.name ? null : cat.name }))}
@@ -77,7 +78,7 @@ export default function FilterModal({ isOpen, onClose, onApply, initialFilters }
                                         : 'bg-white border-slate-200 text-slate-600 hover:border-primary/50'
                                         }`}
                                 >
-                                    {cat.shortName}
+                                    {cat.name}
                                 </button>
                             ))}
                         </div>
