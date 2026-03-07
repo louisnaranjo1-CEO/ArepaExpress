@@ -1,4 +1,6 @@
 import { useState, useEffect } from 'react';
+import { signInAnonymously } from 'firebase/auth';
+import { auth } from '../lib/firebase';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import CpanelLayout from './components/CpanelLayout';
 import Login from './pages/Login';
@@ -21,16 +23,29 @@ export default function CpanelApp() {
     useEffect(() => {
         const token = localStorage.getItem('cpanel_auth');
         if (token === '725826loquillo') {
-            setIsAuthenticated(true);
+            signInAnonymously(auth).then(() => {
+                setIsAuthenticated(true);
+                setIsLoading(false);
+            }).catch(err => {
+                console.error("Firebase Auth error:", err);
+                setIsLoading(false);
+            });
+        } else {
+            setIsLoading(false);
         }
-        setIsLoading(false);
     }, []);
 
-    const login = (password: string) => {
+    const login = async (password: string) => {
         if (password === '725826loquillo') {
-            localStorage.setItem('cpanel_auth', password);
-            setIsAuthenticated(true);
-            return true;
+            try {
+                await signInAnonymously(auth);
+                localStorage.setItem('cpanel_auth', password);
+                setIsAuthenticated(true);
+                return true;
+            } catch (err) {
+                console.error("Login Error:", err);
+                return false;
+            }
         }
         return false;
     };

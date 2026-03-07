@@ -2,18 +2,22 @@ import React, { useState } from 'react';
 import { Lock, LayoutDashboard, AlertCircle, ArrowRight } from 'lucide-react';
 
 interface LoginProps {
-    onLogin: (password: string) => boolean;
+    onLogin: (password: string) => Promise<boolean>;
 }
 
 export default function Login({ onLogin }: LoginProps) {
     const [password, setPassword] = useState('');
     const [error, setError] = useState(false);
 
-    const handleSubmit = (e: React.FormEvent) => {
+    const [loading, setLoading] = useState(false);
+
+    const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        const success = onLogin(password);
+        setLoading(true);
+        const success = await onLogin(password);
         if (!success) {
             setError(true);
+            setLoading(false);
             setTimeout(() => setError(false), 3000);
         }
     };
@@ -44,8 +48,8 @@ export default function Login({ onLogin }: LoginProps) {
                                     value={password}
                                     onChange={(e) => setPassword(e.target.value)}
                                     className={`block w-full pl-11 pr-4 py-4 bg-slate-900/50 border rounded-2xl text-white placeholder-slate-500 focus:ring-2 focus:outline-none transition-all ${error
-                                            ? 'border-red-500/50 focus:border-red-500 focus:ring-red-500/20'
-                                            : 'border-white/10 focus:border-indigo-500 focus:ring-indigo-500/20'
+                                        ? 'border-red-500/50 focus:border-red-500 focus:ring-red-500/20'
+                                        : 'border-white/10 focus:border-indigo-500 focus:ring-indigo-500/20'
                                         }`}
                                     placeholder="••••••••••••••"
                                     required
@@ -62,10 +66,11 @@ export default function Login({ onLogin }: LoginProps) {
 
                         <button
                             type="submit"
-                            className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-4 px-4 rounded-2xl transition-all flex items-center justify-center gap-2 group hover:shadow-lg hover:shadow-indigo-500/25 active:scale-[0.98]"
+                            disabled={loading}
+                            className={`w-full bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-4 px-4 rounded-2xl transition-all flex items-center justify-center gap-2 group hover:shadow-lg hover:shadow-indigo-500/25 active:scale-[0.98] ${loading ? 'opacity-70 cursor-wait' : ''}`}
                         >
-                            Ingresar al Sistema
-                            <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
+                            {loading ? 'Verificando...' : 'Ingresar al Sistema'}
+                            {!loading && <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />}
                         </button>
                     </form>
                 </div>
