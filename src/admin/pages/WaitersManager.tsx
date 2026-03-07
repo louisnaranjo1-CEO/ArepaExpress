@@ -1,49 +1,49 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Search, Trash2, Edit2, Loader2, Save, X, User } from 'lucide-react';
-import { db } from '../../lib/firebase';
+import { Plus, Search, Edit2, Trash2, Key, CheckCircle2, XCircle, Shield, Phone, Mail, User, Camera, Loader2, Save, X } from 'lucide-react';
+import { db, storage } from '../../lib/firebase';
 import { useAuth } from '../../context/AuthContext';
-import { collection, addDoc, getDocs, deleteDoc, doc, query, updateDoc } from 'firebase/firestore';
+import { collection, addDoc, getDocs, deleteDoc, doc, query, updateDoc, where } from 'firebase/firestore';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 
 interface Waiter {
     id: string;
+    restaurantId: string;
     name: string;
     email: string;
-    status: 'active' | 'inactive';
-    shift: 'mañana' | 'tarde' | 'noche';
-    phone?: string;
+    password?: string;
+    phone: string;
+    photoUrl?: string;
+    role: 'waiter' | 'captain';
+    isActive: boolean;
+    createdAt: any;
 }
 
 export default function WaitersManager() {
     const { user } = useAuth();
+    const restaurantId = user?.uid;
     const [waiters, setWaiters] = useState<Waiter[]>([]);
     const [loading, setLoading] = useState(true);
     const [isAdding, setIsAdding] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
 
-    // New Waiter form state
-    const [newName, setNewName] = useState('');
-    const [newEmail, setNewEmail] = useState('');
-    const [newPassword, setNewPassword] = useState('');
-    const [newShift, setNewShift] = useState<Waiter['shift']>('mañana');
+    const [formData, setFormData] = useState({ name: '', email: '', phone: '', password: '', role: 'waiter' });
+    const [editingId, setEditingId] = useState<string | null>(null);
+    const [editData, setEditData] = useState({ name: '', email: '', phone: '', password: '', role: 'waiter', photoUrl: '' });
 
-    // Edit waiter state
-    const [editingWaiter, setEditingWaiter] = useState<Waiter | null>(null);
-    const [editName, setEditName] = useState('');
-    const [editEmail, setEditEmail] = useState('');
-    const [editPassword, setEditPassword] = useState('');
-    const [editShift, setEditShift] = useState<Waiter['shift']>('mañana');
+    const [photoFile, setPhotoFile] = useState<File | null>(null);
+    const [photoPreview, setPhotoPreview] = useState<string | null>(null);
     const [showPassword, setShowPassword] = useState(false);
 
     useEffect(() => {
-        if (!user) return;
+        if (!restaurantId) return;
         fetchWaiters();
-    }, [user]);
+    }, [restaurantId]);
 
     const fetchWaiters = async () => {
-        if (!user) return;
+        if (!restaurantId) return;
         setLoading(true);
         try {
-            const waitersRef = collection(db, 'restaurants', user.uid, 'waiters');
+            const waitersRef = collection(db, 'restaurants', restaurantId, 'waiters');
             const q = query(waitersRef);
             const snapshot = await getDocs(q);
             const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Waiter[];
@@ -55,60 +55,76 @@ export default function WaitersManager() {
         }
     };
 
-    const handleAddWaiter = async () => {
-        if (!user || !newName || !newEmail || !newPassword) return;
+    const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (file) {
+            setPhotoFile(file);
+            const reader = new FileReader();
+            reader.onloadend = () => {
+                setPhotoPreview(reader.result as string);
+            };
+            reader.readAsDataURL(file);
+        }
+    };
+
+    const uploadPhoto = async (file: File) => {
+        const fileRef = ref(storage, `waiters/${Date.now()}_${file.name}`);
+        await uploadBytes(fileRef, file);
+        return await getDownloadURL(fileRef);
+    };
+
+    const handleAddWaiter = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!restaurantId || isSaving) return;
+
         setIsSaving(true);
         try {
-            const waitersRef = collection(db, 'restaurants', user.uid, 'waiters');
-            await addDoc(waitersRef, {
-                name: newName,
-                email: newEmail,
-                password: newPassword, // En un sistema de prod, esto debería estar hasheado en el backend
-                shift: newShift,
-                status: 'active',
+            let photoUrl = '';
+            if (photoFile) {
+                photoUrl = await uploadPhoto(photoFile);
+            }
+
+            await addDoc(collection(db, 'restaurants', restaurantId, 'waiters'), {
+                ...formData,
+                photoUrl,
+                restaurantId,
+                isActive: true,
                 createdAt: new Date()
             });
-
-            // Reset form and refresh list
-            setNewName('');
-            setNewEmail('');
-            setNewPassword('');
             setIsAdding(false);
+            setFormData({ name: '', email: '', phone: '', password: '', role: 'waiter' });
+            setPhotoFile(null);
+            setPhotoPreview(null);
             fetchWaiters();
         } catch (error) {
-            console.error("Error adding waiter:", error);
-            alert("Error al agregar mesero");
+            console.error("Error adding waiter: ", error);
+            alert("Error al añadir mesero");
         } finally {
             setIsSaving(false);
         }
     };
 
-    const handleEditClick = (waiter: any) => {
-        setEditingWaiter(waiter);
-        setEditName(waiter.name);
-        setEditEmail(waiter.email);
-        setEditPassword(waiter.password || '');
-        setEditShift(waiter.shift);
-        setShowPassword(false);
-    };
-
-    const handleUpdateWaiter = async () => {
-        if (!user || !editingWaiter || !editName || !editEmail || !editPassword) return;
+    const handleUpdateWaiter = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!restaurantId || !editingId || isSaving) return;
         setIsSaving(true);
         try {
-            const waiterRef = doc(db, 'restaurants', user.uid, 'waiters', editingWaiter.id);
-            await updateDoc(waiterRef, {
-                name: editName,
-                email: editEmail,
-                password: editPassword,
-                shift: editShift,
+            let photoUrl = editData.photoUrl;
+            if (photoFile) {
+                photoUrl = await uploadPhoto(photoFile);
+            }
+
+            await updateDoc(doc(db, 'restaurants', restaurantId, 'waiters', editingId), {
+                ...editData,
+                photoUrl,
                 updatedAt: new Date()
             });
-
-            setEditingWaiter(null);
+            setEditingId(null);
+            setPhotoFile(null);
+            setPhotoPreview(null);
             fetchWaiters();
         } catch (error) {
-            console.error("Error updating waiter:", error);
+            console.error("Error updating waiter: ", error);
             alert("Error al actualizar mesero");
         } finally {
             setIsSaving(false);
@@ -116,13 +132,29 @@ export default function WaitersManager() {
     };
 
     const handleDeleteWaiter = async (waiterId: string) => {
-        if (!user || !confirm('¿Estás seguro de eliminar a este mesero?')) return;
+        if (!restaurantId || !confirm('¿Estás seguro de eliminar a este mesero?')) return;
         try {
-            await deleteDoc(doc(db, 'restaurants', user.uid, 'waiters', waiterId));
+            await deleteDoc(doc(db, 'restaurants', restaurantId, 'waiters', waiterId));
             fetchWaiters();
         } catch (error) {
             console.error("Error deleting waiter:", error);
+            alert("Error al eliminar mesero");
         }
+    };
+
+    const startEditing = (waiter: Waiter) => {
+        setEditingId(waiter.id);
+        setEditData({
+            name: waiter.name,
+            email: waiter.email,
+            phone: waiter.phone,
+            password: waiter.password || '',
+            role: waiter.role,
+            photoUrl: waiter.photoUrl || ''
+        });
+        setPhotoPreview(waiter.photoUrl || null);
+        setPhotoFile(null);
+        setShowPassword(false);
     };
 
     if (loading) {
@@ -142,7 +174,11 @@ export default function WaitersManager() {
                     <p className="text-slate-500 font-medium">Administra el personal de servicio de tu restaurante.</p>
                 </div>
                 <button
-                    onClick={() => setIsAdding(true)}
+                    onClick={() => {
+                        setIsAdding(true);
+                        setPhotoPreview(null);
+                        setPhotoFile(null);
+                    }}
                     className="bg-primary text-white px-6 py-3 rounded-2xl font-black shadow-lg shadow-primary/20 flex items-center gap-2 hover:scale-[1.02] active:scale-[0.98] transition-all"
                 >
                     <Plus className="w-5 h-5" />
@@ -150,10 +186,10 @@ export default function WaitersManager() {
                 </button>
             </div>
 
-            {/* Add Waiter Modal/Form Overlay */}
+            {/* Add Waiter Modal */}
             {isAdding && (
                 <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-                    <div className="bg-white w-full max-w-md rounded-[2.5rem] shadow-2xl p-8 space-y-6 animate-in zoom-in-95 duration-200">
+                    <div className="bg-white w-full max-w-md rounded-[2.5rem] shadow-2xl p-8 space-y-6 animate-in zoom-in-95 duration-200 h-fit max-h-[90vh] overflow-y-auto">
                         <div className="flex justify-between items-center">
                             <h2 className="text-2xl font-black text-slate-900">Agregar Mesero</h2>
                             <button onClick={() => setIsAdding(false)} className="p-2 hover:bg-slate-100 rounded-full">
@@ -161,164 +197,220 @@ export default function WaitersManager() {
                             </button>
                         </div>
 
-                        <div className="space-y-4">
-                            <div className="space-y-2">
-                                <label className="text-sm font-bold text-slate-500 ml-2">Nombre Completo</label>
-                                <input
-                                    type="text"
-                                    value={newName}
-                                    onChange={(e) => setNewName(e.target.value)}
-                                    className="w-full bg-slate-50 border-2 border-transparent focus:border-primary focus:bg-white p-4 rounded-2xl outline-none transition-all font-bold text-slate-700"
-                                    placeholder="Ej: Juan Pérez"
-                                />
-                            </div>
-                            <div className="space-y-2">
-                                <label className="text-sm font-bold text-slate-500 ml-2">Email / Usuario</label>
-                                <input
-                                    type="email"
-                                    value={newEmail}
-                                    onChange={(e) => setNewEmail(e.target.value)}
-                                    className="w-full bg-slate-50 border-2 border-transparent focus:border-primary focus:bg-white p-4 rounded-2xl outline-none transition-all font-bold text-slate-700"
-                                    placeholder="ejemplo@email.com"
-                                />
-                                <p className="text-[10px] text-slate-400 italic ml-2">* Se usará para iniciar sesión en la app de meseros.</p>
-                            </div>
-                            <div className="space-y-2">
-                                <label className="text-sm font-bold text-slate-500 ml-2">Contraseña</label>
-                                <input
-                                    type="text"
-                                    value={newPassword}
-                                    onChange={(e) => setNewPassword(e.target.value)}
-                                    className="w-full bg-slate-50 border-2 border-transparent focus:border-primary focus:bg-white p-4 rounded-2xl outline-none transition-all font-bold text-slate-700"
-                                    placeholder="Contraseña o PIN numérico"
-                                />
-                            </div>
-                            <div className="space-y-2">
-                                <label className="text-sm font-bold text-slate-500 ml-2">Turno Asignado</label>
-                                <select
-                                    value={newShift}
-                                    onChange={(e) => setNewShift(e.target.value as Waiter['shift'])}
-                                    className="w-full bg-slate-50 border-2 border-transparent focus:border-primary focus:bg-white p-4 rounded-2xl outline-none transition-all font-bold text-slate-700 appearance-none"
+                        <form onSubmit={handleAddWaiter} className="space-y-4">
+                            {/* Photo Upload */}
+                            <div className="flex flex-col items-center gap-4">
+                                <div
+                                    className="w-24 h-24 rounded-full bg-slate-50 border-2 border-dashed border-slate-200 flex items-center justify-center overflow-hidden relative group cursor-pointer"
+                                    onClick={() => document.getElementById('photo-upload-add')?.click()}
                                 >
-                                    <option value="mañana">Mañana (08:00 - 16:00)</option>
-                                    <option value="tarde">Tarde (16:00 - 00:00)</option>
-                                    <option value="noche">Noche (00:00 - 08:00)</option>
-                                </select>
+                                    {photoPreview ? (
+                                        <img src={photoPreview} alt="Preview" className="w-full h-full object-cover" />
+                                    ) : (
+                                        <Camera className="w-8 h-8 text-slate-300 group-hover:text-primary transition-colors" />
+                                    )}
+                                    <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                                        <span className="text-white text-[10px] font-bold uppercase">Subir Foto</span>
+                                    </div>
+                                </div>
+                                <input
+                                    type="file"
+                                    id="photo-upload-add"
+                                    hidden
+                                    accept="image/*"
+                                    onChange={handleFileChange}
+                                />
                             </div>
-                        </div>
 
-                        <button
-                            onClick={handleAddWaiter}
-                            disabled={isSaving || !newName || !newEmail || !newPassword}
-                            className="w-full bg-primary text-white py-4 rounded-2xl font-black shadow-xl shadow-primary/20 flex items-center justify-center gap-2 disabled:opacity-50"
-                        >
-                            {isSaving ? <Loader2 className="w-5 h-5 animate-spin" /> : <Save className="w-5 h-5" />}
-                            Guardar Mesero
-                        </button>
+                            <div className="space-y-4">
+                                <div className="space-y-1">
+                                    <label className="text-xs font-bold text-slate-500 ml-2">Nombre Completo</label>
+                                    <input
+                                        type="text"
+                                        required
+                                        value={formData.name}
+                                        onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                                        className="w-full bg-slate-50 border-2 border-transparent focus:border-primary focus:bg-white p-4 rounded-2xl outline-none transition-all font-bold text-slate-700"
+                                        placeholder="Ej: Juan Pérez"
+                                    />
+                                </div>
+                                <div className="space-y-1">
+                                    <label className="text-xs font-bold text-slate-500 ml-2">Email / Usuario</label>
+                                    <input
+                                        type="email"
+                                        required
+                                        value={formData.email}
+                                        onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                                        className="w-full bg-slate-50 border-2 border-transparent focus:border-primary focus:bg-white p-4 rounded-2xl outline-none transition-all font-bold text-slate-700"
+                                        placeholder="ejemplo@email.com"
+                                    />
+                                </div>
+                                <div className="space-y-1">
+                                    <label className="text-xs font-bold text-slate-500 ml-2">Teléfono</label>
+                                    <input
+                                        type="tel"
+                                        value={formData.phone}
+                                        onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                                        className="w-full bg-slate-50 border-2 border-transparent focus:border-primary focus:bg-white p-4 rounded-2xl outline-none transition-all font-bold text-slate-700"
+                                        placeholder="Ej: +502 1234 5678"
+                                    />
+                                </div>
+                                <div className="space-y-1">
+                                    <label className="text-xs font-bold text-slate-500 ml-2">Contraseña</label>
+                                    <input
+                                        type="password"
+                                        required
+                                        value={formData.password}
+                                        onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                                        className="w-full bg-slate-50 border-2 border-transparent focus:border-primary focus:bg-white p-4 rounded-2xl outline-none transition-all font-bold text-slate-700"
+                                        placeholder="PIN de acceso"
+                                    />
+                                </div>
+                                <div className="space-y-1">
+                                    <label className="text-xs font-bold text-slate-500 ml-2">Rol</label>
+                                    <select
+                                        value={formData.role}
+                                        onChange={(e) => setFormData({ ...formData, role: e.target.value as 'waiter' | 'captain' })}
+                                        className="w-full bg-slate-50 border-2 border-transparent focus:border-primary focus:bg-white p-4 rounded-2xl outline-none transition-all font-bold text-slate-700"
+                                    >
+                                        <option value="waiter">Mesero</option>
+                                        <option value="captain">Capitán / Supervisor</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <button
+                                type="submit"
+                                disabled={isSaving}
+                                className="w-full bg-primary text-white py-4 rounded-2xl font-black shadow-xl shadow-primary/20 flex items-center justify-center gap-2 disabled:opacity-50 mt-4"
+                            >
+                                {isSaving ? <Loader2 className="w-5 h-5 animate-spin" /> : <Save className="w-5 h-5" />}
+                                Guardar Mesero
+                            </button>
+                        </form>
                     </div>
                 </div>
             )}
 
             {/* Edit Waiter Modal */}
-            {editingWaiter && (
+            {editingId && (
                 <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-                    <div className="bg-white w-full max-w-md rounded-[2.5rem] shadow-2xl p-8 space-y-6 animate-in zoom-in-95 duration-200">
+                    <div className="bg-white w-full max-w-md rounded-[2.5rem] shadow-2xl p-8 space-y-6 animate-in zoom-in-95 duration-200 h-fit max-h-[90vh] overflow-y-auto">
                         <div className="flex justify-between items-center">
-                            <div>
-                                <h2 className="text-2xl font-black text-slate-900">Editar Mesero</h2>
-                                <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">ID: {editingWaiter.id.slice(-6).toUpperCase()}</p>
-                            </div>
-                            <button onClick={() => setEditingWaiter(null)} className="p-2 hover:bg-slate-100 rounded-full">
+                            <h2 className="text-2xl font-black text-slate-900">Editar Mesero</h2>
+                            <button onClick={() => setEditingId(null)} className="p-2 hover:bg-slate-100 rounded-full">
                                 <X className="w-6 h-6 text-slate-400" />
                             </button>
                         </div>
 
-                        <div className="space-y-4">
-                            <div className="space-y-2">
-                                <label className="text-sm font-bold text-slate-500 ml-2">Nombre Completo</label>
+                        <form onSubmit={handleUpdateWaiter} className="space-y-4">
+                            {/* Photo Upload */}
+                            <div className="flex flex-col items-center gap-4">
+                                <div
+                                    className="w-24 h-24 rounded-full bg-slate-50 border-2 border-dashed border-slate-200 flex items-center justify-center overflow-hidden relative group cursor-pointer"
+                                    onClick={() => document.getElementById('photo-upload-edit')?.click()}
+                                >
+                                    {photoPreview ? (
+                                        <img src={photoPreview} alt="Preview" className="w-full h-full object-cover" />
+                                    ) : (
+                                        <Camera className="w-8 h-8 text-slate-300 group-hover:text-primary transition-colors" />
+                                    )}
+                                    <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                                        <span className="text-white text-[10px] font-bold uppercase">Cambiar Foto</span>
+                                    </div>
+                                </div>
                                 <input
-                                    type="text"
-                                    value={editName}
-                                    onChange={(e) => setEditName(e.target.value)}
-                                    className="w-full bg-slate-50 border-2 border-transparent focus:border-primary focus:bg-white p-4 rounded-2xl outline-none transition-all font-bold text-slate-700"
-                                    placeholder="Ej: Juan Pérez"
+                                    type="file"
+                                    id="photo-upload-edit"
+                                    hidden
+                                    accept="image/*"
+                                    onChange={handleFileChange}
                                 />
                             </div>
-                            <div className="space-y-2">
-                                <label className="text-sm font-bold text-slate-500 ml-2">Email / Usuario</label>
-                                <input
-                                    type="email"
-                                    value={editEmail}
-                                    onChange={(e) => setEditEmail(e.target.value)}
-                                    className="w-full bg-slate-50 border-2 border-transparent focus:border-primary focus:bg-white p-4 rounded-2xl outline-none transition-all font-bold text-slate-700"
-                                    placeholder="ejemplo@email.com"
-                                />
-                            </div>
-                            <div className="space-y-2">
-                                <label className="text-sm font-bold text-slate-500 ml-2">Contraseña</label>
-                                <div className="relative">
+
+                            <div className="space-y-4">
+                                <div className="space-y-1">
+                                    <label className="text-sm font-bold text-slate-500 ml-2">Nombre Completo</label>
                                     <input
-                                        type={showPassword ? "text" : "password"}
-                                        value={editPassword}
-                                        onChange={(e) => setEditPassword(e.target.value)}
-                                        className="w-full bg-slate-50 border-2 border-transparent focus:border-primary focus:bg-white p-4 rounded-2xl pr-14 outline-none transition-all font-bold text-slate-700"
-                                        placeholder="Contraseña o PIN"
+                                        type="text"
+                                        required
+                                        value={editData.name}
+                                        onChange={(e) => setEditData({ ...editData, name: e.target.value })}
+                                        className="w-full bg-slate-50 border-2 border-transparent focus:border-primary focus:bg-white p-4 rounded-2xl outline-none transition-all font-bold text-slate-700"
                                     />
-                                    <button
-                                        type="button"
-                                        onClick={() => setShowPassword(!showPassword)}
-                                        className="absolute right-4 top-1/2 -translate-y-1/2 text-[10px] font-black uppercase text-primary bg-primary/10 px-2 py-1 rounded-lg"
+                                </div>
+                                <div className="space-y-1">
+                                    <label className="text-sm font-bold text-slate-500 ml-2">Email / Usuario</label>
+                                    <input
+                                        type="email"
+                                        required
+                                        value={editData.email}
+                                        onChange={(e) => setEditData({ ...editData, email: e.target.value })}
+                                        className="w-full bg-slate-50 border-2 border-transparent focus:border-primary focus:bg-white p-4 rounded-2xl outline-none transition-all font-bold text-slate-700"
+                                    />
+                                </div>
+                                <div className="space-y-1">
+                                    <label className="text-sm font-bold text-slate-500 ml-2">Teléfono</label>
+                                    <input
+                                        type="tel"
+                                        value={editData.phone}
+                                        onChange={(e) => setEditData({ ...editData, phone: e.target.value })}
+                                        className="w-full bg-slate-50 border-2 border-transparent focus:border-primary focus:bg-white p-4 rounded-2xl outline-none transition-all font-bold text-slate-700"
+                                    />
+                                </div>
+                                <div className="space-y-1">
+                                    <label className="text-sm font-bold text-slate-500 ml-2">Contraseña</label>
+                                    <div className="relative">
+                                        <input
+                                            type={showPassword ? "text" : "password"}
+                                            value={editData.password}
+                                            onChange={(e) => setEditData({ ...editData, password: e.target.value })}
+                                            className="w-full bg-slate-50 border-2 border-transparent focus:border-primary focus:bg-white p-4 rounded-2xl pr-14 outline-none transition-all font-bold text-slate-700"
+                                        />
+                                        <button
+                                            type="button"
+                                            onClick={() => setShowPassword(!showPassword)}
+                                            className="absolute right-4 top-1/2 -translate-y-1/2 text-[10px] font-black uppercase text-primary"
+                                        >
+                                            {showPassword ? "Ocultar" : "Ver"}
+                                        </button>
+                                    </div>
+                                </div>
+                                <div className="space-y-1">
+                                    <label className="text-sm font-bold text-slate-500 ml-2">Rol</label>
+                                    <select
+                                        value={editData.role}
+                                        onChange={(e) => setEditData({ ...editData, role: e.target.value as 'waiter' | 'captain' })}
+                                        className="w-full bg-slate-50 border-2 border-transparent focus:border-primary focus:bg-white p-4 rounded-2xl outline-none transition-all font-bold text-slate-700"
                                     >
-                                        {showPassword ? "Ocultar" : "Ver"}
-                                    </button>
+                                        <option value="waiter">Mesero</option>
+                                        <option value="captain">Capitán / Supervisor</option>
+                                    </select>
                                 </div>
                             </div>
-                            <div className="space-y-2">
-                                <label className="text-sm font-bold text-slate-500 ml-2">Turno Asignado</label>
-                                <select
-                                    value={editShift}
-                                    onChange={(e) => setEditShift(e.target.value as Waiter['shift'])}
-                                    className="w-full bg-slate-50 border-2 border-transparent focus:border-primary focus:bg-white p-4 rounded-2xl outline-none transition-all font-bold text-slate-700 appearance-none"
-                                >
-                                    <option value="mañana">Mañana (08:00 - 16:00)</option>
-                                    <option value="tarde">Tarde (16:00 - 00:00)</option>
-                                    <option value="noche">Noche (00:00 - 08:00)</option>
-                                </select>
-                            </div>
-                        </div>
 
-                        <button
-                            onClick={handleUpdateWaiter}
-                            disabled={isSaving || !editName || !editEmail || !editPassword}
-                            className="w-full bg-primary text-white py-4 rounded-2xl font-black shadow-xl shadow-primary/20 flex items-center justify-center gap-2 disabled:opacity-50"
-                        >
-                            {isSaving ? <Loader2 className="w-5 h-5 animate-spin" /> : <Save className="w-5 h-5" />}
-                            Actualizar Datos
-                        </button>
+                            <button
+                                type="submit"
+                                disabled={isSaving}
+                                className="w-full bg-primary text-white py-4 rounded-2xl font-black shadow-xl shadow-primary/20 flex items-center justify-center gap-2 disabled:opacity-50 mt-4"
+                            >
+                                {isSaving ? <Loader2 className="w-5 h-5 animate-spin" /> : <Save className="w-5 h-5" />}
+                                Guardar Cambios
+                            </button>
+                        </form>
                     </div>
                 </div>
             )}
 
             {/* Waiters Table/Grid */}
             <div className="bg-white rounded-[2.5rem] shadow-sm border border-slate-100 overflow-hidden">
-                <div className="p-6 border-b border-slate-50 flex items-center justify-between">
-                    <div className="relative flex-1 max-w-md">
-                        <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
-                        <input
-                            type="text"
-                            placeholder="Buscar mesero..."
-                            className="w-full bg-slate-50 border-none pl-12 pr-4 py-3 rounded-xl font-medium text-slate-600 focus:ring-2 focus:ring-primary/20 outline-none"
-                        />
-                    </div>
-                </div>
-
                 <div className="overflow-x-auto">
                     <table className="w-full">
                         <thead>
                             <tr className="bg-slate-50/50">
                                 <th className="text-left px-8 py-4 text-xs font-black text-slate-400 uppercase tracking-widest">Personal</th>
-                                <th className="text-left px-8 py-4 text-xs font-black text-slate-400 uppercase tracking-widest">Email</th>
-                                <th className="text-left px-8 py-4 text-xs font-black text-slate-400 uppercase tracking-widest">Turno</th>
+                                <th className="text-left px-8 py-4 text-xs font-black text-slate-400 uppercase tracking-widest">Contacto</th>
+                                <th className="text-left px-8 py-4 text-xs font-black text-slate-400 uppercase tracking-widest">Rol</th>
                                 <th className="text-left px-8 py-4 text-xs font-black text-slate-400 uppercase tracking-widest">Estado</th>
                                 <th className="text-right px-8 py-4 text-xs font-black text-slate-400 uppercase tracking-widest">Acciones</th>
                             </tr>
@@ -334,28 +426,37 @@ export default function WaitersManager() {
                                 <tr key={waiter.id} className="hover:bg-slate-50/50 transition-colors group">
                                     <td className="px-8 py-4">
                                         <div className="flex items-center gap-3">
-                                            <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center text-primary">
-                                                <User className="w-6 h-6" />
-                                            </div>
+                                            {waiter.photoUrl ? (
+                                                <img src={waiter.photoUrl} alt={waiter.name} className="w-10 h-10 rounded-full object-cover" />
+                                            ) : (
+                                                <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center text-primary">
+                                                    <User className="w-6 h-6" />
+                                                </div>
+                                            )}
                                             <span className="font-bold text-slate-700">{waiter.name}</span>
                                         </div>
                                     </td>
-                                    <td className="px-8 py-4 text-slate-500 font-medium text-sm">{waiter.email}</td>
                                     <td className="px-8 py-4">
-                                        <span className="text-xs font-black text-slate-400 uppercase tracking-widest bg-slate-100 px-3 py-1 rounded-full">
-                                            {waiter.shift}
+                                        <div className="flex flex-col">
+                                            <span className="text-slate-500 font-medium text-sm">{waiter.email}</span>
+                                            <span className="text-[10px] text-slate-400 font-bold">{waiter.phone || 'Sin teléfono'}</span>
+                                        </div>
+                                    </td>
+                                    <td className="px-8 py-4">
+                                        <span className={`text-[10px] font-black uppercase tracking-widest px-3 py-1 rounded-full ${waiter.role === 'captain' ? 'bg-amber-100 text-amber-600' : 'bg-slate-100 text-slate-400'}`}>
+                                            {waiter.role === 'captain' ? 'Capitán' : 'Mesero'}
                                         </span>
                                     </td>
                                     <td className="px-8 py-4">
-                                        <span className={`flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest ${waiter.status === 'active' ? 'text-emerald-500' : 'text-slate-400'}`}>
-                                            <div className={`w-1.5 h-1.5 rounded-full ${waiter.status === 'active' ? 'bg-emerald-500 animate-pulse' : 'bg-slate-300'}`}></div>
-                                            {waiter.status === 'active' ? 'En línea' : 'Inactivo'}
+                                        <span className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest text-emerald-500">
+                                            <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></div>
+                                            Activo
                                         </span>
                                     </td>
                                     <td className="px-8 py-4 text-right">
                                         <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
                                             <button
-                                                onClick={() => handleEditClick(waiter)}
+                                                onClick={() => startEditing(waiter)}
                                                 className="p-2 text-slate-400 hover:text-primary hover:bg-primary/5 rounded-lg transition-colors"
                                             >
                                                 <Edit2 className="w-5 h-5" />

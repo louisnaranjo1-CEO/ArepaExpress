@@ -71,6 +71,22 @@ export default function Cart() {
     }
   }, [defaultAddress]);
 
+  const [systemSettings, setSystemSettings] = useState<any>(null);
+
+  useEffect(() => {
+    const fetchSettings = async () => {
+      try {
+        const sDoc = await getDoc(doc(db, 'delivery_settings', 'settings'));
+        if (sDoc.exists()) {
+          setSystemSettings(sDoc.data());
+        }
+      } catch (err) {
+        console.error("Error fetching system delivery settings:", err);
+      }
+    };
+    fetchSettings();
+  }, []);
+
   useEffect(() => {
     const fetchRest = async () => {
       if (items.length > 0) {
@@ -120,7 +136,14 @@ export default function Cart() {
       }
     }
 
-    // Default system fee
+    // Use system fee if available
+    if (systemSettings) {
+      const baseFee = systemSettings.clientBaseFee || 1.00;
+      const perKmFee = systemSettings.clientPerKmFee || 0.50;
+      return baseFee + (distance * perKmFee);
+    }
+
+    // Default system fee fallback
     return Math.max(1, 1 + distance * 0.5);
   };
 

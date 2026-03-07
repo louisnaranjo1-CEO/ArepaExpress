@@ -36,7 +36,7 @@ export default function DeliveryManagement() {
             setUpdateRequests(data);
         });
 
-        const qSettings = doc(db, 'global_settings', 'delivery');
+        const qSettings = doc(db, 'delivery_settings', 'settings');
         const unsubscribeSettings = onSnapshot(qSettings, (docSnap) => {
             if (docSnap.exists()) {
                 setSettings(docSnap.data() as any);
@@ -54,7 +54,7 @@ export default function DeliveryManagement() {
     const activeDrivers = drivers.filter(d => d.status === 'active');
 
     const handleUpdateStatus = async (id: string, status: 'active' | 'rejected' | 'inactive') => {
-        if (!window.confirm(`¿Estás seguro de mover este piloto al estado: ${status}?`)) return;
+        if (!window.confirm(`¿Estás seguro de mover este piloto al estado: ${status === 'active' ? 'Activo' : status === 'rejected' ? 'Rechazado' : 'Inactivo'}?`)) return;
         try {
             await updateDoc(doc(db, 'delivery_drivers', id), { status });
             // Here we could also trigger a push notification to their device if we had FCM implemented
@@ -62,6 +62,21 @@ export default function DeliveryManagement() {
         } catch (error) {
             console.error("Error updating driver status:", error);
             alert("Error al actualizar estado");
+        }
+    };
+
+    const handleUpdateAvailability = async (id: string, availability: 'active' | 'busy' | 'offline') => {
+        const labels = { active: 'Activo', busy: 'Ocupado', offline: 'No disponible' };
+        if (!window.confirm(`¿Cambiar estado del piloto a ${labels[availability]}?`)) return;
+
+        try {
+            await updateDoc(doc(db, 'delivery_drivers', id), {
+                availability,
+                isOnline: availability !== 'offline'
+            });
+        } catch (error) {
+            console.error("Error updating availability:", error);
+            alert("Error al actualizar disponibilidad");
         }
     };
 
@@ -151,7 +166,7 @@ export default function DeliveryManagement() {
     const handleSaveSettings = async () => {
         setSavingSettings(true);
         try {
-            await setDoc(doc(db, 'global_settings', 'delivery'), settings, { merge: true });
+            await setDoc(doc(db, 'delivery_settings', 'settings'), settings, { merge: true });
             alert('Configuraciones guardadas correctamente.');
         } catch (error) {
             console.error("Error saving settings:", error);
@@ -345,9 +360,35 @@ export default function DeliveryManagement() {
                                             <p className="text-xs text-slate-500 uppercase">{driver.vehiclePlate || 'N/A'}</p>
                                         </td>
                                         <td className="p-4">
-                                            <span className={`px-2.5 py-1 text-[10px] font-black uppercase tracking-widest rounded-full ${driver.isOnline ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
-                                                {driver.isOnline ? 'En Línea' : 'Desconectado'}
-                                            </span>
+                                            <div className="flex bg-slate-100 p-1 rounded-xl w-fit">
+                                                <button
+                                                    onClick={() => handleUpdateAvailability(driver.id, 'active')}
+                                                    className={`px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-wider transition-all ${(!driver.availability || driver.availability === 'active') && driver.isOnline
+                                                        ? 'bg-emerald-500 text-white shadow-sm'
+                                                        : 'text-slate-400 hover:text-slate-600'
+                                                        }`}
+                                                >
+                                                    Activo
+                                                </button>
+                                                <button
+                                                    onClick={() => handleUpdateAvailability(driver.id, 'busy')}
+                                                    className={`px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-wider transition-all ${driver.availability === 'busy'
+                                                        ? 'bg-amber-500 text-white shadow-sm'
+                                                        : 'text-slate-400 hover:text-slate-600'
+                                                        }`}
+                                                >
+                                                    Ocupado
+                                                </button>
+                                                <button
+                                                    onClick={() => handleUpdateAvailability(driver.id, 'offline')}
+                                                    className={`px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-wider transition-all ${driver.availability === 'offline' || !driver.isOnline
+                                                        ? 'bg-slate-500 text-white shadow-sm'
+                                                        : 'text-slate-400 hover:text-slate-600'
+                                                        }`}
+                                                >
+                                                    No Disp.
+                                                </button>
+                                            </div>
                                         </td>
                                         <td className="p-4 pr-6 text-right space-x-3">
                                             <button

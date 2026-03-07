@@ -136,11 +136,14 @@ export default function Profile() {
         setIsWaiterSigningIn(true);
         setError(null);
         try {
+            console.log("Attempting waiter login for:", waiterEmail);
             const q = query(
                 collectionGroup(db, 'waiters'),
                 where('email', '==', waiterEmail)
             );
             const snapshot = await getDocs(q);
+            console.log("Waiter query snapshot empty:", snapshot.empty);
+
             if (snapshot.empty) {
                 setError("Credenciales incorrectas (Usuario).");
                 setIsWaiterSigningIn(false);
@@ -149,14 +152,18 @@ export default function Profile() {
 
             const waiterDoc = snapshot.docs[0];
             const data = waiterDoc.data();
+            console.log("Waiter data found:", data.name);
 
             if (data.password !== waiterPassword) {
+                console.log("Password mismatch for waiter:", waiterEmail);
                 setError("Credenciales incorrectas (Contraseña).");
                 setIsWaiterSigningIn(false);
                 return;
             }
 
             const restaurantId = waiterDoc.ref.parent.parent?.id;
+            console.log("Waiter restaurant ID:", restaurantId);
+
             if (!restaurantId) {
                 setError("No se pudo identificar el restaurante del mesero.");
                 setIsWaiterSigningIn(false);
