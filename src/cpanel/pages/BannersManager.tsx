@@ -1,13 +1,17 @@
 import React, { useState, useEffect } from 'react';
 import { collection, getDocs, addDoc, deleteDoc, doc, updateDoc, serverTimestamp } from 'firebase/firestore';
-import { db } from '../../lib/firebase';
-import { Trash2, Plus, Image as ImageIcon, Clock, ExternalLink, Timer } from 'lucide-react';
+import { Trash2, Plus, Image as ImageIcon, Clock, ExternalLink, Timer, Upload, AlertCircle } from 'lucide-react';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { db, storage } from '../../lib/firebase';
 import { motion, AnimatePresence } from 'framer-motion';
 
 export default function BannersManager() {
     const [banners, setBanners] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     const [isAdding, setIsAdding] = useState(false);
+    const [uploading, setUploading] = useState(false);
+    const [selectedFile, setSelectedFile] = useState<File | null>(null);
+    const [imagePreview, setImagePreview] = useState<string | null>(null);
     const [newBanner, setNewBanner] = useState({ imageUrl: '', title: '', linkUrl: '', duration: 5 });
 
     const fetchBanners = async () => {
@@ -29,19 +33,47 @@ export default function BannersManager() {
         fetchBanners();
     }, []);
 
+    const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (file) {
+            setSelectedFile(file);
+            setImagePreview(URL.createObjectURL(file));
+        }
+    };
+
     const handleAddBanner = async (e: React.FormEvent) => {
         e.preventDefault();
+        if (!selectedFile && !newBanner.imageUrl) {
+            alert("Por favor selecciona una imagen");
+            return;
+        }
+
+        setUploading(true);
         try {
+            let finalImageUrl = newBanner.imageUrl;
+
+            if (selectedFile) {
+                const storageRef = ref(storage, `banners/${Date.now()}_${selectedFile.name}`);
+                const snapshot = await uploadBytes(storageRef, selectedFile);
+                finalImageUrl = await getDownloadURL(snapshot.ref);
+            }
+
             await addDoc(collection(db, 'banners'), {
                 ...newBanner,
+                imageUrl: finalImageUrl,
                 createdAt: serverTimestamp(),
                 isActive: true
             });
             setIsAdding(false);
             setNewBanner({ imageUrl: '', title: '', linkUrl: '', duration: 5 });
+            setSelectedFile(null);
+            setImagePreview(null);
             fetchBanners();
         } catch (error) {
             console.error("Error adding banner: ", error);
+            alert("Error al subir la imagen");
+        } finally {
+            setUploading(false);
         }
     };
 
@@ -118,16 +150,35 @@ export default function BannersManager() {
                                     placeholder="Ej: Promo San Valentín"
                                 />
                             </div>
-                            <div className="space-y-2">
-                                <label className="block text-xs font-black text-slate-400 uppercase tracking-widest pl-1">URL de la Imagen</label>
-                                <input
-                                    type="url"
-                                    required
-                                    value={newBanner.imageUrl}
-                                    onChange={e => setNewBanner({ ...newBanner, imageUrl: e.target.value })}
-                                    className="w-full bg-slate-50 border-2 border-slate-100 rounded-[1.25rem] px-5 py-3.5 focus:border-indigo-500 focus:bg-white focus:ring-4 focus:ring-indigo-100 outline-none transition-all font-bold text-slate-700"
-                                    placeholder="https://..."
-                                />
+                            <div className="space-y-2 md:col-span-2">
+                                <label className="block text-xs font-black text-slate-400 uppercase tracking-widest pl-1 flex items-center gap-2">
+                                    <ImageIcon className="w-3 h-3" /> Imagen del Banner (1000 x 450 px recomendados)
+                                </label>
+                                <div className="flex items-center gap-4">
+                                    <label className="flex-1 group cursor-pointer">
+                                        <div className="w-full h-14 bg-slate-50 border-2 border-dashed border-slate-200 rounded-[1.25rem] flex items-center justify-center gap-2 group-hover:border-indigo-400 group-hover:bg-indigo-50 transition-all text-slate-400 group-hover:text-indigo-600">
+                                            <Upload className="w-5 h-5" />
+                                            <span className="font-bold text-sm">
+                                                {selectedFile ? selectedFile.name : 'Seleccionar archivo JPG/PNG'}
+                                            </span>
+                                        </div>
+                                        <input
+                                            type="file"
+                                            className="hidden"
+                                            accept="image/*"
+                                            onChange={handleFileChange}
+                                        />
+                                    </label>
+                                    {imagePreview && (
+                                        <div className="w-14 h-14 rounded-xl overflow-hidden border-2 border-slate-100 shadow-sm">
+                                            <img src={imagePreview} alt="Preview" className="w-full h-full object-cover" />
+                                        </div>
+                                    )}
+                                </div>
+                                <p className="text-[10px] text-slate-400 flex items-center gap-1.5 pl-1">
+                                    <AlertCircle className="w-3 h-3" />
+                                    Este banner se verá en la parte superior de la App.
+                                </p>
                             </div>
                             <div className="space-y-2">
                                 <label className="block text-xs font-black text-slate-400 uppercase tracking-widest pl-1 flex items-center gap-2">
@@ -165,9 +216,10 @@ export default function BannersManager() {
                             </button>
                             <button
                                 type="submit"
-                                className="bg-indigo-600 text-white px-10 py-3 rounded-2xl font-black hover:bg-indigo-700 shadow-lg shadow-indigo-600/30 transition-all active:scale-95"
+                                disabled={uploading}
+                                className={`${uploading ? 'bg-slate-400 cursor-not-allowed' : 'bg-indigo-600 hover:bg-indigo-700'} text-white px-10 py-3 rounded-2xl font-black shadow-lg shadow-indigo-600/30 transition-all active:scale-95 flex items-center gap-2`}
                             >
-                                Guardar Banner
+                                {uploading ? 'Subiendo...' : 'Guardar Banner'}
                             </button>
                         </div>
                     </motion.form>
@@ -234,8 +286,8 @@ export default function BannersManager() {
                                 <button
                                     onClick={() => toggleActive(banner.id, banner.isActive)}
                                     className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${banner.isActive
-                                            ? 'bg-emerald-50 text-emerald-600 border border-emerald-100'
-                                            : 'bg-slate-100 text-slate-500 border border-slate-200'
+                                        ? 'bg-emerald-50 text-emerald-600 border border-emerald-100'
+                                        : 'bg-slate-100 text-slate-500 border border-slate-200'
                                         }`}
                                 >
                                     {banner.isActive ? 'Activo' : 'Inactivo'}
