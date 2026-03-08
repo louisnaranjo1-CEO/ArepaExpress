@@ -26,7 +26,7 @@ const mapOptions: google.maps.MapOptions = {
         {
             featureType: "poi",
             elementType: "labels",
-            stylers: [{ visibility: "off" }]
+            stylers: [{ visibility: "on" }]
         }
     ]
 };

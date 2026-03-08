@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
-import { Save, Wallet, Receipt, CreditCard, DollarSign, Activity } from 'lucide-react';
+import { Save, Wallet, Receipt, CreditCard, DollarSign, Activity, Plus, Trash2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 export default function FinancesManager() {
@@ -39,18 +39,15 @@ export default function FinancesManager() {
             }
         },
         transportRates: {
-            moto: {
-                basePrice: 1.0,
-                pricePerKm: 0.5
-            },
-            carro: {
-                basePrice: 2.0,
-                pricePerKm: 1.0
-            },
-            ejecutivo: {
-                basePrice: 5.0,
-                pricePerKm: 2.5
-            }
+            moto: [
+                { from: 0, to: 2, price: 1.0 }
+            ],
+            carro: [
+                { from: 0, to: 2, price: 2.0 }
+            ],
+            ejecutivo: [
+                { from: 0, to: 2, price: 5.0 }
+            ]
         }
     });
 
@@ -59,12 +56,15 @@ export default function FinancesManager() {
             try {
                 const docRef = doc(db, 'system_configs', 'finances');
                 const docSnap = await getDoc(docRef);
-
                 if (docSnap.exists()) {
-                    // Merge existing data with default structure to prevent missing fields
+                    const data = docSnap.data();
                     setConfig(prev => ({
-                        paymentMethods: { ...prev.paymentMethods, ...(docSnap.data().paymentMethods || {}) },
-                        transportRates: { ...prev.transportRates, ...(docSnap.data().transportRates || {}) }
+                        paymentMethods: { ...prev.paymentMethods, ...(data.paymentMethods || {}) },
+                        transportRates: {
+                            moto: Array.isArray(data.transportRates?.moto) ? data.transportRates.moto : prev.transportRates.moto,
+                            carro: Array.isArray(data.transportRates?.carro) ? data.transportRates.carro : prev.transportRates.carro,
+                            ejecutivo: Array.isArray(data.transportRates?.ejecutivo) ? data.transportRates.ejecutivo : prev.transportRates.ejecutivo
+                        }
                     }));
                 }
             } catch (error) {
@@ -130,105 +130,95 @@ export default function FinancesManager() {
                         <h2 className="text-lg font-bold text-slate-800">Tarifas de Transporte</h2>
                     </div>
 
-                    <div className="space-y-6 flex-1">
-                        {/* Moto */}
-                        <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100">
-                            <h3 className="font-bold text-slate-700 mb-3 flex justify-between">
-                                <span>Mototaxi</span>
-                            </h3>
-                            <div className="grid grid-cols-2 gap-4">
-                                <div>
-                                    <label className="block text-xs font-bold text-slate-500 mb-1">Precio Base ($)</label>
-                                    <input
-                                        type="number" step="0.1" min="0"
-                                        value={config.transportRates.moto.basePrice}
-                                        onChange={e => setConfig(prev => ({
-                                            ...prev,
-                                            transportRates: { ...prev.transportRates, moto: { ...prev.transportRates.moto, basePrice: parseFloat(e.target.value) || 0 } }
-                                        }))}
-                                        className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2 font-bold text-slate-800"
-                                    />
+                    <div className="space-y-6 flex-1 pr-2 overflow-y-auto">
+                        {(['moto', 'carro', 'ejecutivo'] as const).map(type => (
+                            <div key={type} className="p-4 bg-slate-50 rounded-2xl border border-slate-100">
+                                <div className="flex items-center justify-between mb-4">
+                                    <h3 className="font-bold text-slate-700 capitalize">
+                                        {type === 'carro' ? 'Taxi Standard' : type === 'ejecutivo' ? 'Taxi Ejecutivo' : 'Mototaxi'}
+                                    </h3>
+                                    <button
+                                        onClick={() => {
+                                            const newRanges = [...config.transportRates[type]];
+                                            const lastRange = newRanges[newRanges.length - 1];
+                                            newRanges.push({
+                                                from: lastRange ? lastRange.to + 0.1 : 0,
+                                                to: lastRange ? lastRange.to + 2 : 2,
+                                                price: lastRange ? lastRange.price + 1 : 1
+                                            });
+                                            setConfig(prev => ({
+                                                ...prev,
+                                                transportRates: { ...prev.transportRates, [type]: newRanges }
+                                            }));
+                                        }}
+                                        className="text-indigo-600 hover:bg-white p-1.5 rounded-lg transition-colors flex items-center gap-1 text-xs font-bold"
+                                    >
+                                        <Plus className="w-4 h-4" /> Agregar Rango
+                                    </button>
                                 </div>
-                                <div>
-                                    <label className="block text-xs font-bold text-slate-500 mb-1">Precio por KM ($)</label>
-                                    <input
-                                        type="number" step="0.1" min="0"
-                                        value={config.transportRates.moto.pricePerKm}
-                                        onChange={e => setConfig(prev => ({
-                                            ...prev,
-                                            transportRates: { ...prev.transportRates, moto: { ...prev.transportRates.moto, pricePerKm: parseFloat(e.target.value) || 0 } }
-                                        }))}
-                                        className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2 font-bold text-slate-800"
-                                    />
-                                </div>
-                            </div>
-                        </div>
 
-                        {/* Taxi */}
-                        <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100">
-                            <h3 className="font-bold text-slate-700 mb-3 flex justify-between">
-                                <span>Taxi Standard</span>
-                            </h3>
-                            <div className="grid grid-cols-2 gap-4">
-                                <div>
-                                    <label className="block text-xs font-bold text-slate-500 mb-1">Precio Base ($)</label>
-                                    <input
-                                        type="number" step="0.1" min="0"
-                                        value={config.transportRates.carro.basePrice}
-                                        onChange={e => setConfig(prev => ({
-                                            ...prev,
-                                            transportRates: { ...prev.transportRates, carro: { ...prev.transportRates.carro, basePrice: parseFloat(e.target.value) || 0 } }
-                                        }))}
-                                        className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2 font-bold text-slate-800"
-                                    />
-                                </div>
-                                <div>
-                                    <label className="block text-xs font-bold text-slate-500 mb-1">Precio por KM ($)</label>
-                                    <input
-                                        type="number" step="0.1" min="0"
-                                        value={config.transportRates.carro.pricePerKm}
-                                        onChange={e => setConfig(prev => ({
-                                            ...prev,
-                                            transportRates: { ...prev.transportRates, carro: { ...prev.transportRates.carro, pricePerKm: parseFloat(e.target.value) || 0 } }
-                                        }))}
-                                        className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2 font-bold text-slate-800"
-                                    />
-                                </div>
-                            </div>
-                        </div>
-
-                        {/* Ejecutivo */}
-                        <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100">
-                            <h3 className="font-bold text-slate-700 mb-3 flex justify-between">
-                                <span>Taxi Ejecutivo</span>
-                            </h3>
-                            <div className="grid grid-cols-2 gap-4">
-                                <div>
-                                    <label className="block text-xs font-bold text-slate-500 mb-1">Precio Base ($)</label>
-                                    <input
-                                        type="number" step="0.1" min="0"
-                                        value={config.transportRates.ejecutivo.basePrice}
-                                        onChange={e => setConfig(prev => ({
-                                            ...prev,
-                                            transportRates: { ...prev.transportRates, ejecutivo: { ...prev.transportRates.ejecutivo, basePrice: parseFloat(e.target.value) || 0 } }
-                                        }))}
-                                        className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2 font-bold text-slate-800"
-                                    />
-                                </div>
-                                <div>
-                                    <label className="block text-xs font-bold text-slate-500 mb-1">Precio por KM ($)</label>
-                                    <input
-                                        type="number" step="0.1" min="0"
-                                        value={config.transportRates.ejecutivo.pricePerKm}
-                                        onChange={e => setConfig(prev => ({
-                                            ...prev,
-                                            transportRates: { ...prev.transportRates, ejecutivo: { ...prev.transportRates.ejecutivo, pricePerKm: parseFloat(e.target.value) || 0 } }
-                                        }))}
-                                        className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2 font-bold text-slate-800"
-                                    />
+                                <div className="space-y-3">
+                                    <div className="grid grid-cols-12 gap-2 text-[10px] font-black text-slate-400 uppercase px-2">
+                                        <div className="col-span-4">Desde (km)</div>
+                                        <div className="col-span-4">Hasta (km)</div>
+                                        <div className="col-span-3">Precio ($)</div>
+                                        <div className="col-span-1"></div>
+                                    </div>
+                                    {config.transportRates[type].map((range: any, idx: number) => (
+                                        <div key={idx} className="grid grid-cols-12 gap-2 items-center">
+                                            <div className="col-span-4">
+                                                <input
+                                                    type="number" step="0.1" min="0"
+                                                    value={range.from}
+                                                    onChange={e => {
+                                                        const newRanges = [...config.transportRates[type]];
+                                                        newRanges[idx].from = parseFloat(e.target.value) || 0;
+                                                        setConfig(prev => ({ ...prev, transportRates: { ...prev.transportRates, [type]: newRanges } }));
+                                                    }}
+                                                    className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1.5 text-sm font-bold text-slate-700"
+                                                />
+                                            </div>
+                                            <div className="col-span-4">
+                                                <input
+                                                    type="number" step="0.1" min="0"
+                                                    value={range.to}
+                                                    onChange={e => {
+                                                        const newRanges = [...config.transportRates[type]];
+                                                        newRanges[idx].to = parseFloat(e.target.value) || 0;
+                                                        setConfig(prev => ({ ...prev, transportRates: { ...prev.transportRates, [type]: newRanges } }));
+                                                    }}
+                                                    className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1.5 text-sm font-bold text-slate-700"
+                                                />
+                                            </div>
+                                            <div className="col-span-3">
+                                                <input
+                                                    type="number" step="0.5" min="0"
+                                                    value={range.price}
+                                                    onChange={e => {
+                                                        const newRanges = [...config.transportRates[type]];
+                                                        newRanges[idx].price = parseFloat(e.target.value) || 0;
+                                                        setConfig(prev => ({ ...prev, transportRates: { ...prev.transportRates, [type]: newRanges } }));
+                                                    }}
+                                                    className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1.5 text-sm font-bold text-slate-700"
+                                                />
+                                            </div>
+                                            <div className="col-span-1 flex justify-end">
+                                                <button
+                                                    onClick={() => {
+                                                        if (config.transportRates[type].length <= 1) return;
+                                                        const newRanges = config.transportRates[type].filter((_: any, i: number) => i !== idx);
+                                                        setConfig(prev => ({ ...prev, transportRates: { ...prev.transportRates, [type]: newRanges } }));
+                                                    }}
+                                                    className="text-slate-300 hover:text-red-500 transition-colors"
+                                                >
+                                                    <Trash2 className="w-4 h-4" />
+                                                </button>
+                                            </div>
+                                        </div>
+                                    ))}
                                 </div>
                             </div>
-                        </div>
+                        ))}
                     </div>
                 </div>
 

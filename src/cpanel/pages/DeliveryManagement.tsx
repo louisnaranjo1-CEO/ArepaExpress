@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { collection, query, getDocs, doc, updateDoc, onSnapshot, where, writeBatch, setDoc } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import { DeliveryDriver } from '../../lib/delivery-service';
-import { Truck, CheckCircle2, XCircle, FileText, User, DollarSign, ExternalLink } from 'lucide-react';
+import { Truck, CheckCircle2, XCircle, FileText, User, DollarSign, ExternalLink, Plus, Trash2, Clock, Sun, Moon, Activity } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 export default function DeliveryManagement() {
@@ -14,12 +14,26 @@ export default function DeliveryManagement() {
     const [driverPendingBalance, setDriverPendingBalance] = useState({ total: 0, count: 0 });
     const [payingDriver, setPayingDriver] = useState(false);
     const [updateRequests, setUpdateRequests] = useState<any[]>([]);
-    const [settings, setSettings] = useState({
-        driverBaseFee: 2.00,
-        driverPerKmFee: 0.50,
-        clientBaseFee: 2.50,
-        clientPerKmFee: 0.60
+    const [settings, setSettings] = useState<any>({
+        dayShift: {
+            start: "08:00",
+            end: "20:00",
+            driverRates: [{ from: 0, to: 2, price: 1.5 }],
+            clientRates: [{ from: 0, to: 2, price: 2.5 }]
+        },
+        nightShift: {
+            start: "20:01",
+            end: "07:59",
+            driverRates: [{ from: 0, to: 2, price: 2.0 }],
+            clientRates: [{ from: 0, to: 2, price: 3.5 }]
+        },
+        transportRates: {
+            moto: [{ from: 0, to: 2, price: 1.0 }],
+            carro: [{ from: 0, to: 2, price: 2.0 }],
+            ejecutivo: [{ from: 0, to: 2, price: 5.0 }]
+        }
     });
+    const [activeShift, setActiveShift] = useState<'day' | 'night'>('day');
     const [savingSettings, setSavingSettings] = useState(false);
 
     useEffect(() => {
@@ -39,7 +53,12 @@ export default function DeliveryManagement() {
         const qSettings = doc(db, 'delivery_settings', 'settings');
         const unsubscribeSettings = onSnapshot(qSettings, (docSnap) => {
             if (docSnap.exists()) {
-                setSettings(docSnap.data() as any);
+                const data = docSnap.data();
+                setSettings((prev: any) => ({
+                    ...prev,
+                    ...data,
+                    transportRates: data.transportRates || prev.transportRates
+                }));
             }
         });
 
@@ -124,7 +143,10 @@ export default function DeliveryManagement() {
             const snapshot = await getDocs(q);
             const pending = snapshot.docs.filter(doc => !doc.data().deliveryPaid);
 
-            const total = pending.reduce((sum, doc) => sum + (doc.data().deliveryFee || 0), 0);
+            const total = pending.reduce((sum, doc) => {
+                const data = doc.data();
+                return sum + (data.driverPayout || (data.deliveryFee ? data.deliveryFee * 0.8 : 0));
+            }, 0);
             setDriverPendingBalance({ total, count: pending.length });
         } catch (error) {
             console.error("Error fetching driver balance:", error);
@@ -414,87 +436,330 @@ export default function DeliveryManagement() {
 
             {/* TAB: FINANCES */}
             {activeTab === 'finances' && (
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                    {/* Tarifas de Pilotos */}
-                    <div className="bg-white p-8 rounded-[32px] border border-slate-200 shadow-sm space-y-6">
-                        <div className="flex items-center gap-4">
-                            <div className="w-12 h-12 bg-indigo-50 text-indigo-600 rounded-2xl flex items-center justify-center">
-                                <Truck className="w-6 h-6" />
-                            </div>
-                            <div>
-                                <h3 className="text-xl font-black text-slate-900">Tarifas de Pilotos</h3>
-                                <p className="text-sm font-medium text-slate-500">Lo que se le paga al repartidor.</p>
-                            </div>
-                        </div>
-
-                        <div className="space-y-4">
-                            <div>
-                                <label className="block text-xs font-black text-slate-400 uppercase tracking-widest ml-1 mb-2">Pago Base por Viaje ($)</label>
-                                <input
-                                    type="number"
-                                    step="0.01"
-                                    value={settings.driverBaseFee}
-                                    onChange={(e) => setSettings({ ...settings, driverBaseFee: parseFloat(e.target.value) || 0 })}
-                                    className="w-full bg-slate-50 border-2 border-transparent focus:border-indigo-500 px-4 py-3 rounded-2xl outline-none transition-all font-bold text-slate-700"
-                                />
-                            </div>
-                            <div>
-                                <label className="block text-xs font-black text-slate-400 uppercase tracking-widest ml-1 mb-2">Pago por Kilómetro ($)</label>
-                                <input
-                                    type="number"
-                                    step="0.01"
-                                    value={settings.driverPerKmFee}
-                                    onChange={(e) => setSettings({ ...settings, driverPerKmFee: parseFloat(e.target.value) || 0 })}
-                                    className="w-full bg-slate-50 border-2 border-transparent focus:border-indigo-500 px-4 py-3 rounded-2xl outline-none transition-all font-bold text-slate-700"
-                                />
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* Tarifas de Clientes */}
-                    <div className="bg-white p-8 rounded-[32px] border border-slate-200 shadow-sm space-y-6">
-                        <div className="flex items-center gap-4">
-                            <div className="w-12 h-12 bg-emerald-50 text-emerald-600 rounded-2xl flex items-center justify-center">
-                                <DollarSign className="w-6 h-6" />
-                            </div>
-                            <div>
-                                <h3 className="text-xl font-black text-slate-900">Tarifas de Clientes</h3>
-                                <p className="text-sm font-medium text-slate-500">Lo que se le cobra al cliente.</p>
-                            </div>
-                        </div>
-
-                        <div className="space-y-4">
-                            <div>
-                                <label className="block text-xs font-black text-slate-400 uppercase tracking-widest ml-1 mb-2">Costo Base de Delivery ($)</label>
-                                <input
-                                    type="number"
-                                    step="0.01"
-                                    value={settings.clientBaseFee}
-                                    onChange={(e) => setSettings({ ...settings, clientBaseFee: parseFloat(e.target.value) || 0 })}
-                                    className="w-full bg-slate-50 border-2 border-transparent focus:border-emerald-500 px-4 py-3 rounded-2xl outline-none transition-all font-bold text-slate-700"
-                                />
-                            </div>
-                            <div>
-                                <label className="block text-xs font-black text-slate-400 uppercase tracking-widest ml-1 mb-2">Costo por Kilómetro ($)</label>
-                                <input
-                                    type="number"
-                                    step="0.01"
-                                    value={settings.clientPerKmFee}
-                                    onChange={(e) => setSettings({ ...settings, clientPerKmFee: parseFloat(e.target.value) || 0 })}
-                                    className="w-full bg-slate-50 border-2 border-transparent focus:border-emerald-500 px-4 py-3 rounded-2xl outline-none transition-all font-bold text-slate-700"
-                                />
-                            </div>
-                        </div>
-                    </div>
-
-                    <div className="lg:col-span-2">
+                <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4">
+                    {/* Shift Selector */}
+                    <div className="bg-white p-2 rounded-2xl border border-slate-200 w-fit flex gap-1">
                         <button
-                            onClick={handleSaveSettings}
-                            disabled={savingSettings}
-                            className="w-full bg-indigo-600 text-white font-black py-4 rounded-2xl shadow-lg shadow-indigo-600/20 active:scale-[0.98] transition-all disabled:opacity-50"
+                            onClick={() => setActiveShift('day')}
+                            className={`flex items-center gap-2 px-6 py-2.5 rounded-xl font-black text-sm transition-all ${activeShift === 'day' ? 'bg-amber-500 text-white shadow-lg shadow-amber-500/20' : 'text-slate-400 hover:bg-slate-50'}`}
                         >
-                            {savingSettings ? 'Guardando...' : 'Guardar Todas las Configuraciones'}
+                            <Sun className="w-4 h-4" /> Horario Diurno
                         </button>
+                        <button
+                            onClick={() => setActiveShift('night')}
+                            className={`flex items-center gap-2 px-6 py-2.5 rounded-xl font-black text-sm transition-all ${activeShift === 'night' ? 'bg-indigo-950 text-white shadow-lg shadow-indigo-950/20' : 'text-slate-400 hover:bg-slate-50'}`}
+                        >
+                            <Moon className="w-4 h-4" /> Horario Nocturno
+                        </button>
+                    </div>
+
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                        {/* Time Configuration */}
+                        <div className="lg:col-span-2 bg-slate-50 p-6 rounded-[2rem] border border-slate-100 flex flex-col md:flex-row gap-6 items-center">
+                            <div className="flex items-center gap-3">
+                                <Clock className="w-6 h-6 text-slate-400" />
+                                <h4 className="font-black text-slate-700 uppercase tracking-widest text-xs">Ajustes del Horario</h4>
+                            </div>
+                            <div className="flex items-center gap-4 flex-1">
+                                <div className="flex-1">
+                                    <label className="block text-[10px] font-black text-slate-400 uppercase mb-1 ml-1">Inicio</label>
+                                    <input
+                                        type="time"
+                                        value={activeShift === 'day' ? settings.dayShift.start : settings.nightShift.start}
+                                        onChange={(e) => {
+                                            const key = activeShift === 'day' ? 'dayShift' : 'nightShift';
+                                            setSettings({ ...settings, [key]: { ...settings[key], start: e.target.value } });
+                                        }}
+                                        className="w-full bg-white border border-slate-200 px-4 py-2.5 rounded-xl font-bold text-slate-700 outline-none focus:ring-2 focus:ring-indigo-500/20"
+                                    />
+                                </div>
+                                <div className="flex-1">
+                                    <label className="block text-[10px] font-black text-slate-400 uppercase mb-1 ml-1">Fin</label>
+                                    <input
+                                        type="time"
+                                        value={activeShift === 'day' ? settings.dayShift.end : settings.nightShift.end}
+                                        onChange={(e) => {
+                                            const key = activeShift === 'day' ? 'dayShift' : 'nightShift';
+                                            setSettings({ ...settings, [key]: { ...settings[key], end: e.target.value } });
+                                        }}
+                                        className="w-full bg-white border border-slate-200 px-4 py-2.5 rounded-xl font-bold text-slate-700 outline-none focus:ring-2 focus:ring-indigo-500/20"
+                                    />
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Pilot Rates Editor */}
+                        <div className="bg-white p-8 rounded-[32px] border border-slate-200 shadow-sm space-y-6">
+                            <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-4">
+                                    <div className="w-12 h-12 bg-indigo-50 text-indigo-600 rounded-2xl flex items-center justify-center">
+                                        <Truck className="w-6 h-6" />
+                                    </div>
+                                    <div>
+                                        <h3 className="text-xl font-black text-slate-900 tracking-tight">Costo Repartidor</h3>
+                                        <p className="text-xs font-medium text-slate-500">¿Cuánto gana el piloto?</p>
+                                    </div>
+                                </div>
+                                <button
+                                    onClick={() => {
+                                        const key = activeShift === 'day' ? 'dayShift' : 'nightShift';
+                                        const newRates = [...settings[key].driverRates, { from: 0, to: 0, price: 0 }];
+                                        setSettings({ ...settings, [key]: { ...settings[key], driverRates: newRates } });
+                                    }}
+                                    className="bg-indigo-50 text-indigo-600 p-2.5 rounded-xl hover:bg-indigo-100 transition-colors"
+                                >
+                                    <Plus className="w-5 h-5" />
+                                </button>
+                            </div>
+
+                            <div className="space-y-3">
+                                <div className="grid grid-cols-12 gap-3 px-2">
+                                    <div className="col-span-4 text-[10px] font-black text-slate-400 uppercase">Desde (km)</div>
+                                    <div className="col-span-4 text-[10px] font-black text-slate-400 uppercase">Hasta (km)</div>
+                                    <div className="col-span-3 text-[10px] font-black text-slate-400 uppercase">A Pagar ($)</div>
+                                </div>
+                                {(activeShift === 'day' ? settings.dayShift.driverRates : settings.nightShift.driverRates).map((rate: any, idx: number) => (
+                                    <div key={idx} className="grid grid-cols-12 gap-3 items-center group">
+                                        <div className="col-span-4">
+                                            <input
+                                                type="number" step="0.1"
+                                                value={rate.from}
+                                                onChange={(e) => {
+                                                    const key = activeShift === 'day' ? 'dayShift' : 'nightShift';
+                                                    const newRates = [...settings[key].driverRates];
+                                                    newRates[idx].from = parseFloat(e.target.value) || 0;
+                                                    setSettings({ ...settings, [key]: { ...settings[key], driverRates: newRates } });
+                                                }}
+                                                className="w-full bg-slate-50 border border-slate-100 px-3 py-2.5 rounded-xl font-bold text-slate-700"
+                                            />
+                                        </div>
+                                        <div className="col-span-4">
+                                            <input
+                                                type="number" step="0.1"
+                                                value={rate.to}
+                                                onChange={(e) => {
+                                                    const key = activeShift === 'day' ? 'dayShift' : 'nightShift';
+                                                    const newRates = [...settings[key].driverRates];
+                                                    newRates[idx].to = parseFloat(e.target.value) || 0;
+                                                    setSettings({ ...settings, [key]: { ...settings[key], driverRates: newRates } });
+                                                }}
+                                                className="w-full bg-slate-50 border border-slate-100 px-3 py-2.5 rounded-xl font-bold text-slate-700"
+                                            />
+                                        </div>
+                                        <div className="col-span-3">
+                                            <input
+                                                type="number" step="0.1"
+                                                value={rate.price}
+                                                onChange={(e) => {
+                                                    const key = activeShift === 'day' ? 'dayShift' : 'nightShift';
+                                                    const newRates = [...settings[key].driverRates];
+                                                    newRates[idx].price = parseFloat(e.target.value) || 0;
+                                                    setSettings({ ...settings, [key]: { ...settings[key], driverRates: newRates } });
+                                                }}
+                                                className="w-full bg-slate-50 border border-slate-100 px-3 py-2.5 rounded-xl font-bold text-indigo-600"
+                                            />
+                                        </div>
+                                        <div className="col-span-1">
+                                            <button
+                                                onClick={() => {
+                                                    const key = activeShift === 'day' ? 'dayShift' : 'nightShift';
+                                                    const newRates = settings[key].driverRates.filter((_: any, i: number) => i !== idx);
+                                                    setSettings({ ...settings, [key]: { ...settings[key], driverRates: newRates } });
+                                                }}
+                                                className="text-slate-200 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all"
+                                            >
+                                                <Trash2 className="w-4 h-4" />
+                                            </button>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+
+                        {/* Client Rates Editor */}
+                        <div className="bg-white p-8 rounded-[32px] border border-slate-200 shadow-sm space-y-6">
+                            <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-4">
+                                    <div className="w-12 h-12 bg-emerald-50 text-emerald-600 rounded-2xl flex items-center justify-center">
+                                        <DollarSign className="w-6 h-6" />
+                                    </div>
+                                    <div>
+                                        <h3 className="text-xl font-black text-slate-900 tracking-tight">Costo Cliente</h3>
+                                        <p className="text-xs font-medium text-slate-500">¿Cuánto paga el usuario?</p>
+                                    </div>
+                                </div>
+                                <button
+                                    onClick={() => {
+                                        const key = activeShift === 'day' ? 'dayShift' : 'nightShift';
+                                        const newRates = [...settings[key].clientRates, { from: 0, to: 0, price: 0 }];
+                                        setSettings({ ...settings, [key]: { ...settings[key], clientRates: newRates } });
+                                    }}
+                                    className="bg-emerald-50 text-emerald-600 p-2.5 rounded-xl hover:bg-emerald-100 transition-colors"
+                                >
+                                    <Plus className="w-5 h-5" />
+                                </button>
+                            </div>
+
+                            <div className="space-y-3">
+                                <div className="grid grid-cols-12 gap-3 px-2">
+                                    <div className="col-span-4 text-[10px] font-black text-slate-400 uppercase">Desde (km)</div>
+                                    <div className="col-span-4 text-[10px] font-black text-slate-400 uppercase">Hasta (km)</div>
+                                    <div className="col-span-3 text-[10px] font-black text-slate-400 uppercase">A Cobrar ($)</div>
+                                </div>
+                                {(activeShift === 'day' ? settings.dayShift.clientRates : settings.nightShift.clientRates).map((rate: any, idx: number) => (
+                                    <div key={idx} className="grid grid-cols-12 gap-3 items-center group">
+                                        <div className="col-span-4">
+                                            <input
+                                                type="number" step="0.1"
+                                                value={rate.from}
+                                                onChange={(e) => {
+                                                    const key = activeShift === 'day' ? 'dayShift' : 'nightShift';
+                                                    const newRates = [...settings[key].clientRates];
+                                                    newRates[idx].from = parseFloat(e.target.value) || 0;
+                                                    setSettings({ ...settings, [key]: { ...settings[key], clientRates: newRates } });
+                                                }}
+                                                className="w-full bg-slate-50 border border-slate-100 px-3 py-2.5 rounded-xl font-bold text-slate-700"
+                                            />
+                                        </div>
+                                        <div className="col-span-4">
+                                            <input
+                                                type="number" step="0.1"
+                                                value={rate.to}
+                                                onChange={(e) => {
+                                                    const key = activeShift === 'day' ? 'dayShift' : 'nightShift';
+                                                    const newRates = [...settings[key].clientRates];
+                                                    newRates[idx].to = parseFloat(e.target.value) || 0;
+                                                    setSettings({ ...settings, [key]: { ...settings[key], clientRates: newRates } });
+                                                }}
+                                                className="w-full bg-slate-50 border border-slate-100 px-3 py-2.5 rounded-xl font-bold text-slate-700"
+                                            />
+                                        </div>
+                                        <div className="col-span-3">
+                                            <input
+                                                type="number" step="0.1"
+                                                value={rate.price}
+                                                onChange={(e) => {
+                                                    const key = activeShift === 'day' ? 'dayShift' : 'nightShift';
+                                                    const newRates = [...settings[key].clientRates];
+                                                    newRates[idx].price = parseFloat(e.target.value) || 0;
+                                                    setSettings({ ...settings, [key]: { ...settings[key], clientRates: newRates } });
+                                                }}
+                                                className="w-full bg-slate-50 border border-slate-100 px-3 py-2.5 rounded-xl font-bold text-emerald-600"
+                                            />
+                                        </div>
+                                        <div className="col-span-1">
+                                            <button
+                                                onClick={() => {
+                                                    const key = activeShift === 'day' ? 'dayShift' : 'nightShift';
+                                                    const newRates = settings[key].clientRates.filter((_: any, i: number) => i !== idx);
+                                                    setSettings({ ...settings, [key]: { ...settings[key], clientRates: newRates } });
+                                                }}
+                                                className="text-slate-200 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all"
+                                            >
+                                                <Trash2 className="w-4 h-4" />
+                                            </button>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+
+                        {/* Transport Rates Editor (Moto, Car, Exec) */}
+                        <div className="lg:col-span-2 bg-white p-8 rounded-[32px] border border-slate-200 shadow-sm space-y-8">
+                            <div className="flex items-center gap-4 border-b border-slate-100 pb-6">
+                                <div className="w-12 h-12 bg-indigo-50 text-indigo-600 rounded-2xl flex items-center justify-center">
+                                    <Activity className="w-6 h-6" />
+                                </div>
+                                <div>
+                                    <h3 className="text-xl font-black text-slate-900 tracking-tight">Tarifas de Taxis (Auto & Moto)</h3>
+                                    <p className="text-xs font-medium text-slate-500">Configuración global de precios por distancia</p>
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+                                {(['moto', 'carro', 'ejecutivo'] as const).map((type) => (
+                                    <div key={type} className="space-y-4">
+                                        <div className="flex items-center justify-between">
+                                            <h4 className="font-black text-slate-700 uppercase tracking-wider text-[10px]">
+                                                {type === 'carro' ? 'Taxi Standard' : type === 'ejecutivo' ? 'Taxi Ejecutivo' : 'Moto Taxi'}
+                                            </h4>
+                                            <button
+                                                onClick={() => {
+                                                    const newRates = [...settings.transportRates[type], { from: 0, to: 0, price: 0 }];
+                                                    setSettings({
+                                                        ...settings,
+                                                        transportRates: { ...settings.transportRates, [type]: newRates }
+                                                    });
+                                                }}
+                                                className="text-indigo-600 hover:bg-slate-50 p-1 rounded-lg transition-colors"
+                                            >
+                                                <Plus className="w-4 h-4" />
+                                            </button>
+                                        </div>
+
+                                        <div className="space-y-2">
+                                            {settings.transportRates[type].map((rate: any, idx: number) => (
+                                                <div key={idx} className="flex items-center gap-2 group/range">
+                                                    <input
+                                                        type="number" step="0.1"
+                                                        value={rate.from}
+                                                        onChange={(e) => {
+                                                            const newRates = [...settings.transportRates[type]];
+                                                            newRates[idx].from = parseFloat(e.target.value) || 0;
+                                                            setSettings({ ...settings, transportRates: { ...settings.transportRates, [type]: newRates } });
+                                                        }}
+                                                        placeholder="Km"
+                                                        className="w-16 bg-slate-50 border-none rounded-lg px-2 py-1.5 text-xs font-bold text-center"
+                                                    />
+                                                    <span className="text-slate-300 text-[10px]">→</span>
+                                                    <input
+                                                        type="number" step="0.1"
+                                                        value={rate.to}
+                                                        onChange={(e) => {
+                                                            const newRates = [...settings.transportRates[type]];
+                                                            newRates[idx].to = parseFloat(e.target.value) || 0;
+                                                            setSettings({ ...settings, transportRates: { ...settings.transportRates, [type]: newRates } });
+                                                        }}
+                                                        placeholder="Km"
+                                                        className="w-16 bg-slate-50 border-none rounded-lg px-2 py-1.5 text-xs font-bold text-center"
+                                                    />
+                                                    <input
+                                                        type="number" step="0.5"
+                                                        value={rate.price}
+                                                        onChange={(e) => {
+                                                            const newRates = [...settings.transportRates[type]];
+                                                            newRates[idx].price = parseFloat(e.target.value) || 0;
+                                                            setSettings({ ...settings, transportRates: { ...settings.transportRates, [type]: newRates } });
+                                                        }}
+                                                        placeholder="$"
+                                                        className="flex-1 bg-indigo-50 border-none rounded-lg px-2 py-1.5 text-xs font-black text-indigo-600 text-center"
+                                                    />
+                                                    <button
+                                                        onClick={() => {
+                                                            const newRates = settings.transportRates[type].filter((_: any, i: number) => i !== idx);
+                                                            setSettings({ ...settings, transportRates: { ...settings.transportRates, [type]: newRates } });
+                                                        }}
+                                                        className="text-slate-200 hover:text-red-500 opacity-0 group-hover/range:opacity-100 transition-all"
+                                                    >
+                                                        <Trash2 className="w-3.5 h-3.5" />
+                                                    </button>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+
+                        <div className="lg:col-span-2">
+                            <button
+                                onClick={handleSaveSettings}
+                                disabled={savingSettings}
+                                className="w-full bg-indigo-600 text-white font-black py-4 rounded-2xl shadow-lg shadow-indigo-600/20 active:scale-[0.98] transition-all disabled:opacity-50"
+                            >
+                                {savingSettings ? 'Guardando...' : 'Guardar Todas las Configuraciones'}
+                            </button>
+                        </div>
                     </div>
                 </div>
             )}

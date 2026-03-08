@@ -12,15 +12,44 @@ export default function Cart() {
   const { user, userData } = useAuth();
   const navigate = useNavigate();
   const [isCheckingOut, setIsCheckingOut] = useState(false);
+  const [orderId, setOrderId] = useState<string | null>(null);
+  const [purchaseConfirmed, setPurchaseConfirmed] = useState<boolean | null>(null);
+  const [restaurantData, setRestaurantData] = useState<any>(null);
   const [checkoutSuccess, setCheckoutSuccess] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [distance, setDistance] = useState<number | null>(null);
   const [loadingDistance, setLoadingDistance] = useState(false);
   const [currentStep, setCurrentStep] = useState(1);
   const [orderNote, setOrderNote] = useState('');
-  const [orderId, setOrderId] = useState<string | null>(null);
-  const [purchaseConfirmed, setPurchaseConfirmed] = useState<boolean | null>(null);
-  const [restaurantData, setRestaurantData] = useState<any>(null);
+
+  // Helper: check if current time is within a shift range
+  const isTimeInRange = (time: string, start: string, end: string) => {
+    const [h, m] = time.split(':').map(Number);
+    const [sh, sm] = start.split(':').map(Number);
+    const [eh, em] = end.split(':').map(Number);
+
+    const nowTotal = h * 60 + m;
+    const sTotal = sh * 60 + sm;
+    const eTotal = eh * 60 + em;
+
+    if (sTotal <= eTotal) {
+      return nowTotal >= sTotal && nowTotal <= eTotal;
+    } else {
+      // Shift spans over midnight
+      return nowTotal >= sTotal || nowTotal <= eTotal;
+    }
+  };
+
+  // Helper: calculate rate based on tiered ranges
+  const calculateTieredRate = (dist: number, tiers: any[]) => {
+    if (!tiers || tiers.length === 0) return 2.0;
+    const match = tiers.find(t => dist >= t.from && dist <= t.to);
+    if (match) return match.price;
+
+    // Fallback: If distance exceeds all ranges, use the highest one
+    const sorted = [...tiers].sort((a, b) => b.to - a.to);
+    return sorted[0]?.price || 2.0;
+  };
 
   const isWaiter = localStorage.getItem('isWaiter') === 'true';
   const waiterData = JSON.parse(localStorage.getItem('waiterData') || '{}');
@@ -126,37 +155,58 @@ export default function Cart() {
     fetchRest();
   }, [items, selectedAddress]);
 
-  const calculateDeliveryFee = () => {
-    if (!distance) return 2.00;
+  const calculateDeliveryFeeInfo = () => {
+    if (!distance) return { clientFee: 2.00, driverPayout: 1.50, shift: 'day' };
 
+    // 1. Restaurant's own delivery logic (Overrides system if enabled)
     if (restaurantData?.ownDelivery && restaurantData?.deliveryRates && restaurantData.deliveryRates.length > 0) {
-      // Find matching rate in table
       const matchingRate = restaurantData.deliveryRates.find(
         (rate: any) => distance >= rate.minKm && distance <= rate.maxKm
       );
-      if (matchingRate) return matchingRate.price;
+      if (matchingRate) return { clientFee: matchingRate.price, driverPayout: matchingRate.price * 0.8, shift: 'own' };
 
-      // Fallback if distance exceeds all ranges
       const maxRange = Math.max(...restaurantData.deliveryRates.map((r: any) => r.maxKm));
       if (distance > maxRange) {
         const lastRate = restaurantData.deliveryRates.sort((a: any, b: any) => b.maxKm - a.maxKm)[0];
-        // Scale price or use last one? Let's use last one + extra per km
-        return lastRate.price + (distance - maxRange) * 0.5;
+        const fee = lastRate.price + (distance - maxRange) * 0.5;
+        return { clientFee: fee, driverPayout: fee * 0.8, shift: 'own' };
       }
     }
 
-    // Use system fee if available
+    // 2. Multi-Shift System Delivery (Standard)
     if (systemSettings) {
-      const baseFee = systemSettings.clientBaseFee || 1.00;
-      const perKmFee = systemSettings.clientPerKmFee || 0.50;
-      return baseFee + (distance * perKmFee);
+      const now = new Date();
+      const currentTimeStr = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
+
+      // Default to day shift if something fails
+      let activeShift: 'day' | 'night' = 'day';
+      if (systemSettings.dayShift && systemSettings.nightShift) {
+        const isDay = isTimeInRange(currentTimeStr, systemSettings.dayShift.start, systemSettings.dayShift.end);
+        activeShift = isDay ? 'day' : 'night';
+      }
+
+      const shiftConfig = activeShift === 'day' ? systemSettings.dayShift : systemSettings.nightShift;
+
+      if (shiftConfig) {
+        const clientFee = calculateTieredRate(distance, shiftConfig.clientRates);
+        const driverPayout = calculateTieredRate(distance, shiftConfig.driverRates);
+        return { clientFee, driverPayout, shift: activeShift };
+      }
     }
 
-    // Default system fee fallback
-    return Math.max(1, 1 + distance * 0.5);
+    // Fallback default
+    return {
+      clientFee: Math.max(1, 1 + distance * 0.5),
+      driverPayout: Math.max(0.8, 0.8 + distance * 0.3),
+      shift: 'unknown'
+    };
   };
 
-  const deliveryFee = isWaiter ? 0 : calculateDeliveryFee();
+  const feeInfo = calculateDeliveryFeeInfo();
+  const deliveryFee = isWaiter ? 0 : feeInfo.clientFee;
+  const driverPayout = isWaiter ? 0 : feeInfo.driverPayout;
+  const currentShift = feeInfo.shift;
+
   const finalTotal = totalPrice + deliveryFee;
 
   const handleCheckout = async () => {
@@ -207,6 +257,9 @@ export default function Cart() {
         })),
         subtotal: totalPrice,
         deliveryFee: deliveryFee,
+        driverPayout: driverPayout,
+        deliveryShift: currentShift,
+        distance: distance || 0,
         total: finalTotal,
         status: isWaiter ? (paymentStatus === 'paid' ? 'kitchen' : 'pending') : 'pending',
         deliveryAddress: address,
