@@ -140,7 +140,13 @@ export default function Home() {
 
         // Sort by computed score (city match first, then distance)
         const sorted = processed.sort((a, b) => (a._sortScore as number) - (b._sortScore as number));
-        setRestaurants(sorted);
+
+        // Strict location filtering
+        const filtered = manualCity
+          ? sorted.filter(rest => rest.location?.city === manualCity)
+          : sorted;
+
+        setRestaurants(filtered);
 
       } catch (error) {
         console.error("Error fetching restaurants: ", error);
@@ -155,8 +161,28 @@ export default function Home() {
         const fetchedBanners = querySnapshot.docs.map(doc => ({
           id: doc.id,
           ...doc.data()
-        }));
-        setBanners(fetchedBanners.filter((b: any) => b.isActive));
+        })) as any[];
+
+        const activeBanners = fetchedBanners.filter(b => b.isActive);
+
+        // Location filtering
+        const filteredBanners = activeBanners.filter(banner => {
+          const scope = banner.visibilityScope || 'national';
+
+          if (scope === 'national') return true;
+
+          if (scope === 'state') {
+            return banner.targetState === manualState;
+          }
+
+          if (scope === 'city') {
+            return banner.targetCity === manualCity;
+          }
+
+          return false;
+        });
+
+        setBanners(filteredBanners);
       } catch (error) {
         console.error("Error fetching banners: ", error);
       }

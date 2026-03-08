@@ -4,6 +4,8 @@ import { Trash2, Plus, Image as ImageIcon, Clock, ExternalLink, Timer, Upload, A
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { db, storage } from '../../lib/firebase';
 import { motion, AnimatePresence } from 'framer-motion';
+import { VENEZUELA_DATA, VENEZUELA_STATES } from '../../lib/venezuelaData';
+import { Globe, Map as MapIcon, MapPin as PinIcon } from 'lucide-react';
 
 export default function BannersManager() {
     const [banners, setBanners] = useState<any[]>([]);
@@ -12,7 +14,15 @@ export default function BannersManager() {
     const [uploading, setUploading] = useState(false);
     const [selectedFile, setSelectedFile] = useState<File | null>(null);
     const [imagePreview, setImagePreview] = useState<string | null>(null);
-    const [newBanner, setNewBanner] = useState({ imageUrl: '', title: '', linkUrl: '', duration: 5 });
+    const [newBanner, setNewBanner] = useState({
+        imageUrl: '',
+        title: '',
+        linkUrl: '',
+        duration: 5,
+        visibilityScope: 'national' as 'national' | 'state' | 'city',
+        targetState: '',
+        targetCity: ''
+    });
 
     const fetchBanners = async () => {
         try {
@@ -65,7 +75,15 @@ export default function BannersManager() {
                 isActive: true
             });
             setIsAdding(false);
-            setNewBanner({ imageUrl: '', title: '', linkUrl: '', duration: 5 });
+            setNewBanner({
+                imageUrl: '',
+                title: '',
+                linkUrl: '',
+                duration: 5,
+                visibilityScope: 'national',
+                targetState: '',
+                targetCity: ''
+            });
             setSelectedFile(null);
             setImagePreview(null);
             fetchBanners();
@@ -206,6 +224,85 @@ export default function BannersManager() {
                             </div>
                         </div>
 
+                        <div className="md:col-span-2 lg:col-span-3 h-px bg-slate-100 my-2"></div>
+
+                        <div className="md:col-span-2 lg:col-span-3 space-y-4">
+                            <label className="block text-xs font-black text-slate-400 uppercase tracking-widest pl-1">Alcance de Visibilidad</label>
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                <button
+                                    type="button"
+                                    onClick={() => setNewBanner({ ...newBanner, visibilityScope: 'national', targetState: '', targetCity: '' })}
+                                    className={`flex items-center gap-3 p-4 rounded-2xl border-2 transition-all ${newBanner.visibilityScope === 'national' ? 'border-indigo-600 bg-indigo-50 text-indigo-700' : 'border-slate-100 bg-slate-50 text-slate-500 hover:border-slate-200'}`}
+                                >
+                                    <Globe className="w-5 h-5 shrink-0" />
+                                    <div className="text-left">
+                                        <p className="font-bold text-sm">Nacional</p>
+                                        <p className="text-[10px] opacity-70">Visible en todo el país</p>
+                                    </div>
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setNewBanner({ ...newBanner, visibilityScope: 'state', targetCity: '' })}
+                                    className={`flex items-center gap-3 p-4 rounded-2xl border-2 transition-all ${newBanner.visibilityScope === 'state' ? 'border-indigo-600 bg-indigo-50 text-indigo-700' : 'border-slate-100 bg-slate-50 text-slate-500 hover:border-slate-200'}`}
+                                >
+                                    <MapIcon className="w-5 h-5 shrink-0" />
+                                    <div className="text-left">
+                                        <p className="font-bold text-sm">Por Estado</p>
+                                        <p className="text-[10px] opacity-70">Visible solo en un estado</p>
+                                    </div>
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setNewBanner({ ...newBanner, visibilityScope: 'city' })}
+                                    className={`flex items-center gap-3 p-4 rounded-2xl border-2 transition-all ${newBanner.visibilityScope === 'city' ? 'border-indigo-600 bg-indigo-50 text-indigo-700' : 'border-slate-100 bg-slate-50 text-slate-500 hover:border-slate-200'}`}
+                                >
+                                    <PinIcon className="w-5 h-5 shrink-0" />
+                                    <div className="text-left">
+                                        <p className="font-bold text-sm">Por Ciudad</p>
+                                        <p className="text-[10px] opacity-70">Visible en una ciudad específica</p>
+                                    </div>
+                                </button>
+                            </div>
+
+                            {newBanner.visibilityScope !== 'national' && (
+                                <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
+                                    <div className="space-y-2">
+                                        <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest pl-1">Estado Objetivo</label>
+                                        <select
+                                            required
+                                            value={newBanner.targetState}
+                                            onChange={e => {
+                                                const newState = e.target.value;
+                                                setNewBanner({ ...newBanner, targetState: newState, targetCity: VENEZUELA_DATA[newState]?.[0] || '' });
+                                            }}
+                                            className="w-full bg-slate-50 border-2 border-slate-100 rounded-xl px-4 py-3 focus:border-indigo-500 outline-none transition-all font-bold text-slate-700"
+                                        >
+                                            <option value="">Selecciona un estado...</option>
+                                            {VENEZUELA_STATES.map(s => <option key={s} value={s}>{s}</option>)}
+                                        </select>
+                                    </div>
+
+                                    {newBanner.visibilityScope === 'city' && (
+                                        <div className="space-y-2">
+                                            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest pl-1">Ciudad Objetiva</label>
+                                            <select
+                                                required
+                                                value={newBanner.targetCity}
+                                                onChange={e => setNewBanner({ ...newBanner, targetCity: e.target.value })}
+                                                disabled={!newBanner.targetState}
+                                                className="w-full bg-slate-50 border-2 border-slate-100 rounded-xl px-4 py-3 focus:border-indigo-500 outline-none transition-all font-bold text-slate-700 disabled:opacity-50"
+                                            >
+                                                <option value="">Selecciona una ciudad...</option>
+                                                {newBanner.targetState && VENEZUELA_DATA[newBanner.targetState]?.map(c => (
+                                                    <option key={c} value={c}>{c}</option>
+                                                ))}
+                                            </select>
+                                        </div>
+                                    )}
+                                </motion.div>
+                            )}
+                        </div>
+
                         <div className="flex justify-end gap-4 pt-4">
                             <button
                                 type="button"
@@ -250,6 +347,20 @@ export default function BannersManager() {
                                 <div className="bg-white/90 backdrop-blur-md px-3 py-1.5 rounded-xl shadow-sm flex items-center gap-1.5 border border-white">
                                     <Timer className="w-3.5 h-3.5 text-indigo-600" />
                                     <span className="text-xs font-black text-slate-900">{banner.duration}s</span>
+                                </div>
+                                <div className="bg-indigo-600 text-white px-3 py-1.5 rounded-xl shadow-sm flex items-center gap-1.5 border border-indigo-500">
+                                    {banner.visibilityScope === 'national' || !banner.visibilityScope ? (
+                                        <Globe className="w-3.5 h-3.5" />
+                                    ) : banner.visibilityScope === 'state' ? (
+                                        <MapIcon className="w-3.5 h-3.5" />
+                                    ) : (
+                                        <PinIcon className="w-3.5 h-3.5" />
+                                    )}
+                                    <span className="text-[10px] font-black uppercase tracking-wider">
+                                        {banner.visibilityScope === 'national' || !banner.visibilityScope ? 'Nacional' :
+                                            banner.visibilityScope === 'state' ? banner.targetState :
+                                                banner.targetCity}
+                                    </span>
                                 </div>
                             </div>
 
