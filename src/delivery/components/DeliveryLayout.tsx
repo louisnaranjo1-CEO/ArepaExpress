@@ -30,14 +30,6 @@ export default function DeliveryLayout({ children }: DeliveryLayoutProps) {
     const handleStatusUpdate = async (newStatus: AvailabilityStatus) => {
         if (!user || updating) return;
 
-        const messages = {
-            active: '¿Deseas activarte para recibir pedidos en tiempo real?',
-            busy: '¿Deseas marcarte como ocupado? Los clientes verán que estás procesando otros pedidos.',
-            offline: '¿Deseas desconectarte? Dejarás de recibir notificaciones de nuevos pedidos.'
-        };
-
-        if (!window.confirm(messages[newStatus])) return;
-
         setUpdating(true);
         try {
             await setDriverAvailability(user.uid, newStatus);
@@ -76,7 +68,7 @@ export default function DeliveryLayout({ children }: DeliveryLayoutProps) {
     return (
         <div className="flex flex-col h-[100dvh] bg-slate-50 w-full max-w-md mx-auto relative overflow-hidden shadow-2xl">
             {/* Cabecera Fija */}
-            <header className="bg-indigo-600 text-white px-4 py-4 flex items-center justify-between shadow-md z-10 shrink-0">
+            <header className="bg-indigo-600 text-white px-4 py-4 flex items-center justify-between shadow-md z-[60] shrink-0">
                 <div className="flex items-center gap-2">
                     <img
                         src="https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/arepalogo.png?alt=media&token=c2ce79eb-c0fb-484d-b353-8d6bd1ce32c6"
@@ -107,7 +99,10 @@ export default function DeliveryLayout({ children }: DeliveryLayoutProps) {
                             ].map((s) => (
                                 <button
                                     key={s.id}
-                                    onClick={() => handleStatusUpdate(s.id as AvailabilityStatus)}
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleStatusUpdate(s.id as AvailabilityStatus);
+                                    }}
                                     className={`w-full flex items-center gap-3 p-3 rounded-xl transition-all hover:bg-slate-50 text-left ${driverStatus === s.id ? 'bg-slate-50 ring-1 ring-slate-100' : ''}`}
                                 >
                                     <div className={`w-3 h-3 rounded-full bg-${s.color}-500 shadow-sm shadow-${s.color}-500/30`}></div>
@@ -126,7 +121,7 @@ export default function DeliveryLayout({ children }: DeliveryLayoutProps) {
             {/* Click-away backdrop when picker is open */}
             {showPicker && (
                 <div
-                    className="fixed inset-0 z-50 overflow-hidden"
+                    className="fixed inset-0 z-50 overflow-hidden bg-black/5"
                     onClick={() => setShowPicker(false)}
                 ></div>
             )}

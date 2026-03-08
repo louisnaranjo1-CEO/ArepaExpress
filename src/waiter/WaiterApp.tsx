@@ -22,7 +22,8 @@ export default function WaiterApp() {
                         <Route path="/login" element={<WaiterLogin />} />
                         <Route element={<WaiterProtectedRoute />}>
                             <Route path="/" element={<WaiterDashboard />} />
-                            {/* More routes like /orders, /menu, /profile will be added */}
+                            <Route path="/orders" element={<div className="p-10 text-center font-bold">Módulo de Pedidos (Próximamente)</div>} />
+                            <Route path="/restaurant/:id" element={<div className="p-10 text-center font-bold">Menú del Restaurante (Próximamente)</div>} />
                         </Route>
                     </Routes>
                 </div>
