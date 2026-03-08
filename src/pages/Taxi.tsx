@@ -71,12 +71,9 @@ export default function Taxi() {
 
     const [map, setMap] = useState<google.maps.Map | null>(null);
     const [directionsService, setDirectionsService] = useState<google.maps.DirectionsService | null>(null);
-    const [directionsRenderer, setDirectionsRenderer] = useState<google.maps.DirectionsRenderer | null>(null);
-
-    // State
+    const [directionsResponse, setDirectionsResponse] = useState<google.maps.DirectionsResult | null>(null);
     const [step, setStep] = useState<'origin' | 'destination' | 'vehicle' | 'payment' | 'searching'>('origin');
 
-    // Form and selection state
     const [origin, setOrigin] = useState<Location | null>(null);
     const [destination, setDestination] = useState<Location | null>(null);
     const [currentCenter, setCurrentCenter] = useState(defaultCenter);
@@ -87,31 +84,31 @@ export default function Taxi() {
     const [vehicleType, setVehicleType] = useState<'moto' | 'carro' | 'ejecutivo' | null>(null);
     const [adminRates, setAdminRates] = useState<any>(null);
     const [paymentMethods, setPaymentMethods] = useState<any>(null);
-    const [isMapInteractionEnabled, setIsMapInteractionEnabled] = useState(false);
-    const [savedLocations, setSavedLocations] = useState<Location[]>([]);
+    const [isMapInteractionEnabled, setIsMapInteractionEnabled] = useState(true);
+    const [serviceHours, setServiceHours] = useState<any>(null);
 
-    // Payment details
     const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<string | null>(null);
     const [paymentProof, setPaymentProof] = useState<File | null>(null);
     const [paymentRef, setPaymentRef] = useState('');
     const [isUploading, setIsUploading] = useState(false);
 
-    // Geocoder cache
     const geocoderRef = useRef<google.maps.Geocoder | null>(null);
-    const mapCenterRef = useRef(defaultCenter); // Keep track of center without triggering re-renders constantly
+    const mapCenterRef = useRef(defaultCenter);
 
-    // 1. Fetch Admin Rates
+    // 1. Fetch Admin Rates and Settings
     useEffect(() => {
         const fetchConfigs = async () => {
             try {
-                // Fetch unified delivery and transport settings
                 const docSnap = await getDoc(doc(db, 'delivery_settings', 'settings'));
                 if (docSnap.exists()) {
                     const data = docSnap.data();
                     if (data.transportRates) setAdminRates(data.transportRates);
+                    setServiceHours({
+                        day: data.dayShift,
+                        night: data.nightShift
+                    });
                 }
 
-                // Still fetch payment methods from global finances config (since they are more "system-wide")
                 const financeSnap = await getDoc(doc(db, 'system_configs', 'finances'));
                 if (financeSnap.exists()) {
                     setPaymentMethods(financeSnap.data().paymentMethods);
@@ -129,16 +126,15 @@ export default function Taxi() {
         geocoderRef.current = new google.maps.Geocoder();
         setDirectionsService(new google.maps.DirectionsService());
 
-        // Auto-locate user on load
         if (navigator.geolocation) {
             navigator.geolocation.getCurrentPosition((pos) => {
                 const newPos = { lat: pos.coords.latitude, lng: pos.coords.longitude };
                 setCurrentCenter(newPos);
                 mapCenterRef.current = newPos;
                 map.panTo(newPos);
-
-                // Set initial origin address
                 updateAddressFromCenter(newPos, 'origin');
+            }, (error) => {
+                console.error("Geolocation error:", error);
             });
         }
     }, []);
@@ -187,52 +183,37 @@ export default function Taxi() {
 
     // 5. Route Calculation
     useEffect(() => {
-        if (step === 'vehicle' && origin && destination && directionsService && map) {
+        if (step === 'vehicle' && origin && destination && directionsService) {
             directionsService.route({
                 origin: { lat: origin.lat, lng: origin.lng },
                 destination: { lat: destination.lat, lng: destination.lng },
                 travelMode: google.maps.TravelMode.DRIVING
             }, (result, status) => {
                 if (status === google.maps.DirectionsStatus.OK && result) {
-                    if (!directionsRenderer) {
-                        const renderer = new google.maps.DirectionsRenderer({
-                            map,
-                            suppressMarkers: false,
-                            polylineOptions: {
-                                strokeColor: '#000000', // Black line for a premium look
-                                strokeWeight: 5,
-                                strokeOpacity: 0.8
-                            }
-                        });
-                        setDirectionsRenderer(renderer);
-                        renderer.setDirections(result);
-                    } else {
-                        directionsRenderer.setDirections(result);
-                    }
+                    setDirectionsResponse(result);
 
-                    // Extract distance and duration
                     const leg = result.routes[0].legs[0];
                     if (leg && leg.distance) {
                         setRouteInfo({
-                            distance: leg.distance.value / 1000, // into KM
+                            distance: Number((leg.distance.value / 1000).toFixed(1)),
                             duration: leg.duration?.text || ''
                         });
                     }
-
-                    // Disable interaction and zoom to fit
                     setIsMapInteractionEnabled(false);
                 } else {
+                    console.error("Route calculation failed:", status);
                     toast.error("No se pudo calcular la ruta");
+                    setStep('destination'); // Go back if calculation fails
+                    setIsMapInteractionEnabled(true);
                 }
             });
         }
-    }, [step, origin, destination, directionsService, map]);
+    }, [step, origin, destination, directionsService]);
 
     // 6. Navigation Helpers
     const confirmOrigin = () => {
         if (!origin) return;
         setStep('destination');
-        // Keep map center same initially for destination
     };
 
     const confirmDestination = () => {
@@ -248,32 +229,28 @@ export default function Taxi() {
             return;
         }
 
-        if (directionsRenderer) {
-            directionsRenderer.setMap(null);
-            setDirectionsRenderer(null);
-        }
+        setDirectionsResponse(null);
+        setRouteInfo(null);
+        setIsMapInteractionEnabled(true);
 
         if (step === 'vehicle') {
             setStep('destination');
-            setIsMapInteractionEnabled(true);
         } else if (step === 'destination') {
             setStep('origin');
-            setIsMapInteractionEnabled(true);
         }
     };
 
     const calculatePrice = (type: 'moto' | 'carro' | 'ejecutivo', forDriver: boolean = false) => {
-        if (!adminRates || !routeInfo) return 0;
+        if (!adminRates || !routeInfo) return "0.00";
         const rates = adminRates[type];
-        if (!Array.isArray(rates)) return 0;
+        if (!Array.isArray(rates) || rates.length === 0) return "0.00";
 
         const distance = routeInfo.distance;
 
-        // Find the matching range
+        // Find matching range
         const matchingRange = rates.find(r => {
             const fromKm = parseFloat(r.from?.toString() || '0');
             const toKm = parseFloat(r.to?.toString() || '0');
-            // If toKm is 0, it means it's the open-ended final range
             return distance >= fromKm && (toKm === 0 || distance <= toKm);
         });
 
@@ -284,11 +261,11 @@ export default function Taxi() {
             return parseFloat(priceValue?.toString() || '0').toFixed(2);
         }
 
-        // Fallback: if distance is greater than the highest range, use the last one
+        // Fallback to highest range if distance exceeds
         const sortedRates = [...rates].sort((a, b) => {
-            const toA = parseFloat(a.to?.toString() || '0');
-            const toB = parseFloat(b.to?.toString() || '0');
-            return toB - toA;
+            const fromA = parseFloat(a.from?.toString() || '0');
+            const fromB = parseFloat(b.from?.toString() || '0');
+            return fromB - fromA;
         });
 
         const lastRange = sortedRates[0];
@@ -403,6 +380,20 @@ export default function Taxi() {
                     onDragStart={handleMapDragStart}
                     onDragEnd={handleMapDragEnd}
                 >
+                    {directionsResponse && (
+                        <DirectionsRenderer
+                            directions={directionsResponse}
+                            options={{
+                                suppressMarkers: false,
+                                polylineOptions: {
+                                    strokeColor: '#000000',
+                                    strokeWeight: 5,
+                                    strokeOpacity: 0.8
+                                }
+                            }}
+                        />
+                    )}
+
                     {/* Fixed center marker for selection */}
                     {(step === 'origin' || step === 'destination') && (
                         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-full z-10 pointer-events-none drop-shadow-xl">
@@ -648,10 +639,27 @@ export default function Taxi() {
                             <button
                                 disabled={!vehicleType || !routeInfo}
                                 onClick={handleContinueToPayment}
-                                className="w-full bg-slate-900 text-white py-4 rounded-xl font-black shadow-xl shadow-slate-900/30 flex justify-center items-center gap-2 active:scale-95 transition-all disabled:opacity-50"
+                                className="w-full bg-slate-900 text-white py-4 rounded-xl font-black shadow-xl shadow-slate-900/30 flex justify-center items-center gap-2 active:scale-95 transition-all disabled:opacity-50 mb-4"
                             >
                                 Continuar al Pago <ArrowRight className="w-5 h-5" />
                             </button>
+
+                            {/* Service Hours Section */}
+                            {serviceHours && (
+                                <div className="bg-slate-50 p-4 rounded-xl border border-slate-100">
+                                    <h4 className="text-[10px] font-black uppercase text-slate-400 mb-2">Horarios de Servicio</h4>
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div>
+                                            <p className="text-[10px] font-bold text-slate-500 uppercase">Diurno</p>
+                                            <p className="text-xs font-black text-slate-700">{serviceHours.day?.start} - {serviceHours.day?.end}</p>
+                                        </div>
+                                        <div>
+                                            <p className="text-[10px] font-bold text-slate-500 uppercase">Nocturno</p>
+                                            <p className="text-xs font-black text-slate-700">{serviceHours.night?.start} - {serviceHours.night?.end}</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
                         </div>
                     )}
 
