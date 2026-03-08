@@ -148,25 +148,28 @@ export default function WaiterDashboard() {
 
         switch (table.derivedStatus) {
             case 'available':
-                // navigate to restaurant menu to start order
-                navigate(`/restaurant/${restaurantId}?table=${table.number}`);
+                // navigate to menu to start order
+                navigate(`/menu?table=${table.number}`);
                 break;
             case 'calling':
                 // Clear all calling orders for this table
-                const callingOrders = orders.filter(o => o.table === table.number && o.status === 'calling');
+                const callingOrders = orders.filter((o) => o.table === table.number && o.status === 'calling');
                 const batch = writeBatch(db);
-                callingOrders.forEach(o => {
+                callingOrders.forEach((o) => {
                     batch.update(doc(db, 'orders', o.id), { status: 'occupied', updatedAt: serverTimestamp() });
                 });
                 await batch.commit();
+                // After clearing, we might want to go to menu too? User said "cualquiera de esas mesas"
+                navigate(`/menu?table=${table.number}`);
                 break;
             case 'occupied':
-                // navigate to orders view for this table
-                navigate(`/orders?table=${table.number}`);
+                // Move to menu to add more items
+                navigate(`/menu?table=${table.number}`);
                 break;
             case 'billing':
-                // navigate to checkout for this table
-                navigate(`/orders?table=${table.number}&action=pay`);
+                // Still go to menu or orders? 
+                // Let's stick to menu as requested for "proceso de selección" or maybe view order
+                navigate(`/menu?table=${table.number}`);
                 break;
         }
     };
@@ -508,6 +511,8 @@ export default function WaiterDashboard() {
 }
 
 function TableCard({ table, onAction }: TableCardProps) {
+    const navigate = useNavigate(); // Assuming navigate is available here or passed as prop
+
     const getStatusStyles = () => {
         switch (table.derivedStatus) {
             case 'calling':

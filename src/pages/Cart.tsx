@@ -88,6 +88,15 @@ export default function Cart() {
   }, []);
 
   useEffect(() => {
+    if (isWaiter && items.length > 0 && !tableNumber) {
+      const firstItemTable = items[0].table;
+      if (firstItemTable) {
+        setTableNumber(firstItemTable);
+      }
+    }
+  }, [isWaiter, items, tableNumber]);
+
+  useEffect(() => {
     const fetchRest = async () => {
       if (items.length > 0) {
         setLoadingDistance(true);

@@ -10,6 +10,7 @@ export interface CartItem {
     image: string;
     category: string;
     printerId?: string;
+    table?: string;
     // future: customizations
 }
 
