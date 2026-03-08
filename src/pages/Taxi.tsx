@@ -91,6 +91,7 @@ export default function Taxi() {
     const [paymentProof, setPaymentProof] = useState<File | null>(null);
     const [paymentRef, setPaymentRef] = useState('');
     const [isUploading, setIsUploading] = useState(false);
+    const [isCalculatingRoute, setIsCalculatingRoute] = useState(false);
 
     const geocoderRef = useRef<google.maps.Geocoder | null>(null);
     const mapCenterRef = useRef(defaultCenter);
@@ -184,12 +185,14 @@ export default function Taxi() {
     // 5. Route Calculation
     useEffect(() => {
         if (step === 'vehicle' && origin && destination && directionsService) {
+            setIsCalculatingRoute(true);
             directionsService.route({
                 origin: { lat: origin.lat, lng: origin.lng },
                 destination: { lat: destination.lat, lng: destination.lng },
-                travelMode: google.maps.TravelMode.DRIVING
+                travelMode: 'DRIVING' as google.maps.TravelMode
             }, (result, status) => {
-                if (status === google.maps.DirectionsStatus.OK && result) {
+                setIsCalculatingRoute(false);
+                if (status === 'OK' && result) {
                     setDirectionsResponse(result);
 
                     const leg = result.routes[0].legs[0];
@@ -202,8 +205,8 @@ export default function Taxi() {
                     setIsMapInteractionEnabled(false);
                 } else {
                     console.error("Route calculation failed:", status);
-                    toast.error("No se pudo calcular la ruta");
-                    setStep('destination'); // Go back if calculation fails
+                    toast.error("No se pudo calcular la ruta entre estos puntos");
+                    setStep('destination');
                     setIsMapInteractionEnabled(true);
                 }
             });
@@ -217,7 +220,7 @@ export default function Taxi() {
     };
 
     const confirmDestination = () => {
-        if (!destination) return;
+        if (!destination || isDragging) return;
         setStep('vehicle');
     };
 
@@ -576,8 +579,11 @@ export default function Taxi() {
                                 )}
                             </div>
 
-                            {!adminRates ? (
-                                <div className="flex justify-center p-4"><div className="w-6 h-6 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin"></div></div>
+                            {!adminRates || isCalculatingRoute ? (
+                                <div className="flex flex-col items-center justify-center py-12 gap-4">
+                                    <div className="w-10 h-10 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>
+                                    <p className="text-sm font-bold text-slate-500">Calculando la mejor ruta...</p>
+                                </div>
                             ) : (
                                 <div className="space-y-3 mb-6">
                                     {/* Moto Option */}
