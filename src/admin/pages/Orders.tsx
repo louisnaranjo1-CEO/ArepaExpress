@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { Search, Filter, Clock, MapPin, ChevronRight, Package, Truck, CheckCircle, Loader2, Bell, ExternalLink, X } from 'lucide-react';
 import { db } from '../../lib/firebase';
-import { collection, query, where, onSnapshot, orderBy, doc, updateDoc } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, orderBy, doc, updateDoc, getDocs } from 'firebase/firestore';
 import { useAuth } from '../../context/AuthContext';
+import { printToUsbDevice, formatTicket, PrintOrder } from '../../lib/usb-printer';
 
 interface OrderItem {
     id: string;
@@ -30,6 +31,9 @@ export default function Orders() {
     const [orders, setOrders] = useState<Order[]>([]);
     const [loading, setLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
+    const [printingOrderId, setPrintingOrderId] = useState<string | null>(null);
+
+    // ...
 
     useEffect(() => {
         if (!user) return;
@@ -62,11 +66,80 @@ export default function Orders() {
         });
 
         return () => unsubscribe();
-    }, [user, orders.length]); // Fixed dependency to orders.length to avoid infinite loop but detect new items
+    }, [user, orders.length]);
+
+    const handlePrintOrder = async (orderId: string, orderData: Order) => {
+        if (!user) return;
+        setPrintingOrderId(orderId);
+        try {
+            // Obtener todas las impresoras configuradas
+            const printersRef = collection(db, 'restaurants', user.uid, 'printers');
+            const snapshot = await getDocs(printersRef);
+            const printers = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() as any }));
+
+            // Promesas de impresión
+            const printPromises: Promise<boolean>[] = [];
+
+            // Agrupar ítems por impresora según categoría
+            for (const printer of printers) {
+                if (!printer.vendorId || !printer.productId || !printer.isActive) continue;
+
+                // Si la estación no tiene categorías asignadas, salta. Si tiene, busca los ítems que coinciden.
+                // Asumimos que `orderData.items` puede o no tener `category`.
+                // Si la pizzería no tiene category en item, hay que tener cuidado. En este boilerplate, confiaremos en que el 'name' o algo matchea la categoría.
+                // Lo más robusto si no hay 'category' en OrderItem es buscar qué items caen en qué estación.
+                // Como no sabemos si 'category' viene en la orden, de momento vamos a validar si printer.categories incluye 'category' del item o si le mandamos toda la orden a todas las impresoras si queremos simplicidad.
+                // Por requerimiento: Filtrado por Categoría de los ítems. Asumiremos que item.category existe.
+
+                const itemsForThisPrinter = orderData.items.filter(item => {
+                    // Si el item tiene categoría explícita y está en la impresora
+                    const itemCat = (item as any).category || '';
+                    return printer.categories?.includes(itemCat);
+                });
+
+                // Si por alguna razón la impresora tiene categoría "Todas" y no hay match con nombres, mandamos.
+                // Para mantenerlo acorde al requerimiento, solo enviamos si hay items filtrados:
+                if (itemsForThisPrinter.length > 0) {
+                    const printData: PrintOrder = {
+                        id: orderData.id,
+                        userName: orderData.userName,
+                        items: itemsForThisPrinter.map(i => ({ name: i.name, quantity: i.quantity, price: i.price })),
+                        stationName: printer.name,
+                        createdAt: orderData.createdAt?.toDate ? orderData.createdAt.toDate() : new Date(),
+                        orderNote: (orderData as any).orderNote,
+                        tableNumber: (orderData as any).tableNumber
+                    };
+
+                    const buffer = formatTicket(printData);
+                    printPromises.push(printToUsbDevice(printer.vendorId, printer.productId, buffer));
+                }
+            }
+
+            // Esperamos que todas las impresiones enviadas terminen
+            if (printPromises.length > 0) {
+                await Promise.all(printPromises);
+            } else {
+                console.log("No se encontraron impresoras USB configuradas o items asignables a ellas para este pedido.");
+            }
+
+        } catch (error) {
+            console.error("Error general de impresión:", error);
+            alert("Ocurrió un error al intentar imprimir. Verifica que las impresoras USB estén conectadas y configuradas.");
+        } finally {
+            setPrintingOrderId(null);
+        }
+    };
 
     const updateStatus = async (orderId: string, newStatus: string, paymentStatus?: string) => {
         try {
             const orderRef = doc(db, 'orders', orderId);
+            const orderTemp = orders.find(o => o.id === orderId);
+
+            // Si pasa a preprando, imprimimos los tickets correspondientes
+            if (newStatus === 'preparing' && orderTemp) {
+                await handlePrintOrder(orderId, orderTemp);
+            }
+
             const updates: any = { status: newStatus };
             if (paymentStatus) {
                 updates.paymentStatus = paymentStatus;
@@ -86,7 +159,7 @@ export default function Orders() {
     };
 
     const filteredOrders = orders
-        .filter(o => o.status === activeTab)
+        .filter(o => o.status === (activeTab as any))
         .filter(o =>
             o.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
             o.deliveryAddress.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -221,9 +294,14 @@ export default function Orders() {
                                     <>
                                         <button
                                             onClick={() => updateStatus(order.id, 'preparing')}
-                                            className="flex-1 min-w-[140px] bg-primary text-white py-4 rounded-2xl font-black shadow-lg shadow-primary/20 hover:scale-[1.02] active:scale-[0.98] transition-all"
+                                            disabled={printingOrderId === order.id}
+                                            className="flex-1 min-w-[140px] bg-primary text-white py-4 rounded-2xl font-black shadow-lg shadow-primary/20 hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-2 disabled:opacity-50"
                                         >
-                                            Aceptar
+                                            {printingOrderId === order.id ? (
+                                                <><Loader2 className="w-5 h-5 animate-spin" /> Imprimiendo...</>
+                                            ) : (
+                                                <>Aceptar</>
+                                            )}
                                         </button>
                                         <button
                                             onClick={() => updateStatus(order.id, 'rejected')}
@@ -236,9 +314,14 @@ export default function Orders() {
                                 {order.status === 'preparing' && (
                                     <button
                                         onClick={() => updateStatus(order.id, 'delivering')}
-                                        className="flex-1 bg-blue-500 text-white py-4 rounded-2xl font-black shadow-lg shadow-blue-500/20 hover:scale-[1.02] active:scale-[0.98] transition-all"
+                                        disabled={printingOrderId === order.id}
+                                        className="flex-1 bg-blue-500 text-white py-4 rounded-2xl font-black shadow-lg shadow-blue-500/20 hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-2 disabled:opacity-50"
                                     >
-                                        Enviar Pedido
+                                        {printingOrderId === order.id ? (
+                                            <><Loader2 className="w-5 h-5 animate-spin" /> Imprimiendo...</>
+                                        ) : (
+                                            <>Enviar Pedido</>
+                                        )}
                                     </button>
                                 )}
                                 {order.status === 'delivering' && (

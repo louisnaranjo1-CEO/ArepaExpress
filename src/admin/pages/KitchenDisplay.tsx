@@ -3,6 +3,7 @@ import { db } from '../../lib/firebase';
 import { collection, query, where, onSnapshot, orderBy, doc, updateDoc, getDocs } from 'firebase/firestore';
 import { useAuth } from '../../context/AuthContext';
 import { Clock, CheckCircle, AlertCircle, Printer, Loader2, Filter, ChevronRight, Package } from 'lucide-react';
+import { printToUsbDevice, formatTicket, PrintOrder } from '../../lib/usb-printer';
 
 interface OrderItem {
     id: string;
@@ -28,6 +29,9 @@ interface Station {
     id: string;
     name: string;
     categories?: string[];
+    vendorId?: number;
+    productId?: number;
+    isActive?: boolean;
 }
 
 export default function KitchenDisplay() {
@@ -109,67 +113,49 @@ export default function KitchenDisplay() {
             const stationItems = getStationItems(latestPendingOrder.items);
             if (stationItems.length > 0) {
                 console.log("Auto-printing latest order:", latestPendingOrder.id);
-                handlePrint(latestPendingOrder, stationItems);
+                handlePrint(latestPendingOrder, stationItems).catch(console.error);
                 setLastProcessedOrderId(latestPendingOrder.id);
             }
         }
     }, [orders, autoPrint, selectedStation]);
 
-    const handlePrint = (order: Order, stationItems: OrderItem[]) => {
-        const printWindow = window.open('', '_blank');
-        if (!printWindow) return;
+    const handlePrint = async (order: Order, stationItems: OrderItem[]) => {
+        try {
+            const station = stations.find(s => s.id === selectedStation);
 
-        const stationName = stations.find(s => s.id === selectedStation)?.name || 'ESTACIÓN';
+            if (!station) {
+                console.error("No se encontró la estación seleccionada para imprimir");
+                return;
+            }
 
-        const content = `
-            <html>
-                <head>
-                    <style>
-                        body { font-family: 'Courier New', Courier, monospace; width: 80mm; padding: 10px; margin: 0; }
-                        h1 { text-align: center; font-size: 20px; margin-bottom: 5px; text-transform: uppercase; }
-                        .header { text-align: center; margin-bottom: 15px; border-bottom: 2px dashed #000; padding-bottom: 10px; }
-                        .client-info { background: #f0f0f0; padding: 5px; margin-bottom: 15px; border: 1px solid #000; text-align: center; }
-                        .item { display: flex; justify-content: space-between; margin-bottom: 15px; font-weight: bold; font-size: 18px; border-bottom: 1px dotted #ccc; padding-bottom: 5px; }
-                        .quantity { margin-right: 15px; background: #000; color: #fff; padding: 0 5px; }
-                        .notes { font-style: italic; font-size: 16px; margin-top: 10px; color: #000; background: #eee; padding: 5px; border-left: 5px solid #000; }
-                        .footer { margin-top: 20px; border-top: 2px dashed #000; padding-top: 10px; font-size: 12px; text-align: center; }
-                        .time { font-size: 14px; margin-top: 5px; }
-                    </style>
-                </head>
-                <body>
-                    <div class="header">
-                        <h1>${stationName}</h1>
-                        <p style="font-size: 22px; font-weight: 900;">#${order.id.slice(-4).toUpperCase()}</p>
-                        ${order.tableNumber ? `<div style="font-size: 26px; font-weight: 900; background: #000; color: #fff; padding: 5px; margin: 5px 0;">MESA: ${order.tableNumber}</div>` : '<div style="font-size: 20px; font-weight: 900; border: 2px solid #000; padding: 5px; margin: 5px 0;">PARA LLEVAR</div>'}
-                        <div class="time">${new Date().toLocaleTimeString('es-VE')} - ${new Date().toLocaleDateString('es-VE')}</div>
-                    </div>
+            if (!station.vendorId || !station.productId) {
+                console.error("La estación seleccionada no tiene una impresora USB vinculada.");
+                alert(`La estación "${station.name}" no tiene una impresora USB vinculada.`);
+                return;
+            }
 
-                    <div class="client-info">
-                        <strong>CLIENTE:</strong> ${order.userName || 'CLIENTE GENERAL'}<br/>
-                        ${order.userPhone ? `<strong>TEL:</strong> ${order.userPhone}` : ''}
-                    </div>
+            const printData: PrintOrder = {
+                id: order.id,
+                userName: order.userName,
+                userPhone: order.userPhone,
+                items: stationItems.map(i => ({ name: i.name, quantity: i.quantity, price: i.price })),
+                stationName: station.name,
+                createdAt: order.createdAt?.toDate ? order.createdAt.toDate() : new Date(),
+                orderNote: order.orderNote,
+                tableNumber: order.tableNumber
+            };
 
-                    ${stationItems.map(item => `
-                        <div class="item">
-                            <div><span class="quantity">${item.quantity}</span> ${item.name}</div>
-                        </div>
-                    `).join('')}
+            const buffer = formatTicket(printData);
 
-                    ${order.orderNote ? `<div class="notes"><strong>NOTAS:</strong> ${order.orderNote}</div>` : ''}
+            const success = await printToUsbDevice(station.vendorId, station.productId, buffer);
+            if (!success) {
+                alert(`No se pudo imprimir en la estación "${station.name}". Verifica que la impresora esté conectada.`);
+            }
 
-                    <div class="footer">
-                        <p>*** DeliExpress - Comanda de Servicio ***</p>
-                    </div>
-                    <script>
-                        window.print();
-                        window.onafterprint = function() { window.close(); };
-                    </script>
-                </body>
-            </html>
-        `;
-
-        printWindow.document.write(content);
-        printWindow.document.close();
+        } catch (error) {
+            console.error("Error en handlePrint de KitchenDisplay:", error);
+            alert("Error al intentar imprimir el ticket USB.");
+        }
     };
 
     const markAsReady = async (orderId: string) => {
