@@ -189,6 +189,8 @@ export default function Cart() {
         userEmail: isWaiter ? waiterData.email : (user?.email || ''),
         restaurantId: restaurantId,
         restaurantName: items[0].restaurantName,
+        restaurantCity: restaurantData?.location?.city || '',
+        restaurantCoords: restaurantData?.location?.coords || null,
         source: isWaiter ? 'waiter' : 'client',
         waiterId: isWaiter ? waiterData.id : null,
         waiterName: isWaiter ? waiterData.name : null,

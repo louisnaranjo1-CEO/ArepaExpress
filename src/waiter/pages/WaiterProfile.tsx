@@ -9,9 +9,9 @@ import { useNavigate } from 'react-router-dom';
 export default function WaiterProfile() {
     const navigate = useNavigate();
     const [stats, setStats] = useState({
-        day: { count: 0, total: 0 },
-        week: { count: 0, total: 0 },
-        month: { count: 0, total: 0 }
+        day: { count: 0 },
+        week: { count: 0 },
+        month: { count: 0 }
     });
     const [loading, setLoading] = useState(true);
     const waiterData = JSON.parse(localStorage.getItem('waiterData') || '{}');
@@ -25,9 +25,6 @@ export default function WaiterProfile() {
             }
 
             try {
-                // Fetch all orders created by this waiter in this restaurant
-                // Note: In a real app we would filter by a 'waiterId' field in the order
-                // For now, assuming orders have 'waiterId' or just fetching restaurant orders to demonstrate UI
                 const q = query(
                     collection(db, 'orders'),
                     where('restaurantId', '==', restaurantId),
@@ -51,9 +48,9 @@ export default function WaiterProfile() {
                 const monthOrders = orders.filter(o => now - o.createdAt < oneMonth);
 
                 setStats({
-                    day: { count: dayOrders.length, total: dayOrders.reduce((acc, o: any) => acc + (o.total || 0), 0) },
-                    week: { count: weekOrders.length, total: weekOrders.reduce((acc, o: any) => acc + (o.total || 0), 0) },
-                    month: { count: monthOrders.length, total: monthOrders.reduce((acc, o: any) => acc + (o.total || 0), 0) }
+                    day: { count: dayOrders.length },
+                    week: { count: weekOrders.length },
+                    month: { count: monthOrders.length }
                 });
 
             } catch (err) {
@@ -130,10 +127,6 @@ export default function WaiterProfile() {
                                         <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1">{item.label}</p>
                                         <p className="font-bold text-slate-700">{item.value.count} pedidos realizados</p>
                                     </div>
-                                </div>
-                                <div className="text-right">
-                                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">Ventas</p>
-                                    <p className="font-black text-slate-800 text-lg">${item.value.total.toFixed(2)}</p>
                                 </div>
                             </motion.div>
                         ))}

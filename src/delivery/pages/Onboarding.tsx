@@ -2,9 +2,11 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { registerDriver } from '../../lib/delivery-service';
-import { Upload, ChevronRight, CheckCircle2, AlertCircle } from 'lucide-react';
+import { Upload, ChevronRight, CheckCircle2, AlertCircle, MapPin } from 'lucide-react';
 import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
+import { VENEZUELA_DATA, VENEZUELA_STATES } from '../../lib/venezuelaData';
+import AddressPicker from '../../components/AddressPicker';
 
 export default function Onboarding() {
     const { user, userData } = useAuth();
@@ -12,6 +14,7 @@ export default function Onboarding() {
     const [loading, setLoading] = useState(false);
     const [step, setStep] = useState(1);
     const [error, setError] = useState('');
+    const [showMap, setShowMap] = useState(false);
 
     const [formData, setFormData] = useState({
         fullName: '',
@@ -20,7 +23,10 @@ export default function Onboarding() {
         rif: '',
         phone: '',
         vehicleType: 'moto' as 'moto' | 'carro' | 'bicicleta',
-        vehiclePlate: ''
+        vehiclePlate: '',
+        homeState: '',
+        homeCity: '',
+        homeCoords: null as { lat: number; lng: number } | null
     });
 
     useEffect(() => {
@@ -63,6 +69,10 @@ export default function Onboarding() {
                 return setError('Por favor completa los datos del vehículo y legales');
             }
         } else if (step === 3) {
+            if (!formData.homeState || !formData.homeCity) {
+                return setError('Por favor selecciona tu estado y ciudad');
+            }
+        } else if (step === 4) {
             if (!files.selfie || !files.vehicle || !files.license) {
                 return setError('Debes subir todos los documentos requeridos');
             }
@@ -71,7 +81,7 @@ export default function Onboarding() {
     };
 
     const handleSubmit = async () => {
-        if (!user || step !== 4) return;
+        if (!user || step !== 5) return;
         setLoading(true);
         setError('');
 
@@ -87,6 +97,11 @@ export default function Onboarding() {
                     phone: formData.phone,
                     vehicleType: formData.vehicleType,
                     vehiclePlate: formData.vehiclePlate,
+                    homeLocation: {
+                        state: formData.homeState,
+                        city: formData.homeCity,
+                        coords: formData.homeCoords || undefined
+                    }
                 },
                 {
                     selfie: files.selfie!,
@@ -123,7 +138,7 @@ export default function Onboarding() {
                     />
                     <div>
                         <h1 className="font-black text-xl text-slate-900 leading-none">Registro de Piloto</h1>
-                        <p className="text-xs font-bold text-slate-400 mt-1 uppercase tracking-widest">Paso {step} de 4</p>
+                        <p className="text-xs font-bold text-slate-400 mt-1 uppercase tracking-widest">Paso {step} de 5</p>
                     </div>
                 </div>
 
@@ -131,7 +146,7 @@ export default function Onboarding() {
                 <div className="w-full bg-slate-100 h-1.5 rounded-full mt-4 overflow-hidden">
                     <div
                         className="bg-indigo-600 h-full transition-all duration-300 rounded-full"
-                        style={{ width: `${(step / 4) * 100}%` }}
+                        style={{ width: `${(step / 5) * 100}%` }}
                     />
                 </div>
             </header>
@@ -243,6 +258,88 @@ export default function Onboarding() {
 
                 {step === 3 && (
                     <div className="space-y-5 flex-1 animate-fade-in">
+                        <h2 className="text-2xl font-black text-slate-800">Ubicación Base</h2>
+                        <p className="text-sm font-medium text-slate-500">
+                            Solo recibirás pedidos de restaurantes que estén en tu misma ciudad y a máximo 10km de esta ubicación.
+                        </p>
+
+                        <div className="space-y-4">
+                            <div>
+                                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">País</label>
+                                <input type="text" disabled value="Venezuela" className="w-full bg-slate-100 border-2 border-slate-200 rounded-2xl px-4 py-3 font-bold text-slate-500" />
+                            </div>
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Estado</label>
+                                    <select
+                                        value={formData.homeState}
+                                        onChange={e => {
+                                            const newState = e.target.value;
+                                            const firstCity = VENEZUELA_DATA[newState]?.[0] || '';
+                                            setFormData({ ...formData, homeState: newState, homeCity: firstCity });
+                                        }}
+                                        className="w-full bg-white border-2 border-slate-200 focus:border-indigo-500 text-sm font-bold text-slate-700 rounded-xl px-3 py-3 outline-none"
+                                    >
+                                        <option value="">Selecciona...</option>
+                                        {VENEZUELA_STATES.map(s => <option key={s} value={s}>{s}</option>)}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Ciudad</label>
+                                    <select
+                                        value={formData.homeCity}
+                                        onChange={e => setFormData({ ...formData, homeCity: e.target.value })}
+                                        disabled={!formData.homeState}
+                                        className="w-full bg-white border-2 border-slate-200 focus:border-indigo-500 text-sm font-bold text-slate-700 rounded-xl px-3 py-3 outline-none disabled:bg-slate-50"
+                                    >
+                                        <option value="">Selecciona...</option>
+                                        {formData.homeState && VENEZUELA_DATA[formData.homeState]?.map(c => <option key={c} value={c}>{c}</option>)}
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div className="pt-2">
+                                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Ubicación Exacta (Punto de Partida)</label>
+                                {!showMap ? (
+                                    <button
+                                        onClick={() => setShowMap(true)}
+                                        className="w-full py-4 border-2 border-dashed border-indigo-200 rounded-2xl flex flex-col items-center justify-center gap-2 text-indigo-600 hover:bg-indigo-50 transition-colors"
+                                    >
+                                        {formData.homeCoords ? (
+                                            <>
+                                                <div className="w-10 h-10 bg-indigo-100 rounded-full flex items-center justify-center">
+                                                    <CheckCircle2 className="w-5 h-5 text-indigo-600" />
+                                                </div>
+                                                <span className="font-bold text-sm">Ubicación guardada - Toca para cambiar</span>
+                                            </>
+                                        ) : (
+                                            <>
+                                                <div className="w-10 h-10 bg-indigo-50 rounded-full flex items-center justify-center group-hover:bg-indigo-100 transition-colors">
+                                                    <MapPin className="w-5 h-5 text-indigo-500" />
+                                                </div>
+                                                <span className="font-bold text-sm">Abrir mapa para fijar ubicación</span>
+                                            </>
+                                        )}
+                                    </button>
+                                ) : (
+                                    <div className="rounded-2xl overflow-hidden border-2 border-indigo-100 h-[400px]">
+                                        <AddressPicker
+                                            onClose={() => setShowMap(false)}
+                                            onSave={(data) => {
+                                                setFormData({ ...formData, homeCoords: { lat: data.lat, lng: data.lng } });
+                                                setShowMap(false);
+                                            }}
+                                            initialData={formData.homeCoords ? { lat: formData.homeCoords.lat, lng: formData.homeCoords.lng, name: 'Mi Ubicación', reference: '' } : undefined}
+                                        />
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {step === 4 && (
+                    <div className="space-y-5 flex-1 animate-fade-in">
                         <h2 className="text-2xl font-black text-slate-800">Documentación</h2>
                         <p className="text-sm font-medium text-slate-500">Sube fotos claras de tus documentos. Esto es necesario para verificar tu identidad.</p>
 
@@ -276,7 +373,7 @@ export default function Onboarding() {
                     </div>
                 )}
 
-                {step === 4 && (
+                {step === 5 && (
                     <div className="space-y-6 flex-1 animate-fade-in">
                         <div className="w-20 h-20 bg-indigo-100 text-indigo-600 rounded-full flex items-center justify-center mx-auto mb-6">
                             <CheckCircle2 className="w-10 h-10" />
@@ -304,7 +401,7 @@ export default function Onboarding() {
                         </button>
                     )}
 
-                    {step < 4 ? (
+                    {step < 5 ? (
                         <button
                             onClick={nextStep}
                             className="flex-1 bg-indigo-600 text-white py-4 rounded-2xl font-black flex items-center justify-center gap-2 shadow-lg shadow-indigo-600/20 active:scale-95 transition-transform"

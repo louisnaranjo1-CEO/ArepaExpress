@@ -32,6 +32,11 @@ export interface DeliveryDriver {
     isOnline: boolean;
     availability?: AvailabilityStatus;
     currentLocation?: GeoPoint | null;
+    homeLocation?: {
+        state: string;
+        city: string;
+        coords?: { lat: number; lng: number };
+    };
     documents: {
         selfieUrl: string;
         vehicleUrl: string;

@@ -4,6 +4,7 @@ import { db } from '../../lib/firebase';
 import { useAuth } from '../../context/AuthContext';
 import { MapPin, Navigation, Package, Clock, ShieldCheck, Car, Bike, Compass as CompassIcon } from 'lucide-react';
 import { updateDriverLocation } from '../../lib/delivery-service';
+import { calculateDistance } from '../../lib/geo';
 import { motion, AnimatePresence } from 'framer-motion';
 
 export default function OrdersRadar() {
@@ -65,8 +66,32 @@ export default function OrdersRadar() {
             where('status', '==', 'finding_driver')
         );
         const unsubAvailable = onSnapshot(availableQ, (snapshot) => {
-            const orders = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-            setAvailableOrders(orders);
+            const orders = snapshot.docs.map(doc => {
+                const data = doc.data();
+                return { id: doc.id, ...data };
+            });
+
+            // Filtrar localmente por ciudad y distancia
+            let filteredOrders = orders;
+
+            if (driverProfile?.homeLocation?.city) {
+                filteredOrders = filteredOrders.filter(o =>
+                    !o.restaurantCity || o.restaurantCity === driverProfile.homeLocation.city
+                );
+            }
+
+            if (driverProfile?.homeLocation?.coords) {
+                const homeLat = driverProfile.homeLocation.coords.lat;
+                const homeLng = driverProfile.homeLocation.coords.lng;
+
+                filteredOrders = filteredOrders.filter(o => {
+                    if (!o.restaurantCoords) return true; // Si el restaurante no tiene coords, lo dejamos pasar si la ciudad coincide
+                    const dist = calculateDistance(homeLat, homeLng, o.restaurantCoords.lat, o.restaurantCoords.lng);
+                    return dist <= 10;
+                });
+            }
+
+            setAvailableOrders(filteredOrders);
         });
 
         return () => {
@@ -74,7 +99,7 @@ export default function OrdersRadar() {
             unsubActiveTransport();
             unsubAvailable();
         };
-    }, [user]);
+    }, [user, driverProfile]);
 
     // 3. Escuchar viajes disponibles filtrados por vehicleType
     useEffect(() => {

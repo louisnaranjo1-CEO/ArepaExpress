@@ -4,13 +4,16 @@ import { LogOut, User, FileText, Settings, ShieldCheck, ChevronRight, Key, Mail,
 import { useNavigate } from 'react-router-dom';
 import { signOut, updateEmail, updatePassword, deleteUser } from 'firebase/auth';
 import { auth, db } from '../../lib/firebase';
-import { collection, addDoc, serverTimestamp, doc, onSnapshot } from 'firebase/firestore';
+import { collection, addDoc, serverTimestamp, doc, onSnapshot, setDoc } from 'firebase/firestore';
 import { requestNotificationPermission, disableNotifications } from '../../lib/notifications';
+import { VENEZUELA_DATA, VENEZUELA_STATES } from '../../lib/venezuelaData';
+import AddressPicker from '../../components/AddressPicker';
+import { MapPin, Navigation, CheckCircle2 } from 'lucide-react';
 
 export default function DriverProfile() {
     const { user, userData } = useAuth();
     const navigate = useNavigate();
-    const [activeView, setActiveView] = useState<'profile' | 'settings' | 'update_data'>('profile');
+    const [activeView, setActiveView] = useState<'profile' | 'settings' | 'update_data' | 'location'>('profile');
     const [driverProfile, setDriverProfile] = useState<any>(null);
     const [updatingNotifications, setUpdatingNotifications] = useState(false);
 
@@ -18,7 +21,17 @@ export default function DriverProfile() {
     React.useEffect(() => {
         if (!user) return;
         const unsub = onSnapshot(doc(db, 'delivery_drivers', user.uid), (snap) => {
-            if (snap.exists()) setDriverProfile(snap.data());
+            if (snap.exists()) {
+                const data = snap.data();
+                setDriverProfile(data);
+                if (data.homeLocation) {
+                    setLocationForm({
+                        state: data.homeLocation.state || '',
+                        city: data.homeLocation.city || '',
+                        coords: data.homeLocation.coords || null
+                    });
+                }
+            }
         });
         return () => unsub();
     }, [user]);
@@ -34,6 +47,13 @@ export default function DriverProfile() {
         vehiclePlate: '',
         vehicleType: 'moto',
     });
+
+    const [locationForm, setLocationForm] = useState({
+        state: '',
+        city: '',
+        coords: null as { lat: number; lng: number } | null
+    });
+    const [showMap, setShowMap] = useState(false);
 
     const handleLogout = async () => {
         try {
@@ -132,6 +152,34 @@ export default function DriverProfile() {
         } catch (error) {
             console.error(error);
             alert('Error al enviar la solicitud.');
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleUpdateLocation = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!user || !locationForm.state || !locationForm.city) {
+            alert('Debes seleccionar Estado y Ciudad para continuar.');
+            return;
+        }
+
+        setLoading(true);
+        try {
+            await setDoc(doc(db, 'delivery_drivers', user.uid), {
+                homeLocation: {
+                    state: locationForm.state,
+                    city: locationForm.city,
+                    coords: locationForm.coords || null
+                },
+                updatedAt: serverTimestamp()
+            }, { merge: true });
+
+            alert('Ubicación base actualizada con éxito.');
+            setActiveView('profile');
+        } catch (error) {
+            console.error(error);
+            alert('Error al actualizar la ubicación.');
         } finally {
             setLoading(false);
         }
@@ -282,6 +330,95 @@ export default function DriverProfile() {
         );
     }
 
+    if (activeView === 'location') {
+        return (
+            <div className="space-y-6 animate-fade-in pb-24 px-4">
+                <button onClick={() => setActiveView('profile')} className="flex items-center gap-2 text-slate-500 font-bold mb-4">
+                    <ArrowLeft className="w-5 h-5" /> Volver al Perfil
+                </button>
+                <div className="mb-6">
+                    <h2 className="text-2xl font-black text-slate-800 tracking-tight">Ubicación Base</h2>
+                    <p className="text-sm text-slate-500 mt-2 font-medium leading-relaxed">
+                        Actualiza la zona donde te encuentras. Solo recibirás pedidos de restaurantes en tu misma ciudad y a máximo 10km de esta ubicación.
+                    </p>
+                </div>
+
+                <form onSubmit={handleUpdateLocation} className="bg-white rounded-[24px] p-6 border border-slate-100 shadow-sm space-y-5">
+                    <div>
+                        <label className="block text-xs font-black text-slate-400 uppercase tracking-widest ml-1 mb-2">Estado</label>
+                        <select
+                            value={locationForm.state}
+                            onChange={e => {
+                                const newState = e.target.value;
+                                const firstCity = VENEZUELA_DATA[newState]?.[0] || '';
+                                setLocationForm({ ...locationForm, state: newState, city: firstCity });
+                            }}
+                            className="w-full bg-slate-50 border-2 border-transparent focus:border-indigo-500 px-4 py-3 rounded-2xl outline-none transition-all font-bold text-slate-700"
+                        >
+                            <option value="">Selecciona...</option>
+                            {VENEZUELA_STATES.map(s => <option key={s} value={s}>{s}</option>)}
+                        </select>
+                    </div>
+
+                    <div>
+                        <label className="block text-xs font-black text-slate-400 uppercase tracking-widest ml-1 mb-2">Ciudad</label>
+                        <select
+                            value={locationForm.city}
+                            onChange={e => setLocationForm({ ...locationForm, city: e.target.value })}
+                            disabled={!locationForm.state}
+                            className="w-full bg-slate-50 border-2 border-transparent focus:border-indigo-500 px-4 py-3 rounded-2xl outline-none transition-all font-bold text-slate-700 disabled:opacity-50"
+                        >
+                            <option value="">Selecciona...</option>
+                            {locationForm.state && VENEZUELA_DATA[locationForm.state]?.map(c => <option key={c} value={c}>{c}</option>)}
+                        </select>
+                    </div>
+
+                    <div className="pt-2">
+                        <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Ubicación Exacta (Opcional)</label>
+                        {!showMap ? (
+                            <button
+                                type="button"
+                                onClick={() => setShowMap(true)}
+                                className="w-full py-4 border-2 border-dashed border-indigo-200 rounded-2xl flex flex-col items-center justify-center gap-2 text-indigo-600 hover:bg-indigo-50 transition-colors"
+                            >
+                                {locationForm.coords ? (
+                                    <>
+                                        <div className="w-10 h-10 bg-indigo-100 rounded-full flex items-center justify-center">
+                                            <CheckCircle2 className="w-5 h-5 text-indigo-600" />
+                                        </div>
+                                        <span className="font-bold text-sm">Ubicación guardada - Toca para cambiar</span>
+                                    </>
+                                ) : (
+                                    <>
+                                        <div className="w-10 h-10 bg-indigo-50 rounded-full flex items-center justify-center group-hover:bg-indigo-100 transition-colors">
+                                            <MapPin className="w-5 h-5 text-indigo-500" />
+                                        </div>
+                                        <span className="font-bold text-sm">Fijar ubicación en el mapa</span>
+                                    </>
+                                )}
+                            </button>
+                        ) : (
+                            <div className="rounded-2xl overflow-hidden border-2 border-indigo-100 h-[300px]">
+                                <AddressPicker
+                                    onClose={() => setShowMap(false)}
+                                    onSave={(data) => {
+                                        setLocationForm({ ...locationForm, coords: { lat: data.lat, lng: data.lng } });
+                                        setShowMap(false);
+                                    }}
+                                    initialData={locationForm.coords ? { lat: locationForm.coords.lat, lng: locationForm.coords.lng, name: 'Mi Ubicación', reference: '' } : undefined}
+                                />
+                            </div>
+                        )}
+                    </div>
+
+                    <button disabled={loading} type="submit" className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-black py-4 rounded-2xl shadow-lg shadow-indigo-600/30 active:scale-95 transition-all mt-4">
+                        {loading ? 'Guardando...' : 'Guardar Ubicación'}
+                    </button>
+                </form>
+            </div>
+        );
+    }
+
     // Default Profile View
     return (
         <div className="space-y-6 animate-fade-in pb-24 px-4">
@@ -320,6 +457,19 @@ export default function DriverProfile() {
                         </div>
                     </div>
                     <ChevronRight className="w-5 h-5 text-slate-300 group-hover:text-indigo-600 transition-colors" />
+                </button>
+
+                <button onClick={() => setActiveView('location')} className="w-full bg-white p-4 rounded-2xl flex items-center justify-between border border-slate-100 shadow-sm active:bg-slate-50 transition-colors group">
+                    <div className="flex items-center gap-4">
+                        <div className="w-10 h-10 bg-emerald-50 text-emerald-600 rounded-xl flex items-center justify-center shrink-0">
+                            <MapPin className="w-5 h-5" />
+                        </div>
+                        <div className="text-left">
+                            <p className="font-bold text-slate-900">Ubicación Base</p>
+                            <p className="text-xs font-medium text-slate-500">Cambiar zona de trabajo actual</p>
+                        </div>
+                    </div>
+                    <ChevronRight className="w-5 h-5 text-slate-300 group-hover:text-emerald-600 transition-colors" />
                 </button>
 
                 <button onClick={() => setActiveView('settings')} className="w-full bg-white p-4 rounded-2xl flex items-center justify-between border border-slate-100 shadow-sm active:bg-slate-50 transition-colors group">
