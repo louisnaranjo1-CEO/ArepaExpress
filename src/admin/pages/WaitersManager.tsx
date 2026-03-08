@@ -58,6 +58,7 @@ export default function WaitersManager() {
                         await setDoc(idxRef, {
                             restaurantId: restaurantId,
                             waiterId: w.id,
+                            email: w.email.toLowerCase()
                         });
                     }
                 })).catch(console.error);
