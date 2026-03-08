@@ -28,9 +28,9 @@ export default function DeliveryManagement() {
             clientRates: [{ from: 0, to: 2, price: 3.5 }]
         },
         transportRates: {
-            moto: [{ from: 0, to: 2, price: 1.0 }],
-            carro: [{ from: 0, to: 2, price: 2.0 }],
-            ejecutivo: [{ from: 0, to: 2, price: 5.0 }]
+            moto: [{ from: 0, to: 2, clientPrice: 1.5, driverPrice: 1.0 }],
+            carro: [{ from: 0, to: 2, clientPrice: 3.0, driverPrice: 2.0 }],
+            ejecutivo: [{ from: 0, to: 2, clientPrice: 7.0, driverPrice: 5.0 }]
         }
     });
     const [activeShift, setActiveShift] = useState<'day' | 'night'>('day');
@@ -697,52 +697,76 @@ export default function DeliveryManagement() {
                                             </button>
                                         </div>
 
-                                        <div className="space-y-2">
+                                        <div className="space-y-4">
+                                            <div className="grid grid-cols-12 gap-1 px-1 text-center">
+                                                <div className="col-span-2 text-[8px] font-black text-slate-400 uppercase">Desde</div>
+                                                <div className="col-span-2 text-[8px] font-black text-slate-400 uppercase">Hasta</div>
+                                                <div className="col-span-3 text-[8px] font-black text-slate-400 uppercase">C. Cliente</div>
+                                                <div className="col-span-4 text-[8px] font-black text-slate-400 uppercase">C. Taxi</div>
+                                            </div>
                                             {settings.transportRates[type].map((rate: any, idx: number) => (
-                                                <div key={idx} className="flex items-center gap-2 group/range">
-                                                    <input
-                                                        type="number" step="0.1"
-                                                        value={rate.from}
-                                                        onChange={(e) => {
-                                                            const newRates = [...settings.transportRates[type]];
-                                                            newRates[idx].from = parseFloat(e.target.value) || 0;
-                                                            setSettings({ ...settings, transportRates: { ...settings.transportRates, [type]: newRates } });
-                                                        }}
-                                                        placeholder="Km"
-                                                        className="w-16 bg-slate-50 border-none rounded-lg px-2 py-1.5 text-xs font-bold text-center"
-                                                    />
-                                                    <span className="text-slate-300 text-[10px]">→</span>
-                                                    <input
-                                                        type="number" step="0.1"
-                                                        value={rate.to}
-                                                        onChange={(e) => {
-                                                            const newRates = [...settings.transportRates[type]];
-                                                            newRates[idx].to = parseFloat(e.target.value) || 0;
-                                                            setSettings({ ...settings, transportRates: { ...settings.transportRates, [type]: newRates } });
-                                                        }}
-                                                        placeholder="Km"
-                                                        className="w-16 bg-slate-50 border-none rounded-lg px-2 py-1.5 text-xs font-bold text-center"
-                                                    />
-                                                    <input
-                                                        type="number" step="0.5"
-                                                        value={rate.price}
-                                                        onChange={(e) => {
-                                                            const newRates = [...settings.transportRates[type]];
-                                                            newRates[idx].price = parseFloat(e.target.value) || 0;
-                                                            setSettings({ ...settings, transportRates: { ...settings.transportRates, [type]: newRates } });
-                                                        }}
-                                                        placeholder="$"
-                                                        className="flex-1 bg-indigo-50 border-none rounded-lg px-2 py-1.5 text-xs font-black text-indigo-600 text-center"
-                                                    />
-                                                    <button
-                                                        onClick={() => {
-                                                            const newRates = settings.transportRates[type].filter((_: any, i: number) => i !== idx);
-                                                            setSettings({ ...settings, transportRates: { ...settings.transportRates, [type]: newRates } });
-                                                        }}
-                                                        className="text-slate-200 hover:text-red-500 opacity-0 group-hover/range:opacity-100 transition-all"
-                                                    >
-                                                        <Trash2 className="w-3.5 h-3.5" />
-                                                    </button>
+                                                <div key={idx} className="grid grid-cols-12 gap-2 items-center group/range bg-white p-1 rounded-xl border border-slate-50 shadow-sm">
+                                                    <div className="col-span-2">
+                                                        <input
+                                                            type="number" step="0.1"
+                                                            value={rate.from}
+                                                            onChange={(e) => {
+                                                                const newRates = [...settings.transportRates[type]];
+                                                                newRates[idx].from = parseFloat(e.target.value) || 0;
+                                                                setSettings({ ...settings, transportRates: { ...settings.transportRates, [type]: newRates } });
+                                                            }}
+                                                            className="w-full bg-slate-50 border-none rounded-lg px-2 py-1 text-[10px] font-bold text-center"
+                                                        />
+                                                    </div>
+                                                    <div className="col-span-2">
+                                                        <input
+                                                            type="number" step="0.1"
+                                                            value={rate.to || 0}
+                                                            onChange={(e) => {
+                                                                const newRates = [...settings.transportRates[type]];
+                                                                newRates[idx].to = parseFloat(e.target.value) || 0;
+                                                                setSettings({ ...settings, transportRates: { ...settings.transportRates, [type]: newRates } });
+                                                            }}
+                                                            className="w-full bg-slate-50 border-none rounded-lg px-2 py-1 text-[10px] font-bold text-center"
+                                                        />
+                                                    </div>
+                                                    <div className="col-span-3">
+                                                        <input
+                                                            type="number" step="0.5"
+                                                            value={rate.clientPrice || rate.price}
+                                                            onChange={(e) => {
+                                                                const newRates = [...settings.transportRates[type]];
+                                                                newRates[idx].clientPrice = parseFloat(e.target.value) || 0;
+                                                                setSettings({ ...settings, transportRates: { ...settings.transportRates, [type]: newRates } });
+                                                            }}
+                                                            placeholder="C. Cliente"
+                                                            className="w-full bg-emerald-50 border-none rounded-lg px-2 py-1 text-[10px] font-black text-emerald-600 text-center"
+                                                        />
+                                                    </div>
+                                                    <div className="col-span-4">
+                                                        <input
+                                                            type="number" step="0.5"
+                                                            value={rate.driverPrice || rate.price}
+                                                            onChange={(e) => {
+                                                                const newRates = [...settings.transportRates[type]];
+                                                                newRates[idx].driverPrice = parseFloat(e.target.value) || 0;
+                                                                setSettings({ ...settings, transportRates: { ...settings.transportRates, [type]: newRates } });
+                                                            }}
+                                                            placeholder="C. Taxi"
+                                                            className="w-full bg-indigo-50 border-none rounded-lg px-2 py-1 text-[10px] font-black text-indigo-600 text-center"
+                                                        />
+                                                    </div>
+                                                    <div className="col-span-1">
+                                                        <button
+                                                            onClick={() => {
+                                                                const newRates = settings.transportRates[type].filter((_: any, i: number) => i !== idx);
+                                                                setSettings({ ...settings, transportRates: { ...settings.transportRates, [type]: newRates } });
+                                                            }}
+                                                            className="text-slate-200 hover:text-red-500 opacity-0 group-hover/range:opacity-100 transition-colors"
+                                                        >
+                                                            <Trash2 className="w-4 h-4" />
+                                                        </button>
+                                                    </div>
                                                 </div>
                                             ))}
                                         </div>

@@ -1,11 +1,14 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { User, Mail, MapPin, CreditCard, LogOut, ShoppingBag, Settings, ChevronRight, Clock, FileText, Bell, Navigation, X, Shield } from 'lucide-react';
+import { User, Mail, MapPin, CreditCard, LogOut, ShoppingBag, Settings, ChevronRight, Clock, FileText, Bell, Navigation, X, Shield, UploadCloud } from 'lucide-react';
 import { requestNotificationPermission, disableNotifications } from '../lib/notifications';
 import { useAuth } from '../context/AuthContext';
-import { auth, db } from '../lib/firebase';
+import { auth, db, storage } from '../lib/firebase';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { useNavigate } from 'react-router-dom';
 import { signInWithGoogle, signInWithEmail, signUpWithEmail } from '../lib/auth-service';
-import { collection, query, where, orderBy, getDocs, doc, setDoc, serverTimestamp, collectionGroup, getDoc } from 'firebase/firestore';
+import { collection, query, where, orderBy, getDocs, doc, setDoc, serverTimestamp, collectionGroup, getDoc, updateDoc } from 'firebase/firestore';
+import { updateProfile } from 'firebase/auth';
+import { Image as ImageIcon, Camera, Smartphone, User as UserIcon, Save } from 'lucide-react';
 import AddressPicker from '../components/AddressPicker';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -43,6 +46,8 @@ export default function Profile() {
     const [password, setPassword] = useState('');
     const [fullName, setFullName] = useState('');
     const [isEmailAuthLoading, setIsEmailAuthLoading] = useState(false);
+    const [logoFile, setLogoFile] = useState<File | null>(null);
+    const [logoPreview, setLogoPreview] = useState<string | null>(null);
 
     useEffect(() => {
         if (userData) {
@@ -192,11 +197,30 @@ export default function Profile() {
 
         setCompletingProfile(true);
         try {
-            await setDoc(doc(db, 'users', user.uid), {
+            let photoURL = user.photoURL;
+
+            if (logoFile) {
+                const storageRef = ref(storage, `users/${user.uid}/profile_${Date.now()}`);
+                const snapshot = await uploadBytes(storageRef, logoFile);
+                photoURL = await getDownloadURL(snapshot.ref);
+
+                // Update Firebase Auth profile
+                await updateProfile(user, { photoURL });
+            }
+
+            const updateData = {
                 displayName: profileForm.displayName,
                 phone: profileForm.phone,
+                photoURL,
                 updatedAt: serverTimestamp()
-            }, { merge: true });
+            };
+
+            await setDoc(doc(db, 'users', user.uid), updateData, { merge: true });
+
+            // If explicit update profile was triggered from modal, we might want to close it here
+            setShowEditProfileModal(false);
+            setLogoFile(null);
+            setLogoPreview(null);
         } catch (e) {
             console.error("Error updating profile", e);
             alert("Ocurrió un error al guardar tus datos.");
@@ -677,61 +701,136 @@ export default function Profile() {
             {/* Edit Profile Modal */}
             <AnimatePresence>
                 {showEditProfileModal && (
-                    <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-black/60 backdrop-blur-sm">
+                    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm overflow-y-auto">
                         <motion.div
-                            initial={{ opacity: 0, scale: 0.9, y: 20 }}
+                            initial={{ opacity: 0, scale: 0.95, y: 20 }}
                             animate={{ opacity: 1, scale: 1, y: 0 }}
-                            exit={{ opacity: 0, scale: 0.9, y: 20 }}
-                            className="bg-white rounded-[32px] w-full max-w-sm shadow-2xl overflow-hidden"
+                            exit={{ opacity: 0, scale: 0.95, y: 20 }}
+                            className="bg-white rounded-[40px] w-full max-w-2xl shadow-2xl overflow-hidden my-auto"
                         >
                             <div className="p-8 border-b border-slate-50 flex items-center justify-between bg-slate-50/50">
-                                <div>
-                                    <h3 className="text-xl font-black text-slate-900">Editar Perfil</h3>
-                                    <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-0.5">Actualiza tus datos</p>
+                                <div className="flex items-center gap-4">
+                                    <div className="p-3 bg-primary/10 rounded-2xl text-primary">
+                                        <Settings className="w-6 h-6" />
+                                    </div>
+                                    <div>
+                                        <h3 className="text-xl font-black text-slate-900 leading-none">Editar Perfil</h3>
+                                        <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-2">Personaliza tu información</p>
+                                    </div>
                                 </div>
-                                <button onClick={() => setShowEditProfileModal(false)} className="p-2 hover:bg-slate-200 rounded-xl transition-all">
-                                    <X className="w-5 h-5 text-slate-400" />
+                                <button onClick={() => setShowEditProfileModal(false)} className="p-3 hover:bg-slate-200 rounded-2xl transition-all">
+                                    <X className="w-6 h-6 text-slate-400" />
                                 </button>
                             </div>
 
-                            <form onSubmit={async (e) => {
-                                e.preventDefault();
-                                await handleCompleteProfile(e);
-                                setShowEditProfileModal(false);
-                            }} className="p-8 space-y-4">
-                                <div className="space-y-1">
-                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Nombre Completo</label>
-                                    <input
-                                        type="text"
-                                        required
-                                        value={profileForm.displayName}
-                                        onChange={(e) => setProfileForm({ ...profileForm, displayName: e.target.value })}
-                                        className="w-full bg-slate-50 border-2 border-slate-100 focus:border-primary px-4 py-3 rounded-2xl outline-none font-bold text-slate-700 transition-all"
-                                    />
+                            <form onSubmit={handleCompleteProfile} className="p-8">
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                                    {/* Basic Info */}
+                                    <div className="space-y-6">
+                                        <h3 className="text-xs font-black text-slate-400 uppercase tracking-[0.2em] flex items-center gap-2">
+                                            <UserIcon className="w-4 h-4" /> Información Básica
+                                        </h3>
+
+                                        <div className="space-y-2">
+                                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Nombre Completo</label>
+                                            <input
+                                                type="text"
+                                                required
+                                                value={profileForm.displayName}
+                                                onChange={(e) => setProfileForm({ ...profileForm, displayName: e.target.value })}
+                                                className="w-full bg-slate-50 border border-slate-100 rounded-2xl p-4 font-bold text-slate-700 focus:bg-white focus:border-primary transition-all outline-none"
+                                                placeholder="Ej. Juan Pérez"
+                                            />
+                                        </div>
+
+                                        <div className="space-y-2">
+                                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Número de Celular</label>
+                                            <div className="relative">
+                                                <input
+                                                    type="tel"
+                                                    required
+                                                    value={profileForm.phone}
+                                                    onChange={(e) => setProfileForm({ ...profileForm, phone: e.target.value })}
+                                                    className="w-full bg-slate-50 border border-slate-100 rounded-2xl p-4 pl-12 font-bold text-slate-700 focus:bg-white focus:border-primary transition-all outline-none"
+                                                    placeholder="Ej. 04141234567"
+                                                />
+                                                <Smartphone className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-300" />
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* Visual Info */}
+                                    <div className="space-y-6">
+                                        <h3 className="text-xs font-black text-slate-400 uppercase tracking-[0.2em] flex items-center gap-2">
+                                            <Camera className="w-4 h-4" /> Información Visual
+                                        </h3>
+
+                                        <div className="space-y-4">
+                                            <div className="flex items-center justify-between">
+                                                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Foto de Perfil</p>
+                                                <UploadCloud className="w-4 h-4 text-primary" />
+                                            </div>
+
+                                            <div className="relative group/photo">
+                                                <div className="w-full h-48 rounded-[32px] bg-slate-50 border-2 border-dashed border-slate-200 flex flex-col items-center justify-center overflow-hidden transition-all group-hover/photo:border-primary/50">
+                                                    {(logoPreview || user?.photoURL) ? (
+                                                        <img
+                                                            src={logoPreview || user?.photoURL || ''}
+                                                            alt="Profile Preview"
+                                                            className="w-full h-full object-cover"
+                                                        />
+                                                    ) : (
+                                                        <div className="flex flex-col items-center gap-2 text-slate-400">
+                                                            <ImageIcon className="w-10 h-10" />
+                                                            <span className="text-[10px] font-bold uppercase tracking-widest">Subir Foto</span>
+                                                        </div>
+                                                    )}
+
+                                                    <input
+                                                        type="file"
+                                                        accept="image/*"
+                                                        onChange={(e) => {
+                                                            const file = e.target.files?.[0];
+                                                            if (file) {
+                                                                setLogoFile(file);
+                                                                setLogoPreview(URL.createObjectURL(file));
+                                                            }
+                                                        }}
+                                                        className="absolute inset-0 opacity-0 cursor-pointer z-10"
+                                                    />
+
+                                                    <div className="absolute inset-0 bg-black/40 opacity-0 group-hover/photo:opacity-100 transition-opacity flex items-center justify-center">
+                                                        <Camera className="w-8 h-8 text-white" />
+                                                    </div>
+                                                </div>
+                                                <p className="text-[9px] text-slate-400 font-bold mt-2 text-center uppercase tracking-tighter italic">Recomendado: 400x400px (JPG/PNG)</p>
+                                            </div>
+                                        </div>
+                                    </div>
                                 </div>
 
-                                <div className="space-y-1">
-                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Número de Celular</label>
-                                    <input
-                                        type="tel"
-                                        required
-                                        value={profileForm.phone}
-                                        onChange={(e) => setProfileForm({ ...profileForm, phone: e.target.value })}
-                                        className="w-full bg-slate-50 border-2 border-slate-100 focus:border-primary px-4 py-3 rounded-2xl outline-none font-bold text-slate-700 transition-all"
-                                    />
+                                <div className="mt-12 flex gap-4 pt-8 border-t border-slate-100">
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowEditProfileModal(false)}
+                                        className="flex-1 py-4 bg-slate-100 text-slate-500 rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-slate-200 transition-all shadow-sm active:scale-95"
+                                    >
+                                        Cancelar
+                                    </button>
+                                    <button
+                                        type="submit"
+                                        disabled={completingProfile}
+                                        className="flex-[2] py-4 bg-primary text-white rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-orange-600 transition-all shadow-xl shadow-orange-500/30 flex items-center justify-center gap-2 active:scale-[0.98] disabled:opacity-50"
+                                    >
+                                        {completingProfile ? (
+                                            <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                                        ) : (
+                                            <>
+                                                <Save className="w-4 h-4" /> Guardar Cambios
+                                            </>
+                                        )}
+                                    </button>
                                 </div>
-
-                                <button
-                                    type="submit"
-                                    disabled={completingProfile}
-                                    className="w-full bg-primary text-white py-4 rounded-2xl font-bold shadow-lg shadow-primary/30 hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-70 mt-4 flex items-center justify-center gap-2"
-                                >
-                                    {completingProfile ? (
-                                        <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                                    ) : (
-                                        "Guardar Cambios"
-                                    )}
-                                </button>
                             </form>
                         </motion.div>
                     </div>

@@ -253,27 +253,29 @@ export default function Taxi() {
         else if (step === 'destination') setStep('origin');
     };
 
-    // 7. Calculate Price Helper
-    const calculatePrice = (type: 'moto' | 'carro' | 'ejecutivo') => {
+    const calculatePrice = (type: 'moto' | 'carro' | 'ejecutivo', forDriver: boolean = false) => {
         if (!adminRates || !routeInfo) return 0;
         const rates = adminRates[type];
         if (!Array.isArray(rates)) return 0;
 
         const distance = routeInfo.distance;
         // Find the matching range
-        const matchingRange = rates.find(r => distance >= r.from && distance <= r.to);
+        const matchingRange = rates.find(r => distance >= r.from && (r.to === 0 || distance <= r.to));
 
         if (matchingRange) {
-            return matchingRange.price.toFixed(2);
+            const price = forDriver ? (matchingRange.driverPrice || matchingRange.price) : (matchingRange.clientPrice || matchingRange.price);
+            return parseFloat(price).toFixed(2);
         }
 
         // Fallback: if distance is greater than the highest range, use the last one
         const lastRange = [...rates].sort((a, b) => b.to - a.to)[0];
-        if (lastRange && distance > lastRange.to) {
-            return lastRange.price.toFixed(2);
+        if (lastRange && (lastRange.to !== 0 && distance > lastRange.to)) {
+            const price = forDriver ? (lastRange.driverPrice || lastRange.price) : (lastRange.clientPrice || lastRange.price);
+            return parseFloat(price).toFixed(2);
         }
 
-        return rates[0]?.price.toFixed(2) || 0;
+        const price = forDriver ? (rates[0]?.driverPrice || rates[0]?.price) : (rates[0]?.clientPrice || rates[0]?.price);
+        return parseFloat(price || 0).toFixed(2);
     };
 
     const handleContinueToPayment = () => {
@@ -292,33 +294,36 @@ export default function Taxi() {
 
         setIsUploading(true);
         try {
-            const finalPrice = parseFloat(calculatePrice(vehicleType) as string);
+            const clientTotal = calculatePrice(vehicleType);
+            const driverPayout = calculatePrice(vehicleType, true);
             let proofUrl = '';
 
             // TODO: In a real scenario, you would upload the paymentProof to Firebase Storage here.
-            // For now, if we have a file, we can fake a URL just to pass the state.
             if (paymentProof) {
                 proofUrl = 'uploaded_proof.jpg';
             }
 
-            // We move them to verifying state
             setStep('searching');
 
-            const requestRef = await addDoc(collection(db, 'transport_requests'), {
+            const orderData = {
+                type: 'transport',
                 userId: user.uid,
                 userName: userData?.displayName || user.email,
                 userPhone: userData?.phone || '',
                 origin,
                 destination,
                 vehicleType,
-                distance: routeInfo.distance,
-                price: finalPrice,
-                status: 'verifying_payment',
+                route: routeInfo,
+                total: parseFloat(clientTotal as string),
+                driverPayout: parseFloat(driverPayout as string),
+                status: 'pending',
                 paymentMethod: selectedPaymentMethod,
                 paymentRef: paymentRef,
                 paymentProofUrl: proofUrl,
                 createdAt: serverTimestamp(),
-            });
+            };
+
+            const requestRef = await addDoc(collection(db, 'transport_requests'), orderData);
 
             // Listen for admin verification
             setTimeout(() => {

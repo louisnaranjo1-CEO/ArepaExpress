@@ -40,13 +40,13 @@ export default function FinancesManager() {
         },
         transportRates: {
             moto: [
-                { from: 0, to: 2, price: 1.0 }
+                { from: 0, to: 2, clientPrice: 1.5, driverPrice: 1.0 }
             ],
             carro: [
-                { from: 0, to: 2, price: 2.0 }
+                { from: 0, to: 2, clientPrice: 3.0, driverPrice: 2.0 }
             ],
             ejecutivo: [
-                { from: 0, to: 2, price: 5.0 }
+                { from: 0, to: 2, clientPrice: 7.0, driverPrice: 5.0 }
             ]
         }
     });
@@ -144,7 +144,8 @@ export default function FinancesManager() {
                                             newRanges.push({
                                                 from: lastRange ? lastRange.to + 0.1 : 0,
                                                 to: lastRange ? lastRange.to + 2 : 2,
-                                                price: lastRange ? lastRange.price + 1 : 1
+                                                clientPrice: lastRange ? (lastRange.clientPrice || lastRange.price) + 1 : 2,
+                                                driverPrice: lastRange ? (lastRange.driverPrice || lastRange.price) + 1 : 1
                                             });
                                             setConfig(prev => ({
                                                 ...prev,
@@ -158,15 +159,16 @@ export default function FinancesManager() {
                                 </div>
 
                                 <div className="space-y-3">
-                                    <div className="grid grid-cols-12 gap-2 text-[10px] font-black text-slate-400 uppercase px-2">
-                                        <div className="col-span-4">Desde (km)</div>
-                                        <div className="col-span-4">Hasta (km)</div>
-                                        <div className="col-span-3">Precio ($)</div>
+                                    <div className="grid grid-cols-12 gap-1 text-[8px] font-black text-slate-400 uppercase px-1">
+                                        <div className="col-span-2 text-center">Desde</div>
+                                        <div className="col-span-2 text-center">Hasta</div>
+                                        <div className="col-span-3 text-center">C. Cliente</div>
+                                        <div className="col-span-4 text-center">C. Taxi</div>
                                         <div className="col-span-1"></div>
                                     </div>
                                     {config.transportRates[type].map((range: any, idx: number) => (
-                                        <div key={idx} className="grid grid-cols-12 gap-2 items-center">
-                                            <div className="col-span-4">
+                                        <div key={idx} className="grid grid-cols-12 gap-2 shadow-sm items-center group/range px-1 py-1 rounded-xl bg-white border border-slate-50">
+                                            <div className="col-span-2">
                                                 <input
                                                     type="number" step="0.1" min="0"
                                                     value={range.from}
@@ -175,10 +177,10 @@ export default function FinancesManager() {
                                                         newRanges[idx].from = parseFloat(e.target.value) || 0;
                                                         setConfig(prev => ({ ...prev, transportRates: { ...prev.transportRates, [type]: newRanges } }));
                                                     }}
-                                                    className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1.5 text-sm font-bold text-slate-700"
+                                                    className="w-full bg-slate-50 border-none rounded-lg px-1 py-1 text-[9px] font-bold text-center"
                                                 />
                                             </div>
-                                            <div className="col-span-4">
+                                            <div className="col-span-2">
                                                 <input
                                                     type="number" step="0.1" min="0"
                                                     value={range.to}
@@ -187,31 +189,45 @@ export default function FinancesManager() {
                                                         newRanges[idx].to = parseFloat(e.target.value) || 0;
                                                         setConfig(prev => ({ ...prev, transportRates: { ...prev.transportRates, [type]: newRanges } }));
                                                     }}
-                                                    className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1.5 text-sm font-bold text-slate-700"
+                                                    className="w-full bg-slate-50 border-none rounded-lg px-1 py-1 text-[9px] font-bold text-center"
                                                 />
                                             </div>
                                             <div className="col-span-3">
                                                 <input
                                                     type="number" step="0.5" min="0"
-                                                    value={range.price}
+                                                    value={range.clientPrice || range.price}
                                                     onChange={e => {
                                                         const newRanges = [...config.transportRates[type]];
-                                                        newRanges[idx].price = parseFloat(e.target.value) || 0;
+                                                        newRanges[idx].clientPrice = parseFloat(e.target.value) || 0;
                                                         setConfig(prev => ({ ...prev, transportRates: { ...prev.transportRates, [type]: newRanges } }));
                                                     }}
-                                                    className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1.5 text-sm font-bold text-slate-700"
+                                                    placeholder="$ Cliente"
+                                                    className="w-full bg-emerald-50 border-none rounded-lg px-1 py-1 text-[9px] font-black text-emerald-600 text-center"
                                                 />
                                             </div>
-                                            <div className="col-span-1 flex justify-end">
+                                            <div className="col-span-4">
+                                                <input
+                                                    type="number" step="0.5" min="0"
+                                                    value={range.driverPrice || range.price}
+                                                    onChange={e => {
+                                                        const newRanges = [...config.transportRates[type]];
+                                                        newRanges[idx].driverPrice = parseFloat(e.target.value) || 0;
+                                                        setConfig(prev => ({ ...prev, transportRates: { ...prev.transportRates, [type]: newRanges } }));
+                                                    }}
+                                                    placeholder="$ Taxi"
+                                                    className="w-full bg-indigo-50 border-none rounded-lg px-1 py-1 text-[9px] font-black text-indigo-600 text-center"
+                                                />
+                                            </div>
+                                            <div className="col-span-1 flex justify-end pr-1">
                                                 <button
                                                     onClick={() => {
                                                         if (config.transportRates[type].length <= 1) return;
                                                         const newRanges = config.transportRates[type].filter((_: any, i: number) => i !== idx);
                                                         setConfig(prev => ({ ...prev, transportRates: { ...prev.transportRates, [type]: newRanges } }));
                                                     }}
-                                                    className="text-slate-300 hover:text-red-500 transition-colors"
+                                                    className="text-slate-200 hover:text-red-500 opacity-0 group-hover/range:opacity-100 transition-colors"
                                                 >
-                                                    <Trash2 className="w-4 h-4" />
+                                                    <Trash2 className="w-3.5 h-3.5" />
                                                 </button>
                                             </div>
                                         </div>

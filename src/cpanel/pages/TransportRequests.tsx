@@ -157,12 +157,20 @@ export default function TransportRequests() {
                                 </div>
 
                                 {/* Financial Info */}
-                                <div className="bg-slate-50 rounded-2xl p-4 md:text-right min-w-[200px]">
-                                    <p className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-1">Total del Viaje</p>
-                                    <p className="text-2xl font-black text-slate-900">${parseFloat(req.price || 0).toFixed(2)}</p>
-                                    <div className="flex items-center gap-2 mt-2 md:justify-end text-sm">
-                                        <span className="bg-white px-2 py-1 rounded shadow-sm font-bold text-slate-600 border border-slate-200 flex items-center gap-1">
-                                            <DollarSign className="w-3 h-3 text-emerald-500" /> {req.paymentMethod === 'pagoMovil' ? 'Pago Móvil' : req.paymentMethod}
+                                <div className="bg-slate-100/50 rounded-2xl p-4 md:text-right min-w-[240px] border border-slate-100 flex flex-col justify-center">
+                                    <div className="grid grid-cols-2 gap-4 md:grid-cols-1 md:gap-2">
+                                        <div>
+                                            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1">Costo Cliente</p>
+                                            <p className="text-xl font-black text-emerald-600">${parseFloat(req.clientTotal || req.price || 0).toFixed(2)}</p>
+                                        </div>
+                                        <div className="border-l md:border-l-0 md:border-t border-slate-200 pl-4 md:pl-0 md:pt-2">
+                                            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1">Pago a Taxi</p>
+                                            <p className="text-lg font-black text-indigo-600">${parseFloat(req.driverPayout || req.price || 0).toFixed(2)}</p>
+                                        </div>
+                                    </div>
+                                    <div className="flex items-center gap-2 mt-3 md:justify-end text-[10px] font-bold">
+                                        <span className="bg-white px-2 py-1 rounded shadow-sm text-slate-600 border border-slate-200 flex items-center gap-1">
+                                            <DollarSign className="w-3 h-3 text-emerald-500" /> {req.paymentMethod === 'pagoMovil' ? 'Pago Móvil' : req.paymentMethod === 'cash' ? 'Efectivo' : req.paymentMethod}
                                         </span>
                                     </div>
                                 </div>

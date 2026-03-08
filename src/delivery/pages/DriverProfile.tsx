@@ -1,14 +1,14 @@
 import React, { useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
-import { LogOut, User, FileText, Settings, ShieldCheck, ChevronRight, Key, Mail, Trash2, ArrowLeft, Camera, Truck, UploadCloud, Bell } from 'lucide-react';
+import { User, Mail, MapPin, CreditCard, LogOut, ShoppingBag, Settings, ChevronRight, Clock, FileText, Bell, Navigation, X, Shield, UploadCloud, CheckCircle2, Save, Image as ImageIcon, Key, Trash2, ArrowLeft, Camera, Truck, ShieldCheck, Smartphone } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { signOut, updateEmail, updatePassword, deleteUser } from 'firebase/auth';
-import { auth, db } from '../../lib/firebase';
-import { collection, addDoc, serverTimestamp, doc, onSnapshot, setDoc } from 'firebase/firestore';
+import { auth, db, storage } from '../../lib/firebase';
+import { collection, addDoc, serverTimestamp, doc, onSnapshot, setDoc, updateDoc } from 'firebase/firestore';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { requestNotificationPermission, disableNotifications } from '../../lib/notifications';
 import { VENEZUELA_DATA, VENEZUELA_STATES } from '../../lib/venezuelaData';
 import AddressPicker from '../../components/AddressPicker';
-import { MapPin, Navigation, CheckCircle2 } from 'lucide-react';
 
 export default function DriverProfile() {
     const { user, userData } = useAuth();
@@ -53,6 +53,14 @@ export default function DriverProfile() {
         coords: null as { lat: number; lng: number } | null
     });
     const [showMap, setShowMap] = useState(false);
+
+    // New Visual States
+    const [selfieFile, setSelfieFile] = useState<File | null>(null);
+    const [selfiePreview, setSelfiePreview] = useState<string | null>(null);
+    const [licenseFile, setLicenseFile] = useState<File | null>(null);
+    const [licensePreview, setLicensePreview] = useState<string | null>(null);
+    const [vehicleFile, setVehicleFile] = useState<File | null>(null);
+    const [vehiclePreview, setVehiclePreview] = useState<string | null>(null);
 
     const handleLogout = async () => {
         try {
@@ -138,15 +146,50 @@ export default function DriverProfile() {
 
         setLoading(true);
         try {
-            await addDoc(collection(db, 'delivery_update_requests'), {
+            let documents = { ...driverProfile.documents };
+
+            // Upload Selfie
+            if (selfieFile) {
+                const sRef = ref(storage, `delivery_drivers/${user.uid}/selfie_${Date.now()}`);
+                const snap = await uploadBytes(sRef, selfieFile);
+                documents.selfieUrl = await getDownloadURL(snap.ref);
+            }
+
+            // Upload License
+            if (licenseFile) {
+                const lRef = ref(storage, `delivery_drivers/${user.uid}/license_${Date.now()}`);
+                const snap = await uploadBytes(lRef, licenseFile);
+                documents.licenseUrl = await getDownloadURL(snap.ref);
+            }
+
+            // Upload Vehicle Photo
+            if (vehicleFile) {
+                const vRef = ref(storage, `delivery_drivers/${user.uid}/vehicle_${Date.now()}`);
+                const snap = await uploadBytes(vRef, vehicleFile);
+                documents.vehicleImageUrl = await getDownloadURL(snap.ref);
+            }
+
+            const requestData = {
                 driverId: user.uid,
                 driverName: driverProfile.fullName || 'Desconocido',
                 requestedAt: serverTimestamp(),
                 status: 'pending',
-                newData: updateForm
-            });
+                newData: {
+                    ...updateForm,
+                    documents
+                }
+            };
+
+            await addDoc(collection(db, 'delivery_update_requests'), requestData);
+
             alert('Solicitud enviada al administrador. Tus datos se actualizarán una vez aprobados.');
             setUpdateForm({ vehiclePlate: '', vehicleType: 'moto' });
+            setSelfieFile(null);
+            setSelfiePreview(null);
+            setLicenseFile(null);
+            setLicensePreview(null);
+            setVehicleFile(null);
+            setVehiclePreview(null);
             setActiveView('profile');
         } catch (error) {
             console.error(error);
@@ -272,49 +315,156 @@ export default function DriverProfile() {
 
     if (activeView === 'update_data') {
         return (
-            <div className="space-y-6 animate-fade-in pb-24 px-4">
+            <div className="space-y-6 animate-fade-in pb-24 px-4 overflow-y-auto">
                 <button onClick={() => setActiveView('profile')} className="flex items-center gap-2 text-slate-500 font-bold mb-4">
                     <ArrowLeft className="w-5 h-5" /> Volver al Perfil
                 </button>
                 <div className="mb-6">
-                    <h2 className="text-2xl font-black text-slate-800 tracking-tight">Editar Perfil</h2>
+                    <h2 className="text-2xl font-black text-slate-800 tracking-tight">Editar Perfil de Piloto</h2>
                     <p className="text-sm text-slate-500 mt-2 font-medium leading-relaxed">
-                        Si necesitas modificar tu vehículo o placa, envíanos la información nueva. Un administrador revisará la solicitud antes de aplicarla.
+                        Actualiza tu información personal y documentos. Un administrador revisará los cambios antes de activarlos.
                     </p>
                 </div>
 
-                <form onSubmit={handleRequestDataUpdate} className="bg-white rounded-[24px] p-6 border border-slate-100 shadow-sm space-y-4">
+                <form onSubmit={handleRequestDataUpdate} className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    {/* Basic & Vehicle Info */}
+                    <div className="space-y-6">
+                        <div className="bg-white rounded-[24px] p-6 border border-slate-100 shadow-sm space-y-6">
+                            <h3 className="text-xs font-black text-slate-400 uppercase tracking-[0.2em] flex items-center gap-2">
+                                <User className="w-4 h-4" /> Información Básica
+                            </h3>
 
+                            <div className="space-y-2">
+                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Nombre Completo</label>
+                                <input
+                                    type="text"
+                                    defaultValue={driverProfile?.fullName}
+                                    className="w-full bg-slate-50 border border-slate-100 rounded-2xl p-4 font-bold text-slate-700 focus:bg-white focus:border-indigo-500 transition-all outline-none"
+                                    disabled
+                                />
+                                <p className="text-[9px] text-slate-400 font-medium italic ml-4">El nombre no es editable directamente por seguridad.</p>
+                            </div>
 
-                    <div>
-                        <label className="block text-xs font-black text-slate-400 uppercase tracking-widest ml-1 mb-2">Nuevo Vehículo</label>
-                        <select
-                            value={updateForm.vehicleType}
-                            onChange={e => setUpdateForm({ ...updateForm, vehicleType: e.target.value })}
-                            className="w-full bg-slate-50 border-2 border-transparent focus:border-indigo-500 px-4 py-3 rounded-2xl outline-none font-bold text-slate-700 mb-2"
-                        >
-                            <option value="moto">Motocicleta</option>
-                            <option value="carro">Automóvil</option>
-                            <option value="bicicleta">Bicicleta</option>
-                        </select>
-                        <input
-                            type="text"
-                            required
-                            placeholder="Placa del nuevo vehículo"
-                            value={updateForm.vehiclePlate}
-                            onChange={e => setUpdateForm({ ...updateForm, vehiclePlate: e.target.value })}
-                            className="w-full bg-slate-50 border-2 border-transparent focus:border-indigo-500 px-4 py-3 rounded-2xl outline-none transition-all font-bold text-slate-700 uppercase"
-                        />
+                            <div className="space-y-2">
+                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Tipo de Vehículo</label>
+                                <select
+                                    value={updateForm.vehicleType}
+                                    onChange={e => setUpdateForm({ ...updateForm, vehicleType: e.target.value })}
+                                    className="w-full bg-slate-50 border border-slate-100 rounded-2xl p-4 font-bold text-slate-700 focus:bg-white focus:border-indigo-500 transition-all outline-none appearance-none"
+                                >
+                                    <option value="moto">Motocicleta / MotoTaxi</option>
+                                    <option value="carro">Automóvil / Taxi</option>
+                                    <option value="carro_ejecutivo">Vehículo Ejecutivo</option>
+                                    <option value="bicicleta">Bicicleta</option>
+                                </select>
+                            </div>
+
+                            <div className="space-y-2">
+                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Placa del Vehículo</label>
+                                <div className="relative">
+                                    <input
+                                        type="text"
+                                        required
+                                        placeholder="Ej: AB123CD"
+                                        value={updateForm.vehiclePlate}
+                                        onChange={e => setUpdateForm({ ...updateForm, vehiclePlate: e.target.value })}
+                                        className="w-full bg-slate-50 border border-slate-100 rounded-2xl p-4 pl-12 font-bold text-slate-700 focus:bg-white focus:border-indigo-500 transition-all outline-none uppercase"
+                                    />
+                                    <Truck className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-300" />
+                                </div>
+                            </div>
+                        </div>
                     </div>
 
-                    <div className="p-4 bg-indigo-50 rounded-2xl flex items-start gap-3 text-indigo-800 text-xs font-medium mt-4">
-                        <UploadCloud className="w-5 h-5 shrink-0" />
-                        <p>Por políticas de seguridad, para actualizar tus fotos (selfie o licencia) debes comunicarte directamente con soporte técnico adjuntando esta solicitud.</p>
+                    {/* Enhanced Visual Info */}
+                    <div className="space-y-6">
+                        <div className="bg-white rounded-[24px] p-6 border border-slate-100 shadow-sm space-y-6">
+                            <h3 className="text-xs font-black text-slate-400 uppercase tracking-[0.2em] flex items-center gap-2">
+                                <Camera className="w-4 h-4" /> Información Visual
+                            </h3>
+
+                            {/* Selfie Upload */}
+                            <div className="space-y-3">
+                                <div className="flex items-center justify-between">
+                                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Foto Personal (Selfie)</p>
+                                    <UploadCloud className="w-4 h-4 text-indigo-500" />
+                                </div>
+                                <div className="relative group/selfie h-32 rounded-2xl bg-slate-50 border-2 border-dashed border-slate-200 flex flex-col items-center justify-center overflow-hidden transition-all group-hover/selfie:border-indigo-500/50">
+                                    {(selfiePreview || driverProfile?.documents?.selfieUrl) ? (
+                                        <img src={selfiePreview || driverProfile.documents.selfieUrl} alt="Selfie" className="w-full h-full object-cover" />
+                                    ) : (
+                                        <div className="flex flex-col items-center gap-1 text-slate-400">
+                                            <ImageIcon className="w-6 h-6" />
+                                            <span className="text-[9px] font-bold uppercase tracking-widest">Subir Selfie</span>
+                                        </div>
+                                    )}
+                                    <input type="file" accept="image/*" onChange={e => {
+                                        const file = e.target.files?.[0];
+                                        if (file) { setSelfieFile(file); setSelfiePreview(URL.createObjectURL(file)); }
+                                    }} className="absolute inset-0 opacity-0 cursor-pointer z-10" />
+                                    <div className="absolute inset-0 bg-black/40 opacity-0 group-hover/selfie:opacity-100 transition-opacity flex items-center justify-center">
+                                        <Camera className="w-6 h-6 text-white" />
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* License Upload */}
+                            <div className="space-y-3 pt-4 border-t border-slate-50">
+                                <div className="flex items-center justify-between">
+                                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Licencia de Conducir</p>
+                                    <CreditCard className="w-4 h-4 text-indigo-500" />
+                                </div>
+                                <div className="relative group/license h-32 rounded-2xl bg-slate-50 border-2 border-dashed border-slate-200 flex flex-col items-center justify-center overflow-hidden transition-all group-hover/license:border-indigo-500/50">
+                                    {(licensePreview || driverProfile?.documents?.licenseUrl) ? (
+                                        <img src={licensePreview || driverProfile.documents.licenseUrl} alt="License" className="w-full h-full object-cover" />
+                                    ) : (
+                                        <div className="flex flex-col items-center gap-1 text-slate-400">
+                                            <ImageIcon className="w-6 h-6" />
+                                            <span className="text-[9px] font-bold uppercase tracking-widest">Subir Licencia</span>
+                                        </div>
+                                    )}
+                                    <input type="file" accept="image/*" onChange={e => {
+                                        const file = e.target.files?.[0];
+                                        if (file) { setLicenseFile(file); setLicensePreview(URL.createObjectURL(file)); }
+                                    }} className="absolute inset-0 opacity-0 cursor-pointer z-10" />
+                                </div>
+                            </div>
+
+                            {/* Vehicle Image Upload */}
+                            <div className="space-y-3 pt-4 border-t border-slate-50">
+                                <div className="flex items-center justify-between">
+                                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Foto del Vehículo</p>
+                                    <Truck className="w-4 h-4 text-indigo-500" />
+                                </div>
+                                <div className="relative group/vehicle h-32 rounded-2xl bg-slate-50 border-2 border-dashed border-slate-200 flex flex-col items-center justify-center overflow-hidden transition-all group-hover/vehicle:border-indigo-500/50">
+                                    {(vehiclePreview || driverProfile?.documents?.vehicleImageUrl) ? (
+                                        <img src={vehiclePreview || driverProfile.documents.vehicleImageUrl} alt="Vehicle" className="w-full h-full object-cover" />
+                                    ) : (
+                                        <div className="flex flex-col items-center gap-1 text-slate-400">
+                                            <ImageIcon className="w-6 h-6" />
+                                            <span className="text-[9px] font-bold uppercase tracking-widest">Subir Foto Vehículo</span>
+                                        </div>
+                                    )}
+                                    <input type="file" accept="image/*" onChange={e => {
+                                        const file = e.target.files?.[0];
+                                        if (file) { setVehicleFile(file); setVehiclePreview(URL.createObjectURL(file)); }
+                                    }} className="absolute inset-0 opacity-0 cursor-pointer z-10" />
+                                </div>
+                            </div>
+                        </div>
                     </div>
 
-                    <button disabled={loading} type="submit" className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-black py-4 rounded-2xl shadow-lg shadow-indigo-600/30 active:scale-95 transition-all mt-4">
-                        {loading ? 'Enviando...' : 'Enviar Solicitud al Admin'}
-                    </button>
+                    <div className="md:col-span-2 pt-4">
+                        <button disabled={loading} type="submit" className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-black py-4 rounded-2xl shadow-lg shadow-indigo-600/30 flex items-center justify-center gap-3 active:scale-[0.98] transition-all">
+                            {loading ? (
+                                <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                            ) : (
+                                <>
+                                    <Save className="w-5 h-5" /> Enviar Solicitud de Actualización
+                                </>
+                            )}
+                        </button>
+                    </div>
                 </form>
             </div>
         );
