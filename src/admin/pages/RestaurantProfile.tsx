@@ -39,6 +39,23 @@ interface DeliveryRate {
     price: number;
 }
 
+interface WorkingHour {
+    day: string;
+    open: string;
+    close: string;
+    closed: boolean;
+}
+
+const DEFAULT_WORKING_HOURS: WorkingHour[] = [
+    { day: 'Lunes', open: '08:00', close: '22:00', closed: false },
+    { day: 'Martes', open: '08:00', close: '22:00', closed: false },
+    { day: 'Miércoles', open: '08:00', close: '22:00', closed: false },
+    { day: 'Jueves', open: '08:00', close: '22:00', closed: false },
+    { day: 'Viernes', open: '08:00', close: '22:00', closed: false },
+    { day: 'Sábado', open: '08:00', close: '22:00', closed: false },
+    { day: 'Domingo', open: '08:00', close: '22:00', closed: false },
+];
+
 export default function RestaurantProfile() {
     const { user } = useAuth();
     const [loading, setLoading] = useState(true);
@@ -55,6 +72,7 @@ export default function RestaurantProfile() {
     const [coverUrl, setCoverUrl] = useState('');
     const [location, setLocation] = useState<Location | null>(null);
     const [deliveryRates, setDeliveryRates] = useState<DeliveryRate[]>([]);
+    const [workingHours, setWorkingHours] = useState<WorkingHour[]>(DEFAULT_WORKING_HOURS);
     const [followerCount, setFollowerCount] = useState(0);
     const [followers, setFollowers] = useState<any[]>([]);
 
@@ -86,6 +104,7 @@ export default function RestaurantProfile() {
                     setCoverUrl(data.coverUrl || '');
                     setLocation(data.location || (data.locations && data.locations.length > 0 ? data.locations[0] : null));
                     setDeliveryRates(data.deliveryRates || []);
+                    setWorkingHours(data.workingHours || DEFAULT_WORKING_HOURS);
                     setFollowerCount(data.followerCount || 0);
 
                     // Fetch followers list
@@ -147,6 +166,7 @@ export default function RestaurantProfile() {
                 coverUrl: currentCoverUrl,
                 location,
                 deliveryRates,
+                workingHours,
                 updatedAt: new Date()
             });
 
@@ -175,6 +195,12 @@ export default function RestaurantProfile() {
         const newRates = [...deliveryRates];
         newRates[index] = { ...newRates[index], [field]: value };
         setDeliveryRates(newRates);
+    };
+
+    const updateWorkingHours = (index: number, field: keyof WorkingHour, value: any) => {
+        const newHours = [...workingHours];
+        newHours[index] = { ...newHours[index], [field]: value };
+        setWorkingHours(newHours);
     };
 
     const handleLogoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -535,6 +561,50 @@ export default function RestaurantProfile() {
                                     <option value="60+ min">Más de 1 hora</option>
                                 </select>
                             </div>
+                        </div>
+                    </section>
+
+                    <section className="bg-white p-8 rounded-[40px] shadow-sm border border-slate-100 space-y-6">
+                        <h2 className="text-xl font-black text-slate-900 flex items-center gap-2">
+                            <Clock className="w-6 h-6 text-primary" />
+                            Horario de Trabajo
+                        </h2>
+
+                        <div className="space-y-3">
+                            {workingHours.map((wh, idx) => (
+                                <div key={wh.day} className="flex items-center justify-between gap-2 p-3 bg-slate-50 rounded-2xl">
+                                    <span className="text-[11px] font-black text-slate-700 w-16">{wh.day}</span>
+
+                                    <div className="flex items-center gap-1.5 flex-1 justify-center">
+                                        {!wh.closed ? (
+                                            <>
+                                                <input
+                                                    type="time"
+                                                    value={wh.open}
+                                                    onChange={(e) => updateWorkingHours(idx, 'open', e.target.value)}
+                                                    className="bg-white border border-slate-200 rounded-lg p-1 text-[10px] font-bold outline-none focus:border-primary"
+                                                />
+                                                <span className="text-[10px] text-slate-400 font-bold">-</span>
+                                                <input
+                                                    type="time"
+                                                    value={wh.close}
+                                                    onChange={(e) => updateWorkingHours(idx, 'close', e.target.value)}
+                                                    className="bg-white border border-slate-200 rounded-lg p-1 text-[10px] font-bold outline-none focus:border-primary"
+                                                />
+                                            </>
+                                        ) : (
+                                            <span className="text-[10px] font-black text-red-500 uppercase tracking-widest italic">Cerrado</span>
+                                        )}
+                                    </div>
+
+                                    <button
+                                        onClick={() => updateWorkingHours(idx, 'closed', !wh.closed)}
+                                        className={`px-2.5 py-1.5 rounded-xl text-[9px] font-black transition-all ${wh.closed ? 'bg-slate-200 text-slate-500' : 'bg-primary/10 text-primary hover:bg-primary/20'}`}
+                                    >
+                                        {wh.closed ? 'ABRIR' : 'CERRAR'}
+                                    </button>
+                                </div>
+                            ))}
                         </div>
                     </section>
                 </div>

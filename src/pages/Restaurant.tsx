@@ -322,7 +322,7 @@ export default function RestaurantPage() {
           </div>
 
           {restaurant.location && (restaurant.location.address || restaurant.location.city) && (
-            <div className="mt-1 border-t border-slate-50 pt-3 flex flex-col gap-2">
+            <div className="mt-1 border-t border-slate-50 pt-3 flex flex-col gap-4">
               <div className="flex items-start gap-2">
                 <MapPin className="w-4 h-4 text-primary mt-1 shrink-0" />
                 <div className="flex-1">
@@ -337,6 +337,26 @@ export default function RestaurantPage() {
                   )}
                 </div>
               </div>
+
+              {/* Working Hours Section */}
+              {restaurant.workingHours && restaurant.workingHours.some((wh: any) => !wh.closed) && (
+                <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100 flex flex-col gap-3">
+                  <div className="flex items-center gap-2 text-slate-900 font-bold text-sm">
+                    <Clock className="w-4 h-4 text-primary" />
+                    Horario de Atención
+                  </div>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-y-3 gap-x-2">
+                    {restaurant.workingHours.map((wh: any, idx: number) => (
+                      <div key={idx} className="flex flex-col">
+                        <span className="text-[9px] font-black text-slate-400 uppercase tracking-tighter leading-none mb-1">{wh.day}</span>
+                        <span className={`text-[10px] font-black leading-none ${wh.closed ? 'text-red-400 italic' : 'text-slate-700'}`}>
+                          {wh.closed ? 'Cerrado' : `${wh.open} - ${wh.close}`}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               {restaurant.location.coords && (
                 <a

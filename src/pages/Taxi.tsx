@@ -187,25 +187,26 @@ export default function Taxi() {
 
     // 5. Route Calculation
     useEffect(() => {
-        if (step === 'vehicle' && origin && destination && directionsService) {
+        if (step === 'vehicle' && origin && destination && directionsService && map) {
             directionsService.route({
                 origin: { lat: origin.lat, lng: origin.lng },
                 destination: { lat: destination.lat, lng: destination.lng },
                 travelMode: google.maps.TravelMode.DRIVING
             }, (result, status) => {
                 if (status === google.maps.DirectionsStatus.OK && result) {
-                    if (!directionsRenderer && map) {
+                    if (!directionsRenderer) {
                         const renderer = new google.maps.DirectionsRenderer({
                             map,
                             suppressMarkers: false,
                             polylineOptions: {
-                                strokeColor: '#4f46e5', // Indigo-600
-                                strokeWeight: 4
+                                strokeColor: '#000000', // Black line for a premium look
+                                strokeWeight: 5,
+                                strokeOpacity: 0.8
                             }
                         });
                         setDirectionsRenderer(renderer);
                         renderer.setDirections(result);
-                    } else if (directionsRenderer) {
+                    } else {
                         directionsRenderer.setDirections(result);
                     }
 
@@ -217,6 +218,9 @@ export default function Taxi() {
                             duration: leg.duration?.text || ''
                         });
                     }
+
+                    // Disable interaction and zoom to fit
+                    setIsMapInteractionEnabled(false);
                 } else {
                     toast.error("No se pudo calcular la ruta");
                 }
@@ -249,8 +253,13 @@ export default function Taxi() {
             setDirectionsRenderer(null);
         }
 
-        if (step === 'vehicle') setStep('destination');
-        else if (step === 'destination') setStep('origin');
+        if (step === 'vehicle') {
+            setStep('destination');
+            setIsMapInteractionEnabled(true);
+        } else if (step === 'destination') {
+            setStep('origin');
+            setIsMapInteractionEnabled(true);
+        }
     };
 
     const calculatePrice = (type: 'moto' | 'carro' | 'ejecutivo', forDriver: boolean = false) => {
@@ -259,23 +268,38 @@ export default function Taxi() {
         if (!Array.isArray(rates)) return 0;
 
         const distance = routeInfo.distance;
+
         // Find the matching range
-        const matchingRange = rates.find(r => distance >= r.from && (r.to === 0 || distance <= r.to));
+        const matchingRange = rates.find(r => {
+            const fromKm = parseFloat(r.from?.toString() || '0');
+            const toKm = parseFloat(r.to?.toString() || '0');
+            // If toKm is 0, it means it's the open-ended final range
+            return distance >= fromKm && (toKm === 0 || distance <= toKm);
+        });
 
         if (matchingRange) {
-            const price = forDriver ? (matchingRange.driverPrice || matchingRange.price) : (matchingRange.clientPrice || matchingRange.price);
-            return parseFloat(price).toFixed(2);
+            const priceValue = forDriver
+                ? (matchingRange.driverPrice || matchingRange.price)
+                : (matchingRange.clientPrice || matchingRange.price);
+            return parseFloat(priceValue?.toString() || '0').toFixed(2);
         }
 
         // Fallback: if distance is greater than the highest range, use the last one
-        const lastRange = [...rates].sort((a, b) => b.to - a.to)[0];
-        if (lastRange && (lastRange.to !== 0 && distance > lastRange.to)) {
-            const price = forDriver ? (lastRange.driverPrice || lastRange.price) : (lastRange.clientPrice || lastRange.price);
-            return parseFloat(price).toFixed(2);
+        const sortedRates = [...rates].sort((a, b) => {
+            const toA = parseFloat(a.to?.toString() || '0');
+            const toB = parseFloat(b.to?.toString() || '0');
+            return toB - toA;
+        });
+
+        const lastRange = sortedRates[0];
+        if (lastRange) {
+            const priceValue = forDriver
+                ? (lastRange.driverPrice || lastRange.price)
+                : (lastRange.clientPrice || lastRange.price);
+            return parseFloat(priceValue?.toString() || '0').toFixed(2);
         }
 
-        const price = forDriver ? (rates[0]?.driverPrice || rates[0]?.price) : (rates[0]?.clientPrice || rates[0]?.price);
-        return parseFloat(price || 0).toFixed(2);
+        return "0.00";
     };
 
     const handleContinueToPayment = () => {

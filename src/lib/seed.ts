@@ -55,6 +55,12 @@ export interface Restaurant {
     ownDelivery?: boolean;
     deliveryRates?: DeliveryRate[];
     whatsapp?: string;
+    workingHours?: {
+        day: string;
+        open: string;
+        close: string;
+        closed: boolean;
+    }[];
 }
 
 const MOCK_RESTAURANTS: Restaurant[] = [];
