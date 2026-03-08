@@ -12,6 +12,8 @@ import WaitersManager from './pages/WaitersManager';
 import PrintersManager from './pages/PrintersManager';
 import KitchenDisplay from './pages/KitchenDisplay';
 import TablesManager from './pages/TablesManager';
+import Subscriptions from './pages/Subscriptions';
+import Banners from './pages/Banners';
 
 function AdminRoutes() {
     const { user, loading } = useAuth();
@@ -40,6 +42,8 @@ function AdminRoutes() {
                 <Route path="/stations" element={<PrintersManager />} />
                 <Route path="/kds" element={<KitchenDisplay />} />
                 <Route path="/profile" element={<RestaurantProfile />} />
+                <Route path="/banners" element={<Banners />} />
+                <Route path="/subscriptions" element={<Subscriptions />} />
                 <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
         </AdminLayout>

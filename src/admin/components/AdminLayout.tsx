@@ -1,6 +1,6 @@
 import React from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, Store, UtensilsCrossed, ClipboardList, LogOut, ChevronRight, Menu, X, Settings, HelpCircle, Trash2, User, ChevronUp, Users, UserCheck, Printer, Key, Mail as MailIcon, AlertTriangle, Grid } from 'lucide-react';
+import { LayoutDashboard, Store, UtensilsCrossed, ClipboardList, LogOut, ChevronRight, Menu, X, Settings, HelpCircle, Trash2, User, ChevronUp, Users, UserCheck, Printer, Key, Mail as MailIcon, AlertTriangle, Grid, CreditCard, Layout } from 'lucide-react';
 import { auth, db } from '../../lib/firebase';
 import { useAuth } from '../../context/AuthContext';
 import { updateUserEmail, updateUserPassword } from '../../lib/auth-service';
@@ -186,6 +186,8 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
         { path: '/tables', icon: Grid, label: 'Mesas' },
         { path: '/stations', icon: Printer, label: 'Estaciones' },
         { path: '/profile', icon: Store, label: 'Mi Negocio' },
+        { path: '/banners', icon: Layout, label: 'Publicidad' },
+        { path: '/subscriptions', icon: CreditCard, label: 'Suscripción' },
     ];
 
     return (
