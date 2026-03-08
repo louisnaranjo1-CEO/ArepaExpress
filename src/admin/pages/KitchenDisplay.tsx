@@ -23,6 +23,7 @@ interface Order {
     userName?: string;
     userPhone?: string;
     orderNote?: string;
+    source?: string;
 }
 
 interface Station {
@@ -236,7 +237,16 @@ export default function KitchenDisplay() {
                                 <div>
                                     <div className="flex items-center gap-2 mb-1">
                                         <div className={`w-3 h-3 rounded-full animate-pulse ${isUrgent ? 'bg-rose-500' : 'bg-emerald-500'}`} />
-                                        <span className="text-xs font-black uppercase tracking-widest text-slate-400">Orden ${order.id.slice(-6).toUpperCase()}</span>
+                                        <span className="text-xs font-black uppercase tracking-widest text-slate-400">Orden #{order.id.slice(-6).toUpperCase()}</span>
+                                        {order.source === 'waiter' ? (
+                                            <span className="bg-indigo-100 text-indigo-700 text-[10px] font-black px-2 py-0.5 rounded-md uppercase tracking-widest flex items-center gap-1">
+                                                Mesero
+                                            </span>
+                                        ) : (
+                                            <span className="bg-emerald-100 text-emerald-700 text-[10px] font-black px-2 py-0.5 rounded-md uppercase tracking-widest flex items-center gap-1">
+                                                App
+                                            </span>
+                                        )}
                                     </div>
                                     <h3 className="text-2xl font-black text-slate-800">
                                         {order.tableNumber ? `MESA ${order.tableNumber}` : 'PARA LLEVAR'}

@@ -23,6 +23,7 @@ interface Order {
     createdAt: any;
     deliveryAddress: string;
     userName?: string;
+    source?: string;
 }
 
 export default function Orders() {
@@ -257,6 +258,15 @@ export default function Orders() {
                                 <div>
                                     <div className="flex items-center gap-2 mb-1">
                                         <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">PEDIDO #{order.id.slice(-6).toUpperCase()}</span>
+                                        {order.source === 'waiter' ? (
+                                            <span className="bg-indigo-100 text-indigo-700 text-[10px] font-black px-2 py-0.5 rounded-md uppercase tracking-widest flex items-center gap-1">
+                                                Mesero
+                                            </span>
+                                        ) : (
+                                            <span className="bg-emerald-100 text-emerald-700 text-[10px] font-black px-2 py-0.5 rounded-md uppercase tracking-widest flex items-center gap-1">
+                                                App
+                                            </span>
+                                        )}
                                     </div>
                                     <h3 className="text-xl font-black text-slate-900">{order.userName || 'Usuario de DeliExpress'}</h3>
                                     <p className="text-sm text-slate-400 font-bold flex items-center gap-1 mt-1">

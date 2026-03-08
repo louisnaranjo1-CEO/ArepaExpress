@@ -1,33 +1,138 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Bell, Search, Menu, Plus, ChevronDown, CheckCircle, Clock, AlertCircle } from 'lucide-react';
 import WaiterLayout from '../components/WaiterLayout';
 import { motion, AnimatePresence } from 'framer-motion';
+import { collection, query, onSnapshot, orderBy, where } from 'firebase/firestore';
+import { db } from '../../lib/firebase';
 
 interface Table {
     id: string;
     number: string;
     status: 'available' | 'occupied' | 'calling' | 'billing';
-    timeLabel: string;
+    timeLabel?: string;
+    derivedStatus?: 'available' | 'occupied' | 'calling' | 'billing';
 }
 
 export default function WaiterDashboard() {
     const [activeFilter, setActiveFilter] = useState('Todos');
+    const [tables, setTables] = useState<Table[]>([]);
+    const [orders, setOrders] = useState<any[]>([]);
+    const [loading, setLoading] = useState(true);
+    const [waiterInfo, setWaiterInfo] = useState<{ name: string, role?: string }>({ name: 'Mesero' });
 
-    // Mock data based on the provided UI image
-    const tables: Table[] = [
-        { id: '1', number: '04', status: 'calling', timeLabel: 'Hace 2 min' },
-        { id: '2', number: '01', status: 'occupied', timeLabel: 'Orden hace 15m' },
-        { id: '3', number: '03', status: 'billing', timeLabel: 'Esperando cuenta (5m)' },
-        { id: '4', number: '02', status: 'available', timeLabel: 'Libre hace 45m' },
-        { id: '5', number: '05', status: 'available', timeLabel: 'Libre hace 10m' },
-        { id: '6', number: '06', status: 'available', timeLabel: 'Libre hace 1h' },
-    ];
+    useEffect(() => {
+        const waiterDataRaw = localStorage.getItem('waiterData');
+        const restaurantId = localStorage.getItem('waiterRestaurantId');
+
+        if (waiterDataRaw) {
+            try {
+                const data = JSON.parse(waiterDataRaw);
+                setWaiterInfo({ name: data.name, role: data.role });
+            } catch (e) {
+                console.error("Error parsing waiter data", e);
+            }
+        }
+
+        if (!restaurantId) {
+            setLoading(false);
+            return;
+        }
+
+        const tablesQ = query(
+            collection(db, 'restaurants', restaurantId, 'tables')
+        );
+
+        const unsubscribeTables = onSnapshot(tablesQ, (snapshot) => {
+            const fetchedTables = snapshot.docs.map(doc => ({
+                id: doc.id,
+                ...doc.data()
+            })) as Table[];
+
+            // Sort logically by number
+            fetchedTables.sort((a, b) => {
+                const numA = parseInt(a.number, 10);
+                const numB = parseInt(b.number, 10);
+                if (!isNaN(numA) && !isNaN(numB)) return numA - numB;
+                return a.number.localeCompare(b.number);
+            });
+
+            setTables(fetchedTables);
+            setLoading(false);
+        });
+
+        const ordersQ = query(
+            collection(db, 'orders'),
+            where('restaurantId', '==', restaurantId)
+        );
+
+        const unsubscribeOrders = onSnapshot(ordersQ, (snapshot) => {
+            const fetchedOrders = snapshot.docs.map(doc => ({
+                id: doc.id,
+                ...doc.data()
+            }));
+            setOrders(fetchedOrders);
+        });
+
+        return () => {
+            unsubscribeTables();
+            unsubscribeOrders();
+        };
+    }, []);
+
+    // Combine Tables with Orders to determine dynamic status
+    const tablesWithStatus = tables.map(table => {
+        // Find active orders for this table
+        const tableOrders = orders.filter(o =>
+            o.table === table.number &&
+            !(o.status === 'delivered' && o.paymentStatus === 'sold') &&
+            o.status !== 'rejected'
+        );
+
+        let derivedStatus = table.status || 'available';
+        let timeLabel = table.timeLabel || '';
+
+        if (tableOrders.length > 0) {
+            const hasBilling = tableOrders.some(o => o.status === 'delivered' && o.paymentStatus === 'not_sold');
+            const hasPending = tableOrders.some(o => o.status === 'pending');
+            const hasOccupied = tableOrders.some(o => ['preparing', 'delivering'].includes(o.status));
+
+            if (hasBilling) {
+                derivedStatus = 'billing';
+                timeLabel = 'Esperando pago';
+            } else if (hasPending || hasOccupied) {
+                derivedStatus = 'occupied';
+                const oldestOrder = tableOrders.sort((a, b) => (a.createdAt?.seconds || 0) - (b.createdAt?.seconds || 0))[0];
+                if (oldestOrder?.createdAt) {
+                    const minutes = Math.max(0, Math.floor((Date.now() - oldestOrder.createdAt.toMillis()) / 60000));
+                    timeLabel = `Orden hace ${minutes}m`;
+                } else {
+                    timeLabel = 'Ocupado';
+                }
+            }
+        } else {
+            derivedStatus = 'available';
+            timeLabel = 'Libre';
+        }
+
+        return { ...table, derivedStatus, timeLabel };
+    });
+
+    const filteredTables = tablesWithStatus.filter(table => {
+        const status = table.derivedStatus;
+        if (activeFilter === 'Todos') return true;
+        if (activeFilter === 'Disponible' && status === 'available') return true;
+        if (activeFilter === 'Ocupado' && status === 'occupied') return true;
+        if (activeFilter === 'Llamando' && status === 'calling') return true;
+        if (activeFilter === 'Cobrando' && status === 'billing') return true;
+        return false;
+    });
 
     const filters = [
         { name: 'Todos', color: 'bg-primary' },
         { name: 'Disponible', color: 'bg-emerald-500' },
         { name: 'Ocupado', color: 'bg-amber-500' },
         { name: 'Llamando', color: 'bg-rose-500' },
+        { name: 'Cobrando', color: 'bg-indigo-500' },
     ];
 
     return (
@@ -62,7 +167,7 @@ export default function WaiterDashboard() {
                         </div>
                         <div>
                             <div className="flex items-center gap-2">
-                                <h2 className="text-lg font-black text-slate-800">Juan Pérez</h2>
+                                <h2 className="text-lg font-black text-slate-800">{waiterInfo.name}</h2>
                                 <ChevronDown className="w-4 h-4 text-slate-400" />
                             </div>
                             <div className="flex items-center gap-3 mt-1">
@@ -100,13 +205,23 @@ export default function WaiterDashboard() {
                     </div>
 
                     {/* Tables Grid */}
-                    <div className="grid grid-cols-2 gap-4">
-                        {tables.map((table) => (
-                            <div key={table.id}>
-                                <TableCard table={table} />
-                            </div>
-                        ))}
-                    </div>
+                    {loading ? (
+                        <div className="flex justify-center py-10">
+                            <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin"></div>
+                        </div>
+                    ) : filteredTables.length > 0 ? (
+                        <div className="grid grid-cols-2 gap-4">
+                            {filteredTables.map((table) => (
+                                <div key={table.id}>
+                                    <TableCard table={table} />
+                                </div>
+                            ))}
+                        </div>
+                    ) : (
+                        <div className="bg-slate-50 border border-slate-100 p-8 rounded-[2.5rem] text-center text-slate-500">
+                            <p className="font-bold">No hay mesas en este estado.</p>
+                        </div>
+                    )}
                 </section>
             </main>
 
@@ -120,7 +235,7 @@ export default function WaiterDashboard() {
 
 function TableCard({ table }: { table: Table }) {
     const getStatusStyles = () => {
-        switch (table.status) {
+        switch (table.derivedStatus) {
             case 'calling':
                 return {
                     bg: 'bg-rose-50/50',
@@ -150,7 +265,7 @@ function TableCard({ table }: { table: Table }) {
                     text: 'text-amber-600',
                     badge: 'bg-amber-100',
                     btn: 'bg-slate-50 text-slate-600 border border-slate-100',
-                    title: 'Ocupado',
+                    title: 'Cobrando',
                     icon: null,
                     accent: 'ring-blue-500'
                 };
@@ -169,21 +284,21 @@ function TableCard({ table }: { table: Table }) {
     };
 
     const styles = getStatusStyles();
-    const btnLabel = table.status === 'calling' ? 'Atender' : table.status === 'occupied' ? 'Ver Orden' : table.status === 'billing' ? 'Cobrar' : 'Asignar';
+    const btnLabel = table.derivedStatus === 'calling' ? 'Atender' : table.derivedStatus === 'occupied' ? 'Ver Orden' : table.derivedStatus === 'billing' ? 'Cobrar' : 'Asignar';
 
     return (
         <motion.div
             whileTap={{ scale: 0.97 }}
             className={`${styles.bg} ${styles.border} border-2 p-5 rounded-[2.5rem] flex flex-col items-center gap-3 relative overflow-hidden shadow-sm group`}
         >
-            {table.status === 'calling' && (
+            {table.derivedStatus === 'calling' && (
                 <div className="absolute top-3 right-3 text-rose-400">
                     <Bell className="w-6 h-6 animate-pulse" />
                 </div>
             )}
 
             <div className={`w-14 h-14 rounded-full flex items-center justify-center border-2 border-slate-50 shadow-inner bg-slate-50/50`}>
-                <span className="text-2xl font-black text-rose-500">{table.number}</span>
+                <span className={`text-2xl font-black ${table.derivedStatus === 'calling' ? 'text-rose-500' : 'text-slate-700'}`}>{table.number}</span>
             </div>
 
             <div className="text-center space-y-0.5">

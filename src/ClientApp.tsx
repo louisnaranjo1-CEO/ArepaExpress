@@ -8,6 +8,8 @@ import Profile from './pages/Profile';
 import Notifications from './pages/Notifications';
 import Restaurant from './pages/Restaurant';
 import TrackOrder from './pages/TrackOrder';
+import TransportTracker from './pages/TransportTracker';
+import Taxi from './pages/Taxi';
 import { AuthProvider } from './context/AuthContext';
 import { CartProvider } from './context/CartContext';
 
@@ -28,6 +30,8 @@ export default function ClientApp() {
                                     <Route path="/profile" element={<Profile />} />
                                     <Route path="/notifications" element={<Notifications />} />
                                     <Route path="/track/:orderId" element={<TrackOrder />} />
+                                    <Route path="/taxi/track/:orderId" element={<TransportTracker />} />
+                                    <Route path="/taxi" element={<Taxi />} />
                                 </Routes>
                             </div>
                             <BottomNav />
