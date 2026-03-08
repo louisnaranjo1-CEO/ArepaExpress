@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Plus, Search, Edit2, Trash2, Key, CheckCircle2, XCircle, Shield, Phone, Mail, User, Camera, Loader2, Save, X } from 'lucide-react';
 import { db, storage } from '../../lib/firebase';
 import { useAuth } from '../../context/AuthContext';
-import { collection, addDoc, getDocs, deleteDoc, doc, query, updateDoc, where } from 'firebase/firestore';
+import { collection, addDoc, getDocs, deleteDoc, doc, query, updateDoc, where, setDoc, getDoc } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 
 interface Waiter {
@@ -48,6 +48,20 @@ export default function WaitersManager() {
             const snapshot = await getDocs(q);
             const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Waiter[];
             setWaiters(data);
+
+            // Auto-sync missing indexes (background)
+            if (data.length > 0) {
+                Promise.all(data.map(async (w) => {
+                    const idxRef = doc(db, 'waiter_index', w.email.toLowerCase());
+                    const idxSnap = await getDoc(idxRef);
+                    if (!idxSnap.exists()) {
+                        await setDoc(idxRef, {
+                            restaurantId: restaurantId,
+                            waiterId: w.id,
+                        });
+                    }
+                })).catch(console.error);
+            }
         } catch (error) {
             console.error("Error fetching waiters:", error);
         } finally {
@@ -84,13 +98,23 @@ export default function WaitersManager() {
                 photoUrl = await uploadPhoto(photoFile);
             }
 
-            await addDoc(collection(db, 'restaurants', restaurantId, 'waiters'), {
+            const waiterData = {
                 ...formData,
                 photoUrl,
                 restaurantId,
                 isActive: true,
                 createdAt: new Date()
+            };
+
+            const docRef = await addDoc(collection(db, 'restaurants', restaurantId, 'waiters'), waiterData);
+
+            // Add to index for global lookup
+            await setDoc(doc(db, 'waiter_index', formData.email.toLowerCase()), {
+                restaurantId,
+                waiterId: docRef.id,
+                email: formData.email.toLowerCase()
             });
+
             setIsAdding(false);
             setFormData({ name: '', email: '', phone: '', password: '', role: 'waiter' });
             setPhotoFile(null);
@@ -114,11 +138,26 @@ export default function WaitersManager() {
                 photoUrl = await uploadPhoto(photoFile);
             }
 
+            // Get old data to check if email changed
+            const oldWaiter = waiters.find(w => w.id === editingId);
+
             await updateDoc(doc(db, 'restaurants', restaurantId, 'waiters', editingId), {
                 ...editData,
                 photoUrl,
                 updatedAt: new Date()
             });
+
+            // Update index
+            if (oldWaiter && oldWaiter.email.toLowerCase() !== editData.email.toLowerCase()) {
+                await deleteDoc(doc(db, 'waiter_index', oldWaiter.email.toLowerCase()));
+            }
+
+            await setDoc(doc(db, 'waiter_index', editData.email.toLowerCase()), {
+                restaurantId,
+                waiterId: editingId,
+                email: editData.email.toLowerCase()
+            });
+
             setEditingId(null);
             setPhotoFile(null);
             setPhotoPreview(null);
@@ -134,6 +173,10 @@ export default function WaitersManager() {
     const handleDeleteWaiter = async (waiterId: string) => {
         if (!restaurantId || !confirm('¿Estás seguro de eliminar a este mesero?')) return;
         try {
+            const waiter = waiters.find(w => w.id === waiterId);
+            if (waiter) {
+                await deleteDoc(doc(db, 'waiter_index', waiter.email.toLowerCase()));
+            }
             await deleteDoc(doc(db, 'restaurants', restaurantId, 'waiters', waiterId));
             fetchWaiters();
         } catch (error) {

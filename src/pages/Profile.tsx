@@ -5,7 +5,7 @@ import { useAuth } from '../context/AuthContext';
 import { auth, db } from '../lib/firebase';
 import { useNavigate } from 'react-router-dom';
 import { signInWithGoogle, signInWithEmail, signUpWithEmail } from '../lib/auth-service';
-import { collection, query, where, orderBy, getDocs, doc, setDoc, serverTimestamp, collectionGroup } from 'firebase/firestore';
+import { collection, query, where, orderBy, getDocs, doc, setDoc, serverTimestamp, collectionGroup, getDoc } from 'firebase/firestore';
 import AddressPicker from '../components/AddressPicker';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -137,35 +137,33 @@ export default function Profile() {
         setError(null);
         try {
             console.log("Attempting waiter login for:", waiterEmail);
-            const q = query(
-                collectionGroup(db, 'waiters'),
-                where('email', '==', waiterEmail)
-            );
-            const snapshot = await getDocs(q);
-            console.log("Waiter query snapshot empty:", snapshot.empty);
 
-            if (snapshot.empty) {
+            // Look up in the index instead of collectionGroup to avoid missing index error
+            const indexSnap = await getDoc(doc(db, 'waiter_index', waiterEmail.toLowerCase()));
+
+            if (!indexSnap.exists()) {
                 setError("Credenciales incorrectas (Usuario).");
                 setIsWaiterSigningIn(false);
                 return;
             }
 
-            const waiterDoc = snapshot.docs[0];
+            const { restaurantId, waiterId } = indexSnap.data();
+
+            // Fetch the actual waiter document
+            const waiterDoc = await getDoc(doc(db, 'restaurants', restaurantId, 'waiters', waiterId));
+
+            if (!waiterDoc.exists()) {
+                setError("No se encontraron los datos del mesero.");
+                setIsWaiterSigningIn(false);
+                return;
+            }
+
             const data = waiterDoc.data();
             console.log("Waiter data found:", data.name);
 
             if (data.password !== waiterPassword) {
                 console.log("Password mismatch for waiter:", waiterEmail);
                 setError("Credenciales incorrectas (Contraseña).");
-                setIsWaiterSigningIn(false);
-                return;
-            }
-
-            const restaurantId = waiterDoc.ref.parent.parent?.id;
-            console.log("Waiter restaurant ID:", restaurantId);
-
-            if (!restaurantId) {
-                setError("No se pudo identificar el restaurante del mesero.");
                 setIsWaiterSigningIn(false);
                 return;
             }
