@@ -30,7 +30,7 @@ export default function ClientApp() {
                                     <Route path="/profile" element={<Profile />} />
                                     <Route path="/notifications" element={<Notifications />} />
                                     <Route path="/track/:orderId" element={<TrackOrder />} />
-                                    <Route path="/taxi/track/:orderId" element={<TransportTracker />} />
+                                    <Route path="/taxi/track/:requestId" element={<TransportTracker />} />
                                     <Route path="/taxi" element={<Taxi />} />
                                 </Routes>
                             </div>

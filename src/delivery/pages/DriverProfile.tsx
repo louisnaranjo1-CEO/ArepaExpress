@@ -43,7 +43,6 @@ export default function DriverProfile() {
 
     // Update Request State
     const [updateForm, setUpdateForm] = useState({
-        cedula: '',
         vehiclePlate: '',
         vehicleType: 'moto',
     });
@@ -147,7 +146,7 @@ export default function DriverProfile() {
                 newData: updateForm
             });
             alert('Solicitud enviada al administrador. Tus datos se actualizarán una vez aprobados.');
-            setUpdateForm({ cedula: '', vehiclePlate: '', vehicleType: 'moto' });
+            setUpdateForm({ vehiclePlate: '', vehicleType: 'moto' });
             setActiveView('profile');
         } catch (error) {
             console.error(error);
@@ -280,21 +279,12 @@ export default function DriverProfile() {
                 <div className="mb-6">
                     <h2 className="text-2xl font-black text-slate-800 tracking-tight">Editar Perfil</h2>
                     <p className="text-sm text-slate-500 mt-2 font-medium leading-relaxed">
-                        Si necesitas modificar tu vehículo, placa o documento, envíanos la información nueva. Un administrador revisará la solicitud antes de aplicarla.
+                        Si necesitas modificar tu vehículo o placa, envíanos la información nueva. Un administrador revisará la solicitud antes de aplicarla.
                     </p>
                 </div>
 
                 <form onSubmit={handleRequestDataUpdate} className="bg-white rounded-[24px] p-6 border border-slate-100 shadow-sm space-y-4">
-                    <div>
-                        <label className="block text-xs font-black text-slate-400 uppercase tracking-widest ml-1 mb-2">Nueva Cédula</label>
-                        <input
-                            type="text"
-                            required
-                            value={updateForm.cedula}
-                            onChange={e => setUpdateForm({ ...updateForm, cedula: e.target.value })}
-                            className="w-full bg-slate-50 border-2 border-transparent focus:border-indigo-500 px-4 py-3 rounded-2xl outline-none transition-all font-bold text-slate-700"
-                        />
-                    </div>
+
 
                     <div>
                         <label className="block text-xs font-black text-slate-400 uppercase tracking-widest ml-1 mb-2">Nuevo Vehículo</label>
@@ -453,7 +443,7 @@ export default function DriverProfile() {
                         </div>
                         <div className="text-left">
                             <p className="font-bold text-slate-900">Editar Perfil</p>
-                            <p className="text-xs font-medium text-slate-500">Solicitar cambio de Cédula o Vehículo</p>
+                            <p className="text-xs font-medium text-slate-500">Solicitar cambio de Vehículo</p>
                         </div>
                     </div>
                     <ChevronRight className="w-5 h-5 text-slate-300 group-hover:text-indigo-600 transition-colors" />

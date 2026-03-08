@@ -1,6 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, Store, Users, Image as ImageIcon, LogOut, ChevronRight, Menu, X, Tag, Truck } from 'lucide-react';
+import { LayoutDashboard, Store, Users, Image as ImageIcon, LogOut, ChevronRight, Menu, X, Tag, Truck, Wallet, Car } from 'lucide-react';
+import { collection, query, where, onSnapshot } from 'firebase/firestore';
+import { db } from '../../lib/firebase';
 
 interface CpanelLayoutProps {
     children: React.ReactNode;
@@ -10,6 +12,21 @@ interface CpanelLayoutProps {
 export default function CpanelLayout({ children, onLogout }: CpanelLayoutProps) {
     const navigate = useNavigate();
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+    const [pendingTransports, setPendingTransports] = useState(0);
+
+    useEffect(() => {
+        // Listen to pending transport requests that need admin payment verification
+        const q = query(
+            collection(db, 'transport_requests'),
+            where('status', '==', 'verifying_payment')
+        );
+
+        const unsubscribe = onSnapshot(q, (snapshot) => {
+            setPendingTransports(snapshot.size);
+        });
+
+        return () => unsubscribe();
+    }, []);
 
     const handleLogout = () => {
         onLogout();
@@ -23,6 +40,8 @@ export default function CpanelLayout({ children, onLogout }: CpanelLayoutProps) 
         { path: '/banners', icon: ImageIcon, label: 'Banners' },
         { path: '/categories', icon: Tag, label: 'Categorías' },
         { path: '/delivery', icon: Truck, label: 'Delivery Express' },
+        { path: '/transports', icon: Car, label: 'Viajes (Taxis)', badge: pendingTransports },
+        { path: '/finances', icon: Wallet, label: 'Finanzas' },
     ];
 
     return (
@@ -61,7 +80,7 @@ export default function CpanelLayout({ children, onLogout }: CpanelLayoutProps) 
                                 key={item.path}
                                 to={item.path}
                                 className={({ isActive }) =>
-                                    `flex items-center justify-between p-4 rounded-2xl font-bold transition-all group ${isActive
+                                    `flex items-center justify-between p-4 rounded-2xl font-bold transition-all group relative ${isActive
                                         ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/20'
                                         : 'text-slate-400 hover:bg-white/5 hover:text-white'
                                     }`
@@ -72,7 +91,14 @@ export default function CpanelLayout({ children, onLogout }: CpanelLayoutProps) 
                                     <item.icon className="w-5 h-5" />
                                     <span>{item.label}</span>
                                 </div>
-                                <ChevronRight className={`w-4 h-4 transition-transform group-hover:translate-x-1 ${isSidebarOpen ? 'opacity-100' : 'opacity-0'}`} />
+                                <div className="flex items-center gap-2">
+                                    {!!item.badge && item.badge > 0 && (
+                                        <span className="bg-red-500 text-white text-xs px-2 py-0.5 rounded-full font-black animate-pulse">
+                                            {item.badge}
+                                        </span>
+                                    )}
+                                    <ChevronRight className={`w-4 h-4 transition-transform group-hover:translate-x-1 ${isSidebarOpen ? 'opacity-100' : 'opacity-0'}`} />
+                                </div>
                             </NavLink>
                         ))}
                     </nav>

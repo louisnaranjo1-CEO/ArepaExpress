@@ -344,6 +344,12 @@ export default function OrdersRadar() {
                         >
                             <Navigation className="w-5 h-5" /> Abrir GPS
                         </a>
+                        <button
+                            onClick={() => window.open(`/taxi/track/${activeTransport.id}`, '_blank')}
+                            className="w-full mt-2 bg-indigo-50 text-indigo-600 font-bold py-4 rounded-2xl flex justify-center items-center gap-2 active:scale-95 transition-all"
+                        >
+                            <CompassIcon className="w-5 h-5" /> Ver Mapa y Chat
+                        </button>
                     </div>
                 </div>
             </motion.div>

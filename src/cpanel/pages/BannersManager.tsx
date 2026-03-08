@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { collection, getDocs, addDoc, deleteDoc, doc, updateDoc, serverTimestamp } from 'firebase/firestore';
-import { Trash2, Plus, Image as ImageIcon, Clock, ExternalLink, Timer, Upload, AlertCircle } from 'lucide-react';
+import { Trash2, Plus, Image as ImageIcon, Clock, ExternalLink, Timer, Upload, AlertCircle, Pencil } from 'lucide-react';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { db, storage } from '../../lib/firebase';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -23,6 +23,7 @@ export default function BannersManager() {
         targetState: '',
         targetCity: ''
     });
+    const [editingId, setEditingId] = useState<string | null>(null);
 
     const fetchBanners = async () => {
         try {
@@ -51,7 +52,7 @@ export default function BannersManager() {
         }
     };
 
-    const handleAddBanner = async (e: React.FormEvent) => {
+    const handleSaveBanner = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!selectedFile && !newBanner.imageUrl) {
             alert("Por favor selecciona una imagen");
@@ -68,13 +69,24 @@ export default function BannersManager() {
                 finalImageUrl = await getDownloadURL(snapshot.ref);
             }
 
-            await addDoc(collection(db, 'banners'), {
+            const bannerData = {
                 ...newBanner,
                 imageUrl: finalImageUrl,
-                createdAt: serverTimestamp(),
+                updatedAt: serverTimestamp(),
                 isActive: true
-            });
+            };
+
+            if (editingId) {
+                await updateDoc(doc(db, 'banners', editingId), bannerData);
+            } else {
+                await addDoc(collection(db, 'banners'), {
+                    ...bannerData,
+                    createdAt: serverTimestamp(),
+                });
+            }
+
             setIsAdding(false);
+            setEditingId(null);
             setNewBanner({
                 imageUrl: '',
                 title: '',
@@ -88,8 +100,8 @@ export default function BannersManager() {
             setImagePreview(null);
             fetchBanners();
         } catch (error) {
-            console.error("Error adding banner: ", error);
-            alert("Error al subir la imagen");
+            console.error("Error saving banner: ", error);
+            alert("Error al guardar el banner");
         } finally {
             setUploading(false);
         }
@@ -114,6 +126,22 @@ export default function BannersManager() {
         }
     };
 
+    const handleEdit = (banner: any) => {
+        setEditingId(banner.id);
+        setNewBanner({
+            imageUrl: banner.imageUrl || '',
+            title: banner.title || '',
+            linkUrl: banner.linkUrl || '',
+            duration: banner.duration || 5,
+            visibilityScope: banner.visibilityScope || 'national',
+            targetState: banner.targetState || '',
+            targetCity: banner.targetCity || ''
+        });
+        setImagePreview(banner.imageUrl || null);
+        setIsAdding(true);
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    };
+
     if (loading) {
         return (
             <div className="animate-pulse space-y-6">
@@ -134,11 +162,32 @@ export default function BannersManager() {
                     <p className="text-slate-500 font-medium">Administra los anuncios publicitarios de la aplicación cliente.</p>
                 </div>
                 <button
-                    onClick={() => setIsAdding(!isAdding)}
+                    onClick={() => {
+                        if (isAdding) {
+                            setIsAdding(false);
+                            setEditingId(null);
+                            setNewBanner({
+                                imageUrl: '',
+                                title: '',
+                                linkUrl: '',
+                                duration: 5,
+                                visibilityScope: 'national',
+                                targetState: '',
+                                targetCity: ''
+                            });
+                            setImagePreview(null);
+                        } else {
+                            setIsAdding(true);
+                        }
+                    }}
                     className="flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-3 rounded-2xl transition-all font-black shadow-lg shadow-indigo-600/20 active:scale-95"
                 >
-                    <Plus className="w-5 h-5 text-indigo-200" />
-                    Nuevo Banner
+                    {isAdding ? 'Cancelar' : (
+                        <>
+                            <Plus className="w-5 h-5 text-indigo-200" />
+                            Nuevo Banner
+                        </>
+                    )}
                 </button>
             </div>
 
@@ -148,12 +197,12 @@ export default function BannersManager() {
                         initial={{ opacity: 0, y: -20 }}
                         animate={{ opacity: 1, y: 0 }}
                         exit={{ opacity: 0, y: -20 }}
-                        onSubmit={handleAddBanner}
+                        onSubmit={handleSaveBanner}
                         className="bg-white p-8 rounded-[2rem] border border-slate-200 shadow-xl shadow-slate-200/50 space-y-6 relative overflow-hidden"
                     >
                         <div className="absolute top-0 left-0 w-2 h-full bg-indigo-600"></div>
                         <h2 className="font-black text-slate-900 text-xl flex items-center gap-2">
-                            Agregar Nuevo Banner
+                            {editingId ? 'Editar Banner' : 'Agregar Nuevo Banner'}
                         </h2>
 
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -306,7 +355,20 @@ export default function BannersManager() {
                         <div className="flex justify-end gap-4 pt-4">
                             <button
                                 type="button"
-                                onClick={() => setIsAdding(false)}
+                                onClick={() => {
+                                    setIsAdding(false);
+                                    setEditingId(null);
+                                    setNewBanner({
+                                        imageUrl: '',
+                                        title: '',
+                                        linkUrl: '',
+                                        duration: 5,
+                                        visibilityScope: 'national',
+                                        targetState: '',
+                                        targetCity: ''
+                                    });
+                                    setImagePreview(null);
+                                }}
                                 className="px-6 py-3 text-slate-500 hover:text-slate-900 font-black transition-colors"
                             >
                                 Cancelar
@@ -364,12 +426,20 @@ export default function BannersManager() {
                                 </div>
                             </div>
 
-                            <button
-                                onClick={() => handleDelete(banner.id)}
-                                className="absolute top-4 right-4 bg-white/90 backdrop-blur-md text-red-600 p-2.5 rounded-xl shadow-sm hover:bg-red-600 hover:text-white transition-all opacity-0 group-hover:opacity-100"
-                            >
-                                <Trash2 className="w-5 h-5" />
-                            </button>
+                            <div className="absolute top-4 right-4 flex gap-2">
+                                <button
+                                    onClick={() => handleEdit(banner)}
+                                    className="bg-white/90 backdrop-blur-md text-indigo-600 p-2.5 rounded-xl shadow-sm hover:bg-indigo-600 hover:text-white transition-all opacity-0 group-hover:opacity-100"
+                                >
+                                    <Pencil className="w-5 h-5" />
+                                </button>
+                                <button
+                                    onClick={() => handleDelete(banner.id)}
+                                    className="bg-white/90 backdrop-blur-md text-red-600 p-2.5 rounded-xl shadow-sm hover:bg-red-600 hover:text-white transition-all opacity-0 group-hover:opacity-100"
+                                >
+                                    <Trash2 className="w-5 h-5" />
+                                </button>
+                            </div>
                         </div>
 
                         {/* Content Area */}
