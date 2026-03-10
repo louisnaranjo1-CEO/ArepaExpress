@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { collection, addDoc, serverTimestamp, doc, getDoc } from 'firebase/firestore';
-import { db } from '../lib/firebase';
-import { Car, Bike, MapPin, Navigation, ArrowRight, CheckCircle2, X, Heart, History, Star } from 'lucide-react';
+import { collection, addDoc, serverTimestamp, doc, getDoc, updateDoc, getDocs, query, where, writeBatch } from 'firebase/firestore';
+import { db, storage } from '../lib/firebase';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { Car, Bike, MapPin, Navigation, ArrowRight, CheckCircle2, X, Heart, History, Star, Wallet } from 'lucide-react';
 import { GoogleMap, useJsApiLoader, Marker, DirectionsRenderer } from '@react-google-maps/api';
 import toast from 'react-hot-toast';
 
@@ -211,48 +212,54 @@ export default function Taxi() {
 
                 if (status === google.maps.DirectionsStatus.OK && result) {
                     setDirectionsResponse(result);
-                    const leg = result.routes[0].legs[0];
+                    const leg = result.routes[0]?.legs[0];
                     if (leg && leg.distance) {
                         const distanceKm = Number((leg.distance.value / 1000).toFixed(1));
                         setRouteInfo({
                             distance: distanceKm,
                             duration: leg.duration?.text || ''
                         });
+                        setIsMapInteractionEnabled(false);
+                    } else {
+                        // Edge case: Route OK but no legs/distance parsed
+                        handleRouteFallback("Distancia no disponible en la ruta.");
                     }
-                    setIsMapInteractionEnabled(false);
                 } else {
-                    console.error("Route calculation failed:", status);
-
-                    // Fallback to Haversine distance
-                    const R = 6371; // Radius of the earth in km
-                    const dLat = (destination.lat - origin.lat) * (Math.PI / 180);
-                    const dLon = (destination.lng - origin.lng) * (Math.PI / 180);
-                    const a =
-                        Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-                        Math.cos(origin.lat * (Math.PI / 180)) * Math.cos(destination.lat * (Math.PI / 180)) *
-                        Math.sin(dLon / 2) * Math.sin(dLon / 2);
-                    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-                    const straightDistance = R * c;
-
-                    // Add 30% to approximate driving distance in a city
-                    const estimatedDrivingDistance = Number((straightDistance * 1.3).toFixed(1));
-
-                    // Estimate duration (approx 30 km/h avg city speed)
-                    const estMinutes = Math.max(1, Math.round(estimatedDrivingDistance / 0.5));
-                    const durationText = estMinutes > 60
-                        ? `${Math.floor(estMinutes / 60)} h ${estMinutes % 60} min`
-                        : `${estMinutes} min`;
-
-                    // Generate a fake route info so the user can continue
-                    toast.success("Ruta estimada generada correctamente.", { icon: '🗺️' });
-                    setRouteInfo({
-                        distance: estimatedDrivingDistance,
-                        duration: durationText
-                    });
-                    setDirectionsResponse(null); // Clear any old polyline
-                    setIsMapInteractionEnabled(false);
+                    console.warn("Route calculation failed:", status);
+                    handleRouteFallback("No se pudo calcular la ruta exacta.");
                 }
             });
+
+            const handleRouteFallback = (message: string) => {
+                // Fallback to Haversine distance
+                const R = 6371; // Radius of the earth in km
+                const dLat = (destination.lat - origin.lat) * (Math.PI / 180);
+                const dLon = (destination.lng - origin.lng) * (Math.PI / 180);
+                const a =
+                    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+                    Math.cos(origin.lat * (Math.PI / 180)) * Math.cos(destination.lat * (Math.PI / 180)) *
+                    Math.sin(dLon / 2) * Math.sin(dLon / 2);
+                const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+                const straightDistance = R * c;
+
+                // Add 30% to approximate driving distance in a city
+                const estimatedDrivingDistance = Number((straightDistance * 1.3).toFixed(1));
+
+                // Estimate duration (approx 30 km/h avg city speed)
+                const estMinutes = Math.max(1, Math.round(estimatedDrivingDistance / 0.5));
+                const durationText = estMinutes > 60
+                    ? `${Math.floor(estMinutes / 60)} h ${estMinutes % 60} min`
+                    : `${estMinutes} min`;
+
+                // Generate a fake route info so the user can continue
+                toast.success(`Usando ruta estimada.${message} `, { icon: '🗺️' });
+                setRouteInfo({
+                    distance: estimatedDrivingDistance,
+                    duration: durationText
+                });
+                setDirectionsResponse(null); // Clear any old polyline
+                setIsMapInteractionEnabled(false);
+            };
         }
         return () => { isMounted = false; };
     }, [step, origin, destination, directionsService, directionsResponse]);
@@ -334,22 +341,40 @@ export default function Taxi() {
     const handleRequestTaxi = async () => {
         if (!user || !origin || !destination || !vehicleType || !routeInfo || !selectedPaymentMethod) return;
 
-        // If proof is required (not cash)
-        if (selectedPaymentMethod !== 'cash' && !paymentProof && !paymentRef) {
+        const clientTotal = calculatePrice(vehicleType);
+        const driverPayout = calculatePrice(vehicleType, true);
+
+        // Wallet validation
+        if (selectedPaymentMethod === 'wallet') {
+            const currentBalance = userData?.walletBalance || 0;
+            if (currentBalance < parseFloat(clientTotal as string)) {
+                toast.error("Saldo insuficiente en tu Billetera 2X3. Por favor recarga o selecciona otro método.");
+                return;
+            }
+        } else if (selectedPaymentMethod !== 'cash' && !paymentProof && !paymentRef) {
             toast.error("Debes adjuntar un comprobante o número de referencia");
             return;
         }
 
         setIsUploading(true);
         try {
-            const clientTotal = calculatePrice(vehicleType);
-            const driverPayout = calculatePrice(vehicleType, true);
             let proofUrl = '';
 
-            // TODO: In a real scenario, you would upload the paymentProof to Firebase Storage here.
-            if (paymentProof) {
-                proofUrl = 'uploaded_proof.jpg';
+            if (selectedPaymentMethod === 'wallet') {
+                // Wallet has no proof to upload
+            } else if (paymentProof && selectedPaymentMethod !== 'cash') {
+                const storageRef = ref(storage, `taxi_proofs/${user.uid}/${Date.now()}_${paymentProof.name}`);
+                const snapshot = await uploadBytes(storageRef, paymentProof);
+                proofUrl = await getDownloadURL(snapshot.ref);
+            } else if (selectedPaymentMethod !== 'cash' && !paymentRef) {
+                // Double check validation before proceeding
+                toast.error("Debes adjuntar un comprobante o número de referencia");
+                setIsUploading(false);
+                return;
             }
+
+            // For wallet, status is searching immediately.
+            const initialStatus = selectedPaymentMethod === 'wallet' ? 'searching' : 'verifying_payment';
 
             setStep('searching');
 
@@ -365,7 +390,7 @@ export default function Taxi() {
                 total: parseFloat(clientTotal as string),
                 price: parseFloat(clientTotal as string),
                 driverPayout: parseFloat(driverPayout as string),
-                status: 'verifying_payment',
+                status: initialStatus,
                 paymentMethod: selectedPaymentMethod,
                 paymentRef: paymentRef,
                 paymentProofUrl: proofUrl,
@@ -373,6 +398,30 @@ export default function Taxi() {
             };
 
             const requestRef = await addDoc(collection(db, 'transport_requests'), orderData);
+
+            if (selectedPaymentMethod === 'wallet') {
+                // Deduct from wallet
+                const newBalance = (userData?.walletBalance || 0) - parseFloat(clientTotal as string);
+                await updateDoc(doc(db, 'users', user.uid), {
+                    walletBalance: newBalance
+                });
+            }
+
+            if (initialStatus === 'searching') {
+                const driversSnap = await getDocs(query(collection(db, 'users'), where('role', 'in', ['delivery', 'driver'])));
+                const batch = writeBatch(db);
+                driversSnap.docs.forEach(driverDoc => {
+                    const notifRef = doc(collection(db, 'notifications'));
+                    batch.set(notifRef, {
+                        userId: driverDoc.id,
+                        title: '¡Nuevo Servicio de Taxi Disponible!',
+                        body: 'Hay una nueva solicitud de transporte esperándote.',
+                        read: false,
+                        createdAt: serverTimestamp()
+                    });
+                });
+                await batch.commit();
+            }
 
             // Listen for admin verification
             setTimeout(() => {
@@ -752,6 +801,39 @@ export default function Taxi() {
                                 <div className="flex justify-center p-4"><div className="w-6 h-6 border-2 border-orange-500 border-t-transparent rounded-full animate-spin"></div></div>
                             ) : (
                                 <div className="space-y-4 mb-6">
+                                    {/* Billetera 2X3 */}
+                                    <div className={`border-2 rounded-2xl overflow-hidden transition-all ${selectedPaymentMethod === 'wallet' ? 'border-primary bg-primary/5' : 'border-slate-100'}`}>
+                                        <button
+                                            onClick={() => setSelectedPaymentMethod('wallet')}
+                                            className="w-full p-4 flex items-center justify-between bg-transparent"
+                                        >
+                                            <div className="flex items-center gap-3">
+                                                <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${selectedPaymentMethod === 'wallet' ? 'border-primary' : 'border-slate-300'}`}>
+                                                    {selectedPaymentMethod === 'wallet' && <div className="w-2.5 h-2.5 bg-primary rounded-full"></div>}
+                                                </div>
+                                                <div className="flex flex-col items-start gap-1">
+                                                    <span className="font-bold text-slate-700 flex items-center gap-2">
+                                                        <Wallet className="w-4 h-4 text-primary" />
+                                                        Mi Billetera 2X3
+                                                    </span>
+                                                    <span className="text-[10px] bg-emerald-100 text-emerald-700 font-bold px-2 py-0.5 rounded-full">
+                                                        Saldo: ${(userData?.walletBalance || 0).toFixed(2)}
+                                                    </span>
+                                                </div>
+                                            </div>
+                                        </button>
+                                        {selectedPaymentMethod === 'wallet' && (userData?.walletBalance || 0) < parseFloat(calculatePrice(vehicleType!) as string) && (
+                                            <div className="p-3 bg-rose-50 border-t border-rose-100 text-xs font-bold text-rose-600 text-center">
+                                                Saldo insuficiente. Por favor selecciona otro método o recarga tu billetera desde tu perfil.
+                                            </div>
+                                        )}
+                                        {selectedPaymentMethod === 'wallet' && (userData?.walletBalance || 0) >= parseFloat(calculatePrice(vehicleType!) as string) && (
+                                            <div className="p-3 bg-emerald-50 border-t border-emerald-100 text-xs font-bold text-emerald-700 text-center">
+                                                Se descontarán ${calculatePrice(vehicleType!)} de tu billetera y el conductor será asignado de inmediato.
+                                            </div>
+                                        )}
+                                    </div>
+
                                     {paymentMethods.pagoMovil?.active && (
                                         <div className={`border-2 rounded-2xl overflow-hidden transition-all ${selectedPaymentMethod === 'pagoMovil' ? 'border-primary' : 'border-slate-100'}`}>
                                             <button

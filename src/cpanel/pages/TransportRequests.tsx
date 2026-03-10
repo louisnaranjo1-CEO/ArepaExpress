@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { collection, query, orderBy, onSnapshot, doc, updateDoc, deleteDoc } from 'firebase/firestore';
-import { db } from '../../lib/firebase';
-import { Car, Bike, Clock, CheckCircle2, XCircle, Search, Calendar, DollarSign, MapPin, User, ShieldCheck } from 'lucide-react';
+import { collection, query, orderBy, onSnapshot, doc, updateDoc, deleteDoc, writeBatch, getDocs, where, serverTimestamp } from 'firebase/firestore';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { db, storage } from '../../lib/firebase';
+import { Car, Bike, Clock, CheckCircle2, XCircle, Search, Calendar, DollarSign, MapPin, User, ShieldCheck, Upload, Image as ImageIcon } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 export default function TransportRequests() {
@@ -9,6 +10,12 @@ export default function TransportRequests() {
     const [loading, setLoading] = useState(true);
     const [filter, setFilter] = useState('all'); // all, verifying_payment, finding_driver, in_progress, completed, cancelled
     const [searchTerm, setSearchTerm] = useState('');
+    const [view, setView] = useState<'viajes' | 'contabilidad'>('viajes');
+
+    const [showPayoutModal, setShowPayoutModal] = useState(false);
+    const [selectedDriver, setSelectedDriver] = useState<any>(null);
+    const [payoutReceipt, setPayoutReceipt] = useState<File | null>(null);
+    const [payoutLoading, setPayoutLoading] = useState(false);
 
     useEffect(() => {
         const q = query(
@@ -33,6 +40,23 @@ export default function TransportRequests() {
             await updateDoc(doc(db, 'transport_requests', id), {
                 status: isApproved ? 'searching' : 'cancelled'
             });
+
+            if (isApproved) {
+                const driversSnap = await getDocs(query(collection(db, 'users'), where('role', 'in', ['delivery', 'driver'])));
+                const batch = writeBatch(db);
+                driversSnap.docs.forEach(driverDoc => {
+                    const notifRef = doc(collection(db, 'notifications'));
+                    batch.set(notifRef, {
+                        userId: driverDoc.id,
+                        title: '¡Nuevo Servicio de Taxi Disponible!',
+                        body: 'Un administrador ha verificado el pago. ¡Hay una solicitud esperándote!',
+                        read: false,
+                        createdAt: serverTimestamp()
+                    });
+                });
+                await batch.commit();
+            }
+
             toast.success(isApproved ? 'Pago verificado. Buscando conductor...' : 'Solicitud cancelada');
         } catch (error) {
             console.error("Error updating status:", error);
@@ -58,13 +82,52 @@ export default function TransportRequests() {
         if (searchTerm) {
             const term = searchTerm.toLowerCase();
             return (
-                req.userName?.toLowerCase().includes(term) ||
                 req.userPhone?.toLowerCase().includes(term) ||
                 req.id.toLowerCase().includes(term)
             );
         }
         return true;
     });
+
+    const getDriverStats = () => {
+        const stats: Record<string, {
+            driverId: string;
+            driverName: string;
+            driverPhone: string;
+            weeklyDebt: number;
+            lifetimeEarnings: number;
+            unpaidTrips: any[];
+            totalTripsCount: number;
+        }> = {};
+
+        requests.filter(r => r.status === 'completed' && r.driverId).forEach(req => {
+            const { driverId, driverName, driverPhone, driverPayout, driverPaid } = req;
+            const payout = parseFloat(driverPayout || req.price || 0);
+
+            if (!stats[driverId]) {
+                stats[driverId] = {
+                    driverId,
+                    driverName: driverName || 'Desconocido',
+                    driverPhone: driverPhone || '',
+                    weeklyDebt: 0,
+                    lifetimeEarnings: 0,
+                    unpaidTrips: [],
+                    totalTripsCount: 0
+                };
+            }
+
+            stats[driverId].totalTripsCount += 1;
+
+            if (driverPaid) {
+                stats[driverId].lifetimeEarnings += payout;
+            } else {
+                stats[driverId].weeklyDebt += payout;
+                stats[driverId].unpaidTrips.push(req);
+            }
+        });
+
+        return Object.values(stats);
+    };
 
     const getStatusBadge = (status: string) => {
         switch (status) {
@@ -75,6 +138,56 @@ export default function TransportRequests() {
             case 'completed': return <span className="bg-slate-100 text-slate-800 px-3 py-1 rounded-full text-xs font-bold">Completado</span>;
             case 'cancelled': return <span className="bg-red-100 text-red-800 px-3 py-1 rounded-full text-xs font-bold">Cancelado</span>;
             default: return <span className="bg-slate-100 text-slate-800 px-3 py-1 rounded-full text-xs font-bold uppercase">{status}</span>;
+        }
+    };
+
+    const handleProcessPayout = async () => {
+        if (!selectedDriver || selectedDriver.unpaidTrips.length === 0) return;
+        if (!payoutReceipt) {
+            toast.error("Debes adjuntar el comprobante de pago");
+            return;
+        }
+
+        setPayoutLoading(true);
+        try {
+            // Upload receipt
+            const receiptRef = ref(storage, `payout_receipts/${selectedDriver.driverId}_${Date.now()}`);
+            await uploadBytes(receiptRef, payoutReceipt);
+            const receiptUrl = await getDownloadURL(receiptRef);
+
+            // Update all unpaid trips
+            const batch = writeBatch(db);
+            selectedDriver.unpaidTrips.forEach((trip: any) => {
+                const tripRef = doc(db, 'transport_requests', trip.id);
+                batch.update(tripRef, {
+                    driverPaid: true,
+                    payoutReceiptUrl: receiptUrl,
+                    payoutDate: new Date()
+                });
+            });
+
+            // Notify driver
+            const notifRef = doc(collection(db, 'notifications'));
+            batch.set(notifRef, {
+                userId: selectedDriver.driverId,
+                title: '¡Pago Recibido!',
+                body: `Se ha procesado tu pago de $${selectedDriver.debt.toFixed(2)}. Revisa el comprobante en tu historial.`,
+                read: false,
+                createdAt: serverTimestamp(),
+                payoutReceiptUrl: receiptUrl
+            });
+
+            await batch.commit();
+
+            toast.success(`Pago procesado con éxito para ${selectedDriver.driverName}`);
+            setShowPayoutModal(false);
+            setSelectedDriver(null);
+            setPayoutReceipt(null);
+        } catch (error) {
+            console.error("Error processing payout:", error);
+            toast.error("Hubo un error al procesar el pago");
+        } finally {
+            setPayoutLoading(false);
         }
     };
 
@@ -90,187 +203,349 @@ export default function TransportRequests() {
         <div className="space-y-6">
             <div className="flex flex-col md:flex-row gap-4 justify-between items-start md:items-center">
                 <div>
-                    <h1 className="text-2xl font-black text-slate-900">Gestión de Taxis (Viajes)</h1>
-                    <p className="text-slate-500 font-medium mt-1">Supervisa y aprueba solicitudes de transporte.</p>
+                    <h1 className="text-2xl font-black text-slate-900">Gestión y Contabilidad Taxis</h1>
+                    <p className="text-slate-500 font-medium mt-1">Supervisa viajes y administra pagos a choferes.</p>
+                </div>
+                <div className="flex bg-slate-100 p-1 rounded-xl">
+                    <button
+                        onClick={() => setView('viajes')}
+                        className={`px-6 py-2 rounded-lg font-bold text-sm transition-all ${view === 'viajes' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                    >
+                        Viajes
+                    </button>
+                    <button
+                        onClick={() => setView('contabilidad')}
+                        className={`px-6 py-2 rounded-lg font-bold text-sm transition-all ${view === 'contabilidad' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                    >
+                        Contabilidad
+                    </button>
                 </div>
             </div>
 
-            {/* Filters */}
-            <div className="bg-white p-4 rounded-3xl border border-slate-200 shadow-sm flex flex-col md:flex-row gap-4 items-center">
-                <div className="relative w-full md:w-96">
-                    <Search className="w-5 h-5 absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
-                    <input
-                        type="text"
-                        placeholder="Buscar por ID, nombre o teléfono..."
-                        value={searchTerm}
-                        onChange={(e) => setSearchTerm(e.target.value)}
-                        className="w-full bg-slate-50 border-none pl-12 pr-4 py-3 rounded-2xl focus:ring-2 focus:ring-indigo-600 font-medium"
-                    />
-                </div>
-                <div className="flex gap-2 w-full md:w-auto overflow-x-auto pb-2 md:pb-0 hide-scrollbar">
-                    {['all', 'verifying_payment', 'searching', 'in_progress', 'completed'].map(f => (
-                        <button
-                            key={f}
-                            onClick={() => setFilter(f)}
-                            className={`px-4 py-2 rounded-xl font-bold whitespace-nowrap transition-all ${filter === f ? 'bg-indigo-600 text-white shadow-md' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                                }`}
-                        >
-                            {f === 'all' ? 'Todos' :
-                                f === 'verifying_payment' ? 'Por Verificar' :
-                                    f === 'searching' ? 'Buscando' :
-                                        f === 'in_progress' ? 'En Curso' : 'Completados'}
-                        </button>
-                    ))}
-                </div>
-            </div>
-
-            {/* List */}
-            <div className="space-y-4">
-                {filteredRequests.length === 0 ? (
-                    <div className="bg-white rounded-3xl p-12 text-center border border-slate-200">
-                        <Car className="w-16 h-16 text-slate-300 mx-auto mb-4" />
-                        <h3 className="text-xl font-bold text-slate-900">No hay viajes</h3>
-                        <p className="text-slate-500 mt-2">No se encontraron solicitudes con los filtros actuales.</p>
+            {view === 'viajes' ? (
+                <>
+                    {/* Filters */}
+                    <div className="bg-white p-4 rounded-3xl border border-slate-200 shadow-sm flex flex-col md:flex-row gap-4 items-center">
+                        <div className="relative w-full md:w-96">
+                            <Search className="w-5 h-5 absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
+                            <input
+                                type="text"
+                                placeholder="Buscar por ID, nombre o teléfono..."
+                                value={searchTerm}
+                                onChange={(e) => setSearchTerm(e.target.value)}
+                                className="w-full bg-slate-50 border-none pl-12 pr-4 py-3 rounded-2xl focus:ring-2 focus:ring-indigo-600 font-medium"
+                            />
+                        </div>
+                        <div className="flex gap-2 w-full md:w-auto overflow-x-auto pb-2 md:pb-0 hide-scrollbar">
+                            {['all', 'verifying_payment', 'searching', 'in_progress', 'completed'].map(f => (
+                                <button
+                                    key={f}
+                                    onClick={() => setFilter(f)}
+                                    className={`px-4 py-2 rounded-xl font-bold whitespace-nowrap transition-all ${filter === f ? 'bg-indigo-600 text-white shadow-md' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                                        }`}
+                                >
+                                    {f === 'all' ? 'Todos' :
+                                        f === 'verifying_payment' ? 'Por Verificar' :
+                                            f === 'searching' ? 'Buscando' :
+                                                f === 'in_progress' ? 'En Curso' : 'Completados'}
+                                </button>
+                            ))}
+                        </div>
                     </div>
-                ) : (
-                    filteredRequests.map((req) => (
-                        <div key={req.id} className="bg-white rounded-3xl p-6 border border-slate-200 shadow-sm transition-all hover:shadow-md">
 
-                            <div className="flex flex-col md:flex-row justify-between gap-6 mb-6">
-                                {/* User & Type Info */}
-                                <div className="flex items-start gap-4">
-                                    <div className={`w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 ${req.vehicleType === 'moto' ? 'bg-indigo-50 text-indigo-600' : 'bg-slate-100 text-slate-700'}`}>
-                                        {req.vehicleType === 'moto' ? <Bike className="w-6 h-6" /> : <Car className="w-6 h-6" />}
-                                    </div>
-                                    <div>
-                                        <div className="flex items-center gap-2 mb-1">
-                                            <span className="font-black text-slate-900 text-lg uppercase">
-                                                ID: {req.id.slice(0, 6)}
-                                            </span>
-                                            {getStatusBadge(req.status)}
-                                        </div>
-                                        <div className="flex items-center gap-3 text-sm font-medium text-slate-500">
-                                            <span className="flex items-center gap-1"><User className="w-4 h-4" /> {req.userName}</span>
-                                            <span className="flex items-center gap-1"><Calendar className="w-4 h-4" /> {req.createdAt?.toDate().toLocaleString()}</span>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                {/* Financial Info */}
-                                <div className="bg-slate-100/50 rounded-2xl p-4 md:text-right min-w-[240px] border border-slate-100 flex flex-col justify-center">
-                                    <div className="grid grid-cols-2 gap-4 md:grid-cols-1 md:gap-2">
-                                        <div>
-                                            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1">Costo Cliente</p>
-                                            <p className="text-xl font-black text-emerald-600">${parseFloat(req.clientTotal || req.price || 0).toFixed(2)}</p>
-                                        </div>
-                                        <div className="border-l md:border-l-0 md:border-t border-slate-200 pl-4 md:pl-0 md:pt-2">
-                                            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1">Pago a Taxi</p>
-                                            <p className="text-lg font-black text-indigo-600">${parseFloat(req.driverPayout || req.price || 0).toFixed(2)}</p>
-                                        </div>
-                                    </div>
-                                    <div className="flex items-center gap-2 mt-3 md:justify-end text-[10px] font-bold">
-                                        <span className="bg-white px-2 py-1 rounded shadow-sm text-slate-600 border border-slate-200 flex items-center gap-1">
-                                            <DollarSign className="w-3 h-3 text-emerald-500" /> {req.paymentMethod === 'pagoMovil' ? 'Pago Móvil' : req.paymentMethod === 'cash' ? 'Efectivo' : req.paymentMethod}
-                                        </span>
-                                    </div>
-                                </div>
+                    {/* List */}
+                    <div className="space-y-4">
+                        {filteredRequests.length === 0 ? (
+                            <div className="bg-white rounded-3xl p-12 text-center border border-slate-200">
+                                <Car className="w-16 h-16 text-slate-300 mx-auto mb-4" />
+                                <h3 className="text-xl font-bold text-slate-900">No hay viajes</h3>
+                                <p className="text-slate-500 mt-2">No se encontraron solicitudes con los filtros actuales.</p>
                             </div>
+                        ) : (
+                            filteredRequests.map((req) => (
+                                <div key={req.id} className="bg-white rounded-3xl p-6 border border-slate-200 shadow-sm transition-all hover:shadow-md">
 
-                            {/* Locations Layout */}
-                            <div className="grid md:grid-cols-2 gap-4 mb-6">
-                                <div className="flex gap-3 bg-slate-50 p-4 rounded-2xl border border-slate-100 relative overflow-hidden">
-                                    <div className="absolute left-0 top-0 bottom-0 w-1 bg-slate-400"></div>
-                                    <MapPin className="w-5 h-5 text-slate-400 shrink-0 mt-0.5" />
-                                    <div>
-                                        <p className="text-xs font-bold text-slate-400 uppercase mb-1">Punto de Origen</p>
-                                        <p className="font-bold text-slate-700 text-sm">{req.origin?.address}</p>
+                                    <div className="flex flex-col md:flex-row justify-between gap-6 mb-6">
+                                        {/* User & Type Info */}
+                                        <div className="flex items-start gap-4">
+                                            <div className={`w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 ${req.vehicleType === 'moto' ? 'bg-indigo-50 text-indigo-600' : 'bg-slate-100 text-slate-700'}`}>
+                                                {req.vehicleType === 'moto' ? <Bike className="w-6 h-6" /> : <Car className="w-6 h-6" />}
+                                            </div>
+                                            <div>
+                                                <div className="flex items-center gap-2 mb-1">
+                                                    <span className="font-black text-slate-900 text-lg uppercase">
+                                                        ID: {req.id.slice(0, 6)}
+                                                    </span>
+                                                    {getStatusBadge(req.status)}
+                                                </div>
+                                                <div className="flex items-center gap-3 text-sm font-medium text-slate-500">
+                                                    <span className="flex items-center gap-1"><User className="w-4 h-4" /> {req.userName}</span>
+                                                    <span className="flex items-center gap-1"><Calendar className="w-4 h-4" /> {req.createdAt?.toDate().toLocaleString()}</span>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {/* Financial Info */}
+                                        <div className="bg-slate-100/50 rounded-2xl p-4 md:text-right min-w-[240px] border border-slate-100 flex flex-col justify-center">
+                                            <div className="grid grid-cols-2 gap-4 md:grid-cols-1 md:gap-2">
+                                                <div>
+                                                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1">Costo Cliente</p>
+                                                    <p className="text-xl font-black text-emerald-600">${parseFloat(req.clientTotal || req.price || 0).toFixed(2)}</p>
+                                                </div>
+                                                <div className="border-l md:border-l-0 md:border-t border-slate-200 pl-4 md:pl-0 md:pt-2">
+                                                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1">Pago a Taxi</p>
+                                                    <p className="text-lg font-black text-indigo-600">${parseFloat(req.driverPayout || req.price || 0).toFixed(2)}</p>
+                                                </div>
+                                            </div>
+                                            <div className="flex items-center gap-2 mt-3 md:justify-end text-[10px] font-bold">
+                                                <span className="bg-white px-2 py-1 rounded shadow-sm text-slate-600 border border-slate-200 flex items-center gap-1">
+                                                    <DollarSign className="w-3 h-3 text-emerald-500" /> {req.paymentMethod === 'pagoMovil' ? 'Pago Móvil' : req.paymentMethod === 'cash' ? 'Efectivo' : req.paymentMethod}
+                                                </span>
+                                            </div>
+                                        </div>
                                     </div>
-                                </div>
-                                <div className="flex gap-3 bg-indigo-50 p-4 rounded-2xl border border-indigo-100 relative overflow-hidden">
-                                    <div className="absolute left-0 top-0 bottom-0 w-1 bg-indigo-500"></div>
-                                    <MapPin className="w-5 h-5 text-indigo-500 shrink-0 mt-0.5" />
-                                    <div>
-                                        <p className="text-xs font-bold text-indigo-400 uppercase mb-1">Destino</p>
-                                        <p className="font-bold text-indigo-900 text-sm">{req.destination?.address}</p>
+
+                                    {/* Locations Layout */}
+                                    <div className="grid md:grid-cols-2 gap-4 mb-6">
+                                        <div className="flex gap-3 bg-slate-50 p-4 rounded-2xl border border-slate-100 relative overflow-hidden">
+                                            <div className="absolute left-0 top-0 bottom-0 w-1 bg-slate-400"></div>
+                                            <MapPin className="w-5 h-5 text-slate-400 shrink-0 mt-0.5" />
+                                            <div>
+                                                <p className="text-xs font-bold text-slate-400 uppercase mb-1">Punto de Origen</p>
+                                                <p className="font-bold text-slate-700 text-sm">{req.origin?.address}</p>
+                                            </div>
+                                        </div>
+                                        <div className="flex gap-3 bg-indigo-50 p-4 rounded-2xl border border-indigo-100 relative overflow-hidden">
+                                            <div className="absolute left-0 top-0 bottom-0 w-1 bg-indigo-500"></div>
+                                            <MapPin className="w-5 h-5 text-indigo-500 shrink-0 mt-0.5" />
+                                            <div>
+                                                <p className="text-xs font-bold text-indigo-400 uppercase mb-1">Destino</p>
+                                                <p className="font-bold text-indigo-900 text-sm">{req.destination?.address}</p>
+                                            </div>
+                                        </div>
                                     </div>
+
+                                    {/* Payment Verification Action Area */}
+                                    {req.status === 'verifying_payment' && req.paymentMethod !== 'cash' && (
+                                        <div className="bg-amber-50 border-2 border-amber-200 rounded-2xl p-4 flex flex-col md:flex-row items-center justify-between gap-4">
+                                            <div className="flex items-center gap-3 w-full">
+                                                <div className="w-10 h-10 bg-amber-200 rounded-full flex items-center justify-center shrink-0 text-amber-700">
+                                                    <ShieldCheck className="w-5 h-5" />
+                                                </div>
+                                                <div>
+                                                    <p className="font-bold text-amber-900">Verificación de Pago Requerida</p>
+                                                    <p className="text-sm text-amber-700 font-medium">Ref: <span className="font-black">{req.paymentRef || 'No adjunta'}</span></p>
+                                                    {req.paymentProof && (
+                                                        <a
+                                                            href={req.paymentProof}
+                                                            target="_blank"
+                                                            rel="noopener noreferrer"
+                                                            className="inline-flex items-center gap-1 mt-2 text-xs font-bold text-indigo-600 bg-indigo-50 px-3 py-1.5 rounded-lg hover:bg-indigo-100 transition-colors"
+                                                        >
+                                                            <ImageIcon className="w-4 h-4" /> Ver Comprobante
+                                                        </a>
+                                                    )}
+                                                </div>
+                                            </div>
+
+                                            <div className="flex gap-2 w-full md:w-auto">
+                                                <button
+                                                    onClick={() => handleVerifyPayment(req.id, false)}
+                                                    className="flex-1 md:flex-none px-4 py-2 bg-white text-red-600 font-bold rounded-xl border border-red-200 hover:bg-red-50 transition-colors"
+                                                >
+                                                    Rechazar
+                                                </button>
+                                                <button
+                                                    onClick={() => handleVerifyPayment(req.id, true)}
+                                                    className="flex-1 md:flex-none px-6 py-2 bg-amber-500 text-white font-black rounded-xl hover:bg-amber-600 transition-colors shadow-lg shadow-amber-500/20"
+                                                >
+                                                    Aprobar Pago
+                                                </button>
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {/* Cash Payment Verification Action Area */}
+                                    {req.status === 'verifying_payment' && req.paymentMethod === 'cash' && (
+                                        <div className="bg-emerald-50 border-2 border-emerald-200 rounded-2xl p-4 flex flex-col md:flex-row items-center justify-between gap-4">
+                                            <div className="flex items-center gap-3 w-full">
+                                                <div className="w-10 h-10 bg-emerald-200 rounded-full flex items-center justify-center shrink-0 text-emerald-700">
+                                                    <DollarSign className="w-5 h-5" />
+                                                </div>
+                                                <div>
+                                                    <p className="font-bold text-emerald-900">Pago en Efectivo (Al chofer)</p>
+                                                    <p className="text-sm text-emerald-700 font-medium">Se debe cobrar al finalizar el viaje.</p>
+                                                </div>
+                                            </div>
+
+                                            <div className="flex gap-2 w-full md:w-auto">
+                                                <button
+                                                    onClick={() => handleVerifyPayment(req.id, false)}
+                                                    className="flex-1 md:flex-none px-4 py-2 bg-white text-red-600 font-bold rounded-xl border border-red-200 hover:bg-red-50 transition-colors"
+                                                >
+                                                    Rechazar
+                                                </button>
+                                                <button
+                                                    onClick={() => handleVerifyPayment(req.id, true)}
+                                                    className="flex-1 md:flex-none px-6 py-2 bg-emerald-500 text-white font-black rounded-xl hover:bg-emerald-600 transition-colors shadow-lg shadow-emerald-500/20"
+                                                >
+                                                    Aprobar Vehículo
+                                                </button>
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {/* Footer Actions (Delete old records) */}
+                                    {(req.status === 'completed' || req.status === 'cancelled') && (
+                                        <div className="mt-4 pt-4 border-t border-slate-100 flex justify-end">
+                                            <button
+                                                onClick={() => handleDelete(req.id)}
+                                                className="text-xs font-bold text-red-500 hover:text-red-600 px-3 py-1.5 rounded-lg hover:bg-red-50 transition-colors"
+                                            >
+                                                Eliminar Registro
+                                            </button>
+                                        </div>
+                                    )}
                                 </div>
+                            ))
+                        )}
+                    </div>
+                </>
+            ) : (
+                <div className="space-y-4">
+                    {getDriverStats().length === 0 ? (
+                        <div className="bg-white rounded-3xl p-12 text-center border border-slate-200 flex flex-col items-center">
+                            <div className="w-16 h-16 bg-slate-100 rounded-2xl flex items-center justify-center text-slate-400 mb-4">
+                                <DollarSign className="w-8 h-8" />
                             </div>
-
-                            {/* Payment Verification Action Area */}
-                            {req.status === 'verifying_payment' && req.paymentMethod !== 'cash' && (
-                                <div className="bg-amber-50 border-2 border-amber-200 rounded-2xl p-4 flex flex-col md:flex-row items-center justify-between gap-4">
-                                    <div className="flex items-center gap-3 w-full">
-                                        <div className="w-10 h-10 bg-amber-200 rounded-full flex items-center justify-center shrink-0 text-amber-700">
-                                            <ShieldCheck className="w-5 h-5" />
+                            <h3 className="text-xl font-bold text-slate-900">No hay datos de contabilidad</h3>
+                            <p className="text-slate-500 mt-2">Aún no hay viajes completados por choferes.</p>
+                        </div>
+                    ) : (
+                        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+                            {getDriverStats().map((stat) => (
+                                <div key={stat.driverId} className="bg-white rounded-3xl p-6 border border-slate-200 shadow-sm">
+                                    <div className="flex items-center gap-4 mb-6">
+                                        <div className="w-12 h-12 bg-indigo-50 rounded-full flex items-center justify-center text-indigo-600 shrink-0">
+                                            <User className="w-6 h-6" />
                                         </div>
                                         <div>
-                                            <p className="font-bold text-amber-900">Verificación de Pago Requerida</p>
-                                            <p className="text-sm text-amber-700 font-medium">Ref: <span className="font-black">{req.paymentRef || 'No adjunta'}</span></p>
+                                            <h3 className="font-black text-slate-900 text-lg leading-tight">{stat.driverName}</h3>
+                                            <p className="text-xs font-bold text-slate-500 mt-0.5">{stat.driverPhone || 'Sin teléfono'}</p>
                                         </div>
                                     </div>
 
-                                    <div className="flex gap-2 w-full md:w-auto">
-                                        <button
-                                            onClick={() => handleVerifyPayment(req.id, false)}
-                                            className="flex-1 md:flex-none px-4 py-2 bg-white text-red-600 font-bold rounded-xl border border-red-200 hover:bg-red-50 transition-colors"
-                                        >
-                                            Rechazar
-                                        </button>
-                                        <button
-                                            onClick={() => handleVerifyPayment(req.id, true)}
-                                            className="flex-1 md:flex-none px-6 py-2 bg-amber-500 text-white font-black rounded-xl hover:bg-amber-600 transition-colors shadow-lg shadow-amber-500/20"
-                                        >
-                                            Aprobar Pago
-                                        </button>
-                                    </div>
-                                </div>
-                            )}
-
-                            {/* Cash Payment Verification Action Area */}
-                            {req.status === 'verifying_payment' && req.paymentMethod === 'cash' && (
-                                <div className="bg-emerald-50 border-2 border-emerald-200 rounded-2xl p-4 flex flex-col md:flex-row items-center justify-between gap-4">
-                                    <div className="flex items-center gap-3 w-full">
-                                        <div className="w-10 h-10 bg-emerald-200 rounded-full flex items-center justify-center shrink-0 text-emerald-700">
-                                            <DollarSign className="w-5 h-5" />
+                                    <div className="grid grid-cols-2 gap-4 mb-6">
+                                        <div className="bg-rose-50 p-4 rounded-2xl border border-rose-100">
+                                            <p className="text-[10px] font-black text-rose-500 uppercase tracking-widest mb-1">Deuda Semanal</p>
+                                            <p className="text-2xl font-black text-rose-700">${stat.weeklyDebt.toFixed(2)}</p>
+                                            <p className="text-[10px] font-bold text-rose-600 mt-1">{stat.unpaidTrips.length} viajes sin pagar</p>
                                         </div>
-                                        <div>
-                                            <p className="font-bold text-emerald-900">Pago en Efectivo (Al chofer)</p>
-                                            <p className="text-sm text-emerald-700 font-medium">Se debe cobrar al finalizar el viaje.</p>
+                                        <div className="bg-emerald-50 p-4 rounded-2xl border border-emerald-100">
+                                            <p className="text-[10px] font-black text-emerald-600 uppercase tracking-widest mb-1">Ganancia Histórica</p>
+                                            <p className="text-xl font-black text-emerald-700">${stat.lifetimeEarnings.toFixed(2)}</p>
+                                            <p className="text-[10px] font-bold text-emerald-600 mt-1">{stat.totalTripsCount - stat.unpaidTrips.length} viajes pagados</p>
                                         </div>
                                     </div>
 
-                                    <div className="flex gap-2 w-full md:w-auto">
-                                        <button
-                                            onClick={() => handleVerifyPayment(req.id, false)}
-                                            className="flex-1 md:flex-none px-4 py-2 bg-white text-red-600 font-bold rounded-xl border border-red-200 hover:bg-red-50 transition-colors"
-                                        >
-                                            Rechazar
-                                        </button>
-                                        <button
-                                            onClick={() => handleVerifyPayment(req.id, true)}
-                                            className="flex-1 md:flex-none px-6 py-2 bg-emerald-500 text-white font-black rounded-xl hover:bg-emerald-600 transition-colors shadow-lg shadow-emerald-500/20"
-                                        >
-                                            Aprobar Vehículo
-                                        </button>
-                                    </div>
-                                </div>
-                            )}
-
-                            {/* Footer Actions (Delete old records) */}
-                            {(req.status === 'completed' || req.status === 'cancelled') && (
-                                <div className="mt-4 pt-4 border-t border-slate-100 flex justify-end">
                                     <button
-                                        onClick={() => handleDelete(req.id)}
-                                        className="text-xs font-bold text-red-500 hover:text-red-600 px-3 py-1.5 rounded-lg hover:bg-red-50 transition-colors"
+                                        disabled={stat.weeklyDebt === 0}
+                                        onClick={() => {
+                                            setSelectedDriver(stat);
+                                            setShowPayoutModal(true);
+                                        }}
+                                        className="w-full bg-slate-900 text-white font-black py-4 rounded-2xl shadow-xl shadow-slate-900/20 disabled:opacity-50 active:scale-[0.98] transition-all flex items-center justify-center gap-2"
                                     >
-                                        Eliminar Registro
+                                        <DollarSign className="w-5 h-5" />
+                                        Liquidar Deuda (${stat.weeklyDebt.toFixed(2)})
                                     </button>
                                 </div>
-                            )}
+                            ))}
                         </div>
-                    ))
-                )}
-            </div>
-        </div>
+                    )}
+                </div>
+            )
+            }
+
+            {/* Payout Modal */}
+            {showPayoutModal && selectedDriver && (
+                <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-[100] z-50 overflow-y-auto">
+                    <div className="bg-white rounded-3xl w-full max-w-md my-auto relative shadow-2xl overflow-hidden">
+                        {/* Header */}
+                        <div className="bg-slate-900 p-6 text-center relative">
+                            <button
+                                onClick={() => {
+                                    setShowPayoutModal(false);
+                                    setSelectedDriver(null);
+                                    setPayoutReceipt(null);
+                                }}
+                                className="absolute top-4 right-4 text-white/50 hover:text-white transition-colors"
+                            >
+                                <XCircle className="w-8 h-8" />
+                            </button>
+                            <div className="w-20 h-20 bg-indigo-500 rounded-full flex items-center justify-center mx-auto mb-4 border-4 border-slate-800 shadow-xl">
+                                <DollarSign className="w-10 h-10 text-white" />
+                            </div>
+                            <h2 className="text-2xl font-black text-white">Liquidar Deuda</h2>
+                            <p className="text-slate-400 font-medium mt-1">Sube el comprobante de pago</p>
+                        </div>
+
+                        <div className="p-6">
+                            {/* Driver Summary */}
+                            <div className="bg-slate-50 rounded-2xl p-4 mb-6 border border-slate-100 text-center">
+                                <p className="text-sm font-bold text-slate-500 mb-1">Chofer: <span className="text-slate-900">{selectedDriver.driverName}</span></p>
+                                <p className="text-3xl font-black text-emerald-600">${selectedDriver.weeklyDebt.toFixed(2)}</p>
+                                <p className="text-xs font-bold text-slate-400 mt-1 uppercase tracking-widest">{selectedDriver.unpaidTrips.length} Viajes pendientes</p>
+                            </div>
+
+                            {/* File Upload */}
+                            <div className="mb-8">
+                                <label className="block text-sm font-bold text-slate-700 mb-2">
+                                    Comprobante de Transferencia/Pago
+                                </label>
+                                <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-slate-300 border-dashed rounded-2xl cursor-pointer bg-slate-50 hover:bg-slate-100/50 transition-colors">
+                                    <div className="flex flex-col items-center justify-center pt-5 pb-6">
+                                        {payoutReceipt ? (
+                                            <div className="flex flex-col items-center text-emerald-600">
+                                                <CheckCircle2 className="w-8 h-8 mb-2" />
+                                                <p className="text-sm font-bold">{payoutReceipt.name}</p>
+                                            </div>
+                                        ) : (
+                                            <>
+                                                <div className="w-12 h-12 bg-indigo-100 rounded-full flex items-center justify-center mb-3">
+                                                    <Upload className="w-6 h-6 text-indigo-600" />
+                                                </div>
+                                                <p className="mb-1 text-sm text-slate-500 font-medium">Click para subir foto</p>
+                                                <p className="text-xs text-slate-400 font-bold">PNG, JPG o JPEG</p>
+                                            </>
+                                        )}
+                                    </div>
+                                    <input
+                                        type="file"
+                                        className="hidden"
+                                        accept="image/*"
+                                        onChange={(e) => setPayoutReceipt(e.target.files?.[0] || null)}
+                                    />
+                                </label>
+                            </div>
+
+                            <button
+                                onClick={handleProcessPayout}
+                                disabled={payoutLoading || !payoutReceipt}
+                                className="flex items-center justify-center w-full bg-indigo-600 text-white font-black py-4 rounded-xl hover:bg-indigo-700 transition-colors shadow-xl shadow-indigo-600/20 disabled:opacity-50"
+                            >
+                                {payoutLoading ? (
+                                    <div className="w-6 h-6 border-4 border-white border-t-transparent rounded-full animate-spin"></div>
+                                ) : (
+                                    <>
+                                        Confirmar Pago
+                                    </>
+                                )}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+        </div >
     );
 }

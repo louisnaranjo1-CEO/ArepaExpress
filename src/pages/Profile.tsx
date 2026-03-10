@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { User, Mail, MapPin, CreditCard, LogOut, ShoppingBag, Settings, ChevronRight, Clock, FileText, Bell, Navigation, X, Shield, UploadCloud, Star } from 'lucide-react';
+import { User, Mail, MapPin, CreditCard, LogOut, ShoppingBag, Settings, ChevronRight, Clock, FileText, Bell, Navigation, X, Shield, UploadCloud, Star, Wallet } from 'lucide-react';
 import { requestNotificationPermission, disableNotifications } from '../lib/notifications';
 import { useAuth } from '../context/AuthContext';
 import { auth, db, storage } from '../lib/firebase';
@@ -53,6 +53,12 @@ export default function Profile() {
     const [isEmailAuthLoading, setIsEmailAuthLoading] = useState(false);
     const [logoFile, setLogoFile] = useState<File | null>(null);
     const [logoPreview, setLogoPreview] = useState<string | null>(null);
+
+    // Wallet State
+    const [showWalletModal, setShowWalletModal] = useState(false);
+    const [rechargeAmount, setRechargeAmount] = useState('');
+    const [rechargeProof, setRechargeProof] = useState<File | null>(null);
+    const [isRecharging, setIsRecharging] = useState(false);
 
     useEffect(() => {
         if (userData) {
@@ -291,6 +297,41 @@ export default function Profile() {
         }
     };
 
+    const handleRechargeSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!user || (!rechargeAmount && !rechargeProof)) return;
+
+        setIsRecharging(true);
+        try {
+            let proofUrl = '';
+            if (rechargeProof) {
+                const storageRef = ref(storage, `wallet_recharges/${user.uid}/${Date.now()}_${rechargeProof.name}`);
+                const snapshot = await uploadBytes(storageRef, rechargeProof);
+                proofUrl = await getDownloadURL(snapshot.ref);
+            }
+
+            await setDoc(doc(collection(db, 'wallet_recharges')), {
+                userId: user.uid,
+                userName: userData?.displayName || user.displayName || 'Usuario',
+                userPhone: userData?.phone || '',
+                amount: parseFloat(rechargeAmount),
+                proofUrl,
+                status: 'pending',
+                createdAt: serverTimestamp()
+            });
+
+            alert("¡Recarga enviada! Verificaremos los datos pronto.");
+            setShowWalletModal(false);
+            setRechargeAmount('');
+            setRechargeProof(null);
+        } catch (err) {
+            console.error("Error submitting recharge:", err);
+            alert("Error al procesar la recarga.");
+        } finally {
+            setIsRecharging(false);
+        }
+    };
+
     if (!user) {
         return (
             <div className="flex flex-col items-center justify-center min-h-[80vh] px-6 text-center animate-in fade-in slide-in-from-bottom-4 duration-500">
@@ -359,7 +400,9 @@ export default function Profile() {
                     </button>
                     <div className="flex items-center gap-4 my-2">
                         <div className="h-px bg-slate-100 flex-1"></div>
-                        <span className="text-[10px] font-black text-slate-300 uppercase tracking-widest">¿trabajas con nuestros aliados?</span>
+                        <div className="flex items-center gap-2 mb-1">
+                            <img src="https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/unnamed%20(14).jpg?alt=media&token=425d2b78-43d8-4f05-8e7c-87d2cb58abdd" alt="Cashea" className="h-6 w-auto object-contain rounded-md mix-blend-multiply" />
+                        </div><span className="text-[10px] font-black text-slate-300 uppercase tracking-widest">¿trabajas con nuestros aliados?</span>
                         <div className="h-px bg-slate-100 flex-1"></div>
                     </div>
                     <button
@@ -586,21 +629,28 @@ export default function Profile() {
 
                 <div className="px-6 -mt-8">
                     <div className="bg-white rounded-3xl p-6 shadow-xl shadow-slate-200/50 space-y-6">
-                        <div className="grid grid-cols-2 gap-4">
+                        <div className="grid grid-cols-3 gap-3">
+                            <div
+                                onClick={() => setShowWalletModal(true)}
+                                className="bg-yellow-50 p-4 rounded-2xl flex flex-col items-center justify-center gap-2 group cursor-pointer hover:bg-yellow-100 transition-colors"
+                            >
+                                <Wallet className="w-6 h-6 text-yellow-600 group-hover:scale-110 transition-transform" />
+                                <span className="text-xs font-bold text-slate-700 text-center leading-tight">Mi Billetera<br />2X3</span>
+                            </div>
                             <div
                                 onClick={scrollToOrders}
-                                className="bg-orange-50 p-4 rounded-2xl flex flex-col items-center gap-2 group cursor-pointer hover:bg-orange-100 transition-colors"
+                                className="bg-orange-50 p-4 rounded-2xl flex flex-col items-center justify-center gap-2 group cursor-pointer hover:bg-orange-100 transition-colors"
                             >
                                 <ShoppingBag className="w-6 h-6 text-orange-500 group-hover:scale-110 transition-transform" />
-                                <span className="text-xs font-bold text-slate-600">Mis Pedidos</span>
+                                <span className="text-xs font-bold text-slate-600 text-center leading-tight">Mis<br />Pedidos</span>
                             </div>
                             <div
                                 onClick={() => setShowAddressPicker(true)}
-                                className={`p-4 rounded-2xl flex flex-col items-center gap-2 group cursor-pointer transition-colors ${userData?.address ? 'bg-green-50 hover:bg-green-100' : 'bg-blue-50 hover:bg-blue-100'}`}
+                                className={`p-4 rounded-2xl flex flex-col items-center justify-center gap-2 group cursor-pointer transition-colors ${userData?.address ? 'bg-green-50 hover:bg-green-100' : 'bg-blue-50 hover:bg-blue-100'}`}
                             >
                                 <MapPin className={`w-6 h-6 group-hover:scale-110 transition-transform ${userData?.address ? 'text-green-500' : 'text-blue-500'}`} />
-                                <span className="text-xs font-bold text-slate-600">
-                                    {userData?.address ? 'Cambiar Dirección' : 'Direcciones'}
+                                <span className="text-xs font-bold text-slate-600 text-center leading-tight">
+                                    {userData?.address ? 'Cambiar\nDirec.' : 'Mis\nDirec.'}
                                 </span>
                             </div>
                         </div>
@@ -1015,6 +1065,95 @@ export default function Profile() {
                                     </button>
                                 </div>
                             </form>
+                        </motion.div>
+                    </div>
+                )}
+            </AnimatePresence>
+
+            {/* Wallet Modal */}
+            <AnimatePresence>
+                {showWalletModal && (
+                    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm overflow-y-auto">
+                        <motion.div
+                            initial={{ opacity: 0, scale: 0.95, y: 20 }}
+                            animate={{ opacity: 1, scale: 1, y: 0 }}
+                            exit={{ opacity: 0, scale: 0.95, y: 20 }}
+                            className="bg-white rounded-[40px] w-full max-w-sm shadow-2xl overflow-hidden my-auto"
+                        >
+                            <div className="p-8 border-b border-slate-50 flex items-center justify-between bg-slate-50/50">
+                                <div>
+                                    <h3 className="text-xl font-black text-slate-900 flex items-center gap-2">
+                                        <Wallet className="w-6 h-6 text-primary" /> Mi Billetera 2X3
+                                    </h3>
+                                    <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1">Fondos para Transporte</p>
+                                </div>
+                                <button onClick={() => setShowWalletModal(false)} className="p-2 hover:bg-slate-200 rounded-xl transition-all">
+                                    <X className="w-6 h-6 text-slate-400" />
+                                </button>
+                            </div>
+
+                            <div className="p-6 space-y-6">
+                                {/* Virtual Card */}
+                                <div className="relative w-full aspect-[1.586/1] rounded-2xl overflow-hidden shadow-xl shadow-yellow-500/20 group">
+                                    <img src="https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/tarjeta.png?alt=media&token=e90bd42d-7bb7-4bbf-a059-e3805903b22e" alt="Billetera 2X3" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" />
+                                    <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent flex flex-col justify-end p-6">
+                                        <p className="text-white/80 text-[10px] font-bold uppercase tracking-widest mb-1 shadow-black drop-shadow-md">Titular de la tarjeta</p>
+                                        <p className="text-white text-lg font-black tracking-wider uppercase shadow-black drop-shadow-md">{userData?.displayName || user?.displayName || 'Usuario 2X3'}</p>
+                                        <div className="mt-4 flex justify-between items-end">
+                                            <div>
+                                                <p className="text-white/80 text-[10px] font-bold uppercase tracking-widest mb-1 shadow-black drop-shadow-md">Saldo Disponible</p>
+                                                <p className="text-yellow-400 text-3xl font-black shadow-black drop-shadow-md">${(userData?.walletBalance || 0).toFixed(2)}</p>
+                                            </div>
+                                            <div className="w-12 h-8 bg-white/20 backdrop-blur-md rounded-md flex items-center justify-center border border-white/30">
+                                                <div className="w-4 h-4 rounded-full bg-red-500/80 -mr-2 mix-blend-multiply"></div>
+                                                <div className="w-4 h-4 rounded-full bg-yellow-500/80 mix-blend-multiply"></div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="bg-blue-50 p-4 rounded-2xl flex gap-3 text-blue-800">
+                                    <Shield className="w-5 h-5 shrink-0 text-blue-500 mt-0.5" />
+                                    <p className="text-xs font-medium leading-relaxed">Estos fondos son exclusivos para pagar tus viajes de <strong>Taxi</strong> y Moto. No aplican para compras de comida o tienda.</p>
+                                </div>
+
+                                <form onSubmit={handleRechargeSubmit} className="space-y-4">
+                                    <div className="space-y-1">
+                                        <label className="text-xs font-bold text-slate-500 uppercase tracking-wider ml-1">Monto a Recargar ($)</label>
+                                        <input
+                                            type="number"
+                                            required
+                                            min="1"
+                                            step="0.01"
+                                            value={rechargeAmount}
+                                            onChange={(e) => setRechargeAmount(e.target.value)}
+                                            className="w-full bg-slate-50 border-2 border-slate-100 focus:border-primary px-4 py-4 rounded-2xl outline-none font-black text-slate-700 transition-all text-xl"
+                                            placeholder="Ej. 10.00"
+                                        />
+                                    </div>
+                                    <div className="space-y-1">
+                                        <label className="text-xs font-bold text-slate-500 uppercase tracking-wider ml-1">Comprobante de Pago</label>
+                                        <input
+                                            type="file"
+                                            required
+                                            accept="image/*"
+                                            onChange={(e) => setRechargeProof(e.target.files?.[0] || null)}
+                                            className="w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-primary/10 file:text-primary hover:file:bg-primary/20 transition-all"
+                                        />
+                                    </div>
+                                    <button
+                                        type="submit"
+                                        disabled={isRecharging}
+                                        className="w-full bg-primary text-white py-4 rounded-2xl font-black shadow-lg shadow-primary/30 hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-70 mt-2 flex items-center justify-center gap-2 uppercase tracking-widest text-sm"
+                                    >
+                                        {isRecharging ? (
+                                            <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                                        ) : (
+                                            "Reportar Recarga"
+                                        )}
+                                    </button>
+                                </form>
+                            </div>
                         </motion.div>
                     </div>
                 )}
