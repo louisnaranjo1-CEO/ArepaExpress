@@ -1,9 +1,10 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
-import { doc, onSnapshot, getDoc } from 'firebase/firestore';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
+import { doc, onSnapshot, getDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { DeliveryDriver } from '../lib/delivery-service';
-import { Navigation, Clock, CheckCircle2, Phone, ArrowLeft, Car, ShieldCheck, MessageCircle } from 'lucide-react';
+import toast from 'react-hot-toast';
+import { Navigation, Clock, CheckCircle2, Phone, ArrowLeft, Car, ShieldCheck, MessageCircle, Star } from 'lucide-react';
 import { GoogleMap, useJsApiLoader, DirectionsRenderer, Marker } from '@react-google-maps/api';
 import RideChat from '../components/RideChat';
 
@@ -37,7 +38,13 @@ export default function TransportTracker() {
     const [request, setRequest] = useState<any>(null);
     const [driver, setDriver] = useState<DeliveryDriver | null>(null);
     const [loading, setLoading] = useState(true);
-    const [showChat, setShowChat] = useState(false);
+    const location = useLocation();
+    const [showChat, setShowChat] = useState(new URLSearchParams(location.search).get('chat') === 'true');
+    const [rating, setRating] = useState(0);
+    const [hoverRating, setHoverRating] = useState(0);
+    const [comment, setComment] = useState('');
+    const [submittingRating, setSubmittingRating] = useState(false);
+    const [hasRated, setHasRated] = useState(false);
 
     // Map states
     const { isLoaded } = useJsApiLoader({
@@ -71,6 +78,25 @@ export default function TransportTracker() {
 
         return () => unsubscribe();
     }, [requestId]);
+
+    const handleRateTrip = async () => {
+        if (!requestId || rating === 0) return;
+        setSubmittingRating(true);
+        try {
+            await updateDoc(doc(db, 'transport_requests', requestId), {
+                rating,
+                ratingComment: comment,
+                ratedAt: serverTimestamp()
+            });
+            setHasRated(true);
+            toast.success("¡Gracias por tu calificación!");
+        } catch (error) {
+            console.error("Error rating trip:", error);
+            toast.error("Error al enviar calificación");
+        } finally {
+            setSubmittingRating(false);
+        }
+    };
 
     const onLoad = useCallback(function callback(map: google.maps.Map) {
         setMap(map);
@@ -173,9 +199,23 @@ export default function TransportTracker() {
                 </button>
             </div>
 
-            {/* Map Area */}
-            <div className="flex-1 relative z-0">
-                {!showChat ? (
+            {/* Map/Logo Area */}
+            <div className="flex-1 relative z-0 flex items-center justify-center bg-slate-50">
+                {request.status === 'completed' ? (
+                    <div className="flex flex-col items-center justify-center gap-6 animate-fade-in px-8">
+                        <div className="w-48 h-48 bg-white rounded-[40px] shadow-2xl shadow-primary/20 p-8 flex items-center justify-center border-4 border-primary/10">
+                            <img
+                                src="https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/logo%20oficial.png?alt=media&token=2dd047ea-6c45-4347-8869-1a1edf4253f4"
+                                alt="2X3 Logo"
+                                className="w-full h-full object-contain animate-bounce-subtle"
+                            />
+                        </div>
+                        <div className="text-center">
+                            <h3 className="text-2xl font-black text-slate-900 mb-2">¡Servicio Finalizado!</h3>
+                            <p className="text-slate-500 font-bold max-w-[250px]">Gracias por confiar en el transporte express de 2X3</p>
+                        </div>
+                    </div>
+                ) : !showChat ? (
                     <GoogleMap
                         mapContainerStyle={mapContainerStyle}
                         center={request.origin || { lat: 10.4806, lng: -66.9036 }}
@@ -205,6 +245,56 @@ export default function TransportTracker() {
                         <p className="font-bold text-slate-500 ">{statusInfo.subtitle}</p>
                     </div>
                 </div>
+
+                {/* Rating Section if Completed */}
+                {request.status === 'completed' && !request.rating && !hasRated && (
+                    <div className="bg-indigo-50/50 border-2 border-indigo-100 rounded-3xl p-6 mb-6 animate-in fade-in slide-in-from-bottom-4">
+                        <h3 className="text-center font-black text-slate-800 text-lg mb-2">¿Qué tal estuvo tu viaje?</h3>
+                        <p className="text-center text-xs font-bold text-slate-500 mb-6">Tu opinión nos ayuda a mejorar el servicio</p>
+
+                        <div className="flex justify-center gap-3 mb-8">
+                            {[1, 2, 3, 4, 5].map((star) => (
+                                <button
+                                    key={star}
+                                    onMouseEnter={() => setHoverRating(star)}
+                                    onMouseLeave={() => setHoverRating(0)}
+                                    onClick={() => setRating(star)}
+                                    className="transition-all transform active:scale-90"
+                                >
+                                    <Star
+                                        className={`w-10 h-10 ${(hoverRating || rating) >= star ? 'fill-amber-400 text-amber-400' : 'text-slate-300'} transition-colors animate-in zoom-in-75`}
+                                        strokeWidth={1.5}
+                                    />
+                                </button>
+                            ))}
+                        </div>
+
+                        <textarea
+                            value={comment}
+                            onChange={(e) => setComment(e.target.value)}
+                            placeholder="Déjanos un comentario (opcional)..."
+                            className="w-full bg-white border border-slate-200 rounded-2xl p-4 text-sm font-medium focus:outline-none focus:ring-4 focus:ring-indigo-100 min-h-[100px] mb-6 outline-none transition-all placeholder:text-slate-400"
+                        />
+
+                        <button
+                            onClick={handleRateTrip}
+                            disabled={rating === 0 || submittingRating}
+                            className="w-full bg-indigo-600 text-white font-black py-4 rounded-2xl shadow-xl shadow-indigo-600/30 flex justify-center items-center gap-2 active:scale-95 transition-all disabled:opacity-50"
+                        >
+                            {submittingRating ? <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div> : 'Enviar Calificación'}
+                        </button>
+                    </div>
+                )}
+
+                {hasRated && (
+                    <div className="bg-emerald-50 border-2 border-emerald-100 rounded-3xl p-6 mb-6 text-center animate-in zoom-in-95">
+                        <div className="w-12 h-12 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto mb-3">
+                            <CheckCircle2 className="w-7 h-7" />
+                        </div>
+                        <h3 className="font-black text-emerald-900 mb-1">¡Gracias por tu mensaje!</h3>
+                        <p className="text-sm font-bold text-emerald-700/70">Tu calificación ha sido enviada con éxito.</p>
+                    </div>
+                )}
 
                 {/* Route Info summary if available */}
                 {routeInfo && (

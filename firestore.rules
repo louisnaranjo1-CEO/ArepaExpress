@@ -8,15 +8,25 @@ service cloud.firestore {
       allow read, write: if request.auth != null && request.auth.uid == userId;
     }
     
-    // Public Data
+    // Restaurants and their sub-collections
     match /restaurants/{restaurantId} {
       allow read: if true;
       allow write: if request.auth != null && request.auth.uid == restaurantId;
       
-      match /products/{productId} {
-      	allow read: if true;
+      // Sub-collections (products, waiters, tables, reviews, printers, etc.)
+      match /{allSubcollections=**} {
+        allow read: if true;
         allow write: if request.auth != null && request.auth.uid == restaurantId;
       }
+    }
+
+    // Waiter Index for login
+    match /waiter_index/{email} {
+      allow read: if true;
+      allow write: if request.auth != null && (
+        (request.resource != null && request.resource.data.restaurantId == request.auth.uid) ||
+        (resource != null && resource.data.restaurantId == request.auth.uid)
+      );
     }
     
     // User orders
@@ -26,7 +36,7 @@ service cloud.firestore {
       // Users can only create orders for themselves
       allow create: if request.auth != null && request.auth.uid == request.resource.data.userId;
       // Restaurants can update status
-      allow update: if request.auth != null && request.auth.uid == resource.data.restaurantId;
+      allow update: if request.auth != null && (request.auth.uid == resource.data.restaurantId || exists(/databases/$(database)/documents/restaurants/$(resource.data.restaurantId)/waiters/$(request.auth.uid)));
       allow delete: if false;
     }
 

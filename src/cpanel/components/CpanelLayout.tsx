@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, Store, Users, Image as ImageIcon, LogOut, ChevronRight, Menu, X, Tag, Truck, Wallet, Car, Share2 } from 'lucide-react';
+import { LayoutDashboard, Store, Users, Image as ImageIcon, LogOut, ChevronRight, Menu, X, Tag, Truck, Wallet, Car, Share2, Gift, Ticket } from 'lucide-react';
 import { collection, query, where, onSnapshot } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 
@@ -42,6 +42,8 @@ export default function CpanelLayout({ children, onLogout }: CpanelLayoutProps) 
         { path: '/delivery', icon: Truck, label: 'Delivery Express' },
         { path: '/transports', icon: Car, label: 'Viajes (Taxis)', badge: pendingTransports },
         { path: '/finances', icon: Wallet, label: 'Finanzas' },
+        { path: '/fidelization', icon: Gift, label: 'Fidelización' },
+        { path: '/raffles', icon: Ticket, label: 'Sorteos y Rifas' },
         { path: '/icons', icon: Share2, label: 'Iconos' },
     ];
 
@@ -59,7 +61,7 @@ export default function CpanelLayout({ children, onLogout }: CpanelLayoutProps) 
             <aside className={`fixed inset-y-0 left-0 w-72 bg-slate-900 border-r border-slate-800 z-50 transform transition-transform duration-300 ease-in-out md:relative md:translate-x-0 ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
                 <div className="flex flex-col h-full">
                     {/* Sidebar Header */}
-                    <div className="p-6 border-b border-slate-800 flex items-center justify-between">
+                    <div className="p-4 border-b border-slate-800 flex items-center justify-between">
                         <div className="flex items-center gap-3">
                             <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center p-1.5 shadow-sm ring-1 ring-slate-800">
                                 <img
@@ -79,13 +81,13 @@ export default function CpanelLayout({ children, onLogout }: CpanelLayoutProps) 
                     </div>
 
                     {/* Nav Items */}
-                    <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
+                    <nav className="flex-1 px-3 py-2 space-y-0.5 overflow-y-auto custom-scrollbar">
                         {navItems.map((item) => (
                             <NavLink
                                 key={item.path}
                                 to={item.path}
                                 className={({ isActive }) =>
-                                    `flex items-center justify-between p-4 rounded-2xl font-bold transition-all group relative ${isActive
+                                    `flex items-center justify-between py-2.5 px-4 rounded-xl font-bold transition-all group relative ${isActive
                                         ? 'bg-primary text-white shadow-lg shadow-primary/20'
                                         : 'text-slate-400 hover:bg-white/5 hover:text-white'
                                     }`
@@ -94,11 +96,11 @@ export default function CpanelLayout({ children, onLogout }: CpanelLayoutProps) 
                             >
                                 <div className="flex items-center gap-3">
                                     <item.icon className="w-5 h-5" />
-                                    <span>{item.label}</span>
+                                    <span className="text-[15px]">{item.label}</span>
                                 </div>
                                 <div className="flex items-center gap-2">
                                     {!!item.badge && item.badge > 0 && (
-                                        <span className="bg-red-500 text-white text-xs px-2 py-0.5 rounded-full font-black animate-pulse">
+                                        <span className="bg-red-500 text-white text-[10px] px-2 py-0.5 rounded-full font-black animate-pulse">
                                             {item.badge}
                                         </span>
                                     )}
@@ -109,10 +111,10 @@ export default function CpanelLayout({ children, onLogout }: CpanelLayoutProps) 
                     </nav>
 
                     {/* Sidebar Footer */}
-                    <div className="p-4 border-t border-slate-800">
+                    <div className="p-3 border-t border-slate-800">
                         <button
                             onClick={handleLogout}
-                            className="w-full flex items-center gap-3 px-4 py-4 text-slate-400 font-bold hover:bg-red-500/10 hover:text-red-400 rounded-2xl transition-colors"
+                            className="w-full flex items-center gap-3 px-4 py-3 text-slate-400 font-bold hover:bg-red-500/10 hover:text-red-400 rounded-xl transition-colors"
                         >
                             <LogOut className="w-5 h-5" />
                             <span>Cerrar Sesión</span>

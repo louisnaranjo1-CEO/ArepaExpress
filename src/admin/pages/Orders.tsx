@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { Search, Filter, Clock, MapPin, ChevronRight, Package, Truck, CheckCircle, Loader2, Bell, ExternalLink, X } from 'lucide-react';
+import { Search, Filter, Clock, MapPin, ChevronRight, Package, Truck, CheckCircle, Loader2, Bell, ExternalLink, X, ShoppingCart, Plus, Minus, Trash2, User, CreditCard, Store, ShoppingBag } from 'lucide-react';
 import { db } from '../../lib/firebase';
-import { collection, query, where, onSnapshot, orderBy, doc, updateDoc, getDocs } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, orderBy, doc, updateDoc, getDocs, increment, addDoc, serverTimestamp } from 'firebase/firestore';
 import { useAuth } from '../../context/AuthContext';
 import { printToUsbDevice, formatTicket, PrintOrder } from '../../lib/usb-printer';
 
@@ -35,7 +35,40 @@ export default function Orders() {
     const [searchTerm, setSearchTerm] = useState('');
     const [printingOrderId, setPrintingOrderId] = useState<string | null>(null);
 
-    // ...
+    // POS State
+    const [showPOS, setShowPOS] = useState(false);
+    const [posProducts, setPosProducts] = useState<any[]>([]);
+    const [posCategories, setPosCategories] = useState<string[]>(['Todos']);
+    const [posActiveCategory, setPosActiveCategory] = useState<string>('Todos');
+    const [posSearchTerm, setPosSearchTerm] = useState('');
+    const [posCart, setPosCart] = useState<any[]>([]);
+    const [posClientName, setPosClientName] = useState('');
+    const [posClientDNI, setPosClientDNI] = useState('');
+    const [posOrderType, setPosOrderType] = useState<'local' | 'takeout' | 'delivery'>('local');
+    const [posDeliveryAddress, setPosDeliveryAddress] = useState('');
+    const [posDeliveryFee, setPosDeliveryFee] = useState(0);
+    const [isSubmittingPOS, setIsSubmittingPOS] = useState(false);
+
+    useEffect(() => {
+        if (!user || !showPOS) return;
+        const fetchPosProducts = async () => {
+            const productsRef = collection(db, 'restaurants', user.uid, 'products');
+            const q = query(productsRef);
+            const snapshot = await getDocs(q);
+            const items: any[] = [];
+            const cats = new Set<string>();
+            snapshot.forEach(doc => {
+                const data = doc.data();
+                if (data.isActive !== false) {
+                    items.push({ id: doc.id, ...data });
+                    if (data.category) cats.add(data.category);
+                }
+            });
+            setPosProducts(items);
+            setPosCategories(['Todos', ...Array.from(cats)]);
+        };
+        fetchPosProducts();
+    }, [user, showPOS]);
 
     useEffect(() => {
         if (!user) return;
@@ -145,11 +178,119 @@ export default function Orders() {
             const updates: any = { status: newStatus };
             if (paymentStatus) {
                 updates.paymentStatus = paymentStatus;
+
+                // Si la venta es exitosa, se otorgan puntos al usuario (2.5 puntos por cada $)
+                if (paymentStatus === 'sold' && orderTemp?.userId && orderTemp.userId !== 'pos_customer') {
+                    try {
+                        const pointsToAdd = orderTemp.total * 2.5;
+                        const userRef = doc(db, 'users', orderTemp.userId);
+                        await updateDoc(userRef, {
+                            points: increment(pointsToAdd)
+                        });
+                        console.log(`Se sumaron ${pointsToAdd} puntos al usuario ${orderTemp.userId}`);
+                    } catch (pointsError) {
+                        console.error("Error al sumar puntos al usuario:", pointsError);
+                    }
+                }
             }
             await updateDoc(orderRef, updates);
         } catch (error) {
             console.error("Error updating order status:", error);
         }
+    };
+
+    const handleCreatePOSOrder = async () => {
+        if (!user) return;
+        if (posCart.length === 0) return alert("El carrito está vacío");
+        if (posOrderType === 'delivery' && !posDeliveryAddress) return alert("Ingresa la dirección de envío");
+
+        setIsSubmittingPOS(true);
+        try {
+            const items = posCart.map(item => ({
+                id: item.id,
+                name: item.name,
+                price: item.price,
+                quantity: item.quantity,
+                category: item.category || ''
+            }));
+
+            const subtotal = items.reduce((acc, item) => acc + (item.price * item.quantity), 0);
+            const total = subtotal + posDeliveryFee;
+
+            let deliveryAddressStr = posOrderType === 'local' ? 'Consumo Local' : posOrderType === 'takeout' ? 'Para Llevar' : posDeliveryAddress;
+
+            const newOrderRef = await addDoc(collection(db, 'orders'), {
+                restaurantId: user.uid,
+                userId: 'pos_customer',
+                userName: posClientName || 'Cliente en mostrador',
+                clientId: posClientDNI || '',
+                items,
+                total,
+                status: 'preparing',
+                paymentStatus: 'sold', // Ya pagado
+                createdAt: serverTimestamp(),
+                deliveryAddress: deliveryAddressStr,
+                source: 'pos',
+                type: posOrderType,
+                deliveryFee: posDeliveryFee,
+            });
+
+            const printData = {
+                id: newOrderRef.id,
+                userName: posClientName || 'Cliente en mostrador',
+                items,
+                total,
+                status: 'preparing',
+                createdAt: new Date(),
+                deliveryAddress: deliveryAddressStr,
+                source: 'pos',
+                userId: 'pos_customer'
+            } as any;
+
+            await handlePrintOrder(newOrderRef.id, printData);
+
+            setShowPOS(false);
+            setPosCart([]);
+            setPosClientName('');
+            setPosClientDNI('');
+            setPosDeliveryAddress('');
+            setPosDeliveryFee(0);
+            setPosOrderType('local');
+
+        } catch (error) {
+            console.error("Error creando orden POS:", error);
+            alert("Error al procesar la venta");
+        } finally {
+            setIsSubmittingPOS(false);
+        }
+    };
+
+    const addToPosCart = (product: any) => {
+        setPosCart(current => {
+            const existing = current.find(item => item.id === product.id);
+            if (existing) {
+                return current.map(item =>
+                    item.id === product.id
+                        ? { ...item, quantity: item.quantity + 1 }
+                        : item
+                );
+            }
+            return [...current, { ...product, quantity: 1, price: product.promoPrice > 0 ? product.promoPrice : product.price }];
+        });
+    };
+
+    const updatePosCartItem = (id: string, delta: number) => {
+        setPosCart(current => current.map(item => {
+            if (item.id === id) {
+                const newQuantity = item.quantity + delta;
+                return newQuantity > 0 ? { ...item, quantity: newQuantity } : item;
+            }
+            return item;
+        }));
+    };
+
+    const removePosCartItem = (id: string) => {
+        setPosCart(current => current.filter(item => item.id !== id));
     };
 
     const stats = {
@@ -191,9 +332,18 @@ export default function Orders() {
                     </h1>
                     <p className="text-slate-500 font-medium">Monitorea y despacha tus órdenes al momento.</p>
                 </div>
-                <div className="flex items-center gap-2 bg-green-50 text-green-600 px-4 py-2 rounded-xl text-sm font-bold border border-green-100 italic">
-                    <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
-                    Buscando nuevos pedidos...
+                <div className="flex items-center gap-4">
+                    <button
+                        onClick={() => setShowPOS(true)}
+                        className="bg-primary text-white px-6 py-3 rounded-2xl font-black hover:scale-105 transition-all shadow-lg shadow-primary/30 flex items-center gap-2"
+                    >
+                        <ShoppingCart className="w-5 h-5" />
+                        <span className="hidden sm:inline">Nueva Venta (POS)</span>
+                    </button>
+                    <div className="flex items-center gap-2 bg-green-50 text-green-600 px-4 py-2 rounded-xl text-sm font-bold border border-green-100 italic">
+                        <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
+                        <span className="hidden sm:inline">Buscando nuevos pedidos...</span>
+                    </div>
                 </div>
             </div>
 
@@ -367,6 +517,201 @@ export default function Orders() {
                             </div>
                         </div>
                     ))}
+                </div>
+            )}
+
+            {/* POS Modal */}
+            {showPOS && (
+                <div className="fixed inset-0 z-[100] flex bg-slate-900/40 backdrop-blur-sm animate-in fade-in duration-200">
+                    <div className="flex-1 overflow-hidden flex flex-col h-full bg-slate-50 p-4 pb-20 lg:p-4 animate-in slide-in-from-bottom-10 lg:slide-in-from-left-10 duration-500">
+                        {/* POS Header */}
+                        <div className="bg-white p-4 rounded-3xl shadow-sm border border-slate-100 mb-4 flex items-center justify-between">
+                            <h2 className="text-2xl font-black text-slate-900 flex items-center gap-2 mb-2 md:mb-0">
+                                <ShoppingCart className="w-6 h-6 text-primary" />
+                                Punto de Venta (POS)
+                            </h2>
+                            <button onClick={() => setShowPOS(false)} className="p-2 text-slate-400 hover:bg-slate-100 rounded-full">
+                                <X className="w-6 h-6" />
+                            </button>
+                        </div>
+
+                        <div className="flex-1 flex flex-col lg:flex-row gap-4 overflow-hidden">
+                            {/* Products Section */}
+                            <div className="flex-1 bg-white rounded-3xl shadow-sm border border-slate-100 p-4 flex flex-col overflow-hidden">
+                                <div className="flex gap-2 pb-4 overflow-x-auto scrollbar-hide shrink-0">
+                                    {posCategories.map(cat => (
+                                        <button
+                                            key={cat}
+                                            onClick={() => setPosActiveCategory(cat)}
+                                            className={`px-4 py-2 rounded-xl font-bold whitespace-nowrap border ${posActiveCategory === cat ? 'bg-primary text-white border-primary shadow-sm' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'}`}
+                                        >
+                                            {cat}
+                                        </button>
+                                    ))}
+                                </div>
+                                <div className="relative mb-4 shrink-0">
+                                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                                    <input
+                                        type="text"
+                                        placeholder="Buscar producto..."
+                                        value={posSearchTerm}
+                                        onChange={(e) => setPosSearchTerm(e.target.value)}
+                                        className="w-full bg-slate-50 border border-slate-200 py-3 pl-10 pr-4 rounded-xl outline-none focus:border-primary font-bold text-slate-700"
+                                    />
+                                </div>
+                                <div className="flex-1 overflow-y-auto pr-2 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4 pb-24 lg:pb-0">
+                                    {posProducts
+                                        .filter(p => posActiveCategory === 'Todos' || p.category === posActiveCategory)
+                                        .filter(p => p.name.toLowerCase().includes(posSearchTerm.toLowerCase()))
+                                        .map(product => (
+                                            <div
+                                                key={product.id}
+                                                onClick={() => addToPosCart(product)}
+                                                className="bg-white border-2 border-slate-100 rounded-2xl overflow-hidden cursor-pointer hover:border-primary/50 transition-all hover:shadow-lg group flex flex-col"
+                                            >
+                                                <div className="h-24 bg-slate-100 relative overflow-hidden shrink-0">
+                                                    {product.image ? (
+                                                        <img src={product.image} className="w-full h-full object-cover group-hover:scale-110 transition-transform" />
+                                                    ) : (
+                                                        <div className="w-full h-full flex items-center justify-center text-slate-300">
+                                                            <Package className="w-8 h-8" />
+                                                        </div>
+                                                    )}
+                                                </div>
+                                                <div className="p-3 flex-1 flex flex-col justify-between">
+                                                    <p className="font-bold text-slate-800 text-sm line-clamp-2 leading-tight">{product.name}</p>
+                                                    <p className="font-black text-primary text-lg mt-2">${(product.promoPrice > 0 ? product.promoPrice : product.price).toFixed(2)}</p>
+                                                </div>
+                                            </div>
+                                        ))}
+                                </div>
+                            </div>
+
+                            {/* Cart Sidebar */}
+                            <div className="w-full lg:w-96 bg-white rounded-3xl shadow-sm border border-slate-100 flex flex-col shrink-0">
+                                {/* Tipos de orden */}
+                                <div className="grid grid-cols-3 gap-1 p-2 bg-slate-100 m-4 rounded-2xl">
+                                    <button onClick={() => setPosOrderType('local')} className={`py-3 flex flex-col items-center justify-center gap-1 rounded-xl font-bold text-[10px] uppercase transition-all ${posOrderType === 'local' ? 'bg-white text-primary shadow-sm' : 'text-slate-500 hover:bg-white/50'}`}>
+                                        <Store className="w-5 h-5" /> Local
+                                    </button>
+                                    <button onClick={() => setPosOrderType('takeout')} className={`py-3 flex flex-col items-center justify-center gap-1 rounded-xl font-bold text-[10px] uppercase transition-all ${posOrderType === 'takeout' ? 'bg-white text-orange-500 shadow-sm' : 'text-slate-500 hover:bg-white/50'}`}>
+                                        <ShoppingBag className="w-5 h-5" /> P. Llevar
+                                    </button>
+                                    <button onClick={() => setPosOrderType('delivery')} className={`py-3 flex flex-col items-center justify-center gap-1 rounded-xl font-bold text-[10px] uppercase transition-all ${posOrderType === 'delivery' ? 'bg-white text-blue-500 shadow-sm' : 'text-slate-500 hover:bg-white/50'}`}>
+                                        <Truck className="w-5 h-5" /> Delivery
+                                    </button>
+                                </div>
+
+                                {/* Custom Details Form */}
+                                <div className="px-4 space-y-3 pb-4 border-b border-slate-100 shrink-0">
+                                    <div className="flex gap-3">
+                                        <input
+                                            type="text"
+                                            placeholder="Nombre cliente"
+                                            value={posClientName}
+                                            onChange={(e) => setPosClientName(e.target.value)}
+                                            className="w-full bg-slate-50 border border-slate-200 p-3 rounded-xl outline-none focus:border-primary font-bold text-sm text-slate-700"
+                                        />
+                                        <input
+                                            type="text"
+                                            placeholder="Cédula/RIF"
+                                            value={posClientDNI}
+                                            onChange={(e) => setPosClientDNI(e.target.value)}
+                                            className="w-full bg-slate-50 border border-slate-200 p-3 rounded-xl outline-none focus:border-primary font-bold text-sm text-slate-700"
+                                        />
+                                    </div>
+                                    {posOrderType === 'delivery' && (
+                                        <>
+                                            <input
+                                                type="text"
+                                                placeholder="Dirección de envío completa"
+                                                value={posDeliveryAddress}
+                                                onChange={(e) => setPosDeliveryAddress(e.target.value)}
+                                                className="w-full bg-blue-50 border border-blue-100 p-3 rounded-xl outline-none focus:border-blue-500 font-bold text-sm text-slate-700"
+                                            />
+                                            <div className="flex items-center gap-2">
+                                                <label className="text-xs font-bold text-slate-500 whitespace-nowrap">Costo Envío:</label>
+                                                <input
+                                                    type="number"
+                                                    min="0"
+                                                    value={posDeliveryFee || ''}
+                                                    onChange={(e) => setPosDeliveryFee(Number(e.target.value))}
+                                                    placeholder="0.00"
+                                                    className="w-full bg-white border border-slate-200 p-2 rounded-lg outline-none focus:border-primary font-bold text-sm text-slate-700"
+                                                />
+                                            </div>
+                                        </>
+                                    )}
+                                </div>
+
+                                {/* Items List */}
+                                <div className="flex-1 overflow-y-auto p-4 space-y-3">
+                                    {posCart.map(item => (
+                                        <div key={item.id} className="flex flex-col gap-2 p-3 bg-slate-50 rounded-2xl border border-slate-100">
+                                            <div className="flex justify-between items-start">
+                                                <div>
+                                                    <p className="font-bold text-slate-800 text-sm leading-tight">{item.name}</p>
+                                                    <p className="font-black text-primary text-sm">${item.price.toFixed(2)}</p>
+                                                </div>
+                                                <button onClick={() => removePosCartItem(item.id)} className="text-slate-400 hover:text-red-500 transition-colors p-1">
+                                                    <Trash2 className="w-4 h-4" />
+                                                </button>
+                                            </div>
+                                            <div className="flex items-center justify-between">
+                                                <div className="flex items-center bg-white rounded-lg border border-slate-200 p-1">
+                                                    <button onClick={() => updatePosCartItem(item.id, -1)} className="w-8 h-8 flex items-center justify-center text-slate-500 hover:text-slate-700 hover:bg-slate-50 rounded-md">
+                                                        <Minus className="w-4 h-4" />
+                                                    </button>
+                                                    <span className="w-8 text-center font-black text-sm">{item.quantity}</span>
+                                                    <button onClick={() => updatePosCartItem(item.id, 1)} className="w-8 h-8 flex items-center justify-center text-primary hover:bg-primary/10 rounded-md">
+                                                        <Plus className="w-4 h-4" />
+                                                    </button>
+                                                </div>
+                                                <p className="font-black text-slate-800">${(item.price * item.quantity).toFixed(2)}</p>
+                                            </div>
+                                        </div>
+                                    ))}
+                                    {posCart.length === 0 && (
+                                        <div className="text-center text-slate-400 font-bold text-sm mt-10 opacity-50">
+                                            <ShoppingCart className="w-10 h-10 mx-auto mb-2" />
+                                            Carrito vacío
+                                        </div>
+                                    )}
+                                </div>
+
+                                {/* Totals & Actions */}
+                                <div className="p-4 bg-slate-100 rounded-b-3xl">
+                                    <div className="space-y-2 mb-4">
+                                        <div className="flex justify-between text-sm font-bold text-slate-500">
+                                            <span>Subtotal</span>
+                                            <span>${posCart.reduce((sum, i) => sum + i.price * i.quantity, 0).toFixed(2)}</span>
+                                        </div>
+                                        {posOrderType === 'delivery' && (
+                                            <div className="flex justify-between text-sm font-bold text-slate-500">
+                                                <span>Envío</span>
+                                                <span>${posDeliveryFee.toFixed(2)}</span>
+                                            </div>
+                                        )}
+                                        <div className="flex justify-between text-xl font-black text-slate-900 border-t border-slate-200 pt-2">
+                                            <span>Total</span>
+                                            <span>${(posCart.reduce((sum, i) => sum + i.price * i.quantity, 0) + posDeliveryFee).toFixed(2)}</span>
+                                        </div>
+                                    </div>
+                                    <button
+                                        onClick={handleCreatePOSOrder}
+                                        disabled={isSubmittingPOS || posCart.length === 0}
+                                        className="w-full bg-primary text-white py-4 rounded-2xl font-black shadow-lg hover:shadow-primary/50 hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                                    >
+                                        {isSubmittingPOS ? (
+                                            <><Loader2 className="w-5 h-5 animate-spin" /> Procesando...</>
+                                        ) : (
+                                            <>Cobrar y Enviar Comanda</>
+                                        )}
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             )}
         </div>

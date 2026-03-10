@@ -11,6 +11,7 @@ import Restaurant from './pages/Restaurant';
 import TrackOrder from './pages/TrackOrder';
 import TransportTracker from './pages/TransportTracker';
 import Taxi from './pages/Taxi';
+import Rewards from './pages/Rewards';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { Toaster } from 'react-hot-toast';
 import { CartProvider } from './context/CartContext';
@@ -74,6 +75,7 @@ export default function ClientApp() {
                                         <Route path="/cart" element={<Cart />} />
                                         <Route path="/favorites" element={<Favorites />} />
                                         <Route path="/profile" element={<Profile />} />
+                                        <Route path="/rewards" element={<Rewards />} />
                                         <Route path="/notifications" element={<Notifications />} />
                                         <Route path="/track/:orderId" element={<TrackOrder />} />
                                         <Route path="/taxi/track/:requestId" element={<TransportTracker />} />

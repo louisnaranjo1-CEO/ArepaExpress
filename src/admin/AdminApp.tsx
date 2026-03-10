@@ -16,6 +16,7 @@ import Subscriptions from './pages/Subscriptions';
 import Banners from './pages/Banners';
 import ReviewsManager from './pages/ReviewsManager';
 import AdsManager from './pages/AdsManager';
+import Finance from './pages/Finance';
 
 function AdminRoutes() {
     const { user, loading } = useAuth();
@@ -48,6 +49,7 @@ function AdminRoutes() {
                 <Route path="/reviews" element={<ReviewsManager />} />
                 <Route path="/subscriptions" element={<Subscriptions />} />
                 <Route path="/ads" element={<AdsManager />} />
+                <Route path="/finance" element={<Finance />} />
                 <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
         </AdminLayout>

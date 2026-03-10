@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { collection, query, where, onSnapshot, updateDoc, doc, serverTimestamp, getDoc } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, updateDoc, doc, serverTimestamp, getDoc, orderBy, limit, increment } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import { useAuth } from '../../context/AuthContext';
-import { MapPin, Navigation, Package, Clock, ShieldCheck, Car, Bike, Compass as CompassIcon } from 'lucide-react';
+import { MapPin, Navigation, Package, Clock, ShieldCheck, Car, Bike, Compass as CompassIcon, MessageSquare, Star } from 'lucide-react';
 import { updateDriverLocation } from '../../lib/delivery-service';
 import { calculateDistance } from '../../lib/geo';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -15,6 +15,7 @@ export default function OrdersRadar() {
     const [activeOrder, setActiveOrder] = useState<any>(null);
     const [activeTransport, setActiveTransport] = useState<any>(null);
     const [loading, setLoading] = useState(true);
+    const [latestFeedback, setLatestFeedback] = useState<any>(null);
 
     // 1. Fetch Driver Profile for vehicleType
     useEffect(() => {
@@ -123,6 +124,30 @@ export default function OrdersRadar() {
 
         return () => unsub();
     }, [driverProfile]);
+
+    // 5. Escuchar último feedback (calificación)
+    useEffect(() => {
+        if (!user) return;
+
+        const feedbackQ = query(
+            collection(db, 'transport_requests'),
+            where('driverId', '==', user.uid),
+            where('status', '==', 'completed'),
+            orderBy('ratedAt', 'desc'),
+            limit(1)
+        );
+
+        const unsub = onSnapshot(feedbackQ, (snapshot) => {
+            if (!snapshot.empty) {
+                const data = snapshot.docs[0].data();
+                if (data.rating) {
+                    setLatestFeedback({ id: snapshot.docs[0].id, ...data });
+                }
+            }
+        });
+
+        return () => unsub();
+    }, [user]);
 
     // 4. Geolocalización constante si hay una orden activa o viaje activo
     useEffect(() => {
@@ -244,6 +269,20 @@ export default function OrdersRadar() {
                 status: 'completed',
                 completedAt: serverTimestamp()
             });
+
+            // Si el viaje tiene usuario asociado y costo, sumar puntos al usuario (2.5 puntos por cada $)
+            if (activeTransport.userId && activeTransport.price) {
+                try {
+                    const pointsToAdd = activeTransport.price * 2.5;
+                    const userRef = doc(db, 'users', activeTransport.userId);
+                    await updateDoc(userRef, {
+                        points: increment(pointsToAdd)
+                    });
+                } catch (pointsError) {
+                    console.error("Error al sumar puntos de viaje:", pointsError);
+                }
+            }
+
             setActiveTransport(null);
         } finally {
             setProcessingAction(null);
@@ -345,10 +384,10 @@ export default function OrdersRadar() {
                             <Navigation className="w-5 h-5" /> Abrir GPS
                         </a>
                         <button
-                            onClick={() => window.open(`/taxi/track/${activeTransport.id}`, '_blank')}
+                            onClick={() => window.open(`/taxi/track/${activeTransport.id}?chat=true`, '_blank')}
                             className="w-full mt-2 bg-indigo-50 text-indigo-600 font-bold py-4 rounded-2xl flex justify-center items-center gap-2 active:scale-95 transition-all"
                         >
-                            <CompassIcon className="w-5 h-5" /> Ver Mapa y Chat
+                            <MessageSquare className="w-5 h-5" /> Ver Chat
                         </button>
                     </div>
                 </div>
@@ -445,6 +484,34 @@ export default function OrdersRadar() {
                     <div className="w-2 h-2 bg-emerald-500/10 rounded-full animate-pulse delay-150"></div>
                 </div>
             </div>
+
+            {/* Recent Feedback for Driver */}
+            <AnimatePresence>
+                {latestFeedback && (
+                    <motion.div
+                        initial={{ opacity: 0, scale: 0.9 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        className="bg-amber-50 border-2 border-amber-200 p-6 rounded-[2.5rem] shadow-lg shadow-amber-200/20 mb-6 relative overflow-hidden"
+                    >
+                        <div className="absolute top-0 right-0 p-4 opacity-10">
+                            <Star className="w-20 h-20 fill-amber-500" />
+                        </div>
+                        <div className="flex items-center gap-3 mb-3">
+                            <div className="flex">
+                                {[1, 2, 3, 4, 5].map((s) => (
+                                    <Star key={s} className={`w-4 h-4 ${latestFeedback.rating >= s ? 'fill-amber-400 text-amber-400' : 'text-amber-200'}`} />
+                                ))}
+                            </div>
+                            <span className="text-[10px] font-black text-amber-700 uppercase tracking-widest">Feedback Reciente</span>
+                        </div>
+                        <p className="text-amber-900 font-black text-lg leading-tight mb-2">¡Buen trabajo, {driverProfile?.name || 'Piloto'}!</p>
+                        {latestFeedback.ratingComment && (
+                            <p className="text-amber-800 text-sm font-medium italic">"{latestFeedback.ratingComment}"</p>
+                        )}
+                        <p className="text-[10px] font-bold text-amber-600/60 mt-4 uppercase tracking-tighter">Viaje ID: {latestFeedback.id.slice(0, 8)}</p>
+                    </motion.div>
+                )}
+            </AnimatePresence>
 
             {hasNoIncoming ? (
                 <motion.div

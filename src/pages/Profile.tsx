@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { User, Mail, MapPin, CreditCard, LogOut, ShoppingBag, Settings, ChevronRight, Clock, FileText, Bell, Navigation, X, Shield, UploadCloud, Star, Wallet } from 'lucide-react';
+import { User, Mail, MapPin, CreditCard, LogOut, ShoppingBag, Settings, ChevronRight, Clock, FileText, Bell, Navigation, X, Shield, UploadCloud, Star, Wallet, Gift, Award } from 'lucide-react';
 import { requestNotificationPermission, disableNotifications } from '../lib/notifications';
 import { useAuth } from '../context/AuthContext';
 import { auth, db, storage } from '../lib/firebase';
@@ -347,9 +347,10 @@ export default function Profile() {
             setShowWalletModal(false);
             setRechargeAmount('');
             setRechargeProof(null);
-        } catch (err) {
+        } catch (err: any) {
             console.error("Error submitting recharge:", err);
-            alert("Error al procesar la recarga.");
+            const errorMsg = err?.message || "Error desconocido";
+            alert(`Error al procesar la recarga: ${errorMsg}`);
         } finally {
             setIsRecharging(false);
         }
@@ -636,9 +637,16 @@ export default function Profile() {
                         </div>
                         <div className="flex-1">
                             <h2 className="text-2xl font-black">{user.displayName || '2X3 Fan'}</h2>
-                            <div className="flex items-center gap-1 text-white/80 text-sm">
-                                <Mail className="w-3 h-3" />
-                                <span>{user.email}</span>
+                            <div className="flex flex-col gap-1">
+                                <div className="flex items-center gap-1 text-white/80 text-xs">
+                                    <Mail className="w-3 h-3" />
+                                    <span>{user.email}</span>
+                                </div>
+                                <div className="bg-white/20 backdrop-blur-md self-start px-3 py-1 rounded-full flex items-center gap-1.5 mt-2 border border-white/20 shadow-sm active:scale-95 transition-transform" onClick={() => navigate('/rewards')}>
+                                    <Award className="w-3.5 h-3.5 text-amber-400" />
+                                    <span className="text-xs font-black text-white">{Math.floor(userData?.points || 0).toLocaleString()} pts</span>
+                                    <ChevronRight className="w-3 h-3 text-white/60" />
+                                </div>
                             </div>
                         </div>
                         <button
@@ -652,29 +660,34 @@ export default function Profile() {
 
                 <div className="px-6 -mt-8">
                     <div className="bg-white rounded-3xl p-6 shadow-xl shadow-slate-200/50 space-y-6">
-                        <div className="grid grid-cols-3 gap-3">
+                        <div className="grid grid-cols-4 gap-2">
                             <div
                                 onClick={() => setShowWalletModal(true)}
-                                className="bg-yellow-50 p-4 rounded-2xl flex flex-col items-center justify-center gap-2 group cursor-pointer hover:bg-yellow-100 transition-colors"
+                                className="bg-yellow-50 p-3 rounded-2xl flex flex-col items-center justify-center gap-1.5 group cursor-pointer hover:bg-yellow-100 transition-colors"
                             >
                                 <Wallet className="w-6 h-6 text-yellow-600 group-hover:scale-110 transition-transform" />
-                                <span className="text-xs font-bold text-slate-700 text-center leading-tight">Mi Billetera<br />2X3</span>
+                                <span className="text-[10px] font-bold text-slate-700 text-center leading-tight">Mi Billetera</span>
                             </div>
                             <div
                                 onClick={scrollToOrders}
-                                className="bg-orange-50 p-4 rounded-2xl flex flex-col items-center justify-center gap-2 group cursor-pointer hover:bg-orange-100 transition-colors"
+                                className="bg-orange-50 p-3 rounded-2xl flex flex-col items-center justify-center gap-1.5 group cursor-pointer hover:bg-orange-100 transition-colors"
                             >
                                 <ShoppingBag className="w-6 h-6 text-orange-500 group-hover:scale-110 transition-transform" />
-                                <span className="text-xs font-bold text-slate-600 text-center leading-tight">Mis<br />Pedidos</span>
+                                <span className="text-[10px] font-bold text-slate-600 text-center leading-tight">Pedidos</span>
                             </div>
                             <div
                                 onClick={() => setShowAddressPicker(true)}
-                                className={`p-4 rounded-2xl flex flex-col items-center justify-center gap-2 group cursor-pointer transition-colors ${userData?.address ? 'bg-green-50 hover:bg-green-100' : 'bg-blue-50 hover:bg-blue-100'}`}
+                                className={`p-3 rounded-2xl flex flex-col items-center justify-center gap-1.5 group cursor-pointer transition-colors ${userData?.address ? 'bg-green-50 hover:bg-green-100' : 'bg-blue-50 hover:bg-blue-100'}`}
                             >
                                 <MapPin className={`w-6 h-6 group-hover:scale-110 transition-transform ${userData?.address ? 'text-green-500' : 'text-blue-500'}`} />
-                                <span className="text-xs font-bold text-slate-600 text-center leading-tight">
-                                    {userData?.address ? 'Cambiar\nDirec.' : 'Mis\nDirec.'}
-                                </span>
+                                <span className="text-[10px] font-bold text-slate-600 text-center leading-tight">Direcciones</span>
+                            </div>
+                            <div
+                                onClick={() => navigate('/rewards')}
+                                className="bg-primary/5 p-3 rounded-2xl flex flex-col items-center justify-center gap-1.5 group cursor-pointer hover:bg-primary/10 transition-colors border border-primary/10"
+                            >
+                                <Gift className="w-6 h-6 text-primary group-hover:scale-110 transition-transform" />
+                                <span className="text-[10px] font-bold text-primary text-center leading-tight">Regalos</span>
                             </div>
                         </div>
 

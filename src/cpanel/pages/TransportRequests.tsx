@@ -2,8 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { collection, query, orderBy, onSnapshot, doc, updateDoc, deleteDoc, writeBatch, getDocs, where, serverTimestamp } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { db, storage } from '../../lib/firebase';
-import { Car, Bike, Clock, CheckCircle2, XCircle, Search, Calendar, DollarSign, MapPin, User, ShieldCheck, Upload, Image as ImageIcon } from 'lucide-react';
+import { Car, Bike, Clock, CheckCircle2, XCircle, Search, Calendar, DollarSign, MapPin, User, ShieldCheck, Upload, Image as ImageIcon, MessageSquare, Star } from 'lucide-react';
 import toast from 'react-hot-toast';
+import RideChat from '../../components/RideChat';
 
 export default function TransportRequests() {
     const [requests, setRequests] = useState<any[]>([]);
@@ -11,6 +12,7 @@ export default function TransportRequests() {
     const [filter, setFilter] = useState('all'); // all, verifying_payment, finding_driver, in_progress, completed, cancelled
     const [searchTerm, setSearchTerm] = useState('');
     const [view, setView] = useState<'viajes' | 'contabilidad'>('viajes');
+    const [selectedChatRequest, setSelectedChatRequest] = useState<string | null>(null);
 
     const [showPayoutModal, setShowPayoutModal] = useState(false);
     const [selectedDriver, setSelectedDriver] = useState<any>(null);
@@ -98,31 +100,38 @@ export default function TransportRequests() {
             lifetimeEarnings: number;
             unpaidTrips: any[];
             totalTripsCount: number;
+            adminProfit: number;
         }> = {};
 
-        requests.filter(r => r.status === 'completed' && r.driverId).forEach(req => {
-            const { driverId, driverName, driverPhone, driverPayout, driverPaid } = req;
+        requests.filter(r => r.status === 'completed').forEach(req => {
+            const { driverId, driverName, driverPhone, driverPayout, clientTotal, driverPaid } = req;
             const payout = parseFloat(driverPayout || req.price || 0);
+            const total = parseFloat(clientTotal || req.price || 0);
+            const profit = total - payout;
 
-            if (!stats[driverId]) {
-                stats[driverId] = {
-                    driverId,
-                    driverName: driverName || 'Desconocido',
-                    driverPhone: driverPhone || '',
-                    weeklyDebt: 0,
-                    lifetimeEarnings: 0,
-                    unpaidTrips: [],
-                    totalTripsCount: 0
-                };
-            }
+            if (driverId) {
+                if (!stats[driverId]) {
+                    stats[driverId] = {
+                        driverId,
+                        driverName: driverName || 'Desconocido',
+                        driverPhone: driverPhone || '',
+                        weeklyDebt: 0,
+                        lifetimeEarnings: 0,
+                        unpaidTrips: [],
+                        totalTripsCount: 0,
+                        adminProfit: 0
+                    };
+                }
 
-            stats[driverId].totalTripsCount += 1;
+                stats[driverId].totalTripsCount += 1;
+                stats[driverId].adminProfit += profit;
 
-            if (driverPaid) {
-                stats[driverId].lifetimeEarnings += payout;
-            } else {
-                stats[driverId].weeklyDebt += payout;
-                stats[driverId].unpaidTrips.push(req);
+                if (driverPaid) {
+                    stats[driverId].lifetimeEarnings += payout;
+                } else {
+                    stats[driverId].weeklyDebt += payout;
+                    stats[driverId].unpaidTrips.push(req);
+                }
             }
         });
 
@@ -287,17 +296,27 @@ export default function TransportRequests() {
 
                                         {/* Financial Info */}
                                         <div className="bg-slate-100/50 rounded-2xl p-4 md:text-right min-w-[240px] border border-slate-100 flex flex-col justify-center">
-                                            <div className="grid grid-cols-2 gap-4 md:grid-cols-1 md:gap-2">
+                                            <div className="grid grid-cols-3 gap-4 md:grid-cols-1 md:gap-2">
                                                 <div>
                                                     <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1">Costo Cliente</p>
                                                     <p className="text-xl font-black text-emerald-600">${parseFloat(req.clientTotal || req.price || 0).toFixed(2)}</p>
                                                 </div>
                                                 <div className="border-l md:border-l-0 md:border-t border-slate-200 pl-4 md:pl-0 md:pt-2">
-                                                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1">Pago a Taxi</p>
+                                                    <p className="text-[10px] font-black text-indigo-400 uppercase tracking-widest leading-none mb-1">Pago a Taxi</p>
                                                     <p className="text-lg font-black text-indigo-600">${parseFloat(req.driverPayout || req.price || 0).toFixed(2)}</p>
+                                                </div>
+                                                <div className="border-l md:border-l-0 md:border-t border-slate-200 pl-4 md:pl-0 md:pt-2">
+                                                    <p className="text-[10px] font-black text-amber-500 uppercase tracking-widest leading-none mb-1">Ganancia Admin</p>
+                                                    <p className="text-lg font-black text-amber-600">${(parseFloat(req.clientTotal || req.price || 0) - parseFloat(req.driverPayout || req.price || 0)).toFixed(2)}</p>
                                                 </div>
                                             </div>
                                             <div className="flex items-center gap-2 mt-3 md:justify-end text-[10px] font-bold">
+                                                <button
+                                                    onClick={() => setSelectedChatRequest(req.id)}
+                                                    className="bg-white px-2 py-1 rounded shadow-sm text-indigo-600 border border-indigo-200 flex items-center gap-1 hover:bg-indigo-50 transition-colors"
+                                                >
+                                                    <MessageSquare className="w-3 h-3" /> Ver Chat
+                                                </button>
                                                 <span className="bg-white px-2 py-1 rounded shadow-sm text-slate-600 border border-slate-200 flex items-center gap-1">
                                                     <DollarSign className="w-3 h-3 text-emerald-500" /> {req.paymentMethod === 'pagoMovil' ? 'Pago Móvil' : req.paymentMethod === 'cash' ? 'Efectivo' : req.paymentMethod}
                                                 </span>
@@ -395,6 +414,23 @@ export default function TransportRequests() {
                                         </div>
                                     )}
 
+                                    {/* Rating Display for Admin */}
+                                    {req.status === 'completed' && req.rating && (
+                                        <div className="mt-4 p-4 bg-amber-50 rounded-2xl border border-amber-100 animate-in fade-in">
+                                            <div className="flex items-center gap-2 mb-2">
+                                                <div className="flex">
+                                                    {[1, 2, 3, 4, 5].map((s) => (
+                                                        <Star key={s} className={`w-4 h-4 ${req.rating >= s ? 'fill-amber-400 text-amber-400' : 'text-slate-200'}`} />
+                                                    ))}
+                                                </div>
+                                                <span className="text-xs font-black text-amber-700">CALIFICACIÓN DEL CLIENTE</span>
+                                            </div>
+                                            {req.ratingComment && (
+                                                <p className="text-sm font-medium text-slate-600 italic">"{req.ratingComment}"</p>
+                                            )}
+                                        </div>
+                                    )}
+
                                     {/* Footer Actions (Delete old records) */}
                                     {(req.status === 'completed' || req.status === 'cancelled') && (
                                         <div className="mt-4 pt-4 border-t border-slate-100 flex justify-end">
@@ -424,7 +460,7 @@ export default function TransportRequests() {
                     ) : (
                         <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
                             {getDriverStats().map((stat) => (
-                                <div key={stat.driverId} className="bg-white rounded-3xl p-6 border border-slate-200 shadow-sm">
+                                <div key={stat.driverId} className="bg-white rounded-3xl p-6 border border-slate-200 shadow-sm flex flex-col">
                                     <div className="flex items-center gap-4 mb-6">
                                         <div className="w-12 h-12 bg-indigo-50 rounded-full flex items-center justify-center text-indigo-600 shrink-0">
                                             <User className="w-6 h-6" />
@@ -435,17 +471,21 @@ export default function TransportRequests() {
                                         </div>
                                     </div>
 
-                                    <div className="grid grid-cols-2 gap-4 mb-6">
-                                        <div className="bg-rose-50 p-4 rounded-2xl border border-rose-100">
-                                            <p className="text-[10px] font-black text-rose-500 uppercase tracking-widest mb-1">Deuda Semanal</p>
-                                            <p className="text-2xl font-black text-rose-700">${stat.weeklyDebt.toFixed(2)}</p>
-                                            <p className="text-[10px] font-bold text-rose-600 mt-1">{stat.unpaidTrips.length} viajes sin pagar</p>
+                                    <div className="grid grid-cols-2 gap-4 mb-4">
+                                        <div className="bg-rose-50 p-3 rounded-2xl border border-rose-100">
+                                            <p className="text-[10px] font-black text-rose-500 uppercase tracking-widest mb-1">Deuda</p>
+                                            <p className="text-lg font-black text-rose-700">${stat.weeklyDebt.toFixed(2)}</p>
                                         </div>
-                                        <div className="bg-emerald-50 p-4 rounded-2xl border border-emerald-100">
-                                            <p className="text-[10px] font-black text-emerald-600 uppercase tracking-widest mb-1">Ganancia Histórica</p>
-                                            <p className="text-xl font-black text-emerald-700">${stat.lifetimeEarnings.toFixed(2)}</p>
-                                            <p className="text-[10px] font-bold text-emerald-600 mt-1">{stat.totalTripsCount - stat.unpaidTrips.length} viajes pagados</p>
+                                        <div className="bg-emerald-50 p-3 rounded-2xl border border-emerald-100">
+                                            <p className="text-[10px] font-black text-emerald-600 uppercase tracking-widest mb-1">Pagado</p>
+                                            <p className="text-lg font-black text-emerald-700">${stat.lifetimeEarnings.toFixed(2)}</p>
                                         </div>
+                                    </div>
+
+                                    <div className="bg-amber-50 p-4 rounded-2xl border border-amber-100 mb-6">
+                                        <p className="text-[10px] font-black text-amber-600 uppercase tracking-widest mb-1">Ganancia Admin</p>
+                                        <p className="text-2xl font-black text-amber-700">${stat.adminProfit.toFixed(2)}</p>
+                                        <p className="text-[10px] font-bold text-amber-600 mt-1 uppercase tracking-tighter">Total de {stat.totalTripsCount} viajes</p>
                                     </div>
 
                                     <button
@@ -454,7 +494,7 @@ export default function TransportRequests() {
                                             setSelectedDriver(stat);
                                             setShowPayoutModal(true);
                                         }}
-                                        className="w-full bg-slate-900 text-white font-black py-4 rounded-2xl shadow-xl shadow-slate-900/20 disabled:opacity-50 active:scale-[0.98] transition-all flex items-center justify-center gap-2"
+                                        className="w-full bg-slate-900 text-white font-black py-4 rounded-2xl shadow-xl shadow-slate-900/20 disabled:opacity-50 active:scale-[0.98] transition-all flex items-center justify-center gap-2 mt-auto"
                                     >
                                         <DollarSign className="w-5 h-5" />
                                         Liquidar Deuda (${stat.weeklyDebt.toFixed(2)})
@@ -464,8 +504,7 @@ export default function TransportRequests() {
                         </div>
                     )}
                 </div>
-            )
-            }
+            )}
 
             {/* Payout Modal */}
             {showPayoutModal && selectedDriver && (
@@ -546,6 +585,17 @@ export default function TransportRequests() {
                     </div>
                 </div>
             )}
-        </div >
+            {/* Chat Modal for Admin */}
+            {selectedChatRequest && (
+                <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-[100] z-50">
+                    <div className="bg-white rounded-[2rem] w-full max-w-lg h-[80vh] relative shadow-2xl overflow-hidden flex flex-col">
+                        <RideChat
+                            requestId={selectedChatRequest}
+                            onClose={() => setSelectedChatRequest(null)}
+                        />
+                    </div>
+                </div>
+            )}
+        </div>
     );
 }

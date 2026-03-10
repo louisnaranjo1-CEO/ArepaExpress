@@ -1,4 +1,4 @@
-import { ArrowLeft, Search, Heart, Star, Clock, Plus, AlertCircle, MessageSquare, MapPin, ChevronRight, Phone, Instagram, UserPlus, UserCheck, Store, Truck, CheckCircle, User as UserIcon, Briefcase, X, Tag } from 'lucide-react';
+import { ArrowLeft, Search, Heart, Star, Clock, Plus, AlertCircle, MessageSquare, MapPin, ChevronRight, Phone, Instagram, UserPlus, UserCheck, Store, Truck, CheckCircle, User as UserIcon, Briefcase, X, Tag, Share2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Link, useParams } from 'react-router-dom';
 import { useState, useEffect } from 'react';
@@ -8,6 +8,7 @@ import { Restaurant, Product } from '../lib/seed';
 import { useCart } from '../context/CartContext';
 import { useAuth } from '../context/AuthContext';
 import { recommendationsService } from '../lib/recommendations';
+import toast from 'react-hot-toast';
 
 export default function RestaurantPage() {
   const { id } = useParams<{ id: string }>();
@@ -26,6 +27,22 @@ export default function RestaurantPage() {
   const [showHoursModal, setShowHoursModal] = useState(false);
   const [casheaIcon, setCasheaIcon] = useState<string | null>(null);
   const { user } = useAuth();
+
+  const handleShare = () => {
+    const referralCode = localStorage.getItem('referralCode') || user?.uid?.slice(0, 6).toUpperCase() || 'INVITE';
+    const shareUrl = `${window.location.origin}/restaurant/${id}?ref=${referralCode}`;
+
+    if (navigator.share) {
+      navigator.share({
+        title: `¡Mira este restaurante en Arepa Express!`,
+        text: `Te recomiendo ${restaurant?.name}. Regístrate con mi código y participa en sorteos.`,
+        url: shareUrl,
+      }).catch(console.error);
+    } else {
+      navigator.clipboard.writeText(shareUrl);
+      toast.success("¡Enlace copiado! Compártelo con tus amigos.");
+    }
+  };
 
   const isWaiter = localStorage.getItem('isWaiter') === 'true';
   const waiterData = JSON.parse(localStorage.getItem('waiterData') || '{}');
@@ -84,7 +101,7 @@ export default function RestaurantPage() {
         const iconsSnap = await getDocs(collection(db, 'global_icons'));
         const cashea = iconsSnap.docs.find(doc => doc.data().name.toLowerCase() === 'cashea');
         // Use official Cashea icon as requested by user
-        setCasheaIcon("https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/unnamed%20%2814%29.jpg?alt=media&token=425d2b78-43d8-4f05-8e7c-87d2cb58abdd");
+        setCasheaIcon("https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/logo%20cashea.png?alt=media&token=5b266100-3323-41bb-a5a4-23957ce678a1");
       } catch (err) {
         console.error("Error fetching icons:", err);
       }
@@ -269,6 +286,13 @@ export default function RestaurantPage() {
             <ArrowLeft className="w-6 h-6" />
           </button>
           <div className="flex gap-3">
+            <button
+              onClick={handleShare}
+              className="flex items-center justify-center w-10 h-10 rounded-full bg-white/20 backdrop-blur-md text-white hover:bg-white/30 transition-colors"
+              title="Compartir Restaurante"
+            >
+              <Share2 className="w-5 h-5" />
+            </button>
             <button
               onClick={toggleFavorite}
               className="flex items-center justify-center w-10 h-10 rounded-full bg-white/20 backdrop-blur-md text-white hover:bg-white/30 transition-colors"

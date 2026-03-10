@@ -86,7 +86,6 @@ export default function Taxi() {
     const [vehicleType, setVehicleType] = useState<'moto' | 'carro' | 'ejecutivo' | null>(null);
     const [adminRates, setAdminRates] = useState<any>(null);
     const [paymentMethods, setPaymentMethods] = useState<any>(null);
-    const [isMapInteractionEnabled, setIsMapInteractionEnabled] = useState(true);
     const [serviceHours, setServiceHours] = useState<any>(null);
 
     const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<string | null>(null);
@@ -221,7 +220,6 @@ export default function Taxi() {
                             distance: distanceKm,
                             duration: leg.duration?.text || ''
                         });
-                        setIsMapInteractionEnabled(false);
                         return; // Successfully calculated
                     }
                 }
@@ -241,7 +239,6 @@ export default function Taxi() {
                 });
 
                 setDirectionsResponse(null); // No path to render
-                setIsMapInteractionEnabled(false);
 
                 if (status === 'ZERO_RESULTS') {
                     toast("Ruta vial no encontrada, estimando distancia en línea recta", { icon: '📏' });
@@ -252,6 +249,37 @@ export default function Taxi() {
         }
         return () => { isMounted = false; };
     }, [step, origin, destination, directionsService, directionsResponse]);
+
+    // 6. Viewport Auto-Adjustment
+    useEffect(() => {
+        if (!map || step !== 'vehicle') return;
+
+        const bounds = new google.maps.LatLngBounds();
+        let hasPoints = false;
+
+        if (directionsResponse) {
+            // Frame the calculated route
+            const route = directionsResponse.routes[0];
+            route.overview_path.forEach(point => bounds.extend(point));
+            hasPoints = true;
+        } else if (origin && destination) {
+            // Frame markers in fallback mode
+            bounds.extend({ lat: origin.lat, lng: origin.lng });
+            bounds.extend({ lat: destination.lat, lng: destination.lng });
+            hasPoints = true;
+        }
+
+        if (hasPoints) {
+            // Adjust viewport with padding-bottom to clear the vehicle selection bottom sheet
+            // 320px bottom padding is usually enough for the "Elige un vehículo" UI
+            map.fitBounds(bounds, {
+                bottom: 320,
+                top: 140,
+                left: 60,
+                right: 60
+            });
+        }
+    }, [map, directionsResponse, step, origin, destination]);
 
     // 6. Navigation Helpers
     const confirmOrigin = () => {
@@ -274,7 +302,6 @@ export default function Taxi() {
 
         setDirectionsResponse(null);
         setRouteInfo(null);
-        setIsMapInteractionEnabled(true);
 
         if (step === 'vehicle') {
             setStep('destination');
@@ -398,6 +425,8 @@ export default function Taxi() {
                 total: parseFloat(clientTotal as string),
                 price: parseFloat(clientTotal as string),
                 driverPayout: parseFloat(driverPayout as string),
+                driverId: null, // Ensuring it's explicit
+                driverPaid: false, // For earnings tracking
                 status: initialStatus,
                 paymentMethod: selectedPaymentMethod,
                 paymentRef: paymentRef || '',
@@ -511,7 +540,7 @@ export default function Taxi() {
                     onUnmount={onUnmount}
                     options={{
                         ...mapOptions,
-                        gestureHandling: isMapInteractionEnabled ? 'greedy' : 'none'
+                        gestureHandling: 'greedy'
                     }}
                     onDragStart={handleMapDragStart}
                     onDragEnd={handleMapDragEnd}
@@ -618,24 +647,20 @@ export default function Taxi() {
                             <p className="text-sm font-medium text-slate-500 mb-6">Mueve el mapa para ajustar tu partida</p>
 
                             <div
-                                onClick={() => setIsMapInteractionEnabled(true)}
-                                className={`flex items-center gap-4 p-4 rounded-2xl border transition-all mb-6 cursor-pointer ${isMapInteractionEnabled ? 'bg-white border-black ring-2 ring-black/5' : 'bg-slate-50 border-slate-100'}`}
+                                className="flex items-center gap-4 p-4 rounded-2xl border transition-all mb-6 cursor-pointer bg-white border-black ring-2 ring-black/5"
                             >
-                                <div className={`w-3 h-3 rounded-full flex-shrink-0 ${isMapInteractionEnabled ? 'bg-black animate-pulse' : 'bg-slate-400'}`} />
+                                <div className="w-3 h-3 rounded-full flex-shrink-0 bg-black animate-pulse" />
                                 <div className="flex-1">
                                     <p className="text-[10px] font-black uppercase text-slate-400 mb-0.5">Punto de Partida</p>
                                     <p className="font-bold text-slate-800 truncate">
                                         {isDragging ? 'Ubicando...' : origin?.address || 'Cargando ubicación...'}
                                     </p>
                                 </div>
-                                {!isMapInteractionEnabled && (
-                                    <span className="text-[10px] font-black bg-black text-white px-2 py-1 rounded-md uppercase">Tocar para mover</span>
-                                )}
                             </div>
 
                             <button
                                 onClick={confirmOrigin}
-                                disabled={isDragging || !origin || !isMapInteractionEnabled}
+                                disabled={isDragging || !origin}
                                 className="w-full bg-black text-white py-4 rounded-xl font-black shadow-lg shadow-black/20 flex justify-center items-center gap-2 active:scale-95 transition-all disabled:opacity-50 mb-6"
                             >
                                 Confirmar Partida
@@ -653,7 +678,6 @@ export default function Taxi() {
                                                     setOrigin(loc);
                                                     setCurrentCenter({ lat: addr.lat, lng: addr.lng });
                                                     if (map) map.panTo({ lat: addr.lat, lng: addr.lng });
-                                                    setIsMapInteractionEnabled(true);
                                                 }}
                                                 className="flex-shrink-0 flex items-center gap-2 bg-slate-50 hover:bg-slate-100 px-4 py-2.5 rounded-xl border border-slate-100 transition-colors"
                                             >
@@ -746,7 +770,6 @@ export default function Taxi() {
                                             onClick={() => {
                                                 setIsCalculatingRoute(false);
                                                 setStep('destination');
-                                                setIsMapInteractionEnabled(true);
                                             }}
                                             className="mt-4 text-xs font-black text-rose-500 uppercase tracking-widest bg-rose-50 px-4 py-2 rounded-full"
                                         >

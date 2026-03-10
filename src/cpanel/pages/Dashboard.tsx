@@ -54,6 +54,8 @@ export default function Dashboard() {
 
                 // Fetch orders
                 const ordersSnap = await getDocs(collection(db, 'orders'));
+                const transportSnap = await getDocs(collection(db, 'transport_requests'));
+
                 let totalRevenue = 0;
                 const revenueByRestaurant: Record<string, { sales: number, count: number }> = {};
 
@@ -69,6 +71,14 @@ export default function Dashboard() {
                             revenueByRestaurant[data.restaurantId].sales += (data.total || 0);
                             revenueByRestaurant[data.restaurantId].count += 1;
                         }
+                    }
+                });
+
+                // Include transport revenue
+                transportSnap.forEach(doc => {
+                    const data = doc.data();
+                    if (data.status === 'completed') {
+                        totalRevenue += (data.total || data.price || 0);
                     }
                 });
 
@@ -88,7 +98,7 @@ export default function Dashboard() {
                 setStats({
                     users: usersCount,
                     restaurants: restaurantsCount,
-                    orders: ordersSnap.size,
+                    orders: ordersSnap.size + transportSnap.size,
                     revenue: totalRevenue,
                     newUsersToday: newToday
                 });

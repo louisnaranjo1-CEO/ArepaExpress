@@ -121,9 +121,14 @@ export default function WaitersManager() {
             setPhotoFile(null);
             setPhotoPreview(null);
             fetchWaiters();
-        } catch (error) {
-            console.error("Error adding waiter: ", error);
-            alert("Error al añadir mesero");
+        } catch (error: any) {
+            console.error("Error adding waiter (Detailed):", error);
+            // Check if it's a permission error
+            if (error.code === 'permission-denied' || error.message?.includes('permission')) {
+                alert("Error de permisos: Las reglas de seguridad de Firebase están bloqueando la operación. Por favor, revisa que firestore.rules y storage.rules estén desplegadas.");
+            } else {
+                alert("Error al añadir mesero: " + (error.message || "Error desconocido"));
+            }
         } finally {
             setIsSaving(false);
         }
