@@ -30,6 +30,30 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    // Wallet recharges
+    match /wallet_recharges/{rechargeId} {
+      allow read: if request.auth != null && (request.auth.uid == resource.data.userId || request.auth.token.admin == true);
+      allow create: if request.auth != null && request.auth.uid == request.resource.data.userId;
+    }
+
+    // System configurations (for payment methods)
+    match /system_configs/finances {
+      allow read: if true;
+    }
+
+    // Transport requests (Taxi)
+    match /transport_requests/{requestId} {
+      allow read: if request.auth != null && (request.auth.uid == resource.data.userId || request.auth.uid == resource.data.driverId || request.auth.token.admin == true);
+      allow create: if request.auth != null && request.auth.uid == request.resource.data.userId;
+      allow update: if request.auth != null; // Allow drivers to accept and update
+    }
+
+    // Notifications
+    match /notifications/{notifId} {
+      allow read: if request.auth != null && request.auth.uid == resource.data.userId;
+      allow create: if request.auth != null;
+    }
+
     // Default deny
     match /{document=**} {
       allow read, write: if false;

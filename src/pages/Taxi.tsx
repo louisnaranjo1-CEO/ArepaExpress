@@ -7,6 +7,7 @@ import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { Car, Bike, MapPin, Navigation, ArrowRight, CheckCircle2, X, Heart, History, Star, Wallet, Upload } from 'lucide-react';
 import { GoogleMap, useJsApiLoader, Marker, DirectionsRenderer } from '@react-google-maps/api';
 import toast from 'react-hot-toast';
+import { calculateDistance } from '../lib/geo';
 
 interface Location {
     lat: number;
@@ -221,20 +222,31 @@ export default function Taxi() {
                             duration: leg.duration?.text || ''
                         });
                         setIsMapInteractionEnabled(false);
-                    } else {
-                        toast.error("Google no pudo determinar la distancia exacta. Intenta mover el marcador a una calle principal.");
-                        setStep('destination');
-                        setIsMapInteractionEnabled(true);
+                        return; // Successfully calculated
                     }
+                }
+
+                // --- FALLBACK LOGIC ---
+                // Si la API de Google Maps falla (ej. REQUEST_DENIED, ZERO_RESULTS)
+                // Usamos la calculadora en línea recta
+                console.warn(`Route calculation failed with status: ${status}. Using straight-line distance fallback.`);
+
+                const distanceMeters = calculateDistance(origin.lat, origin.lng, destination.lat, destination.lng);
+                const distanceKm = Number((distanceMeters / 1000).toFixed(1));
+                const estimatedMinutes = Math.max(3, Math.ceil(distanceKm * 4)); // Aprox 4 mins by km in urban traffic
+
+                setRouteInfo({
+                    distance: distanceKm,
+                    duration: `Aprox. ${estimatedMinutes} min`
+                });
+
+                setDirectionsResponse(null); // No path to render
+                setIsMapInteractionEnabled(false);
+
+                if (status === 'ZERO_RESULTS') {
+                    toast("Ruta vial no encontrada, estimando distancia en línea recta", { icon: '📏' });
                 } else {
-                    console.warn("Route calculation failed:", status);
-                    if (status === 'ZERO_RESULTS') {
-                        toast.error("No se encontró una ruta vial para estos puntos. Por favor, selecciona lugares cerca de avenidas o calles transitables.");
-                    } else {
-                        toast.error("Error al conectar con el servidor de mapas. Intenta de nuevo.");
-                    }
-                    setStep('destination');
-                    setIsMapInteractionEnabled(true);
+                    toast.error(`Aviso: Servicio GPS limitado (${status}). Usando distancia en línea recta.`);
                 }
             });
         }

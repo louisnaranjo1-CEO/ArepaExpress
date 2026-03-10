@@ -63,7 +63,7 @@ export default function CpanelLayout({ children, onLogout }: CpanelLayoutProps) 
                         <div className="flex items-center gap-3">
                             <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center p-1.5 shadow-sm ring-1 ring-slate-800">
                                 <img
-                                    src="https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/logo%20oficial.png?alt=media"
+                                    src="https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/logo%20oficial.png?alt=media&token=2dd047ea-6c45-4347-8869-1a1edf4253f4"
                                     alt="2X3 Logo"
                                     className="w-full h-full object-contain"
                                 />

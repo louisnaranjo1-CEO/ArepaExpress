@@ -6,7 +6,7 @@ import { auth, db, storage } from '../lib/firebase';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { useNavigate } from 'react-router-dom';
 import { signInWithGoogle, signInWithEmail, signUpWithEmail } from '../lib/auth-service';
-import { collection, query, where, orderBy, getDocs, doc, setDoc, serverTimestamp, collectionGroup, getDoc, updateDoc } from 'firebase/firestore';
+import { collection, query, where, orderBy, getDocs, doc, setDoc, serverTimestamp, collectionGroup, getDoc, updateDoc, addDoc } from 'firebase/firestore';
 import { updateProfile } from 'firebase/auth';
 import { Image as ImageIcon, Camera, Smartphone, User as UserIcon, Save } from 'lucide-react';
 import AddressPicker from '../components/AddressPicker';
@@ -332,12 +332,13 @@ export default function Profile() {
                 proofUrl = await getDownloadURL(snapshot.ref);
             }
 
-            await setDoc(doc(collection(db, 'wallet_recharges')), {
+            await addDoc(collection(db, 'wallet_recharges'), {
                 userId: user.uid,
                 userName: userData?.displayName || user.displayName || 'Usuario',
                 userPhone: userData?.phone || '',
                 amount: parseFloat(rechargeAmount),
                 proofUrl,
+                paymentRef: rechargeRef,
                 status: 'pending',
                 createdAt: serverTimestamp()
             });

@@ -10,6 +10,7 @@ import { calculateDistance, formatDistance } from '../lib/geo';
 import CitySelectorModal from '../components/CitySelectorModal';
 import WelcomePopup from '../components/WelcomePopup';
 import { recommendationsService } from '../lib/recommendations';
+import { toast } from 'react-hot-toast';
 
 interface RecommendedProduct extends Product {
   restaurantId: string;
@@ -339,7 +340,10 @@ export default function Home() {
             </div>
 
             {/* Points */}
-            <div className="flex flex-col shrink-0">
+            <div
+              onClick={() => toast('¡Estamos preparando algo en un 2x3 para ti!', { icon: '🎁', style: { borderRadius: '15px', background: '#333', color: '#fff' } })}
+              className="flex flex-col shrink-0 cursor-pointer active:scale-95 transition-transform"
+            >
               <span className="text-[9px] font-black uppercase text-slate-400 tracking-tighter leading-none mb-0.5">Puntos</span>
               <div className="flex items-center gap-1 bg-primary/10 px-2 py-0.5 rounded-full border border-primary/10">
                 <Star className="w-2.5 h-2.5 text-primary fill-primary" />

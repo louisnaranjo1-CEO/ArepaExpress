@@ -153,10 +153,12 @@ export default function FinancesManager() {
     const handleLogoUpload = async (methodId: string, file: File) => {
         setUploadingLogo(methodId);
         try {
-            const storageRef = ref(storage, `payment_logos/${methodId}_${Date.now()}`);
-            await uploadBytes(storageRef, file);
-            const downloadURL = await getDownloadURL(storageRef);
+            const timestamp = Date.now();
+            const storageRef = ref(storage, `payment_logos/${methodId}_${timestamp}`);
+            const snapshot = await uploadBytes(storageRef, file);
+            const downloadURL = await getDownloadURL(snapshot.ref);
 
+            // 1. Update local state
             setConfig((prev: any) => ({
                 ...prev,
                 paymentMethods: {
@@ -167,10 +169,21 @@ export default function FinancesManager() {
                     }
                 }
             }));
-            toast.success("Logo actualizado");
-        } catch (error) {
+
+            // 2. Perform atomic update in Firestore so it's saved immediately
+            const financeRef = doc(db, 'system_configs', 'finances');
+            await updateDoc(financeRef, {
+                [`paymentMethods.${methodId}.logoUrl`]: downloadURL
+            });
+
+            toast.success("Logo guardado correctamente");
+        } catch (error: any) {
             console.error("Error uploading logo:", error);
-            toast.error("Error al subir el logo");
+            if (error.code === 'storage/unauthorized') {
+                toast.error("Permiso denegado. Las reglas de Storage están siendo actualizadas.");
+            } else {
+                toast.error("Error al procesar el logo.");
+            }
         } finally {
             setUploadingLogo(null);
         }
@@ -218,20 +231,31 @@ export default function FinancesManager() {
                             }}
                         />
                     </label>
-                    {config.paymentMethods[methodId].logoUrl && (
-                        <button
-                            onClick={() => setConfig((prev: any) => ({
+                    <button
+                        onClick={async () => {
+                            if (!window.confirm("¿Seguro que quieres eliminar este logo?")) return;
+                            setConfig((prev: any) => ({
                                 ...prev,
                                 paymentMethods: {
                                     ...prev.paymentMethods,
                                     [methodId]: { ...prev.paymentMethods[methodId], logoUrl: '' }
                                 }
-                            }))}
-                            className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-xl transition-all"
-                        >
-                            <Trash2 className="w-4 h-4" />
-                        </button>
-                    )}
+                            }));
+                            try {
+                                const financeRef = doc(db, 'system_configs', 'finances');
+                                await updateDoc(financeRef, {
+                                    [`paymentMethods.${methodId}.logoUrl`]: ''
+                                });
+                                toast.success("Logo eliminado");
+                            } catch (err) {
+                                console.error(err);
+                                toast.error("Error al actualizar la base de datos");
+                            }
+                        }}
+                        className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-xl transition-all"
+                    >
+                        <Trash2 className="w-4 h-4" />
+                    </button>
                 </div>
             </div>
         </div>
