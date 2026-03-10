@@ -82,9 +82,8 @@ export default function RestaurantPage() {
       try {
         const iconsSnap = await getDocs(collection(db, 'global_icons'));
         const cashea = iconsSnap.docs.find(doc => doc.data().name.toLowerCase() === 'cashea');
-        if (cashea) {
-          setCasheaIcon(cashea.data().imageUrl);
-        }
+        // Use official Cashea icon as requested by user
+        setCasheaIcon("https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/unnamed%20(14).jpg?alt=media");
       } catch (err) {
         console.error("Error fetching icons:", err);
       }

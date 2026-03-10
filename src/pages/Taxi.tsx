@@ -113,9 +113,19 @@ export default function Taxi() {
                 const financeSnap = await getDoc(doc(db, 'system_configs', 'finances'));
                 if (financeSnap.exists()) {
                     setPaymentMethods(financeSnap.data().paymentMethods);
+                } else {
+                    // Fallback to basic payment methods if config is missing
+                    setPaymentMethods({
+                        cash: { active: true, logoUrl: '' },
+                        pagoMovil: { active: false, bank: '', phone: '', idf: '', logoUrl: '' }
+                    });
                 }
             } catch (error) {
                 console.error("Error fetching configs:", error);
+                // Ensure the app doesn't hang if there's a network error
+                setPaymentMethods({
+                    cash: { active: true, logoUrl: '' }
+                });
             }
         };
         fetchConfigs();
@@ -353,8 +363,9 @@ export default function Taxi() {
                 vehicleType,
                 route: routeInfo,
                 total: parseFloat(clientTotal as string),
+                price: parseFloat(clientTotal as string),
                 driverPayout: parseFloat(driverPayout as string),
-                status: 'pending',
+                status: 'verifying_payment',
                 paymentMethod: selectedPaymentMethod,
                 paymentRef: paymentRef,
                 paymentProofUrl: proofUrl,
@@ -423,9 +434,9 @@ export default function Taxi() {
                             options={{
                                 suppressMarkers: false,
                                 polylineOptions: {
-                                    strokeColor: '#000000',
+                                    strokeColor: '#FF5D00', // Brand Primary Orange
                                     strokeWeight: 5,
-                                    strokeOpacity: 0.8
+                                    strokeOpacity: 0.9
                                 }
                             }}
                         />
@@ -452,6 +463,19 @@ export default function Taxi() {
                         </div>
                     )}
                 </GoogleMap>
+
+                {/* Brand Header Overlay */}
+                <div className="absolute top-0 left-0 right-0 z-10 p-4 pt-6 bg-gradient-to-b from-black/20 to-transparent pointer-events-none">
+                    <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-xl overflow-hidden shadow-lg border border-white/20 pointer-events-auto bg-white p-1">
+                            <img src="https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/logo%20oficial.png?alt=media" alt="2X3 Logo" className="w-full h-full object-contain" />
+                        </div>
+                        <div className="bg-white/90 backdrop-blur-md px-4 py-2 rounded-2xl shadow-lg border border-white/20 pointer-events-auto flex items-center gap-2">
+                            <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></div>
+                            <span className="text-[10px] font-black uppercase text-slate-900 tracking-wider">Taxi 2X3 • En línea</span>
+                        </div>
+                    </div>
+                </div>
             </div>
 
             {/* Back Button Overlay */}
@@ -476,9 +500,9 @@ export default function Taxi() {
                             });
                         }
                     }}
-                    className="absolute bottom-40 right-6 z-20 w-12 h-12 bg-white rounded-full shadow-lg flex items-center justify-center active:scale-95 text-indigo-600"
+                    className="absolute bottom-40 right-6 z-20 w-12 h-12 bg-white rounded-full shadow-xl flex items-center justify-center active:scale-95 text-orange-500"
                 >
-                    <Navigation className="w-5 h-5 fill-indigo-600/20" />
+                    <Navigation className="w-5 h-5 fill-orange-500/20" />
                 </button>
             )}
 
@@ -560,8 +584,8 @@ export default function Taxi() {
                                     <div className="w-3 h-3 bg-black rounded-full flex-shrink-0" />
                                     <p className="font-bold text-slate-500 truncate text-sm">{origin?.address}</p>
                                 </div>
-                                <div className="flex items-center gap-4 bg-indigo-50 p-4 rounded-2xl border border-indigo-100 relative z-10">
-                                    <div className="w-3 h-3 bg-indigo-600 rounded-full flex-shrink-0" />
+                                <div className="flex items-center gap-4 bg-orange-50 p-4 rounded-2xl border border-orange-100 relative z-10">
+                                    <div className="w-3 h-3 bg-orange-500 rounded-full flex-shrink-0" />
                                     <p className="font-bold text-indigo-900 truncate">
                                         {isDragging ? 'Ubicando...' : destination?.address || 'Seleccionando destino...'}
                                     </p>
@@ -571,7 +595,7 @@ export default function Taxi() {
                             <button
                                 onClick={confirmDestination}
                                 disabled={isDragging || !destination}
-                                className="w-full bg-indigo-600 text-white py-4 rounded-xl font-black shadow-lg shadow-indigo-600/30 flex justify-center items-center gap-2 active:scale-95 transition-all disabled:opacity-50 mb-6"
+                                className="w-full bg-orange-500 text-white py-4 rounded-xl font-black shadow-lg shadow-indigo-600/30 flex justify-center items-center gap-2 active:scale-95 transition-all disabled:opacity-50 mb-6"
                             >
                                 Confirmar Destino
                             </button>
@@ -659,7 +683,7 @@ export default function Taxi() {
                                             ? 'border-primary bg-primary text-secondary shadow-lg shadow-primary/20 scale-[1.02]'
                                             : 'border-slate-100 bg-white hover:border-primary/30'}`}
                                     >
-                                        <div className={`w-12 h-12 rounded-full flex items-center justify-center flex-shrink-0 transition-colors ${vehicleType === 'carro' ? 'bg-white/90 text-secondary shadow-sm' : 'bg-indigo-100 text-indigo-600'}`}>
+                                        <div className={`w-12 h-12 rounded-full flex items-center justify-center flex-shrink-0 transition-colors ${vehicleType === 'carro' ? 'bg-white/90 text-secondary shadow-sm' : 'bg-orange-100 text-orange-600'}`}>
                                             <Car className="w-6 h-6" />
                                         </div>
                                         <div className="flex-1">
@@ -725,7 +749,7 @@ export default function Taxi() {
                             <p className="text-sm font-medium text-slate-500 mb-6">Total a pagar: <span className="font-bold text-slate-800">${calculatePrice(vehicleType!)}</span></p>
 
                             {!paymentMethods ? (
-                                <div className="flex justify-center p-4"><div className="w-6 h-6 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin"></div></div>
+                                <div className="flex justify-center p-4"><div className="w-6 h-6 border-2 border-orange-500 border-t-transparent rounded-full animate-spin"></div></div>
                             ) : (
                                 <div className="space-y-4 mb-6">
                                     {paymentMethods.pagoMovil?.active && (

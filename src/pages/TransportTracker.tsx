@@ -99,7 +99,7 @@ export default function TransportTracker() {
                                 map,
                                 suppressMarkers: false,
                                 polylineOptions: {
-                                    strokeColor: '#4f46e5', // Indigo-600
+                                    strokeColor: '#FF5D00', // Brand Primary Orange
                                     strokeWeight: 4
                                 }
                             });
@@ -125,7 +125,7 @@ export default function TransportTracker() {
     if (loading || !isLoaded) {
         return (
             <div className="flex items-center justify-center min-h-[100dvh] bg-slate-50">
-                <div className="w-12 h-12 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>
+                <div className="w-12 h-12 border-4 border-orange-500 border-t-transparent rounded-full animate-spin"></div>
             </div>
         );
     }
@@ -135,7 +135,7 @@ export default function TransportTracker() {
             <div className="flex flex-col items-center justify-center min-h-[100dvh] px-6 text-center bg-slate-50">
                 <Car className="w-16 h-16 text-slate-300 mb-4" />
                 <h2 className="text-xl font-black text-slate-900 mb-2">Viaje no encontrado</h2>
-                <button onClick={() => navigate('/taxi')} className="text-indigo-600 font-bold">Volver</button>
+                <button onClick={() => navigate('/taxi')} className="text-orange-500 font-bold">Volver</button>
             </div>
         );
     }
@@ -145,7 +145,7 @@ export default function TransportTracker() {
             case 'verifying_payment':
                 return { title: "Verificando Pago", subtitle: "Validando tu comprobante...", color: "text-amber-500", bg: "bg-amber-50", icon: ShieldCheck };
             case 'searching':
-                return { title: "Buscando Conductor", subtitle: "Conectando con vehículos cercanos...", color: "text-indigo-600", bg: "bg-indigo-50", icon: Clock };
+                return { title: "Buscando Conductor", subtitle: "Conectando con vehículos cercanos...", color: "text-orange-600", bg: "bg-orange-50", icon: Clock };
             case 'accepted':
                 return { title: "Conductor en Camino", subtitle: "Tu transporte va hacia tu ubicación", color: "text-blue-500", bg: "bg-blue-50", icon: Car };
             case 'in_progress':
@@ -226,7 +226,7 @@ export default function TransportTracker() {
                         <div className="flex items-center gap-4">
                             <div className="relative">
                                 <img src={driver.documents.selfieUrl} alt="Driver" className="w-14 h-14 rounded-full object-cover bg-slate-100" />
-                                <div className="absolute -bottom-1 -right-1 bg-indigo-600 text-white text-[10px] font-bold px-2 py-0.5 rounded-full border-2 border-white">
+                                <div className="absolute -bottom-1 -right-1 bg-orange-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full border-2 border-white">
                                     ★ 4.9
                                 </div>
                             </div>
@@ -237,7 +237,7 @@ export default function TransportTracker() {
                             </div>
                         </div>
                         <div className="flex gap-2">
-                            <button onClick={() => setShowChat(true)} className="w-12 h-12 bg-indigo-50 text-indigo-600 rounded-full flex items-center justify-center active:scale-95 transition-transform">
+                            <button onClick={() => setShowChat(true)} className="w-12 h-12 bg-orange-50 text-orange-500 rounded-full flex items-center justify-center active:scale-95 transition-transform">
                                 <MessageCircle className="w-5 h-5" />
                             </button>
                             <a href={`tel:${driver.phone}`} className="w-12 h-12 bg-slate-100 text-slate-700 rounded-full flex items-center justify-center active:scale-95 transition-transform">
