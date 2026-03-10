@@ -12,6 +12,7 @@ import TrackOrder from './pages/TrackOrder';
 import TransportTracker from './pages/TransportTracker';
 import Taxi from './pages/Taxi';
 import { AuthProvider, useAuth } from './context/AuthContext';
+import { Toaster } from 'react-hot-toast';
 import { CartProvider } from './context/CartContext';
 import { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -60,6 +61,7 @@ export default function ClientApp() {
     return (
         <Router>
             <AuthProvider>
+                <Toaster position="top-center" reverseOrder={false} />
                 <RedirectHandler>
                     <CartProvider>
                         <div className="h-screen bg-slate-100 flex justify-center overflow-hidden">

@@ -324,26 +324,28 @@ export default function Home() {
       {/* Header */}
       <header className="sticky top-0 z-40 bg-white/90 backdrop-blur-md px-5 pt-6 pb-2">
         <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center gap-3">
+          <div className="flex flex-col">
             <button
-              onClick={() => setIsInfoModalOpen(true)}
-              className="flex h-11 w-11 items-center justify-center rounded-[14px] bg-white shadow-sm ring-1 ring-slate-100 p-1.5 shrink-0 group relative overflow-hidden"
+              onClick={() => setIsCityModalOpen(true)}
+              className="flex h-11 w-11 items-center justify-center rounded-[14px] bg-slate-50 shadow-sm ring-1 ring-slate-100 p-2 shrink-0 group hover:ring-primary/30 transition-all active:scale-95"
             >
-              <div className="absolute inset-0 bg-primary/0 group-hover:bg-primary/5 transition-colors"></div>
-              <img
-                src="https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/logo%20oficial.png?alt=media&token=2dd047ea-6c45-4347-8869-1a1edf4253f4"
-                alt="2X3 Logo"
-                className="w-full h-full object-contain relative z-10"
-              />
+              <MapPin className="w-5 h-5 text-primary" />
             </button>
-            <div onClick={() => setIsCityModalOpen(true)} className="cursor-pointer group overflow-hidden">
-              <p className="text-[10px] font-black text-slate-400 flex items-center gap-1 uppercase tracking-widest leading-none mb-1">
-                <MapPin className="w-3 h-3 text-primary" />
-                Ubicación
-              </p>
-              <div className="flex items-center gap-1 group">
-                <h2 className="text-slate-900 text-base font-black leading-tight group-hover:text-primary transition-colors truncate max-w-[150px]">{locationName}</h2>
-                <ChevronDown className="w-3.5 h-3.5 text-primary font-bold transition-transform group-hover:translate-y-0.5 shrink-0" />
+          </div>
+
+          <div className="flex flex-col items-center group cursor-pointer flex-1 px-4" onClick={() => setIsInfoModalOpen(true)}>
+            <div className="w-11 h-11 bg-white rounded-2xl p-1.5 shadow-lg border border-primary/10 flex items-center justify-center animate-bounce-subtle mb-1.5 overflow-hidden">
+              <img
+                src="https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/logo%20oficial.png?alt=media"
+                alt="2X3 Logo"
+                className="w-full h-full object-contain"
+              />
+            </div>
+            <div className="flex flex-col items-center text-center">
+              <h1 className="text-[14px] font-black uppercase text-slate-900 tracking-tighter italic leading-none">2X3 <span className="text-primary italic-none tracking-normal">Express</span></h1>
+              <div className="flex items-center gap-1 mt-0.5">
+                <span className="text-[10px] font-bold text-slate-400 truncate max-w-[100px]">{locationName}</span>
+                <ChevronDown className="w-2.5 h-2.5 text-primary" />
               </div>
             </div>
           </div>

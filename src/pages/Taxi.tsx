@@ -339,7 +339,26 @@ export default function Taxi() {
     };
 
     const handleRequestTaxi = async () => {
-        if (!user || !origin || !destination || !vehicleType || !routeInfo || !selectedPaymentMethod) return;
+        if (!user) {
+            toast.error("Debes iniciar sesión para solicitar un vehículo.");
+            return;
+        }
+        if (!origin || !destination) {
+            toast.error("Debes seleccionar un origen y un destino.");
+            return;
+        }
+        if (!vehicleType) {
+            toast.error("Debes seleccionar un tipo de vehículo.");
+            return;
+        }
+        if (!routeInfo) {
+            toast.error("Calculando ruta... Por favor espera un momento.");
+            return;
+        }
+        if (!selectedPaymentMethod) {
+            toast.error("Debes seleccionar un método de pago.");
+            return;
+        }
 
         const clientTotal = calculatePrice(vehicleType);
         const driverPayout = calculatePrice(vehicleType, true);
@@ -356,8 +375,8 @@ export default function Taxi() {
             return;
         }
 
-        setIsUploading(true);
         try {
+            setIsUploading(true);
             let proofUrl = '';
 
             if (selectedPaymentMethod === 'wallet') {
@@ -381,7 +400,7 @@ export default function Taxi() {
             const orderData = {
                 type: 'transport',
                 userId: user.uid,
-                userName: userData?.displayName || user.email,
+                userName: userData?.displayName || user.displayName || user.email,
                 userPhone: userData?.phone || '',
                 origin,
                 destination,
@@ -392,7 +411,7 @@ export default function Taxi() {
                 driverPayout: parseFloat(driverPayout as string),
                 status: initialStatus,
                 paymentMethod: selectedPaymentMethod,
-                paymentRef: paymentRef,
+                paymentRef: paymentRef || '',
                 paymentProofUrl: proofUrl,
                 createdAt: serverTimestamp(),
             };
@@ -408,29 +427,34 @@ export default function Taxi() {
             }
 
             if (initialStatus === 'searching') {
-                const driversSnap = await getDocs(query(collection(db, 'users'), where('role', 'in', ['delivery', 'driver'])));
-                const batch = writeBatch(db);
-                driversSnap.docs.forEach(driverDoc => {
-                    const notifRef = doc(collection(db, 'notifications'));
-                    batch.set(notifRef, {
-                        userId: driverDoc.id,
-                        title: '¡Nuevo Servicio de Taxi Disponible!',
-                        body: 'Hay una nueva solicitud de transporte esperándote.',
-                        read: false,
-                        createdAt: serverTimestamp()
+                try {
+                    const driversSnap = await getDocs(query(collection(db, 'users'), where('role', 'in', ['delivery', 'driver'])));
+                    const batch = writeBatch(db);
+                    driversSnap.docs.forEach(driverDoc => {
+                        const notifRef = doc(collection(db, 'notifications'));
+                        batch.set(notifRef, {
+                            userId: driverDoc.id,
+                            title: '¡Nuevo Servicio de Taxi Disponible!',
+                            body: 'Hay una nueva solicitud de transporte esperándote.',
+                            read: false,
+                            createdAt: serverTimestamp()
+                        });
                     });
-                });
-                await batch.commit();
+                    await batch.commit();
+                } catch (notifErr) {
+                    console.warn("Could not send notifications to drivers:", notifErr);
+                    // Continue anyway, admin will manually assign if needed
+                }
             }
 
-            // Listen for admin verification
+            // Small delay for firestore propagation if needed
             setTimeout(() => {
                 navigate(`/taxi/track/${requestRef.id}`);
-            }, 1000);
+            }, 800);
 
         } catch (error) {
             console.error("Error creating transport request:", error);
-            toast.error("No se pudo procesar la solicitud.");
+            toast.error("No se pudo procesar la solicitud. Revisa tu conexión.");
             setStep('payment');
         } finally {
             setIsUploading(false);
@@ -440,22 +464,43 @@ export default function Taxi() {
     if (!isLoaded) {
         return (
             <div className="flex-1 flex flex-col items-center justify-center bg-slate-50 min-h-[100dvh]">
-                <div className="w-12 h-12 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>
+                <div className="w-12 h-12 border-4 border-primary border-t-transparent rounded-full animate-spin"></div>
             </div>
         );
     }
 
     if (step === 'searching') {
+        const initialStatus = selectedPaymentMethod === 'wallet' ? 'searching' : 'verifying_payment';
+
         return (
-            <div className="flex-1 flex flex-col items-center justify-center p-6 text-center animate-fade-in bg-white h-[100dvh]">
-                <div className="relative mb-8">
-                    <div className="w-32 h-32 bg-yellow-500/10 rounded-full flex items-center justify-center z-10 relative">
-                        <CheckCircle2 className="w-12 h-12 text-yellow-500" />
+            <div className="flex-1 flex flex-col items-center justify-center p-8 text-center animate-fade-in bg-white h-[100dvh]">
+                <div className="relative mb-10">
+                    <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-40 h-40 bg-primary/20 rounded-full blur-3xl animate-pulse"></div>
+                    <div className="w-32 h-32 bg-white rounded-full p-4 shadow-2xl shadow-primary/20 border border-primary/10 flex items-center justify-center relative z-10 animate-scale-in">
+                        <img
+                            src="https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/logo%20oficial.png?alt=media"
+                            alt="2X3 Logo"
+                            className="w-full h-full object-contain drop-shadow-[0_0_15px_rgba(255,102,0,0.5)]"
+                        />
                     </div>
-                    <div className="absolute inset-0 bg-yellow-500 rounded-full animate-ping opacity-20"></div>
                 </div>
-                <h2 className="text-2xl font-black text-slate-800 mb-2">Verificando Pago...</h2>
-                <p className="text-slate-500 font-medium px-6">Por favor espera mientras confirmamos tu comprobante. En breve se te asignará un conductor.</p>
+                <h2 className="text-2xl font-black text-slate-900 mb-3 tracking-tight">
+                    {initialStatus === 'searching' ? 'Buscando Conductor...' : 'Verificando Pago...'}
+                </h2>
+                <p className="text-slate-500 font-medium px-6 leading-relaxed">
+                    {initialStatus === 'searching'
+                        ? 'Estamos conectándote con el conductor más cercano a tu ubicación.'
+                        : 'Por favor espera mientras confirmamos tu comprobante. En breve se te asignará un conductor.'}
+                </p>
+
+                <div className="mt-12 flex flex-col items-center gap-4">
+                    <div className="flex gap-2">
+                        <div className="w-2.5 h-2.5 bg-primary rounded-full animate-bounce [animation-delay:-0.3s]"></div>
+                        <div className="w-2.5 h-2.5 bg-primary rounded-full animate-bounce [animation-delay:-0.15s]"></div>
+                        <div className="w-2.5 h-2.5 bg-primary rounded-full animate-bounce"></div>
+                    </div>
+                    <span className="text-[10px] font-black uppercase text-slate-400 tracking-[0.2em]">Taxi 2X3 Express</span>
+                </div>
             </div>
         );
     }
@@ -504,7 +549,7 @@ export default function Taxi() {
                             ) : (
                                 <div className={`transition-transform duration-200 ${isDragging ? '-translate-y-4' : ''}`}>
                                     <svg width="40" height="40" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                        <path d="M12 2C8.13 2 5 5.13 5 9C5 14.25 12 22 12 22C12 22 19 14.25 19 9C19 5.13 15.87 2 12 2Z" fill="#4f46e5" />
+                                        <path d="M12 2C8.13 2 5 5.13 5 9C5 14.25 12 22 12 22C12 22 19 14.25 19 9C19 5.13 15.87 2 12 2Z" fill="#FF5D00" />
                                         <circle cx="12" cy="9" r="3" fill="white" />
                                     </svg>
                                 </div>
@@ -514,14 +559,23 @@ export default function Taxi() {
                 </GoogleMap>
 
                 {/* Brand Header Overlay */}
-                <div className="absolute top-0 left-0 right-0 z-10 p-4 pt-6 bg-gradient-to-b from-black/20 to-transparent pointer-events-none">
-                    <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-xl overflow-hidden shadow-lg border border-white/20 pointer-events-auto bg-white p-1">
-                            <img src="https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/logo%20oficial.png?alt=media" alt="2X3 Logo" className="w-full h-full object-contain" />
-                        </div>
-                        <div className="bg-white/90 backdrop-blur-md px-4 py-2 rounded-2xl shadow-lg border border-white/20 pointer-events-auto flex items-center gap-2">
-                            <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></div>
-                            <span className="text-[10px] font-black uppercase text-slate-900 tracking-wider">Taxi 2X3 • En línea</span>
+                <div className="absolute top-0 left-0 right-0 z-10 p-4 pt-6 bg-gradient-to-b from-black/30 to-transparent pointer-events-none">
+                    <div className="flex items-center justify-between">
+                        <div className="flex flex-col items-center gap-2 pointer-events-auto">
+                            <div className="w-16 h-16 rounded-2xl overflow-hidden shadow-2xl border-2 border-white/50 bg-white p-2.5 animate-bounce-subtle">
+                                <img
+                                    src="https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/logo%20oficial.png?alt=media"
+                                    alt="2X3 Logo"
+                                    className="w-full h-full object-contain"
+                                />
+                            </div>
+                            <div className="flex flex-col items-center">
+                                <div className="bg-white/95 backdrop-blur-md px-4 py-1.5 rounded-2xl shadow-xl border border-white/30 flex items-center gap-2">
+                                    <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></div>
+                                    <span className="text-sm font-black uppercase text-slate-900 tracking-tighter italic">2X3 <span className="text-primary">Transport</span></span>
+                                </div>
+                                <span className="text-[10px] font-black text-white drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)] mt-1.5 uppercase tracking-[0.2em]">Tu Mundo en un Toque</span>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -938,7 +992,7 @@ export default function Taxi() {
                                 onClick={handleRequestTaxi}
                                 className="w-full bg-slate-900 text-white py-4 rounded-xl font-black shadow-xl shadow-slate-900/30 flex justify-center items-center gap-2 active:scale-95 transition-all disabled:opacity-50"
                             >
-                                {isUploading ? 'Procesando pago...' : 'Pagar y Solicitar Vechículo'}
+                                {isUploading ? 'Procesando pago...' : 'Pagar y Solicitar Vehículo'}
                             </button>
                         </div>
                     )}
