@@ -212,9 +212,35 @@ export default function Taxi() {
                     setIsMapInteractionEnabled(false);
                 } else {
                     console.error("Route calculation failed:", status);
-                    toast.error("No se pudo calcular la ruta. Por favor intenta de nuevo.");
-                    setStep('destination');
-                    setIsMapInteractionEnabled(true);
+
+                    // Fallback to Haversine distance
+                    const R = 6371; // Radius of the earth in km
+                    const dLat = (destination.lat - origin.lat) * (Math.PI / 180);
+                    const dLon = (destination.lng - origin.lng) * (Math.PI / 180);
+                    const a =
+                        Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+                        Math.cos(origin.lat * (Math.PI / 180)) * Math.cos(destination.lat * (Math.PI / 180)) *
+                        Math.sin(dLon / 2) * Math.sin(dLon / 2);
+                    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+                    const straightDistance = R * c;
+
+                    // Add 30% to approximate driving distance in a city
+                    const estimatedDrivingDistance = Number((straightDistance * 1.3).toFixed(1));
+
+                    // Estimate duration (approx 30 km/h avg city speed)
+                    const estMinutes = Math.max(1, Math.round(estimatedDrivingDistance / 0.5));
+                    const durationText = estMinutes > 60
+                        ? `${Math.floor(estMinutes / 60)} h ${estMinutes % 60} min`
+                        : `${estMinutes} min`;
+
+                    // Generate a fake route info so the user can continue
+                    toast.success("Ruta estimada generada correctamente.", { icon: '🗺️' });
+                    setRouteInfo({
+                        distance: estimatedDrivingDistance,
+                        duration: durationText
+                    });
+                    setDirectionsResponse(null); // Clear any old polyline
+                    setIsMapInteractionEnabled(false);
                 }
             });
         }
