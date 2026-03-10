@@ -61,8 +61,12 @@ export default function CpanelLayout({ children, onLogout }: CpanelLayoutProps) 
                     {/* Sidebar Header */}
                     <div className="p-6 border-b border-slate-800 flex items-center justify-between">
                         <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 bg-primary/20 rounded-xl flex items-center justify-center ring-1 ring-primary/50">
-                                <LayoutDashboard className="w-6 h-6 text-primary" />
+                            <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center p-1.5 shadow-sm ring-1 ring-slate-800">
+                                <img
+                                    src="https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/logo%20oficial.png?alt=media"
+                                    alt="2X3 Logo"
+                                    className="w-full h-full object-contain"
+                                />
                             </div>
                             <div>
                                 <h1 className="font-black text-white leading-tight">2X3 Panel</h1>
