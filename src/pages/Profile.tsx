@@ -12,6 +12,8 @@ import { Image as ImageIcon, Camera, Smartphone, User as UserIcon, Save } from '
 import AddressPicker from '../components/AddressPicker';
 import { motion, AnimatePresence } from 'framer-motion';
 import ReviewModal from '../components/ReviewModal';
+import { Copy, Check } from 'lucide-react';
+import toast from 'react-hot-toast';
 
 interface OrderInfo {
     id: string;
@@ -59,6 +61,9 @@ export default function Profile() {
     const [rechargeAmount, setRechargeAmount] = useState('');
     const [rechargeProof, setRechargeProof] = useState<File | null>(null);
     const [isRecharging, setIsRecharging] = useState(false);
+    const [paymentMethods, setPaymentMethods] = useState<any>(null);
+    const [copiedId, setCopiedId] = useState<string | null>(null);
+    const [rechargeRef, setRechargeRef] = useState('');
 
     useEffect(() => {
         if (userData) {
@@ -104,10 +109,27 @@ export default function Profile() {
             }
         };
 
-        if (user) {
-            fetchOrders();
-        }
+        const fetchPaymentMethods = async () => {
+            try {
+                const docSnap = await getDoc(doc(db, 'system_configs', 'finances'));
+                if (docSnap.exists()) {
+                    setPaymentMethods(docSnap.data().paymentMethods);
+                }
+            } catch (error) {
+                console.error("Error fetching payment methods:", error);
+            }
+        };
+
+        fetchOrders();
+        fetchPaymentMethods();
     }, [user]);
+
+    const handleCopy = (text: string, id: string) => {
+        navigator.clipboard.writeText(text);
+        setCopiedId(id);
+        toast.success("Copiado al portapapeles");
+        setTimeout(() => setCopiedId(null), 2000);
+    };
 
     const [error, setError] = useState<string | null>(null);
     const [activeFaq, setActiveFaq] = useState<number | null>(null);
@@ -1092,34 +1114,123 @@ export default function Profile() {
                                 </button>
                             </div>
 
-                            <div className="p-6 space-y-6">
+                            <div className="p-6 space-y-6 max-h-[70vh] overflow-y-auto hide-scrollbar">
                                 {/* Virtual Card */}
-                                <div className="relative w-full aspect-[1.586/1] rounded-2xl overflow-hidden shadow-xl shadow-yellow-500/20 group">
-                                    <img src="https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/tarjeta.png?alt=media&token=e90bd42d-7bb7-4bbf-a059-e3805903b22e" alt="Billetera 2X3" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" />
-                                    <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent flex flex-col justify-end p-6">
-                                        <p className="text-white/80 text-[10px] font-bold uppercase tracking-widest mb-1 shadow-black drop-shadow-md">Titular de la tarjeta</p>
-                                        <p className="text-white text-lg font-black tracking-wider uppercase shadow-black drop-shadow-md">{userData?.displayName || user?.displayName || 'Usuario 2X3'}</p>
-                                        <div className="mt-4 flex justify-between items-end">
-                                            <div>
-                                                <p className="text-white/80 text-[10px] font-bold uppercase tracking-widest mb-1 shadow-black drop-shadow-md">Saldo Disponible</p>
-                                                <p className="text-yellow-400 text-3xl font-black shadow-black drop-shadow-md">${(userData?.walletBalance || 0).toFixed(2)}</p>
+                                <div className="relative w-full aspect-[1.586/1] rounded-2xl overflow-hidden shadow-xl shadow-primary/20 group">
+                                    {/* Card Pattern Background */}
+                                    <div className="absolute inset-0 bg-gradient-to-br from-slate-900 via-slate-800 to-black transition-transform duration-700 group-hover:scale-105" />
+                                    <div className="absolute inset-0 opacity-10 bg-[radial-gradient(circle_at_50%_50%,rgba(255,255,255,0.4)_0,transparent_100%)]" style={{ backgroundSize: '20px 20px' }} />
+
+                                    <div className="absolute inset-0 flex flex-col justify-between p-6 z-10">
+                                        <div className="flex justify-between items-start">
+                                            <div className="w-12 h-12 bg-white/10 backdrop-blur-md rounded-xl p-2 flex items-center justify-center border border-white/20">
+                                                <img
+                                                    src="https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/logo%20oficial.png?alt=media&token=2dd047ea-6c45-4347-8869-1a1edf4253f4"
+                                                    alt="2X3"
+                                                    className="w-full h-full object-contain brightness-0 invert"
+                                                />
                                             </div>
-                                            <div className="w-12 h-8 bg-white/20 backdrop-blur-md rounded-md flex items-center justify-center border border-white/30">
-                                                <div className="w-4 h-4 rounded-full bg-red-500/80 -mr-2 mix-blend-multiply"></div>
-                                                <div className="w-4 h-4 rounded-full bg-yellow-500/80 mix-blend-multiply"></div>
+                                            <span className="text-[10px] font-black text-white/40 uppercase tracking-[0.3em] font-mono">Billetera Digital</span>
+                                        </div>
+
+                                        <div>
+                                            <p className="text-white/40 text-[9px] font-black uppercase tracking-widest mb-1 italic">Titular de la tarjeta</p>
+                                            <p className="text-white text-lg font-black tracking-wider uppercase drop-shadow-md truncate max-w-full">
+                                                {userData?.displayName || user?.displayName || 'Usuario 2X3'}
+                                            </p>
+
+                                            <div className="mt-4 flex justify-between items-end">
+                                                <div>
+                                                    <p className="text-white/40 text-[9px] font-black uppercase tracking-widest mb-1 italic">Saldo Disponible</p>
+                                                    <div className="flex items-baseline gap-1">
+                                                        <span className="text-primary text-3xl font-black drop-shadow-[0_2px_4px_rgba(255,102,0,0.3)]">${(userData?.walletBalance || 0).toFixed(2)}</span>
+                                                        <span className="text-white/20 text-xs font-black">USD</span>
+                                                    </div>
+                                                </div>
+                                                <div className="w-10 h-6 bg-white/5 backdrop-blur-md rounded border border-white/10 flex items-center justify-center">
+                                                    <div className="w-3 h-3 rounded-full bg-primary/40 -mr-1.5" />
+                                                    <div className="w-3 h-3 rounded-full bg-primary/20" />
+                                                </div>
                                             </div>
                                         </div>
                                     </div>
+
+                                    {/* Glossy Overlay */}
+                                    <div className="absolute inset-0 bg-gradient-to-tr from-transparent via-white/5 to-white/10 pointer-events-none" />
                                 </div>
 
-                                <div className="bg-blue-50 p-4 rounded-2xl flex gap-3 text-blue-800">
-                                    <Shield className="w-5 h-5 shrink-0 text-blue-500 mt-0.5" />
-                                    <p className="text-xs font-medium leading-relaxed">Estos fondos son exclusivos para pagar tus viajes de <strong>Taxi</strong> y Moto. No aplican para compras de comida o tienda.</p>
+                                <div className="bg-primary/5 p-4 rounded-2xl flex gap-3 text-primary border border-primary/10">
+                                    <Shield className="w-5 h-5 shrink-0 text-primary mt-0.5" />
+                                    <p className="text-xs font-bold leading-relaxed">Estos fondos son exclusivos para pagar tus viajes de <strong>Taxi</strong> y Moto. No aplican para compras de comida o tienda.</p>
                                 </div>
+
+                                {/* Recharge Instructions */}
+                                {paymentMethods && (
+                                    <div className="space-y-4">
+                                        <h4 className="text-[10px] font-black uppercase text-slate-400 tracking-widest ml-1">Instrucciones de Recarga</h4>
+
+                                        {/* Pago Móvil */}
+                                        {paymentMethods.pagoMovil?.active && (
+                                            <div className="bg-slate-50 rounded-2xl p-4 border border-slate-100 relative group">
+                                                <div className="flex items-center gap-3 mb-3">
+                                                    <div className="w-8 h-8 bg-primary/10 rounded-xl flex items-center justify-center">
+                                                        <Smartphone className="w-4 h-4 text-primary" />
+                                                    </div>
+                                                    <span className="font-black text-slate-800 text-sm italic">Pago Móvil (Bs)</span>
+                                                </div>
+                                                <div className="space-y-2 text-[12px] font-medium text-slate-600">
+                                                    <div className="flex justify-between items-center bg-white p-2 rounded-xl">
+                                                        <span>Banco: <strong>{paymentMethods.pagoMovil.bank}</strong></span>
+                                                        <button onClick={() => handleCopy(paymentMethods.pagoMovil.bank, 'bank')} className="p-1 hover:bg-slate-50 rounded text-primary">
+                                                            {copiedId === 'bank' ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+                                                        </button>
+                                                    </div>
+                                                    <div className="flex justify-between items-center bg-white p-2 rounded-xl">
+                                                        <span>Teléfono: <strong>{paymentMethods.pagoMovil.phone}</strong></span>
+                                                        <button onClick={() => handleCopy(paymentMethods.pagoMovil.phone, 'phone')} className="p-1 hover:bg-slate-50 rounded text-primary">
+                                                            {copiedId === 'phone' ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+                                                        </button>
+                                                    </div>
+                                                    <div className="flex justify-between items-center bg-white p-2 rounded-xl">
+                                                        <span>Cédula: <strong>{paymentMethods.pagoMovil.idf}</strong></span>
+                                                        <button onClick={() => handleCopy(paymentMethods.pagoMovil.idf, 'idf')} className="p-1 hover:bg-slate-50 rounded text-primary">
+                                                            {copiedId === 'idf' ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {/* Zelle */}
+                                        {paymentMethods.zelle?.active && (
+                                            <div className="bg-slate-50 rounded-2xl p-4 border border-slate-100 mt-3">
+                                                <div className="flex items-center gap-3 mb-3">
+                                                    <div className="w-8 h-8 bg-indigo-100 rounded-xl flex items-center justify-center">
+                                                        <Star className="w-4 h-4 text-indigo-600 fill-indigo-600" />
+                                                    </div>
+                                                    <span className="font-black text-slate-800 text-sm italic">Zelle (USD)</span>
+                                                </div>
+                                                <div className="space-y-2 text-[12px] font-medium text-slate-600">
+                                                    <div className="flex justify-between items-center bg-white p-2 rounded-xl">
+                                                        <span className="truncate">Email: <strong>{paymentMethods.zelle.email}</strong></span>
+                                                        <button onClick={() => handleCopy(paymentMethods.zelle.email, 'zelleEmail')} className="p-1 hover:bg-slate-50 rounded text-indigo-600">
+                                                            {copiedId === 'zelleEmail' ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+                                                        </button>
+                                                    </div>
+                                                    <div className="flex justify-between items-center bg-white p-2 rounded-xl">
+                                                        <span className="truncate">Nombre: <strong>{paymentMethods.zelle.name}</strong></span>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+
+                                <div className="h-px bg-slate-100 my-2" />
 
                                 <form onSubmit={handleRechargeSubmit} className="space-y-4">
                                     <div className="space-y-1">
-                                        <label className="text-xs font-bold text-slate-500 uppercase tracking-wider ml-1">Monto a Recargar ($)</label>
+                                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Monto a Recargar ($)</label>
                                         <input
                                             type="number"
                                             required
@@ -1132,19 +1243,36 @@ export default function Profile() {
                                         />
                                     </div>
                                     <div className="space-y-1">
-                                        <label className="text-xs font-bold text-slate-500 uppercase tracking-wider ml-1">Comprobante de Pago</label>
+                                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Referencia / Teléfono Emisor</label>
                                         <input
-                                            type="file"
+                                            type="text"
                                             required
-                                            accept="image/*"
-                                            onChange={(e) => setRechargeProof(e.target.files?.[0] || null)}
-                                            className="w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-primary/10 file:text-primary hover:file:bg-primary/20 transition-all"
+                                            value={rechargeRef}
+                                            onChange={(e) => setRechargeRef(e.target.value)}
+                                            className="w-full bg-slate-50 border-2 border-slate-100 focus:border-primary px-4 py-4 rounded-2xl outline-none font-bold text-slate-700 transition-all"
+                                            placeholder="Nro. de Referencia"
                                         />
+                                    </div>
+                                    <div className="space-y-1">
+                                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Capture de Pantalla</label>
+                                        <label className="w-full flex items-center justify-center gap-3 p-4 rounded-2xl border-2 border-dashed border-slate-200 bg-slate-50 hover:bg-slate-100 cursor-pointer transition-all">
+                                            <UploadCloud className="w-5 h-5 text-slate-400" />
+                                            <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+                                                {rechargeProof ? rechargeProof.name : 'Elegir archivo'}
+                                            </span>
+                                            <input
+                                                type="file"
+                                                required
+                                                accept="image/*"
+                                                onChange={(e) => setRechargeProof(e.target.files?.[0] || null)}
+                                                className="hidden"
+                                            />
+                                        </label>
                                     </div>
                                     <button
                                         type="submit"
                                         disabled={isRecharging}
-                                        className="w-full bg-primary text-white py-4 rounded-2xl font-black shadow-lg shadow-primary/30 hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-70 mt-2 flex items-center justify-center gap-2 uppercase tracking-widest text-sm"
+                                        className="w-full bg-primary text-white py-5 rounded-[24px] font-black shadow-xl shadow-primary/30 hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-70 mt-2 flex items-center justify-center gap-2 uppercase tracking-[0.2em] text-sm"
                                     >
                                         {isRecharging ? (
                                             <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>

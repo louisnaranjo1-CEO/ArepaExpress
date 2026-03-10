@@ -26,6 +26,9 @@ interface UserData {
     notificationsEnabled?: boolean;
     fcmTokens?: string[];
     phone?: string;
+    walletBalance?: number;
+    points?: number;
+    cedula?: string;
 }
 
 interface AuthContextType {

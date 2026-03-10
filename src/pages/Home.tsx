@@ -322,40 +322,54 @@ export default function Home() {
     <div className="relative flex h-full w-full flex-col overflow-x-hidden bg-white">
       <WelcomePopup manualState={manualState} manualCity={manualCity} />
       {/* Header */}
-      <header className="sticky top-0 z-40 bg-white/90 backdrop-blur-md px-5 pt-6 pb-2">
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex flex-col">
-            <button
-              onClick={() => setIsCityModalOpen(true)}
-              className="flex h-11 w-11 items-center justify-center rounded-[14px] bg-slate-50 shadow-sm ring-1 ring-slate-100 p-2 shrink-0 group hover:ring-primary/30 transition-all active:scale-95"
+      <header className="sticky top-0 z-40 bg-white/90 backdrop-blur-md px-4 pt-6 pb-2">
+        <div className="flex items-center justify-between mb-4 gap-3">
+          {/* Left group: Logo + Points + Location */}
+          <div className="flex items-center gap-3 overflow-hidden">
+            {/* Logo */}
+            <div
+              onClick={() => setIsInfoModalOpen(true)}
+              className="w-10 h-10 bg-white rounded-xl p-1.5 shadow-sm border border-slate-100 flex items-center justify-center shrink-0 cursor-pointer active:scale-95 transition-transform"
             >
-              <MapPin className="w-5 h-5 text-primary" />
-            </button>
-          </div>
-
-          <div className="flex flex-col items-center group cursor-pointer flex-1 px-4" onClick={() => setIsInfoModalOpen(true)}>
-            <div className="w-11 h-11 bg-white rounded-2xl p-1.5 shadow-lg border border-primary/10 flex items-center justify-center animate-bounce-subtle mb-1.5 overflow-hidden">
               <img
-                src="https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/logo%20oficial.png?alt=media"
+                src="https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/logo%20oficial.png?alt=media&token=2dd047ea-6c45-4347-8869-1a1edf4253f4"
                 alt="2X3 Logo"
                 className="w-full h-full object-contain"
               />
             </div>
-            <div className="flex flex-col items-center text-center">
-              <h1 className="text-[14px] font-black uppercase text-slate-900 tracking-tighter italic leading-none">2X3 <span className="text-primary italic-none tracking-normal">Express</span></h1>
-              <div className="flex items-center gap-1 mt-0.5">
-                <span className="text-[10px] font-bold text-slate-400 truncate max-w-[100px]">{locationName}</span>
-                <ChevronDown className="w-2.5 h-2.5 text-primary" />
+
+            {/* Points */}
+            <div className="flex flex-col shrink-0">
+              <span className="text-[9px] font-black uppercase text-slate-400 tracking-tighter leading-none mb-0.5">Puntos</span>
+              <div className="flex items-center gap-1 bg-primary/10 px-2 py-0.5 rounded-full border border-primary/10">
+                <Star className="w-2.5 h-2.5 text-primary fill-primary" />
+                <span className="text-[11px] font-black text-primary">{userData?.points || 0}</span>
               </div>
             </div>
+
+            {/* Location Selector */}
+            <button
+              onClick={() => setIsCityModalOpen(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-2xl bg-slate-50 border border-slate-100 hover:border-primary/30 transition-all active:scale-95 overflow-hidden group"
+            >
+              <MapPin className="w-3.5 h-3.5 text-primary shrink-0" />
+              <div className="flex flex-col items-start overflow-hidden">
+                <span className="text-[9px] font-bold text-slate-400 uppercase leading-none mb-0.5">Ubicación</span>
+                <div className="flex items-center gap-1">
+                  <span className="text-[11px] font-bold text-slate-700 truncate max-w-[70px] leading-none">{locationName}</span>
+                  <ChevronDown className="w-2.5 h-2.5 text-slate-400 group-hover:text-primary transition-colors shrink-0" />
+                </div>
+              </div>
+            </button>
           </div>
 
-          <div className="flex items-center gap-1">
-            <Link to="/favorites" className="p-2 text-slate-900 hover:bg-slate-100 rounded-full transition-colors shrink-0">
-              <Heart className="w-6 h-6" />
+          {/* Right group: Actions */}
+          <div className="flex items-center gap-0.5 shrink-0">
+            <Link to="/favorites" className="p-2.5 text-slate-900 hover:bg-slate-100 rounded-2xl transition-all active:scale-90">
+              <Heart className="w-5.5 h-5.5" />
             </Link>
-            <Link to="/notifications" className="relative p-2 text-slate-900 hover:bg-slate-100 rounded-full transition-colors shrink-0">
-              <Bell className="w-6 h-6" />
+            <Link to="/notifications" className="relative p-2.5 text-slate-900 hover:bg-slate-100 rounded-2xl transition-all active:scale-90">
+              <Bell className="w-5.5 h-5.5" />
               <span className="absolute top-2.5 right-2.5 h-2 w-2 rounded-full bg-accent border-[1.5px] border-white"></span>
             </Link>
           </div>

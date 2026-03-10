@@ -23,6 +23,7 @@ export default function RestaurantPage() {
   const [isFollowing, setIsFollowing] = useState(false);
   const [followerCount, setFollowerCount] = useState(0);
   const [showJobsModal, setShowJobsModal] = useState(false);
+  const [showHoursModal, setShowHoursModal] = useState(false);
   const [casheaIcon, setCasheaIcon] = useState<string | null>(null);
   const { user } = useAuth();
 
@@ -83,7 +84,7 @@ export default function RestaurantPage() {
         const iconsSnap = await getDocs(collection(db, 'global_icons'));
         const cashea = iconsSnap.docs.find(doc => doc.data().name.toLowerCase() === 'cashea');
         // Use official Cashea icon as requested by user
-        setCasheaIcon("https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/unnamed%20(14).jpg?alt=media");
+        setCasheaIcon("https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/unnamed%20%2814%29.jpg?alt=media&token=425d2b78-43d8-4f05-8e7c-87d2cb58abdd");
       } catch (err) {
         console.error("Error fetching icons:", err);
       }
@@ -234,7 +235,7 @@ export default function RestaurantPage() {
     if (!todaySchedule || todaySchedule.closed) return { isOpen: false, text: 'Cerrado' };
 
     const isOpen = currentTimeStr >= todaySchedule.open && currentTimeStr <= todaySchedule.close;
-    return { isOpen, text: isOpen ? 'Abierto' : 'Cerrado' };
+    return { isOpen, text: isOpen ? 'Abierto' : 'Cerrado', todaySchedule };
   };
 
   const statusObj = getRestaurantStatus();
@@ -323,10 +324,13 @@ export default function RestaurantPage() {
               <span className="text-slate-500 font-normal">({restaurant.reviews || 0}+ reseñas)</span>
             </div>
 
-            <div className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider ${statusObj.isOpen ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}`}>
+            <button
+              onClick={() => setShowHoursModal(true)}
+              className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider transition-all active:scale-95 ${statusObj.isOpen ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}`}
+            >
               <div className={`w-2 h-2 rounded-full ${statusObj.isOpen ? 'bg-emerald-500 animate-pulse' : 'bg-red-500'}`}></div>
               {statusObj.text}
-            </div>
+            </button>
 
             <div className="flex items-center gap-1 text-slate-500 text-sm">
               <Clock className="w-4 h-4" />
@@ -407,23 +411,20 @@ export default function RestaurantPage() {
             </div>
           </div>
 
-          {/* Social Links Row */}
+          {/* Social Links Row - Simplified */}
           {restaurant.socialLinks && restaurant.socialLinks.length > 0 && (
-            <div className="flex items-center gap-3 py-1 overflow-x-auto no-scrollbar">
+            <div className="flex items-center gap-2 py-1 overflow-x-auto no-scrollbar">
               {restaurant.socialLinks.map((social: any) => (
                 <motion.a
-                  whileHover={{ scale: 1.05 }}
-                  whileTap={{ scale: 0.95 }}
+                  whileHover={{ scale: 1.1 }}
+                  whileTap={{ scale: 0.9 }}
                   key={social.id}
                   href={social.url}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="bg-slate-50/50 p-2 rounded-2xl border border-slate-100 flex items-center gap-2 group transition-all hover:bg-white hover:shadow-md hover:border-primary/30"
+                  className="w-10 h-10 rounded-full bg-slate-50 border border-slate-100 flex items-center justify-center p-2.5 hover:bg-white hover:shadow-md hover:border-primary/30 transition-all shrink-0"
                 >
-                  <div className="w-6 h-6 shrink-0 p-0.5">
-                    <img src={social.imageUrl} alt={social.name} className="w-full h-full object-contain" />
-                  </div>
-                  <span className="text-[10px] font-black text-slate-700 uppercase tracking-tighter pr-1">{social.name}</span>
+                  <img src={social.imageUrl} alt={social.name} className="w-full h-full object-contain" />
                 </motion.a>
               ))}
             </div>
@@ -446,24 +447,30 @@ export default function RestaurantPage() {
                 </div>
               </div>
 
-              {/* Working Hours Section */}
-              {restaurant.workingHours && restaurant.workingHours.some((wh: any) => !wh.closed) && (
-                <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100 flex flex-col gap-3">
-                  <div className="flex items-center gap-2 text-slate-900 font-bold text-sm">
-                    <Clock className="w-4 h-4 text-primary" />
-                    Horario de Atención
+              {/* Working Hours Section - Simplified */}
+              {restaurant.workingHours && (
+                <button
+                  onClick={() => setShowHoursModal(true)}
+                  className="bg-slate-50 p-3 rounded-2xl border border-slate-100 flex items-center justify-between hover:bg-slate-100 transition-all group"
+                >
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-8 h-8 rounded-xl bg-primary/10 flex items-center justify-center">
+                      <Clock className="w-4 h-4 text-primary" />
+                    </div>
+                    <div className="text-left">
+                      <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 leading-none mb-1">Horario Hoy</p>
+                      <p className="text-sm font-black text-slate-700 leading-none">
+                        {(statusObj as any).todaySchedule?.closed
+                          ? 'Cerrado hoy'
+                          : `${(statusObj as any).todaySchedule?.open} - ${(statusObj as any).todaySchedule?.close}`}
+                      </p>
+                    </div>
                   </div>
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-y-3 gap-x-2">
-                    {restaurant.workingHours.map((wh: any, idx: number) => (
-                      <div key={idx} className="flex flex-col">
-                        <span className="text-[9px] font-black text-slate-400 uppercase tracking-tighter leading-none mb-1">{wh.day}</span>
-                        <span className={`text-[10px] font-black leading-none ${wh.closed ? 'text-red-400 italic' : 'text-slate-700'}`}>
-                          {wh.closed ? 'Cerrado' : `${wh.open} - ${wh.close}`}
-                        </span>
-                      </div>
-                    ))}
+                  <div className="flex items-center gap-1.5 text-[10px] font-black text-primary uppercase tracking-tighter opacity-0 group-hover:opacity-100 transition-opacity">
+                    Ver todos
+                    <ChevronRight className="w-3.5 h-3.5" />
                   </div>
-                </div>
+                </button>
               )}
 
               {restaurant.location.coords && (
@@ -795,6 +802,84 @@ export default function RestaurantPage() {
                     Acércate al local para postularte
                   </div>
                 )}
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+      {/* Working Hours Modal */}
+      <AnimatePresence>
+        {showHoursModal && restaurant.workingHours && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm"
+              onClick={() => setShowHoursModal(false)}
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className="bg-white rounded-[2rem] w-full max-w-sm shadow-2xl overflow-hidden relative z-10 flex flex-col"
+            >
+              <div className="p-6 pb-4 border-b border-slate-100 flex justify-between items-center bg-slate-50 relative shrink-0">
+                <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-primary to-orange-400"></div>
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-primary/10 rounded-xl flex items-center justify-center">
+                    <Clock className="w-5 h-5 text-primary" />
+                  </div>
+                  <div>
+                    <h3 className="text-xl font-black text-slate-800">Horario de Trabajo</h3>
+                    <p className="text-xs font-bold text-slate-500 uppercase tracking-widest">{restaurant.name}</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setShowHoursModal(false)}
+                  className="w-8 h-8 flex items-center justify-center bg-white rounded-full text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors shadow-sm border border-slate-200"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="p-6 space-y-3 bg-white">
+                {restaurant.workingHours.map((wh: any, idx: number) => {
+                  const days = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
+                  const currentDay = days[new Date().getDay()];
+                  const isToday = wh.day === currentDay;
+
+                  return (
+                    <div
+                      key={idx}
+                      className={`flex items-center justify-between p-3 rounded-xl transition-all ${isToday ? 'bg-primary/5 border border-primary/20 scale-105 shadow-sm' : 'bg-slate-50 border border-slate-100'}`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className={`w-2 h-2 rounded-full ${wh.closed ? 'bg-red-400' : 'bg-emerald-400'}`}></div>
+                        <span className={`text-sm font-black uppercase tracking-tight ${isToday ? 'text-primary' : 'text-slate-600'}`}>{wh.day}</span>
+                      </div>
+                      <div className="text-right">
+                        {wh.closed ? (
+                          <span className="text-xs font-black text-red-500 italic uppercase">Cerrado</span>
+                        ) : (
+                          <div className="flex flex-col items-end">
+                            <span className="text-sm font-black text-slate-800 leading-none">{wh.open} - {wh.close}</span>
+                            {isToday && <span className="text-[10px] font-bold text-emerald-600 uppercase tracking-widest mt-0.5">Hoy</span>}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              <div className="p-6 pt-0 mt-2">
+                <button
+                  onClick={() => setShowHoursModal(false)}
+                  className="w-full py-4 bg-slate-900 hover:bg-slate-800 text-white font-black rounded-2xl shadow-xl shadow-slate-900/20 text-sm tracking-wide transition-all active:scale-[0.98]"
+                >
+                  Entendido
+                </button>
               </div>
             </motion.div>
           </div>

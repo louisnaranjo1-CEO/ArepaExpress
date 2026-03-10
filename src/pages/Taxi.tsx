@@ -202,7 +202,8 @@ export default function Taxi() {
             const request: google.maps.DirectionsRequest = {
                 origin: { lat: origin.lat, lng: origin.lng },
                 destination: { lat: destination.lat, lng: destination.lng },
-                travelMode: google.maps.TravelMode.DRIVING
+                travelMode: google.maps.TravelMode.DRIVING,
+                optimizeWaypoints: true,
             };
 
             directionsService.route(request, (result, status) => {
@@ -221,45 +222,21 @@ export default function Taxi() {
                         });
                         setIsMapInteractionEnabled(false);
                     } else {
-                        // Edge case: Route OK but no legs/distance parsed
-                        handleRouteFallback("Distancia no disponible en la ruta.");
+                        toast.error("Google no pudo determinar la distancia exacta. Intenta mover el marcador a una calle principal.");
+                        setStep('destination');
+                        setIsMapInteractionEnabled(true);
                     }
                 } else {
                     console.warn("Route calculation failed:", status);
-                    handleRouteFallback("No se pudo calcular la ruta exacta.");
+                    if (status === 'ZERO_RESULTS') {
+                        toast.error("No se encontró una ruta vial para estos puntos. Por favor, selecciona lugares cerca de avenidas o calles transitables.");
+                    } else {
+                        toast.error("Error al conectar con el servidor de mapas. Intenta de nuevo.");
+                    }
+                    setStep('destination');
+                    setIsMapInteractionEnabled(true);
                 }
             });
-
-            const handleRouteFallback = (message: string) => {
-                // Fallback to Haversine distance
-                const R = 6371; // Radius of the earth in km
-                const dLat = (destination.lat - origin.lat) * (Math.PI / 180);
-                const dLon = (destination.lng - origin.lng) * (Math.PI / 180);
-                const a =
-                    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-                    Math.cos(origin.lat * (Math.PI / 180)) * Math.cos(destination.lat * (Math.PI / 180)) *
-                    Math.sin(dLon / 2) * Math.sin(dLon / 2);
-                const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-                const straightDistance = R * c;
-
-                // Add 30% to approximate driving distance in a city
-                const estimatedDrivingDistance = Number((straightDistance * 1.3).toFixed(1));
-
-                // Estimate duration (approx 30 km/h avg city speed)
-                const estMinutes = Math.max(1, Math.round(estimatedDrivingDistance / 0.5));
-                const durationText = estMinutes > 60
-                    ? `${Math.floor(estMinutes / 60)} h ${estMinutes % 60} min`
-                    : `${estMinutes} min`;
-
-                // Generate a fake route info so the user can continue
-                toast.success(`Usando ruta estimada.${message} `, { icon: '🗺️' });
-                setRouteInfo({
-                    distance: estimatedDrivingDistance,
-                    duration: durationText
-                });
-                setDirectionsResponse(null); // Clear any old polyline
-                setIsMapInteractionEnabled(false);
-            };
         }
         return () => { isMounted = false; };
     }, [step, origin, destination, directionsService, directionsResponse]);
@@ -370,7 +347,7 @@ export default function Taxi() {
                 toast.error("Saldo insuficiente en tu Billetera 2X3. Por favor recarga o selecciona otro método.");
                 return;
             }
-        } else if (selectedPaymentMethod !== 'cash' && !paymentProof && !paymentRef) {
+        } else if (selectedPaymentMethod !== 'cash' && selectedPaymentMethod !== 'wallet' && !paymentProof && !paymentRef) {
             toast.error("Debes adjuntar un comprobante o número de referencia");
             return;
         }
@@ -392,8 +369,8 @@ export default function Taxi() {
                 return;
             }
 
-            // For wallet, status is searching immediately.
-            const initialStatus = selectedPaymentMethod === 'wallet' ? 'searching' : 'verifying_payment';
+            // For wallet and cash, status is searching immediately.
+            const initialStatus = (selectedPaymentMethod === 'wallet' || selectedPaymentMethod === 'cash') ? 'searching' : 'verifying_payment';
 
             setStep('searching');
 
@@ -454,7 +431,12 @@ export default function Taxi() {
 
         } catch (error) {
             console.error("Error creating transport request:", error);
-            toast.error("No se pudo procesar la solicitud. Revisa tu conexión.");
+            const errorMsg = error instanceof Error ? error.message : "Error desconocido";
+            if (errorMsg.includes("storage/unauthorized")) {
+                toast.error("Error de permisos al subir el comprobante. Contacta soporte.");
+            } else {
+                toast.error("No se pudo procesar la solicitud. Revisa tu conexión o intenta de nuevo.");
+            }
             setStep('payment');
         } finally {
             setIsUploading(false);
@@ -470,7 +452,7 @@ export default function Taxi() {
     }
 
     if (step === 'searching') {
-        const initialStatus = selectedPaymentMethod === 'wallet' ? 'searching' : 'verifying_payment';
+        const initialStatus = (selectedPaymentMethod === 'wallet' || selectedPaymentMethod === 'cash') ? 'searching' : 'verifying_payment';
 
         return (
             <div className="flex-1 flex flex-col items-center justify-center p-8 text-center animate-fade-in bg-white h-[100dvh]">
@@ -478,7 +460,7 @@ export default function Taxi() {
                     <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-40 h-40 bg-primary/20 rounded-full blur-3xl animate-pulse"></div>
                     <div className="w-32 h-32 bg-white rounded-full p-4 shadow-2xl shadow-primary/20 border border-primary/10 flex items-center justify-center relative z-10 animate-scale-in">
                         <img
-                            src="https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/logo%20oficial.png?alt=media"
+                            src="https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/logo%20oficial.png?alt=media&token=2dd047ea-6c45-4347-8869-1a1edf4253f4"
                             alt="2X3 Logo"
                             className="w-full h-full object-contain drop-shadow-[0_0_15px_rgba(255,102,0,0.5)]"
                         />
@@ -564,7 +546,7 @@ export default function Taxi() {
                         <div className="flex flex-col items-center gap-2 pointer-events-auto">
                             <div className="w-16 h-16 rounded-2xl overflow-hidden shadow-2xl border-2 border-white/50 bg-white p-2.5 animate-bounce-subtle">
                                 <img
-                                    src="https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/logo%20oficial.png?alt=media"
+                                    src="https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/logo%20oficial.png?alt=media&token=2dd047ea-6c45-4347-8869-1a1edf4253f4"
                                     alt="2X3 Logo"
                                     className="w-full h-full object-contain"
                                 />

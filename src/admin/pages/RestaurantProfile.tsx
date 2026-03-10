@@ -248,6 +248,15 @@ export default function RestaurantProfile() {
         setWorkingHours(newHours);
     };
 
+    const applyBulkHours = (startIdx: number, endIdx: number) => {
+        const reference = workingHours[0]; // Use Monday as reference or first item
+        const newHours = [...workingHours];
+        for (let i = startIdx; i <= endIdx; i++) {
+            newHours[i] = { ...newHours[i], open: reference.open, close: reference.close, closed: reference.closed };
+        }
+        setWorkingHours(newHours);
+    };
+
     const handleLogoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (file) {
@@ -678,46 +687,86 @@ export default function RestaurantProfile() {
                     </section>
 
                     <section className="bg-white p-8 rounded-[40px] shadow-sm border border-slate-100 space-y-6">
-                        <h2 className="text-xl font-black text-slate-900 flex items-center gap-2">
-                            <Clock className="w-6 h-6 text-primary" />
-                            Horario de Trabajo
-                        </h2>
+                        <div className="flex justify-between items-center bg-slate-50/50 p-4 rounded-3xl mb-2">
+                            <h2 className="text-xl font-black text-slate-900 flex items-center gap-2">
+                                <Clock className="w-6 h-6 text-primary" />
+                                Horario de Trabajo
+                            </h2>
+                            <div className="flex gap-2">
+                                <button
+                                    onClick={() => applyBulkHours(0, 4)}
+                                    className="px-3 py-1.5 bg-slate-100 text-[10px] font-black text-slate-500 rounded-xl hover:bg-slate-200 transition-colors shadow-sm"
+                                    title="Aplica el horario de Lunes a los demás días hábiles"
+                                >
+                                    Lun-Vie
+                                </button>
+                                <button
+                                    onClick={() => applyBulkHours(0, 6)}
+                                    className="px-3 py-1.5 bg-primary/10 text-[10px] font-black text-primary rounded-xl hover:bg-primary/20 transition-colors shadow-sm"
+                                    title="Aplica el horario de Lunes a toda la semana"
+                                >
+                                    Toda la Semana
+                                </button>
+                            </div>
+                        </div>
 
                         <div className="space-y-3">
                             {workingHours.map((wh, idx) => (
-                                <div key={wh.day} className="flex items-center justify-between gap-2 p-3 bg-slate-50 rounded-2xl">
-                                    <span className="text-[11px] font-black text-slate-700 w-16">{wh.day}</span>
+                                <div
+                                    key={wh.day}
+                                    className={`flex items-center justify-between gap-3 p-3 rounded-3xl border-2 transition-all ${wh.closed
+                                        ? 'bg-red-50/30 border-red-100/50'
+                                        : 'bg-slate-50 border-transparent hover:border-slate-100'
+                                        }`}
+                                >
+                                    <div className="w-20">
+                                        <span className={`text-xs font-black uppercase tracking-wider ${wh.closed ? 'text-red-400' : 'text-slate-800'}`}>
+                                            {wh.day}
+                                        </span>
+                                    </div>
 
-                                    <div className="flex items-center gap-1.5 flex-1 justify-center">
-                                        {!wh.closed ? (
-                                            <>
+                                    {!wh.closed ? (
+                                        <div className="flex-1 flex items-center justify-center gap-2">
+                                            <div className="relative group">
                                                 <input
                                                     type="time"
                                                     value={wh.open}
                                                     onChange={(e) => updateWorkingHours(idx, 'open', e.target.value)}
-                                                    className="bg-white border border-slate-200 rounded-lg p-1 text-[10px] font-bold outline-none focus:border-primary"
+                                                    className="bg-white border-2 border-slate-100 rounded-xl px-2 py-1.5 text-xs font-black text-slate-700 outline-none focus:border-primary transition-all"
                                                 />
-                                                <span className="text-[10px] text-slate-400 font-bold">-</span>
+                                            </div>
+                                            <div className="w-2 h-[2px] bg-slate-200 rounded-full" />
+                                            <div className="relative group">
                                                 <input
                                                     type="time"
                                                     value={wh.close}
                                                     onChange={(e) => updateWorkingHours(idx, 'close', e.target.value)}
-                                                    className="bg-white border border-slate-200 rounded-lg p-1 text-[10px] font-bold outline-none focus:border-primary"
+                                                    className="bg-white border-2 border-slate-100 rounded-xl px-2 py-1.5 text-xs font-black text-slate-700 outline-none focus:border-primary transition-all"
                                                 />
-                                            </>
-                                        ) : (
-                                            <span className="text-[10px] font-black text-red-500 uppercase tracking-widest italic">Cerrado</span>
-                                        )}
-                                    </div>
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        <div className="flex-1 text-center">
+                                            <span className="text-[10px] font-black text-red-500 bg-red-100/50 px-3 py-1 rounded-full uppercase tracking-widest">
+                                                Cerrado
+                                            </span>
+                                        </div>
+                                    )}
 
                                     <button
                                         onClick={() => updateWorkingHours(idx, 'closed', !wh.closed)}
-                                        className={`px-2.5 py-1.5 rounded-xl text-[9px] font-black transition-all ${wh.closed ? 'bg-slate-200 text-slate-500' : 'bg-primary/10 text-primary hover:bg-primary/20'}`}
+                                        className={`w-20 py-2 rounded-xl text-[10px] font-black uppercase tracking-tighter transition-all shadow-sm ${wh.closed
+                                            ? 'bg-slate-900 text-white hover:bg-slate-800'
+                                            : 'bg-white text-slate-400 hover:text-red-500 border border-slate-100'
+                                            }`}
                                     >
-                                        {wh.closed ? 'ABRIR' : 'CERRAR'}
+                                        {wh.closed ? 'Abrir' : 'Cerrar'}
                                     </button>
                                 </div>
                             ))}
+                            <p className="text-[10px] text-slate-400 text-center font-bold italic mt-4">
+                                * Tip: Configura el Lunes y presiona "Toda la Semana" para ahorrar tiempo.
+                            </p>
                         </div>
                     </section>
 
