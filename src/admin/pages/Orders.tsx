@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Search, Filter, Clock, MapPin, ChevronRight, Package, Truck, CheckCircle, Loader2, Bell, ExternalLink, X, ShoppingCart, Plus, Minus, Trash2, User, CreditCard, Store, ShoppingBag } from 'lucide-react';
+import { Search, Filter, Clock, MapPin, ChevronRight, Package, Truck, CheckCircle, Loader2, Bell, ExternalLink, X, ShoppingCart, Plus, Minus, Trash2, User, CreditCard, Store, ShoppingBag, Users } from 'lucide-react';
 import { db } from '../../lib/firebase';
 import { collection, query, where, onSnapshot, orderBy, doc, updateDoc, getDocs, increment, addDoc, serverTimestamp } from 'firebase/firestore';
 import { useAuth } from '../../context/AuthContext';
@@ -25,6 +25,9 @@ interface Order {
     deliveryAddress: string;
     userName?: string;
     source?: string;
+    waiterId?: string;
+    waiterName?: string;
+    tableNumber?: string;
 }
 
 export default function Orders() {
@@ -49,6 +52,13 @@ export default function Orders() {
     const [posDeliveryFee, setPosDeliveryFee] = useState(0);
     const [isSubmittingPOS, setIsSubmittingPOS] = useState(false);
 
+    const [waiters, setWaiters] = useState<any[]>([]);
+    const [tables, setTables] = useState<any[]>([]);
+    const [selectedWaiter, setSelectedWaiter] = useState<any | null>(null);
+    const [selectedTable, setSelectedTable] = useState<any | null>(null);
+    const [waiterSearch, setWaiterSearch] = useState('');
+    const [tableSearch, setTableSearch] = useState('');
+
     useEffect(() => {
         if (!user || !showPOS) return;
         const fetchPosProducts = async () => {
@@ -67,7 +77,32 @@ export default function Orders() {
             setPosProducts(items);
             setPosCategories(['Todos', ...Array.from(cats)]);
         };
+
+        const fetchWaitersAndTables = async () => {
+            try {
+                // Fetch Waiters
+                const waitersRef = collection(db, 'restaurants', user.uid, 'waiters');
+                const waitersSnap = await getDocs(waitersRef);
+                const waitersList = waitersSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                setWaiters(waitersList);
+
+                // Fetch Tables
+                const tablesRef = collection(db, 'restaurants', user.uid, 'tables');
+                const tablesSnap = await getDocs(tablesRef);
+                const tablesList = tablesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as any));
+                setTables(tablesList.sort((a, b) => {
+                    const numA = parseInt(a.number, 10);
+                    const numB = parseInt(b.number, 10);
+                    if (!isNaN(numA) && !isNaN(numB)) return numA - numB;
+                    return a.number.localeCompare(b.number);
+                }));
+            } catch (error) {
+                console.error("Error fetching POS data:", error);
+            }
+        };
+
         fetchPosProducts();
+        fetchWaitersAndTables();
     }, [user, showPOS]);
 
     useEffect(() => {
@@ -233,6 +268,9 @@ export default function Orders() {
                 source: 'pos',
                 type: posOrderType,
                 deliveryFee: posDeliveryFee,
+                waiterId: selectedWaiter?.id || '',
+                waiterName: selectedWaiter?.name || '',
+                tableNumber: posOrderType === 'local' ? (selectedTable?.number || '') : '',
             });
 
             const printData = {
@@ -244,7 +282,9 @@ export default function Orders() {
                 createdAt: new Date(),
                 deliveryAddress: deliveryAddressStr,
                 source: 'pos',
-                userId: 'pos_customer'
+                userId: 'pos_customer',
+                waiterName: selectedWaiter?.name || '',
+                tableNumber: posOrderType === 'local' ? (selectedTable?.number || '') : '',
             } as any;
 
             await handlePrintOrder(newOrderRef.id, printData);
@@ -256,6 +296,10 @@ export default function Orders() {
             setPosDeliveryAddress('');
             setPosDeliveryFee(0);
             setPosOrderType('local');
+            setSelectedWaiter(null);
+            setSelectedTable(null);
+            setWaiterSearch('');
+            setTableSearch('');
 
         } catch (error) {
             console.error("Error creando orden POS:", error);
@@ -602,45 +646,110 @@ export default function Orders() {
                                     </button>
                                 </div>
 
-                                {/* Custom Details Form */}
-                                <div className="px-4 space-y-3 pb-4 border-b border-slate-100 shrink-0">
-                                    <div className="flex gap-3">
-                                        <input
-                                            type="text"
-                                            placeholder="Nombre cliente"
-                                            value={posClientName}
-                                            onChange={(e) => setPosClientName(e.target.value)}
-                                            className="w-full bg-slate-50 border border-slate-200 p-3 rounded-xl outline-none focus:border-primary font-bold text-sm text-slate-700"
-                                        />
-                                        <input
-                                            type="text"
-                                            placeholder="Cédula/RIF"
-                                            value={posClientDNI}
-                                            onChange={(e) => setPosClientDNI(e.target.value)}
-                                            className="w-full bg-slate-50 border border-slate-200 p-3 rounded-xl outline-none focus:border-primary font-bold text-sm text-slate-700"
-                                        />
-                                    </div>
-                                    {posOrderType === 'delivery' && (
-                                        <>
-                                            <input
-                                                type="text"
-                                                placeholder="Dirección de envío completa"
-                                                value={posDeliveryAddress}
-                                                onChange={(e) => setPosDeliveryAddress(e.target.value)}
-                                                className="w-full bg-blue-50 border border-blue-100 p-3 rounded-xl outline-none focus:border-blue-500 font-bold text-sm text-slate-700"
-                                            />
-                                            <div className="flex items-center gap-2">
-                                                <label className="text-xs font-bold text-slate-500 whitespace-nowrap">Costo Envío:</label>
+                                {/* Secciones de Selección */}
+                                <div className="flex-1 overflow-y-auto px-4 space-y-4 py-2 border-b border-slate-100">
+                                    {/* Información del Cliente */}
+                                    <div className="space-y-3">
+                                        <div className="flex gap-2">
+                                            <div className="flex-1 space-y-1">
+                                                <label className="text-[10px] font-black text-slate-400 uppercase ml-1">Cliente</label>
                                                 <input
-                                                    type="number"
-                                                    min="0"
-                                                    value={posDeliveryFee || ''}
-                                                    onChange={(e) => setPosDeliveryFee(Number(e.target.value))}
-                                                    placeholder="0.00"
-                                                    className="w-full bg-white border border-slate-200 p-2 rounded-lg outline-none focus:border-primary font-bold text-sm text-slate-700"
+                                                    type="text"
+                                                    placeholder="Nombre..."
+                                                    value={posClientName}
+                                                    onChange={(e) => setPosClientName(e.target.value)}
+                                                    className="w-full bg-slate-50 border border-slate-200 py-2 px-3 rounded-xl outline-none focus:border-primary text-xs font-bold"
                                                 />
                                             </div>
-                                        </>
+                                            <div className="w-32 space-y-1">
+                                                <label className="text-[10px] font-black text-slate-400 uppercase ml-1">DNI/ID</label>
+                                                <input
+                                                    type="text"
+                                                    placeholder="Opcional"
+                                                    value={posClientDNI}
+                                                    onChange={(e) => setPosClientDNI(e.target.value)}
+                                                    className="w-full bg-slate-50 border border-slate-200 py-2 px-3 rounded-xl outline-none focus:border-primary text-xs font-bold"
+                                                />
+                                            </div>
+                                        </div>
+
+                                        {posOrderType === 'delivery' && (
+                                            <div className="space-y-1">
+                                                <label className="text-[10px] font-black text-slate-400 uppercase ml-1">Dirección de Envío</label>
+                                                <div className="relative">
+                                                    <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 w-3 h-3 text-slate-400" />
+                                                    <input
+                                                        type="text"
+                                                        placeholder="Calle, número, apto..."
+                                                        value={posDeliveryAddress}
+                                                        onChange={(e) => setPosDeliveryAddress(e.target.value)}
+                                                        className="w-full bg-slate-50 border border-slate-200 py-2 pl-8 pr-4 rounded-xl outline-none focus:border-primary text-xs font-bold"
+                                                    />
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    {/* Waiter Selection */}
+                                    <div className="space-y-2 pt-2 border-t border-slate-100">
+                                        <label className="text-[10px] font-black text-slate-400 uppercase ml-1 flex items-center gap-2">
+                                            <Users className="w-3 h-3" /> Mesero Asignado
+                                        </label>
+                                        <div className="relative">
+                                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3 h-3 text-slate-400" />
+                                            <input
+                                                type="text"
+                                                placeholder="Buscar mesero..."
+                                                value={waiterSearch}
+                                                onChange={(e) => setWaiterSearch(e.target.value)}
+                                                className="w-full bg-slate-50 border border-slate-200 py-2 pl-8 pr-4 rounded-xl outline-none focus:border-primary text-xs font-bold"
+                                            />
+                                        </div>
+                                        <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
+                                            {waiters
+                                                .filter(w => w.name.toLowerCase().includes(waiterSearch.toLowerCase()))
+                                                .map(waiter => (
+                                                    <button
+                                                        key={waiter.id}
+                                                        onClick={() => setSelectedWaiter(selectedWaiter?.id === waiter.id ? null : waiter)}
+                                                        className={`px-3 py-2 rounded-xl text-xs font-black whitespace-nowrap transition-all border ${selectedWaiter?.id === waiter.id ? 'bg-primary text-white border-primary' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'}`}
+                                                    >
+                                                        {waiter.name}
+                                                    </button>
+                                                ))}
+                                        </div>
+                                    </div>
+
+                                    {/* Table Selection (Only for Local) */}
+                                    {posOrderType === 'local' && (
+                                        <div className="space-y-2 pt-2 border-t border-slate-100">
+                                            <label className="text-[10px] font-black text-slate-400 uppercase ml-1 flex items-center gap-2">
+                                                <Store className="w-3 h-3" /> Mesa
+                                            </label>
+                                            <div className="relative">
+                                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3 h-3 text-slate-400" />
+                                                <input
+                                                    type="text"
+                                                    placeholder="Buscar mesa..."
+                                                    value={tableSearch}
+                                                    onChange={(e) => setTableSearch(e.target.value)}
+                                                    className="w-full bg-slate-50 border border-slate-200 py-2 pl-8 pr-4 rounded-xl outline-none focus:border-primary text-xs font-bold"
+                                                />
+                                            </div>
+                                            <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
+                                                {tables
+                                                    .filter(t => t.number.toLowerCase().includes(tableSearch.toLowerCase()))
+                                                    .map(table => (
+                                                        <button
+                                                            key={table.id}
+                                                            onClick={() => setSelectedTable(selectedTable?.id === table.id ? null : table)}
+                                                            className={`px-3 py-2 rounded-xl text-xs font-black whitespace-nowrap transition-all border ${selectedTable?.id === table.id ? 'bg-orange-500 text-white border-orange-500' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'}`}
+                                                        >
+                                                            Mesa {table.number}
+                                                        </button>
+                                                    ))}
+                                            </div>
+                                        </div>
                                     )}
                                 </div>
 
@@ -713,7 +822,8 @@ export default function Orders() {
                         </div>
                     </div>
                 </div>
-            )}
-        </div>
+            )
+            }
+        </div >
     );
 }

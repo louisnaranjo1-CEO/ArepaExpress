@@ -23,10 +23,9 @@ service cloud.firestore {
     // Waiter Index for login
     match /waiter_index/{email} {
       allow read: if true;
-      allow write: if request.auth != null && (
-        (request.resource != null && request.resource.data.restaurantId == request.auth.uid) ||
-        (resource != null && resource.data.restaurantId == request.auth.uid)
-      );
+      allow create: if request.auth != null && request.resource.data.restaurantId == request.auth.uid;
+      allow update: if request.auth != null && resource.data.restaurantId == request.auth.uid && request.resource.data.restaurantId == request.auth.uid;
+      allow delete: if request.auth != null && resource.data.restaurantId == request.auth.uid;
     }
     
     // User orders
