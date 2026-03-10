@@ -70,7 +70,7 @@ export default function WaiterLogin() {
 
     return (
         <div className="min-h-screen bg-slate-50 flex flex-col justify-center p-6 relative">
-            <div className="absolute top-0 left-0 w-full h-80 bg-primary/10 rounded-b-[40px] -z-0"></div>
+            <div className="absolute top-0 left-0 w-full h-80 bg-secondary/5 rounded-b-[40px] -z-0"></div>
 
             <div className="w-full max-w-sm mx-auto z-10">
                 <div className="text-center mb-10 mt-safe">
@@ -82,7 +82,7 @@ export default function WaiterLogin() {
                         </div>
                     </div>
                     <h1 className="text-3xl font-black text-slate-900 tracking-tight">Acceso Personal</h1>
-                    <p className="font-bold text-slate-500 mt-2">Módulo de toma de pedidos</p>
+                    <p className="font-bold text-slate-500 mt-2">Gestión de Pedidos 2X3</p>
                 </div>
 
                 <motion.div
@@ -92,7 +92,7 @@ export default function WaiterLogin() {
                 >
                     <div className="p-8 border-b border-slate-50 flex items-center justify-center bg-slate-50/50">
                         <div className="flex items-center gap-2">
-                            <Shield className="w-5 h-5 text-indigo-500" />
+                            <Shield className="w-5 h-5 text-primary" />
                             <h3 className="text-sm font-black text-slate-700 uppercase tracking-widest">Seguridad</h3>
                         </div>
                     </div>
@@ -118,8 +118,8 @@ export default function WaiterLogin() {
                                 required
                                 value={waiterEmail}
                                 onChange={(e) => setWaiterEmail(e.target.value)}
-                                placeholder="mesero@restaurante.com"
-                                className="w-full bg-slate-50 border-2 border-slate-100 focus:border-indigo-500 px-4 py-4 rounded-2xl outline-none font-bold text-slate-700 transition-all focus:bg-white"
+                                placeholder="mesero@2x3.com"
+                                className="w-full bg-slate-50 border-2 border-slate-100 focus:border-primary px-4 py-4 rounded-2xl outline-none font-bold text-slate-700 transition-all focus:bg-white"
                             />
                         </div>
 
@@ -131,14 +131,14 @@ export default function WaiterLogin() {
                                 value={waiterPassword}
                                 onChange={(e) => setWaiterPassword(e.target.value)}
                                 placeholder="••••"
-                                className="w-full bg-slate-50 border-2 border-slate-100 focus:border-indigo-500 px-4 py-4 rounded-2xl outline-none font-black tracking-[0.5em] text-slate-700 transition-all text-center text-xl shadow-inner focus:bg-white"
+                                className="w-full bg-slate-50 border-2 border-slate-100 focus:border-primary px-4 py-4 rounded-2xl outline-none font-black tracking-[0.5em] text-slate-700 transition-all text-center text-xl shadow-inner focus:bg-white"
                             />
                         </div>
 
                         <button
                             type="submit"
                             disabled={isWaiterSigningIn}
-                            className="w-full bg-indigo-600 text-white py-4 rounded-2xl font-bold shadow-lg shadow-indigo-600/30 hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-70 mt-6 flex items-center justify-center gap-2"
+                            className="w-full bg-secondary text-white py-4 rounded-2xl font-bold shadow-lg shadow-secondary/30 hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-70 mt-6 flex items-center justify-center gap-2"
                         >
                             {isWaiterSigningIn ? (
                                 <div className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin"></div>

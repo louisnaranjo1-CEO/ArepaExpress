@@ -184,34 +184,42 @@ export default function Taxi() {
 
     // 5. Route Calculation
     useEffect(() => {
-        if (step === 'vehicle' && origin && destination && directionsService) {
+        let isMounted = true;
+        if (step === 'vehicle' && origin && destination && directionsService && !directionsResponse) {
             setIsCalculatingRoute(true);
-            directionsService.route({
+
+            const request: google.maps.DirectionsRequest = {
                 origin: { lat: origin.lat, lng: origin.lng },
                 destination: { lat: destination.lat, lng: destination.lng },
-                travelMode: 'DRIVING' as google.maps.TravelMode
-            }, (result, status) => {
-                setIsCalculatingRoute(false);
-                if (status === 'OK' && result) {
-                    setDirectionsResponse(result);
+                travelMode: google.maps.TravelMode.DRIVING
+            };
 
+            directionsService.route(request, (result, status) => {
+                if (!isMounted) return;
+
+                setIsCalculatingRoute(false);
+
+                if (status === google.maps.DirectionsStatus.OK && result) {
+                    setDirectionsResponse(result);
                     const leg = result.routes[0].legs[0];
                     if (leg && leg.distance) {
+                        const distanceKm = Number((leg.distance.value / 1000).toFixed(1));
                         setRouteInfo({
-                            distance: Number((leg.distance.value / 1000).toFixed(1)),
+                            distance: distanceKm,
                             duration: leg.duration?.text || ''
                         });
                     }
                     setIsMapInteractionEnabled(false);
                 } else {
                     console.error("Route calculation failed:", status);
-                    toast.error("No se pudo calcular la ruta entre estos puntos");
+                    toast.error("No se pudo calcular la ruta. Por favor intenta de nuevo.");
                     setStep('destination');
                     setIsMapInteractionEnabled(true);
                 }
             });
         }
-    }, [step, origin, destination, directionsService]);
+        return () => { isMounted = false; };
+    }, [step, origin, destination, directionsService, directionsResponse]);
 
     // 6. Navigation Helpers
     const confirmOrigin = () => {
@@ -252,8 +260,8 @@ export default function Taxi() {
 
         // Find matching range
         const matchingRange = rates.find(r => {
-            const fromKm = parseFloat(r.from?.toString() || '0');
-            const toKm = parseFloat(r.to?.toString() || '0');
+            const fromKm = parseFloat(String(r.from || '0'));
+            const toKm = parseFloat(String(r.to || '0'));
             return distance >= fromKm && (toKm === 0 || distance <= toKm);
         });
 
@@ -261,13 +269,13 @@ export default function Taxi() {
             const priceValue = forDriver
                 ? (matchingRange.driverPrice || matchingRange.price)
                 : (matchingRange.clientPrice || matchingRange.price);
-            return parseFloat(priceValue?.toString() || '0').toFixed(2);
+            return parseFloat(String(priceValue || '0')).toFixed(2);
         }
 
         // Fallback to highest range if distance exceeds
         const sortedRates = [...rates].sort((a, b) => {
-            const fromA = parseFloat(a.from?.toString() || '0');
-            const fromB = parseFloat(b.from?.toString() || '0');
+            const fromA = parseFloat(String(a.from || '0'));
+            const fromB = parseFloat(String(b.from || '0'));
             return fromB - fromA;
         });
 
@@ -276,7 +284,7 @@ export default function Taxi() {
             const priceValue = forDriver
                 ? (lastRange.driverPrice || lastRange.price)
                 : (lastRange.clientPrice || lastRange.price);
-            return parseFloat(priceValue?.toString() || '0').toFixed(2);
+            return parseFloat(String(priceValue || '0')).toFixed(2);
         }
 
         return "0.00";
@@ -580,9 +588,24 @@ export default function Taxi() {
                             </div>
 
                             {!adminRates || isCalculatingRoute ? (
-                                <div className="flex flex-col items-center justify-center py-12 gap-4">
-                                    <div className="w-10 h-10 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>
-                                    <p className="text-sm font-bold text-slate-500">Calculando la mejor ruta...</p>
+                                <div className="flex flex-col items-center justify-center py-12 gap-5">
+                                    <div className="w-12 h-12 border-4 border-primary border-t-transparent rounded-full animate-spin"></div>
+                                    <div className="text-center">
+                                        <p className="text-sm font-black text-slate-800 uppercase tracking-widest">Calculando la mejor ruta...</p>
+                                        <p className="text-[10px] font-bold text-slate-400 mt-1">Buscando conductor cerca de ti</p>
+                                    </div>
+                                    {isCalculatingRoute && (
+                                        <button
+                                            onClick={() => {
+                                                setIsCalculatingRoute(false);
+                                                setStep('destination');
+                                                setIsMapInteractionEnabled(true);
+                                            }}
+                                            className="mt-4 text-xs font-black text-rose-500 uppercase tracking-widest bg-rose-50 px-4 py-2 rounded-full"
+                                        >
+                                            Cancelar y Reintentar
+                                        </button>
+                                    )}
                                 </div>
                             ) : (
                                 <div className="space-y-3 mb-6">

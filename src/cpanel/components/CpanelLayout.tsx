@@ -61,12 +61,12 @@ export default function CpanelLayout({ children, onLogout }: CpanelLayoutProps) 
                     {/* Sidebar Header */}
                     <div className="p-6 border-b border-slate-800 flex items-center justify-between">
                         <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 bg-indigo-500/20 rounded-xl flex items-center justify-center ring-1 ring-indigo-500/50">
-                                <LayoutDashboard className="w-6 h-6 text-indigo-400" />
+                            <div className="w-10 h-10 bg-primary/20 rounded-xl flex items-center justify-center ring-1 ring-primary/50">
+                                <LayoutDashboard className="w-6 h-6 text-primary" />
                             </div>
                             <div>
-                                <h1 className="font-black text-white leading-tight">Super Panel</h1>
-                                <p className="text-[10px] font-bold text-indigo-400 uppercase tracking-wider">Cpanel Administrativo</p>
+                                <h1 className="font-black text-white leading-tight">2X3 Panel</h1>
+                                <p className="text-[10px] font-bold text-primary uppercase tracking-wider">Cpanel Administrativo</p>
                             </div>
                         </div>
                         <button className="md:hidden" onClick={() => setIsSidebarOpen(false)}>
@@ -82,7 +82,7 @@ export default function CpanelLayout({ children, onLogout }: CpanelLayoutProps) 
                                 to={item.path}
                                 className={({ isActive }) =>
                                     `flex items-center justify-between p-4 rounded-2xl font-bold transition-all group relative ${isActive
-                                        ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/20'
+                                        ? 'bg-primary text-white shadow-lg shadow-primary/20'
                                         : 'text-slate-400 hover:bg-white/5 hover:text-white'
                                     }`
                                 }

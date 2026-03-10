@@ -297,7 +297,7 @@ export default function Profile() {
                 <div className="w-32 h-32 bg-primary/10 rounded-full flex items-center justify-center mb-6">
                     <User className="w-16 h-16 text-primary" />
                 </div>
-                <h1 className="text-3xl font-black text-slate-900 mb-2">¡Hola, Arepa Lover! 🫓</h1>
+                <h1 className="text-3xl font-black text-slate-900 mb-2">¡Hola, 2X3 Lover! 🚀</h1>
                 <p className="text-slate-500 mb-8 max-w-[280px]">
                     Ingresa para guardar tus restaurantes favoritos y pedir lo que más te gusta.
                 </p>
@@ -384,7 +384,7 @@ export default function Profile() {
                     </div>
                     <button
                         onClick={() => navigate('/delivery')}
-                        className="w-full bg-indigo-50 text-indigo-600 py-4 rounded-2xl font-bold hover:bg-indigo-100 transition-colors flex items-center justify-center gap-2"
+                        className="w-full bg-primary/10 text-primary py-4 rounded-2xl font-bold hover:bg-primary/20 transition-colors flex items-center justify-center gap-2"
                     >
                         <Navigation className="w-5 h-5 opacity-50" />
                         Acceso Delivery / Taxi
@@ -407,7 +407,7 @@ export default function Profile() {
                                             {isLoginMode ? "Iniciar Sesión" : "Crear Cuenta"}
                                         </h3>
                                         <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-0.5">
-                                            Arepa Lover 🫓
+                                            2X3 Lover 🚀
                                         </p>
                                     </div>
                                     <button onClick={() => setShowEmailModal(false)} className="p-2 hover:bg-slate-200 rounded-xl transition-all">
@@ -559,7 +559,7 @@ export default function Profile() {
     return (
         <>
             <div className="pb-24 animate-in fade-in duration-500">
-                <div className="bg-gradient-to-br from-primary to-orange-400 p-8 pt-12 pb-16 text-white rounded-b-[40px] shadow-xl">
+                <div className="bg-gradient-to-br from-secondary to-[#003B85] p-8 pt-12 pb-16 text-white rounded-b-[40px] shadow-xl">
                     <div className="flex items-center gap-4">
                         <div className="w-20 h-20 bg-white/20 backdrop-blur-md rounded-full border-4 border-white/30 flex items-center justify-center overflow-hidden shadow-inner">
                             {user.photoURL ? (
@@ -569,7 +569,7 @@ export default function Profile() {
                             )}
                         </div>
                         <div className="flex-1">
-                            <h2 className="text-2xl font-black">{user.displayName || 'Arepa Fan'}</h2>
+                            <h2 className="text-2xl font-black">{user.displayName || '2X3 Fan'}</h2>
                             <div className="flex items-center gap-1 text-white/80 text-sm">
                                 <Mail className="w-3 h-3" />
                                 <span>{user.email}</span>
@@ -686,7 +686,7 @@ export default function Profile() {
                                             {order.deliveryMethod === 'app_delivery' && (order.status === 'finding_driver' || order.status === 'driver_assigned' || order.status === 'in_transit') && (
                                                 <button
                                                     onClick={() => navigate(`/track/${order.id}`)}
-                                                    className="mt-2 w-full bg-indigo-50 text-indigo-600 font-bold py-3 rounded-xl flex justify-center items-center gap-2 active:scale-95 transition-transform"
+                                                    className="mt-2 w-full bg-secondary/10 text-secondary font-bold py-3 rounded-xl flex justify-center items-center gap-2 active:scale-95 transition-transform"
                                                 >
                                                     <Navigation className="w-4 h-4" /> Rastrear Pedido
                                                 </button>

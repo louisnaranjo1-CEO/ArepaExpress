@@ -82,9 +82,9 @@ export default function WaiterOrders() {
                                             <p className="font-bold text-slate-800">#{order.id.slice(-6).toUpperCase()}</p>
                                         </div>
                                         <div className={`px-3 py-1 rounded-full text-[10px] font-black uppercase ${order.status === 'pending' ? 'bg-orange-50 text-orange-500' :
-                                                order.status === 'preparing' ? 'bg-blue-50 text-blue-500' :
-                                                    order.status === 'delivering' ? 'bg-indigo-50 text-indigo-500' :
-                                                        'bg-emerald-50 text-emerald-500'
+                                            order.status === 'preparing' ? 'bg-blue-50 text-blue-500' :
+                                                order.status === 'delivering' ? 'bg-secondary/10 text-secondary' :
+                                                    'bg-emerald-50 text-emerald-500'
                                             }`}>
                                             {order.status}
                                         </div>

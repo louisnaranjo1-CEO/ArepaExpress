@@ -235,7 +235,7 @@ export default function WaiterDashboard() {
         { name: 'Disponible', color: 'bg-emerald-500' },
         { name: 'Ocupado', color: 'bg-amber-500' },
         { name: 'Llamando', color: 'bg-rose-500' },
-        { name: 'Cobrando', color: 'bg-indigo-500' },
+        { name: 'Cobrando', color: 'bg-secondary' },
     ];
 
     return (
@@ -260,8 +260,8 @@ export default function WaiterDashboard() {
                         >
                             <div className="flex items-center justify-between mb-10">
                                 <div className="flex items-center gap-3">
-                                    <div className="w-12 h-12 bg-primary/10 rounded-2xl flex items-center justify-center">
-                                        <img src="/logo.png" alt="Logo" className="w-8 h-8" />
+                                    <div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center shadow-sm p-2">
+                                        <img src="https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/logo%20oficial.png?alt=media&token=2dd047ea-6c45-4347-8869-1a1edf4253f4" alt="Logo" className="w-full h-full object-contain" />
                                     </div>
                                     <span className="font-black text-slate-800 text-xl">2X3</span>
                                 </div>
@@ -374,15 +374,15 @@ export default function WaiterDashboard() {
                         <div className="flex items-center gap-4">
                             <div className="relative">
                                 <img
-                                    src="https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?q=80&w=200&auto=format&fit=crop"
+                                    src="https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/logo%20oficial.png?alt=media&token=2dd047ea-6c45-4347-8869-1a1edf4253f4"
                                     alt={waiterInfo.name}
-                                    className="w-16 h-16 rounded-full object-cover border-4 border-slate-50"
+                                    className="w-16 h-16 rounded-full object-contain border-4 border-slate-50 bg-white"
                                 />
                                 <div className={`absolute bottom-0 right-0 w-4 h-4 rounded-full border-2 border-white ${waiterInfo.availability === 'offline' ? 'bg-slate-400' : 'bg-emerald-500'}`}></div>
                             </div>
                             <div>
                                 <div className="flex items-center gap-2">
-                                    <h2 className="text-lg font-black text-slate-800">{waiterInfo.name}</h2>
+                                    <h2 className="text-lg font-black text-slate-800">Mesero {waiterInfo.name}</h2>
                                     <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform ${showProfileMenu ? 'rotate-180' : ''}`} />
                                 </div>
                                 <div className="flex items-center gap-2 mt-1">
@@ -539,11 +539,11 @@ function TableCard({ table, onAction }: TableCardProps) {
                 return {
                     bg: 'bg-white',
                     border: 'border-slate-100',
-                    text: 'text-indigo-600',
-                    badge: 'bg-indigo-100',
-                    btn: 'bg-indigo-500 text-white shadow-indigo-500/20',
+                    text: 'text-secondary',
+                    badge: 'bg-secondary/10',
+                    btn: 'bg-secondary text-white shadow-secondary/20',
                     title: 'Cobrando',
-                    accent: 'ring-indigo-500'
+                    accent: 'ring-secondary'
                 };
             default:
                 return {

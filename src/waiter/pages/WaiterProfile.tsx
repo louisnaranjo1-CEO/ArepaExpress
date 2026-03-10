@@ -73,7 +73,7 @@ export default function WaiterProfile() {
     return (
         <WaiterLayout>
             {/* Header / Profile Info */}
-            <div className="bg-gradient-to-br from-primary to-orange-400 p-10 pt-16 pb-20 text-white rounded-b-[3.5rem] shadow-xl relative overflow-hidden">
+            <div className="bg-gradient-to-br from-secondary to-[#003B85] p-10 pt-16 pb-20 text-white rounded-b-[3.5rem] shadow-xl relative overflow-hidden">
                 <div className="absolute top-0 right-0 w-64 h-64 bg-white/10 rounded-full -mr-32 -mt-32 blur-3xl"></div>
 
                 <div className="relative z-10 flex flex-col items-center">
@@ -90,7 +90,7 @@ export default function WaiterProfile() {
                         </button>
                     </div>
 
-                    <h2 className="text-2xl font-black mt-5 tracking-tight">{waiterData.name}</h2>
+                    <h2 className="text-2xl font-black mt-5 tracking-tight">Mesero {waiterData.name}</h2>
                     <div className="flex items-center gap-2 mt-1 opacity-80">
                         <Award className="w-3.5 h-3.5" />
                         <span className="text-xs font-bold uppercase tracking-widest">{waiterData.role || 'Mesero'}</span>
@@ -109,7 +109,7 @@ export default function WaiterProfile() {
                     <div className="grid grid-cols-1 gap-4">
                         {[
                             { label: 'Últimas 24h', value: stats.day, icon: Clock, color: 'text-emerald-500', bg: 'bg-emerald-50' },
-                            { label: 'Esta Semana', value: stats.week, icon: Calendar, color: 'text-indigo-500', bg: 'bg-indigo-50' },
+                            { label: 'Esta Semana', value: stats.week, icon: Calendar, color: 'text-secondary', bg: 'bg-secondary/5' },
                             { label: 'Este Mes', value: stats.month, icon: Award, color: 'text-amber-500', bg: 'bg-amber-50' }
                         ].map((item, idx) => (
                             <motion.div

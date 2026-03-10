@@ -68,7 +68,7 @@ export default function DeliveryLayout({ children }: DeliveryLayoutProps) {
     return (
         <div className="flex flex-col h-[100dvh] bg-slate-50 w-full max-w-md mx-auto relative overflow-hidden shadow-2xl">
             {/* Cabecera Fija */}
-            <header className="bg-indigo-600 text-white px-4 py-4 flex items-center justify-between shadow-md z-[60] shrink-0">
+            <header className="bg-secondary text-white px-4 py-4 flex items-center justify-between shadow-md z-[60] shrink-0">
                 <div className="flex items-center gap-2">
                     <img
                         src="https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/logo%20oficial.png?alt=media&token=2dd047ea-6c45-4347-8869-1a1edf4253f4"
@@ -110,7 +110,7 @@ export default function DeliveryLayout({ children }: DeliveryLayoutProps) {
                                         <p className={`text-[11px] font-black uppercase tracking-wider ${driverStatus === s.id ? `text-${s.color}-600` : 'text-slate-700'}`}>{s.label}</p>
                                         <p className="text-[9px] text-slate-400 font-medium italic">{(s as any).desc}</p>
                                     </div>
-                                    {driverStatus === s.id && <div className="w-1.5 h-1.5 rounded-full bg-indigo-500"></div>}
+                                    {driverStatus === s.id && <div className="w-1.5 h-1.5 rounded-full bg-primary"></div>}
                                 </button>
                             ))}
                         </div>
@@ -139,7 +139,7 @@ export default function DeliveryLayout({ children }: DeliveryLayoutProps) {
                         to={item.path}
                         className={({ isActive }) =>
                             `flex flex-col items-center gap-1 min-w-[64px] transition-all ${isActive
-                                ? 'text-indigo-600'
+                                ? 'text-primary'
                                 : 'text-slate-400 hover:text-slate-600'
                             }`
                         }

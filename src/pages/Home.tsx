@@ -417,8 +417,8 @@ export default function Home() {
         </section>
       )}
 
-      {/* Categories */}
-      <section className="mt-4 pl-5">
+      {/* Categories moved/hidden as per request */}
+      {/* <section className="mt-4 pl-5">
         <h2 className="text-slate-900 text-lg font-bold mb-4 flex items-center gap-2">
           ¿Qué se te antoja? <span className="text-xl">😋</span>
         </h2>
@@ -442,7 +442,6 @@ export default function Home() {
             </button>
           ))}
 
-          {/* Fallback / View All */}
           <Link to="/search" className="flex flex-col items-center gap-2 group min-w-[72px]">
             <div className="h-[72px] w-[72px] rounded-full bg-slate-50 border-2 border-slate-100 p-1 group-hover:scale-105 transition-transform duration-300 flex items-center justify-center">
               <div className="w-full h-full rounded-full bg-white flex items-center justify-center text-slate-400">
@@ -452,7 +451,7 @@ export default function Home() {
             <span className="text-[10px] font-black text-slate-700 uppercase tracking-wider group-hover:text-primary transition-colors text-center w-full px-1">Ver todo</span>
           </Link>
         </div>
-      </section>
+      </section> */}
 
       {/* Recommendations engine */}
       <section className="mt-2 mb-6 flex flex-col gap-6">
