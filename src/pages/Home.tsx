@@ -251,12 +251,8 @@ export default function Home() {
           }
         }
 
-        // Fetch Cashea Icon
-        const iconsSnap = await getDocs(collection(db, 'global_icons'));
-        const cashea = iconsSnap.docs.find(doc => doc.data().name.toLowerCase() === 'cashea');
-        if (cashea) {
-          setCasheaIcon(cashea.data().imageUrl);
-        }
+        // Use official Cashea icon as requested by user
+        setCasheaIcon("https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/logo%20cashea.png?alt=media&token=5b266100-3323-41bb-a5a4-23957ce678a1");
 
       } catch (error) {
         console.error("Error fetching home data:", error);
@@ -648,8 +644,8 @@ export default function Home() {
                     </div>
 
                     {restaurant.hasCashea && casheaIcon && (
-                      <div className="absolute top-3 right-12 z-20 w-8 h-8 bg-white/95 backdrop-blur rounded-xl p-1 shadow-lg border border-white/50 flex items-center justify-center animate-in zoom-in duration-500">
-                        <img src={casheaIcon} alt="Cashea" className="w-full h-full object-contain" />
+                      <div className="absolute top-3 right-12 z-20 w-10 h-10 bg-indigo-600/95 backdrop-blur rounded-xl p-1.5 shadow-xl border border-white/20 flex items-center justify-center animate-in zoom-in duration-500 hover:scale-110 transition-transform">
+                        <img src={casheaIcon} alt="Cashea" className="w-full h-full object-contain brightness-0 invert" />
                       </div>
                     )}
 

@@ -30,13 +30,29 @@ service cloud.firestore {
     
     // User orders
     match /orders/{orderId} {
-      // Users can read if they are the owner or the restaurant
-      allow read: if request.auth != null && (request.auth.uid == resource.data.userId || request.auth.uid == resource.data.restaurantId);
+      // Users can read if they are owner, restaurant, assigned driver or if it's finding driver
+      allow read: if request.auth != null && (
+        request.auth.uid == resource.data.userId || 
+        request.auth.uid == resource.data.restaurantId ||
+        request.auth.uid == resource.data.deliveryDriverId ||
+        resource.data.status == 'finding_driver'
+      );
       // Users can only create orders for themselves
       allow create: if request.auth != null && request.auth.uid == request.resource.data.userId;
-      // Restaurants can update status
-      allow update: if request.auth != null && (request.auth.uid == resource.data.restaurantId || exists(/databases/$(database)/documents/restaurants/$(resource.data.restaurantId)/waiters/$(request.auth.uid)));
+      // Restaurants and Drivers can update status
+      allow update: if request.auth != null && (
+        request.auth.uid == resource.data.restaurantId || 
+        request.auth.uid == resource.data.deliveryDriverId ||
+        exists(/databases/$(database)/documents/restaurants/$(resource.data.restaurantId)/waiters/$(request.auth.uid)) ||
+        // Allow self-assignment
+        (resource.data.status == 'finding_driver' && request.resource.data.status == 'driver_assigned')
+      );
       allow delete: if false;
+    }
+
+    // Delivery Drivers profiles
+    match /delivery_drivers/{driverId} {
+      allow read, write: if request.auth != null && request.auth.uid == driverId;
     }
 
     // Wallet recharges
@@ -52,15 +68,41 @@ service cloud.firestore {
 
     // Transport requests (Taxi)
     match /transport_requests/{requestId} {
-      allow read: if request.auth != null && (request.auth.uid == resource.data.userId || request.auth.uid == resource.data.driverId || request.auth.token.admin == true);
+      allow read: if request.auth != null && (
+        request.auth.uid == resource.data.userId || 
+        request.auth.uid == resource.data.driverId || 
+        request.auth.token.admin == true ||
+        resource.data.status == 'searching'
+      );
       allow create: if request.auth != null && request.auth.uid == request.resource.data.userId;
-      allow update: if request.auth != null; // Allow drivers to accept and update
+      allow update: if request.auth != null && (
+        request.auth.uid == resource.data.userId || 
+        request.auth.uid == resource.data.driverId ||
+        (resource.data.status == 'searching' && request.resource.data.status == 'accepted')
+      );
     }
 
     // Notifications
     match /notifications/{notifId} {
       allow read: if request.auth != null && request.auth.uid == resource.data.userId;
       allow create: if request.auth != null;
+    }
+
+    // Banners
+    match /banners/{bannerId} {
+      allow read: if true;
+      allow write: if request.auth != null && (
+        request.auth.uid == request.resource.data.restaurantId || 
+        request.auth.uid == resource.data.restaurantId
+      );
+    }
+
+    // Banner Updates (for stats)
+    match /banner_updates/{updateId} {
+      allow read, create: if request.auth != null && (
+        request.auth.uid == request.resource.data.restaurantId || 
+        request.auth.uid == resource.data.restaurantId
+      );
     }
 
     // Default deny

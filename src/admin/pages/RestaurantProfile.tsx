@@ -668,16 +668,22 @@ export default function RestaurantProfile() {
                         </div>
 
                         <div
-                            className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl cursor-pointer group"
+                            className={`flex items-center justify-between p-4 rounded-2xl cursor-pointer group transition-all border-2 ${hasCashea ? 'bg-indigo-50 border-indigo-200 shadow-lg shadow-indigo-100/50' : 'bg-slate-50 border-transparent hover:border-slate-100'}`}
                             onClick={() => setHasCashea(!hasCashea)}
                         >
                             <div className="flex items-center gap-3">
-                                <div className="w-8 h-8 bg-indigo-100 rounded-lg flex items-center justify-center">
-                                    <Zap className="w-5 h-5 text-indigo-600" />
+                                <div className={`w-12 h-12 rounded-xl flex items-center justify-center transition-all ${hasCashea ? 'bg-indigo-600 shadow-lg shadow-indigo-600/30 ring-4 ring-indigo-500/10' : 'bg-white shadow-sm border border-slate-100'}`}>
+                                    <img
+                                        src="https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/logo%20cashea.png?alt=media&token=5b266100-3323-41bb-a5a4-23957ce678a1"
+                                        className={`w-8 h-8 object-contain transition-all ${hasCashea ? 'brightness-0 invert' : ''}`}
+                                        alt="Cashea"
+                                    />
                                 </div>
                                 <div>
-                                    <p className="font-bold text-slate-700 leading-tight">Servicio Cashea</p>
-                                    <p className="text-[10px] text-slate-400 font-medium">Habilitar distintivo de pago por cuotas</p>
+                                    <p className={`font-black tracking-tight leading-none mb-1 ${hasCashea ? 'text-indigo-900' : 'text-slate-700'}`}>Servicio Cashea</p>
+                                    <p className={`text-[10px] font-bold ${hasCashea ? 'text-indigo-400' : 'text-slate-400'}`}>
+                                        {hasCashea ? 'Insignia habilitada en el perfil' : 'Habilitar distintivo de pago por cuotas'}
+                                    </p>
                                 </div>
                             </div>
                             <div className={`w-12 h-6 rounded-full relative transition-colors ${hasCashea ? 'bg-indigo-600' : 'bg-slate-200'}`}>

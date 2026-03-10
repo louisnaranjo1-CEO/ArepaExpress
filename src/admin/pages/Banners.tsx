@@ -33,14 +33,20 @@ export default function Banners() {
         if (!user) return;
 
         // Fetch Business Data (Subscription)
-        const unsubBus = onSnapshot(doc(db, 'restaurants', user.uid), (docSnap) => {
-            if (docSnap.exists()) {
-                const data = docSnap.data();
-                setBusinessData(data);
-                const limit = data.subscription?.bannerLimit || 3;
-                setBannerStats(prev => ({ ...prev, total: limit }));
+        const unsubBus = onSnapshot(doc(db, 'restaurants', user.uid),
+            (docSnap) => {
+                if (docSnap.exists()) {
+                    const data = docSnap.data();
+                    setBusinessData(data);
+                    const limit = data.subscription?.bannerLimit || 3;
+                    setBannerStats(prev => ({ ...prev, total: limit }));
+                }
+            },
+            (error) => {
+                console.error("Error fetching restaurant profile:", error);
+                setLoading(false);
             }
-        });
+        );
 
         // Fetch Banners for this Restaurant
         const q = query(
@@ -48,14 +54,20 @@ export default function Banners() {
             where('restaurantId', '==', user.uid)
         );
 
-        const unsubBanners = onSnapshot(q, (snapshot) => {
-            const data = snapshot.docs.map(doc => ({
-                id: doc.id,
-                ...doc.data()
-            }));
-            setBanners(data);
-            setLoading(false);
-        });
+        const unsubBanners = onSnapshot(q,
+            (snapshot) => {
+                const data = snapshot.docs.map(doc => ({
+                    id: doc.id,
+                    ...doc.data()
+                }));
+                setBanners(data);
+                setLoading(false);
+            },
+            (error) => {
+                console.error("Error fetching banners:", error);
+                setLoading(false);
+            }
+        );
 
         // Calculate Usage this month
         const startOfMonth = new Date();
@@ -68,14 +80,21 @@ export default function Banners() {
             where('timestamp', '>=', startOfMonth)
         );
 
-        const unsubStats = onSnapshot(qStats, (snapshot) => {
-            const count = snapshot.size;
-            setBannerStats(prev => ({
-                ...prev,
-                used: count,
-                remaining: Math.max(0, prev.total - count)
-            }));
-        });
+        const unsubStats = onSnapshot(qStats,
+            (snapshot) => {
+                const count = snapshot.size;
+                setBannerStats(prev => ({
+                    ...prev,
+                    used: count,
+                    remaining: Math.max(0, prev.total - count)
+                }));
+            },
+            (error) => {
+                console.error("Error fetching stats:", error);
+                // Not strictly necessary to stop loading here as others should cover it,
+                // but good for completeness
+            }
+        );
 
         return () => {
             unsubBus();
@@ -244,8 +263,8 @@ export default function Banners() {
                             }
                         }}
                         className={`flex items-center gap-2 px-5 py-2.5 rounded-xl font-black transition-all active:scale-95 ${isAdding
-                                ? 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                                : 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/20 hover:bg-indigo-700'
+                            ? 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                            : 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/20 hover:bg-indigo-700'
                             }`}
                     >
                         {isAdding ? 'Cancelar' : <><Plus className="w-5 h-5" /> Nuevo Banner</>}

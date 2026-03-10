@@ -20,11 +20,15 @@ export default function OrdersRadar() {
     // 1. Fetch Driver Profile for vehicleType
     useEffect(() => {
         if (!user) return;
-        const unsub = onSnapshot(doc(db, 'delivery_drivers', user.uid), (docSnap) => {
-            if (docSnap.exists()) {
-                setDriverProfile(docSnap.data());
-            }
-        });
+        const unsub = onSnapshot(
+            doc(db, 'delivery_drivers', user.uid),
+            (docSnap) => {
+                if (docSnap.exists()) {
+                    setDriverProfile(docSnap.data());
+                }
+            },
+            (err) => console.error("Error fetching radar profile:", err)
+        );
         return () => unsub();
     }, [user]);
 

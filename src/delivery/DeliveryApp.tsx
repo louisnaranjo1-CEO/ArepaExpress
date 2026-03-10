@@ -25,14 +25,21 @@ function DeliveryRoutes() {
             return;
         }
 
-        const unsub = onSnapshot(doc(db, 'delivery_drivers', user.uid), (snap) => {
-            if (snap.exists()) {
-                setDriverProfile(snap.data());
-            } else {
-                setDriverProfile(null);
+        const unsub = onSnapshot(
+            doc(db, 'delivery_drivers', user.uid),
+            (snap) => {
+                if (snap.exists()) {
+                    setDriverProfile(snap.data());
+                } else {
+                    setDriverProfile(null);
+                }
+                setLoadingDriver(false);
+            },
+            (error) => {
+                console.error("Error fetching driver profile:", error);
+                setLoadingDriver(false); // Stop loading even on error
             }
-            setLoadingDriver(false);
-        });
+        );
 
         return () => unsub();
     }, [user]);
