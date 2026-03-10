@@ -794,8 +794,12 @@ export default function RestaurantProfile() {
 
                                         <div className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl border border-slate-100">
                                             <div className="flex items-center gap-3">
-                                                <div className={`p-2 rounded-xl ${editData.hasCashea ? 'bg-green-100 text-green-600' : 'bg-slate-200 text-slate-400'}`}>
-                                                    <Zap className="w-5 h-5" />
+                                                <div className={`w-12 h-12 rounded-xl flex items-center justify-center p-1.5 transition-all ${editData.hasCashea ? 'bg-indigo-50 shadow-inner' : 'bg-slate-100'}`}>
+                                                    <img
+                                                        src="https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/unnamed%20(14).jpg?alt=media"
+                                                        alt="Cashea"
+                                                        className={`w-full h-full object-contain transition-all ${editData.hasCashea ? 'opacity-100 scale-110' : 'opacity-40 grayscale'}`}
+                                                    />
                                                 </div>
                                                 <div>
                                                     <p className="text-sm font-black text-slate-800">Servicio Cashea</p>

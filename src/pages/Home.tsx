@@ -348,10 +348,13 @@ export default function Home() {
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1">
+            <Link to="/favorites" className="p-2 text-slate-900 hover:bg-slate-100 rounded-full transition-colors shrink-0">
+              <Heart className="w-6 h-6" />
+            </Link>
             <Link to="/notifications" className="relative p-2 text-slate-900 hover:bg-slate-100 rounded-full transition-colors shrink-0">
               <Bell className="w-6 h-6" />
-              <span className="absolute top-2 right-2 h-2.5 w-2.5 rounded-full bg-accent border-2 border-white"></span>
+              <span className="absolute top-2.5 right-2.5 h-2 w-2 rounded-full bg-accent border-[1.5px] border-white"></span>
             </Link>
           </div>
         </div>

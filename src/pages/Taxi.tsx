@@ -4,7 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import { collection, addDoc, serverTimestamp, doc, getDoc, updateDoc, getDocs, query, where, writeBatch } from 'firebase/firestore';
 import { db, storage } from '../lib/firebase';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { Car, Bike, MapPin, Navigation, ArrowRight, CheckCircle2, X, Heart, History, Star, Wallet } from 'lucide-react';
+import { Car, Bike, MapPin, Navigation, ArrowRight, CheckCircle2, X, Heart, History, Star, Wallet, Upload } from 'lucide-react';
 import { GoogleMap, useJsApiLoader, Marker, DirectionsRenderer } from '@react-google-maps/api';
 import toast from 'react-hot-toast';
 
@@ -856,17 +856,29 @@ export default function Taxi() {
                                                         <label className="block text-xs font-bold text-slate-500 mb-2">Comprobante o Referencia</label>
                                                         <input
                                                             type="text"
-                                                            placeholder="Nro. de Referencia"
+                                                            placeholder="Nro. de Referencia o teléfono emisor"
                                                             value={paymentRef}
                                                             onChange={e => setPaymentRef(e.target.value)}
-                                                            className="w-full bg-white border border-slate-200 p-3 rounded-xl mb-2 focus:border-primary outline-none transition-all"
+                                                            className="w-full bg-white border border-slate-200 p-4 rounded-2xl mb-3 focus:border-primary focus:ring-4 focus:ring-primary/10 outline-none transition-all font-bold text-slate-700"
                                                         />
-                                                        <input
-                                                            type="file"
-                                                            accept="image/*"
-                                                            onChange={e => e.target.files && setPaymentProof(e.target.files[0])}
-                                                            className="w-full text-xs"
-                                                        />
+                                                        <div className="relative">
+                                                            <input
+                                                                type="file"
+                                                                id="pagoMovilProof"
+                                                                accept="image/*"
+                                                                onChange={e => e.target.files && setPaymentProof(e.target.files[0])}
+                                                                className="hidden"
+                                                            />
+                                                            <label
+                                                                htmlFor="pagoMovilProof"
+                                                                className={`w-full flex items-center justify-center gap-3 p-4 rounded-2xl border-2 border-dashed transition-all cursor-pointer ${paymentProof ? 'bg-emerald-50 border-emerald-500 text-emerald-700' : 'bg-slate-50 border-slate-200 text-slate-500 hover:border-primary hover:bg-primary/5 hover:text-primary'}`}
+                                                            >
+                                                                <Upload className={`w-5 h-5 ${paymentProof ? 'text-emerald-500' : ''}`} />
+                                                                <span className="text-xs font-black uppercase tracking-widest text-center">
+                                                                    {paymentProof ? `Listo: ${paymentProof.name.substring(0, 20)}...` : 'Subir Capture de Pantalla'}
+                                                                </span>
+                                                            </label>
+                                                        </div>
                                                     </div>
                                                 </div>
                                             )}
