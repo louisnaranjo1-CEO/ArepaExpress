@@ -26,6 +26,7 @@ interface Product {
     promoPrice?: number;
     variants?: ProductVariant[];
     printerId?: string;
+    consultPrice?: boolean;
 }
 
 export default function ProductManagement() {
@@ -51,7 +52,8 @@ export default function ProductManagement() {
         promoPrice: '',
         socialMediaLink: '',
         variants: [] as ProductVariant[],
-        printerId: ''
+        printerId: '',
+        consultPrice: false
     });
     const [existingImages, setExistingImages] = useState<string[]>([]);
     const [newImageFiles, setNewImageFiles] = useState<File[]>([]);
@@ -105,7 +107,8 @@ export default function ProductManagement() {
                 promoPrice: product.promoPrice?.toString() || '',
                 socialMediaLink: product.socialMediaLink || '',
                 variants: product.variants || [],
-                printerId: product.printerId || ''
+                printerId: product.printerId || '',
+                consultPrice: product.consultPrice || false
             });
             setExistingImages(product.images || (product.image ? [product.image] : []));
             setNewImageFiles([]);
@@ -123,7 +126,8 @@ export default function ProductManagement() {
                 promoPrice: '',
                 socialMediaLink: '',
                 variants: [],
-                printerId: ''
+                printerId: '',
+                consultPrice: false
             });
             setExistingImages([]);
             setNewImageFiles([]);
@@ -160,7 +164,7 @@ export default function ProductManagement() {
             const investment = formData.investment ? parseFloat(formData.investment) : 0;
             const promoPrice = formData.promoPrice ? parseFloat(formData.promoPrice) : undefined;
 
-            if (isNaN(price)) {
+            if (!formData.consultPrice && isNaN(price)) {
                 alert("Por favor, ingresa un precio válido");
                 setSubmitting(false);
                 return;
@@ -168,9 +172,9 @@ export default function ProductManagement() {
 
             const productData = {
                 ...formData,
-                price,
+                price: formData.consultPrice ? 0 : price,
                 investment,
-                promoPrice: promoPrice || 0,
+                promoPrice: formData.consultPrice ? 0 : (promoPrice || 0),
                 images: allImages,
                 image: allImages[0] || '', // Principal image
                 updatedAt: new Date()
@@ -207,7 +211,7 @@ export default function ProductManagement() {
             console.log("Product saved successfully");
             setIsModalOpen(false);
             setEditingProduct(null);
-            setFormData({ name: '', description: '', price: '', category: GLOBAL_CATEGORIES[0], investment: '', promoPrice: '', isActive: true, isAvailable: true, socialMediaLink: '', variants: [], printerId: '' });
+            setFormData({ name: '', description: '', price: '', category: GLOBAL_CATEGORIES[0], investment: '', promoPrice: '', isActive: true, isAvailable: true, socialMediaLink: '', variants: [], printerId: '', consultPrice: false });
             setNewImageFiles([]);
             setExistingImages([]);
             setPreviewUrls([]);
@@ -409,7 +413,9 @@ export default function ProductManagement() {
                                     </div>
                                 )}
                                 <div className="absolute top-4 right-4 bg-white/90 backdrop-blur-md px-3 py-1 rounded-full text-sm font-black text-primary shadow-sm">
-                                    {p.variants && p.variants.length > 0 ? (
+                                    {p.consultPrice ? (
+                                        "Cotización"
+                                    ) : p.variants && p.variants.length > 0 ? (
                                         `Desde $${Math.min(...p.variants.map(v => v.price)).toFixed(2)}`
                                     ) : (
                                         `$${p.price.toFixed(2)}`
@@ -435,10 +441,17 @@ export default function ProductManagement() {
                                     </div>
                                     <h3 className="text-lg font-black text-slate-900 line-clamp-1">{p.name}</h3>
                                     <p className="text-sm text-slate-400 line-clamp-2 mt-1">{p.description}</p>
-                                    {p.variants && p.variants.length > 0 && (
+                                    {p.variants && p.variants.length > 0 && !p.consultPrice && (
                                         <div className="mt-2 flex items-center gap-1.5">
                                             <span className="bg-blue-50 text-blue-500 text-[10px] font-black px-2 py-0.5 rounded-md uppercase tracking-wider">
                                                 {p.variants.length} Presentaciones
+                                            </span>
+                                        </div>
+                                    )}
+                                    {p.consultPrice && (
+                                        <div className="mt-2 flex items-center gap-1.5">
+                                            <span className="bg-orange-50 text-orange-500 text-[10px] font-black px-2 py-0.5 rounded-md uppercase tracking-wider">
+                                                Precio a consultar
                                             </span>
                                         </div>
                                     )}
@@ -462,9 +475,9 @@ export default function ProductManagement() {
                                     <div className="text-right">
                                         <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Utilidad</p>
                                         <p className="text-sm font-black text-green-500">
-                                            +${((p.promoPrice && p.promoPrice > 0 ? p.promoPrice : p.price) - (p.investment || 0)).toFixed(2)}
+                                            {p.consultPrice ? '--' : `+$${((p.promoPrice && p.promoPrice > 0 ? p.promoPrice : p.price) - (p.investment || 0)).toFixed(2)}`}
                                         </p>
-                                        {p.promoPrice && p.promoPrice > 0 && (
+                                        {p.promoPrice && p.promoPrice > 0 && !p.consultPrice && (
                                             <p className="text-[9px] font-bold text-orange-400">En promoción</p>
                                         )}
                                     </div>
@@ -513,104 +526,133 @@ export default function ProductManagement() {
                                 />
                             </div>
 
-                            <div className="grid grid-cols-3 gap-4">
-                                <div className="space-y-1">
-                                    <label className="text-xs font-black text-slate-400 uppercase ml-2 flex items-center gap-1">
-                                        <DollarSign className="w-3 h-3" /> Precio Venta
-                                    </label>
-                                    <input
-                                        type="number"
-                                        step="0.01"
-                                        required
-                                        value={formData.price}
-                                        onChange={(e) => setFormData({ ...formData, price: e.target.value })}
-                                        className="w-full bg-slate-50 border-2 border-transparent focus:border-primary p-3 rounded-2xl outline-none font-bold text-slate-700"
-                                    />
-                                    {formData.variants.length > 0 && (
-                                        <p className="text-[10px] text-slate-400 ml-2 font-bold italic">Se usará como base</p>
-                                    )}
-                                </div>
-                                <div className="space-y-1">
-                                    <label className="text-xs font-black text-slate-400 uppercase ml-2 flex items-center gap-1">
-                                        <TrendingUp className="w-3 h-3" /> Costo Inversión
-                                    </label>
-                                    <input
-                                        type="number"
-                                        step="0.01"
-                                        value={formData.investment}
-                                        onChange={(e) => setFormData({ ...formData, investment: e.target.value })}
-                                        className="w-full bg-slate-50 border-2 border-transparent focus:border-primary p-3 rounded-2xl outline-none font-bold text-slate-700"
-                                    />
-                                </div>
-                                <div className="space-y-1">
-                                    <label className="text-xs font-black text-slate-400 uppercase ml-2 flex items-center gap-1">
-                                        <TrendingUp className="w-3 h-3" /> Precio Promo
-                                    </label>
-                                    <input
-                                        type="number"
-                                        step="0.01"
-                                        value={formData.promoPrice}
-                                        onChange={(e) => setFormData({ ...formData, promoPrice: e.target.value })}
-                                        className="w-full bg-slate-50 border-2 border-transparent focus:border-primary p-3 rounded-2xl outline-none font-bold text-slate-700"
-                                    />
-                                </div>
-                            </div>
-
-                            {/* Variantes de Precio */}
-                            <div className="space-y-3 p-4 bg-slate-50 rounded-3xl border-2 border-slate-100">
-                                <div className="flex items-center justify-between px-2">
-                                    <label className="text-xs font-black text-slate-500 uppercase flex items-center gap-2">
-                                        <Tag className="w-3.5 h-3.5" /> Variantes (Tamaños, presentaciones...)
-                                    </label>
-                                    <button
-                                        type="button"
-                                        onClick={addVariant}
-                                        className="text-[10px] font-black uppercase text-primary hover:scale-105 transition-transform flex items-center gap-1"
-                                    >
-                                        <Plus className="w-3 h-3" /> Añadir variante
-                                    </button>
-                                </div>
-
-                                {formData.variants.length > 0 ? (
-                                    <div className="space-y-2">
-                                        {formData.variants.map((variant, index) => (
-                                            <div key={index} className="flex gap-2 items-center animate-in slide-in-from-left-2 duration-300">
-                                                <input
-                                                    type="text"
-                                                    placeholder="Ej: Mediana"
-                                                    required
-                                                    value={variant.name}
-                                                    onChange={(e) => updateVariant(index, 'name', e.target.value)}
-                                                    className="flex-1 bg-white border border-slate-200 p-2.5 rounded-xl outline-none font-bold text-sm text-slate-700"
-                                                />
-                                                <div className="relative w-24">
-                                                    <DollarSign className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-slate-400" />
-                                                    <input
-                                                        type="number"
-                                                        step="0.01"
-                                                        required
-                                                        placeholder="0.00"
-                                                        value={variant.price || ''}
-                                                        onChange={(e) => updateVariant(index, 'price', parseFloat(e.target.value) || 0)}
-                                                        className="w-full bg-white border border-slate-200 p-2.5 pl-6 rounded-xl outline-none font-bold text-sm text-slate-700"
-                                                    />
-                                                </div>
-                                                <button
-                                                    type="button"
-                                                    onClick={() => removeVariant(index)}
-                                                    className="p-2 text-red-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all"
-                                                >
-                                                    <X className="w-4 h-4" />
-                                                </button>
-                                            </div>
-                                        ))}
+                            <div className="bg-orange-50 p-4 rounded-3xl border-2 border-orange-100 space-y-3">
+                                <div
+                                    onClick={() => setFormData({ ...formData, consultPrice: !formData.consultPrice })}
+                                    className="flex items-center justify-between cursor-pointer"
+                                >
+                                    <div className="flex items-center gap-3">
+                                        <div className={`p-2 rounded-xl ${formData.consultPrice ? 'bg-primary text-white' : 'bg-white text-slate-400 border border-slate-100'}`}>
+                                            <Tag className="w-5 h-5" />
+                                        </div>
+                                        <div>
+                                            <p className="text-sm font-black text-slate-700">Consultar precio</p>
+                                            <p className="text-[10px] font-bold text-slate-500 uppercase">¿El precio no es fijo o es variable?</p>
+                                        </div>
                                     </div>
-                                ) : (
-                                    <p className="text-[10px] text-slate-400 text-center py-2 font-medium italic">
-                                        Opcional: puedes añadir diferentes tamaños o presentaciones.
+                                    <div className={`w-12 h-6 rounded-full relative transition-colors ${formData.consultPrice ? 'bg-primary' : 'bg-slate-200'}`}>
+                                        <div className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow-sm transition-all ${formData.consultPrice ? 'left-7' : 'left-1'}`}></div>
+                                    </div>
+                                </div>
+                                {formData.consultPrice && (
+                                    <p className="text-[10px] text-orange-600 font-bold italic text-center animate-in fade-in slide-in-from-top-1">
+                                        Se mostrará "Consultar precio al realizar pedido" en lugar de un precio numérico.
                                     </p>
                                 )}
                             </div>
+
+                            {!formData.consultPrice && (
+                                <div className="grid grid-cols-3 gap-4 animate-in fade-in duration-300">
+                                    <div className="space-y-1">
+                                        <label className="text-xs font-black text-slate-400 uppercase ml-2 flex items-center gap-1">
+                                            <DollarSign className="w-3 h-3" /> Precio Venta
+                                        </label>
+                                        <input
+                                            type="number"
+                                            step="0.01"
+                                            required
+                                            value={formData.price}
+                                            onChange={(e) => setFormData({ ...formData, price: e.target.value })}
+                                            className="w-full bg-slate-50 border-2 border-transparent focus:border-primary p-3 rounded-2xl outline-none font-bold text-slate-700"
+                                        />
+                                        {formData.variants.length > 0 && (
+                                            <p className="text-[10px] text-slate-400 ml-2 font-bold italic">Se usará como base</p>
+                                        )}
+                                    </div>
+                                    <div className="space-y-1">
+                                        <label className="text-xs font-black text-slate-400 uppercase ml-2 flex items-center gap-1">
+                                            <TrendingUp className="w-3 h-3" /> Costo Inversión
+                                        </label>
+                                        <input
+                                            type="number"
+                                            step="0.01"
+                                            value={formData.investment}
+                                            onChange={(e) => setFormData({ ...formData, investment: e.target.value })}
+                                            className="w-full bg-slate-50 border-2 border-transparent focus:border-primary p-3 rounded-2xl outline-none font-bold text-slate-700"
+                                        />
+                                    </div>
+                                    <div className="space-y-1">
+                                        <label className="text-xs font-black text-slate-400 uppercase ml-2 flex items-center gap-1">
+                                            <TrendingUp className="w-3 h-3" /> Precio Promo
+                                        </label>
+                                        <input
+                                            type="number"
+                                            step="0.01"
+                                            value={formData.promoPrice}
+                                            onChange={(e) => setFormData({ ...formData, promoPrice: e.target.value })}
+                                            className="w-full bg-slate-50 border-2 border-transparent focus:border-primary p-3 rounded-2xl outline-none font-bold text-slate-700"
+                                        />
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Variantes de Precio */}
+                            {!formData.consultPrice && (
+                                <div className="space-y-3 p-4 bg-slate-50 rounded-3xl border-2 border-slate-100 animate-in fade-in duration-300">
+                                    <div className="flex items-center justify-between px-2">
+                                        <label className="text-xs font-black text-slate-500 uppercase flex items-center gap-2">
+                                            <Tag className="w-3.5 h-3.5" /> Variantes (Tamaños, presentaciones...)
+                                        </label>
+                                        <button
+                                            type="button"
+                                            onClick={addVariant}
+                                            className="text-[10px] font-black uppercase text-primary hover:scale-105 transition-transform flex items-center gap-1"
+                                        >
+                                            <Plus className="w-3 h-3" /> Añadir variante
+                                        </button>
+                                    </div>
+
+                                    {formData.variants.length > 0 ? (
+                                        <div className="space-y-2">
+                                            {formData.variants.map((variant, index) => (
+                                                <div key={index} className="flex gap-2 items-center animate-in slide-in-from-left-2 duration-300">
+                                                    <input
+                                                        type="text"
+                                                        placeholder="Ej: Mediana"
+                                                        required
+                                                        value={variant.name}
+                                                        onChange={(e) => updateVariant(index, 'name', e.target.value)}
+                                                        className="flex-1 bg-white border border-slate-200 p-2.5 rounded-xl outline-none font-bold text-sm text-slate-700"
+                                                    />
+                                                    <div className="relative w-24">
+                                                        <DollarSign className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-slate-400" />
+                                                        <input
+                                                            type="number"
+                                                            step="0.01"
+                                                            required
+                                                            placeholder="0.00"
+                                                            value={variant.price || ''}
+                                                            onChange={(e) => updateVariant(index, 'price', parseFloat(e.target.value) || 0)}
+                                                            className="w-full bg-white border border-slate-200 p-2.5 pl-6 rounded-xl outline-none font-bold text-sm text-slate-700"
+                                                        />
+                                                    </div>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => removeVariant(index)}
+                                                        className="p-2 text-red-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all"
+                                                    >
+                                                        <X className="w-4 h-4" />
+                                                    </button>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    ) : (
+                                        <p className="text-[10px] text-slate-400 text-center py-2 font-medium italic">
+                                            Opcional: puedes añadir diferentes tamaños o presentaciones.
+                                        </p>
+                                    )}
+                                </div>
+                            )}
 
                             <div className="space-y-2">
                                 <label className="text-xs font-black text-slate-400 uppercase ml-2 flex items-center gap-1">

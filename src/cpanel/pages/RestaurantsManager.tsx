@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { collection, getDocs, doc, updateDoc, query, where } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
-import { Store, CheckCircle, XCircle, ChevronRight, X, Phone, MapPin, Tag, Box, Star, Users, ShoppingBag } from 'lucide-react';
-import { Restaurant } from '../../lib/seed';
+import { Store, CheckCircle, XCircle, ChevronRight, X, Phone, MapPin, Tag, Box, Star, Users, ShoppingBag, Database } from 'lucide-react';
+import { Restaurant, seedDatabase, clearMockDatabase } from '../../lib/seed';
 import { useNavigate } from 'react-router-dom';
 
 interface RestaurantDetail extends Restaurant {
@@ -16,6 +16,9 @@ export default function RestaurantsManager() {
     const navigate = useNavigate();
     const [restaurants, setRestaurants] = useState<RestaurantDetail[]>([]);
     const [loading, setLoading] = useState(true);
+    const [isMocking, setIsMocking] = useState(false);
+
+    const hasMockData = restaurants.some(r => r.isMock);
 
     const fetchRestaurants = async () => {
         try {
@@ -29,6 +32,7 @@ export default function RestaurantsManager() {
             console.error("Error fetching restaurants: ", error);
         } finally {
             setLoading(false);
+            setIsMocking(false);
         }
     };
 
@@ -53,15 +57,39 @@ export default function RestaurantsManager() {
         navigate(`/restaurants/${restaurant.id}`);
     };
 
-    if (loading) {
+    if (loading && restaurants.length === 0) {
         return <div className="animate-pulse space-y-4"><div className="h-8 bg-slate-200 rounded w-1/4"></div><div className="h-64 bg-slate-200 rounded"></div></div>;
     }
 
+    const handleMockToggle = async () => {
+        setIsMocking(true);
+        if (hasMockData) {
+            await clearMockDatabase();
+        } else {
+            await seedDatabase();
+        }
+        await fetchRestaurants();
+    };
+
     return (
         <div className="space-y-6">
-            <div className="flex flex-col gap-2">
-                <h1 className="text-3xl font-black text-slate-900 leading-tight">Gestión de Restaurantes</h1>
-                <p className="text-slate-500 font-medium">Activa o desactiva restaurantes en la plataforma.</p>
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <div className="flex flex-col gap-2">
+                    <h1 className="text-3xl font-black text-slate-900 leading-tight">Gestión de Restaurantes</h1>
+                    <p className="text-slate-500 font-medium">Activa o desactiva restaurantes en la plataforma.</p>
+                </div>
+
+                <button
+                    onClick={handleMockToggle}
+                    disabled={isMocking}
+                    className={`flex items-center gap-2 px-5 py-3 rounded-2xl font-bold transition-all shadow-lg ${hasMockData
+                        ? 'bg-rose-500 text-white hover:bg-rose-600 hover:shadow-rose-500/25'
+                        : 'bg-indigo-600 text-white hover:bg-indigo-700 hover:shadow-indigo-600/25'
+                        } ${isMocking ? 'opacity-70 cursor-not-allowed' : ''}`}
+                >
+                    <Database className={`w-5 h-5 ${isMocking ? 'animate-spin' : ''}`} />
+                    {isMocking ? 'Procesando...' : hasMockData ? 'Apagar Datos de Prueba' : 'Encender Datos de Prueba'}
+                </button>
             </div>
 
             <div className="bg-white rounded-[40px] border border-slate-100 overflow-hidden shadow-xl shadow-slate-200/40">
@@ -98,7 +126,14 @@ export default function RestaurantsManager() {
                                                     )}
                                                 </div>
                                                 <div>
-                                                    <div className="font-bold text-slate-900 group-hover:text-primary transition-colors">{restaurant.name}</div>
+                                                    <div className="font-bold text-slate-900 group-hover:text-primary transition-colors flex items-center gap-2">
+                                                        {restaurant.name}
+                                                        {restaurant.isMock && (
+                                                            <span className="px-2 py-0.5 bg-indigo-100 text-indigo-700 text-[9px] uppercase tracking-wider rounded-full font-black">
+                                                                MOCK
+                                                            </span>
+                                                        )}
+                                                    </div>
                                                     <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">{restaurant.id.slice(0, 8)}...</div>
                                                 </div>
                                             </div>
@@ -108,9 +143,9 @@ export default function RestaurantsManager() {
                                         </td>
                                         <td className="px-8 py-5 text-center">
                                             <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest ${!isActive ? 'bg-slate-100 text-slate-700' :
-                                                    restaurant.status === 'busy' ? 'bg-amber-100 text-amber-700' :
-                                                        restaurant.status === 'unavailable' ? 'bg-red-100 text-red-700' :
-                                                            'bg-emerald-100 text-emerald-700'
+                                                restaurant.status === 'busy' ? 'bg-amber-100 text-amber-700' :
+                                                    restaurant.status === 'unavailable' ? 'bg-red-100 text-red-700' :
+                                                        'bg-emerald-100 text-emerald-700'
                                                 }`}>
                                                 {!isActive ? <XCircle className="w-3.5 h-3.5" /> :
                                                     restaurant.status === 'busy' ? <Store className="w-3.5 h-3.5" /> :

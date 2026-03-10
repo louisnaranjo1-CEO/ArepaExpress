@@ -92,8 +92,8 @@ export default function WaiterMenu() {
 
             {/* Back Button */}
             <button
-                onClick={() => navigate('/')}
-                className="absolute top-14 left-4 z-50 w-10 h-10 bg-white/20 backdrop-blur-md rounded-full flex items-center justify-center text-white"
+                onClick={() => window.history.length > 1 ? window.history.back() : navigate('/')}
+                className="absolute top-14 left-4 z-50 w-10 h-10 bg-white/20 backdrop-blur-md rounded-full flex items-center justify-center text-white cursor-pointer border-none outline-none"
             >
                 <ArrowLeft className="w-6 h-6" />
             </button>

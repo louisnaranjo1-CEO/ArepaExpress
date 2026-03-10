@@ -8,6 +8,7 @@ import { Restaurant, Product } from '../lib/seed';
 import { useAuth } from '../context/AuthContext';
 import { calculateDistance, formatDistance } from '../lib/geo';
 import CitySelectorModal from '../components/CitySelectorModal';
+import WelcomePopup from '../components/WelcomePopup';
 import { recommendationsService } from '../lib/recommendations';
 
 interface RecommendedProduct extends Product {
@@ -22,6 +23,7 @@ interface Category {
   isFeatured?: boolean;
   clickCount?: number;
   isActive: boolean;
+  parentId?: string;
 }
 
 export default function Home() {
@@ -42,6 +44,7 @@ export default function Home() {
   const [favoriteProducts, setFavoriteProducts] = useState<RecommendedProduct[]>([]);
   const [inspiredProducts, setInspiredProducts] = useState<RecommendedProduct[]>([]);
   const [randomProducts, setRandomProducts] = useState<RecommendedProduct[]>([]);
+  const [casheaIcon, setCasheaIcon] = useState<string | null>(null);
 
   const [manualState, setManualState] = useState<string>(() => localStorage.getItem('userState') || '');
   const [manualCity, setManualCity] = useState<string>(() => localStorage.getItem('userCity') || '');
@@ -163,7 +166,7 @@ export default function Home() {
           ...doc.data()
         })) as any[];
 
-        const activeBanners = fetchedBanners.filter(b => b.isActive);
+        const activeBanners = fetchedBanners.filter(b => b.isActive && (b.type === 'top_banner' || !b.type));
 
         // Location filtering
         const filteredBanners = activeBanners.filter(banner => {
@@ -246,6 +249,13 @@ export default function Home() {
           }
         }
 
+        // Fetch Cashea Icon
+        const iconsSnap = await getDocs(collection(db, 'global_icons'));
+        const cashea = iconsSnap.docs.find(doc => doc.data().name.toLowerCase() === 'cashea');
+        if (cashea) {
+          setCasheaIcon(cashea.data().imageUrl);
+        }
+
       } catch (error) {
         console.error("Error fetching home data:", error);
       }
@@ -270,20 +280,27 @@ export default function Home() {
   }, [currentBannerIndex, banners]);
 
   const displayCategories = useMemo(() => {
+    // We primarily show Sectors on the home page
+    const sectors = categories.filter(c => !c.parentId);
     if (categoryMode === 'manual') {
-      return categories.filter(c => c.isFeatured).slice(0, 8);
+      return sectors.filter(c => c.isFeatured).slice(0, 8);
     } else {
-      return [...categories].sort((a, b) => (b.clickCount || 0) - (a.clickCount || 0)).slice(0, 8);
+      return [...sectors].sort((a, b) => (b.clickCount || 0) - (a.clickCount || 0)).slice(0, 8);
     }
   }, [categories, categoryMode]);
 
   const handleCategoryClick = async (category: Category) => {
     try {
-      // Background update (fire and forget)
       updateDoc(doc(db, 'global_categories', category.id), {
         clickCount: increment(1)
       });
-      navigate('/search', { state: { category: category.name } });
+
+      // Navigate to search with sector filter if it's a sector
+      if (!category.parentId) {
+        navigate('/search', { state: { sector: category.id, categoryName: category.name } });
+      } else {
+        navigate('/search', { state: { category: category.name } });
+      }
     } catch (error) {
       console.error("Error tracking click:", error);
       navigate('/search', { state: { category: category.name } });
@@ -302,6 +319,7 @@ export default function Home() {
 
   return (
     <div className="relative flex h-full w-full flex-col overflow-x-hidden bg-white">
+      <WelcomePopup manualState={manualState} manualCity={manualCity} />
       {/* Header */}
       <header className="sticky top-0 z-40 bg-white/90 backdrop-blur-md px-5 pt-6 pb-2">
         <div className="flex items-center justify-between mb-4">
@@ -488,6 +506,12 @@ export default function Home() {
                       <Heart className={`w-5 h-5 transition-colors ${false ? 'text-accent fill-accent' : 'text-slate-400 hover:text-accent hover:fill-accent'}`} />
                     </div>
 
+                    {restaurant.hasCashea && casheaIcon && (
+                      <div className="absolute top-3 right-12 z-20 w-8 h-8 bg-white/95 backdrop-blur rounded-xl p-1 shadow-lg border border-white/50 flex items-center justify-center animate-in zoom-in duration-500">
+                        <img src={casheaIcon} alt="Cashea" className="w-full h-full object-contain" />
+                      </div>
+                    )}
+
                     {coverImg ? (
                       <div
                         className="w-full h-full bg-cover bg-center group-hover:scale-105 transition-transform duration-500 ease-out"
@@ -580,8 +604,8 @@ function ProductCarousel({ title, products }: { title: string, products: Recomme
                   alt={product.name}
                   className="w-full h-full object-contain mix-blend-multiply group-hover:scale-110 transition-transform duration-300"
                 />
-                {!product.price && (
-                  <div className="absolute top-2 left-2 bg-slate-900 text-white text-[8px] font-black px-1.5 py-0.5 rounded">CONSULTAR</div>
+                {(product.consultPrice || !product.price) && (
+                  <div className="absolute top-2 left-2 bg-slate-900 text-white text-[8px] font-black px-1.5 py-0.5 rounded shadow-sm">CONSULTAR</div>
                 )}
               </div>
 
@@ -591,7 +615,7 @@ function ProductCarousel({ title, products }: { title: string, products: Recomme
                 </h3>
 
                 <div className="mt-3">
-                  {product.price > 0 && (
+                  {!product.consultPrice && product.price > 0 && (
                     <div className="flex items-center gap-1.5">
                       <span className="font-black text-slate-900 text-sm leading-none bg-slate-100/50 px-1 py-0.5 rounded">
                         ${finalPrice.toFixed(2)}

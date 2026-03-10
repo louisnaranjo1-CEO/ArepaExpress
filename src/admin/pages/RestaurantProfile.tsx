@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import {
     Save,
     Check,
@@ -15,7 +16,11 @@ import {
     Store,
     Truck,
     Map as MapIcon,
-    Upload
+    Upload,
+    Share2,
+    ExternalLink,
+    Globe,
+    Zap
 } from 'lucide-react';
 import { db, storage } from '../../lib/firebase';
 import { doc, getDoc, updateDoc, collection, getDocs, orderBy, query } from 'firebase/firestore';
@@ -44,6 +49,13 @@ interface WorkingHour {
     open: string;
     close: string;
     closed: boolean;
+}
+
+interface SocialLink {
+    id: string; // The ID of the global icon
+    name: string; // The name of the social network
+    url: string; // The user's profile URL
+    imageUrl: string; // The icon image URL
 }
 
 const DEFAULT_WORKING_HOURS: WorkingHour[] = [
@@ -85,6 +97,17 @@ export default function RestaurantProfile() {
     const [uploadingCover, setUploadingCover] = useState(false);
     const [showPicker, setShowPicker] = useState<number | null>(null);
 
+    // Social Media states
+    const [socialLinks, setSocialLinks] = useState<SocialLink[]>([]);
+    const [globalIcons, setGlobalIcons] = useState<any[]>([]);
+    const [isSocialAdding, setIsSocialAdding] = useState(false);
+
+    // Categories
+    const [categoryId, setCategoryId] = useState('');
+    const [subCategoryId, setSubCategoryId] = useState('');
+    const [globalCategories, setGlobalCategories] = useState<any[]>([]);
+    const [hasCashea, setHasCashea] = useState(false);
+
     useEffect(() => {
         if (!user) return;
 
@@ -106,6 +129,10 @@ export default function RestaurantProfile() {
                     setDeliveryRates(data.deliveryRates || []);
                     setWorkingHours(data.workingHours || DEFAULT_WORKING_HOURS);
                     setFollowerCount(data.followerCount || 0);
+                    setSocialLinks(data.socialLinks || []);
+                    setCategoryId(data.categoryId || '');
+                    setSubCategoryId(data.subCategoryId || '');
+                    setHasCashea(data.hasCashea || false);
 
                     // Fetch followers list
                     const followersRef = collection(db, 'restaurants', user.uid, 'followers');
@@ -122,6 +149,20 @@ export default function RestaurantProfile() {
         };
 
         fetchRestaurant();
+
+        // Fetch Global Icons
+        const fetchGlobalIcons = async () => {
+            const iconsSnap = await getDocs(collection(db, 'global_icons'));
+            setGlobalIcons(iconsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+        };
+        fetchGlobalIcons();
+
+        // Fetch Global Categories
+        const fetchGlobalCategories = async () => {
+            const catSnap = await getDocs(collection(db, 'global_categories'));
+            setGlobalCategories(catSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+        };
+        fetchGlobalCategories();
     }, [user]);
 
     const handleSave = async () => {
@@ -167,6 +208,10 @@ export default function RestaurantProfile() {
                 location,
                 deliveryRates,
                 workingHours,
+                socialLinks,
+                categoryId,
+                subCategoryId,
+                hasCashea,
                 updatedAt: new Date()
             });
 
@@ -217,6 +262,23 @@ export default function RestaurantProfile() {
             setCoverFile(file);
             setCoverPreviewUrl(URL.createObjectURL(file));
         }
+    };
+
+    const addSocialLink = (icon: any) => {
+        if (socialLinks.find(s => s.id === icon.id)) {
+            alert("Esta red social ya ha sido agregada.");
+            return;
+        }
+        setSocialLinks([...socialLinks, { id: icon.id, name: icon.name, imageUrl: icon.imageUrl, url: '' }]);
+        setIsSocialAdding(false);
+    };
+
+    const removeSocialLink = (id: string) => {
+        setSocialLinks(socialLinks.filter(s => s.id !== id));
+    };
+
+    const updateSocialUrl = (id: string, url: string) => {
+        setSocialLinks(socialLinks.map(s => s.id === id ? { ...s, url } : s));
     };
 
     if (loading) {
@@ -372,6 +434,39 @@ export default function RestaurantProfile() {
                                         className="w-full bg-slate-50 border-2 border-transparent focus:border-primary focus:bg-white p-4 pl-12 rounded-2xl outline-none transition-all font-bold text-slate-700"
                                         placeholder="Ej: +58 412 1234567"
                                     />
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+                                <div className="space-y-2">
+                                    <label className="text-sm font-bold text-slate-500 ml-2">Sector Público (Categoría Principal)</label>
+                                    <select
+                                        value={categoryId}
+                                        onChange={(e) => {
+                                            setCategoryId(e.target.value);
+                                            setSubCategoryId('');
+                                        }}
+                                        className="w-full bg-slate-50 border-2 border-transparent focus:border-primary focus:bg-white p-4 rounded-2xl outline-none transition-all font-bold text-slate-700 appearance-none"
+                                    >
+                                        <option value="">Selecciona un Sector</option>
+                                        {globalCategories.filter(c => !c.parentId && c.isActive !== false).map(c => (
+                                            <option key={c.id} value={c.id}>{c.name}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                                <div className="space-y-2">
+                                    <label className="text-sm font-bold text-slate-500 ml-2">Especialidad (Subcategoría)</label>
+                                    <select
+                                        value={subCategoryId}
+                                        onChange={(e) => setSubCategoryId(e.target.value)}
+                                        className="w-full bg-slate-50 border-2 border-transparent focus:border-primary focus:bg-white p-4 rounded-2xl outline-none transition-all font-bold text-slate-700 appearance-none"
+                                        disabled={!categoryId}
+                                    >
+                                        <option value="">Selecciona una Especialidad</option>
+                                        {globalCategories.filter(c => c.parentId === categoryId && c.isActive !== false).map(c => (
+                                            <option key={c.id} value={c.id}>{c.name}</option>
+                                        ))}
+                                    </select>
                                 </div>
                             </div>
                         </div>
@@ -562,6 +657,24 @@ export default function RestaurantProfile() {
                                 </select>
                             </div>
                         </div>
+
+                        <div
+                            className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl cursor-pointer group"
+                            onClick={() => setHasCashea(!hasCashea)}
+                        >
+                            <div className="flex items-center gap-3">
+                                <div className="w-8 h-8 bg-indigo-100 rounded-lg flex items-center justify-center">
+                                    <Zap className="w-5 h-5 text-indigo-600" />
+                                </div>
+                                <div>
+                                    <p className="font-bold text-slate-700 leading-tight">Servicio Cashea</p>
+                                    <p className="text-[10px] text-slate-400 font-medium">Habilitar distintivo de pago por cuotas</p>
+                                </div>
+                            </div>
+                            <div className={`w-12 h-6 rounded-full relative transition-colors ${hasCashea ? 'bg-indigo-600' : 'bg-slate-200'}`}>
+                                <div className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow-sm transition-all ${hasCashea ? 'left-7' : 'left-1'}`}></div>
+                            </div>
+                        </div>
                     </section>
 
                     <section className="bg-white p-8 rounded-[40px] shadow-sm border border-slate-100 space-y-6">
@@ -605,6 +718,90 @@ export default function RestaurantProfile() {
                                     </button>
                                 </div>
                             ))}
+                        </div>
+                    </section>
+
+                    {/* Social Media Section */}
+                    <section className="bg-white p-8 rounded-[40px] shadow-sm border border-slate-100 space-y-6">
+                        <div className="flex justify-between items-center">
+                            <h2 className="text-xl font-black text-slate-900 flex items-center gap-2">
+                                <Share2 className="w-6 h-6 text-primary" />
+                                Redes Sociales
+                            </h2>
+                            <button
+                                onClick={() => setIsSocialAdding(!isSocialAdding)}
+                                className="flex items-center gap-1.5 text-primary text-xs font-bold hover:underline"
+                            >
+                                <Plus className="w-4 h-4" />
+                                Añadir Red
+                            </button>
+                        </div>
+
+                        <AnimatePresence>
+                            {isSocialAdding && (
+                                <motion.div
+                                    initial={{ opacity: 0, height: 0 }}
+                                    animate={{ opacity: 1, height: 'auto' }}
+                                    exit={{ opacity: 0, height: 0 }}
+                                    className="overflow-hidden"
+                                >
+                                    <div className="bg-slate-50 p-6 rounded-3xl border border-slate-100 grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-3">
+                                        {globalIcons.map(icon => (
+                                            <button
+                                                key={icon.id}
+                                                onClick={() => addSocialLink(icon)}
+                                                className="flex flex-col items-center gap-2 p-3 bg-white rounded-2xl hover:border-primary border-2 border-transparent transition-all group"
+                                            >
+                                                <div className="w-10 h-10 bg-slate-50 rounded-xl flex items-center justify-center p-2 group-hover:scale-110 transition-transform">
+                                                    <img src={icon.imageUrl} alt={icon.name} className="w-full h-full object-contain" />
+                                                </div>
+                                                <span className="text-[10px] font-black text-slate-700 uppercase tracking-tighter truncate w-full">{icon.name}</span>
+                                            </button>
+                                        ))}
+                                        {globalIcons.length === 0 && (
+                                            <p className="col-span-full text-center text-xs text-slate-400 p-4">No hay redes sociales configuradas por el administrador.</p>
+                                        )}
+                                    </div>
+                                </motion.div>
+                            )}
+                        </AnimatePresence>
+
+                        <div className="space-y-4">
+                            {socialLinks.length === 0 ? (
+                                <div className="text-center py-8 bg-slate-50 rounded-3xl border border-dashed border-slate-200">
+                                    <Globe className="w-10 h-10 text-slate-200 mx-auto mb-2" />
+                                    <p className="text-slate-400 text-sm font-medium">Conecta tus redes para ganar confianza.</p>
+                                </div>
+                            ) : (
+                                socialLinks.map(social => (
+                                    <div key={social.id} className="flex items-center gap-4 bg-slate-50 p-4 rounded-[28px] border border-slate-100 group">
+                                        <div className="w-12 h-12 bg-white rounded-2xl shadow-sm flex items-center justify-center p-2.5 shrink-0">
+                                            <img src={social.imageUrl} alt={social.name} className="w-full h-full object-contain" />
+                                        </div>
+                                        <div className="flex-1 space-y-1">
+                                            <div className="flex items-center justify-between">
+                                                <span className="text-xs font-black text-slate-400 uppercase tracking-wider">{social.name}</span>
+                                                <button
+                                                    onClick={() => removeSocialLink(social.id)}
+                                                    className="p-1.5 text-slate-300 hover:text-red-500 transition-colors"
+                                                >
+                                                    <Trash2 className="w-4 h-4" />
+                                                </button>
+                                            </div>
+                                            <div className="relative">
+                                                <ExternalLink className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                                                <input
+                                                    type="url"
+                                                    value={social.url}
+                                                    onChange={(e) => updateSocialUrl(social.id, e.target.value)}
+                                                    placeholder={`URL de tu perfil de ${social.name}`}
+                                                    className="w-full bg-white border border-slate-200 p-2 pl-9 rounded-xl outline-none focus:border-primary font-medium text-slate-600 text-sm"
+                                                />
+                                            </div>
+                                        </div>
+                                    </div>
+                                ))
+                            )}
                         </div>
                     </section>
                 </div>

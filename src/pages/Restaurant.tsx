@@ -1,8 +1,8 @@
-import { ArrowLeft, Search, Heart, Star, Clock, Plus, AlertCircle, MessageSquare, MapPin, ChevronRight, Phone, Instagram, UserPlus, UserCheck, Store, Truck, CheckCircle } from 'lucide-react';
+import { ArrowLeft, Search, Heart, Star, Clock, Plus, AlertCircle, MessageSquare, MapPin, ChevronRight, Phone, Instagram, UserPlus, UserCheck, Store, Truck, CheckCircle, User as UserIcon, Briefcase, X, Tag } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Link, useParams } from 'react-router-dom';
 import { useState, useEffect } from 'react';
-import { doc, getDoc, collection, getDocs, updateDoc, arrayUnion, arrayRemove, setDoc, deleteDoc, increment } from 'firebase/firestore';
+import { doc, getDoc, collection, getDocs, updateDoc, arrayUnion, arrayRemove, setDoc, deleteDoc, increment, query, where, orderBy } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { Restaurant, Product } from '../lib/seed';
 import { useCart } from '../context/CartContext';
@@ -16,9 +16,14 @@ export default function RestaurantPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activeCategory, setActiveCategory] = useState<string>('Todos');
+  const [activeTab, setActiveTab] = useState<'Menú' | 'Reseñas'>('Menú');
+  const [reviews, setReviews] = useState<any[]>([]);
+  const [loadingReviews, setLoadingReviews] = useState(false);
   const [isFavorite, setIsFavorite] = useState(false);
   const [isFollowing, setIsFollowing] = useState(false);
   const [followerCount, setFollowerCount] = useState(0);
+  const [showJobsModal, setShowJobsModal] = useState(false);
+  const [casheaIcon, setCasheaIcon] = useState<string | null>(null);
   const { user } = useAuth();
 
   const isWaiter = localStorage.getItem('isWaiter') === 'true';
@@ -73,8 +78,39 @@ export default function RestaurantPage() {
       }
     };
 
+    const fetchIcons = async () => {
+      try {
+        const iconsSnap = await getDocs(collection(db, 'global_icons'));
+        const cashea = iconsSnap.docs.find(doc => doc.data().name.toLowerCase() === 'cashea');
+        if (cashea) {
+          setCasheaIcon(cashea.data().imageUrl);
+        }
+      } catch (err) {
+        console.error("Error fetching icons:", err);
+      }
+    };
+
     fetchRestaurantAndMenu();
+    fetchIcons();
   }, [id]);
+
+  useEffect(() => {
+    const fetchReviews = async () => {
+      if (!id || activeTab !== 'Reseñas' || reviews.length > 0) return;
+      setLoadingReviews(true);
+      try {
+        const reviewsRef = collection(db, 'restaurants', id, 'reviews');
+        const q = query(reviewsRef, where('isHidden', '==', false), orderBy('createdAt', 'desc'));
+        const snap = await getDocs(q);
+        setReviews(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      } catch (err) {
+        console.error("Error fetching reviews:", err);
+      } finally {
+        setLoadingReviews(false);
+      }
+    };
+    fetchReviews();
+  }, [id, activeTab]);
 
   if (loading) {
     return (
@@ -117,7 +153,8 @@ export default function RestaurantPage() {
       quantity: 1,
       image: product.image,
       category: product.category,
-      printerId: (product as any).printerId
+      printerId: (product as any).printerId,
+      consultPrice: product.consultPrice
     });
   };
 
@@ -183,6 +220,26 @@ export default function RestaurantPage() {
     }
   };
 
+  const getRestaurantStatus = () => {
+    if (!restaurant || !restaurant.workingHours || restaurant.workingHours.length === 0) return { isOpen: true, text: 'Abierto' };
+
+    const now = new Date();
+    const days = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
+    const currentDay = days[now.getDay()];
+    const hours = now.getHours().toString().padStart(2, '0');
+    const minutes = now.getMinutes().toString().padStart(2, '0');
+    const currentTimeStr = `${hours}:${minutes}`;
+
+    const todaySchedule = restaurant.workingHours.find((day: any) => day.day === currentDay);
+
+    if (!todaySchedule || todaySchedule.closed) return { isOpen: false, text: 'Cerrado' };
+
+    const isOpen = currentTimeStr >= todaySchedule.open && currentTimeStr <= todaySchedule.close;
+    return { isOpen, text: isOpen ? 'Abierto' : 'Cerrado' };
+  };
+
+  const statusObj = getRestaurantStatus();
+
   return (
     <div className="relative w-full min-h-screen bg-white group/design-root overflow-x-hidden flex flex-col">
       {isWaiter && (
@@ -208,9 +265,9 @@ export default function RestaurantPage() {
 
         {/* Nav Icons */}
         <div className="absolute top-0 left-0 w-full p-4 pt-12 flex justify-between items-center z-10">
-          <Link to="/" className="flex items-center justify-center w-10 h-10 rounded-full bg-white/20 backdrop-blur-md text-white hover:bg-white/30 transition-colors">
+          <button onClick={() => window.history.length > 1 ? window.history.back() : window.location.href = '/'} className="flex items-center justify-center w-10 h-10 rounded-full bg-white/20 backdrop-blur-md text-white hover:bg-white/30 transition-colors cursor-pointer border-none outline-none">
             <ArrowLeft className="w-6 h-6" />
-          </Link>
+          </button>
           <div className="flex gap-3">
             <button
               onClick={toggleFavorite}
@@ -239,6 +296,11 @@ export default function RestaurantPage() {
                 <span className="text-[10px] font-black text-slate-700">{restaurant.rating}</span>
               </div>
             )}
+            {restaurant.hasCashea && casheaIcon && (
+              <div className="absolute -top-1 -right-1 w-8 h-8 bg-white/95 backdrop-blur rounded-xl p-1 shadow-lg border border-white/50 flex items-center justify-center animate-in zoom-in duration-500">
+                <img src={casheaIcon} alt="Cashea" className="w-full h-full object-contain" />
+              </div>
+            )}
           </div>
           <div className="pb-8 flex-1">
             <h1 className="text-2xl md:text-4xl font-black text-white drop-shadow-[0_2px_4px_rgba(0,0,0,0.5)] leading-tight">{restaurant.name}</h1>
@@ -261,6 +323,12 @@ export default function RestaurantPage() {
               <span>{restaurant.rating || "Nuevo"}</span>
               <span className="text-slate-500 font-normal">({restaurant.reviews || 0}+ reseñas)</span>
             </div>
+
+            <div className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider ${statusObj.isOpen ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}`}>
+              <div className={`w-2 h-2 rounded-full ${statusObj.isOpen ? 'bg-emerald-500 animate-pulse' : 'bg-red-500'}`}></div>
+              {statusObj.text}
+            </div>
+
             <div className="flex items-center gap-1 text-slate-500 text-sm">
               <Clock className="w-4 h-4" />
               <span>{restaurant.deliveryTime || restaurant.avgPrepTime + ' min' || "30-45 min"}</span>
@@ -283,7 +351,26 @@ export default function RestaurantPage() {
             </div>
           )}
 
-          <div className="flex items-center justify-between">
+          {/* Job Opportunities Badge */}
+          {restaurant.jobOpportunities?.active && (
+            <button
+              onClick={() => setShowJobsModal(true)}
+              className="flex items-center justify-between bg-primary/10 text-primary px-4 py-3 rounded-2xl border border-primary/20 shadow-sm transition-transform active:scale-95 group text-left w-full mt-2"
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-primary text-white flex items-center justify-center shrink-0 shadow-sm shadow-primary/30">
+                  <Briefcase className="w-5 h-5" />
+                </div>
+                <div>
+                  <p className="text-[10px] font-black uppercase tracking-[0.2em] leading-none mb-1 opacity-70">Únete al equipo</p>
+                  <h4 className="font-black text-sm">Oportunidad de empleo</h4>
+                </div>
+              </div>
+              <ChevronRight className="w-5 h-5 opacity-50 group-hover:translate-x-1 transition-transform" />
+            </button>
+          )}
+
+          <div className="flex items-center justify-between mt-2">
             <p className="text-slate-600 text-sm leading-relaxed">
               {restaurant.category} • {restaurant.distance || "Cerca de ti"}
             </p>
@@ -320,6 +407,28 @@ export default function RestaurantPage() {
               )}
             </div>
           </div>
+
+          {/* Social Links Row */}
+          {restaurant.socialLinks && restaurant.socialLinks.length > 0 && (
+            <div className="flex items-center gap-3 py-1 overflow-x-auto no-scrollbar">
+              {restaurant.socialLinks.map((social: any) => (
+                <motion.a
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
+                  key={social.id}
+                  href={social.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="bg-slate-50/50 p-2 rounded-2xl border border-slate-100 flex items-center gap-2 group transition-all hover:bg-white hover:shadow-md hover:border-primary/30"
+                >
+                  <div className="w-6 h-6 shrink-0 p-0.5">
+                    <img src={social.imageUrl} alt={social.name} className="w-full h-full object-contain" />
+                  </div>
+                  <span className="text-[10px] font-black text-slate-700 uppercase tracking-tighter pr-1">{social.name}</span>
+                </motion.a>
+              ))}
+            </div>
+          )}
 
           {restaurant.location && (restaurant.location.address || restaurant.location.city) && (
             <div className="mt-1 border-t border-slate-50 pt-3 flex flex-col gap-4">
@@ -374,159 +483,236 @@ export default function RestaurantPage() {
         </div>
       </div>
 
-      {/* Categories Tabs */}
-      <div className="sticky top-0 z-40 bg-white/95 backdrop-blur-sm border-b border-slate-100 pb-3 pt-3">
-        <div className="flex overflow-x-auto gap-2 px-5 hide-scrollbar">
-          {categories.map((cat) => (
-            <button
-              key={cat}
-              onClick={() => setActiveCategory(cat)}
-              className={`px-5 py-2.5 rounded-full text-sm font-bold whitespace-nowrap transition-colors ${activeCategory === cat
-                ? "bg-primary text-white shadow-md shadow-primary/20"
-                : "bg-slate-50 text-slate-600 hover:bg-slate-100 border border-slate-200"
-                }`}
-            >
-              {cat}
-            </button>
-          ))}
-        </div>
+      {/* Main Tabs */}
+      <div className="bg-white px-5 pt-3 flex gap-6 border-b border-slate-100">
+        <button
+          onClick={() => setActiveTab('Menú')}
+          className={`pb-3 font-bold transition-all border-b-2 flex items-center gap-2 ${activeTab === 'Menú' ? 'text-primary border-primary' : 'text-slate-400 border-transparent hover:text-slate-600'}`}
+        >
+          <Store className="w-4 h-4" /> Menú
+        </button>
+        <button
+          onClick={() => setActiveTab('Reseñas')}
+          className={`pb-3 font-bold transition-all border-b-2 flex items-center gap-2 ${activeTab === 'Reseñas' ? 'text-primary border-primary' : 'text-slate-400 border-transparent hover:text-slate-600'}`}
+        >
+          <Star className="w-4 h-4" /> Reseñas
+        </button>
       </div>
 
-      {/* Menu List */}
-      <div className="px-5 pb-32 flex-1 mt-4">
-        {filteredProducts.length > 0 ? (
-          filteredProducts.map((product) => {
-            const productImages = product.images && product.images.length > 0 ? product.images : [product.image];
-
-            return (
-              <div key={product.id} className="flex gap-4 py-5 border-b border-slate-100 group">
-                <div
-                  className="flex-1 flex flex-col justify-between cursor-pointer"
-                  onClick={() => {
-                    recommendationsService.recordProductView(product.id!, product.category, restaurant.id!);
-                  }}
+      {activeTab === 'Menú' ? (
+        <>
+          {/* Categories Tabs */}
+          <div className="sticky top-0 z-40 bg-white/95 backdrop-blur-sm border-b border-slate-100 pb-3 pt-3">
+            <div className="flex overflow-x-auto gap-2 px-5 hide-scrollbar">
+              {categories.map((cat) => (
+                <button
+                  key={cat}
+                  onClick={() => setActiveCategory(cat)}
+                  className={`px-5 py-2.5 rounded-full text-sm font-bold whitespace-nowrap transition-colors ${activeCategory === cat
+                    ? "bg-primary text-white shadow-md shadow-primary/20"
+                    : "bg-slate-50 text-slate-600 hover:bg-slate-100 border border-slate-200"
+                    }`}
                 >
-                  <div>
-                    <div className="flex items-center gap-2 mb-1">
-                      <h3 className="font-bold text-slate-900 text-base">{product.name}</h3>
-                      {product.socialMediaLink && (
-                        <a
-                          href={product.socialMediaLink}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          onClick={(e) => e.stopPropagation()}
-                          className="p-1 bg-gradient-to-tr from-yellow-400 via-red-500 to-purple-600 text-white rounded-lg hover:scale-110 active:scale-90 transition-all shadow-sm shadow-purple-200"
-                        >
-                          <Instagram className="w-3.5 h-3.5" />
-                        </a>
-                      )}
-                    </div>
-                    <p className="text-sm text-slate-500 line-clamp-2">{product.description}</p>
-                  </div>
-                  <div className="flex items-center gap-2 mt-3 flex-wrap">
-                    {product.variants && product.variants.length > 0 ? (
-                      <div className="w-full flex flex-col gap-2">
-                        <div className="flex items-center gap-1.5">
-                          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tight">Desde</span>
-                          <span className="font-black text-slate-900 text-lg">${Math.min(...product.variants.map(v => v.price)).toFixed(2)}</span>
+                  {cat}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Menu List */}
+          <div className="px-5 pb-32 flex-1 mt-4">
+            {filteredProducts.length > 0 ? (
+              filteredProducts.map((product) => {
+                const productImages = product.images && product.images.length > 0 ? product.images : [product.image];
+
+                return (
+                  <div key={product.id} className="flex gap-4 py-5 border-b border-slate-100 group">
+                    <div
+                      className="flex-1 flex flex-col justify-between cursor-pointer"
+                      onClick={() => {
+                        recommendationsService.recordProductView(product.id!, product.category, restaurant.id!);
+                      }}
+                    >
+                      <div>
+                        <div className="flex items-center gap-2 mb-1">
+                          <h3 className="font-bold text-slate-900 text-base">{product.name}</h3>
+                          {product.socialMediaLink && (
+                            <a
+                              href={product.socialMediaLink}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              onClick={(e) => e.stopPropagation()}
+                              className="p-1 bg-gradient-to-tr from-yellow-400 via-red-500 to-purple-600 text-white rounded-lg hover:scale-110 active:scale-90 transition-all shadow-sm shadow-purple-200"
+                            >
+                              <Instagram className="w-3.5 h-3.5" />
+                            </a>
+                          )}
                         </div>
-                        <div className="flex gap-2 flex-wrap">
-                          {product.variants.map((v, idx) => (
-                            <div key={idx} className="bg-slate-50 border border-slate-100 px-3 py-1.5 rounded-xl flex flex-col gap-0.5 min-w-[70px]">
-                              <span className="text-[9px] font-black uppercase text-slate-400 leading-none">{v.name}</span>
-                              <span className="text-sm font-black text-slate-800 leading-none">${v.price.toFixed(2)}</span>
+                        <p className="text-sm text-slate-500 line-clamp-2">{product.description}</p>
+                      </div>
+                      <div className="flex items-center gap-2 mt-3 flex-wrap">
+                        {product.consultPrice ? (
+                          <div className="w-full">
+                            <span className="font-bold text-orange-600 text-xs bg-orange-50 px-3 py-1.5 rounded-xl border border-orange-100 flex items-center justify-center gap-1.5 w-full">
+                              <Tag className="w-3.5 h-3.5" />
+                              Consultar precio al realizar pedido
+                            </span>
+                          </div>
+                        ) : product.variants && product.variants.length > 0 ? (
+                          <div className="w-full flex flex-col gap-2">
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tight">Desde</span>
+                              <span className="font-black text-slate-900 text-lg">${Math.min(...product.variants.map(v => v.price)).toFixed(2)}</span>
+                            </div>
+                            <div className="flex gap-2 flex-wrap">
+                              {product.variants.map((v, idx) => (
+                                <div key={idx} className="bg-slate-50 border border-slate-100 px-3 py-1.5 rounded-xl flex flex-col gap-0.5 min-w-[70px]">
+                                  <span className="text-[9px] font-black uppercase text-slate-400 leading-none">{v.name}</span>
+                                  <span className="text-sm font-black text-slate-800 leading-none">${v.price.toFixed(2)}</span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-2">
+                            {product.promoPrice && product.promoPrice > 0 ? (
+                              <>
+                                <span className="font-bold text-slate-900 text-base">${product.promoPrice.toFixed(2)}</span>
+                                <span className="text-xs text-slate-400 line-through">${product.price.toFixed(2)}</span>
+                                <span className="px-2 py-0.5 bg-orange-500 text-white text-[9px] font-black rounded-full shadow-sm">
+                                  -{Math.round(((product.price - product.promoPrice) / product.price) * 100)}%
+                                </span>
+                              </>
+                            ) : (
+                              <span className="font-bold text-slate-900 text-base">${product.price.toFixed(2)}</span>
+                            )}
+                          </div>
+                        )}
+                        {product.popular && (
+                          <span className="px-2 py-0.5 bg-orange-100 text-orange-600 text-[10px] uppercase font-bold tracking-wider rounded">Popular</span>
+                        )}
+                      </div>
+                    </div>
+
+                    <div
+                      className="relative shrink-0 w-32 h-32 group/img cursor-pointer"
+                      onClick={() => {
+                        recommendationsService.recordProductView(product.id!, product.category, restaurant.id!);
+                      }}
+                    >
+                      {productImages.length > 1 ? (
+                        <div className="w-full h-full overflow-x-auto flex snap-x snap-mandatory scrollbar-hide rounded-2xl bg-slate-100">
+                          {productImages.map((img, idx) => (
+                            <div key={idx} className="min-w-full h-full snap-start">
+                              <img
+                                src={img}
+                                alt={`${product.name} ${idx + 1}`}
+                                className="w-full h-full object-cover"
+                              />
                             </div>
                           ))}
+                          {/* Pagination indicator */}
+                          <div className="absolute bottom-1.5 left-0 w-full flex justify-center gap-1 px-2">
+                            {productImages.map((_, idx) => (
+                              <div key={idx} className="w-1 h-1 rounded-full bg-white/60 shadow-sm" />
+                            ))}
+                          </div>
                         </div>
-                      </div>
-                    ) : (
-                      <>
-                        {product.price === 0 || !product.price ? (
-                          <span className="font-bold text-emerald-600 text-xs bg-emerald-50 px-2 py-1 rounded-lg border border-emerald-100">Consultar precio</span>
-                        ) : product.promoPrice && product.promoPrice > 0 ? (
-                          <>
-                            <span className="font-bold text-slate-900 text-base">${product.promoPrice.toFixed(2)}</span>
-                            <span className="text-xs text-slate-400 line-through">${product.price.toFixed(2)}</span>
-                            <span className="px-2 py-0.5 bg-orange-500 text-white text-[9px] font-black rounded-full shadow-sm">
-                              -{Math.round(((product.price - product.promoPrice) / product.price) * 100)}%
-                            </span>
-                          </>
-                        ) : (
-                          <span className="font-bold text-slate-900 text-base">${product.price.toFixed(2)}</span>
-                        )}
-                      </>
-                    )}
-                    {product.popular && (
-                      <span className="px-2 py-0.5 bg-orange-100 text-orange-600 text-[10px] uppercase font-bold tracking-wider rounded">Popular</span>
-                    )}
-                  </div>
-                </div>
+                      ) : (
+                        <div
+                          className="w-full h-full rounded-2xl bg-cover bg-center shadow-sm bg-slate-100"
+                          style={{ backgroundImage: `url("${product.image || 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&q=80'}")` }}
+                        ></div>
+                      )}
 
-                <div
-                  className="relative shrink-0 w-32 h-32 group/img cursor-pointer"
-                  onClick={() => {
-                    recommendationsService.recordProductView(product.id!, product.category, restaurant.id!);
-                  }}
-                >
-                  {productImages.length > 1 ? (
-                    <div className="w-full h-full overflow-x-auto flex snap-x snap-mandatory scrollbar-hide rounded-2xl bg-slate-100">
-                      {productImages.map((img, idx) => (
-                        <div key={idx} className="min-w-full h-full snap-start">
-                          <img
-                            src={img}
-                            alt={`${product.name} ${idx + 1}`}
-                            className="w-full h-full object-cover"
-                          />
+                      {/* Restaurant Logo Overlay on Product */}
+                      {restaurant.logoUrl && (
+                        <div className="absolute top-2 right-2 w-8 h-8 bg-white/90 backdrop-blur-sm rounded-lg p-1 shadow-sm border border-white/50 z-10 pointer-events-none group-hover/img:scale-110 transition-transform">
+                          <img src={restaurant.logoUrl} alt="Logo" className="w-full h-full object-contain" />
                         </div>
-                      ))}
-                      {/* Pagination indicator */}
-                      <div className="absolute bottom-1.5 left-0 w-full flex justify-center gap-1 px-2">
-                        {productImages.map((_, idx) => (
-                          <div key={idx} className="w-1 h-1 rounded-full bg-white/60 shadow-sm" />
+                      )}
+
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleAddToCart(product);
+                          // Adding to cart also counts as a strong view
+                          recommendationsService.recordProductView(product.id!, product.category, restaurant.id!);
+                        }}
+                        className="absolute -bottom-2 -right-2 w-10 h-10 bg-white border border-slate-100 rounded-full flex items-center justify-center text-primary shadow-lg hover:scale-110 active:scale-95 transition-all z-10"
+                      >
+                        <Plus className="w-5 h-5 font-bold" />
+                      </button>
+
+                      {productImages.length > 1 && (
+                        <div className="absolute top-2 left-2 bg-black/40 backdrop-blur-md px-2 py-0.5 rounded-full text-[8px] font-black text-white uppercase tracking-tighter">
+                          {productImages.length} fotos
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })
+            ) : (
+              <div className="text-center py-12 text-slate-500">
+                No hay productos en esta categoría.
+              </div>
+            )}
+          </div>
+        </>
+      ) : (
+        <div className="px-5 pb-32 flex-1 mt-4">
+          {loadingReviews ? (
+            <div className="py-8 flex justify-center">
+              <div className="w-8 h-8 border-4 border-slate-200 border-t-primary rounded-full animate-spin"></div>
+            </div>
+          ) : reviews.length > 0 ? (
+            <div className="space-y-6">
+              {reviews.map(review => (
+                <div key={review.id} className="bg-white border text-left border-slate-100 p-4 rounded-2xl shadow-sm">
+                  <div className="flex items-center gap-3 mb-3">
+                    {review.userPhoto ? (
+                      <img src={review.userPhoto} alt={review.userName} className="w-10 h-10 rounded-full object-cover" />
+                    ) : (
+                      <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center">
+                        <UserIcon className="w-5 h-5 text-slate-400" />
+                      </div>
+                    )}
+                    <div>
+                      <h4 className="font-bold text-slate-900 leading-none">{review.userName}</h4>
+                      <div className="flex items-center gap-1 mt-1">
+                        {[1, 2, 3, 4, 5].map(star => (
+                          <Star key={star} className={`w-3 h-3 ${star <= review.rating ? 'fill-orange-400 text-orange-400' : 'fill-slate-100 text-slate-200'}`} />
                         ))}
                       </div>
                     </div>
-                  ) : (
-                    <div
-                      className="w-full h-full rounded-2xl bg-cover bg-center shadow-sm bg-slate-100"
-                      style={{ backgroundImage: `url("${product.image || 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&q=80'}")` }}
-                    ></div>
-                  )}
+                    <span className="ml-auto text-xs text-slate-400">
+                      {review.createdAt ? new Date(review.createdAt.toDate()).toLocaleDateString() : ''}
+                    </span>
+                  </div>
+                  <p className="text-sm text-slate-600 mb-4">{review.comment}</p>
 
-                  {/* Restaurant Logo Overlay on Product */}
-                  {restaurant.logoUrl && (
-                    <div className="absolute top-2 right-2 w-8 h-8 bg-white/90 backdrop-blur-sm rounded-lg p-1 shadow-sm border border-white/50 z-10 pointer-events-none group-hover/img:scale-110 transition-transform">
-                      <img src={restaurant.logoUrl} alt="Logo" className="w-full h-full object-contain" />
-                    </div>
-                  )}
-
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleAddToCart(product);
-                      // Adding to cart also counts as a strong view
-                      recommendationsService.recordProductView(product.id!, product.category, restaurant.id!);
-                    }}
-                    className="absolute -bottom-2 -right-2 w-10 h-10 bg-white border border-slate-100 rounded-full flex items-center justify-center text-primary shadow-lg hover:scale-110 active:scale-95 transition-all z-10"
-                  >
-                    <Plus className="w-5 h-5 font-bold" />
-                  </button>
-
-                  {productImages.length > 1 && (
-                    <div className="absolute top-2 left-2 bg-black/40 backdrop-blur-md px-2 py-0.5 rounded-full text-[8px] font-black text-white uppercase tracking-tighter">
-                      {productImages.length} fotos
+                  {review.photos && review.photos.length > 0 && (
+                    <div className="flex gap-2 overflow-x-auto hide-scrollbar">
+                      {review.photos.map((photo: string, idx: number) => (
+                        <a key={idx} href={photo} target="_blank" rel="noopener noreferrer" className="shrink-0">
+                          <img src={photo} alt="Review photo" className="w-20 h-20 rounded-xl object-cover border border-slate-100" />
+                        </a>
+                      ))}
                     </div>
                   )}
                 </div>
-              </div>
-            );
-          })
-        ) : (
-          <div className="text-center py-12 text-slate-500">
-            No hay productos en esta categoría.
-          </div>
-        )}
-      </div>
+              ))}
+            </div>
+          ) : (
+            <div className="text-center py-12 flex flex-col items-center gap-3">
+              <MessageSquare className="w-12 h-12 text-slate-200" />
+              <p className="text-slate-500 font-bold">Aún no hay reseñas</p>
+              <p className="text-sm text-slate-400">Sé el primero en probar y contar tu experiencia.</p>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Floating Cart Button */}
       {totalItems > 0 && (
@@ -543,6 +729,78 @@ export default function RestaurantPage() {
           </Link>
         </div>
       )}
+
+      {/* Job Opportunities Modal */}
+      <AnimatePresence>
+        {showJobsModal && restaurant.jobOpportunities && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm"
+              onClick={() => setShowJobsModal(false)}
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className="bg-white rounded-[2rem] w-full max-w-lg shadow-2xl overflow-hidden relative z-10 flex flex-col max-h-[85vh]"
+            >
+              <div className="p-6 pb-4 border-b border-slate-100 flex justify-between items-center bg-slate-50 relative shrink-0">
+                <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-primary to-orange-400"></div>
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-primary/10 rounded-xl flex items-center justify-center">
+                    <Briefcase className="w-5 h-5 text-primary" />
+                  </div>
+                  <div>
+                    <h3 className="text-xl font-black text-slate-800">Vacantes Disponibles</h3>
+                    <p className="text-xs font-bold text-slate-500 uppercase tracking-widest">{restaurant.name}</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setShowJobsModal(false)}
+                  className="w-8 h-8 flex items-center justify-center bg-white rounded-full text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors shadow-sm border border-slate-200"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="p-6 overflow-y-auto space-y-4 bg-white grow">
+                {restaurant.jobOpportunities.positions?.length > 0 ? (
+                  restaurant.jobOpportunities.positions.map((pos: any) => (
+                    <div key={pos.id} className="bg-slate-50 border border-slate-100 rounded-2xl p-5 hover:border-primary/30 transition-colors group">
+                      <h4 className="font-black text-slate-800 text-lg group-hover:text-primary transition-colors">{pos.title}</h4>
+                      <p className="text-sm text-slate-600 mt-2 whitespace-pre-wrap leading-relaxed">{pos.description}</p>
+                    </div>
+                  ))
+                ) : (
+                  <div className="text-center py-8">
+                    <Briefcase className="w-12 h-12 text-slate-200 mx-auto mb-3" />
+                    <p className="text-slate-500 font-bold">No hay vacantes detalladas</p>
+                    <p className="text-xs text-slate-400 mt-1">Por favor, contáctanos directamente para más información.</p>
+                  </div>
+                )}
+              </div>
+
+              <div className="p-6 pt-0 mt-4 shrink-0">
+                {restaurant.whatsapp ? (
+                  <button
+                    onClick={openWhatsApp}
+                    className="w-full py-3.5 bg-green-500 hover:bg-green-600 text-white font-black rounded-2xl shadow-lg shadow-green-500/20 text-sm tracking-wide transition-all active:scale-[0.98]"
+                  >
+                    Postularse por WhatsApp
+                  </button>
+                ) : (
+                  <div className="text-center text-xs text-slate-400 font-bold bg-slate-50 p-3 rounded-xl border border-slate-100">
+                    Acércate al local para postularte
+                  </div>
+                )}
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

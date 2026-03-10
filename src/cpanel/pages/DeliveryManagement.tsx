@@ -31,7 +31,24 @@ export default function DeliveryManagement() {
             moto: [{ from: 0, to: 2, clientPrice: 1.5, driverPrice: 1.0 }],
             carro: [{ from: 0, to: 2, clientPrice: 3.0, driverPrice: 2.0 }],
             ejecutivo: [{ from: 0, to: 2, clientPrice: 7.0, driverPrice: 5.0 }]
-        }
+        },
+        whatsappMessageTemplate: `👋 ¡Hola *{RestaurantName}*!
+Soy *{UserName}* y vengo desde la app en un 2x3 🚀. Mi identificación es *{Cedula}* y requiero el siguiente pedido:
+
+🛒 *Detalles del Pedido:*
+{OrderItems}
+
+🛵 *Delivery:* \${DeliveryFee}
+💰 *Total:* \${Total}
+
+📍 Adjunto mi ubicación para la entrega y mi número de contacto por si requieren llamar.
+
+🗺️ *Ubicación:* {LocationText}
+📱 *Mi número:* {UserPhone}
+
+{OrderNotes}
+
+_Enviado desde Deli Express App_`
     });
     const [activeShift, setActiveShift] = useState<'day' | 'night'>('day');
     const [savingSettings, setSavingSettings] = useState(false);
@@ -772,6 +789,48 @@ export default function DeliveryManagement() {
                                         </div>
                                     </div>
                                 ))}
+                            </div>
+                        </div>
+
+                        {/* WhatsApp Template Editor */}
+                        <div className="lg:col-span-2 bg-white p-8 rounded-[32px] border border-slate-200 shadow-sm space-y-6">
+                            <div className="flex items-center gap-4 border-b border-slate-100 pb-6">
+                                <div className="w-12 h-12 bg-green-50 text-green-600 rounded-2xl flex items-center justify-center">
+                                    <FileText className="w-6 h-6" />
+                                </div>
+                                <div>
+                                    <h3 className="text-xl font-black text-slate-900 tracking-tight">Plantilla de WhatsApp</h3>
+                                    <p className="text-xs font-medium text-slate-500">Configura el mensaje que se enviará al confirmar un pedido.</p>
+                                </div>
+                            </div>
+
+                            <div className="space-y-4">
+                                <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100">
+                                    <p className="text-xs font-bold text-slate-600 mb-2 uppercase tracking-wide">Variables Disponibles:</p>
+                                    <div className="flex flex-wrap gap-2 text-[10px] font-medium text-slate-500">
+                                        <span className="bg-white px-2 py-1 rounded border border-slate-200">{"{OrderId}"}</span>
+                                        <span className="bg-white px-2 py-1 rounded border border-slate-200">{"{RestaurantName}"}</span>
+                                        <span className="bg-white px-2 py-1 rounded border border-slate-200">{"{UserName}"}</span>
+                                        <span className="bg-white px-2 py-1 rounded border border-slate-200">{"{Cedula}"}</span>
+                                        <span className="bg-white px-2 py-1 rounded border border-slate-200">{"{UserPhone}"}</span>
+                                        <span className="bg-white px-2 py-1 rounded border border-slate-200">{"{OrderItems}"}</span>
+                                        <span className="bg-white px-2 py-1 rounded border border-slate-200">{"{DeliveryFee}"}</span>
+                                        <span className="bg-white px-2 py-1 rounded border border-slate-200">{"{Total}"}</span>
+                                        <span className="bg-white px-2 py-1 rounded border border-slate-200">{"{LocationText}"}</span>
+                                        <span className="bg-white px-2 py-1 rounded border border-slate-200">{"{OrderNotes}"}</span>
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <label className="block text-xs font-black text-slate-700 uppercase mb-2 ml-1">Mensaje</label>
+                                    <textarea
+                                        value={settings.whatsappMessageTemplate}
+                                        onChange={(e) => setSettings({ ...settings, whatsappMessageTemplate: e.target.value })}
+                                        rows={10}
+                                        className="w-full bg-slate-50 border border-slate-200 px-4 py-3 rounded-2xl text-sm font-medium text-slate-700 outline-none focus:ring-2 focus:ring-indigo-500/20 whitespace-pre-wrap"
+                                        placeholder="Escribe la plantilla del mensaje de WhatsApp aquí..."
+                                    />
+                                </div>
                             </div>
                         </div>
 

@@ -1,4 +1,4 @@
-import { Search as SearchIcon, SlidersHorizontal, MapPin, Star, Clock, Store, Zap } from 'lucide-react';
+import { Search as SearchIcon, SlidersHorizontal, MapPin, Star, Clock, Store, Zap, X } from 'lucide-react';
 import { useState, useEffect, useMemo } from 'react';
 import { collection, getDocs, doc, updateDoc, increment } from 'firebase/firestore';
 import { db } from '../lib/firebase';
@@ -14,6 +14,7 @@ export interface Category {
     isFeatured?: boolean;
     clickCount?: number;
     isActive: boolean;
+    parentId?: string;
 }
 
 export default function Search() {
@@ -21,12 +22,14 @@ export default function Search() {
     const [restaurants, setRestaurants] = useState<Restaurant[]>([]);
     const [categories, setCategories] = useState<Category[]>([]);
     const [loading, setLoading] = useState(true);
+    const [casheaIcon, setCasheaIcon] = useState<string | null>(null);
     const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
 
     const location = useLocation();
     const [isFilterOpen, setIsFilterOpen] = useState(location.state?.openFilters || false);
     const [filters, setFilters] = useState<FilterState>({
         category: null,
+        sector: null,
         minPrice: '',
         maxPrice: '',
         onlyPromotions: false
@@ -70,29 +73,57 @@ export default function Search() {
             }
         };
 
+        const fetchIcons = async () => {
+            try {
+                const querySnapshot = await getDocs(collection(db, 'global_icons'));
+                const cashea = querySnapshot.docs.find(doc => doc.data().name.toLowerCase() === 'cashea');
+                if (cashea) {
+                    setCasheaIcon(cashea.data().imageUrl);
+                }
+            } catch (error) {
+                console.error("Error fetching icons:", error);
+            }
+        };
+
         fetchCategories();
         fetchRestaurants();
+        fetchIcons();
 
-        // Handle incoming category from location state
+        // Handle incoming category/sector from location state
         if (location.state?.category) {
             setSelectedCategory(location.state.category);
         }
-    }, []);
+        if (location.state?.sector) {
+            setFilters(prev => ({ ...prev, sector: location.state.sector }));
+        }
+    }, [location.state]);
 
     const sortedCategories = useMemo(() => {
-        return [...categories].sort((a, b) => (b.clickCount || 0) - (a.clickCount || 0));
-    }, [categories]);
+        // Only show sectors in the quick tags if none selected, otherwise show subcategories of selected sector
+        const sectors = categories.filter(c => !c.parentId);
+        if (filters.sector) {
+            return categories.filter(c => c.parentId === filters.sector).sort((a, b) => (b.clickCount || 0) - (a.clickCount || 0));
+        }
+        return sectors.sort((a, b) => (b.clickCount || 0) - (a.clickCount || 0));
+    }, [categories, filters.sector]);
 
     const handleCategoryClick = async (category: Category) => {
-        const isSelected = selectedCategory === category.name;
-        if (!isSelected) {
-            // Track popularity
-            updateDoc(doc(db, 'global_categories', category.id), {
-                clickCount: increment(1)
-            });
-            setSelectedCategory(category.name);
-        } else {
+        // If it's a sector, update sector filter
+        if (!category.parentId) {
+            const isSelected = filters.sector === category.id;
+            setFilters(prev => ({ ...prev, sector: isSelected ? null : category.id, category: null }));
             setSelectedCategory(null);
+            if (!isSelected) {
+                updateDoc(doc(db, 'global_categories', category.id), { clickCount: increment(1) });
+            }
+        } else {
+            const isSelected = selectedCategory === category.id;
+            if (!isSelected) {
+                updateDoc(doc(db, 'global_categories', category.id), { clickCount: increment(1) });
+                setSelectedCategory(category.id);
+            } else {
+                setSelectedCategory(null);
+            }
         }
     };
 
@@ -103,9 +134,12 @@ export default function Search() {
                 res.name.toLowerCase().includes(query.toLowerCase()) ||
                 res.category.toLowerCase().includes(query.toLowerCase());
 
-            // Category filter (combined from quick tags or modal)
+            // Category filter
             const activeCategory = filters.category || selectedCategory;
-            const matchesCategory = !activeCategory || res.category === activeCategory;
+            const matchesCategory = !activeCategory || res.category === activeCategory || (res as any).subCategoryId === activeCategory;
+
+            // Sector filter
+            const matchesSector = !filters.sector || (res as any).sector === filters.sector || (res as any).categoryId === filters.sector;
 
             // Price Range Filter
             let matchesPrice = true;
@@ -130,7 +164,7 @@ export default function Search() {
                 }
             }
 
-            return matchesQuery && matchesCategory && matchesPrice && matchesPromotions;
+            return matchesQuery && matchesCategory && matchesSector && matchesPrice && matchesPromotions;
         });
     }, [restaurants, query, selectedCategory, filters]);
 
@@ -150,10 +184,9 @@ export default function Search() {
                         />
                     </div>
 
-                    {/* Filter Trigger Button */}
                     <button
                         onClick={() => setIsFilterOpen(true)}
-                        className={`p-4 rounded-2xl flex items-center justify-center transition-all ${(filters.category || filters.minPrice !== '' || filters.maxPrice !== '' || filters.onlyPromotions)
+                        className={`p-4 rounded-2xl flex items-center justify-center transition-all ${(filters.category || filters.sector || filters.minPrice !== '' || filters.maxPrice !== '' || filters.onlyPromotions)
                             ? 'bg-primary text-white shadow-md shadow-primary/30'
                             : 'bg-white text-slate-500 shadow-sm border border-slate-100 hover:bg-slate-50'
                             }`}
@@ -164,16 +197,24 @@ export default function Search() {
             </div>
 
             <div className="px-6 py-6 space-y-8">
-                {/* Categories Grid */}
                 {query === '' && (
                     <section className="space-y-4">
-                        <h2 className="text-xl font-black text-slate-800">Categorías Populares</h2>
+                        <div className="flex items-center justify-between">
+                            <h2 className="text-xl font-black text-slate-800">
+                                {filters.sector ? 'Subcategorías' : 'Categorías Populares'}
+                            </h2>
+                            {filters.sector && (
+                                <button onClick={() => setFilters(prev => ({ ...prev, sector: null, category: null }))} className="text-[10px] font-black text-primary uppercase tracking-widest flex items-center gap-1">
+                                    <X className="w-3 h-3" /> Ver Sectores
+                                </button>
+                            )}
+                        </div>
                         <div className="grid grid-cols-3 gap-3">
                             {sortedCategories.map((cat) => (
                                 <button
                                     key={cat.id}
                                     onClick={() => handleCategoryClick(cat)}
-                                    className={`p-4 rounded-3xl flex flex-col items-center gap-2 active:scale-95 transition-all shadow-sm border ${selectedCategory === cat.name ? 'bg-primary/10 border-primary ring-2 ring-primary/20 scale-95' : 'bg-white border-slate-100 hover:scale-105'}`}
+                                    className={`p-4 rounded-3xl flex flex-col items-center gap-2 active:scale-95 transition-all shadow-sm border ${(filters.sector === cat.id || selectedCategory === cat.id) ? 'bg-primary/10 border-primary ring-2 ring-primary/20 scale-95' : 'bg-white border-slate-100 hover:scale-105'}`}
                                 >
                                     <div className="w-16 h-16 flex items-center justify-center p-1 overflow-hidden">
                                         {cat.imageUrl ? (
@@ -182,7 +223,7 @@ export default function Search() {
                                             <span className="text-3xl">{cat.icon || '🏷️'}</span>
                                         )}
                                     </div>
-                                    <span className={`text-[10px] font-black uppercase tracking-wider text-center truncate w-full ${selectedCategory === cat.name ? 'text-primary' : 'text-slate-500'}`}>
+                                    <span className={`text-[10px] font-black uppercase tracking-wider text-center truncate w-full ${(filters.sector === cat.id || selectedCategory === cat.id) ? 'text-primary' : 'text-slate-500'}`}>
                                         {cat.name}
                                     </span>
                                 </button>
@@ -191,17 +232,26 @@ export default function Search() {
                     </section>
                 )}
 
-                {/* Results */}
                 <section className="space-y-4">
                     <div className="flex items-center justify-between">
                         <h2 className="text-xl font-black text-slate-800">
-                            {query || selectedCategory ? 'Resultados' : 'Explorar'}
+                            {query || selectedCategory || filters.sector ? 'Resultados' : 'Explorar'}
                         </h2>
-                        {filteredRestaurants.length > 0 && (
-                            <span className="text-primary text-sm font-bold bg-primary/10 px-3 py-1 rounded-full">
-                                {filteredRestaurants.length} local{filteredRestaurants.length !== 1 ? 'es' : ''}
-                            </span>
-                        )}
+                        <div className="flex items-center gap-2">
+                            {filteredRestaurants.length > 0 && (
+                                <span className="text-primary text-sm font-bold bg-primary/10 px-3 py-1 rounded-full">
+                                    {filteredRestaurants.length} local{filteredRestaurants.length !== 1 ? 'es' : ''}
+                                </span>
+                            )}
+                            {filters.sector && (
+                                <button
+                                    onClick={() => setFilters(prev => ({ ...prev, sector: null, category: null }))}
+                                    className="text-[10px] font-black text-rose-500 uppercase tracking-widest bg-rose-50 px-3 py-1 rounded-full border border-rose-100"
+                                >
+                                    Limpiar Sector
+                                </button>
+                            )}
+                        </div>
                     </div>
 
                     <div className="space-y-6">
@@ -235,6 +285,12 @@ export default function Search() {
                                                 <span className="text-xs font-black text-slate-800">{res.rating}</span>
                                                 <span className="text-[10px] text-slate-400 font-bold">({res.reviews}+)</span>
                                             </div>
+
+                                            {(res as any).hasCashea && casheaIcon && (
+                                                <div className="absolute top-4 right-4 z-20 w-8 h-8 bg-white/95 backdrop-blur rounded-xl p-1 shadow-lg border border-white/50 flex items-center justify-center animate-in zoom-in duration-500">
+                                                    <img src={casheaIcon} alt="Cashea" className="w-full h-full object-contain" />
+                                                </div>
+                                            )}
                                         </div>
                                         <div className="p-6 flex items-center gap-4">
                                             <div className="w-12 h-12 rounded-full border-2 border-white shadow-sm overflow-hidden shrink-0 bg-slate-50 flex items-center justify-center">
@@ -284,4 +340,3 @@ export default function Search() {
         </div>
     );
 }
-

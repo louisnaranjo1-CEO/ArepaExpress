@@ -13,6 +13,7 @@ import CategoriesManager from './pages/CategoriesManager';
 import DeliveryManagement from './pages/DeliveryManagement';
 import FinancesManager from './pages/FinancesManager';
 import TransportRequests from './pages/TransportRequests';
+import IconsManager from './pages/IconsManager';
 
 export default function CpanelApp() {
     const isDevAdminPath = window.location.pathname.startsWith('/cpanel');
@@ -83,6 +84,7 @@ export default function CpanelApp() {
                     <Route path="/delivery" element={<DeliveryManagement />} />
                     <Route path="/transports" element={<TransportRequests />} />
                     <Route path="/finances" element={<FinancesManager />} />
+                    <Route path="/icons" element={<IconsManager />} />
                     <Route path="*" element={<Navigate to="/" replace />} />
                 </Routes>
             </CpanelLayout>

@@ -166,7 +166,7 @@ export default function TransportTracker() {
             {/* Header Overlay */}
             <div className="absolute top-0 left-0 right-0 z-20 p-4 pointer-events-none">
                 <button
-                    onClick={() => navigate('/')}
+                    onClick={() => window.history.length > 1 ? window.history.back() : navigate('/')}
                     className="w-12 h-12 bg-white rounded-full shadow-lg flex items-center justify-center active:scale-95 transition-transform text-slate-700 pointer-events-auto"
                 >
                     <ArrowLeft className="w-6 h-6" />

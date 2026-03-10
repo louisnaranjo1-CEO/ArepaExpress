@@ -11,6 +11,7 @@ export interface CartItem {
     category: string;
     printerId?: string;
     table?: string;
+    consultPrice?: boolean;
     // future: customizations
 }
 

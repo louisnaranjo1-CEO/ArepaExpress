@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { User, Mail, MapPin, CreditCard, LogOut, ShoppingBag, Settings, ChevronRight, Clock, FileText, Bell, Navigation, X, Shield, UploadCloud } from 'lucide-react';
+import { User, Mail, MapPin, CreditCard, LogOut, ShoppingBag, Settings, ChevronRight, Clock, FileText, Bell, Navigation, X, Shield, UploadCloud, Star } from 'lucide-react';
 import { requestNotificationPermission, disableNotifications } from '../lib/notifications';
 import { useAuth } from '../context/AuthContext';
 import { auth, db, storage } from '../lib/firebase';
@@ -11,6 +11,7 @@ import { updateProfile } from 'firebase/auth';
 import { Image as ImageIcon, Camera, Smartphone, User as UserIcon, Save } from 'lucide-react';
 import AddressPicker from '../components/AddressPicker';
 import { motion, AnimatePresence } from 'framer-motion';
+import ReviewModal from '../components/ReviewModal';
 
 interface OrderInfo {
     id: string;
@@ -19,6 +20,8 @@ interface OrderInfo {
     createdAt: any;
     items: any[];
     deliveryMethod?: string;
+    hasReviewed?: boolean;
+    restaurantId?: string;
 }
 
 export default function Profile() {
@@ -31,12 +34,14 @@ export default function Profile() {
     const [showEditProfileModal, setShowEditProfileModal] = useState(false);
     const [updatingNotifications, setUpdatingNotifications] = useState(false);
     const [completingProfile, setCompletingProfile] = useState(false);
+    const [reviewModalData, setReviewModalData] = useState<{ isOpen: boolean; orderId: string; restaurantId: string } | null>(null);
     const ordersRef = useRef<HTMLDivElement>(null);
 
     // Profile completion form state
     const [profileForm, setProfileForm] = useState({
         displayName: '',
-        phone: ''
+        phone: '',
+        cedula: ''
     });
 
     // Email Login/Signup State
@@ -53,7 +58,8 @@ export default function Profile() {
         if (userData) {
             setProfileForm({
                 displayName: userData.displayName || user?.displayName || '',
-                phone: userData.phone || ''
+                phone: userData.phone || '',
+                cedula: userData.cedula || ''
             });
         }
     }, [userData, user]);
@@ -73,10 +79,17 @@ export default function Profile() {
                     orderBy('createdAt', 'desc')
                 );
                 const querySnapshot = await getDocs(q);
-                const fetchedOrders = querySnapshot.docs.map(doc => ({
-                    id: doc.id,
-                    ...doc.data()
-                })) as OrderInfo[];
+                const fetchedOrders = querySnapshot.docs.map(doc => {
+                    const data = doc.data();
+                    // Identify the restaurant ID from the first item if not globally set
+                    const restId = data.restaurantId || (data.items && data.items.length > 0 ? data.items[0].restaurantId : null);
+
+                    return {
+                        id: doc.id,
+                        restaurantId: restId,
+                        ...data
+                    } as OrderInfo;
+                });
                 setOrders(fetchedOrders);
             } catch (err) {
                 console.error("Error fetching orders:", err);
@@ -91,6 +104,54 @@ export default function Profile() {
     }, [user]);
 
     const [error, setError] = useState<string | null>(null);
+    const [activeFaq, setActiveFaq] = useState<number | null>(null);
+
+    const FAQ_DATA = [
+        {
+            q: "¿Qué es 2x3?",
+            a: "Es la aplicación móvil todo-en-uno que conecta a nivel nacional a restaurantes, supermercados, bodegas y emprendimientos con los usuarios. Es una plataforma diseñada para facilitar compras sin colas, ofrecer servicios de delivery y transporte, y potenciar el crecimiento tecnológico de los negocios locales."
+        },
+        {
+            q: "¿Qué productos o servicios puedo encontrar en 2x3?",
+            a: "¡Prácticamente todo! Puedes explorar catálogos de comida, artículos de primera necesidad y servicios profesionales. Además, contamos con una red integrada de Delivery y Taxi siempre disponible para llevarte lo que necesites o trasladarte a donde desees."
+        },
+        {
+            q: "¿Cómo puedo ser aliado a 2x3?",
+            a: "Es muy sencillo transformar tu negocio. Solo debes ingresar a la aplicación y enviar tu solicitud formal a través de la sección \"Ser Aliado\". Al unirte, recibirás acceso a nuestro panel administrativo, sistema de comandas y herramientas de publicidad interna."
+        }
+    ];
+
+    // Role-based automatic redirection
+    useEffect(() => {
+        if (user && userData) {
+            const checkRoleAndRedirect = async () => {
+                // If it's a delivery driver or taxi
+                if (userData.role === 'delivery' || userData.role === 'driver') {
+                    navigate('/delivery');
+                    return;
+                }
+
+                // Double check delivery_drivers collection if role isn't explicitly set in users
+                const driverDoc = await getDoc(doc(db, 'delivery_drivers', user.uid));
+                if (driverDoc.exists()) {
+                    navigate('/delivery');
+                    return;
+                }
+
+                // If it's a waiter
+                if (userData.role === 'waiter') {
+                    const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+                    if (isLocalhost) {
+                        window.location.href = `${window.location.protocol}//meseros.localhost:${window.location.port}`;
+                    } else {
+                        window.location.href = 'https://meseros.deliexpress.app';
+                    }
+                    return;
+                }
+            };
+            checkRoleAndRedirect();
+        }
+    }, [user, userData, navigate]);
 
     const handleGoogleSignIn = async () => {
         setIsSigningIn(true);
@@ -190,8 +251,8 @@ export default function Profile() {
     const handleCompleteProfile = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!user) return;
-        if (!profileForm.displayName || !profileForm.phone) {
-            alert("Por favor completa todos los campos.");
+        if (!profileForm.displayName || !profileForm.phone || !profileForm.cedula) {
+            alert("Por favor completa todos los campos (Nombre, Celular y Cédula).");
             return;
         }
 
@@ -211,6 +272,7 @@ export default function Profile() {
             const updateData = {
                 displayName: profileForm.displayName,
                 phone: profileForm.phone,
+                cedula: profileForm.cedula,
                 photoURL,
                 updatedAt: serverTimestamp()
             };
@@ -297,7 +359,7 @@ export default function Profile() {
                     </button>
                     <div className="flex items-center gap-4 my-2">
                         <div className="h-px bg-slate-100 flex-1"></div>
-                        <span className="text-[10px] font-black text-slate-300 uppercase tracking-widest">Personal</span>
+                        <span className="text-[10px] font-black text-slate-300 uppercase tracking-widest">¿trabajas con nuestros aliados?</span>
                         <div className="h-px bg-slate-100 flex-1"></div>
                     </div>
                     <button
@@ -313,6 +375,19 @@ export default function Profile() {
                     >
                         <Shield className="w-5 h-5 opacity-50" />
                         Acceso Meseros
+                    </button>
+
+                    <div className="flex items-center gap-4 my-2 pt-2">
+                        <div className="h-px bg-slate-100 flex-1"></div>
+                        <span className="text-[10px] font-black text-slate-300 uppercase tracking-widest">Emprende y se un freelancer en un 2x3</span>
+                        <div className="h-px bg-slate-100 flex-1"></div>
+                    </div>
+                    <button
+                        onClick={() => navigate('/delivery')}
+                        className="w-full bg-indigo-50 text-indigo-600 py-4 rounded-2xl font-bold hover:bg-indigo-100 transition-colors flex items-center justify-center gap-2"
+                    >
+                        <Navigation className="w-5 h-5 opacity-50" />
+                        Acceso Delivery / Taxi
                     </button>
                 </div>
 
@@ -446,6 +521,18 @@ export default function Profile() {
                         />
                     </div>
 
+                    <div className="space-y-1">
+                        <label className="text-xs font-bold text-slate-500 uppercase tracking-wider ml-1">Cédula de Identidad</label>
+                        <input
+                            type="text"
+                            required
+                            value={profileForm.cedula}
+                            onChange={(e) => setProfileForm({ ...profileForm, cedula: e.target.value })}
+                            className="w-full bg-slate-50 border-2 border-slate-100 focus:border-primary px-4 py-4 rounded-2xl outline-none font-bold text-slate-700 transition-all"
+                            placeholder="Ej. V-12345678"
+                        />
+                    </div>
+
                     <button
                         type="submit"
                         disabled={completingProfile}
@@ -470,184 +557,245 @@ export default function Profile() {
     }
 
     return (
-        <div className="pb-24 animate-in fade-in duration-500">
-            <div className="bg-gradient-to-br from-primary to-orange-400 p-8 pt-12 pb-16 text-white rounded-b-[40px] shadow-xl">
-                <div className="flex items-center gap-4">
-                    <div className="w-20 h-20 bg-white/20 backdrop-blur-md rounded-full border-4 border-white/30 flex items-center justify-center overflow-hidden shadow-inner">
-                        {user.photoURL ? (
-                            <img src={user.photoURL} alt="Profile" className="w-full h-full object-cover" />
-                        ) : (
-                            <User className="w-10 h-10 text-white" />
-                        )}
-                    </div>
-                    <div className="flex-1">
-                        <h2 className="text-2xl font-black">{user.displayName || 'Arepa Fan'}</h2>
-                        <div className="flex items-center gap-1 text-white/80 text-sm">
-                            <Mail className="w-3 h-3" />
-                            <span>{user.email}</span>
+        <>
+            <div className="pb-24 animate-in fade-in duration-500">
+                <div className="bg-gradient-to-br from-primary to-orange-400 p-8 pt-12 pb-16 text-white rounded-b-[40px] shadow-xl">
+                    <div className="flex items-center gap-4">
+                        <div className="w-20 h-20 bg-white/20 backdrop-blur-md rounded-full border-4 border-white/30 flex items-center justify-center overflow-hidden shadow-inner">
+                            {user.photoURL ? (
+                                <img src={user.photoURL} alt="Profile" className="w-full h-full object-cover" />
+                            ) : (
+                                <User className="w-10 h-10 text-white" />
+                            )}
                         </div>
+                        <div className="flex-1">
+                            <h2 className="text-2xl font-black">{user.displayName || 'Arepa Fan'}</h2>
+                            <div className="flex items-center gap-1 text-white/80 text-sm">
+                                <Mail className="w-3 h-3" />
+                                <span>{user.email}</span>
+                            </div>
+                        </div>
+                        <button
+                            onClick={() => setShowEditProfileModal(true)}
+                            className="bg-white/20 backdrop-blur-md p-3 rounded-2xl hover:bg-white/30 transition-all active:scale-95"
+                        >
+                            <Settings className="w-5 h-5 text-white" />
+                        </button>
                     </div>
-                    <button
-                        onClick={() => setShowEditProfileModal(true)}
-                        className="bg-white/20 backdrop-blur-md p-3 rounded-2xl hover:bg-white/30 transition-all active:scale-95"
-                    >
-                        <Settings className="w-5 h-5 text-white" />
-                    </button>
                 </div>
-            </div>
 
-            <div className="px-6 -mt-8">
-                <div className="bg-white rounded-3xl p-6 shadow-xl shadow-slate-200/50 space-y-6">
-                    <div className="grid grid-cols-2 gap-4">
-                        <div
-                            onClick={scrollToOrders}
-                            className="bg-orange-50 p-4 rounded-2xl flex flex-col items-center gap-2 group cursor-pointer hover:bg-orange-100 transition-colors"
-                        >
-                            <ShoppingBag className="w-6 h-6 text-orange-500 group-hover:scale-110 transition-transform" />
-                            <span className="text-xs font-bold text-slate-600">Mis Pedidos</span>
-                        </div>
-                        <div
-                            onClick={() => setShowAddressPicker(true)}
-                            className={`p-4 rounded-2xl flex flex-col items-center gap-2 group cursor-pointer transition-colors ${userData?.address ? 'bg-green-50 hover:bg-green-100' : 'bg-blue-50 hover:bg-blue-100'}`}
-                        >
-                            <MapPin className={`w-6 h-6 group-hover:scale-110 transition-transform ${userData?.address ? 'text-green-500' : 'text-blue-500'}`} />
-                            <span className="text-xs font-bold text-slate-600">
-                                {userData?.address ? 'Cambiar Dirección' : 'Direcciones'}
-                            </span>
-                        </div>
-                    </div>
-
-                    {(userData?.addresses && userData.addresses.length > 0) && (
-                        <div className="space-y-3 mt-4">
-                            <div className="flex items-center justify-between">
-                                <h3 className="text-lg font-black text-slate-900 px-2 flex items-center gap-2">
-                                    <MapPin className="w-5 h-5 text-primary" />
-                                    Mis Direcciones
-                                </h3>
+                <div className="px-6 -mt-8">
+                    <div className="bg-white rounded-3xl p-6 shadow-xl shadow-slate-200/50 space-y-6">
+                        <div className="grid grid-cols-2 gap-4">
+                            <div
+                                onClick={scrollToOrders}
+                                className="bg-orange-50 p-4 rounded-2xl flex flex-col items-center gap-2 group cursor-pointer hover:bg-orange-100 transition-colors"
+                            >
+                                <ShoppingBag className="w-6 h-6 text-orange-500 group-hover:scale-110 transition-transform" />
+                                <span className="text-xs font-bold text-slate-600">Mis Pedidos</span>
                             </div>
-                            <div className="grid gap-3">
-                                {userData.addresses.map(addr => (
-                                    <div key={addr.id} className={`p-4 rounded-2xl border ${addr.isDefault ? 'bg-green-50 border-green-200' : 'bg-slate-50 border-slate-100'} transition-colors`}>
-                                        <div className="flex justify-between items-start mb-2">
-                                            <div className="flex items-center gap-2">
-                                                <span className={`px-2 py-0.5 rounded text-xs font-bold ${addr.isDefault ? 'bg-green-100 text-green-700' : 'bg-slate-200 text-slate-700'}`}>
-                                                    {addr.name}
-                                                </span>
-                                                {addr.isDefault && (
-                                                    <span className="text-[10px] uppercase font-bold text-green-600 tracking-wider">Predeterminada</span>
-                                                )}
-                                            </div>
-                                            <div className="flex gap-2">
-                                                {!addr.isDefault && (
-                                                    <button onClick={() => handleSetDefaultAddress(addr.id)} className="text-xs font-bold text-blue-500 hover:text-blue-600 transition-colors">
-                                                        Fijar
+                            <div
+                                onClick={() => setShowAddressPicker(true)}
+                                className={`p-4 rounded-2xl flex flex-col items-center gap-2 group cursor-pointer transition-colors ${userData?.address ? 'bg-green-50 hover:bg-green-100' : 'bg-blue-50 hover:bg-blue-100'}`}
+                            >
+                                <MapPin className={`w-6 h-6 group-hover:scale-110 transition-transform ${userData?.address ? 'text-green-500' : 'text-blue-500'}`} />
+                                <span className="text-xs font-bold text-slate-600">
+                                    {userData?.address ? 'Cambiar Dirección' : 'Direcciones'}
+                                </span>
+                            </div>
+                        </div>
+
+                        {(userData?.addresses && userData.addresses.length > 0) && (
+                            <div className="space-y-3 mt-4">
+                                <div className="flex items-center justify-between">
+                                    <h3 className="text-lg font-black text-slate-900 px-2 flex items-center gap-2">
+                                        <MapPin className="w-5 h-5 text-primary" />
+                                        Mis Direcciones
+                                    </h3>
+                                </div>
+                                <div className="grid gap-3">
+                                    {userData.addresses.map(addr => (
+                                        <div key={addr.id} className={`p-4 rounded-2xl border ${addr.isDefault ? 'bg-green-50 border-green-200' : 'bg-slate-50 border-slate-100'} transition-colors`}>
+                                            <div className="flex justify-between items-start mb-2">
+                                                <div className="flex items-center gap-2">
+                                                    <span className={`px-2 py-0.5 rounded text-xs font-bold ${addr.isDefault ? 'bg-green-100 text-green-700' : 'bg-slate-200 text-slate-700'}`}>
+                                                        {addr.name}
+                                                    </span>
+                                                    {addr.isDefault && (
+                                                        <span className="text-[10px] uppercase font-bold text-green-600 tracking-wider">Predeterminada</span>
+                                                    )}
+                                                </div>
+                                                <div className="flex gap-2">
+                                                    {!addr.isDefault && (
+                                                        <button onClick={() => handleSetDefaultAddress(addr.id)} className="text-xs font-bold text-blue-500 hover:text-blue-600 transition-colors">
+                                                            Fijar
+                                                        </button>
+                                                    )}
+                                                    <button onClick={() => handleDeleteAddress(addr.id)} className="text-xs font-bold text-red-400 hover:text-red-500 transition-colors">
+                                                        Eliminar
                                                     </button>
-                                                )}
-                                                <button onClick={() => handleDeleteAddress(addr.id)} className="text-xs font-bold text-red-400 hover:text-red-500 transition-colors">
-                                                    Eliminar
-                                                </button>
-                                            </div>
-                                        </div>
-                                        <p className="text-sm font-bold text-slate-700 leading-tight">{addr.reference}</p>
-                                        <p className="text-[10px] text-slate-400 font-medium mt-1">GPS: {addr.lat.toFixed(4)}, {addr.lng.toFixed(4)}</p>
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-                    )}
-
-                    {/* Order History */}
-                    <div ref={ordersRef} className="space-y-4 pt-2">
-                        <h3 className="text-lg font-black text-slate-900 px-2 flex items-center gap-2">
-                            <FileText className="w-5 h-5 text-primary" />
-                            Últimos Pedidos
-                        </h3>
-
-                        {loadingOrders ? (
-                            <div className="flex justify-center py-4">
-                                <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin"></div>
-                            </div>
-                        ) : orders.length > 0 ? (
-                            <div className="space-y-3">
-                                {orders.map(order => (
-                                    <div key={order.id} className="bg-slate-50 border border-slate-100 p-4 rounded-2xl flex flex-col gap-2">
-                                        <div className="flex justify-between items-start">
-                                            <div>
-                                                <p className="font-bold text-slate-900 text-sm">Pedido #{order.id.slice(-6).toUpperCase()}</p>
-                                                <div className="flex items-center gap-1 text-xs text-slate-500 mt-1">
-                                                    <Clock className="w-3 h-3" />
-                                                    <span>{order.createdAt?.toDate().toLocaleDateString()} a las {order.createdAt?.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
                                                 </div>
                                             </div>
-                                            <span className={`px-2 py-1 rounded text-xs font-bold ${order.status === 'pending' ? 'bg-orange-100 text-orange-600' :
-                                                order.status === 'completed' ? 'bg-green-100 text-green-600' :
-                                                    'bg-slate-200 text-slate-600'
-                                                }`}>
-                                                {order.status === 'pending' ? 'Pendiente' :
-                                                    order.status === 'completed' ? 'Completado' : 'Cancelado'}
-                                            </span>
+                                            <p className="text-sm font-bold text-slate-700 leading-tight">{addr.reference}</p>
+                                            <p className="text-[10px] text-slate-400 font-medium mt-1">GPS: {addr.lat.toFixed(4)}, {addr.lng.toFixed(4)}</p>
                                         </div>
-                                        <div className="h-px bg-slate-200 my-1"></div>
-                                        <div className="flex justify-between items-end">
-                                            <div className="text-xs text-slate-500">
-                                                {order.items.length} artículo{order.items.length !== 1 ? 's' : ''}
-                                            </div>
-                                            <span className="font-black text-primary text-base">${order.total.toFixed(2)}</span>
-                                        </div>
-                                        {/* Tracking Button for App Delivery */}
-                                        {order.deliveryMethod === 'app_delivery' && (order.status === 'finding_driver' || order.status === 'driver_assigned' || order.status === 'in_transit') && (
-                                            <button
-                                                onClick={() => navigate(`/track/${order.id}`)}
-                                                className="mt-2 w-full bg-indigo-50 text-indigo-600 font-bold py-3 rounded-xl flex justify-center items-center gap-2 active:scale-95 transition-transform"
-                                            >
-                                                <Navigation className="w-4 h-4" /> Rastrear Pedido
-                                            </button>
-                                        )}
-                                    </div>
-                                ))}
-                            </div>
-                        ) : (
-                            <div className="bg-slate-50 border border-slate-100 p-6 rounded-2xl text-center flex flex-col items-center justify-center">
-                                <ShoppingBag className="w-8 h-8 text-slate-300 mb-2" />
-                                <p className="text-sm font-bold text-slate-500">Aún no tienes pedidos</p>
-                                <p className="text-xs text-slate-400 mt-1">¡Ve a explorar nuestros restaurantes!</p>
+                                    ))}
+                                </div>
                             </div>
                         )}
-                    </div>
 
-                    <div className="space-y-2 pt-2 border-t border-slate-100">
-                        <h3 className="text-lg font-black text-slate-900 px-2">Ajustes</h3>
-                        <div className="space-y-1">
-                            <div
-                                onClick={handleToggleNotifications}
-                                className={`w-full flex items-center justify-between p-4 bg-slate-50 rounded-2xl transition-all cursor-pointer hover:bg-slate-100 ${updatingNotifications ? 'opacity-70 pointer-events-none' : ''}`}
-                            >
-                                <div className="flex items-center gap-3">
-                                    <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center shadow-sm">
-                                        <Bell className="w-5 h-5 text-blue-500" />
+                        {/* Order History */}
+                        <div ref={ordersRef} className="space-y-4 pt-2">
+                            <h3 className="text-lg font-black text-slate-900 px-2 flex items-center gap-2">
+                                <FileText className="w-5 h-5 text-primary" />
+                                Últimos Pedidos
+                            </h3>
+
+                            {loadingOrders ? (
+                                <div className="flex justify-center py-4">
+                                    <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin"></div>
+                                </div>
+                            ) : orders.length > 0 ? (
+                                <div className="space-y-3">
+                                    {orders.map(order => (
+                                        <div key={order.id} className="bg-slate-50 border border-slate-100 p-4 rounded-2xl flex flex-col gap-2">
+                                            <div className="flex justify-between items-start">
+                                                <div>
+                                                    <p className="font-bold text-slate-900 text-sm">Pedido #{order.id.slice(-6).toUpperCase()}</p>
+                                                    <div className="flex items-center gap-1 text-xs text-slate-500 mt-1">
+                                                        <Clock className="w-3 h-3" />
+                                                        <span>{order.createdAt?.toDate().toLocaleDateString()} a las {order.createdAt?.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                                                    </div>
+                                                </div>
+                                                <span className={`px-2 py-1 rounded text-xs font-bold ${order.status === 'pending' ? 'bg-orange-100 text-orange-600' :
+                                                    order.status === 'completed' ? 'bg-green-100 text-green-600' :
+                                                        'bg-slate-200 text-slate-600'
+                                                    }`}>
+                                                    {order.status === 'pending' ? 'Pendiente' :
+                                                        order.status === 'completed' ? 'Completado' : 'Cancelado'}
+                                                </span>
+                                            </div>
+                                            <div className="h-px bg-slate-200 my-1"></div>
+                                            <div className="flex justify-between items-end">
+                                                <div className="text-xs text-slate-500">
+                                                    {order.items.length} artículo{order.items.length !== 1 ? 's' : ''}
+                                                </div>
+                                                <span className="font-black text-primary text-base">${order.total.toFixed(2)}</span>
+                                            </div>
+                                            {/* Tracking Button for App Delivery */}
+                                            {order.deliveryMethod === 'app_delivery' && (order.status === 'finding_driver' || order.status === 'driver_assigned' || order.status === 'in_transit') && (
+                                                <button
+                                                    onClick={() => navigate(`/track/${order.id}`)}
+                                                    className="mt-2 w-full bg-indigo-50 text-indigo-600 font-bold py-3 rounded-xl flex justify-center items-center gap-2 active:scale-95 transition-transform"
+                                                >
+                                                    <Navigation className="w-4 h-4" /> Rastrear Pedido
+                                                </button>
+                                            )}
+
+                                            {/* Leave Review Button */}
+                                            {order.status === 'completed' && !order.hasReviewed && order.restaurantId && (
+                                                <button
+                                                    onClick={() => setReviewModalData({ isOpen: true, orderId: order.id, restaurantId: order.restaurantId! })}
+                                                    className="mt-2 w-full bg-orange-50 text-orange-600 font-bold py-3 rounded-xl flex justify-center items-center gap-2 active:scale-95 transition-transform"
+                                                >
+                                                    <Star className="w-4 h-4 fill-orange-600" /> Dejar Reseña
+                                                </button>
+                                            )}
+                                            {order.hasReviewed && (
+                                                <div className="mt-2 w-full bg-slate-50 text-slate-400 font-bold py-2 rounded-xl flex justify-center items-center gap-2 text-xs">
+                                                    <Star className="w-4 h-4 fill-slate-300" /> Reseña Enviada
+                                                </div>
+                                            )}
+                                        </div>
+                                    ))}
+                                </div>
+                            ) : (
+                                <div className="bg-slate-50 border border-slate-100 p-6 rounded-2xl text-center flex flex-col items-center justify-center">
+                                    <ShoppingBag className="w-8 h-8 text-slate-300 mb-2" />
+                                    <p className="text-sm font-bold text-slate-500">Aún no tienes pedidos</p>
+                                    <p className="text-xs text-slate-400 mt-1">¡Ve a explorar nuestros restaurantes!</p>
+                                </div>
+                            )}
+                        </div>
+
+                        <div className="space-y-2 pt-2 border-t border-slate-100">
+                            <h3 className="text-lg font-black text-slate-900 px-2">Ajustes</h3>
+                            <div className="space-y-1">
+                                <div
+                                    onClick={handleToggleNotifications}
+                                    className={`w-full flex items-center justify-between p-4 bg-slate-50 rounded-2xl transition-all cursor-pointer hover:bg-slate-100 ${updatingNotifications ? 'opacity-70 pointer-events-none' : ''}`}
+                                >
+                                    <div className="flex items-center gap-3">
+                                        <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center shadow-sm">
+                                            <Bell className="w-5 h-5 text-blue-500" />
+                                        </div>
+                                        <div className="flex flex-col">
+                                            <span className="font-bold text-slate-700">Notificaciones</span>
+                                            <span className="text-[10px] text-slate-400 font-medium">Recibe promos y actualizaciones</span>
+                                        </div>
                                     </div>
-                                    <div className="flex flex-col">
-                                        <span className="font-bold text-slate-700">Notificaciones</span>
-                                        <span className="text-[10px] text-slate-400 font-medium">Recibe promos y actualizaciones</span>
+                                    <div
+                                        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${userData?.notificationsEnabled || (userData?.fcmTokens && userData.fcmTokens.length > 0) ? 'bg-green-500' : 'bg-slate-300'
+                                            }`}
+                                    >
+                                        {updatingNotifications ? (
+                                            <div className="ml-1 w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                                        ) : (
+                                            <span
+                                                className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${userData?.notificationsEnabled || (userData?.fcmTokens && userData.fcmTokens.length > 0) ? 'translate-x-6' : 'translate-x-1'
+                                                    }`}
+                                            />
+                                        )}
                                     </div>
                                 </div>
-                                <div
-                                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${userData?.notificationsEnabled || (userData?.fcmTokens && userData.fcmTokens.length > 0) ? 'bg-green-500' : 'bg-slate-300'
-                                        }`}
-                                >
-                                    {updatingNotifications ? (
-                                        <div className="ml-1 w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                                    ) : (
-                                        <span
-                                            className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${userData?.notificationsEnabled || (userData?.fcmTokens && userData.fcmTokens.length > 0) ? 'translate-x-6' : 'translate-x-1'
-                                                }`}
-                                        />
-                                    )}
+
+                            </div>
+
+                            <div className="space-y-3 pt-6 border-t border-slate-100">
+                                <h3 className="text-lg font-black text-slate-900 px-2 flex items-center gap-2">
+                                    <FileText className="w-5 h-5 text-primary" />
+                                    📋 Sección de Soporte: Preguntas Frecuentes (FAQ)
+                                </h3>
+                                <div className="space-y-2">
+                                    {FAQ_DATA.map((faq, index) => (
+                                        <div
+                                            key={index}
+                                            className="bg-slate-50 rounded-2xl overflow-hidden border border-slate-100 transition-all"
+                                        >
+                                            <button
+                                                onClick={() => setActiveFaq(activeFaq === index ? null : index)}
+                                                className="w-full flex items-center justify-between p-4 text-left hover:bg-slate-100 transition-colors"
+                                            >
+                                                <span className="text-xs font-black text-slate-700 leading-tight pr-4">{faq.q}</span>
+                                                <motion.div
+                                                    animate={{ rotate: activeFaq === index ? 180 : 0 }}
+                                                    transition={{ duration: 0.2 }}
+                                                >
+                                                    <ChevronRight className={`w-4 h-4 ${activeFaq === index ? 'text-primary' : 'text-slate-300'}`} />
+                                                </motion.div>
+                                            </button>
+                                            <AnimatePresence>
+                                                {activeFaq === index && (
+                                                    <motion.div
+                                                        initial={{ height: 0, opacity: 0 }}
+                                                        animate={{ height: "auto", opacity: 1 }}
+                                                        exit={{ height: 0, opacity: 0 }}
+                                                        transition={{ duration: 0.3, ease: "easeInOut" }}
+                                                    >
+                                                        <div className="px-4 pb-4 pt-0">
+                                                            <p className="text-xs text-slate-500 font-medium leading-relaxed whitespace-pre-line">
+                                                                {faq.a}
+                                                            </p>
+                                                        </div>
+                                                    </motion.div>
+                                                )}
+                                            </AnimatePresence>
+                                        </div>
+                                    ))}
                                 </div>
                             </div>
 
                             <button
-
                                 onClick={handleLogout}
                                 className="w-full flex items-center justify-between p-4 hover:bg-red-50 rounded-2xl transition-colors cursor-pointer group mt-4"
                             >
@@ -668,35 +816,55 @@ export default function Profile() {
                 </div>
             </div>
 
-            {showAddressPicker && user && (
-                <AddressPicker
-                    onClose={() => setShowAddressPicker(false)}
-                    onSave={async (addressData) => {
-                        try {
-                            const currentAddresses = userData?.addresses || [];
-                            const isFirst = currentAddresses.length === 0 && !userData?.address;
+            {
+                showAddressPicker && user && (
+                    <AddressPicker
+                        onClose={() => setShowAddressPicker(false)}
+                        onSave={async (addressData) => {
+                            try {
+                                const currentAddresses = userData?.addresses || [];
+                                const isFirst = currentAddresses.length === 0 && !userData?.address;
 
-                            const newAddress = {
-                                id: Date.now().toString(),
-                                name: addressData.name,
-                                lat: addressData.lat,
-                                lng: addressData.lng,
-                                reference: addressData.reference,
-                                isDefault: isFirst || currentAddresses.length === 0
-                            };
+                                const newAddress = {
+                                    id: Date.now().toString(),
+                                    name: addressData.name,
+                                    lat: addressData.lat,
+                                    lng: addressData.lng,
+                                    reference: addressData.reference,
+                                    isDefault: isFirst || currentAddresses.length === 0
+                                };
 
-                            const userRef = doc(db, 'users', user.uid);
-                            await setDoc(userRef, {
-                                addresses: [...currentAddresses, newAddress]
-                            }, { merge: true });
-                            setShowAddressPicker(false);
-                        } catch (err) {
-                            console.error("Error saving address:", err);
-                            alert("No se pudo guardar la dirección. Por favor intenta de nuevo.");
-                        }
-                    }}
-                />
-            )}
+                                const userRef = doc(db, 'users', user.uid);
+                                await setDoc(userRef, {
+                                    addresses: [...currentAddresses, newAddress]
+                                }, { merge: true });
+                                setShowAddressPicker(false);
+                            } catch (err) {
+                                console.error("Error saving address:", err);
+                                alert("No se pudo guardar la dirección. Por favor intenta de nuevo.");
+                            }
+                        }}
+                    />
+                )
+            }
+
+            {/* Review Modal */}
+            {
+                reviewModalData?.isOpen && (
+                    <ReviewModal
+                        isOpen={reviewModalData.isOpen}
+                        onClose={() => setReviewModalData(null)}
+                        orderId={reviewModalData.orderId}
+                        restaurantId={reviewModalData.restaurantId}
+                        onReviewSubmitted={() => {
+                            setReviewModalData(null);
+                            // Make optimistic update to orders list
+                            setOrders(prev => prev.map(o => o.id === reviewModalData.orderId ? { ...o, hasReviewed: true } : o));
+                            alert('¡Gracias por tu reseña!');
+                        }}
+                    />
+                )
+            }
 
             {/* Edit Profile Modal */}
             <AnimatePresence>
@@ -755,6 +923,21 @@ export default function Profile() {
                                                     placeholder="Ej. 04141234567"
                                                 />
                                                 <Smartphone className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-300" />
+                                            </div>
+                                        </div>
+
+                                        <div className="space-y-2">
+                                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Cédula de Identidad</label>
+                                            <div className="relative">
+                                                <input
+                                                    type="text"
+                                                    required
+                                                    value={profileForm.cedula}
+                                                    onChange={(e) => setProfileForm({ ...profileForm, cedula: e.target.value })}
+                                                    className="w-full bg-slate-50 border border-slate-100 rounded-2xl p-4 pl-12 font-bold text-slate-700 focus:bg-white focus:border-primary transition-all outline-none"
+                                                    placeholder="Ej. V-12345678"
+                                                />
+                                                <UserIcon className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-300" />
                                             </div>
                                         </div>
                                     </div>
@@ -836,6 +1019,6 @@ export default function Profile() {
                     </div>
                 )}
             </AnimatePresence>
-        </div>
+        </>
     );
 }

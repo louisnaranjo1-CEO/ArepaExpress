@@ -10,6 +10,7 @@ interface OrderItem {
     name: string;
     quantity: number;
     price: number;
+    consultPrice?: boolean;
     image?: string;
 }
 
@@ -288,7 +289,9 @@ export default function Orders() {
                                         </div>
                                         <div className="flex-1">
                                             <p className="font-black text-slate-700">{item.name}</p>
-                                            <p className="text-xs text-slate-400 font-bold">${item.price.toFixed(2)} c/u</p>
+                                            <p className="text-xs text-slate-400 font-bold">
+                                                {item.consultPrice || item.price === 0 ? 'Precio a consultar' : `$${item.price.toFixed(2)} c/u`}
+                                            </p>
                                         </div>
                                     </div>
                                 ))}

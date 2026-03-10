@@ -19,6 +19,7 @@ export default function BannersManager() {
         title: '',
         linkUrl: '',
         duration: 5,
+        type: 'top_banner' as 'top_banner' | 'welcome_popup',
         visibilityScope: 'national' as 'national' | 'state' | 'city',
         targetState: '',
         targetCity: ''
@@ -92,6 +93,7 @@ export default function BannersManager() {
                 title: '',
                 linkUrl: '',
                 duration: 5,
+                type: 'top_banner',
                 visibilityScope: 'national',
                 targetState: '',
                 targetCity: ''
@@ -133,6 +135,7 @@ export default function BannersManager() {
             title: banner.title || '',
             linkUrl: banner.linkUrl || '',
             duration: banner.duration || 5,
+            type: banner.type || 'top_banner',
             visibilityScope: banner.visibilityScope || 'national',
             targetState: banner.targetState || '',
             targetCity: banner.targetCity || ''
@@ -171,6 +174,7 @@ export default function BannersManager() {
                                 title: '',
                                 linkUrl: '',
                                 duration: 5,
+                                type: 'top_banner',
                                 visibilityScope: 'national',
                                 targetState: '',
                                 targetCity: ''
@@ -206,6 +210,25 @@ export default function BannersManager() {
                         </h2>
 
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                            <div className="space-y-4">
+                                <label className="block text-xs font-black text-slate-400 uppercase tracking-widest pl-1">Tipo de Publicidad</label>
+                                <div className="flex gap-2 p-1 bg-slate-100 rounded-2xl">
+                                    <button
+                                        type="button"
+                                        onClick={() => setNewBanner({ ...newBanner, type: 'top_banner' })}
+                                        className={`flex-1 py-2 px-3 rounded-xl font-bold text-xs transition-all ${newBanner.type === 'top_banner' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500'}`}
+                                    >
+                                        Banner Superior
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setNewBanner({ ...newBanner, type: 'welcome_popup' })}
+                                        className={`flex-1 py-2 px-3 rounded-xl font-bold text-xs transition-all ${newBanner.type === 'welcome_popup' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500'}`}
+                                    >
+                                        Ventana Emergente
+                                    </button>
+                                </div>
+                            </div>
                             <div className="space-y-2">
                                 <label className="block text-xs font-black text-slate-400 uppercase tracking-widest pl-1">Título / Nombre Interno</label>
                                 <input
@@ -244,7 +267,9 @@ export default function BannersManager() {
                                 </div>
                                 <p className="text-[10px] text-slate-400 flex items-center gap-1.5 pl-1">
                                     <AlertCircle className="w-3 h-3" />
-                                    Este banner se verá en la parte superior de la App.
+                                    {newBanner.type === 'top_banner'
+                                        ? 'Este banner se verá en la parte superior de la App.'
+                                        : 'Esta ventana aparecerá al abrir la App (Ej: Promociones).'}
                                 </p>
                             </div>
                             <div className="space-y-2">
@@ -407,8 +432,14 @@ export default function BannersManager() {
                             {/* Badges on preview */}
                             <div className="absolute top-4 left-4 flex gap-2">
                                 <div className="bg-white/90 backdrop-blur-md px-3 py-1.5 rounded-xl shadow-sm flex items-center gap-1.5 border border-white">
-                                    <Timer className="w-3.5 h-3.5 text-indigo-600" />
-                                    <span className="text-xs font-black text-slate-900">{banner.duration}s</span>
+                                    {banner.type === 'welcome_popup' ? (
+                                        <div className="w-2 h-2 rounded-full bg-rose-500 animate-pulse"></div>
+                                    ) : (
+                                        <Timer className="w-3.5 h-3.5 text-indigo-600" />
+                                    )}
+                                    <span className="text-xs font-black text-slate-900">
+                                        {banner.type === 'welcome_popup' ? 'Welcome Popup' : `${banner.duration}s`}
+                                    </span>
                                 </div>
                                 <div className="bg-indigo-600 text-white px-3 py-1.5 rounded-xl shadow-sm flex items-center gap-1.5 border border-indigo-500">
                                     {banner.visibilityScope === 'national' || !banner.visibilityScope ? (

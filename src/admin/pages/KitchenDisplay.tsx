@@ -10,6 +10,7 @@ interface OrderItem {
     name: string;
     quantity: number;
     price: number;
+    consultPrice?: boolean;
     category?: string;
     printerId?: string;
 }

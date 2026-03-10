@@ -83,7 +83,7 @@ export default function TrackOrder() {
         <div className="pb-24 bg-slate-50 min-h-screen">
             {/* Header */}
             <div className="bg-white px-4 py-4 flex items-center gap-4 sticky top-0 z-30 shadow-sm">
-                <button onClick={() => navigate('/profile')} className="w-10 h-10 bg-slate-100 rounded-full flex items-center justify-center active:scale-95 transition-transform text-slate-600">
+                <button onClick={() => window.history.length > 1 ? window.history.back() : navigate('/profile')} className="w-10 h-10 bg-slate-100 rounded-full flex items-center justify-center active:scale-95 transition-transform text-slate-600">
                     <ArrowLeft className="w-5 h-5" />
                 </button>
                 <h1 className="text-lg font-black text-slate-900">Rastrear Pedido</h1>

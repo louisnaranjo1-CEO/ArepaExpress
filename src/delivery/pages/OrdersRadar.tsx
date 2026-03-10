@@ -68,7 +68,7 @@ export default function OrdersRadar() {
         const unsubAvailable = onSnapshot(availableQ, (snapshot) => {
             const orders = snapshot.docs.map(doc => {
                 const data = doc.data();
-                return { id: doc.id, ...data };
+                return { id: doc.id, ...data } as any;
             });
 
             // Filtrar localmente por ciudad y distancia

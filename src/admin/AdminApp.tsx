@@ -14,6 +14,8 @@ import KitchenDisplay from './pages/KitchenDisplay';
 import TablesManager from './pages/TablesManager';
 import Subscriptions from './pages/Subscriptions';
 import Banners from './pages/Banners';
+import ReviewsManager from './pages/ReviewsManager';
+import AdsManager from './pages/AdsManager';
 
 function AdminRoutes() {
     const { user, loading } = useAuth();
@@ -43,7 +45,9 @@ function AdminRoutes() {
                 <Route path="/kds" element={<KitchenDisplay />} />
                 <Route path="/profile" element={<RestaurantProfile />} />
                 <Route path="/banners" element={<Banners />} />
+                <Route path="/reviews" element={<ReviewsManager />} />
                 <Route path="/subscriptions" element={<Subscriptions />} />
+                <Route path="/ads" element={<AdsManager />} />
                 <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
         </AdminLayout>

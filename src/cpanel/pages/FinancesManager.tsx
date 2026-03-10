@@ -1,15 +1,16 @@
 import React, { useState, useEffect } from 'react';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { doc, getDoc, setDoc, collection, query, onSnapshot, orderBy, updateDoc } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { db, storage } from '../../lib/firebase';
-import { Save, Wallet, Receipt, CreditCard, DollarSign, Activity, Image as ImageIcon, UploadCloud, Trash2, Globe, Layout } from 'lucide-react';
+import { Save, Wallet, Receipt, CreditCard, DollarSign, Activity, Image as ImageIcon, UploadCloud, Trash2, Globe, Layout, CheckCircle, XCircle } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 export default function FinancesManager() {
     const [isLoading, setIsLoading] = useState(true);
     const [isSaving, setIsSaving] = useState(false);
     const [uploadingLogo, setUploadingLogo] = useState<string | null>(null);
-    const [activeTab, setActiveTab] = useState<'payments' | 'subscriptions'>('payments');
+    const [activeTab, setActiveTab] = useState<'payments' | 'subscriptions' | 'banners'>('payments');
+    const [bannerRequests, setBannerRequests] = useState<any[]>([]);
 
     // Default configuration structure
     const [config, setConfig] = useState<any>({
@@ -110,6 +111,17 @@ export default function FinancesManager() {
         };
 
         fetchConfig();
+
+        // Fetch Banner Requests realtime
+        const bannerQuery = query(collection(db, 'banner_requests'), orderBy('createdAt', 'desc'));
+        const unsubscribe = onSnapshot(bannerQuery, (snap) => {
+            const requests = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            setBannerRequests(requests);
+        }, (error) => {
+            console.error("Error fetching banner requests:", error);
+        });
+
+        return () => unsubscribe();
     }, []);
 
     const handleSave = async () => {
@@ -125,6 +137,16 @@ export default function FinancesManager() {
             toast.error("Error al guardar la configuración");
         } finally {
             setIsSaving(false);
+        }
+    };
+
+    const handleUpdateBannerStatus = async (id: string, newStatus: 'approved' | 'rejected') => {
+        try {
+            await updateDoc(doc(db, 'banner_requests', id), { status: newStatus });
+            toast.success(`Solicitud ${newStatus === 'approved' ? 'aprobada' : 'rechazada'}`);
+        } catch (error) {
+            console.error(error);
+            toast.error("Error al actualizar el estado");
         }
     };
 
@@ -224,12 +246,14 @@ export default function FinancesManager() {
                     </div>
                     <div>
                         <h1 className="text-2xl font-black text-slate-900">
-                            {activeTab === 'payments' ? 'Finanzas y Pagos' : 'Planes de Suscripción'}
+                            {activeTab === 'payments' ? 'Finanzas y Pagos' : activeTab === 'subscriptions' ? 'Planes de Suscripción' : 'Solicitudes de Banners'}
                         </h1>
                         <p className="text-sm font-medium text-slate-500 mt-0.5">
                             {activeTab === 'payments'
                                 ? 'Configura cómo tus clientes te pagan'
-                                : 'Gestiona los planes de suscripción para restaurantes'
+                                : activeTab === 'subscriptions'
+                                    ? 'Gestiona los planes de suscripción para restaurantes'
+                                    : 'Aprueba o rechaza banners pagados por restaurantes'
                             }
                         </p>
                     </div>
@@ -265,6 +289,16 @@ export default function FinancesManager() {
                 >
                     <Layout className="w-4 h-4" />
                     Suscripciones
+                </button>
+                <button
+                    onClick={() => setActiveTab('banners')}
+                    className={`flex items-center gap-2 px-6 py-2.5 rounded-xl text-sm font-black transition-all ${activeTab === 'banners'
+                        ? 'bg-white text-indigo-600 shadow-sm'
+                        : 'text-slate-500 hover:text-slate-700'
+                        }`}
+                >
+                    <ImageIcon className="w-4 h-4" />
+                    Banners
                 </button>
             </div>
 
@@ -468,7 +502,7 @@ export default function FinancesManager() {
                         <LogoSection methodId="cash" />
                     </div>
                 </div>
-            ) : (
+            ) : activeTab === 'subscriptions' ? (
                 <div className="space-y-6 pb-20">
                     <div className="bg-white rounded-[32px] border-2 border-slate-100 p-8">
                         <div className="flex items-center gap-3 mb-8">
@@ -539,7 +573,77 @@ export default function FinancesManager() {
                         </div>
                     </div>
                 </div>
-            )}
-        </div>
+            ) : (
+                <div className="space-y-6 pb-20">
+                    <div className="bg-white rounded-[32px] border-2 border-slate-100 p-8">
+                        <div className="flex items-center gap-3 mb-8">
+                            <div className="w-10 h-10 bg-indigo-50 rounded-xl flex items-center justify-center text-indigo-600">
+                                <ImageIcon className="w-5 h-5" />
+                            </div>
+                            <div>
+                                <h3 className="font-black text-slate-800 tracking-tight text-lg">Solicitudes de Banners</h3>
+                                <p className="text-sm text-slate-500">Revisa las solicitudes de publicidad de los restaurantes.</p>
+                            </div>
+                        </div>
+
+                        {bannerRequests.length === 0 ? (
+                            <div className="text-center py-10 bg-slate-50 rounded-3xl border border-dashed border-slate-200">
+                                <ImageIcon className="w-12 h-12 text-slate-300 mx-auto mb-3" />
+                                <p className="text-slate-500 font-bold">No hay solicitudes de banners.</p>
+                            </div>
+                        ) : (
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                                {bannerRequests.map(req => (
+                                    <div key={req.id} className="bg-white border rounded-2xl overflow-hidden shadow-sm flex flex-col group transition-all hover:shadow-md">
+                                        <div className="h-32 bg-slate-100 relative group cursor-pointer focus:outline-none focus:ring-2 focus:ring-indigo-500" tabIndex={0} onClick={() => window.open(req.imageUrl, '_blank')}>
+                                            <img src={req.imageUrl} alt="Banner request" className="w-full h-full object-cover" />
+                                            <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                                                <span className="text-white text-xs font-bold uppercase tracking-widest bg-black/50 px-3 py-1.5 rounded-full backdrop-blur-sm">Ampliar Imagen</span>
+                                            </div>
+                                        </div>
+                                        <div className="p-5 flex-1 flex flex-col">
+                                            <div className="flex justify-between items-start mb-2">
+                                                <h4 className="font-black text-slate-800 text-lg leading-tight">{req.restaurantName}</h4>
+                                                <span className={`px-2 py-1 rounded-full text-[10px] font-black uppercase tracking-wider ${req.status === 'approved' ? 'bg-emerald-100 text-emerald-700' :
+                                                    req.status === 'rejected' ? 'bg-red-100 text-red-700' :
+                                                        'bg-amber-100 text-amber-700'
+                                                    }`}>
+                                                    {req.status === 'approved' ? 'Aprobado' : req.status === 'rejected' ? 'Rechazado' : 'Pendiente'}
+                                                </span>
+                                            </div>
+                                            <p className="text-sm text-slate-500 font-medium mb-1">Plan: <span className="text-indigo-600 font-bold">{req.planName}</span></p>
+                                            <p className="text-sm text-slate-500 font-medium mb-4">Precio: <span className="font-bold">${req.price}</span></p>
+
+                                            <div className="mt-auto space-y-2">
+                                                <span className="text-xs text-slate-400 font-medium opacity-80 mb-3 block text-center">
+                                                    {req.createdAt?.toDate().toLocaleDateString('es-ES', { day: '2-digit', month: 'long', year: 'numeric' })}
+                                                </span>
+                                                {req.status === 'pending' && (
+                                                    <div className="grid grid-cols-2 gap-2 mt-2 pt-4 border-t border-slate-100">
+                                                        <button
+                                                            onClick={() => handleUpdateBannerStatus(req.id, 'rejected')}
+                                                            className="flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl text-xs font-black text-red-600 bg-red-50 hover:bg-red-100 transition-colors"
+                                                        >
+                                                            <XCircle className="w-4 h-4" /> Rechazar
+                                                        </button>
+                                                        <button
+                                                            onClick={() => handleUpdateBannerStatus(req.id, 'approved')}
+                                                            className="flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl text-xs font-black text-emerald-600 bg-emerald-50 hover:bg-emerald-100 transition-colors"
+                                                        >
+                                                            <CheckCircle className="w-4 h-4" /> Aprobar
+                                                        </button>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+                </div>
+            )
+            }
+        </div >
     );
 }

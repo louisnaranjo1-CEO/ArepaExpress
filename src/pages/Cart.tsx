@@ -214,6 +214,12 @@ export default function Cart() {
       navigate('/profile');
       return;
     }
+
+    if (!isWaiter && user && (!userData?.phone || !userData?.cedula)) {
+      alert("Debes completar tu perfil (Celular y Cédula) en la sección de tu cuenta antes de hacer un pedido.");
+      navigate('/profile');
+      return;
+    }
     if (items.length === 0) return;
 
     setIsCheckingOut(true);
@@ -253,7 +259,8 @@ export default function Cart() {
           quantity: item.quantity,
           image: item.image,
           category: item.category,
-          printerId: item.printerId
+          printerId: item.printerId,
+          consultPrice: item.consultPrice
         })),
         subtotal: totalPrice,
         deliveryFee: deliveryFee,
@@ -282,7 +289,7 @@ export default function Cart() {
 
       // 3. Generate WhatsApp Message
       const itemsList = items.map(item => {
-        if (item.price === 0 || !item.price) return `• ${item.quantity}x ${item.name} (Precio a consultar)`;
+        if (item.consultPrice || item.price === 0 || !item.price) return `• ${item.quantity}x ${item.name} (Precio a consultar)`;
         return `• ${item.quantity}x ${item.name} ($${(item.price * item.quantity).toFixed(2)})`;
       }).join('\n');
 
@@ -294,17 +301,26 @@ export default function Cart() {
         locationText += `\n*Ubicación GPS:* https://www.google.com/maps?q=${orderData.userCoordinates.lat},${orderData.userCoordinates.lng}`;
       }
 
-      const noteText = orderData.orderNote ? `\n*Notas del Pedido:*\n_${orderData.orderNote}_\n` : '';
+      const noteText = orderData.orderNote ? `*Notas del Pedido:*\n_${orderData.orderNote}_` : '';
 
-      const message = encodeURIComponent(
-        `*NUEVO PEDIDO # ${docRef.id.slice(-6).toUpperCase()}*\n\n` +
-        `*Cliente:* ${orderData.userName}\n` +
-        `*Resumen:*\n${itemsList}\n` +
-        `${noteText}\n` +
-        `*Total:* $${finalTotal.toFixed(2)}\n\n` +
-        `${locationText}\n\n` +
-        `_Enviado desde Deli Express App_`
-      );
+      let rawMessage = systemSettings?.whatsappMessageTemplate;
+      if (!rawMessage) {
+        rawMessage = `👋 ¡Hola *{RestaurantName}*!\nSoy *{UserName}* y vengo desde la app en un 2x3 🚀. Mi identificación es *{Cedula}* y requiero el siguiente pedido:\n\n🛒 *Detalles del Pedido:*\n{OrderItems}\n\n🛵 *Delivery:* \${DeliveryFee}\n💰 *Total:* \${Total}\n\n📍 Adjunto mi ubicación para la entrega y mi número de contacto por si requieren llamar.\n\n🗺️ *Ubicación:* {LocationText}\n📱 *Mi número:* {UserPhone}\n\n{OrderNotes}\n\n_Enviado desde Deli Express App_`;
+      }
+
+      const formattedMessage = rawMessage
+        .replace(/{OrderId}/g, docRef.id.slice(-6).toUpperCase())
+        .replace(/{RestaurantName}/g, orderData.restaurantName)
+        .replace(/{UserName}/g, orderData.userName)
+        .replace(/{Cedula}/g, userData?.cedula || 'N/A')
+        .replace(/{UserPhone}/g, orderData.userPhone)
+        .replace(/{OrderItems}/g, itemsList)
+        .replace(/{DeliveryFee}/g, orderData.deliveryFee.toFixed(2))
+        .replace(/{Total}/g, `${orderData.total.toFixed(2)}${items.some(i => i.consultPrice) ? ' + consulta' : ''}`)
+        .replace(/{LocationText}/g, locationText)
+        .replace(/{OrderNotes}/g, noteText);
+
+      const message = encodeURIComponent(formattedMessage);
 
       // 4. Redirect
       const whatsappNumber = restaurantData.whatsapp.replace(/\D/g, '');
@@ -512,8 +528,8 @@ export default function Cart() {
                           </button>
                         </div>
                         <div className="flex items-center justify-between mt-3">
-                          {item.price === 0 || !item.price ? (
-                            <p className="font-bold text-emerald-600 text-xs">A consultar</p>
+                          {item.consultPrice || item.price === 0 || !item.price ? (
+                            <p className="font-bold text-orange-600 text-xs">Precio a consultar</p>
                           ) : (
                             <p className="text-primary font-bold text-base">${item.price.toFixed(2)}</p>
                           )}
@@ -553,7 +569,10 @@ export default function Cart() {
                 <div className="bg-surface-light p-5 rounded-2xl shadow-sm space-y-3 mt-4 border border-neutral-light/50">
                   <div className="flex justify-between text-sm">
                     <span className="text-slate-500">Subtotal</span>
-                    <span className="font-semibold text-slate-900">${totalPrice.toFixed(2)}</span>
+                    <span className="font-semibold text-slate-900">
+                      ${totalPrice.toFixed(2)}
+                      {items.some(i => i.consultPrice) && <span className="text-[10px] text-orange-500 ml-1">+ consulta</span>}
+                    </span>
                   </div>
                 </div>
                 <div className="sticky bottom-6 mt-6">
@@ -692,7 +711,10 @@ export default function Cart() {
                   <div className="flex justify-between items-end">
                     <span className="text-slate-900 font-bold text-lg">Total</span>
                     <div className="flex flex-col items-end">
-                      <span className="text-2xl font-extrabold text-primary">${finalTotal.toFixed(2)}</span>
+                      <span className="text-2xl font-extrabold text-primary">
+                        ${finalTotal.toFixed(2)}
+                        {items.some(i => i.consultPrice) && <span className="text-[10px] text-orange-500 font-bold">+ CONSULTA</span>}
+                      </span>
                     </div>
                   </div>
                 </div>

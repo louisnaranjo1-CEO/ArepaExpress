@@ -10,14 +10,21 @@ import {
     DollarSign, Clock, CheckCircle, Package, Truck, X, Save, Upload,
     Image as ImageIcon
 } from 'lucide-react';
-import { GLOBAL_CATEGORIES } from '../../lib/constants';
+import { GLOBAL_CATEGORIES, CATEGORY_SECTORS } from '../../lib/constants';
 import { updateDoc } from 'firebase/firestore';
 import { motion, AnimatePresence } from 'framer-motion';
+
+interface Category {
+    id: string;
+    name: string;
+    parentId?: string;
+}
 
 interface RestaurantData {
     id: string;
     name: string;
     category: string;
+    sector?: string;
     rating: number;
     reviews: number;
     deliveryTime: string;
@@ -85,6 +92,10 @@ export default function RestaurantProfile() {
     const [logoFile, setLogoFile] = useState<File | null>(null);
     const [logoPreview, setLogoPreview] = useState<string | null>(null);
 
+    const [allCategories, setAllCategories] = useState<Category[]>([]);
+    const sectors = allCategories.filter(c => !c.parentId);
+    const subCats = allCategories.filter(c => c.parentId === editData.sector);
+
     const [confirmStatus, setConfirmStatus] = useState<'active' | 'busy' | 'unavailable' | null>(null);
 
     useEffect(() => {
@@ -125,6 +136,11 @@ export default function RestaurantProfile() {
 
                 setRecentOrders(orders.sort((a: any, b: any) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0)).slice(0, 5));
                 setPopularProducts(products.slice(0, 4));
+
+                // Categories
+                const catSnap = await getDocs(collection(db, 'global_categories'));
+                const cats = catSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Category[];
+                setAllCategories(cats);
 
             } catch (error) {
                 console.error("Error fetching restaurant profile data:", error);
@@ -178,6 +194,7 @@ export default function RestaurantProfile() {
             status: restaurant.status || (restaurant.isActive !== false ? 'active' : 'unavailable'),
             billingDay: restaurant.billingDay || 1,
             billingAmount: restaurant.billingAmount || 0,
+            sector: restaurant.sector || '',
             location: {
                 city: restaurant.location?.city || '',
                 state: restaurant.location?.state || '',
@@ -472,18 +489,40 @@ export default function RestaurantProfile() {
                                             />
                                         </div>
 
-                                        <div className="space-y-2">
-                                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Categoría Principal</label>
-                                            <select
-                                                value={editData.category}
-                                                onChange={(e) => setEditData({ ...editData, category: e.target.value })}
-                                                className="w-full bg-slate-50 border border-slate-100 rounded-2xl p-4 font-bold text-slate-700 focus:bg-white focus:border-primary transition-all outline-none appearance-none"
-                                                required
-                                            >
-                                                {GLOBAL_CATEGORIES.map(cat => (
-                                                    <option key={cat} value={cat}>{cat}</option>
-                                                ))}
-                                            </select>
+                                        <div className="grid grid-cols-2 gap-4">
+                                            <div className="space-y-2">
+                                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Sector</label>
+                                                <select
+                                                    value={editData.sector || ''}
+                                                    onChange={(e) => setEditData({ ...editData, sector: e.target.value, category: '' })}
+                                                    className="w-full bg-slate-50 border border-slate-100 rounded-2xl p-4 font-bold text-slate-700 focus:bg-white focus:border-primary transition-all outline-none appearance-none"
+                                                    required
+                                                >
+                                                    <option value="">Seleccionar Sector</option>
+                                                    {sectors.map(cat => (
+                                                        <option key={cat.id} value={cat.id}>{cat.name}</option>
+                                                    ))}
+                                                </select>
+                                            </div>
+
+                                            <div className="space-y-2">
+                                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Subcategoría</label>
+                                                <select
+                                                    value={editData.category}
+                                                    onChange={(e) => setEditData({ ...editData, category: e.target.value })}
+                                                    className="w-full bg-slate-50 border border-slate-100 rounded-2xl p-4 font-bold text-slate-700 focus:bg-white focus:border-primary transition-all outline-none appearance-none"
+                                                    required
+                                                    disabled={!editData.sector}
+                                                >
+                                                    <option value="">{editData.sector ? 'Seleccionar Subcategoría' : 'Primero elige un sector'}</option>
+                                                    {subCats.map(cat => (
+                                                        <option key={cat.id} value={cat.name}>{cat.name}</option>
+                                                    ))}
+                                                    {!editData.sector && allCategories.filter(c => !c.parentId).length === 0 && (
+                                                        <option value={editData.category}>{editData.category}</option>
+                                                    )}
+                                                </select>
+                                            </div>
                                         </div>
 
                                         <div className="space-y-2">
