@@ -93,6 +93,7 @@ export default function Taxi() {
     const [paymentRef, setPaymentRef] = useState('');
     const [isUploading, setIsUploading] = useState(false);
     const [isCalculatingRoute, setIsCalculatingRoute] = useState(false);
+    const [routeCalculationAttempted, setRouteCalculationAttempted] = useState(false);
 
     const geocoderRef = useRef<google.maps.Geocoder | null>(null);
     const mapCenterRef = useRef(defaultCenter);
@@ -104,10 +105,17 @@ export default function Taxi() {
                 const docSnap = await getDoc(doc(db, 'delivery_settings', 'settings'));
                 if (docSnap.exists()) {
                     const data = docSnap.data();
-                    if (data.transportRates) setAdminRates(data.transportRates);
+                    setAdminRates(data.transportRates || {});
                     setServiceHours({
-                        day: data.dayShift,
-                        night: data.nightShift
+                        day: data.dayShift || { start: "08:00", end: "20:00" },
+                        night: data.nightShift || { start: "20:01", end: "07:59" }
+                    });
+                } else {
+                    // Initialize empty but not null to prevent infinite loading
+                    setAdminRates({});
+                    setServiceHours({
+                        day: { start: "08:00", end: "20:00" },
+                        night: { start: "20:01", end: "07:59" }
                     });
                 }
 
@@ -123,7 +131,13 @@ export default function Taxi() {
                 }
             } catch (error) {
                 console.error("Error fetching configs:", error);
-                // Ensure the app doesn't hang if there's a network error
+
+                // Set fallback values on error to unblock UI
+                setAdminRates({});
+                setServiceHours({
+                    day: { start: "08:00", end: "20:00" },
+                    night: { start: "20:01", end: "07:59" }
+                });
                 setPaymentMethods({
                     cash: { active: true, logoUrl: '' }
                 });
@@ -196,8 +210,9 @@ export default function Taxi() {
     // 5. Route Calculation
     useEffect(() => {
         let isMounted = true;
-        if (step === 'vehicle' && origin && destination && directionsService && !directionsResponse) {
+        if (step === 'vehicle' && origin && destination && directionsService && !routeCalculationAttempted) {
             setIsCalculatingRoute(true);
+            setRouteCalculationAttempted(true);
 
             const request: google.maps.DirectionsRequest = {
                 origin: { lat: origin.lat, lng: origin.lng },
@@ -206,7 +221,29 @@ export default function Taxi() {
                 optimizeWaypoints: true,
             };
 
+            // Set a timeout safety in case the API hangs
+            const timeoutId = setTimeout(() => {
+                if (isMounted && isCalculatingRoute) {
+                    setIsCalculatingRoute(false);
+                    console.warn("Route calculation timed out. Using fallback.");
+                    applyFallbackRoute();
+                }
+            }, 8000);
+
+            const applyFallbackRoute = () => {
+                const distanceMeters = calculateDistance(origin!.lat, origin!.lng, destination!.lat, destination!.lng);
+                const distanceKm = Number((distanceMeters / 1000).toFixed(1));
+                const estimatedMinutes = Math.max(3, Math.ceil(distanceKm * 4));
+
+                setRouteInfo({
+                    distance: distanceKm,
+                    duration: `Aprox. ${estimatedMinutes} min`
+                });
+                setDirectionsResponse(null);
+            };
+
             directionsService.route(request, (result, status) => {
+                clearTimeout(timeoutId);
                 if (!isMounted) return;
 
                 setIsCalculatingRoute(false);
@@ -220,35 +257,23 @@ export default function Taxi() {
                             distance: distanceKm,
                             duration: leg.duration?.text || ''
                         });
-                        return; // Successfully calculated
+                        return;
                     }
                 }
 
                 // --- FALLBACK LOGIC ---
-                // Si la API de Google Maps falla (ej. REQUEST_DENIED, ZERO_RESULTS)
-                // Usamos la calculadora en línea recta
                 console.warn(`Route calculation failed with status: ${status}. Using straight-line distance fallback.`);
-
-                const distanceMeters = calculateDistance(origin.lat, origin.lng, destination.lat, destination.lng);
-                const distanceKm = Number((distanceMeters / 1000).toFixed(1));
-                const estimatedMinutes = Math.max(3, Math.ceil(distanceKm * 4)); // Aprox 4 mins by km in urban traffic
-
-                setRouteInfo({
-                    distance: distanceKm,
-                    duration: `Aprox. ${estimatedMinutes} min`
-                });
-
-                setDirectionsResponse(null); // No path to render
+                applyFallbackRoute();
 
                 if (status === 'ZERO_RESULTS') {
                     toast("Ruta vial no encontrada, estimando distancia en línea recta", { icon: '📏' });
-                } else {
+                } else if (status !== 'OK') {
                     toast.error(`Aviso: Servicio GPS limitado (${status}). Usando distancia en línea recta.`);
                 }
             });
         }
         return () => { isMounted = false; };
-    }, [step, origin, destination, directionsService, directionsResponse]);
+    }, [step, origin, destination, directionsService, routeCalculationAttempted]);
 
     // 6. Viewport Auto-Adjustment
     useEffect(() => {
@@ -302,6 +327,7 @@ export default function Taxi() {
 
         setDirectionsResponse(null);
         setRouteInfo(null);
+        setRouteCalculationAttempted(false);
 
         if (step === 'vehicle') {
             setStep('destination');
@@ -769,6 +795,7 @@ export default function Taxi() {
                                         <button
                                             onClick={() => {
                                                 setIsCalculatingRoute(false);
+                                                setRouteCalculationAttempted(false);
                                                 setStep('destination');
                                             }}
                                             className="mt-4 text-xs font-black text-rose-500 uppercase tracking-widest bg-rose-50 px-4 py-2 rounded-full"

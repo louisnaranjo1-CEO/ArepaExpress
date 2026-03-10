@@ -232,3 +232,13 @@ export const updateUserPassword = async (newPassword: string): Promise<void> => 
         throw error;
     }
 };
+
+export const logout = async (): Promise<void> => {
+    try {
+        await auth.signOut();
+        localStorage.removeItem('deliexpress_uid');
+    } catch (error) {
+        console.error("Error logging out:", error);
+        throw error;
+    }
+};

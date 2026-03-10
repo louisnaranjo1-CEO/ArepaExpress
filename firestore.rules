@@ -105,6 +105,12 @@ service cloud.firestore {
       );
     }
 
+    // Delivery and Transport settings
+    match /delivery_settings/{docId} {
+      allow read: if true;
+      allow write: if request.auth != null;
+    }
+
     // Default deny
     match /{document=**} {
       allow read, write: if false;

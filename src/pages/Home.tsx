@@ -261,7 +261,8 @@ export default function Home() {
 
     fetchBanners();
     fetchData();
-  }, [userLocation, manualCity]);
+    fetchRestaurants();
+  }, [userLocation, manualCity, manualState]);
 
   // Combined effect for Banner Timer
   useEffect(() => {

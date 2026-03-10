@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { registerDriver } from '../../lib/delivery-service';
-import { Upload, ChevronRight, CheckCircle2, AlertCircle, MapPin } from 'lucide-react';
+import { logout } from '../../lib/auth-service';
+import { Upload, ChevronRight, CheckCircle2, AlertCircle, MapPin, LogOut } from 'lucide-react';
 import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import { VENEZUELA_DATA, VENEZUELA_STATES } from '../../lib/venezuelaData';
@@ -130,16 +131,29 @@ export default function Onboarding() {
     return (
         <div className="min-h-[100dvh] bg-slate-50 flex flex-col pb-safe">
             <header className="bg-white px-6 py-4 shadow-sm z-10 sticky top-0">
-                <div className="flex items-center gap-3">
-                    <img
-                        src="https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/arepalogo.png?alt=media"
-                        alt="Logo"
-                        className="w-10 h-10 object-contain rounded-full shadow-sm"
-                    />
-                    <div>
-                        <h1 className="font-black text-xl text-slate-900 leading-none">Registro de Piloto</h1>
-                        <p className="text-xs font-bold text-slate-400 mt-1 uppercase tracking-widest">Paso {step} de 5</p>
+                <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                        <img
+                            src="https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/arepalogo.png?alt=media"
+                            alt="Logo"
+                            className="w-10 h-10 object-contain rounded-full shadow-sm"
+                        />
+                        <div>
+                            <h1 className="font-black text-xl text-slate-900 leading-none">Registro de Piloto</h1>
+                            <p className="text-xs font-bold text-slate-400 mt-1 uppercase tracking-widest">Paso {step} de 5</p>
+                        </div>
                     </div>
+
+                    <button
+                        onClick={async () => {
+                            await logout();
+                            window.location.href = '/delivery/login';
+                        }}
+                        className="flex items-center gap-2 text-slate-400 hover:text-red-500 transition-colors"
+                    >
+                        <LogOut className="w-5 h-5" />
+                        <span className="text-xs font-black uppercase tracking-wider hidden sm:inline">Cerrar Sesión</span>
+                    </button>
                 </div>
 
                 {/* Progress bar */}
