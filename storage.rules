@@ -15,5 +15,10 @@ service firebase.storage {
       allow read: if true;
       allow write: if request.auth != null;
     }
+
+    match /global_icons/{allPaths=**} {
+      allow read: if true;
+      allow write: if request.auth != null;
+    }
   }
 }

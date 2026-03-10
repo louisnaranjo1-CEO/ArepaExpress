@@ -75,7 +75,7 @@ export default function WaiterLogin() {
             <div className="w-full max-w-sm mx-auto z-10">
                 <div className="text-center mb-10 mt-safe">
                     <div className="w-20 h-20 bg-white rounded-3xl mx-auto flex items-center justify-center shadow-xl shadow-slate-200/50 rotate-3 mb-6">
-                        <img src="/logo.png" alt="Arepa Express" className="w-14 h-14 object-contain -rotate-3" onError={(e) => e.currentTarget.style.display = 'none'} />
+                        <img src="https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/logo%20oficial.png?alt=media&token=2dd047ea-6c45-4347-8869-1a1edf4253f4" alt="2X3" className="w-16 h-16 object-contain" />
                         {/* Fallback pattern if logo fails */}
                         <div className="absolute inset-0 flex items-center justify-center -rotate-3 -z-10 bg-slate-100 rounded-3xl overflow-hidden">
                             <span className="font-black text-2xl text-slate-300">AE</span>

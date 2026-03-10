@@ -14,9 +14,9 @@ export default defineConfig(({ mode }) => {
         registerType: 'autoUpdate',
         includeAssets: ['favicon.ico', 'logo.png', 'apple-touch-icon.png'],
         manifest: {
-          name: 'Arepa Express',
-          short_name: 'Arepa Express',
-          description: 'Delivery de Arepas y más',
+          name: '2X3',
+          short_name: '2X3',
+          description: 'Delivery 2X3 - Rápido y confiable',
           theme_color: '#f48c25',
           icons: [
             {

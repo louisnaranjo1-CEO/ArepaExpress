@@ -330,11 +330,20 @@ export default function Home() {
             <div onClick={() => setIsCityModalOpen(true)} className="cursor-pointer group overflow-hidden">
               <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1">Ubicación actual</p>
               <div className="flex items-center gap-1 group">
-                <h2 className="text-slate-900 text-base font-black leading-tight group-hover:text-primary transition-colors truncate max-w-[150px]">{locationName}</h2>
+                <h2 className="text-slate-900 text-base font-black leading-tight group-hover:text-primary transition-colors truncate max-w-[120px]">{locationName}</h2>
                 <ChevronDown className="w-3.5 h-3.5 text-primary font-bold transition-transform group-hover:translate-y-0.5 shrink-0" />
               </div>
             </div>
           </div>
+
+          <div className="flex-1 flex justify-center px-2">
+            <img
+              src="https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/logo%20oficial.png?alt=media&token=2dd047ea-6c45-4347-8869-1a1edf4253f4"
+              alt="2X3 Logo"
+              className="h-10 object-contain animate-in fade-in zoom-in duration-700"
+            />
+          </div>
+
           <Link to="/notifications" className="relative p-2 text-slate-900 hover:bg-slate-100 rounded-full transition-colors shrink-0">
             <Bell className="w-6 h-6" />
             <span className="absolute top-2 right-2 h-2.5 w-2.5 rounded-full bg-accent border-2 border-white"></span>

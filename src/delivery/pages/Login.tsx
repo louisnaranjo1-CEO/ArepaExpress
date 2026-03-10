@@ -31,8 +31,8 @@ export default function Login() {
             <div className="w-full max-w-sm z-10 flex flex-col items-center">
                 <div className="w-24 h-24 bg-white rounded-[2rem] shadow-2xl flex items-center justify-center mb-8 transform hover:scale-105 transition-transform duration-300">
                     <img
-                        src="https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/arepalogo.png?alt=media&token=c2ce79eb-c0fb-484d-b353-8d6bd1ce32c6"
-                        alt="Arepa Express"
+                        src="https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/logo%20oficial.png?alt=media&token=2dd047ea-6c45-4347-8869-1a1edf4253f4"
+                        alt="2X3"
                         className="w-16 h-16 object-contain"
                     />
                 </div>
@@ -41,7 +41,7 @@ export default function Login() {
                     Delivery <span className="text-indigo-400">Express</span>
                 </h1>
                 <p className="text-slate-400 text-center mb-10 font-medium px-4">
-                    Conduce, entrega y gana dinero a tu propio ritmo con Arepa Express.
+                    Conduce, entrega y gana dinero a tu propio ritmo con 2X3.
                 </p>
 
                 {error && (

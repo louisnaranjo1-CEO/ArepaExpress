@@ -263,7 +263,7 @@ export default function WaiterDashboard() {
                                     <div className="w-12 h-12 bg-primary/10 rounded-2xl flex items-center justify-center">
                                         <img src="/logo.png" alt="Logo" className="w-8 h-8" />
                                     </div>
-                                    <span className="font-black text-slate-800 text-xl">Arepa Express</span>
+                                    <span className="font-black text-slate-800 text-xl">2X3</span>
                                 </div>
                                 <button onClick={() => setShowSidebar(false)} className="p-2 rounded-xl bg-slate-50 text-slate-400">
                                     <X className="w-6 h-6" />

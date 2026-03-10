@@ -71,8 +71,8 @@ export default function DeliveryLayout({ children }: DeliveryLayoutProps) {
             <header className="bg-indigo-600 text-white px-4 py-4 flex items-center justify-between shadow-md z-[60] shrink-0">
                 <div className="flex items-center gap-2">
                     <img
-                        src="https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/arepalogo.png?alt=media&token=c2ce79eb-c0fb-484d-b353-8d6bd1ce32c6"
-                        alt="Arepa Express"
+                        src="https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/logo%20oficial.png?alt=media&token=2dd047ea-6c45-4347-8869-1a1edf4253f4"
+                        alt="2X3"
                         className="w-8 h-8 rounded-full bg-white p-1"
                     />
                     <h1 className="font-black text-lg tracking-tight">Delivery Express</h1>

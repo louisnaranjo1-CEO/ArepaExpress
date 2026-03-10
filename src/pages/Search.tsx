@@ -65,7 +65,9 @@ export default function Search() {
                         products
                     } as Restaurant;
                 }));
-                setRestaurants(fetched);
+                // Shuffle to make 'Explorar' random
+                const shuffled = fetched.sort(() => Math.random() - 0.5);
+                setRestaurants(shuffled);
             } catch (error) {
                 console.error("Error fetching restaurants:", error);
             } finally {
@@ -97,35 +99,6 @@ export default function Search() {
             setFilters(prev => ({ ...prev, sector: location.state.sector }));
         }
     }, [location.state]);
-
-    const sortedCategories = useMemo(() => {
-        // Only show sectors in the quick tags if none selected, otherwise show subcategories of selected sector
-        const sectors = categories.filter(c => !c.parentId);
-        if (filters.sector) {
-            return categories.filter(c => c.parentId === filters.sector).sort((a, b) => (b.clickCount || 0) - (a.clickCount || 0));
-        }
-        return sectors.sort((a, b) => (b.clickCount || 0) - (a.clickCount || 0));
-    }, [categories, filters.sector]);
-
-    const handleCategoryClick = async (category: Category) => {
-        // If it's a sector, update sector filter
-        if (!category.parentId) {
-            const isSelected = filters.sector === category.id;
-            setFilters(prev => ({ ...prev, sector: isSelected ? null : category.id, category: null }));
-            setSelectedCategory(null);
-            if (!isSelected) {
-                updateDoc(doc(db, 'global_categories', category.id), { clickCount: increment(1) });
-            }
-        } else {
-            const isSelected = selectedCategory === category.id;
-            if (!isSelected) {
-                updateDoc(doc(db, 'global_categories', category.id), { clickCount: increment(1) });
-                setSelectedCategory(category.id);
-            } else {
-                setSelectedCategory(null);
-            }
-        }
-    };
 
     const filteredRestaurants = useMemo(() => {
         return restaurants.filter(res => {
@@ -197,40 +170,6 @@ export default function Search() {
             </div>
 
             <div className="px-6 py-6 space-y-8">
-                {query === '' && (
-                    <section className="space-y-4">
-                        <div className="flex items-center justify-between">
-                            <h2 className="text-xl font-black text-slate-800">
-                                {filters.sector ? 'Subcategorías' : 'Categorías Populares'}
-                            </h2>
-                            {filters.sector && (
-                                <button onClick={() => setFilters(prev => ({ ...prev, sector: null, category: null }))} className="text-[10px] font-black text-primary uppercase tracking-widest flex items-center gap-1">
-                                    <X className="w-3 h-3" /> Ver Sectores
-                                </button>
-                            )}
-                        </div>
-                        <div className="grid grid-cols-3 gap-3">
-                            {sortedCategories.map((cat) => (
-                                <button
-                                    key={cat.id}
-                                    onClick={() => handleCategoryClick(cat)}
-                                    className={`p-4 rounded-3xl flex flex-col items-center gap-2 active:scale-95 transition-all shadow-sm border ${(filters.sector === cat.id || selectedCategory === cat.id) ? 'bg-primary/10 border-primary ring-2 ring-primary/20 scale-95' : 'bg-white border-slate-100 hover:scale-105'}`}
-                                >
-                                    <div className="w-16 h-16 flex items-center justify-center p-1 overflow-hidden">
-                                        {cat.imageUrl ? (
-                                            <img src={cat.imageUrl} alt={cat.name} className="w-full h-full object-cover rounded-2xl group-hover:scale-110 transition-transform" />
-                                        ) : (
-                                            <span className="text-3xl">{cat.icon || '🏷️'}</span>
-                                        )}
-                                    </div>
-                                    <span className={`text-[10px] font-black uppercase tracking-wider text-center truncate w-full ${(filters.sector === cat.id || selectedCategory === cat.id) ? 'text-primary' : 'text-slate-500'}`}>
-                                        {cat.name}
-                                    </span>
-                                </button>
-                            ))}
-                        </div>
-                    </section>
-                )}
 
                 <section className="space-y-4">
                     <div className="flex items-center justify-between">

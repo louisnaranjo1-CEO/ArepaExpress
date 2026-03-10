@@ -811,7 +811,7 @@ export default function Profile() {
                 </div>
 
                 <div className="mt-8 text-center p-6 grayscale opacity-50">
-                    <img src="/logo.png" alt="Arepa Express" className="h-8 mx-auto mb-2" onError={(e) => e.currentTarget.style.display = 'none'} />
+                    <img src="https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/logo%20oficial.png?alt=media&token=2dd047ea-6c45-4347-8869-1a1edf4253f4" alt="2X3" className="h-10 mx-auto mb-2" />
                     <p className="text-[10px] uppercase tracking-widest font-bold text-slate-400">Hecho con ❤️ en Venezuela</p>
                 </div>
             </div>
