@@ -1,4 +1,4 @@
-import { MapPin, ChevronDown, Bell, Search, SlidersHorizontal, Utensils, Star, Heart, Clock, Store, Truck, Zap, Tag } from 'lucide-react';
+import { MapPin, ChevronDown, Bell, Search, SlidersHorizontal, Utensils, Star, Heart, Clock, Store, Truck, Zap, Tag, X, Layout } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Link, useNavigate } from 'react-router-dom';
 import { useState, useEffect, useMemo } from 'react';
@@ -52,6 +52,7 @@ export default function Home() {
     return localStorage.getItem('userCity') ? `${localStorage.getItem('userCity')}` : 'Buscando...';
   });
   const [isCityModalOpen, setIsCityModalOpen] = useState(false);
+  const [isInfoModalOpen, setIsInfoModalOpen] = useState(false);
 
 
   useEffect(() => {
@@ -323,31 +324,36 @@ export default function Home() {
       {/* Header */}
       <header className="sticky top-0 z-40 bg-white/90 backdrop-blur-md px-5 pt-6 pb-2">
         <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center gap-2">
-            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 text-primary shrink-0">
-              <MapPin className="w-6 h-6" />
-            </div>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => setIsInfoModalOpen(true)}
+              className="flex h-11 w-11 items-center justify-center rounded-[14px] bg-white shadow-sm ring-1 ring-slate-100 p-1.5 shrink-0 group relative overflow-hidden"
+            >
+              <div className="absolute inset-0 bg-primary/0 group-hover:bg-primary/5 transition-colors"></div>
+              <img
+                src="https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/logo%20oficial.png?alt=media&token=2dd047ea-6c45-4347-8869-1a1edf4253f4"
+                alt="2X3 Logo"
+                className="w-full h-full object-contain relative z-10"
+              />
+            </button>
             <div onClick={() => setIsCityModalOpen(true)} className="cursor-pointer group overflow-hidden">
-              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1">Ubicación actual</p>
+              <p className="text-[10px] font-black text-slate-400 flex items-center gap-1 uppercase tracking-widest leading-none mb-1">
+                <MapPin className="w-3 h-3 text-primary" />
+                Ubicación
+              </p>
               <div className="flex items-center gap-1 group">
-                <h2 className="text-slate-900 text-base font-black leading-tight group-hover:text-primary transition-colors truncate max-w-[120px]">{locationName}</h2>
+                <h2 className="text-slate-900 text-base font-black leading-tight group-hover:text-primary transition-colors truncate max-w-[150px]">{locationName}</h2>
                 <ChevronDown className="w-3.5 h-3.5 text-primary font-bold transition-transform group-hover:translate-y-0.5 shrink-0" />
               </div>
             </div>
           </div>
 
-          <div className="flex-1 flex justify-center px-2">
-            <img
-              src="https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/logo%20oficial.png?alt=media&token=2dd047ea-6c45-4347-8869-1a1edf4253f4"
-              alt="2X3 Logo"
-              className="h-10 object-contain animate-in fade-in zoom-in duration-700"
-            />
+          <div className="flex items-center gap-2">
+            <Link to="/notifications" className="relative p-2 text-slate-900 hover:bg-slate-100 rounded-full transition-colors shrink-0">
+              <Bell className="w-6 h-6" />
+              <span className="absolute top-2 right-2 h-2.5 w-2.5 rounded-full bg-accent border-2 border-white"></span>
+            </Link>
           </div>
-
-          <Link to="/notifications" className="relative p-2 text-slate-900 hover:bg-slate-100 rounded-full transition-colors shrink-0">
-            <Bell className="w-6 h-6" />
-            <span className="absolute top-2 right-2 h-2.5 w-2.5 rounded-full bg-accent border-2 border-white"></span>
-          </Link>
         </div>
 
         {/* Search Bar */}
@@ -375,6 +381,110 @@ export default function Home() {
         initialState={manualState}
         initialCity={manualCity}
       />
+
+      {/* App Info Modal */}
+      <AnimatePresence>
+        {isInfoModalOpen && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setIsInfoModalOpen(false)}
+              className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm"
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className="relative w-full max-w-md bg-white rounded-[32px] p-6 shadow-2xl overflow-y-auto max-h-[85vh] hide-scrollbar"
+            >
+              <button
+                onClick={() => setIsInfoModalOpen(false)}
+                className="absolute top-4 right-4 w-8 h-8 flex items-center justify-center bg-slate-100 rounded-full text-slate-500 hover:bg-slate-200 transition-colors z-20"
+              >
+                <X className="w-4 h-4" />
+              </button>
+
+              <div className="flex flex-col items-center mb-6 pt-4 relative">
+                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-32 h-32 bg-primary/20 rounded-full blur-2xl animate-pulse"></div>
+                <div className="w-24 h-24 bg-white rounded-full p-2.5 shadow-xl shadow-primary/20 border border-primary/10 flex items-center justify-center relative z-10 animate-pulse">
+                  <img
+                    src="https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/logo%20oficial.png?alt=media&token=2dd047ea-6c45-4347-8869-1a1edf4253f4"
+                    alt="2X3 Logo"
+                    className="w-full h-full object-contain drop-shadow-[0_0_15px_rgba(255,102,0,0.5)]"
+                  />
+                </div>
+                <h2 className="text-2xl font-black text-slate-900 mt-5 text-center leading-tight">Tu Mundo en un Toque</h2>
+              </div>
+
+              <div className="space-y-6 text-sm">
+                <p className="text-slate-600 font-medium leading-relaxed">
+                  <span className="font-bold text-slate-900">2x3 no es solo una aplicación;</span> es el ecosistema digital más robusto de Venezuela diseñado para conectar a usuarios, comercios y trabajadores independientes en una sola interfaz.
+                </p>
+                <p className="text-slate-600 font-medium leading-relaxed">
+                  Nuestra misión es eliminar las fricciones del día a día: adiós a las colas, adiós a la incertidumbre de precios y hola a la inmediatez.
+                </p>
+
+                <div className="pt-5 border-t border-slate-100">
+                  <h3 className="text-lg font-black text-slate-900 mb-4">¿Qué nos hace únicos?</h3>
+
+                  <div className="space-y-5">
+                    <div className="flex gap-4">
+                      <div className="w-10 h-10 rounded-2xl bg-indigo-50 flex items-center justify-center shrink-0 border border-indigo-100 shadow-sm">
+                        <MapPin className="w-5 h-5 text-indigo-500" />
+                      </div>
+                      <div>
+                        <h4 className="font-bold text-slate-900 text-sm mb-1">Geolocalización Inteligente</h4>
+                        <p className="text-slate-500 leading-relaxed text-[13px]">Visualiza menús, productos y ofertas de los negocios más cercanos a tu ubicación actual en tiempo real.</p>
+                      </div>
+                    </div>
+
+                    <div className="flex gap-4">
+                      <div className="w-10 h-10 rounded-2xl bg-amber-50 flex items-center justify-center shrink-0 border border-amber-100 shadow-sm">
+                        <Zap className="w-5 h-5 text-amber-500" />
+                      </div>
+                      <div>
+                        <h4 className="font-bold text-slate-900 text-sm mb-1">Adiós a las Colas</h4>
+                        <p className="text-slate-500 leading-relaxed text-[13px]">Compra directamente desde la app. Tu pedido llega al panel administrativo de la empresa y a su WhatsApp, garantizando que tu producto esté listo sin esperas.</p>
+                      </div>
+                    </div>
+
+                    <div className="flex gap-4">
+                      <div className="w-10 h-10 rounded-2xl bg-fuchsia-50 flex items-center justify-center shrink-0 border border-fuchsia-100 shadow-sm">
+                        <Layout className="w-5 h-5 text-fuchsia-500" />
+                      </div>
+                      <div>
+                        <h4 className="font-bold text-slate-900 text-sm mb-1">Ecosistema 360°</h4>
+                        <p className="text-slate-500 leading-relaxed text-[13px]">Todo lo que necesitas (comida, mercado, taxis y envíos) está en un solo lugar. <span className="italic font-bold">"Consigue lo que quieras"</span>.</p>
+                      </div>
+                    </div>
+
+                    <div className="flex gap-4">
+                      <div className="w-10 h-10 rounded-2xl bg-emerald-50 flex items-center justify-center shrink-0 border border-emerald-100 shadow-sm">
+                        <Store className="w-5 h-5 text-emerald-500" />
+                      </div>
+                      <div>
+                        <h4 className="font-bold text-slate-900 text-sm mb-1">Herramienta Empresarial</h4>
+                        <p className="text-slate-500 leading-relaxed text-[13px]">Ofrecemos a los aliados un sistema de comandas para cocina/barra y un software administrativo para el control total de sus ventas y publicidad.</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-8">
+                <button
+                  onClick={() => setIsInfoModalOpen(false)}
+                  className="w-full bg-slate-900 text-white font-black py-4 rounded-2xl shadow-lg shadow-slate-900/20 hover:scale-[1.02] active:scale-[0.98] transition-all"
+                >
+                  ¡Entendido!
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
 
       {/* Promotional Banners */}
       {banners.length > 0 && (
