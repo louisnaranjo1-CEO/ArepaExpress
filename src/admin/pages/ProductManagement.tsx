@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { UtensilsCrossed, Plus, Search, Filter, Edit2, Trash2, Image as ImageIcon, Check, ChevronDown, X, Loader2, DollarSign, Tag, TrendingUp } from 'lucide-react';
+import { UtensilsCrossed, Plus, Search, Filter, Edit2, Trash2, Image as ImageIcon, Check, ChevronDown, X, Loader2, DollarSign, Tag, TrendingUp, Instagram, Youtube, Music2 } from 'lucide-react';
 import { db, storage } from '../../lib/firebase';
 import { collection, query, getDocs, doc, deleteDoc, updateDoc, addDoc, getDoc, writeBatch } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
@@ -20,6 +20,9 @@ interface Product {
     image: string; // Keep for backward compatibility/thumbnail
     images: string[];
     socialMediaLink?: string;
+    instagramLink?: string;
+    tiktokLink?: string;
+    youtubeLink?: string;
     isActive: boolean;
     isAvailable: boolean;
     investment?: number;
@@ -51,6 +54,8 @@ export default function ProductManagement() {
         investment: '',
         promoPrice: '',
         socialMediaLink: '',
+        tiktokLink: '',
+        youtubeLink: '',
         variants: [] as ProductVariant[],
         printerId: '',
         consultPrice: false
@@ -106,6 +111,8 @@ export default function ProductManagement() {
                 investment: product.investment?.toString() || '',
                 promoPrice: product.promoPrice?.toString() || '',
                 socialMediaLink: product.socialMediaLink || '',
+                tiktokLink: product.tiktokLink || '',
+                youtubeLink: product.youtubeLink || '',
                 variants: product.variants || [],
                 printerId: product.printerId || '',
                 consultPrice: product.consultPrice || false
@@ -125,6 +132,8 @@ export default function ProductManagement() {
                 investment: '',
                 promoPrice: '',
                 socialMediaLink: '',
+                tiktokLink: '',
+                youtubeLink: '',
                 variants: [],
                 printerId: '',
                 consultPrice: false
@@ -211,7 +220,7 @@ export default function ProductManagement() {
             console.log("Product saved successfully");
             setIsModalOpen(false);
             setEditingProduct(null);
-            setFormData({ name: '', description: '', price: '', category: GLOBAL_CATEGORIES[0], investment: '', promoPrice: '', isActive: true, isAvailable: true, socialMediaLink: '', variants: [], printerId: '', consultPrice: false });
+            setFormData({ name: '', description: '', price: '', category: GLOBAL_CATEGORIES[0], investment: '', promoPrice: '', isActive: true, isAvailable: true, socialMediaLink: '', tiktokLink: '', youtubeLink: '', variants: [], printerId: '', consultPrice: false });
             setNewImageFiles([]);
             setExistingImages([]);
             setPreviewUrls([]);
@@ -702,13 +711,39 @@ export default function ProductManagement() {
 
                             <div className="space-y-1">
                                 <label className="text-xs font-black text-slate-400 uppercase ml-2 flex items-center gap-1">
-                                    <ImageIcon className="w-3 h-3" /> Link Redes Sociales (Instagram/TikTok)
+                                    <Instagram className="w-3 h-3" /> Link Instagram
                                 </label>
                                 <input
                                     type="url"
-                                    placeholder="https://instagram.com/..."
+                                    placeholder="https://instagram.com/reels/..."
                                     value={formData.socialMediaLink}
                                     onChange={(e) => setFormData({ ...formData, socialMediaLink: e.target.value })}
+                                    className="w-full bg-slate-50 border-2 border-transparent focus:border-primary p-3 rounded-2xl outline-none font-bold text-slate-700"
+                                />
+                            </div>
+
+                            <div className="space-y-1">
+                                <label className="text-xs font-black text-slate-400 uppercase ml-2 flex items-center gap-1">
+                                    <Music2 className="w-3 h-3" /> Link TikTok
+                                </label>
+                                <input
+                                    type="url"
+                                    placeholder="https://tiktok.com/@user/video/..."
+                                    value={formData.tiktokLink}
+                                    onChange={(e) => setFormData({ ...formData, tiktokLink: e.target.value })}
+                                    className="w-full bg-slate-50 border-2 border-transparent focus:border-primary p-3 rounded-2xl outline-none font-bold text-slate-700"
+                                />
+                            </div>
+
+                            <div className="space-y-1">
+                                <label className="text-xs font-black text-slate-400 uppercase ml-2 flex items-center gap-1">
+                                    <Youtube className="w-3 h-3" /> Link YouTube (Shorts)
+                                </label>
+                                <input
+                                    type="url"
+                                    placeholder="https://youtube.com/shorts/..."
+                                    value={formData.youtubeLink}
+                                    onChange={(e) => setFormData({ ...formData, youtubeLink: e.target.value })}
                                     className="w-full bg-slate-50 border-2 border-transparent focus:border-primary p-3 rounded-2xl outline-none font-bold text-slate-700"
                                 />
                             </div>

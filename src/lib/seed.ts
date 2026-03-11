@@ -14,6 +14,8 @@ export interface Product {
     image: string;
     images?: string[];
     socialMediaLink?: string;
+    tiktokLink?: string;
+    youtubeLink?: string;
     category: string;
     popular?: boolean;
     promoPrice?: number;

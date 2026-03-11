@@ -1,4 +1,4 @@
-import { ArrowLeft, Search, Heart, Star, Clock, Plus, AlertCircle, MessageSquare, MapPin, ChevronRight, Phone, Instagram, UserPlus, UserCheck, Store, Truck, CheckCircle, User as UserIcon, Briefcase, X, Tag, Share2, Zap } from 'lucide-react';
+import { ArrowLeft, Search, Heart, Star, Clock, Plus, AlertCircle, MessageSquare, MapPin, ChevronRight, Phone, Instagram, UserPlus, UserCheck, Store, Truck, CheckCircle, User as UserIcon, Briefcase, X, Tag, Share2, Zap, Youtube, Music2, ExternalLink } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Link, useParams } from 'react-router-dom';
 import { useState, useEffect } from 'react';
@@ -23,6 +23,21 @@ export default function RestaurantPage() {
   const [isFavorite, setIsFavorite] = useState(false);
   const [isFollowing, setIsFollowing] = useState(false);
   const [followerCount, setFollowerCount] = useState(0);
+  const [selectedProduct, setSelectedProduct] = useState<any | null>(null);
+
+  const getSocialIcon = (url: string) => {
+    if (url.includes('instagram.com')) return <Instagram className="w-4 h-4" />;
+    if (url.includes('tiktok.com')) return <Music2 className="w-4 h-4" />;
+    if (url.includes('youtube.com') || url.includes('youtu.be')) return <Youtube className="w-4 h-4" />;
+    return <ExternalLink className="w-4 h-4" />;
+  };
+
+  const getSocialColor = (url: string) => {
+    if (url.includes('instagram.com')) return 'bg-gradient-to-tr from-yellow-400 via-red-500 to-purple-600';
+    if (url.includes('tiktok.com')) return 'bg-black';
+    if (url.includes('youtube.com') || url.includes('youtu.be')) return 'bg-red-600';
+    return 'bg-primary';
+  };
   const [showJobsModal, setShowJobsModal] = useState(false);
   const [showHoursModal, setShowHoursModal] = useState(false);
   const [casheaIcon, setCasheaIcon] = useState<string | null>(null);
@@ -595,26 +610,56 @@ export default function RestaurantPage() {
                 const productImages = product.images && product.images.length > 0 ? product.images : [product.image];
 
                 return (
-                  <div key={product.id} className="flex gap-4 py-5 border-b border-slate-100 group">
+                  <div
+                    key={product.id}
+                    className="flex gap-4 py-5 border-b border-slate-100 group cursor-pointer"
+                    onClick={() => {
+                      setSelectedProduct(product);
+                      recommendationsService.recordProductView(product.id!, product.category, restaurant.id!);
+                    }}
+                  >
                     <div
-                      className="flex-1 flex flex-col justify-between cursor-pointer"
-                      onClick={() => {
-                        recommendationsService.recordProductView(product.id!, product.category, restaurant.id!);
-                      }}
+                      className="flex-1 flex flex-col justify-between"
                     >
                       <div>
                         <div className="flex items-center gap-2 mb-1">
                           <h3 className="font-bold text-slate-900 text-base">{product.name}</h3>
-                          {product.socialMediaLink && (
-                            <a
-                              href={product.socialMediaLink}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              onClick={(e) => e.stopPropagation()}
-                              className="p-1 bg-gradient-to-tr from-yellow-400 via-red-500 to-purple-600 text-white rounded-lg hover:scale-110 active:scale-90 transition-all shadow-sm shadow-purple-200"
-                            >
-                              <Instagram className="w-3.5 h-3.5" />
-                            </a>
+                          {(product.socialMediaLink || product.tiktokLink || product.youtubeLink) && (
+                            <div className="flex gap-1">
+                              {product.socialMediaLink && (
+                                <a
+                                  href={product.socialMediaLink}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  onClick={(e) => e.stopPropagation()}
+                                  className={`p-1 ${getSocialColor(product.socialMediaLink)} text-white rounded-lg hover:scale-110 active:scale-90 transition-all shadow-sm`}
+                                >
+                                  {getSocialIcon(product.socialMediaLink)}
+                                </a>
+                              )}
+                              {product.tiktokLink && (
+                                <a
+                                  href={product.tiktokLink}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  onClick={(e) => e.stopPropagation()}
+                                  className={`p-1 ${getSocialColor(product.tiktokLink)} text-white rounded-lg hover:scale-110 active:scale-90 transition-all shadow-sm`}
+                                >
+                                  {getSocialIcon(product.tiktokLink)}
+                                </a>
+                              )}
+                              {product.youtubeLink && (
+                                <a
+                                  href={product.youtubeLink}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  onClick={(e) => e.stopPropagation()}
+                                  className={`p-1 ${getSocialColor(product.youtubeLink)} text-white rounded-lg hover:scale-110 active:scale-90 transition-all shadow-sm`}
+                                >
+                                  {getSocialIcon(product.youtubeLink)}
+                                </a>
+                              )}
+                            </div>
                           )}
                         </div>
                         <p className="text-sm text-slate-500 line-clamp-2">{product.description}</p>
@@ -664,10 +709,7 @@ export default function RestaurantPage() {
                     </div>
 
                     <div
-                      className="relative shrink-0 w-32 h-32 group/img cursor-pointer"
-                      onClick={() => {
-                        recommendationsService.recordProductView(product.id!, product.category, restaurant.id!);
-                      }}
+                      className="relative shrink-0 w-32 h-32 group/img"
                     >
                       {productImages.length > 1 ? (
                         <div className="w-full h-full overflow-x-auto flex snap-x snap-mandatory scrollbar-hide rounded-2xl bg-slate-100">
@@ -942,6 +984,170 @@ export default function RestaurantPage() {
                   className="w-full py-4 bg-slate-900 hover:bg-slate-800 text-white font-black rounded-2xl shadow-xl shadow-slate-900/20 text-sm tracking-wide transition-all active:scale-[0.98]"
                 >
                   Entendido
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Product Detail Modal */}
+      <AnimatePresence>
+        {selectedProduct && (
+          <div className="fixed inset-0 z-[110] flex items-end md:items-center justify-center">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm"
+              onClick={() => setSelectedProduct(null)}
+            />
+            <motion.div
+              initial={{ opacity: 0, y: 100, scale: 0.95 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 100, scale: 0.95 }}
+              className="bg-white rounded-t-[3rem] md:rounded-[3rem] w-full max-w-2xl shadow-2xl overflow-hidden relative z-10 flex flex-col max-h-[90vh]"
+            >
+              {/* Image Section */}
+              <div className="relative h-72 md:h-96 shrink-0 bg-slate-100">
+                <button
+                  onClick={() => setSelectedProduct(null)}
+                  className="absolute top-5 right-5 w-10 h-10 bg-white/90 backdrop-blur-md rounded-full flex items-center justify-center text-slate-900 shadow-xl z-20 hover:scale-110 active:scale-95 transition-all"
+                >
+                  <X className="w-6 h-6" />
+                </button>
+
+                {(() => {
+                  const images = selectedProduct.images && selectedProduct.images.length > 0
+                    ? selectedProduct.images
+                    : [selectedProduct.image || 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&q=80'];
+
+                  return (
+                    <div className="w-full h-full overflow-x-auto flex snap-x snap-mandatory scrollbar-hide">
+                      {images.map((img: string, idx: number) => (
+                        <div key={idx} className="min-w-full h-full snap-start">
+                          <img
+                            src={img}
+                            alt={`${selectedProduct.name} ${idx + 1}`}
+                            className="w-full h-full object-cover"
+                          />
+                        </div>
+                      ))}
+                      {/* Pagination Indicator */}
+                      {images.length > 1 && (
+                        <div className="absolute bottom-6 left-0 w-full flex justify-center gap-2">
+                          {images.map((_: any, idx: number) => (
+                            <div key={idx} className="w-2 h-2 rounded-full bg-white/60 shadow-md" />
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
+              </div>
+
+              {/* Content Section */}
+              <div className="p-8 pb-32 flex-1 overflow-y-auto">
+                <div className="flex justify-between items-start gap-4 mb-4">
+                  <div>
+                    <span className="px-3 py-1 bg-slate-100 text-slate-500 text-[10px] font-black uppercase tracking-widest rounded-full">
+                      {selectedProduct.category}
+                    </span>
+                    <h2 className="text-3xl font-black text-slate-900 mt-2">{selectedProduct.name}</h2>
+                  </div>
+                  <div className="text-right">
+                    {selectedProduct.consultPrice ? (
+                      <span className="text-sm font-black text-orange-600 bg-orange-50 px-4 py-2 rounded-2xl border border-orange-100">
+                        A Cotizar
+                      </span>
+                    ) : (
+                      <div className="flex flex-col items-end">
+                        {selectedProduct.promoPrice && selectedProduct.promoPrice > 0 ? (
+                          <>
+                            <span className="text-3xl font-black text-primary">${selectedProduct.promoPrice.toFixed(2)}</span>
+                            <span className="text-sm text-slate-400 line-through font-bold">${selectedProduct.price.toFixed(2)}</span>
+                          </>
+                        ) : (
+                          <span className="text-3xl font-black text-slate-900">${selectedProduct.price.toFixed(2)}</span>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <p className="text-slate-600 font-medium leading-relaxed mb-8">
+                  {selectedProduct.description}
+                </p>
+
+                {/* Variants if any */}
+                {selectedProduct.variants && selectedProduct.variants.length > 0 && !selectedProduct.consultPrice && (
+                  <div className="mb-8">
+                    <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-4 ml-1">Presentaciones</h4>
+                    <div className="grid grid-cols-2 gap-3">
+                      {selectedProduct.variants.map((v: any, idx: number) => (
+                        <div key={idx} className="bg-slate-50 border border-slate-100 p-4 rounded-3xl flex flex-col gap-1">
+                          <span className="text-[10px] font-black uppercase text-slate-400">{v.name}</span>
+                          <span className="text-lg font-black text-slate-800">${v.price.toFixed(2)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Social Media Links */}
+                {(selectedProduct.socialMediaLink || selectedProduct.tiktokLink || selectedProduct.youtubeLink) && (
+                  <div className="mb-8">
+                    <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-4 ml-1">Promociones en Redes</h4>
+                    <div className="flex flex-wrap gap-3">
+                      {selectedProduct.socialMediaLink && (
+                        <a
+                          href={selectedProduct.socialMediaLink}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className={`flex items-center gap-3 px-5 py-3 rounded-2xl text-white font-black text-sm shadow-lg transition-all hover:scale-105 active:scale-95 ${getSocialColor(selectedProduct.socialMediaLink)}`}
+                        >
+                          {getSocialIcon(selectedProduct.socialMediaLink)}
+                          Instagram
+                        </a>
+                      )}
+                      {selectedProduct.tiktokLink && (
+                        <a
+                          href={selectedProduct.tiktokLink}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className={`flex items-center gap-3 px-5 py-3 rounded-2xl text-white font-black text-sm shadow-lg transition-all hover:scale-105 active:scale-95 ${getSocialColor(selectedProduct.tiktokLink)}`}
+                        >
+                          {getSocialIcon(selectedProduct.tiktokLink)}
+                          TikTok
+                        </a>
+                      )}
+                      {selectedProduct.youtubeLink && (
+                        <a
+                          href={selectedProduct.youtubeLink}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className={`flex items-center gap-3 px-5 py-3 rounded-2xl text-white font-black text-sm shadow-lg transition-all hover:scale-105 active:scale-95 ${getSocialColor(selectedProduct.youtubeLink)}`}
+                        >
+                          {getSocialIcon(selectedProduct.youtubeLink)}
+                          YouTube
+                        </a>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Footer / Add to Cart */}
+              <div className="absolute bottom-0 left-0 w-full p-8 bg-white/80 backdrop-blur-md border-t border-slate-100">
+                <button
+                  onClick={() => {
+                    handleAddToCart(selectedProduct);
+                    setSelectedProduct(null);
+                  }}
+                  className="w-full bg-primary text-white py-4 rounded-3xl font-black text-base shadow-2xl shadow-primary/30 flex items-center justify-center gap-3 hover:scale-[1.02] active:scale-[0.98] transition-all"
+                >
+                  <Plus className="w-5 h-5" />
+                  Añadir al Pedido
                 </button>
               </div>
             </motion.div>
