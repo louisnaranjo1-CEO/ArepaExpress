@@ -69,9 +69,10 @@ service cloud.firestore {
       allow create: if request.auth != null && (request.auth.uid == request.resource.data.userId || isCPanelAdmin());
     }
 
-    // System configurations (for payment methods)
-    match /system_configs/finances {
+    // System configurations
+    match /system_configs/{configId} {
       allow read: if true;
+      allow write: if isCPanelAdmin();
     }
 
     // Transport requests (Taxi)
