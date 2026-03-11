@@ -524,7 +524,13 @@ export default function Home() {
                   <motion.a
                     key={banner.id}
                     href={banner.linkUrl || '#'}
-                    target={banner.linkUrl ? "_blank" : undefined}
+                    onClick={(e) => {
+                      if (banner.linkUrl && banner.linkUrl.startsWith('/')) {
+                        e.preventDefault();
+                        navigate(banner.linkUrl);
+                      }
+                    }}
+                    target={banner.linkUrl && !banner.linkUrl.startsWith('/') ? "_blank" : undefined}
                     rel="noopener noreferrer"
                     initial={{ opacity: 0, x: 20 }}
                     animate={{ opacity: 1, x: 0 }}

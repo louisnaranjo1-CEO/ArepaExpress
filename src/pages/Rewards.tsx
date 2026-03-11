@@ -1,13 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { Gift, Coins, Share2, Ticket, ChevronRight, Award, Copy, CheckCircle, Globe, Map as MapIcon, Home, X } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { db } from '../lib/firebase';
 import { collection, getDocs, query, where, orderBy, doc, getDoc } from 'firebase/firestore';
 
 export default function Rewards() {
     const { user, userData } = useAuth();
     const navigate = useNavigate();
+    const location = useLocation();
     const [copied, setCopied] = useState(false);
     const [contests, setContests] = useState<any[]>([]);
     const [raffles, setRaffles] = useState<any[]>([]);
@@ -56,6 +57,13 @@ export default function Rewards() {
         };
         fetchData();
     }, []);
+
+    useEffect(() => {
+        // Automatically open the banner if URL has openBanner=true
+        if (globalBanner && location.search.includes('openBanner=true')) {
+            setShowBannerModal(true);
+        }
+    }, [globalBanner, location.search]);
 
     const handleCopyCode = () => {
         navigator.clipboard.writeText(referralCode);

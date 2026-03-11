@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Gift, Plus, Trash2, Edit2, Share2, Users, Target, Save, X } from 'lucide-react';
+import { Gift, Plus, Trash2, Edit2, Share2, Users, Target, Save, X, Upload, AlertCircle } from 'lucide-react';
 import { db, storage } from '../../lib/firebase';
 import { collection, addDoc, getDocs, deleteDoc, doc, updateDoc, serverTimestamp, setDoc, getDoc } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
@@ -27,6 +27,8 @@ export interface GlobalLoyaltyBanner {
     title: string;
     explanation: string;
     prizes: Prize[];
+    bannerImageUrl?: string;
+    homeBannerId?: string;
 }
 
 export default function FidelizationManager() {
@@ -46,10 +48,12 @@ export default function FidelizationManager() {
         isActive: false,
         title: '',
         explanation: '',
-        prizes: []
+        prizes: [],
+        bannerImageUrl: ''
     });
     const [savingBanner, setSavingBanner] = useState(false);
     const [addingPrize, setAddingPrize] = useState(false);
+    const [uploadingBannerImage, setUploadingBannerImage] = useState(false);
     const [newPrize, setNewPrize] = useState({ title: '', image: null as File | null });
 
     useEffect(() => {
@@ -73,12 +77,59 @@ export default function FidelizationManager() {
         setSavingBanner(true);
         try {
             await setDoc(doc(db, 'cpanel_settings', 'fidelization_banner'), globalBanner);
+
+            // Also manage the banner in the global 'banners' collection for Home.tsx
+            const bannersRef = collection(db, 'banners');
+            const dataToSave = {
+                imageUrl: globalBanner.bannerImageUrl || '',
+                title: globalBanner.title,
+                linkUrl: '/rewards?openBanner=true',
+                duration: 5,
+                type: 'top_banner',
+                visibilityScope: 'national',
+                isActive: globalBanner.isActive,
+                updatedAt: serverTimestamp()
+            };
+
+            if (globalBanner.homeBannerId) {
+                await updateDoc(doc(db, 'banners', globalBanner.homeBannerId), dataToSave);
+            } else if (globalBanner.bannerImageUrl) {
+                const docRef = await addDoc(bannersRef, {
+                    ...dataToSave,
+                    createdAt: serverTimestamp()
+                });
+                const updatedBanner = { ...globalBanner, homeBannerId: docRef.id };
+                setGlobalBanner(updatedBanner);
+                await setDoc(doc(db, 'cpanel_settings', 'fidelization_banner'), updatedBanner);
+            }
+
             toast.success("Configuración de banner guardada");
-        } catch (error) {
+        } catch (error: any) {
             console.error(error);
-            toast.error("Error guardando banner");
+            toast.error("Error guardando banner: " + error.message);
         } finally {
             setSavingBanner(false);
+        }
+    };
+
+    const handleBannerImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        setUploadingBannerImage(true);
+        const loadingToast = toast.loading("Subiendo imagen principal...");
+        try {
+            const imageRef = ref(storage, `loyalty_prizes/main_banner_${Date.now()}_${file.name}`);
+            await uploadBytes(imageRef, file);
+            const imageUrl = await getDownloadURL(imageRef);
+
+            setGlobalBanner(prev => ({ ...prev, bannerImageUrl: imageUrl }));
+            toast.success("Imagen subida correctamente", { id: loadingToast });
+        } catch (error) {
+            console.error(error);
+            toast.error("Error subiendo la imagen", { id: loadingToast });
+        } finally {
+            setUploadingBannerImage(false);
         }
     };
 
@@ -250,6 +301,36 @@ export default function FidelizationManager() {
                                     placeholder="Ej: Gana grandes premios utilizando la aplicación"
                                     className="w-full bg-slate-50 border border-slate-200 px-4 py-3 rounded-2xl outline-none font-bold text-slate-700 text-sm mt-1 focus:border-primary focus:bg-white transition-all"
                                 />
+                            </div>
+                            <div>
+                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Imagen del Banner Principal (Para el inicio)</label>
+                                <div className="mt-1 flex items-center gap-4">
+                                    <label className="flex-1 cursor-pointer">
+                                        <div className={`w-full h-14 bg-slate-50 border-2 border-dashed border-slate-200 rounded-2xl flex items-center justify-center gap-2 transition-all ${uploadingBannerImage ? 'opacity-50 cursor-not-allowed' : 'hover:border-primary hover:bg-primary/5 text-slate-400 hover:text-primary'}`}>
+                                            {uploadingBannerImage ? (
+                                                <div className="w-5 h-5 border-2 border-primary border-t-transparent rounded-full animate-spin"></div>
+                                            ) : (
+                                                <Upload className="w-5 h-5" />
+                                            )}
+                                            <span className="font-bold text-sm">
+                                                {globalBanner.bannerImageUrl ? 'Cambiar Imagen' : 'Subir Imagen JPG/PNG'}
+                                            </span>
+                                        </div>
+                                        <input
+                                            type="file"
+                                            accept="image/*"
+                                            className="hidden"
+                                            onChange={handleBannerImageUpload}
+                                            disabled={uploadingBannerImage}
+                                        />
+                                    </label>
+                                    {globalBanner.bannerImageUrl && (
+                                        <div className="w-20 h-14 rounded-xl overflow-hidden shadow-sm border border-slate-200">
+                                            <img src={globalBanner.bannerImageUrl} alt="Banner" className="w-full h-full object-cover" />
+                                        </div>
+                                    )}
+                                </div>
+                                <p className="text-[10px] text-slate-400 mt-1 flex items-center gap-1"><AlertCircle className="w-3 h-3" /> Esta imagen saldrá en el carrusel de inicio.</p>
                             </div>
                             <div>
                                 <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Explicación Completa</label>
