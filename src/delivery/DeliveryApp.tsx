@@ -65,10 +65,10 @@ function DeliveryRoutes() {
     if (driverProfile) {
         const status = driverProfile.status;
 
-        if (status === 'pending') {
+        if (status === 'pending' || status === 'rejected') {
             return (
                 <Routes>
-                    <Route path="/pending" element={<PendingApproval />} />
+                    <Route path="/pending" element={<PendingApproval status={status} />} />
                     <Route path="*" element={<Navigate to="/pending" replace />} />
                 </Routes>
             );
