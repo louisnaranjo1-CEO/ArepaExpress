@@ -15,6 +15,7 @@ interface Client {
     createdAt?: any;
     lastOrderDate?: any;
     totalOrders: number;
+    points: number;
     favorites: string[];
     cartItems?: any[];
 }
@@ -77,6 +78,7 @@ export default function Clients() {
                         createdAt: userData.createdAt,
                         lastOrderDate: stats.lastOrderDate,
                         totalOrders: stats.totalOrders,
+                        points: userData.points || 0,
                         favorites: userData.favorites || [],
                         cartItems: userData.cart || []
                     });
@@ -151,7 +153,11 @@ export default function Clients() {
                                         </div>
                                         <div className="flex-1 min-w-0">
                                             <h3 className="font-black text-slate-900 truncate">{client.name}</h3>
-                                            <p className="text-xs text-slate-400 font-bold uppercase tracking-wider">{client.totalOrders} pedidos realizados</p>
+                                            <div className="flex items-center gap-2">
+                                                <p className="text-xs text-slate-400 font-bold uppercase tracking-wider">{client.totalOrders} pedidos</p>
+                                                <span className="text-[10px] text-primary font-black">•</span>
+                                                <p className="text-xs text-indigo-500 font-black tracking-tight">{client.points} Pts</p>
+                                            </div>
                                         </div>
                                         <ChevronRight className={`w-5 h-5 text-slate-300 transition-transform ${selectedClient?.id === client.id ? 'translate-x-1 text-primary' : ''}`} />
                                     </button>
@@ -215,6 +221,10 @@ export default function Clients() {
                                 <div className="p-6 text-center border-r border-slate-50">
                                     <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">En Carrito</p>
                                     <p className="text-xl font-black text-slate-900">{selectedClient.cartItems?.length || 0}</p>
+                                </div>
+                                <div className="p-6 text-center border-r border-slate-50 bg-indigo-50/30">
+                                    <p className="text-[10px] font-black text-indigo-400 uppercase tracking-widest mb-1">Puntos</p>
+                                    <p className="text-xl font-black text-indigo-600">{selectedClient.points}</p>
                                 </div>
                                 <div className="p-6 text-center">
                                     <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Desde</p>
