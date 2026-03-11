@@ -1,11 +1,12 @@
 import React, { useState } from 'react';
-import { Lock, LayoutDashboard, AlertCircle, ArrowRight } from 'lucide-react';
+import { Lock, LayoutDashboard, AlertCircle, ArrowRight, User } from 'lucide-react';
 
 interface LoginProps {
-    onLogin: (password: string) => Promise<boolean>;
+    onLogin: (email: string, password: string) => Promise<boolean>;
 }
 
 export default function Login({ onLogin }: LoginProps) {
+    const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [error, setError] = useState<string | null>(null);
 
@@ -17,11 +18,7 @@ export default function Login({ onLogin }: LoginProps) {
         setError(null);
 
         try {
-            const success = await onLogin(password.trim());
-            if (!success) {
-                setError("Código incorrecto");
-                setLoading(false);
-            }
+            await onLogin(email.trim(), password.trim());
         } catch (err: any) {
             setError(err.message || "Error de conexión con el servidor");
             setLoading(false);
@@ -41,6 +38,29 @@ export default function Login({ onLogin }: LoginProps) {
 
                 <div className="bg-white/5 border border-white/10 backdrop-blur-xl rounded-[2rem] p-8 shadow-2xl">
                     <form onSubmit={handleSubmit} className="space-y-6">
+                        <div>
+                            <label className="block text-sm font-bold text-slate-300 mb-2 pl-1">
+                                Correo del Administrador
+                            </label>
+                            <div className="relative group">
+                                <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                                    <User className={`w-5 h-5 transition-colors ${error ? 'text-red-400' : 'text-slate-500 group-focus-within:text-indigo-400'}`} />
+                                </div>
+                                <input
+                                    type="email"
+                                    value={email}
+                                    onChange={(e) => setEmail(e.target.value)}
+                                    className={`block w-full pl-11 pr-4 py-4 bg-slate-900/50 border rounded-2xl text-white placeholder-slate-500 focus:ring-2 focus:outline-none transition-all ${error
+                                        ? 'border-red-500/50 focus:border-red-500 focus:ring-red-500/20'
+                                        : 'border-white/10 focus:border-indigo-500 focus:ring-indigo-500/20'
+                                        }`}
+                                    placeholder="admin@ejemplo.com"
+                                    required
+                                    autoFocus
+                                />
+                            </div>
+                        </div>
+
                         <div>
                             <label className="block text-sm font-bold text-slate-300 mb-2 pl-1">
                                 Código de Acceso
@@ -80,7 +100,7 @@ export default function Login({ onLogin }: LoginProps) {
                         </button>
                     </form>
                 </div>
-            </div>
-        </div>
+            </div >
+        </div >
     );
 }

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { signInAnonymously } from 'firebase/auth';
+import { signInWithEmailAndPassword } from 'firebase/auth';
 import { auth } from '../lib/firebase';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import CpanelLayout from './components/CpanelLayout';
@@ -26,38 +26,39 @@ export default function CpanelApp() {
     const [isLoading, setIsLoading] = useState(true);
 
     useEffect(() => {
-        const token = localStorage.getItem('cpanel_auth');
-        if (token?.trim() === '725826loquillo') {
-            signInAnonymously(auth).then(() => {
+        const storedEmail = localStorage.getItem('cpanel_auth_email');
+        const storedPwd = localStorage.getItem('cpanel_auth_pwd');
+
+        if (storedEmail && storedPwd) {
+            signInWithEmailAndPassword(auth, storedEmail, storedPwd).then(() => {
                 setIsAuthenticated(true);
                 setIsLoading(false);
             }).catch(err => {
                 console.error("Firebase Auth error:", err);
                 setIsLoading(false);
+                logout(); // Clear invalid credentials
             });
         } else {
             setIsLoading(false);
         }
     }, []);
 
-    const login = async (password: string) => {
-        if (password.trim() === '725826loquillo') {
-            try {
-                await signInAnonymously(auth);
-                localStorage.setItem('cpanel_auth', password.trim());
-                setIsAuthenticated(true);
-                return true;
-            } catch (err: any) {
-                console.error("Login Error:", err);
-                // Throwing so Login.tsx catch can catch it
-                throw new Error("No se pudo conectar con Firebase: " + (err.code || err.message));
-            }
+    const login = async (email: string, password: string) => {
+        try {
+            await signInWithEmailAndPassword(auth, email, password);
+            localStorage.setItem('cpanel_auth_email', email);
+            localStorage.setItem('cpanel_auth_pwd', password);
+            setIsAuthenticated(true);
+            return true;
+        } catch (err: any) {
+            console.error("Login Error:", err);
+            throw new Error("Credenciales inválidas o error de conexión: " + (err.code || err.message));
         }
-        return false;
     };
 
     const logout = () => {
-        localStorage.removeItem('cpanel_auth');
+        localStorage.removeItem('cpanel_auth_email');
+        localStorage.removeItem('cpanel_auth_pwd');
         setIsAuthenticated(false);
     };
 
