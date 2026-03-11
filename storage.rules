@@ -4,8 +4,10 @@ service firebase.storage {
     
     // Helper function for Cpanel Admin
     function isCPanelAdmin() {
-      return request.auth != null && 
-             request.auth.token.email.lower() == 'louismarketing@2x3consigueloquequieras.com';
+      return request.auth != null && (
+        request.auth.token.email.lower() == 'louismarketing@2x3consigueloquequieras.com' ||
+        request.auth.token.admin == true
+      );
     }
 
     // Admin can read and write everything
@@ -13,50 +15,38 @@ service firebase.storage {
       allow read, write: if isCPanelAdmin();
     }
 
-    match /restaurants/{restaurantId}/{allPaths=**} {
+    // Publicly readable folders
+    match /restaurants/{allPaths=**} { allow read: if true; }
+    match /banners/{allPaths=**} { allow read: if true; }
+    match /global_icons/{allPaths=**} { allow read: if true; }
+    match /payment_logos/{allPaths=**} { allow read: if true; }
+    match /waiters/{allPaths=**} { allow read: if true; }
+    match /users/{allPaths=**} { allow read: if true; }
+
+    // Root files (like the Cashea logo 'unnamed (14).jpg')
+    match /{fileName} {
       allow read: if true;
-      allow write: if request.auth != null && request.auth.uid == restaurantId;
     }
 
+    // Restricted folders - Admin or Owner
     match /delivery_docs/{userId}/{allPaths=**} {
-      allow read: if request.auth != null;
+      allow read: if request.auth != null && (request.auth.uid == userId || isCPanelAdmin());
       allow write: if request.auth != null && request.auth.uid == userId;
-    }
-
-    match /banners/{allPaths=**} {
-      allow read: if true;
-      allow write: if request.auth != null;
-    }
-
-    match /global_icons/{allPaths=**} {
-      allow read: if true;
-      allow write: if request.auth != null;
     }
 
     match /taxi_proofs/{userId}/{allPaths=**} {
-      allow read: if request.auth != null;
+      allow read: if request.auth != null && (request.auth.uid == userId || isCPanelAdmin());
       allow write: if request.auth != null && request.auth.uid == userId;
-    }
-
-    match /payment_logos/{allPaths=**} {
-      allow read: if true;
-      allow write: if request.auth != null;
     }
 
     match /wallet_recharges/{userId}/{allPaths=**} {
-      allow read: if request.auth != null;
+      allow read: if request.auth != null && (request.auth.uid == userId || isCPanelAdmin());
       allow write: if request.auth != null && request.auth.uid == userId;
     }
 
-    match /users/{userId}/{allPaths=**} {
-      allow read: if true;
-      allow write: if request.auth != null && request.auth.uid == userId;
-    }
-
-    match /waiters/{allPaths=**} {
-      allow read: if true;
-      allow write: if request.auth != null;
+    // Fallback for specific restaurant assets
+    match /restaurants/{restaurantId}/{allPaths=**} {
+      allow write: if request.auth != null && request.auth.uid == restaurantId;
     }
   }
 }
-
