@@ -1,4 +1,4 @@
-import { MapPin, ChevronDown, Bell, Search, SlidersHorizontal, Utensils, Star, Heart, Clock, Store, Truck, Zap, Tag, X, Layout } from 'lucide-react';
+import { MapPin, ChevronDown, Bell, Search, SlidersHorizontal, Utensils, Star, Heart, Clock, Store, Truck, Zap, Tag, X, Layout, Gift } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Link, useNavigate } from 'react-router-dom';
 import { useState, useEffect, useMemo } from 'react';
@@ -659,6 +659,12 @@ export default function Home() {
                           alt="Cashea"
                           className="w-full h-full object-contain"
                         />
+                      </div>
+                    )}
+
+                    {(restaurant as any).activeRaffle?.isActive && (
+                      <div className={`absolute top-3 z-20 w-10 h-10 bg-orange-500 backdrop-blur rounded-xl p-1.5 shadow-xl border border-white/20 flex items-center justify-center animate-bounce duration-1000 hover:scale-110 transition-transform ${restaurant.hasCashea ? 'right-[5.5rem]' : 'right-12'}`}>
+                        <Gift className="w-5 h-5 text-white" />
                       </div>
                     )}
 

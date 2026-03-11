@@ -4,7 +4,7 @@ import { db, storage } from '../../lib/firebase';
 import { collection, query, getDocs, doc, deleteDoc, updateDoc, addDoc, getDoc, writeBatch } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { useAuth } from '../../context/AuthContext';
-import { GLOBAL_CATEGORIES, DEVELOPER_WHATSAPP } from '../../lib/constants';
+import { GLOBAL_CATEGORIES, CATEGORY_SECTORS, DEVELOPER_WHATSAPP } from '../../lib/constants';
 
 interface ProductVariant {
     name: string;
@@ -17,6 +17,7 @@ interface Product {
     description: string;
     price: number;
     category: string;
+    subcategory?: string;
     image: string; // Keep for backward compatibility/thumbnail
     images: string[];
     socialMediaLink?: string;
@@ -49,10 +50,10 @@ export default function ProductManagement() {
         description: '',
         price: '',
         category: GLOBAL_CATEGORIES[0],
+        subcategory: '',
         isActive: true,
         isAvailable: true,
         investment: '',
-        promoPrice: '',
         socialMediaLink: '',
         tiktokLink: '',
         youtubeLink: '',
@@ -104,12 +105,12 @@ export default function ProductManagement() {
             setFormData({
                 name: product.name,
                 description: product.description,
-                price: product.price.toString(),
+                price: (product.promoPrice && product.promoPrice > 0 ? product.promoPrice : product.price).toString(),
                 category: product.category,
+                subcategory: product.subcategory || '',
                 isActive: product.isActive,
                 isAvailable: product.isAvailable ?? true,
                 investment: product.investment?.toString() || '',
-                promoPrice: product.promoPrice?.toString() || '',
                 socialMediaLink: product.socialMediaLink || '',
                 tiktokLink: product.tiktokLink || '',
                 youtubeLink: product.youtubeLink || '',
@@ -127,10 +128,10 @@ export default function ProductManagement() {
                 description: '',
                 price: '',
                 category: GLOBAL_CATEGORIES[0],
+                subcategory: '',
                 isActive: true,
                 isAvailable: true,
                 investment: '',
-                promoPrice: '',
                 socialMediaLink: '',
                 tiktokLink: '',
                 youtubeLink: '',
@@ -169,21 +170,40 @@ export default function ProductManagement() {
             }
 
             const allImages = [...existingImages, ...uploadedUrls];
-            const price = parseFloat(formData.price);
+            const newPriceInput = parseFloat(formData.price);
             const investment = formData.investment ? parseFloat(formData.investment) : 0;
-            const promoPrice = formData.promoPrice ? parseFloat(formData.promoPrice) : undefined;
 
-            if (!formData.consultPrice && isNaN(price)) {
+            if (!formData.consultPrice && isNaN(newPriceInput)) {
                 alert("Por favor, ingresa un precio válido");
                 setSubmitting(false);
                 return;
             }
 
+            let finalPrice = newPriceInput;
+            let finalPromoPrice = 0;
+
+            if (editingProduct) {
+                const oldBasePrice = editingProduct.price;
+                if (newPriceInput < oldBasePrice) {
+                    // It's a discount
+                    finalPrice = oldBasePrice;
+                    finalPromoPrice = newPriceInput;
+                } else {
+                    // It's a new normal price or higher
+                    finalPrice = newPriceInput;
+                    finalPromoPrice = 0;
+                }
+            } else {
+                // New product, price is base
+                finalPrice = newPriceInput;
+                finalPromoPrice = 0;
+            }
+
             const productData = {
                 ...formData,
-                price: formData.consultPrice ? 0 : price,
+                price: formData.consultPrice ? 0 : finalPrice,
                 investment,
-                promoPrice: formData.consultPrice ? 0 : (promoPrice || 0),
+                promoPrice: formData.consultPrice ? 0 : finalPromoPrice,
                 images: allImages,
                 image: allImages[0] || '', // Principal image
                 updatedAt: new Date()
@@ -220,7 +240,22 @@ export default function ProductManagement() {
             console.log("Product saved successfully");
             setIsModalOpen(false);
             setEditingProduct(null);
-            setFormData({ name: '', description: '', price: '', category: GLOBAL_CATEGORIES[0], investment: '', promoPrice: '', isActive: true, isAvailable: true, socialMediaLink: '', tiktokLink: '', youtubeLink: '', variants: [], printerId: '', consultPrice: false });
+            setFormData({
+                name: '',
+                description: '',
+                price: '',
+                category: GLOBAL_CATEGORIES[0],
+                subcategory: '',
+                investment: '',
+                isActive: true,
+                isAvailable: true,
+                socialMediaLink: '',
+                tiktokLink: '',
+                youtubeLink: '',
+                variants: [],
+                printerId: '',
+                consultPrice: false
+            });
             setNewImageFiles([]);
             setExistingImages([]);
             setPreviewUrls([]);
@@ -439,7 +474,12 @@ export default function ProductManagement() {
                             <div className="p-6 space-y-4">
                                 <div>
                                     <div className="flex items-center justify-between gap-2 mb-1">
-                                        <span className="bg-slate-50 text-slate-500 text-[10px] font-black px-2 py-1 rounded-lg uppercase tracking-wider">{p.category}</span>
+                                        <div className="flex flex-wrap gap-1">
+                                            <span className="bg-slate-50 text-slate-500 text-[10px] font-black px-2 py-1 rounded-lg uppercase tracking-wider">{p.category}</span>
+                                            {p.subcategory && (
+                                                <span className="bg-primary/5 text-primary text-[10px] font-black px-2 py-1 rounded-lg uppercase tracking-wider border border-primary/10">{p.subcategory}</span>
+                                            )}
+                                        </div>
                                         <button
                                             onClick={() => toggleAvailability(p)}
                                             className={`p-1.5 rounded-lg transition-all ${p.isAvailable ? 'bg-green-50 text-green-600 hover:bg-green-100' : 'bg-slate-100 text-slate-400 hover:bg-slate-200'}`}
@@ -487,7 +527,12 @@ export default function ProductManagement() {
                                             {p.consultPrice ? '--' : `+$${((p.promoPrice && p.promoPrice > 0 ? p.promoPrice : p.price) - (p.investment || 0)).toFixed(2)}`}
                                         </p>
                                         {p.promoPrice && p.promoPrice > 0 && !p.consultPrice && (
-                                            <p className="text-[9px] font-bold text-orange-400">En promoción</p>
+                                            <div className="flex items-center gap-1.5 mt-0.5">
+                                                <p className="text-[10px] font-black text-orange-500 bg-orange-50 px-1.5 py-0.5 rounded-md">
+                                                    -{Math.round((1 - p.promoPrice / p.price) * 100)}%
+                                                </p>
+                                                <p className="text-[9px] font-bold text-slate-400 line-through">${p.price.toFixed(2)}</p>
+                                            </div>
                                         )}
                                     </div>
                                 </div>
@@ -561,8 +606,8 @@ export default function ProductManagement() {
                             </div>
 
                             {!formData.consultPrice && (
-                                <div className="grid grid-cols-3 gap-4 animate-in fade-in duration-300">
-                                    <div className="space-y-1">
+                                <div className="grid grid-cols-3 gap-4">
+                                    <div className="space-y-1 col-span-2">
                                         <label className="text-xs font-black text-slate-400 uppercase ml-2 flex items-center gap-1">
                                             <DollarSign className="w-3 h-3" /> Precio Venta
                                         </label>
@@ -573,10 +618,11 @@ export default function ProductManagement() {
                                             value={formData.price}
                                             onChange={(e) => setFormData({ ...formData, price: e.target.value })}
                                             className="w-full bg-slate-50 border-2 border-transparent focus:border-primary p-3 rounded-2xl outline-none font-bold text-slate-700"
+                                            placeholder="Si bajas el precio actual, se creará una oferta autom."
                                         />
-                                        {formData.variants.length > 0 && (
-                                            <p className="text-[10px] text-slate-400 ml-2 font-bold italic">Se usará como base</p>
-                                        )}
+                                        <p className="text-[9px] text-slate-400 ml-2 font-bold italic">
+                                            El sistema detectará descuentos automáticamente si bajas el precio base.
+                                        </p>
                                     </div>
                                     <div className="space-y-1">
                                         <label className="text-xs font-black text-slate-400 uppercase ml-2 flex items-center gap-1">
@@ -587,18 +633,6 @@ export default function ProductManagement() {
                                             step="0.01"
                                             value={formData.investment}
                                             onChange={(e) => setFormData({ ...formData, investment: e.target.value })}
-                                            className="w-full bg-slate-50 border-2 border-transparent focus:border-primary p-3 rounded-2xl outline-none font-bold text-slate-700"
-                                        />
-                                    </div>
-                                    <div className="space-y-1">
-                                        <label className="text-xs font-black text-slate-400 uppercase ml-2 flex items-center gap-1">
-                                            <TrendingUp className="w-3 h-3" /> Precio Promo
-                                        </label>
-                                        <input
-                                            type="number"
-                                            step="0.01"
-                                            value={formData.promoPrice}
-                                            onChange={(e) => setFormData({ ...formData, promoPrice: e.target.value })}
                                             className="w-full bg-slate-50 border-2 border-transparent focus:border-primary p-3 rounded-2xl outline-none font-bold text-slate-700"
                                         />
                                     </div>
@@ -763,7 +797,14 @@ export default function ProductManagement() {
                                     </label>
                                     <select
                                         value={formData.category}
-                                        onChange={(e) => setFormData({ ...formData, category: e.target.value })}
+                                        onChange={(e) => {
+                                            const newCat = e.target.value;
+                                            setFormData({
+                                                ...formData,
+                                                category: newCat,
+                                                subcategory: CATEGORY_SECTORS[newCat]?.[0] || ''
+                                            });
+                                        }}
                                         className="w-full bg-slate-50 border-2 border-transparent focus:border-primary p-3 rounded-2xl outline-none font-bold text-slate-700"
                                     >
                                         {GLOBAL_CATEGORIES.map(cat => (
@@ -771,6 +812,21 @@ export default function ProductManagement() {
                                         ))}
                                     </select>
                                 </div>
+                                <div className="space-y-1">
+                                    <label className="text-xs font-black text-slate-400 uppercase ml-2">Sub-categoría</label>
+                                    <select
+                                        value={formData.subcategory}
+                                        onChange={(e) => setFormData({ ...formData, subcategory: e.target.value })}
+                                        className="w-full bg-slate-50 border-2 border-transparent focus:border-primary p-3 rounded-2xl outline-none font-bold text-slate-700"
+                                    >
+                                        <option value="">Seleccionar...</option>
+                                        {formData.category && CATEGORY_SECTORS[formData.category]?.map(sec => (
+                                            <option key={sec} value={sec}>{sec}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                            </div>
+                            <div className="grid grid-cols-1 gap-4">
                                 <div className="space-y-1">
                                     <label className="text-xs font-black text-slate-400 uppercase ml-2">Disponible</label>
                                     <div

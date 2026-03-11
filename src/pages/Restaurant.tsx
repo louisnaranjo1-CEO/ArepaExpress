@@ -1,4 +1,4 @@
-import { ArrowLeft, Search, Heart, Star, Clock, Plus, AlertCircle, MessageSquare, MapPin, ChevronRight, Phone, Instagram, UserPlus, UserCheck, Store, Truck, CheckCircle, User as UserIcon, Briefcase, X, Tag, Share2, Zap, Youtube, Music2, ExternalLink } from 'lucide-react';
+import { ArrowLeft, Search, Heart, Star, Clock, Plus, AlertCircle, MessageSquare, MapPin, ChevronRight, Phone, Instagram, UserPlus, UserCheck, Store, Truck, CheckCircle, User as UserIcon, Briefcase, X, Tag, Share2, Zap, Youtube, Music2, ExternalLink, Gift, Sparkles } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Link, useParams } from 'react-router-dom';
 import { useState, useEffect } from 'react';
@@ -585,6 +585,58 @@ export default function RestaurantPage() {
 
       {activeTab === 'Menú' ? (
         <>
+          {/* Active Raffle / Promotion Banner */}
+          {restaurant.activeRaffle?.isActive && (
+            <div className="px-5 pt-6 pb-2">
+              <div
+                className="relative overflow-hidden group rounded-[3rem] bg-gradient-to-br from-indigo-900 via-slate-900 to-indigo-950 shadow-2xl p-8 flex flex-col items-center text-center cursor-pointer border border-white/10"
+                onClick={() => restaurant.activeRaffle.videoLink && window.open(restaurant.activeRaffle.videoLink, '_blank')}
+              >
+                {/* Background Decorative elements */}
+                <div className="absolute top-0 right-0 w-64 h-64 bg-primary/20 rounded-full blur-[100px] -mr-32 -mt-32 group-hover:bg-primary/30 transition-colors duration-700"></div>
+                <div className="absolute bottom-0 left-0 w-64 h-64 bg-orange-500/10 rounded-full blur-[100px] -ml-32 -mb-32 group-hover:bg-orange-500/20 transition-colors duration-700"></div>
+
+                <div className="relative z-10 w-full flex flex-col items-center">
+                  <div className="flex justify-center mb-6">
+                    <motion.div
+                      animate={{ scale: [1, 1.05, 1], rotate: [0, 2, -2, 0] }}
+                      transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
+                      className="bg-orange-500 text-white px-5 py-2 rounded-full text-[10px] font-black uppercase tracking-[0.3em] shadow-[0_10px_20px_-5px_rgba(249,115,22,0.5)] flex items-center gap-2"
+                    >
+                      <Sparkles className="w-3.5 h-3.5" /> Sorteo en curso
+                    </motion.div>
+                  </div>
+
+                  {restaurant.activeRaffle.image && (
+                    <div className="w-full aspect-[16/9] md:aspect-[21/9] rounded-[2.5rem] overflow-hidden mb-8 shadow-2xl border-2 border-white/10 group-hover:scale-[1.02] transition-transform duration-700 ease-out">
+                      <img src={restaurant.activeRaffle.image} className="w-full h-full object-cover transform scale-105 group-hover:scale-110 transition-transform duration-[2s]" alt="Sorteo" />
+                    </div>
+                  )}
+
+                  <h3 className="text-3xl md:text-5xl font-black text-white italic leading-tight mb-4 tracking-tighter decoration-primary decoration-4">
+                    {restaurant.activeRaffle.title}
+                  </h3>
+
+                  <p className="text-slate-400 font-medium text-sm md:text-base leading-relaxed mb-8 italic px-4 max-w-2xl line-clamp-3 opacity-80">
+                    {restaurant.activeRaffle.description}
+                  </p>
+
+                  <div className="flex flex-col sm:flex-row gap-4 w-full sm:w-auto">
+                    <button className="bg-white text-slate-900 px-10 py-5 rounded-2xl font-black text-xs uppercase tracking-widest shadow-2xl hover:bg-primary hover:text-white active:scale-95 transition-all flex items-center justify-center gap-3 group/btn min-w-[200px]">
+                      <Gift className="w-5 h-5 text-primary group-hover/btn:text-white transition-colors" /> ¡Participar Ahora!
+                    </button>
+                    {restaurant.activeRaffle.videoLink && (
+                      <button className="h-[60px] px-6 bg-white/5 backdrop-blur-xl rounded-2xl flex items-center justify-center text-white border border-white/10 hover:bg-white/10 transition-all active:scale-95 gap-3">
+                        <span className="text-[10px] font-black uppercase tracking-widest">Ver Info</span>
+                        {restaurant.activeRaffle.videoLink.includes('instagram') ? <Instagram className="w-5 h-5 text-pink-500" /> :
+                          restaurant.activeRaffle.videoLink.includes('tiktok') ? <Music2 className="w-5 h-5 text-cyan-400" /> : <Youtube className="w-5 h-5 text-red-500" />}
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
           {/* Categories Tabs */}
           <div className="sticky top-0 z-40 bg-white/95 backdrop-blur-sm border-b border-slate-100 pb-3 pt-3">
             <div className="flex overflow-x-auto gap-2 px-5 hide-scrollbar">

@@ -17,6 +17,7 @@ export interface Product {
     tiktokLink?: string;
     youtubeLink?: string;
     category: string;
+    subcategory?: string;
     popular?: boolean;
     promoPrice?: number;
     isAvailable?: boolean;

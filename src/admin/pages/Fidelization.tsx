@@ -1,11 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { Gift, Sparkles, Award, TrendingUp, Search, User as UserIcon, Loader2, ChevronRight, Star, ShoppingBag, Plus, Filter, X, CheckCircle2, MessageSquare, Bell, Users, Trash2 } from 'lucide-react';
-import { db } from '../../lib/firebase';
-import { collection, query, getDocs, doc, getDoc, where, orderBy, setDoc, addDoc, serverTimestamp, deleteDoc } from 'firebase/firestore';
+import { db, storage } from '../../lib/firebase';
+import { collection, query, getDocs, doc, getDoc, where, orderBy, setDoc, addDoc, serverTimestamp, deleteDoc, updateDoc } from 'firebase/firestore';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { useAuth } from '../../context/AuthContext';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { toast } from 'react-hot-toast';
+import { Instagram, Music2, Youtube, Camera, Megaphone } from 'lucide-react';
 
 interface LoyalClient {
     id: string;
@@ -51,7 +53,7 @@ interface Contest {
 
 export default function Fidelization() {
     const { user } = useAuth();
-    const [activeTab, setActiveTab] = useState<'ranking' | 'contests'>('ranking');
+    const [activeTab, setActiveTab] = useState<'ranking' | 'contests' | 'promotion'>('ranking');
 
     // Ranking State
     const [loyalClients, setLoyalClients] = useState<LoyalClient[]>([]);
@@ -87,6 +89,17 @@ export default function Fidelization() {
 
     // Active Results State
     const [recentWinners, setRecentWinners] = useState<ContestWinner[] | null>(null);
+
+    // Public Raffle State
+    const [publicRaffle, setPublicRaffle] = useState({
+        title: '',
+        description: '',
+        image: '',
+        videoLink: '',
+        isActive: false
+    });
+    const [uploadingImage, setUploadingImage] = useState(false);
+    const [savingPromotion, setSavingPromotion] = useState(false);
 
     useEffect(() => {
         if (!user) return;
@@ -173,6 +186,15 @@ export default function Fidelization() {
                 fetchedContests.push({ id: doc.id, ...doc.data() } as Contest);
             });
             setContests(fetchedContests);
+
+            // 4. Fetch Public Raffle / Promotion
+            const resSnap = await getDoc(doc(db, 'restaurants', user!.uid));
+            if (resSnap.exists()) {
+                const resData = resSnap.data();
+                if (resData.activeRaffle) {
+                    setPublicRaffle(resData.activeRaffle);
+                }
+            }
 
         } catch (error) {
             console.error("Error fetching fidelization data:", error);
@@ -360,6 +382,42 @@ export default function Fidelization() {
         return `https://wa.me/${cleanPhone}?text=${encodeURIComponent(message)}`;
     };
 
+    const handleSavePromotion = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!user) return;
+        setSavingPromotion(true);
+        try {
+            await updateDoc(doc(db, 'restaurants', user.uid), {
+                activeRaffle: publicRaffle
+            });
+            toast.success("Anuncio de sorteo actualizado correctamente");
+        } catch (error) {
+            console.error("Error saving promotion:", error);
+            toast.error("Error al guardar el anuncio");
+        } finally {
+            setSavingPromotion(false);
+        }
+    };
+
+    const handleRaffleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file || !user) return;
+
+        setUploadingImage(true);
+        try {
+            const storageRef = ref(storage, `restaurants/${user.uid}/raffle_${Date.now()}`);
+            await uploadBytes(storageRef, file);
+            const url = await getDownloadURL(storageRef);
+            setPublicRaffle(prev => ({ ...prev, image: url }));
+            toast.success("Imagen subida correctamente");
+        } catch (error) {
+            console.error("Error uploading image:", error);
+            toast.error("Error al subir la imagen");
+        } finally {
+            setUploadingImage(false);
+        }
+    };
+
     const filteredClients = loyalClients.filter(c =>
         c.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
         c.email?.toLowerCase().includes(searchTerm.toLowerCase())
@@ -406,6 +464,12 @@ export default function Fidelization() {
                             className={`px-6 py-4 rounded-[2rem] font-black transition-all shadow-xl flex items-center gap-2 ${activeTab === 'contests' ? 'bg-indigo-500 text-white shadow-indigo-500/20 scale-105' : 'bg-white/5 text-white/50 hover:bg-white/10'}`}
                         >
                             <Gift className="w-5 h-5" /> Sorteos
+                        </button>
+                        <button
+                            onClick={() => setActiveTab('promotion')}
+                            className={`px-6 py-4 rounded-[2rem] font-black transition-all shadow-xl flex items-center gap-2 ${activeTab === 'promotion' ? 'bg-orange-500 text-white shadow-orange-500/20 scale-105' : 'bg-white/5 text-white/50 hover:bg-white/10'}`}
+                        >
+                            <Megaphone className="w-5 h-5" /> Anunciar Sorteo
                         </button>
                     </div>
                 </div>
@@ -657,6 +721,170 @@ export default function Fidelization() {
                             )}
                         </div>
                     )}
+                </div>
+            )}
+
+            {/* TAB: PROMOTION */}
+            {activeTab === 'promotion' && (
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 animate-in fade-in slide-in-from-bottom-4">
+                    <div className="bg-white p-8 rounded-[3rem] shadow-xl shadow-slate-200/50 border border-slate-100 flex flex-col gap-6">
+                        <div>
+                            <h2 className="text-2xl font-black text-slate-800">Crea un Anuncio de Sorteo</h2>
+                            <p className="text-slate-500 font-medium text-sm italic">Promociona tus concursos en el perfil público de tu local.</p>
+                        </div>
+
+                        <form onSubmit={handleSavePromotion} className="space-y-6">
+                            <div className="space-y-1">
+                                <label className="text-[10px] font-black text-slate-400 uppercase ml-2 flex items-center gap-1">
+                                    <TrendingUp className="w-3 h-3 text-orange-500" /> Título del Sorteo
+                                </label>
+                                <input
+                                    type="text"
+                                    placeholder="Ej: ¡Gánate un iPhone 15 Pro!"
+                                    value={publicRaffle.title}
+                                    onChange={e => setPublicRaffle({ ...publicRaffle, title: e.target.value })}
+                                    className="w-full bg-slate-50 border-2 border-transparent focus:border-orange-500 p-4 rounded-2xl outline-none font-bold text-slate-700 transition-all"
+                                />
+                            </div>
+
+                            <div className="space-y-1">
+                                <label className="text-[10px] font-black text-slate-400 uppercase ml-2 flex items-center gap-1">
+                                    <ShoppingBag className="w-3 h-3 text-orange-500" /> Descripción de la Rifa
+                                </label>
+                                <textarea
+                                    rows={4}
+                                    placeholder="Explica qué deben hacer tus clientes para ganar..."
+                                    value={publicRaffle.description}
+                                    onChange={e => setPublicRaffle({ ...publicRaffle, description: e.target.value })}
+                                    className="w-full bg-slate-50 border-2 border-transparent focus:border-orange-500 p-4 rounded-2xl outline-none font-bold text-slate-700 transition-all resize-none"
+                                />
+                            </div>
+
+                            <div className="space-y-1">
+                                <label className="text-[10px] font-black text-slate-400 uppercase ml-2 flex items-center gap-1">
+                                    <Instagram className="w-3 h-3 text-orange-500" /> Link de Info (Instagram/TikTok/Video)
+                                </label>
+                                <input
+                                    type="url"
+                                    placeholder="https://instagram.com/p/..."
+                                    value={publicRaffle.videoLink}
+                                    onChange={e => setPublicRaffle({ ...publicRaffle, videoLink: e.target.value })}
+                                    className="w-full bg-slate-50 border-2 border-transparent focus:border-orange-500 p-4 rounded-2xl outline-none font-bold text-slate-700 transition-all"
+                                />
+                                <div className="flex gap-2 mt-2 ml-2">
+                                    <Instagram className="w-4 h-4 text-slate-300" />
+                                    <Music2 className="w-4 h-4 text-slate-300" />
+                                    <Youtube className="w-4 h-4 text-slate-300" />
+                                </div>
+                            </div>
+
+                            <div
+                                onClick={() => setPublicRaffle({ ...publicRaffle, isActive: !publicRaffle.isActive })}
+                                className="flex items-center justify-between p-6 bg-orange-50 rounded-[2rem] cursor-pointer border-2 border-orange-100 transition-all hover:bg-orange-100/50"
+                            >
+                                <div className="flex items-center gap-4">
+                                    <div className={`w-12 h-12 rounded-2xl flex items-center justify-center ${publicRaffle.isActive ? 'bg-orange-500 text-white shadow-lg shadow-orange-500/30' : 'bg-white text-slate-300 border border-slate-200'}`}>
+                                        <Megaphone className="w-6 h-6" />
+                                    </div>
+                                    <div>
+                                        <p className="text-sm font-black text-slate-700">Estado del Anuncio</p>
+                                        <p className="text-[10px] font-bold text-slate-500 uppercase">{publicRaffle.isActive ? 'Visible al Público' : 'Oculto / Inactivo'}</p>
+                                    </div>
+                                </div>
+                                <div className={`w-12 h-6 rounded-full relative transition-colors ${publicRaffle.isActive ? 'bg-orange-500' : 'bg-slate-200'}`}>
+                                    <div className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow-sm transition-all ${publicRaffle.isActive ? 'left-7' : 'left-1'}`}></div>
+                                </div>
+                            </div>
+
+                            <button
+                                type="submit"
+                                disabled={savingPromotion}
+                                className="w-full bg-slate-900 text-white p-5 rounded-2xl font-black shadow-xl shadow-slate-900/20 hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-2 disabled:opacity-70 mt-4"
+                            >
+                                {savingPromotion ? <Loader2 className="w-6 h-6 animate-spin text-orange-500" /> : <><CheckCircle2 className="w-6 h-6 text-orange-500" /> Guardar Configuración</>}
+                            </button>
+                        </form>
+                    </div>
+
+                    <div className="space-y-8">
+                        {/* Image Upload Area */}
+                        <div className="bg-white p-8 rounded-[3rem] shadow-xl shadow-slate-200/50 border border-slate-100">
+                            <h3 className="text-xl font-black text-slate-800 mb-6 flex items-center gap-3">
+                                <Camera className="w-5 h-5 text-indigo-500" /> Foto de la Promoción
+                            </h3>
+
+                            {publicRaffle.image ? (
+                                <div className="relative group aspect-video rounded-[2rem] overflow-hidden bg-slate-100 border-2 border-slate-200">
+                                    <img src={publicRaffle.image} alt="Public Raffle" className="w-full h-full object-cover" />
+                                    <div className="absolute inset-0 bg-slate-900/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                                        <label className="bg-white text-slate-900 px-6 py-3 rounded-2xl font-black cursor-pointer shadow-xl hover:scale-105 transition-transform flex items-center gap-2">
+                                            <Camera className="w-5 h-5 text-indigo-500" /> Cambiar Imagen
+                                            <input type="file" accept="image/*" className="hidden" onChange={handleRaffleImageUpload} disabled={uploadingImage} />
+                                        </label>
+                                    </div>
+                                    {uploadingImage && (
+                                        <div className="absolute inset-0 bg-white/60 backdrop-blur-sm flex items-center justify-center">
+                                            <Loader2 className="w-10 h-10 text-primary animate-spin" />
+                                        </div>
+                                    )}
+                                </div>
+                            ) : (
+                                <label className="aspect-video rounded-[2rem] bg-slate-50 border-2 border-dashed border-slate-200 flex flex-col items-center justify-center cursor-pointer hover:bg-slate-100 hover:border-indigo-500/20 transition-all group overflow-hidden relative">
+                                    <div className="flex flex-col items-center justify-center relative z-10">
+                                        <div className="w-16 h-16 bg-white rounded-2xl shadow-sm flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
+                                            <Plus className="w-8 h-8 text-slate-300 group-hover:text-indigo-500 transition-colors" />
+                                        </div>
+                                        <p className="text-sm font-black text-slate-400 group-hover:text-indigo-500 transition-colors">Sube una imagen llamativa</p>
+                                        <p className="text-[10px] font-bold text-slate-300 uppercase tracking-widest mt-1">Recomendado: 1280x720px</p>
+                                    </div>
+                                    <input type="file" accept="image/*" className="hidden" onChange={handleRaffleImageUpload} disabled={uploadingImage} />
+                                    {uploadingImage && (
+                                        <div className="absolute inset-0 bg-white/60 backdrop-blur-sm flex items-center justify-center z-20">
+                                            <Loader2 className="w-10 h-10 text-primary animate-spin" />
+                                        </div>
+                                    )}
+                                </label>
+                            )}
+                        </div>
+
+                        {/* Preview Section */}
+                        <div className="bg-gradient-to-br from-indigo-900 to-slate-900 p-8 rounded-[3rem] shadow-2xl text-white">
+                            <div className="flex items-center gap-3 mb-6">
+                                <Megaphone className="w-5 h-5 text-orange-500" />
+                                <h3 className="text-xl font-black italic">Vista Previa Móvil</h3>
+                            </div>
+
+                            <div className="bg-white rounded-[2rem] overflow-hidden shadow-2xl transform scale-95 origin-top border-4 border-slate-800">
+                                <div className="h-4 bg-slate-800 flex items-center justify-center gap-1.5 p-1 mb-1">
+                                    <div className="w-2 h-2 rounded-full bg-slate-700"></div>
+                                    <div className="w-8 h-1 rounded-full bg-slate-700"></div>
+                                </div>
+                                <div className="aspect-video bg-slate-100 relative overflow-hidden">
+                                    {publicRaffle.image ? (
+                                        <img src={publicRaffle.image} className="w-full h-full object-cover" />
+                                    ) : (
+                                        <div className="w-full h-full flex items-center justify-center text-slate-300"><Gift className="w-12 h-12" /></div>
+                                    )}
+                                    <div className="absolute top-4 left-4">
+                                        <span className="bg-orange-600 text-white text-[10px] font-black px-3 py-1.5 rounded-full uppercase tracking-widest shadow-lg">En curso</span>
+                                    </div>
+                                </div>
+                                <div className="p-6">
+                                    <h4 className="text-xl font-black text-slate-900 mb-2">{publicRaffle.title || 'Título del Sorteo'}</h4>
+                                    <p className="text-slate-500 text-xs font-medium leading-relaxed italic line-clamp-3">
+                                        {publicRaffle.description || 'Aquí aparecerá la descripción de tu sorteo para que tus clientes sepan cómo participar.'}
+                                    </p>
+                                    <div className="mt-6 flex items-center justify-between">
+                                        <div className="flex gap-2">
+                                            <div className="w-8 h-8 rounded-full bg-orange-100 flex items-center justify-center text-orange-600"><Instagram className="w-4 h-4" /></div>
+                                            <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-400"><TrendingUp className="w-4 h-4" /></div>
+                                        </div>
+                                        <button disabled className="bg-orange-500 text-white text-[10px] font-black px-5 py-2.5 rounded-xl uppercase shadow-lg shadow-orange-500/20">Ver Info</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             )}
 

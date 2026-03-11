@@ -41,7 +41,15 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const saved = localStorage.getItem('arepa-express-cart');
         if (saved) {
             try {
-                return JSON.parse(saved);
+                const parsedData = JSON.parse(saved);
+                // CLEANUP: Remove test items like "Louis Hamburguesa" as requested by user
+                if (Array.isArray(parsedData)) {
+                    return parsedData.filter(item =>
+                        !item.name?.toLowerCase().includes('louis') &&
+                        !item.name?.toLowerCase().includes('hamnurguesa')
+                    );
+                }
+                return [];
             } catch (e) {
                 return [];
             }
