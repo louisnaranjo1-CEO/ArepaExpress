@@ -1,9 +1,25 @@
 import React, { useState, useEffect } from 'react';
-import { collection, getDocs, addDoc, deleteDoc, doc, updateDoc, serverTimestamp } from 'firebase/firestore';
-import { Trash2, Plus, Image as ImageIcon, Clock, ExternalLink, Timer, Upload, AlertCircle, Pencil } from 'lucide-react';
+import { collection, getDocs, addDoc, deleteDoc, doc, updateDoc, serverTimestamp, setDoc, getDoc } from 'firebase/firestore';
+import { Trash2, Plus, Image as ImageIcon, Clock, ExternalLink, Timer, Upload, AlertCircle, Pencil, Save } from 'lucide-react';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { db, storage } from '../../lib/firebase';
 import { motion, AnimatePresence } from 'framer-motion';
+import { toast } from 'react-hot-toast';
+
+export interface Prize {
+    id: string;
+    title: string;
+    imageUrl: string;
+}
+
+export interface GlobalLoyaltyBanner {
+    isActive: boolean;
+    title: string;
+    explanation: string;
+    prizes: Prize[];
+    bannerImageUrl?: string;
+    homeBannerId?: string;
+}
 import { VENEZUELA_DATA, VENEZUELA_STATES } from '../../lib/venezuelaData';
 import { Globe, Map as MapIcon, MapPin as PinIcon } from 'lucide-react';
 
@@ -24,7 +40,21 @@ export default function BannersManager() {
         targetState: '',
         targetCity: ''
     });
+    // Existing banner states
     const [editingId, setEditingId] = useState<string | null>(null);
+
+    // Global Royalty Banner states
+    const [globalBanner, setGlobalBanner] = useState<GlobalLoyaltyBanner>({
+        isActive: false,
+        title: '',
+        explanation: '',
+        prizes: [],
+        bannerImageUrl: ''
+    });
+    const [savingBanner, setSavingBanner] = useState(false);
+    const [addingPrize, setAddingPrize] = useState(false);
+    const [uploadingBannerImage, setUploadingBannerImage] = useState(false);
+    const [newPrize, setNewPrize] = useState({ title: '', image: null as File | null });
 
     const fetchBanners = async () => {
         try {
@@ -41,9 +71,139 @@ export default function BannersManager() {
         }
     };
 
+    const fetchGlobalBanner = async () => {
+        try {
+            const docRef = doc(db, 'cpanel_settings', 'fidelization_banner');
+            const docSnap = await getDoc(docRef);
+            if (docSnap.exists()) {
+                setGlobalBanner(docSnap.data() as GlobalLoyaltyBanner);
+            }
+        } catch (error) {
+            console.error("Error fetching global banner", error);
+        }
+    };
+
     useEffect(() => {
         fetchBanners();
+        fetchGlobalBanner();
     }, []);
+
+    const handleSaveGlobalBanner = async () => {
+        if (savingBanner) return;
+        setSavingBanner(true);
+        console.log("Iniciando guardado de banner de fidelización...");
+        try {
+            const currentBanner = { ...globalBanner };
+            const prizes = (currentBanner.prizes || []).map(p => ({
+                id: p.id || Math.random().toString(36).substring(2),
+                title: String(p.title || ''),
+                imageUrl: String(p.imageUrl || '')
+            }));
+
+            let bannerData = {
+                isActive: Boolean(currentBanner.isActive),
+                title: String(currentBanner.title || ''),
+                explanation: String(currentBanner.explanation || ''),
+                prizes: prizes,
+                bannerImageUrl: String(currentBanner.bannerImageUrl || ''),
+                homeBannerId: currentBanner.homeBannerId || null
+            };
+
+            await setDoc(doc(db, 'cpanel_settings', 'fidelization_banner'), bannerData);
+
+            const hbData = {
+                imageUrl: bannerData.bannerImageUrl,
+                title: bannerData.title,
+                linkUrl: '/rewards?openBanner=true',
+                duration: 5,
+                type: 'top_banner',
+                visibilityScope: 'national',
+                isActive: bannerData.isActive,
+                updatedAt: serverTimestamp()
+            };
+
+            if (bannerData.homeBannerId) {
+                try {
+                    await updateDoc(doc(db, 'banners', bannerData.homeBannerId), hbData);
+                } catch (e: any) {
+                    if (e.code === 'not-found' && bannerData.bannerImageUrl) {
+                        const dr = await addDoc(collection(db, 'banners'), { ...hbData, createdAt: serverTimestamp() });
+                        bannerData.homeBannerId = dr.id;
+                        await setDoc(doc(db, 'cpanel_settings', 'fidelization_banner'), bannerData);
+                    }
+                }
+            } else if (bannerData.bannerImageUrl) {
+                const dr = await addDoc(collection(db, 'banners'), { ...hbData, createdAt: serverTimestamp() });
+                bannerData.homeBannerId = dr.id;
+                await setDoc(doc(db, 'cpanel_settings', 'fidelization_banner'), bannerData);
+            }
+
+            setGlobalBanner(bannerData);
+            toast.success("¡Configuración guardada correctamente!");
+        } catch (error: any) {
+            console.error("Save Error:", error);
+            toast.error("Error al guardar: " + (error.message || "Error de red"));
+        } finally {
+            setSavingBanner(false);
+        }
+    };
+
+    const handleBannerImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        setUploadingBannerImage(true);
+        const loadingToast = toast.loading("Subiendo imagen principal...");
+        try {
+            const imageRef = ref(storage, `loyalty_prizes/main_banner_${Date.now()}_${file.name}`);
+            await uploadBytes(imageRef, file);
+            const imageUrl = await getDownloadURL(imageRef);
+
+            setGlobalBanner(prev => ({ ...prev, bannerImageUrl: imageUrl }));
+            toast.success("Imagen subida correctamente", { id: loadingToast });
+        } catch (error) {
+            console.error(error);
+            toast.error("Error subiendo la imagen", { id: loadingToast });
+        } finally {
+            setUploadingBannerImage(false);
+        }
+    };
+
+    const handleAddPrize = async () => {
+        if (!newPrize.title || !newPrize.image) {
+            toast.error("Coloca el título y selecciona una imagen");
+            return;
+        }
+        setAddingPrize(true);
+        try {
+            const imageRef = ref(storage, `loyalty_prizes/${Date.now()}_${newPrize.image.name}`);
+            await uploadBytes(imageRef, newPrize.image);
+            const imageUrl = await getDownloadURL(imageRef);
+
+            setGlobalBanner(prev => ({
+                ...prev,
+                prizes: [...(prev.prizes || []), {
+                    id: Date.now().toString(),
+                    title: newPrize.title,
+                    imageUrl
+                }]
+            }));
+
+            setNewPrize({ title: '', image: null });
+            toast.success("Premio añadido a la lista. Recuerda guardar.");
+        } catch (error) {
+            toast.error("Error subiendo la imagen del premio");
+        } finally {
+            setAddingPrize(false);
+        }
+    };
+
+    const handleRemovePrize = (id: string) => {
+        setGlobalBanner(prev => ({
+            ...prev,
+            prizes: (prev.prizes || []).filter(p => p.id !== id)
+        }));
+    };
 
     const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
@@ -193,6 +353,152 @@ export default function BannersManager() {
                         </>
                     )}
                 </button>
+            </div>
+
+            {/* Global Loyalty Banner Configuration */}
+            <div className="bg-white rounded-[2.5rem] shadow-xl shadow-slate-200/50 border border-slate-100 overflow-hidden mb-8">
+                <div className="p-6 border-b border-slate-50 bg-slate-50/50 flex items-center justify-between">
+                    <div>
+                        <h3 className="font-black text-slate-800 uppercase tracking-widest text-sm">Banner Público App (Pantalla Fidelización)</h3>
+                        <p className="text-xs text-slate-500 font-medium">Configura el banner y la pantalla de premios para tus clientes. (Al guardar, se creará un banner arriba en el inicio como acceso directo)</p>
+                    </div>
+                </div>
+                <div className="p-6 space-y-6">
+                    <div className="flex flex-col md:flex-row gap-6">
+                        <div className="flex-1 space-y-4">
+                            <div>
+                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Estado del anuncio</label>
+                                <div className="mt-1">
+                                    <button
+                                        onClick={() => setGlobalBanner(p => ({ ...p, isActive: !p.isActive }))}
+                                        className={`px-4 py-2 rounded-xl text-xs font-black uppercase transition-all ${globalBanner.isActive ? 'bg-green-100 text-green-600' : 'bg-slate-100 text-slate-400'}`}
+                                    >
+                                        {globalBanner.isActive ? 'Activo' : 'Inactivo'}
+                                    </button>
+                                </div>
+                            </div>
+                            <div>
+                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Título del Banner</label>
+                                <input
+                                    type="text"
+                                    value={globalBanner.title}
+                                    onChange={(e) => setGlobalBanner(p => ({ ...p, title: e.target.value }))}
+                                    placeholder="Ej: Gana grandes premios utilizando la aplicación"
+                                    className="w-full bg-slate-50 border border-slate-200 px-4 py-3 rounded-2xl outline-none font-bold text-slate-700 text-sm mt-1 focus:border-primary focus:bg-white transition-all"
+                                />
+                            </div>
+                            <div>
+                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Imagen del Banner Principal (Para el inicio)</label>
+                                <div className="mt-1 flex items-center gap-4">
+                                    <label className="flex-1 cursor-pointer">
+                                        <div className={`w-full h-14 bg-slate-50 border-2 border-dashed border-slate-200 rounded-2xl flex items-center justify-center gap-2 transition-all ${uploadingBannerImage ? 'opacity-50 cursor-not-allowed' : 'hover:border-primary hover:bg-primary/5 text-slate-400 hover:text-primary'}`}>
+                                            {uploadingBannerImage ? (
+                                                <div className="w-5 h-5 border-2 border-primary border-t-transparent rounded-full animate-spin"></div>
+                                            ) : (
+                                                <Upload className="w-5 h-5" />
+                                            )}
+                                            <span className="font-bold text-sm">
+                                                {globalBanner.bannerImageUrl ? 'Cambiar Imagen' : 'Subir Imagen JPG/PNG'}
+                                            </span>
+                                        </div>
+                                        <input
+                                            type="file"
+                                            accept="image/*"
+                                            className="hidden"
+                                            onChange={handleBannerImageUpload}
+                                            disabled={uploadingBannerImage}
+                                        />
+                                    </label>
+                                    {globalBanner.bannerImageUrl && (
+                                        <div className="w-20 h-14 rounded-xl overflow-hidden shadow-sm border border-slate-200">
+                                            <img src={globalBanner.bannerImageUrl} alt="Banner" className="w-full h-full object-cover" />
+                                        </div>
+                                    )}
+                                </div>
+                                <p className="text-[10px] text-slate-400 mt-1 flex items-center gap-1"><AlertCircle className="w-3 h-3" /> Esta imagen saldrá en el carrusel de inicio.</p>
+                            </div>
+                            <div>
+                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Explicación Completa</label>
+                                <textarea
+                                    value={globalBanner.explanation}
+                                    onChange={(e) => setGlobalBanner(p => ({ ...p, explanation: e.target.value }))}
+                                    placeholder="Explicación del premio y cómo ganar puntos..."
+                                    className="w-full bg-slate-50 border border-slate-200 px-4 py-3 rounded-2xl outline-none font-medium text-slate-700 text-sm mt-1 focus:border-primary focus:bg-white transition-all min-h-[100px]"
+                                />
+                            </div>
+                        </div>
+
+                        {/* Prizes section */}
+                        <div className="flex-1 space-y-4 bg-slate-50 p-6 rounded-[2rem] border border-slate-100">
+                            <h4 className="font-black text-slate-700 text-sm mb-4">Premios Visibles</h4>
+
+                            <div className="space-y-3">
+                                {globalBanner.prizes?.map((prize) => (
+                                    <div key={prize.id} className="bg-white p-3 rounded-2xl flex items-center gap-3 shadow-sm border border-slate-100">
+                                        <img src={prize.imageUrl} alt="Premio" className="w-12 h-12 object-cover rounded-xl" />
+                                        <div className="flex-1 font-bold text-slate-700 text-sm">{prize.title}</div>
+                                        <button onClick={() => handleRemovePrize(prize.id)} className="p-2 text-red-500 hover:bg-red-50 rounded-lg">
+                                            <Trash2 className="w-4 h-4" />
+                                        </button>
+                                    </div>
+                                ))}
+
+                                {/* Add new prize inline */}
+                                <div className="bg-white p-4 rounded-2xl border-2 border-dashed border-slate-200 mt-4 space-y-3">
+                                    <input
+                                        type="text"
+                                        placeholder="Ej: Televisor 55 o 100$"
+                                        value={newPrize.title}
+                                        onChange={e => setNewPrize(p => ({ ...p, title: e.target.value }))}
+                                        className="w-full bg-slate-50 border border-slate-100 px-3 py-2 rounded-xl text-sm outline-none"
+                                    />
+                                    <input
+                                        type="file"
+                                        accept="image/*"
+                                        onChange={e => setNewPrize(p => ({ ...p, image: e.target.files?.[0] || null }))}
+                                        className="text-xs text-slate-500 w-full"
+                                    />
+                                    <button
+                                        onClick={handleAddPrize}
+                                        disabled={addingPrize}
+                                        className="w-full bg-indigo-50 text-indigo-600 font-bold py-2 rounded-xl text-xs hover:bg-indigo-100 transition-colors flex justify-center items-center gap-2"
+                                    >
+                                        {addingPrize ? <div className="w-4 h-4 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin"></div> : <Plus className="w-4 h-4" />}
+                                        Añadir Premio
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <button
+                        type="button"
+                        onClick={handleSaveGlobalBanner}
+                        disabled={savingBanner}
+                        className="w-full bg-slate-900 text-white font-black py-4 rounded-2xl shadow-lg hover:scale-[1.01] active:scale-95 transition-all flex justify-center items-center gap-2 group disabled:opacity-50"
+                    >
+                        {savingBanner ? (
+                            <div className="flex items-center gap-2">
+                                <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                                <span>Guardando Cambios...</span>
+                            </div>
+                        ) : (
+                            <>
+                                <Save className="w-5 h-5" />
+                                <span>Guardar Configuración Pública</span>
+                            </>
+                        )}
+                    </button>
+                </div>
+            </div>
+
+            {/* Banners List Header */}
+            <div className="flex items-center gap-4 bg-slate-50 p-6 rounded-[2.5rem] border border-slate-100 mt-8 mb-4">
+                <ImageIcon className="w-8 h-8 text-indigo-600" />
+                <div>
+                    <h2 className="text-xl font-black text-slate-800">Otros Banners con Links</h2>
+                    <p className="text-sm font-medium text-slate-500">Banners que redirigen a externos o secciones de la aplicación.</p>
+                </div>
             </div>
 
             <AnimatePresence>
