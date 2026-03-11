@@ -5,7 +5,8 @@ service cloud.firestore {
     
     // Helper function for Cpanel Admin
     function isCPanelAdmin() {
-      return request.auth != null && request.auth.token.email == 'louismarketing@2x3consigueloquequieras.com';
+      return request.auth != null && 
+             request.auth.token.email.lower() == 'louismarketing@2x3consigueloquequieras.com';
     }
 
     // User profiles
@@ -119,7 +120,12 @@ service cloud.firestore {
     // Delivery and Transport settings
     match /delivery_settings/{docId} {
       allow read: if true;
-      allow write: if request.auth != null;
+      allow write: if isCPanelAdmin();
+    }
+
+    // Delivery update requests
+    match /delivery_update_requests/{requestId} {
+      allow read, write: if isCPanelAdmin();
     }
 
     // Default deny
