@@ -5,8 +5,10 @@ service cloud.firestore {
     
     // Helper function for Cpanel Admin
     function isCPanelAdmin() {
-      return request.auth != null && 
-             request.auth.token.email.lower() == 'louismarketing@2x3consigueloquequieras.com';
+      return request.auth != null && (
+        request.auth.token.email.lower() == 'louismarketing@2x3consigueloquequieras.com' ||
+        request.auth.token.admin == true
+      );
     }
 
     // User profiles
@@ -156,6 +158,11 @@ service cloud.firestore {
     }
     
     match /home_icons/{iconId} {
+      allow read: if true;
+      allow write: if isCPanelAdmin();
+    }
+
+    match /global_icons/{iconId} {
       allow read: if true;
       allow write: if isCPanelAdmin();
     }
