@@ -99,9 +99,11 @@ export default function RestaurantPage() {
     const fetchIcons = async () => {
       try {
         const iconsSnap = await getDocs(collection(db, 'global_icons'));
-        const casheaDoc = iconsSnap.docs.find(doc => doc.data().name.toLowerCase() === 'cashea');
-        if (casheaDoc) {
-          setCasheaIcon(casheaDoc.data().url);
+        const icons = iconsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })) as any[];
+        const cashea = icons.find(icon => icon.name?.toLowerCase() === 'cashea');
+
+        if (cashea) {
+          setCasheaIcon(cashea.url || cashea.imageUrl);
         } else {
           // Fallback to official Cashea icon if not found in global_icons
           setCasheaIcon("https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/logo%20cashea.png?alt=media&token=5b266100-3323-41bb-a5a4-23957ce678a1");
@@ -324,9 +326,13 @@ export default function RestaurantPage() {
                 <span className="text-[10px] font-black text-slate-700">{restaurant.rating}</span>
               </div>
             )}
-            {restaurant.hasCashea && casheaIcon && (
+            {restaurant.hasCashea && (
               <div className="absolute -top-1 -right-1 w-8 h-8 bg-white/95 backdrop-blur rounded-xl p-1 shadow-lg border border-white/50 flex items-center justify-center animate-in zoom-in duration-500">
-                <img src={casheaIcon} alt="Cashea" className="w-full h-full object-contain" />
+                <img
+                  src={casheaIcon || "https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/logo%20cashea.png?alt=media&token=5b266100-3323-41bb-a5a4-23957ce678a1"}
+                  alt="Cashea"
+                  className="w-full h-full object-contain"
+                />
               </div>
             )}
           </div>
@@ -383,7 +389,7 @@ export default function RestaurantPage() {
           )}
 
           {/* Cashea Active Service Insignia */}
-          {restaurant.hasCashea && casheaIcon && (
+          {restaurant.hasCashea && (
             <motion.div
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
@@ -391,7 +397,7 @@ export default function RestaurantPage() {
             >
               <div className="absolute top-0 right-0 w-24 h-24 bg-yellow-400/5 rounded-full -mr-8 -mt-8 blur-2xl" />
               <div className="w-12 h-12 rounded-[1.25rem] bg-yellow-400 flex items-center justify-center shrink-0 shadow-lg shadow-yellow-400/30 group-hover:scale-110 transition-transform">
-                <img src={casheaIcon} className="w-7 h-7 object-contain" alt="Cashea" />
+                <img src={casheaIcon || "https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/logo%20cashea.png?alt=media&token=5b266100-3323-41bb-a5a4-23957ce678a1"} className="w-7 h-7 object-contain" alt="Cashea" />
               </div>
               <div className="flex-1">
                 <div className="flex items-center gap-2">

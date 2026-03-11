@@ -251,11 +251,13 @@ export default function Home() {
           }
         }
 
-        // Use official Cashea icon as requested by user
+        // Use official Cashea icon from global_icons
         const iconsSnap = await getDocs(collection(db, 'global_icons'));
-        const casheaDoc = iconsSnap.docs.find(doc => doc.data().name.toLowerCase() === 'cashea');
-        if (casheaDoc) {
-          setCasheaIcon(casheaDoc.data().url);
+        const icons = iconsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })) as any[];
+        const cashea = icons.find(icon => icon.name?.toLowerCase() === 'cashea');
+
+        if (cashea) {
+          setCasheaIcon(cashea.url || cashea.imageUrl);
         } else {
           setCasheaIcon("https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/logo%20cashea.png?alt=media&token=5b266100-3323-41bb-a5a4-23957ce678a1");
         }
@@ -650,9 +652,13 @@ export default function Home() {
                       <Heart className={`w-5 h-5 transition-colors ${false ? 'text-accent fill-accent' : 'text-slate-400 hover:text-accent hover:fill-accent'}`} />
                     </div>
 
-                    {restaurant.hasCashea && casheaIcon && (
+                    {restaurant.hasCashea && (
                       <div className="absolute top-3 right-12 z-20 w-10 h-10 bg-yellow-400 backdrop-blur rounded-xl p-1.5 shadow-xl border border-white/20 flex items-center justify-center animate-in zoom-in duration-500 hover:scale-110 transition-transform">
-                        <img src={casheaIcon} alt="Cashea" className="w-full h-full object-contain" />
+                        <img
+                          src={casheaIcon || "https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/logo%20cashea.png?alt=media&token=5b266100-3323-41bb-a5a4-23957ce678a1"}
+                          alt="Cashea"
+                          className="w-full h-full object-contain"
+                        />
                       </div>
                     )}
 

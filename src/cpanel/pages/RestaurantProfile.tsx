@@ -149,9 +149,11 @@ export default function RestaurantProfile() {
                 setAllCategories(cats);
 
                 const iconsSnap = await getDocs(collection(db, 'global_icons'));
-                const casheaDoc = iconsSnap.docs.find(doc => doc.data().name.toLowerCase() === 'cashea');
-                if (casheaDoc) {
-                    setCasheaIcon(casheaDoc.data().url);
+                const icons = iconsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })) as any[];
+                const cashea = icons.find(icon => icon.name?.toLowerCase() === 'cashea');
+
+                if (cashea) {
+                    setCasheaIcon(cashea.url || cashea.imageUrl);
                 } else {
                     setCasheaIcon("https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/logo%20cashea.png?alt=media&token=5b266100-3323-41bb-a5a4-23957ce678a1");
                 }
