@@ -168,7 +168,7 @@ export default function Home() {
           ...doc.data()
         })) as any[];
 
-        const activeBanners = fetchedBanners.filter(b => b.isActive && (b.type === 'top_banner' || !b.type));
+        const activeBanners = fetchedBanners.filter(b => b.isActive && (b.type === 'top_banner' || b.type === 'fidelization' || !b.type));
 
         // Location filtering
         const filteredBanners = activeBanners.filter(banner => {
@@ -525,7 +525,10 @@ export default function Home() {
                     key={banner.id}
                     href={banner.linkUrl || '#'}
                     onClick={(e) => {
-                      if (banner.linkUrl && banner.linkUrl.startsWith('/')) {
+                      if (banner.type === 'fidelization') {
+                        e.preventDefault();
+                        navigate(`/rewards?openBannerId=${banner.id}`);
+                      } else if (banner.linkUrl && banner.linkUrl.startsWith('/')) {
                         e.preventDefault();
                         navigate(banner.linkUrl);
                       }

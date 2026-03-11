@@ -18,7 +18,9 @@ export interface GlobalLoyaltyBanner {
     explanation: string;
     prizes: Prize[];
     bannerImageUrl?: string;
-    homeBannerId?: string;
+    visibilityScope?: 'national' | 'state' | 'city';
+    targetState?: string;
+    targetCity?: string;
 }
 import { VENEZUELA_DATA, VENEZUELA_STATES } from '../../lib/venezuelaData';
 import { Globe, Map as MapIcon, MapPin as PinIcon } from 'lucide-react';
@@ -45,12 +47,16 @@ export default function BannersManager() {
 
     // Global Royalty Banner states
     const [globalBanner, setGlobalBanner] = useState<GlobalLoyaltyBanner>({
-        isActive: false,
+        isActive: true, // Default to true for new ones
         title: '',
         explanation: '',
         prizes: [],
-        bannerImageUrl: ''
+        bannerImageUrl: '',
+        visibilityScope: 'national',
+        targetState: '',
+        targetCity: ''
     });
+    const [editingFidelizationId, setEditingFidelizationId] = useState<string | null>(null);
     const [savingBanner, setSavingBanner] = useState(false);
     const [addingPrize, setAddingPrize] = useState(false);
     const [uploadingBannerImage, setUploadingBannerImage] = useState(false);
@@ -71,25 +77,17 @@ export default function BannersManager() {
         }
     };
 
-    const fetchGlobalBanner = async () => {
-        try {
-            const docRef = doc(db, 'cpanel_settings', 'fidelization_banner');
-            const docSnap = await getDoc(docRef);
-            if (docSnap.exists()) {
-                setGlobalBanner(docSnap.data() as GlobalLoyaltyBanner);
-            }
-        } catch (error) {
-            console.error("Error fetching global banner", error);
-        }
-    };
-
     useEffect(() => {
         fetchBanners();
-        fetchGlobalBanner();
     }, []);
 
     const handleSaveGlobalBanner = async () => {
         if (savingBanner) return;
+        if (!globalBanner.title || !globalBanner.bannerImageUrl) {
+            toast.error("El título y la imagen son obligatorios");
+            return;
+        }
+
         setSavingBanner(true);
         console.log("Iniciando guardado de banner de fidelización...");
         try {
@@ -100,46 +98,41 @@ export default function BannersManager() {
                 imageUrl: String(p.imageUrl || '')
             }));
 
-            let bannerData = {
+            const bannerData = {
+                type: 'fidelization',
                 isActive: Boolean(currentBanner.isActive),
                 title: String(currentBanner.title || ''),
                 explanation: String(currentBanner.explanation || ''),
                 prizes: prizes,
-                bannerImageUrl: String(currentBanner.bannerImageUrl || ''),
-                homeBannerId: currentBanner.homeBannerId || null
-            };
-
-            await setDoc(doc(db, 'cpanel_settings', 'fidelization_banner'), bannerData);
-
-            const hbData = {
-                imageUrl: bannerData.bannerImageUrl,
-                title: bannerData.title,
-                linkUrl: '/rewards?openBanner=true',
+                imageUrl: String(currentBanner.bannerImageUrl || ''),
+                visibilityScope: currentBanner.visibilityScope || 'national',
+                targetState: currentBanner.targetState || '',
+                targetCity: currentBanner.targetCity || '',
+                linkUrl: '',
                 duration: 5,
-                type: 'top_banner',
-                visibilityScope: 'national',
-                isActive: bannerData.isActive,
                 updatedAt: serverTimestamp()
             };
 
-            if (bannerData.homeBannerId) {
-                try {
-                    await updateDoc(doc(db, 'banners', bannerData.homeBannerId), hbData);
-                } catch (e: any) {
-                    if (e.code === 'not-found' && bannerData.bannerImageUrl) {
-                        const dr = await addDoc(collection(db, 'banners'), { ...hbData, createdAt: serverTimestamp() });
-                        bannerData.homeBannerId = dr.id;
-                        await setDoc(doc(db, 'cpanel_settings', 'fidelization_banner'), bannerData);
-                    }
-                }
-            } else if (bannerData.bannerImageUrl) {
-                const dr = await addDoc(collection(db, 'banners'), { ...hbData, createdAt: serverTimestamp() });
-                bannerData.homeBannerId = dr.id;
-                await setDoc(doc(db, 'cpanel_settings', 'fidelization_banner'), bannerData);
+            if (editingFidelizationId) {
+                await updateDoc(doc(db, 'banners', editingFidelizationId), bannerData);
+                toast.success("Banner de fidelización actualizado");
+            } else {
+                await addDoc(collection(db, 'banners'), { ...bannerData, createdAt: serverTimestamp() });
+                toast.success("Banner de fidelización guardado correctamente");
             }
 
-            setGlobalBanner(bannerData);
-            toast.success("¡Configuración guardada correctamente!");
+            setGlobalBanner({
+                isActive: true,
+                title: '',
+                explanation: '',
+                prizes: [],
+                bannerImageUrl: '',
+                visibilityScope: 'national',
+                targetState: '',
+                targetCity: ''
+            });
+            setEditingFidelizationId(null);
+            fetchBanners();
         } catch (error: any) {
             console.error("Save Error:", error);
             toast.error("Error al guardar: " + (error.message || "Error de red"));
@@ -289,20 +282,35 @@ export default function BannersManager() {
     };
 
     const handleEdit = (banner: any) => {
-        setEditingId(banner.id);
-        setNewBanner({
-            imageUrl: banner.imageUrl || '',
-            title: banner.title || '',
-            linkUrl: banner.linkUrl || '',
-            duration: banner.duration || 5,
-            type: banner.type || 'top_banner',
-            visibilityScope: banner.visibilityScope || 'national',
-            targetState: banner.targetState || '',
-            targetCity: banner.targetCity || ''
-        });
-        setImagePreview(banner.imageUrl || null);
-        setIsAdding(true);
-        window.scrollTo({ top: 0, behavior: 'smooth' });
+        if (banner.type === 'fidelization') {
+            setEditingFidelizationId(banner.id);
+            setGlobalBanner({
+                isActive: banner.isActive !== false,
+                title: banner.title || '',
+                explanation: banner.explanation || '',
+                prizes: banner.prizes || [],
+                bannerImageUrl: banner.imageUrl || '',
+                visibilityScope: banner.visibilityScope || 'national',
+                targetState: banner.targetState || '',
+                targetCity: banner.targetCity || ''
+            });
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        } else {
+            setEditingId(banner.id);
+            setNewBanner({
+                imageUrl: banner.imageUrl || '',
+                title: banner.title || '',
+                linkUrl: banner.linkUrl || '',
+                duration: banner.duration || 5,
+                type: banner.type || 'top_banner',
+                visibilityScope: banner.visibilityScope || 'national',
+                targetState: banner.targetState || '',
+                targetCity: banner.targetCity || ''
+            });
+            setImagePreview(banner.imageUrl || null);
+            setIsAdding(true);
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
     };
 
     if (loading) {
@@ -359,24 +367,95 @@ export default function BannersManager() {
             <div className="bg-white rounded-[2.5rem] shadow-xl shadow-slate-200/50 border border-slate-100 overflow-hidden mb-8">
                 <div className="p-6 border-b border-slate-50 bg-slate-50/50 flex items-center justify-between">
                     <div>
-                        <h3 className="font-black text-slate-800 uppercase tracking-widest text-sm">Banner Público App (Pantalla Fidelización)</h3>
-                        <p className="text-xs text-slate-500 font-medium">Configura el banner y la pantalla de premios para tus clientes. (Al guardar, se creará un banner arriba en el inicio como acceso directo)</p>
+                        <h3 className="font-black text-slate-800 uppercase tracking-widest text-sm flex items-center gap-2">
+                            {editingFidelizationId ? 'Editando Banner de Fidelización' : 'Banner de Fidelización'}
+                        </h3>
+                        <p className="text-xs text-slate-500 font-medium">Crea banners especiales con catálogo de premios. Puedes lanzar varios y se verán como acceso directo en Inicio.</p>
                     </div>
+                    {editingFidelizationId && (
+                        <button
+                            onClick={() => {
+                                setEditingFidelizationId(null);
+                                setGlobalBanner({
+                                    isActive: true,
+                                    title: '',
+                                    explanation: '',
+                                    prizes: [],
+                                    bannerImageUrl: '',
+                                    visibilityScope: 'national',
+                                    targetState: '',
+                                    targetCity: ''
+                                });
+                            }}
+                            className="text-xs font-bold text-slate-500 hover:text-slate-800 bg-white px-3 py-2 rounded-xl shadow-sm border border-slate-200"
+                        >
+                            Cancelar Edición
+                        </button>
+                    )}
                 </div>
                 <div className="p-6 space-y-6">
                     <div className="flex flex-col md:flex-row gap-6">
                         <div className="flex-1 space-y-4">
-                            <div>
-                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Estado del anuncio</label>
-                                <div className="mt-1">
-                                    <button
-                                        onClick={() => setGlobalBanner(p => ({ ...p, isActive: !p.isActive }))}
-                                        className={`px-4 py-2 rounded-xl text-xs font-black uppercase transition-all ${globalBanner.isActive ? 'bg-green-100 text-green-600' : 'bg-slate-100 text-slate-400'}`}
-                                    >
-                                        {globalBanner.isActive ? 'Activo' : 'Inactivo'}
-                                    </button>
+                            <div className="flex items-center gap-4">
+                                <div>
+                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Estado del anuncio</label>
+                                    <div className="mt-1">
+                                        <button
+                                            onClick={() => setGlobalBanner(p => ({ ...p, isActive: !p.isActive }))}
+                                            className={`px-4 py-2 rounded-xl text-xs font-black uppercase transition-all ${globalBanner.isActive ? 'bg-green-100 text-green-600 border border-green-200' : 'bg-slate-100 text-slate-400 border border-slate-200'}`}
+                                        >
+                                            {globalBanner.isActive ? 'Activo' : 'Inactivo'}
+                                        </button>
+                                    </div>
+                                </div>
+                                <div className="flex-1">
+                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Alcance Geográfico</label>
+                                    <div className="flex gap-2 p-1 bg-slate-100 rounded-2xl mt-1 w-fit">
+                                        <button onClick={() => setGlobalBanner({ ...globalBanner, visibilityScope: 'national' })} className={`py-1.5 px-3 rounded-xl font-bold text-xs transition-all flex items-center gap-1 ${globalBanner.visibilityScope === 'national' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500'}`}>
+                                            <Globe className="w-3 h-3" /> Nacional
+                                        </button>
+                                        <button onClick={() => setGlobalBanner({ ...globalBanner, visibilityScope: 'state' })} className={`py-1.5 px-3 rounded-xl font-bold text-xs transition-all flex items-center gap-1 ${globalBanner.visibilityScope === 'state' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500'}`}>
+                                            <MapIcon className="w-3 h-3" /> Estado
+                                        </button>
+                                        <button onClick={() => setGlobalBanner({ ...globalBanner, visibilityScope: 'city' })} className={`py-1.5 px-3 rounded-xl font-bold text-xs transition-all flex items-center gap-1 ${globalBanner.visibilityScope === 'city' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500'}`}>
+                                            <PinIcon className="w-3 h-3" /> Ciudad
+                                        </button>
+                                    </div>
                                 </div>
                             </div>
+
+                            {(globalBanner.visibilityScope === 'state' || globalBanner.visibilityScope === 'city') && (
+                                <div className="flex gap-4">
+                                    <div className="flex-1">
+                                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Estado Destino</label>
+                                        <select
+                                            value={globalBanner.targetState}
+                                            onChange={e => setGlobalBanner({ ...globalBanner, targetState: e.target.value, targetCity: '' })}
+                                            className="w-full bg-slate-50 border border-slate-200 px-4 py-3 rounded-2xl outline-none font-bold text-slate-700 text-sm mt-1 focus:border-indigo-500 focus:bg-white"
+                                        >
+                                            <option value="">Selecciona un Estado</option>
+                                            {VENEZUELA_STATES.map(estado => (
+                                                <option key={estado} value={estado}>{estado}</option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                    {globalBanner.visibilityScope === 'city' && (
+                                        <div className="flex-1">
+                                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Ciudad Destino</label>
+                                            <select
+                                                value={globalBanner.targetCity}
+                                                onChange={e => setGlobalBanner({ ...globalBanner, targetCity: e.target.value })}
+                                                className="w-full bg-slate-50 border border-slate-200 px-4 py-3 rounded-2xl outline-none font-bold text-slate-700 text-sm mt-1 focus:border-indigo-500 focus:bg-white"
+                                            >
+                                                <option value="">Selecciona una Ciudad</option>
+                                                {globalBanner.targetState && VENEZUELA_DATA[globalBanner.targetState]?.map(city => (
+                                                    <option key={city} value={city}>{city}</option>
+                                                ))}
+                                            </select>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
                             <div>
                                 <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Título del Banner</label>
                                 <input
@@ -485,7 +564,7 @@ export default function BannersManager() {
                         ) : (
                             <>
                                 <Save className="w-5 h-5" />
-                                <span>Guardar Configuración Pública</span>
+                                <span>{editingFidelizationId ? 'Guardar Cambios' : 'Guardar'}</span>
                             </>
                         )}
                     </button>
