@@ -171,7 +171,7 @@ export default function Rewards() {
                                 <p className="text-sm text-white/90 font-medium mb-4 relative z-10 leading-snug">{contest.prize}</p>
                                 <div className="flex items-center justify-between relative z-10">
                                     <span className="text-[10px] font-black uppercase tracking-widest bg-black/20 px-3 py-1 rounded-full backdrop-blur-sm">
-                                        Meta: {contest.target} {contest.type === 'count' ? 'amigos' : 'compras'}
+                                        Meta: {contest.targetCount} {contest.type === 'referral_count' ? 'amigos' : 'veces'}
                                     </span>
                                     <ChevronRight className="w-5 h-5 opacity-50" />
                                 </div>

@@ -11,7 +11,16 @@ service cloud.firestore {
 
     // User profiles
     match /users/{userId} {
-      allow read, write: if request.auth != null && (request.auth.uid == userId || isCPanelAdmin());
+      allow read: if true;
+      allow create: if request.auth != null && request.auth.uid == userId;
+      allow update: if request.auth != null && (
+        isCPanelAdmin() || 
+        // User updating their own profile (cannot change points/referrals)
+        (request.auth.uid == userId && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['points', 'totalReferrals'])) ||
+        // Another user (e.g., restaurant admin or referred user) updating ONLY points and referrals
+        (request.auth.uid != userId && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['points', 'totalReferrals']))
+      );
+      allow delete: if request.auth != null && (request.auth.uid == userId || isCPanelAdmin());
     }
     
     // Restaurants and their sub-collections
@@ -91,6 +100,7 @@ service cloud.firestore {
         (resource.data.status == 'searching' && request.resource.data.status == 'accepted') ||
         isCPanelAdmin()
       );
+      allow delete: if isCPanelAdmin();
     }
 
     // Notifications
@@ -127,6 +137,42 @@ service cloud.firestore {
     // Delivery update requests
     match /delivery_update_requests/{requestId} {
       allow read, write: if isCPanelAdmin();
+    }
+
+    // CPanel Managed Collections
+    match /global_categories/{categoryId} {
+      allow read: if true;
+      allow write: if isCPanelAdmin();
+    }
+    
+    match /raffles/{raffleId} {
+      allow read: if true;
+      allow write: if isCPanelAdmin();
+    }
+    
+    match /referral_contests/{contestId} {
+      allow read: if true;
+      allow write: if isCPanelAdmin();
+    }
+    
+    match /home_icons/{iconId} {
+      allow read: if true;
+      allow write: if isCPanelAdmin();
+    }
+    
+    match /payment_methods/{methodId} {
+      allow read: if true;
+      allow write: if isCPanelAdmin();
+    }
+
+    match /subscriptions/{subId} {
+      allow read: if true;
+      allow write: if isCPanelAdmin() || (request.auth != null && request.auth.uid == request.resource.data.restaurantId);
+    }
+
+    match /wallets/{walletId} {
+      allow read: if request.auth != null && (request.auth.uid == walletId || isCPanelAdmin());
+      allow write: if isCPanelAdmin();
     }
 
     // Default deny
