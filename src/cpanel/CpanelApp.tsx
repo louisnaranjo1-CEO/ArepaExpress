@@ -33,12 +33,18 @@ export default function CpanelApp() {
         if (storedEmail && storedPwd) {
             signInWithEmailAndPassword(auth, storedEmail, storedPwd).then(async (userCredential) => {
                 // Check if user has admin role in Firestore
-                const userDoc = await getDoc(doc(db, 'users', userCredential.user.uid));
-                if (userDoc.exists() && userDoc.data().role === 'admin') {
+                const isSuperAdmin = userCredential.user.email?.toLowerCase() === 'louismarketing@2x3consigueloquequieras.com';
+
+                if (isSuperAdmin) {
                     setIsAuthenticated(true);
                 } else {
-                    console.error("User is not an admin");
-                    logout();
+                    const userDoc = await getDoc(doc(db, 'users', userCredential.user.uid));
+                    if (userDoc.exists() && userDoc.data().role === 'admin') {
+                        setIsAuthenticated(true);
+                    } else {
+                        console.error("User is not an admin");
+                        logout();
+                    }
                 }
                 setIsLoading(false);
             }).catch(err => {
@@ -56,9 +62,13 @@ export default function CpanelApp() {
             const userCredential = await signInWithEmailAndPassword(auth, email, password);
 
             // Role check
-            const userDoc = await getDoc(doc(db, 'users', userCredential.user.uid));
-            if (!userDoc.exists() || userDoc.data().role !== 'admin') {
-                throw new Error("Acceso denegado: Se requiere rol de administrador.");
+            const isSuperAdmin = email.toLowerCase() === 'louismarketing@2x3consigueloquequieras.com';
+
+            if (!isSuperAdmin) {
+                const userDoc = await getDoc(doc(db, 'users', userCredential.user.uid));
+                if (!userDoc.exists() || userDoc.data().role !== 'admin') {
+                    throw new Error("Acceso denegado: Se requiere rol de administrador.");
+                }
             }
 
             localStorage.setItem('cpanel_auth_email', email);
