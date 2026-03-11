@@ -3,7 +3,7 @@ import { Gift, Coins, Share2, Ticket, ChevronRight, Award, Copy, CheckCircle, Gl
 import { useAuth } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { db } from '../lib/firebase';
-import { collection, getDocs, query, where, orderBy } from 'firebase/firestore';
+import { collection, getDocs, query, where, orderBy, doc, getDoc } from 'firebase/firestore';
 
 export default function Rewards() {
     const { user, userData } = useAuth();
@@ -15,6 +15,10 @@ export default function Rewards() {
 
     const userPoints = userData?.points || 0;
     const referralCode = userData?.referralCode || user?.uid?.substring(0, 6).toUpperCase() || 'INVITA2X3';
+    const [shareConfig, setShareConfig] = useState({
+        message: '¡Usa 2X3 y obtén recompensas!',
+        url: window.location.origin
+    });
 
     useEffect(() => {
         const fetchData = async () => {
@@ -26,6 +30,16 @@ export default function Rewards() {
                 // Fetch active raffles
                 const rafflesSnap = await getDocs(query(collection(db, 'raffles'), where('isActive', '==', true)));
                 setRaffles(rafflesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+
+                // Fetch share config
+                const configSnap = await getDoc(doc(db, 'system_configs', 'fidelization'));
+                if (configSnap.exists()) {
+                    const data = configSnap.data();
+                    setShareConfig(prev => ({
+                        message: data.shareMessage || prev.message,
+                        url: data.shareUrl || prev.url
+                    }));
+                }
             } catch (error) {
                 console.error("Error fetching rewards data:", error);
             } finally {
@@ -44,10 +58,11 @@ export default function Rewards() {
     const handleShare = async () => {
         if (navigator.share) {
             try {
+                const finalUrl = `${shareConfig.url.replace(/\/$/, '')}/auth?ref=${referralCode}`;
                 await navigator.share({
-                    title: '¡Únete a Arepa Express!',
-                    text: `Usa mi código de invitación ${referralCode} y obtén beneficios en tu primer pedido.`,
-                    url: `${window.location.origin}/auth?ref=${referralCode}`
+                    title: '¡Acompáñame en 2X3!',
+                    text: `${shareConfig.message}\nMi código es: ${referralCode}`,
+                    url: finalUrl
                 });
             } catch (err) {
                 console.log('Error sharing:', err);

@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { auth, db } from '../lib/firebase';
-import { doc, onSnapshot } from 'firebase/firestore';
+import { doc, onSnapshot, updateDoc, serverTimestamp } from 'firebase/firestore';
 
 export interface UserAddress {
     id: string; // Unique ID (could be timestamp)
@@ -29,6 +29,9 @@ interface UserData {
     walletBalance?: number;
     points?: number;
     cedula?: string;
+    lastLogin?: any;
+    lastSeen?: any;
+    totalUsageMinutes?: number;
 }
 
 interface AuthContextType {
@@ -71,8 +74,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                             data.addresses = [newAddress];
                         }
                         setUserData(data);
+
+                        // Update lastLogin if it's a new session (roughly > 1 hour since last login)
+                        const now = new Date();
+                        const lastLogin = data.lastLogin?.toDate();
+                        if (!lastLogin || (now.getTime() - lastLogin.getTime() > 1000 * 60 * 60)) {
+                            updateDoc(doc(db, 'users', firebaseUser.uid), {
+                                lastLogin: serverTimestamp(),
+                                lastSeen: serverTimestamp()
+                            }).catch(console.error);
+                        }
                     } else {
-                        // Document might not exist locally yet if not created after Google Sign In
                         setUserData(null);
                     }
                     setLoading(false);
@@ -90,6 +102,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         };
     }, []);
 
+    // Activity Heartbeat
+    useEffect(() => {
+        if (!user) return;
+
+        const heartbeatInterval = setInterval(() => {
+            updateDoc(doc(db, 'users', user.uid), {
+                lastSeen: serverTimestamp(),
+                totalUsageMinutes: (userData?.totalUsageMinutes || 0) + 1
+            }).catch(console.error);
+        }, 60000); // Every 1 minute
+
+        return () => clearInterval(heartbeatInterval);
+    }, [user, userData?.totalUsageMinutes]);
+
     const isProfileComplete = !!(userData?.displayName && userData?.phone);
 
     return (
@@ -98,3 +124,4 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         </AuthContext.Provider>
     );
 };
+

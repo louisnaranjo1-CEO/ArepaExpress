@@ -16,7 +16,7 @@ import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 
 export type DeliveryStatus = 'pending' | 'active' | 'rejected' | 'inactive';
 export type AvailabilityStatus = 'active' | 'busy' | 'offline';
-export type VehicleType = 'moto' | 'carro' | 'bicicleta';
+export type VehicleType = 'moto' | 'carro' | 'bicicleta' | 'ejecutivo';
 
 export interface DeliveryDriver {
     id: string; // auth uid
@@ -88,10 +88,12 @@ export const registerDriver = async (
 
     await setDoc(doc(db, 'delivery_drivers', uid), driverData);
 
+    const userRole = (data.vehicleType === 'carro' || data.vehicleType === 'ejecutivo') ? 'driver' : 'delivery';
+
     // Update user role
     await setDoc(doc(db, 'users', uid), {
         email,
-        role: 'delivery',
+        role: userRole,
         createdAt: serverTimestamp()
     }, { merge: true });
 

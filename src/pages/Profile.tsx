@@ -5,7 +5,7 @@ import { useAuth } from '../context/AuthContext';
 import { auth, db, storage } from '../lib/firebase';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { useNavigate } from 'react-router-dom';
-import { signInWithGoogle, signInWithEmail, signUpWithEmail } from '../lib/auth-service';
+import { signInWithGoogle, signInWithEmail, signUpWithEmail, processReferralCode } from '../lib/auth-service';
 import { collection, query, where, orderBy, getDocs, doc, setDoc, serverTimestamp, collectionGroup, getDoc, updateDoc, addDoc } from 'firebase/firestore';
 import { updateProfile } from 'firebase/auth';
 import { Image as ImageIcon, Camera, Smartphone, User as UserIcon, Save } from 'lucide-react';
@@ -64,6 +64,12 @@ export default function Profile() {
     const [paymentMethods, setPaymentMethods] = useState<any>(null);
     const [copiedId, setCopiedId] = useState<string | null>(null);
     const [rechargeRef, setRechargeRef] = useState('');
+
+    // Referral State
+    const [referralCodeInput, setReferralCodeInput] = useState('');
+    const [showReferralModal, setShowReferralModal] = useState(false);
+    const [tempGoogleUser, setTempGoogleUser] = useState<any>(null);
+    const [isApplyingReferral, setIsApplyingReferral] = useState(false);
 
     useEffect(() => {
         if (userData) {
@@ -185,7 +191,11 @@ export default function Profile() {
         setIsSigningIn(true);
         setError(null);
         try {
-            await signInWithGoogle();
+            const { user, isNewUser } = await signInWithGoogle();
+            if (isNewUser) {
+                setTempGoogleUser(user);
+                setShowReferralModal(true);
+            }
         } catch (err: any) {
             console.error("Failed to sign in", err);
             setError(err.message || "Error al iniciar sesión con Google");
@@ -232,19 +242,52 @@ export default function Profile() {
                     setIsEmailAuthLoading(false);
                     return;
                 }
-                await signUpWithEmail(email, password, fullName);
+                const cleanReferral = referralCodeInput ? referralCodeInput.trim() : undefined;
+                await signUpWithEmail(email, password, fullName, cleanReferral);
             }
             setShowEmailModal(false);
             // Reset form
             setEmail('');
             setPassword('');
             setFullName('');
+            setReferralCodeInput('');
         } catch (err: any) {
             console.error("Email auth error", err);
             setError(err.message || "Ocurrió un error. Intenta de nuevo.");
         } finally {
             setIsEmailAuthLoading(false);
         }
+    };
+
+    const handleGoogleReferralSubmit = async () => {
+        if (!tempGoogleUser) return;
+        if (!referralCodeInput) {
+            handleSkipReferral();
+            return;
+        }
+        setIsApplyingReferral(true);
+        try {
+            const success = await processReferralCode(tempGoogleUser.uid, referralCodeInput);
+            if (success) {
+                toast.success("¡Código de referido aplicado exitosamente!");
+            } else {
+                toast.error("El código ingresado no es válido o es tu propio código.", { icon: '⚠️' });
+            }
+        } catch (error) {
+            console.error(error);
+            toast.error("Error al aplicar el código");
+        } finally {
+            setIsApplyingReferral(false);
+            setShowReferralModal(false);
+            setTempGoogleUser(null);
+            setReferralCodeInput('');
+        }
+    };
+
+    const handleSkipReferral = () => {
+        setShowReferralModal(false);
+        setTempGoogleUser(null);
+        setReferralCodeInput('');
     };
 
     const handleLogout = async () => {
@@ -521,6 +564,20 @@ export default function Profile() {
                                         />
                                     </div>
 
+                                    {!isLoginMode && (
+                                        <div className="space-y-1">
+                                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Código de Referido (Opcional)</label>
+                                            <input
+                                                type="text"
+                                                value={referralCodeInput}
+                                                onChange={(e) => setReferralCodeInput(e.target.value.toUpperCase())}
+                                                placeholder="Ej: ABCDEF"
+                                                className="w-full bg-slate-50 border-2 border-slate-100 focus:border-primary px-4 py-3 rounded-2xl outline-none font-bold text-slate-700 transition-all uppercase"
+                                                maxLength={10}
+                                            />
+                                        </div>
+                                    )}
+
                                     <button
                                         type="submit"
                                         disabled={isEmailAuthLoading}
@@ -541,6 +598,65 @@ export default function Profile() {
                                         {isLoginMode ? "¿No tienes cuenta? Regístrate" : "¿Ya tienes cuenta? Inicia sesión"}
                                     </button>
                                 </form>
+                            </motion.div>
+                        </div>
+                    )}
+                </AnimatePresence>
+
+                {/* Referal Modal for Google Signups */}
+                <AnimatePresence>
+                    {showReferralModal && tempGoogleUser && (
+                        <div className="fixed inset-0 z-[120] flex items-center justify-center p-6 bg-black/60 backdrop-blur-sm">
+                            <motion.div
+                                initial={{ opacity: 0, scale: 0.9, y: 20 }}
+                                animate={{ opacity: 1, scale: 1, y: 0 }}
+                                exit={{ opacity: 0, scale: 0.9, y: 20 }}
+                                className="bg-white rounded-[32px] w-full max-w-sm shadow-2xl overflow-hidden p-8"
+                            >
+                                <div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-4">
+                                    <Gift className="w-8 h-8 text-primary" />
+                                </div>
+                                <h3 className="text-xl font-black text-slate-900 text-center mb-2">
+                                    ¡Gana 200 puntos! 🎉
+                                </h3>
+                                <p className="text-slate-500 text-sm text-center mb-6 font-medium">
+                                    ¿Alguien te invitó a 2X3? Ingresa su código ahora y ambos recibirán puntos gratis.
+                                </p>
+
+                                <div className="space-y-4">
+                                    <div>
+                                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Código de Referido</label>
+                                        <input
+                                            type="text"
+                                            value={referralCodeInput}
+                                            onChange={(e) => setReferralCodeInput(e.target.value.toUpperCase())}
+                                            placeholder="Ingresa el código aquí"
+                                            className="w-full bg-slate-50 border-2 border-slate-100 focus:border-primary px-4 py-3 rounded-2xl outline-none font-black text-slate-700 transition-all text-center text-lg tracking-widest uppercase mt-1"
+                                            maxLength={10}
+                                        />
+                                    </div>
+
+                                    <div className="flex flex-col gap-2 pt-2">
+                                        <button
+                                            onClick={handleGoogleReferralSubmit}
+                                            disabled={isApplyingReferral}
+                                            className="w-full bg-primary text-white py-4 rounded-2xl font-bold shadow-lg shadow-primary/30 hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-70 flex items-center justify-center gap-2"
+                                        >
+                                            {isApplyingReferral ? (
+                                                <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                                            ) : (
+                                                <>Aplicar Código y Continuar</>
+                                            )}
+                                        </button>
+                                        <button
+                                            onClick={handleSkipReferral}
+                                            disabled={isApplyingReferral}
+                                            className="w-full text-slate-400 font-bold py-3 hover:text-slate-600 transition-colors text-sm"
+                                        >
+                                            Omitir por ahora
+                                        </button>
+                                    </div>
+                                </div>
                             </motion.div>
                         </div>
                     )}

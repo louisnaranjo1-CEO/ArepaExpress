@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { signInWithEmailAndPassword } from 'firebase/auth';
-import { auth } from '../lib/firebase';
+import { auth, db } from '../lib/firebase';
+import { doc, getDoc } from 'firebase/firestore';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import CpanelLayout from './components/CpanelLayout';
 import Login from './pages/Login';
@@ -30,8 +31,15 @@ export default function CpanelApp() {
         const storedPwd = localStorage.getItem('cpanel_auth_pwd');
 
         if (storedEmail && storedPwd) {
-            signInWithEmailAndPassword(auth, storedEmail, storedPwd).then(() => {
-                setIsAuthenticated(true);
+            signInWithEmailAndPassword(auth, storedEmail, storedPwd).then(async (userCredential) => {
+                // Check if user has admin role in Firestore
+                const userDoc = await getDoc(doc(db, 'users', userCredential.user.uid));
+                if (userDoc.exists() && userDoc.data().role === 'admin') {
+                    setIsAuthenticated(true);
+                } else {
+                    console.error("User is not an admin");
+                    logout();
+                }
                 setIsLoading(false);
             }).catch(err => {
                 console.error("Firebase Auth error:", err);
@@ -45,14 +53,21 @@ export default function CpanelApp() {
 
     const login = async (email: string, password: string) => {
         try {
-            await signInWithEmailAndPassword(auth, email, password);
+            const userCredential = await signInWithEmailAndPassword(auth, email, password);
+
+            // Role check
+            const userDoc = await getDoc(doc(db, 'users', userCredential.user.uid));
+            if (!userDoc.exists() || userDoc.data().role !== 'admin') {
+                throw new Error("Acceso denegado: Se requiere rol de administrador.");
+            }
+
             localStorage.setItem('cpanel_auth_email', email);
             localStorage.setItem('cpanel_auth_pwd', password);
             setIsAuthenticated(true);
             return true;
         } catch (err: any) {
             console.error("Login Error:", err);
-            throw new Error("Credenciales inválidas o error de conexión: " + (err.code || err.message));
+            throw new Error(err.message || "Credenciales inválidas o error de conexión");
         }
     };
 

@@ -11,14 +11,52 @@ import {
     reauthenticateWithCredential,
     EmailAuthProvider
 } from 'firebase/auth';
-import { doc, getDoc, setDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
+import { doc, getDoc, setDoc, updateDoc, serverTimestamp, collection, query, where, getDocs, increment, writeBatch } from 'firebase/firestore';
+
+export const processReferralCode = async (newUserId: string, referralCode: string) => {
+    if (!referralCode || typeof referralCode !== 'string') return false;
+    try {
+        const usersRef = collection(db, 'users');
+        const q = query(usersRef, where('referralCode', '==', referralCode.toUpperCase().trim()));
+        const querySnapshot = await getDocs(q);
+
+        if (!querySnapshot.empty) {
+            const referrerDoc = querySnapshot.docs[0];
+            const referrerId = referrerDoc.id;
+
+            // Usuario no puede referirse a sí mismo
+            if (referrerId === newUserId) return false;
+
+            const batch = writeBatch(db);
+
+            // Recompensa al Referidor (+200 puntos)
+            batch.update(doc(db, 'users', referrerId), {
+                points: increment(200),
+                totalReferrals: increment(1)
+            });
+
+            // Recompensa al Nuevo Usuario (+200 puntos)
+            batch.update(doc(db, 'users', newUserId), {
+                points: increment(200),
+                referredBy: referrerId
+            });
+
+            await batch.commit();
+            return true;
+        }
+        return false;
+    } catch (error) {
+        console.error("Error processing referral code:", error);
+        return false;
+    }
+}
 
 const googleProvider = new GoogleAuthProvider();
 // Ensure we get the display name and email
 googleProvider.addScope('profile');
 googleProvider.addScope('email');
 
-export const signInWithGoogle = async (): Promise<User | null> => {
+export const signInWithGoogle = async (): Promise<{ user: User, isNewUser: boolean }> => {
     try {
         const result = await signInWithPopup(auth, googleProvider);
         const user = result.user;
@@ -27,7 +65,12 @@ export const signInWithGoogle = async (): Promise<User | null> => {
         const userRef = doc(db, 'users', user.uid);
         const userSnap = await getDoc(userRef);
 
+        let isNewUser = false;
+
         if (!userSnap.exists()) {
+            isNewUser = true;
+            const autoReferralCode = user.uid.substring(0, 6).toUpperCase();
+
             // Create a new user document
             await setDoc(userRef, {
                 displayName: user.displayName,
@@ -36,13 +79,16 @@ export const signInWithGoogle = async (): Promise<User | null> => {
                 createdAt: serverTimestamp(),
                 favorites: [], // Initialize empty favorites array
                 birthday: null, // Google doesn't provide birthday by default
-                role: 'user'
+                role: 'user',
+                referralCode: autoReferralCode,
+                points: 0,
+                totalReferrals: 0
             });
         }
 
         localStorage.setItem('deliexpress_uid', user.uid);
 
-        return user;
+        return { user, isNewUser };
     } catch (error: any) {
         console.error("Error signing in with Google:", error.code, error.message);
         // Special case for unauthorized domains
@@ -74,7 +120,7 @@ export const signInWithEmail = async (email: string, pass: string): Promise<User
     }
 };
 
-export const signUpWithEmail = async (email: string, pass: string, name: string): Promise<User> => {
+export const signUpWithEmail = async (email: string, pass: string, name: string, referralCode?: string): Promise<User> => {
     try {
         const result = await createUserWithEmailAndPassword(auth, email, pass);
         const user = result.user;
@@ -84,6 +130,8 @@ export const signUpWithEmail = async (email: string, pass: string, name: string)
 
         // Create user document in Firestore
         const userRef = doc(db, 'users', user.uid);
+        const autoReferralCode = user.uid.substring(0, 6).toUpperCase();
+
         await setDoc(userRef, {
             displayName: name,
             email: email,
@@ -91,8 +139,15 @@ export const signUpWithEmail = async (email: string, pass: string, name: string)
             createdAt: serverTimestamp(),
             favorites: [],
             birthday: null,
-            role: 'user'
+            role: 'user',
+            referralCode: autoReferralCode,
+            points: 0,
+            totalReferrals: 0
         });
+
+        if (referralCode) {
+            await processReferralCode(user.uid, referralCode);
+        }
 
         localStorage.setItem('deliexpress_uid', user.uid);
 
