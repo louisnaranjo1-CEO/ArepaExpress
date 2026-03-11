@@ -99,9 +99,13 @@ export default function RestaurantPage() {
     const fetchIcons = async () => {
       try {
         const iconsSnap = await getDocs(collection(db, 'global_icons'));
-        const cashea = iconsSnap.docs.find(doc => doc.data().name.toLowerCase() === 'cashea');
-        // Use official Cashea icon as requested by user
-        setCasheaIcon("https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/logo%20cashea.png?alt=media&token=5b266100-3323-41bb-a5a4-23957ce678a1");
+        const casheaDoc = iconsSnap.docs.find(doc => doc.data().name.toLowerCase() === 'cashea');
+        if (casheaDoc) {
+          setCasheaIcon(casheaDoc.data().url);
+        } else {
+          // Fallback to official Cashea icon if not found in global_icons
+          setCasheaIcon("https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/logo%20cashea.png?alt=media&token=5b266100-3323-41bb-a5a4-23957ce678a1");
+        }
       } catch (err) {
         console.error("Error fetching icons:", err);
       }
@@ -383,25 +387,25 @@ export default function RestaurantPage() {
             <motion.div
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
-              className="flex items-center gap-3 bg-gradient-to-br from-indigo-50 to-white text-indigo-600 px-5 py-4 rounded-[2rem] border-2 border-indigo-100 shadow-xl shadow-indigo-100/30 group transition-all hover:border-indigo-300 w-full mt-4 mb-2 overflow-hidden relative"
+              className="flex items-center gap-3 bg-gradient-to-br from-yellow-50 to-white text-yellow-700 px-5 py-4 rounded-[2rem] border-2 border-yellow-100 shadow-xl shadow-yellow-100/30 group transition-all hover:border-yellow-300 w-full mt-4 mb-2 overflow-hidden relative"
             >
-              <div className="absolute top-0 right-0 w-24 h-24 bg-indigo-500/5 rounded-full -mr-8 -mt-8 blur-2xl" />
-              <div className="w-12 h-12 rounded-[1.25rem] bg-indigo-600 flex items-center justify-center shrink-0 shadow-lg shadow-indigo-600/30 group-hover:scale-110 transition-transform">
-                <img src={casheaIcon} className="w-7 h-7 object-contain brightness-0 invert" alt="Cashea" />
+              <div className="absolute top-0 right-0 w-24 h-24 bg-yellow-400/5 rounded-full -mr-8 -mt-8 blur-2xl" />
+              <div className="w-12 h-12 rounded-[1.25rem] bg-yellow-400 flex items-center justify-center shrink-0 shadow-lg shadow-yellow-400/30 group-hover:scale-110 transition-transform">
+                <img src={casheaIcon} className="w-7 h-7 object-contain" alt="Cashea" />
               </div>
               <div className="flex-1">
                 <div className="flex items-center gap-2">
-                  <p className="text-[10px] font-black uppercase tracking-[0.25em] leading-none mb-1 text-indigo-400">Servicio Activo</p>
-                  <span className="flex items-center gap-1 bg-indigo-600 text-[8px] font-black text-white px-2 py-0.5 rounded-full uppercase tracking-widest leading-none mb-1 shadow-sm">
+                  <p className="text-[10px] font-black uppercase tracking-[0.25em] leading-none mb-1 text-yellow-600">Servicio Activo</p>
+                  <span className="flex items-center gap-1 bg-yellow-400 text-[8px] font-black text-white px-2 py-0.5 rounded-full uppercase tracking-widest leading-none mb-1 shadow-sm">
                     Oficial
                   </span>
                 </div>
                 <h4 className="font-black text-slate-800 flex items-center gap-1.5 text-base leading-none">
-                  Compra con Cashea <Zap className="w-4 h-4 text-amber-500 fill-amber-500" />
+                  Compra con Cashea <Zap className="w-4 h-4 text-primary fill-primary" />
                 </h4>
                 <p className="text-[11px] text-slate-500 font-bold mt-1 leading-none">Paga en cuotas sin interés</p>
               </div>
-              <div className="w-8 h-8 rounded-full bg-indigo-50 flex items-center justify-center text-indigo-400 opacity-50 group-hover:opacity-100 group-hover:bg-indigo-600 group-hover:text-white transition-all">
+              <div className="w-8 h-8 rounded-full bg-yellow-50 flex items-center justify-center text-yellow-600 opacity-50 group-hover:opacity-100 group-hover:bg-yellow-400 group-hover:text-white transition-all">
                 <ChevronRight className="w-5 h-5" />
               </div>
             </motion.div>

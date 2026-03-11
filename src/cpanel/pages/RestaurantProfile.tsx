@@ -98,6 +98,7 @@ export default function RestaurantProfile() {
 
 
     const [allCategories, setAllCategories] = useState<Category[]>([]);
+    const [casheaIcon, setCasheaIcon] = useState<string | null>(null);
     const sectors = allCategories.filter(c => !c.parentId);
     const subCats = allCategories.filter(c => c.parentId === editData.sector);
 
@@ -142,10 +143,18 @@ export default function RestaurantProfile() {
                 setRecentOrders(orders.sort((a: any, b: any) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0)).slice(0, 5));
                 setPopularProducts(products.slice(0, 4));
 
-                // Categories
+                // Categories & Icons
                 const catSnap = await getDocs(collection(db, 'global_categories'));
                 const cats = catSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Category[];
                 setAllCategories(cats);
+
+                const iconsSnap = await getDocs(collection(db, 'global_icons'));
+                const casheaDoc = iconsSnap.docs.find(doc => doc.data().name.toLowerCase() === 'cashea');
+                if (casheaDoc) {
+                    setCasheaIcon(casheaDoc.data().url);
+                } else {
+                    setCasheaIcon("https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/logo%20cashea.png?alt=media&token=5b266100-3323-41bb-a5a4-23957ce678a1");
+                }
 
             } catch (error) {
                 console.error("Error fetching restaurant profile data:", error);
@@ -792,24 +801,24 @@ export default function RestaurantProfile() {
                                             </button>
                                         </div>
 
-                                        <div className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl border border-slate-100">
+                                        <div className="flex items-center justify-between p-4 bg-yellow-50/50 rounded-2xl border border-yellow-100">
                                             <div className="flex items-center gap-3">
-                                                <div className={`w-12 h-12 rounded-xl flex items-center justify-center p-1.5 transition-all ${editData.hasCashea ? 'bg-indigo-50 shadow-inner' : 'bg-slate-100'}`}>
+                                                <div className={`w-12 h-12 rounded-xl flex items-center justify-center p-1.5 transition-all ${editData.hasCashea ? 'bg-yellow-400 shadow-inner' : 'bg-slate-100'}`}>
                                                     <img
-                                                        src="https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/unnamed%20(14).jpg?alt=media"
+                                                        src={casheaIcon || "https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/unnamed%20(14).jpg?alt=media"}
                                                         alt="Cashea"
                                                         className={`w-full h-full object-contain transition-all ${editData.hasCashea ? 'opacity-100 scale-110' : 'opacity-40 grayscale'}`}
                                                     />
                                                 </div>
                                                 <div>
                                                     <p className="text-sm font-black text-slate-800">Servicio Cashea</p>
-                                                    <p className="text-[10px] font-bold text-slate-500 uppercase">Habilitar icono de pago con Cashea</p>
+                                                    <p className="text-[10px] font-bold text-yellow-600 uppercase">Habilitar icono de pago con Cashea</p>
                                                 </div>
                                             </div>
                                             <button
                                                 type="button"
                                                 onClick={() => setEditData(prev => ({ ...prev, hasCashea: !prev.hasCashea }))}
-                                                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${editData.hasCashea ? 'bg-primary' : 'bg-slate-200'}`}
+                                                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${editData.hasCashea ? 'bg-yellow-400' : 'bg-slate-200'}`}
                                             >
                                                 <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${editData.hasCashea ? 'translate-x-6' : 'translate-x-1'}`} />
                                             </button>
