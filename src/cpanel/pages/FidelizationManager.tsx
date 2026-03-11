@@ -3,7 +3,7 @@ import { Gift, Plus, Trash2, Edit2, Share2, Users, Target, Save, X, Upload, Aler
 import { db, storage } from '../../lib/firebase';
 import { collection, addDoc, getDocs, deleteDoc, doc, updateDoc, serverTimestamp, setDoc, getDoc } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import toast from 'react-hot-toast';
+import { toast } from 'react-hot-toast';
 
 interface ReferralContest {
     id: string;
@@ -74,39 +74,62 @@ export default function FidelizationManager() {
     };
 
     const handleSaveGlobalBanner = async () => {
+        if (savingBanner) return;
         setSavingBanner(true);
-        try {
-            await setDoc(doc(db, 'cpanel_settings', 'fidelization_banner'), globalBanner);
+        console.log("Saving global banner configuration...", globalBanner);
+        // alert("Iniciando guardado..."); // Debugging
 
-            // Also manage the banner in the global 'banners' collection for Home.tsx
-            const bannersRef = collection(db, 'banners');
-            const dataToSave = {
-                imageUrl: globalBanner.bannerImageUrl || '',
-                title: globalBanner.title,
+        try {
+            const currentBanner = { ...globalBanner };
+            const prizes = (currentBanner.prizes || []).map(p => ({
+                id: p.id || Math.random().toString(36).substring(2),
+                title: String(p.title || ''),
+                imageUrl: String(p.imageUrl || '')
+            }));
+
+            let bannerData = {
+                isActive: Boolean(currentBanner.isActive),
+                title: String(currentBanner.title || ''),
+                explanation: String(currentBanner.explanation || ''),
+                prizes: prizes,
+                bannerImageUrl: String(currentBanner.bannerImageUrl || ''),
+                homeBannerId: currentBanner.homeBannerId || null
+            };
+
+            await setDoc(doc(db, 'cpanel_settings', 'fidelization_banner'), bannerData);
+
+            const hbData = {
+                imageUrl: bannerData.bannerImageUrl,
+                title: bannerData.title,
                 linkUrl: '/rewards?openBanner=true',
                 duration: 5,
                 type: 'top_banner',
                 visibilityScope: 'national',
-                isActive: globalBanner.isActive,
+                isActive: bannerData.isActive,
                 updatedAt: serverTimestamp()
             };
 
-            if (globalBanner.homeBannerId) {
-                await updateDoc(doc(db, 'banners', globalBanner.homeBannerId), dataToSave);
-            } else if (globalBanner.bannerImageUrl) {
-                const docRef = await addDoc(bannersRef, {
-                    ...dataToSave,
-                    createdAt: serverTimestamp()
-                });
-                const updatedBanner = { ...globalBanner, homeBannerId: docRef.id };
-                setGlobalBanner(updatedBanner);
-                await setDoc(doc(db, 'cpanel_settings', 'fidelization_banner'), updatedBanner);
+            if (bannerData.homeBannerId) {
+                try {
+                    await updateDoc(doc(db, 'banners', bannerData.homeBannerId), hbData);
+                } catch (e: any) {
+                    if (e.code === 'not-found' && bannerData.bannerImageUrl) {
+                        const dr = await addDoc(collection(db, 'banners'), { ...hbData, createdAt: serverTimestamp() });
+                        bannerData.homeBannerId = dr.id;
+                        await setDoc(doc(db, 'cpanel_settings', 'fidelization_banner'), bannerData);
+                    }
+                }
+            } else if (bannerData.bannerImageUrl) {
+                const dr = await addDoc(collection(db, 'banners'), { ...hbData, createdAt: serverTimestamp() });
+                bannerData.homeBannerId = dr.id;
+                await setDoc(doc(db, 'cpanel_settings', 'fidelization_banner'), bannerData);
             }
 
-            toast.success("Configuración de banner guardada");
+            setGlobalBanner(bannerData);
+            toast.success("¡Configuración guardada!");
         } catch (error: any) {
-            console.error(error);
-            toast.error("Error guardando banner: " + error.message);
+            console.error("Save Error:", error);
+            toast.error("Error al guardar: " + (error.message || "Error de red"));
         } finally {
             setSavingBanner(false);
         }
@@ -387,12 +410,22 @@ export default function FidelizationManager() {
                     </div>
 
                     <button
+                        type="button"
                         onClick={handleSaveGlobalBanner}
                         disabled={savingBanner}
-                        className="w-full bg-slate-900 text-white font-black py-4 rounded-2xl shadow-lg hover:scale-[1.01] active:scale-95 transition-all flex justify-center items-center gap-2"
+                        className="w-full bg-slate-900 text-white font-black py-4 rounded-2xl shadow-lg hover:scale-[1.01] active:scale-95 transition-all flex justify-center items-center gap-2 group disabled:opacity-50"
                     >
-                        {savingBanner ? <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div> : <Save className="w-5 h-5" />}
-                        Guardar Configuración Pública
+                        {savingBanner ? (
+                            <div className="flex items-center gap-2">
+                                <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                                <span>Guardando Cambios...</span>
+                            </div>
+                        ) : (
+                            <>
+                                <Save className="w-5 h-5" />
+                                <span>Guardar Configuración Pública</span>
+                            </>
+                        )}
                     </button>
                 </div>
             </div>
