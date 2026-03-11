@@ -34,11 +34,10 @@ export default function Onboarding() {
         if (user) {
             setFormData(prev => ({
                 ...prev,
-                fullName: prev.fullName || user.displayName || '',
-                phone: prev.phone || userData?.phone || ''
+                fullName: prev.fullName || user.displayName || ''
             }));
         }
-    }, [user, userData]);
+    }, [user]);
 
     const [files, setFiles] = useState<{
         selfie: File | null;
@@ -134,9 +133,9 @@ export default function Onboarding() {
                 <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
                         <img
-                            src="https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/arepalogo.png?alt=media"
+                            src="https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/logo%20oficial.png?alt=media&token=2dd047ea-6c45-4347-8869-1a1edf4253f4"
                             alt="Logo"
-                            className="w-10 h-10 object-contain rounded-full shadow-sm"
+                            className="w-10 h-10 object-contain rounded-xl shadow-sm"
                         />
                         <div>
                             <h1 className="font-black text-xl text-slate-900 leading-none">Registro de Piloto</h1>

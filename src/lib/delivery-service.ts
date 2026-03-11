@@ -98,11 +98,20 @@ export const registerDriver = async (
     return driverData;
 };
 
-export const getDriverProfile = async (uid: string): Promise<DeliveryDriver | null> => {
-    const docRef = doc(db, 'delivery_drivers', uid);
-    const docSnap = await getDoc(docRef);
-    if (docSnap.exists()) {
-        return docSnap.data() as DeliveryDriver;
+export const getDriverProfile = async (idOrEmail: string): Promise<DeliveryDriver | null> => {
+    // Check if it's an email
+    if (idOrEmail.includes('@')) {
+        const q = query(collection(db, 'delivery_drivers'), where('email', '==', idOrEmail));
+        const querySnapshot = await getDocs(q);
+        if (!querySnapshot.empty) {
+            return querySnapshot.docs[0].data() as DeliveryDriver;
+        }
+    } else {
+        const docRef = doc(db, 'delivery_drivers', idOrEmail);
+        const docSnap = await getDoc(docRef);
+        if (docSnap.exists()) {
+            return docSnap.data() as DeliveryDriver;
+        }
     }
     return null;
 };

@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { LogIn, UserPlus, Mail, Lock, User, ArrowRight, ChevronRight, Gavel } from 'lucide-react';
 import { signInWithGoogle, signInWithEmail, signUpWithEmail } from '../../lib/auth-service';
+import { getDriverProfile } from '../../lib/delivery-service';
 import { motion, AnimatePresence } from 'framer-motion';
 
 export default function Login() {
@@ -35,9 +36,20 @@ export default function Login() {
         setError('');
 
         try {
+            // Check if driver exists first
+            const driverData = await getDriverProfile(formData.email); // Need to modify getDriverProfile to support email or do a query
+
             if (mode === 'login') {
+                // If login, driver must exist
+                if (!driverData) {
+                    throw new Error("Usuario no registrado, por favor regístrese");
+                }
                 await signInWithEmail(formData.email, formData.password);
             } else {
+                // If register, driver must NOT exist
+                if (driverData) {
+                    throw new Error("Usuario ya registrado, por favor inicie sesión");
+                }
                 if (!formData.name) throw new Error("Por favor ingresa tu nombre");
                 await signUpWithEmail(formData.email, formData.password, formData.name);
             }
