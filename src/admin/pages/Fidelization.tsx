@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { Gift, Sparkles, Award, TrendingUp, Search, User as UserIcon, Loader2, ChevronRight, Star, ShoppingBag, Plus, Filter, X, CheckCircle2, MessageSquare, Bell, Users } from 'lucide-react';
+import { Gift, Sparkles, Award, TrendingUp, Search, User as UserIcon, Loader2, ChevronRight, Star, ShoppingBag, Plus, Filter, X, CheckCircle2, MessageSquare, Bell, Users, Trash2 } from 'lucide-react';
 import { db } from '../../lib/firebase';
-import { collection, query, getDocs, doc, getDoc, where, orderBy, setDoc, addDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, query, getDocs, doc, getDoc, where, orderBy, setDoc, addDoc, serverTimestamp, deleteDoc } from 'firebase/firestore';
 import { useAuth } from '../../context/AuthContext';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
+import { toast } from 'react-hot-toast';
 
 interface LoyalClient {
     id: string;
@@ -34,7 +35,7 @@ interface ContestWinner {
 interface Contest {
     id: string;
     title: string;
-    prize: string;
+    prizes: string[];
     winnersCount: number;
     filters: {
         productId: string;
@@ -43,7 +44,7 @@ interface Contest {
         gender: string;
         minPurchase: string;
     };
-    winners: ContestWinner[];
+    winners: (ContestWinner & { prize: string })[];
     createdAt: any;
     whatsappMessage: string;
 }
@@ -72,7 +73,7 @@ export default function Fidelization() {
     // Form State
     const [contestForm, setContestForm] = useState({
         title: '',
-        prize: '',
+        prizes: [''],
         winnersCount: '1',
         filters: {
             productId: 'all',
@@ -180,6 +181,33 @@ export default function Fidelization() {
         }
     };
 
+    useEffect(() => {
+        const count = parseInt(contestForm.winnersCount) || 1;
+        setContestForm(prev => {
+            const currentPrizes = [...prev.prizes];
+            if (currentPrizes.length < count) {
+                // Add missing prize slots
+                while (currentPrizes.length < count) currentPrizes.push('');
+            } else if (currentPrizes.length > count) {
+                // Remove excess prize slots
+                currentPrizes.length = count;
+            }
+            return { ...prev, prizes: currentPrizes };
+        });
+    }, [contestForm.winnersCount]);
+
+    const handleDeleteContest = async (contestId: string) => {
+        if (!user || !window.confirm('¿Estás seguro de que deseas eliminar este registro de sorteo?')) return;
+        try {
+            await deleteDoc(doc(db, 'restaurants', user.uid, 'restaurant_contests', contestId));
+            setContests(contests.filter(c => c.id !== contestId));
+            toast.success("Sorteo eliminado correctamente");
+        } catch (error) {
+            console.error("Error deleting contest:", error);
+            toast.error("Error al eliminar el sorteo");
+        }
+    };
+
     const handleCreateContest = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!user) return;
@@ -274,10 +302,13 @@ export default function Fidelization() {
             // STEP 3: Select Random Winners
             const winnersCount = parseInt(contestForm.winnersCount) || 1;
             const shuffled = finalEligibleCandidates.sort(() => 0.5 - Math.random());
-            const selectedWinners = shuffled.slice(0, winnersCount).map(c => ({
+            const winSelection = shuffled.slice(0, winnersCount);
+
+            const selectedWinners = winSelection.map((c, idx) => ({
                 userId: c.id,
                 name: c.name,
-                phone: c.phone
+                phone: c.phone,
+                prize: contestForm.prizes[idx] || contestForm.prizes[0] // fallback to first prize if something went wrong
             }));
 
             // STEP 4: Save Contest to Database
@@ -286,7 +317,7 @@ export default function Fidelization() {
 
             const contestData = {
                 title: contestForm.title,
-                prize: contestForm.prize,
+                prizes: contestForm.prizes,
                 winnersCount: winnersCount,
                 filters: contestForm.filters,
                 winners: selectedWinners,
@@ -303,7 +334,7 @@ export default function Fidelization() {
                     userId: winner.userId,
                     restaurantId: user.uid,
                     title: `¡Ganaste en ${restaurantName}! 🎉`,
-                    body: `Has sido seleccionado como ganador del sorteo "${contestForm.title}". El premio es: ${contestForm.prize}. ¡Felicidades!`,
+                    body: `Has sido seleccionado como ganador del sorteo "${contestForm.title}". Premio: ${winner.prize}. ¡Felicidades!`,
                     read: false,
                     createdAt: serverTimestamp()
                 });
@@ -581,7 +612,14 @@ export default function Fidelization() {
                                             </div>
                                             <div>
                                                 <h4 className="font-black text-slate-800">{c.title}</h4>
-                                                <p className="text-sm font-bold text-slate-500 mb-2">Premio: <span className="text-indigo-600">{c.prize}</span></p>
+                                                <div className="flex flex-col gap-1 my-2">
+                                                    {c.prizes?.map((p, pidx) => (
+                                                        <p key={pidx} className="text-[11px] font-bold text-slate-500">
+                                                            {c.prizes.length > 1 ? `Premio #${pidx + 1}: ` : 'Premio: '}
+                                                            <span className="text-indigo-600">{p}</span>
+                                                        </p>
+                                                    ))}
+                                                </div>
                                                 <div className="flex flex-wrap gap-2 text-[10px] font-black uppercase">
                                                     <span className="bg-slate-100 text-slate-500 px-2 py-1 rounded-lg">Filtros:</span>
                                                     {c.filters.productId !== 'all' && <span className="bg-blue-50 text-blue-600 px-2 py-1 rounded-lg">Por Producto</span>}
@@ -591,16 +629,28 @@ export default function Fidelization() {
                                             </div>
                                         </div>
 
-                                        <div className="bg-slate-50 p-4 rounded-2xl min-w-[200px]">
-                                            <h5 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 border-b border-slate-200 pb-2">Ganadores</h5>
-                                            <div className="space-y-2">
-                                                {c.winners.map((w, i) => (
-                                                    <div key={i} className="flex items-center gap-2">
-                                                        <CheckCircle2 className="w-4 h-4 text-emerald-500" />
-                                                        <span className="text-sm font-black text-slate-700 truncate">{w.name}</span>
-                                                    </div>
-                                                ))}
+                                        <div className="flex flex-col items-end gap-2">
+                                            <div className="bg-slate-50 p-4 rounded-2xl min-w-[200px]">
+                                                <h5 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 border-b border-slate-200 pb-2">Ganadores</h5>
+                                                <div className="space-y-2">
+                                                    {c.winners.map((w: any, i) => (
+                                                        <div key={i} className="flex flex-col gap-0.5">
+                                                            <div className="flex items-center gap-2">
+                                                                <CheckCircle2 className="w-4 h-4 text-emerald-500" />
+                                                                <span className="text-sm font-black text-slate-700 truncate">{w.name}</span>
+                                                            </div>
+                                                            {c.winners.length > 1 && <span className="text-[9px] text-slate-400 ml-6 uppercase font-black italic">Ganó: {w.prize}</span>}
+                                                        </div>
+                                                    ))}
+                                                </div>
                                             </div>
+                                            <button
+                                                onClick={() => handleDeleteContest(c.id)}
+                                                className="p-3 text-slate-300 hover:text-rose-500 hover:bg-rose-50 rounded-xl transition-all"
+                                                title="Eliminar registro"
+                                            >
+                                                <Trash2 className="w-4 h-4" />
+                                            </button>
                                         </div>
                                     </div>
                                 ))
@@ -627,24 +677,36 @@ export default function Fidelization() {
 
                         <form onSubmit={handleCreateContest} className="p-8 space-y-6 max-h-[70vh] overflow-y-auto">
 
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <div className="space-y-4 bg-indigo-50/30 p-6 rounded-[2rem] border border-indigo-100">
                                 <div className="space-y-1">
                                     <label className="text-[10px] font-black text-slate-400 uppercase ml-2">Título del Sorteo</label>
                                     <input
                                         type="text" required
                                         placeholder="Ej: Sorteo de San Valentín"
                                         value={contestForm.title} onChange={e => setContestForm({ ...contestForm, title: e.target.value })}
-                                        className="w-full bg-slate-50 border-2 border-transparent focus:border-indigo-500 p-4 rounded-2xl outline-none font-bold text-slate-700"
+                                        className="w-full bg-white border border-slate-200 focus:border-indigo-500 p-4 rounded-2xl outline-none font-bold text-slate-700 shadow-sm"
                                     />
                                 </div>
-                                <div className="space-y-1">
-                                    <label className="text-[10px] font-black text-slate-400 uppercase ml-2">Premio a entregar</label>
-                                    <input
-                                        type="text" required
-                                        placeholder="Ej: 1 Pizza Familiar"
-                                        value={contestForm.prize} onChange={e => setContestForm({ ...contestForm, prize: e.target.value })}
-                                        className="w-full bg-slate-50 border-2 border-transparent focus:border-indigo-500 p-4 rounded-2xl outline-none font-bold text-slate-700"
-                                    />
+
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    {contestForm.prizes.map((prize, idx) => (
+                                        <div key={idx} className="space-y-1 animate-in slide-in-from-left-4 duration-300">
+                                            <label className="text-[10px] font-black text-slate-400 uppercase ml-2">
+                                                {contestForm.prizes.length > 1 ? `Premio para Ganador #${idx + 1}` : 'Premio a entregar'}
+                                            </label>
+                                            <input
+                                                type="text" required
+                                                placeholder={idx === 0 ? "Ej: 1 Pizza Familiar" : "Siguiente premio..."}
+                                                value={prize}
+                                                onChange={e => {
+                                                    const newPrizes = [...contestForm.prizes];
+                                                    newPrizes[idx] = e.target.value;
+                                                    setContestForm({ ...contestForm, prizes: newPrizes });
+                                                }}
+                                                className="w-full bg-white border border-slate-200 focus:border-indigo-500 p-4 rounded-2xl outline-none font-bold text-indigo-600 shadow-sm"
+                                            />
+                                        </div>
+                                    ))}
                                 </div>
                             </div>
 
@@ -655,12 +717,13 @@ export default function Fidelization() {
 
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                     <div className="space-y-1">
-                                        <label className="text-[10px] font-black text-slate-400 uppercase ml-2">Producto Específico (Opcional)</label>
+                                        <label className="text-[10px] font-black text-slate-400 uppercase ml-2">Requisito de Producto</label>
                                         <select
                                             value={contestForm.filters.productId} onChange={e => setContestForm({ ...contestForm, filters: { ...contestForm.filters, productId: e.target.value } })}
                                             className="w-full bg-white border border-slate-200 focus:border-indigo-500 p-3 rounded-xl outline-none font-bold text-slate-700 text-sm"
                                         >
-                                            <option value="all">Participan compras de cualquier producto</option>
+                                            <option value="all">Participan compras de CUALQUIER producto</option>
+                                            <option disabled>--- Solo si compraron: ---</option>
                                             {products.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                                         </select>
                                     </div>
