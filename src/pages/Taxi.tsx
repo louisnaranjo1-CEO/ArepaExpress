@@ -215,9 +215,16 @@ export default function Taxi() {
     // 5. Route Calculation
     useEffect(() => {
         let isMounted = true;
-        if (step === 'vehicle' && origin && destination && directionsService && !routeCalculationAttempted) {
+
+        const calculateRoute = async () => {
+            if (step !== 'vehicle' || !origin || !destination || !directionsService || routeCalculationAttempted) {
+                return;
+            }
+
             setIsCalculatingRoute(true);
-            setRouteCalculationAttempted(true);
+            // Mark as attempted immediately using a local state is fine if we don't depend on it in a way that causes a recursive loop with cleanup
+            // Actually, the issue was that updating this triggers a cleanup that sets isMounted=false.
+            // We should only set this true AFTER the async call or handle the cleanup better.
 
             const request: google.maps.DirectionsRequest = {
                 origin: { lat: origin.lat, lng: origin.lng },
@@ -225,15 +232,6 @@ export default function Taxi() {
                 travelMode: google.maps.TravelMode.DRIVING,
                 optimizeWaypoints: true,
             };
-
-            // Set a timeout safety in case the API hangs
-            const timeoutId = setTimeout(() => {
-                if (isMounted) {
-                    setIsCalculatingRoute(false);
-                    console.warn("Route calculation timed out. Using fallback.");
-                    applyFallbackRoute();
-                }
-            }, 8000);
 
             const applyFallbackRoute = () => {
                 const distanceMeters = calculateDistance(origin!.lat, origin!.lng, destination!.lat, destination!.lng);
@@ -247,11 +245,21 @@ export default function Taxi() {
                 setDirectionsResponse(null);
             };
 
+            const timeoutId = setTimeout(() => {
+                if (isMounted) {
+                    setIsCalculatingRoute(false);
+                    setRouteCalculationAttempted(true);
+                    console.warn("Route calculation timed out. Using fallback.");
+                    applyFallbackRoute();
+                }
+            }, 8000);
+
             directionsService.route(request, (result, status) => {
                 clearTimeout(timeoutId);
                 if (!isMounted) return;
 
                 setIsCalculatingRoute(false);
+                setRouteCalculationAttempted(true);
 
                 if (status === google.maps.DirectionsStatus.OK && result) {
                     setDirectionsResponse(result);
@@ -266,18 +274,21 @@ export default function Taxi() {
                     }
                 }
 
-                // --- FALLBACK LOGIC ---
-                console.warn(`Route calculation failed with status: ${status}. Using straight-line distance fallback.`);
+                console.warn(`Route calculation failed with status: ${status}. Using fallback.`);
                 applyFallbackRoute();
-
                 if (status === 'ZERO_RESULTS') {
                     toast("Ruta vial no encontrada, estimando distancia en línea recta", { icon: '📏' });
                 } else if (status !== 'OK') {
                     toast.error(`Aviso: Servicio GPS limitado (${status}). Usando distancia en línea recta.`);
                 }
             });
-        }
-        return () => { isMounted = false; };
+        };
+
+        calculateRoute();
+
+        return () => {
+            isMounted = false;
+        };
     }, [step, origin, destination, directionsService, routeCalculationAttempted]);
 
     // 6. Viewport Auto-Adjustment
