@@ -246,6 +246,20 @@ export default function TransportTracker() {
                     </div>
                 </div>
 
+                {/* Guest Banner */}
+                {request.userId?.startsWith('guest_') && (
+                    <div className="bg-gradient-to-r from-orange-500 to-amber-500 p-5 rounded-2xl shadow-lg mb-6 w-full relative overflow-hidden">
+                        <div className="absolute -top-4 -right-4 w-20 h-20 bg-white/20 rounded-full blur-xl animate-pulse"></div>
+                        <h3 className="text-white font-black text-xl mb-2 relative z-10">🎁 ¡Gana viajes gratis!</h3>
+                        <p className="text-white/90 text-xs font-medium mb-3 relative z-10">
+                            Regístrate en 2X3 y obtén increíbles premios, descuentos y acumula puntos en todos los viajes.
+                        </p>
+                        <button onClick={() => navigate('/profile')} className="inline-block bg-white text-orange-600 text-sm font-bold px-5 py-2 rounded-xl shadow-md hover:scale-105 active:scale-95 transition-transform relative z-10">
+                            Registrarme ahora
+                        </button>
+                    </div>
+                )}
+
                 {/* Rating Section if Completed */}
                 {request.status === 'completed' && !request.rating && !hasRated && (
                     <div className="bg-indigo-50/50 border-2 border-indigo-100 rounded-3xl p-6 mb-6 animate-in fade-in slide-in-from-bottom-4">

@@ -21,6 +21,10 @@ export default function Cart() {
   const [loadingDistance, setLoadingDistance] = useState(false);
   const [currentStep, setCurrentStep] = useState(1);
   const [orderNote, setOrderNote] = useState('');
+  const [showGuestModal, setShowGuestModal] = useState(false);
+  const [guestName, setGuestName] = useState('');
+  const [guestPhone, setGuestPhone] = useState('');
+  const [guestCedula, setGuestCedula] = useState('');
 
   // Helper: check if current time is within a shift range
   const isTimeInRange = (time: string, start: string, end: string) => {
@@ -210,9 +214,13 @@ export default function Cart() {
   const finalTotal = totalPrice + deliveryFee;
 
   const handleCheckout = async () => {
+    if (items.length === 0) return;
+
     if (!isWaiter && !user) {
-      navigate('/profile');
-      return;
+      if (!guestName || !guestPhone || !guestCedula) {
+        setShowGuestModal(true);
+        return;
+      }
     }
 
     if (!isWaiter && user && (!userData?.phone || !userData?.cedula)) {
@@ -220,7 +228,6 @@ export default function Cart() {
       navigate('/profile');
       return;
     }
-    if (items.length === 0) return;
 
     setIsCheckingOut(true);
     setError(null);
@@ -239,10 +246,10 @@ export default function Cart() {
       const address = isWaiter ? `Mesa: ${tableNumber}` : (selectedAddress?.reference || "Recoger en local");
 
       const orderData = {
-        userId: isWaiter ? waiterData.id : (user?.uid || ''),
-        userName: isWaiter ? (customerName || `Cliente Mesa ${tableNumber}`) : (user?.displayName || 'Cliente'),
-        userPhone: isWaiter ? '' : (userData?.phone || ''),
-        userEmail: isWaiter ? waiterData.email : (user?.email || ''),
+        userId: isWaiter ? waiterData.id : (user?.uid || 'guest_' + Date.now()),
+        userName: isWaiter ? (customerName || `Cliente Mesa ${tableNumber}`) : (user?.displayName || guestName || 'Cliente Invitado'),
+        userPhone: isWaiter ? '' : (userData?.phone || guestPhone || 'Sin número'),
+        userEmail: isWaiter ? waiterData.email : (user?.email || 'N/A'),
         restaurantId: restaurantId,
         restaurantName: items[0].restaurantName,
         restaurantCity: restaurantData?.location?.city || '',
@@ -312,7 +319,7 @@ export default function Cart() {
         .replace(/{OrderId}/g, docRef.id.slice(-6).toUpperCase())
         .replace(/{RestaurantName}/g, orderData.restaurantName)
         .replace(/{UserName}/g, orderData.userName)
-        .replace(/{Cedula}/g, userData?.cedula || 'N/A')
+        .replace(/{Cedula}/g, userData?.cedula || guestCedula || 'N/A')
         .replace(/{UserPhone}/g, orderData.userPhone)
         .replace(/{OrderItems}/g, itemsList)
         .replace(/{DeliveryFee}/g, orderData.deliveryFee.toFixed(2))
@@ -405,12 +412,26 @@ export default function Cart() {
             ? (isWaiter ? 'La comanda ha sido enviada con éxito a cocina/sistema.' : 'Tu orden está siendo preparada y llegará pronto a tu puerta.')
             : 'Tu orden no fue procesada. Puedes volver a intentarlo cuando quieras.'}
         </p>
-        <Link to={isWaiter ? `/restaurant/${waiterRestaurantId || ''}` : "/profile"} className="w-full max-w-xs bg-primary hover:bg-orange-600 text-white py-4 rounded-2xl font-bold shadow-lg shadow-orange-500/30 transition-all flex items-center justify-center gap-2">
-          {isWaiter ? 'Volver al Menú' : 'Ver mis pedidos'}
+
+        {!isWaiter && !user && purchaseConfirmed && (
+          <div className="bg-gradient-to-r from-orange-500 to-amber-500 p-5 rounded-2xl shadow-lg mb-8 max-w-sm w-full mx-auto relative overflow-hidden">
+            <div className="absolute -top-4 -right-4 w-20 h-20 bg-white/20 rounded-full blur-xl animate-pulse"></div>
+            <h3 className="text-white font-black text-xl mb-2 relative z-10">🎁 ¡No te pierdas de nada!</h3>
+            <p className="text-white/90 text-sm font-medium mb-4 relative z-10">
+              Regístrate ahora, gana increíbles premios, acumula puntos y accede a beneficios exclusivos en cada compra.
+            </p>
+            <Link to="/profile" className="inline-block bg-white text-orange-600 font-bold px-6 py-2 rounded-xl shadow-md hover:scale-105 active:scale-95 transition-transform relative z-10">
+              Registrarme y Ganar
+            </Link>
+          </div>
+        )}
+
+        <Link to={isWaiter ? `/restaurant/${waiterRestaurantId || ''}` : "/"} className="w-full max-w-xs bg-primary hover:bg-orange-600 text-white py-4 rounded-2xl font-bold shadow-lg shadow-orange-500/30 transition-all flex items-center justify-center gap-2">
+          {isWaiter ? 'Volver al Menú' : 'Ir al inicio'}
         </Link>
-        {!isWaiter && (
-          <Link to="/" className="mt-4 text-slate-500 font-bold hover:text-primary transition-colors">
-            Volver al inicio
+        {!isWaiter && user && (
+          <Link to="/profile" className="mt-4 text-slate-500 font-bold hover:text-primary transition-colors">
+            Ver mis pedidos
           </Link>
         )}
       </div>
@@ -672,11 +693,7 @@ export default function Cart() {
                 <div className="sticky bottom-6 mt-6">
                   <button
                     onClick={() => {
-                      if (!isWaiter && !user) {
-                        navigate('/profile');
-                      } else {
-                        setCurrentStep(3);
-                      }
+                      setCurrentStep(3);
                     }}
                     disabled={isWaiter ? !tableNumber : !selectedAddress}
                     className="w-full bg-primary hover:bg-orange-600 disabled:bg-slate-300 disabled:text-slate-500 text-white font-bold text-lg py-4 rounded-2xl shadow-lg shadow-orange-500/30 transition-all transform active:scale-95 flex items-center justify-center gap-2 group"
@@ -796,6 +813,62 @@ export default function Cart() {
             <Link to="/profile" className="block w-full text-center mt-4 text-primary font-bold text-sm bg-primary/10 py-3 rounded-xl hover:bg-primary/20 transition-colors">
               Gestionar Direcciones
             </Link>
+          </div>
+        </div>
+      )}
+
+      {showGuestModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center animate-in fade-in">
+          <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={() => setShowGuestModal(false)}></div>
+          <div className="relative w-full max-w-sm mx-4 bg-white rounded-3xl p-6 shadow-2xl animate-in zoom-in-95">
+            <h3 className="text-xl font-black text-slate-900 mb-2 text-center">Datos del Pedido</h3>
+            <p className="text-sm text-slate-500 mb-6 text-center">Requerimos estos datos básicos para enviarle la información al restaurante</p>
+
+            <div className="space-y-4">
+              <div>
+                <label className="text-xs font-bold text-slate-500 mb-1 block">Nombre y Apellido</label>
+                <input
+                  type="text"
+                  value={guestName}
+                  onChange={(e) => setGuestName(e.target.value)}
+                  placeholder="Ej. Juan Pérez"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm focus:border-primary focus:outline-none"
+                />
+              </div>
+              <div>
+                <label className="text-xs font-bold text-slate-500 mb-1 block">Cédula</label>
+                <input
+                  type="text"
+                  value={guestCedula}
+                  onChange={(e) => setGuestCedula(e.target.value.replace(/\D/g, ''))}
+                  placeholder="Ej. 12345678"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm focus:border-primary focus:outline-none"
+                />
+              </div>
+              <div>
+                <label className="text-xs font-bold text-slate-500 mb-1 block">Teléfono (WhatsApp)</label>
+                <input
+                  type="tel"
+                  value={guestPhone}
+                  onChange={(e) => setGuestPhone(e.target.value.replace(/\D/g, ''))}
+                  placeholder="Ej. 04141234567"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm focus:border-primary focus:outline-none"
+                />
+              </div>
+              <button
+                onClick={() => {
+                  if (!guestName || !guestCedula || !guestPhone) {
+                    alert("Por favor completa todos los campos");
+                    return;
+                  }
+                  setShowGuestModal(false);
+                  handleCheckout();
+                }}
+                className="w-full bg-primary hover:bg-orange-600 text-white font-bold py-3 mt-2 rounded-xl"
+              >
+                Continuar con el Pedido
+              </button>
+            </div>
           </div>
         </div>
       )}

@@ -95,6 +95,11 @@ export default function Taxi() {
     const [isCalculatingRoute, setIsCalculatingRoute] = useState(false);
     const [routeCalculationAttempted, setRouteCalculationAttempted] = useState(false);
 
+    const [showGuestModal, setShowGuestModal] = useState(false);
+    const [guestName, setGuestName] = useState('');
+    const [guestPhone, setGuestPhone] = useState('');
+    const [guestCedula, setGuestCedula] = useState('');
+
     const geocoderRef = useRef<google.maps.Geocoder | null>(null);
     const mapCenterRef = useRef(defaultCenter);
 
@@ -223,7 +228,7 @@ export default function Taxi() {
 
             // Set a timeout safety in case the API hangs
             const timeoutId = setTimeout(() => {
-                if (isMounted && isCalculatingRoute) {
+                if (isMounted) {
                     setIsCalculatingRoute(false);
                     console.warn("Route calculation timed out. Using fallback.");
                     applyFallbackRoute();
@@ -382,9 +387,12 @@ export default function Taxi() {
 
     const handleRequestTaxi = async () => {
         if (!user) {
-            toast.error("Debes iniciar sesión para solicitar un vehículo.");
-            return;
+            if (!guestName || !guestPhone || !guestCedula) {
+                setShowGuestModal(true);
+                return;
+            }
         }
+
         if (!origin || !destination) {
             toast.error("Debes seleccionar un origen y un destino.");
             return;
@@ -424,7 +432,7 @@ export default function Taxi() {
             if (selectedPaymentMethod === 'wallet') {
                 // Wallet has no proof to upload
             } else if (paymentProof && selectedPaymentMethod !== 'cash') {
-                const storageRef = ref(storage, `taxi_proofs/${user.uid}/${Date.now()}_${paymentProof.name}`);
+                const storageRef = ref(storage, `taxi_proofs/${user?.uid || 'guest_' + Date.now()}/${Date.now()}_${paymentProof.name}`);
                 const snapshot = await uploadBytes(storageRef, paymentProof);
                 proofUrl = await getDownloadURL(snapshot.ref);
             } else if (selectedPaymentMethod !== 'cash' && !paymentRef) {
@@ -441,9 +449,10 @@ export default function Taxi() {
 
             const orderData = {
                 type: 'transport',
-                userId: user.uid,
-                userName: userData?.displayName || user.displayName || user.email,
-                userPhone: userData?.phone || '',
+                userId: user?.uid || 'guest_' + Date.now(),
+                userName: userData?.displayName || user?.displayName || user?.email || guestName || 'Usuario Invitado',
+                userPhone: userData?.phone || guestPhone || 'Sin número',
+                userCedula: userData?.cedula || guestCedula || 'N/A',
                 origin,
                 destination,
                 vehicleType,
@@ -462,7 +471,7 @@ export default function Taxi() {
 
             const requestRef = await addDoc(collection(db, 'transport_requests'), orderData);
 
-            if (selectedPaymentMethod === 'wallet') {
+            if (selectedPaymentMethod === 'wallet' && user) {
                 // Deduct from wallet
                 const newBalance = (userData?.walletBalance || 0) - parseFloat(clientTotal as string);
                 await updateDoc(doc(db, 'users', user.uid), {
@@ -1042,6 +1051,62 @@ export default function Taxi() {
                     )}
                 </div>
             </div>
+
+            {showGuestModal && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center animate-in fade-in">
+                    <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={() => setShowGuestModal(false)}></div>
+                    <div className="relative w-full max-w-sm mx-4 bg-white rounded-3xl p-6 shadow-2xl animate-in zoom-in-95">
+                        <h3 className="text-xl font-black text-slate-900 mb-2 text-center">Datos del Pasajero</h3>
+                        <p className="text-sm text-slate-500 mb-6 text-center">Requerimos estos datos para que el conductor pueda identificarte</p>
+
+                        <div className="space-y-4">
+                            <div>
+                                <label className="text-xs font-bold text-slate-500 mb-1 block">Nombre y Apellido</label>
+                                <input
+                                    type="text"
+                                    value={guestName}
+                                    onChange={(e) => setGuestName(e.target.value)}
+                                    placeholder="Ej. Juan Pérez"
+                                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm focus:border-orange-500 focus:outline-none"
+                                />
+                            </div>
+                            <div>
+                                <label className="text-xs font-bold text-slate-500 mb-1 block">Cédula</label>
+                                <input
+                                    type="text"
+                                    value={guestCedula}
+                                    onChange={(e) => setGuestCedula(e.target.value.replace(/\D/g, ''))}
+                                    placeholder="Ej. 12345678"
+                                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm focus:border-orange-500 focus:outline-none"
+                                />
+                            </div>
+                            <div>
+                                <label className="text-xs font-bold text-slate-500 mb-1 block">Teléfono (WhatsApp)</label>
+                                <input
+                                    type="tel"
+                                    value={guestPhone}
+                                    onChange={(e) => setGuestPhone(e.target.value.replace(/\D/g, ''))}
+                                    placeholder="Ej. 04141234567"
+                                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm focus:border-orange-500 focus:outline-none"
+                                />
+                            </div>
+                            <button
+                                onClick={() => {
+                                    if (!guestName || !guestCedula || !guestPhone) {
+                                        alert("Por favor completa todos los campos para que te busquen");
+                                        return;
+                                    }
+                                    setShowGuestModal(false);
+                                    handleRequestTaxi();
+                                }}
+                                className="w-full bg-orange-500 hover:bg-orange-600 text-white font-bold py-3 mt-2 rounded-xl"
+                            >
+                                Continuar con el Viaje
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }
