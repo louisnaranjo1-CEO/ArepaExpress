@@ -166,7 +166,7 @@ export default function DriverProfile() {
             if (vehicleFile) {
                 const vRef = ref(storage, `delivery_drivers/${user.uid}/vehicle_${Date.now()}`);
                 const snap = await uploadBytes(vRef, vehicleFile);
-                documents.vehicleImageUrl = await getDownloadURL(snap.ref);
+                documents.vehicleUrl = await getDownloadURL(snap.ref);
             }
 
             const requestData = {

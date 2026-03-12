@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { collection, query, getDocs, doc, updateDoc, onSnapshot, where, writeBatch, setDoc } from 'firebase/firestore';
-import { db } from '../../lib/firebase';
+import { collection, query, getDocs, doc, updateDoc, onSnapshot, where, writeBatch, setDoc, deleteDoc } from 'firebase/firestore';
+import { db, storage } from '../../lib/firebase';
+import { ref, deleteObject } from 'firebase/storage';
 import { DeliveryDriver } from '../../lib/delivery-service';
 import { Truck, CheckCircle2, XCircle, FileText, User, DollarSign, ExternalLink, Plus, Trash2, Clock, Sun, Moon, Activity } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -90,10 +91,57 @@ _Enviado desde Deli Express App_`
     const activeDrivers = drivers.filter(d => d.status === 'active');
 
     const handleUpdateStatus = async (id: string, status: 'active' | 'rejected' | 'inactive') => {
-        if (!window.confirm(`¿Estás seguro de mover este piloto al estado: ${status === 'active' ? 'Activo' : status === 'rejected' ? 'Rechazado' : 'Inactivo'}?`)) return;
+        const message = status === 'rejected'
+            ? "¿Estás seguro de RECHAZAR este piloto? Se eliminarán permanentemente todos sus documentos y deberá registrarse de nuevo desde cero."
+            : `¿Estás seguro de mover este piloto al estado: ${status === 'active' ? 'Activo' : 'Inactivo'}?`;
+
+        if (!window.confirm(message)) return;
+
         try {
-            await updateDoc(doc(db, 'delivery_drivers', id), { status });
-            // Here we could also trigger a push notification to their device if we had FCM implemented
+            if (status === 'rejected') {
+                const driver = drivers.find(d => d.id === id);
+                if (driver && driver.documents) {
+                    const urls = [
+                        driver.documents.selfieUrl,
+                        driver.documents.vehicleUrl,
+                        (driver.documents as any).vehicleImageUrl, // Checking both for consistency
+                        driver.documents.licenseUrl
+                    ].filter(Boolean);
+
+                    for (const url of urls) {
+                        try {
+                            const fileRef = ref(storage, url);
+                            await deleteObject(fileRef);
+                        } catch (err) {
+                            console.error("Error deleting file during rejection:", url, err);
+                        }
+                    }
+                }
+
+                // Delete update requests for this driver
+                const qUpdates = query(collection(db, 'delivery_update_requests'), where('driverId', '==', id));
+                const updateSnaps = await getDocs(qUpdates);
+                for (const docUpd of updateSnaps.docs) {
+                    // Try to delete files in update request too if they exist
+                    const updData = docUpd.data();
+                    if (updData.newData && updData.newData.documents) {
+                        const updUrls = [
+                            updData.newData.documents.selfieUrl,
+                            updData.newData.documents.vehicleUrl,
+                            updData.newData.documents.licenseUrl
+                        ].filter(Boolean);
+                        for (const u of updUrls) {
+                            try { await deleteObject(ref(storage, u)); } catch (e) { }
+                        }
+                    }
+                    await deleteDoc(docUpd.ref);
+                }
+
+                await deleteDoc(doc(db, 'delivery_drivers', id));
+                alert("Piloto rechazado. Se eliminó el perfil, solicitudes de actualización y documentos correctamente.");
+            } else {
+                await updateDoc(doc(db, 'delivery_drivers', id), { status });
+            }
             setSelectedDriver(null);
         } catch (error) {
             console.error("Error updating driver status:", error);

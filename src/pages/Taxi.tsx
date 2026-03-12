@@ -100,6 +100,7 @@ export default function Taxi() {
     const [guestPhone, setGuestPhone] = useState('');
     const [guestCedula, setGuestCedula] = useState('');
 
+
     const geocoderRef = useRef<google.maps.Geocoder | null>(null);
     const mapCenterRef = useRef(defaultCenter);
 
@@ -212,7 +213,18 @@ export default function Taxi() {
         }
     };
 
-    // 5. Route Calculation
+    // 5. Reset Route on location change
+    useEffect(() => {
+        if (routeCalculationAttempted || routeInfo || directionsResponse) {
+            console.log("Resetting route calculation because location changed");
+            setRouteCalculationAttempted(false);
+            setRouteInfo(null);
+            setDirectionsResponse(null);
+            setIsCalculatingRoute(false);
+        }
+    }, [origin?.lat, origin?.lng, destination?.lat, destination?.lng]);
+
+    // 6. Route Calculation
     useEffect(() => {
         let isMounted = true;
 
@@ -221,16 +233,13 @@ export default function Taxi() {
                 return;
             }
 
+            console.log("Starting route calculation...");
             setIsCalculatingRoute(true);
-            // Mark as attempted immediately using a local state is fine if we don't depend on it in a way that causes a recursive loop with cleanup
-            // Actually, the issue was that updating this triggers a cleanup that sets isMounted=false.
-            // We should only set this true AFTER the async call or handle the cleanup better.
 
             const request: google.maps.DirectionsRequest = {
                 origin: { lat: origin.lat, lng: origin.lng },
                 destination: { lat: destination.lat, lng: destination.lng },
                 travelMode: google.maps.TravelMode.DRIVING,
-                optimizeWaypoints: true,
             };
 
             const applyFallbackRoute = () => {
@@ -258,6 +267,7 @@ export default function Taxi() {
                 clearTimeout(timeoutId);
                 if (!isMounted) return;
 
+                console.log("Route calculation completed with status:", status);
                 setIsCalculatingRoute(false);
                 setRouteCalculationAttempted(true);
 
@@ -278,8 +288,8 @@ export default function Taxi() {
                 applyFallbackRoute();
                 if (status === 'ZERO_RESULTS') {
                     toast("Ruta vial no encontrada, estimando distancia en línea recta", { icon: '📏' });
-                } else if (status !== 'OK') {
-                    toast.error(`Aviso: Servicio GPS limitado (${status}). Usando distancia en línea recta.`);
+                } else {
+                    toast.error(`Aviso: Servicio GPS limitado. Usando distancia en línea recta.`);
                 }
             });
         };
@@ -289,7 +299,7 @@ export default function Taxi() {
         return () => {
             isMounted = false;
         };
-    }, [step, origin, destination, directionsService, routeCalculationAttempted]);
+    }, [step, origin?.lat, origin?.lng, destination?.lat, destination?.lng, directionsService, routeCalculationAttempted]);
 
     // 6. Viewport Auto-Adjustment
     useEffect(() => {
