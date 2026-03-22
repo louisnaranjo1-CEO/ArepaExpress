@@ -4,7 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import { collection, addDoc, serverTimestamp, doc, getDoc, updateDoc, getDocs, query, where, writeBatch } from 'firebase/firestore';
 import { db, storage } from '../lib/firebase';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { Car, Bike, MapPin, Navigation, ArrowRight, CheckCircle2, X, Heart, History, Star, Wallet, Upload } from 'lucide-react';
+import { Car, Bike, MapPin, Navigation, ArrowRight, CheckCircle2, X, Heart, History, Star, Wallet, Upload, Copy, Check } from 'lucide-react';
 import { GoogleMap, useJsApiLoader, Marker, DirectionsRenderer } from '@react-google-maps/api';
 import toast from 'react-hot-toast';
 import { calculateDistance } from '../lib/geo';
@@ -593,6 +593,25 @@ export default function Taxi() {
         }
     };
 
+    const [copiedField, setCopiedField] = useState<string | null>(null);
+
+    const handleCopy = (text: string, fieldId: string) => {
+        navigator.clipboard.writeText(text);
+        setCopiedField(fieldId);
+        toast.success("Copiado al portapapeles");
+        setTimeout(() => setCopiedField(null), 2000);
+    };
+
+    const CopyButton = ({ text, id }: { text: string, id: string }) => (
+        <button 
+            onClick={() => handleCopy(text, id)}
+            className="p-1.5 hover:bg-slate-200 rounded-lg transition-colors text-slate-400 hover:text-primary active:scale-95"
+            title="Copiar"
+        >
+            {copiedField === id ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}
+        </button>
+    );
+
     if (!isLoaded) {
         return (
             <div className="flex-1 flex flex-col items-center justify-center bg-slate-50 min-h-[100dvh]">
@@ -1040,10 +1059,19 @@ export default function Taxi() {
                                             </button>
 
                                             {selectedPaymentMethod === 'pagoMovil' && (
-                                                <div className="p-4 bg-slate-50 border-t items-center border-slate-100 text-sm space-y-2 pointer-events-auto">
-                                                    <p><span className="font-bold text-slate-700">Banco:</span> {paymentMethods.pagoMovil.bank}</p>
-                                                    <p><span className="font-bold text-slate-700">Teléfono:</span> {paymentMethods.pagoMovil.phone}</p>
-                                                    <p><span className="font-bold text-slate-700">Cédula:</span> {paymentMethods.pagoMovil.idf}</p>
+                                                <div className="p-4 bg-slate-50 border-t items-center border-slate-100 text-sm space-y-3 pointer-events-auto">
+                                                    <div className="flex items-center justify-between bg-white p-3 rounded-xl border border-slate-100">
+                                                        <p><span className="font-bold text-slate-700">Banco:</span> {paymentMethods.pagoMovil.bank}</p>
+                                                        <CopyButton text={paymentMethods.pagoMovil.bank} id="pm-bank" />
+                                                    </div>
+                                                    <div className="flex items-center justify-between bg-white p-3 rounded-xl border border-slate-100">
+                                                        <p><span className="font-bold text-slate-700">Teléfono:</span> {paymentMethods.pagoMovil.phone}</p>
+                                                        <CopyButton text={paymentMethods.pagoMovil.phone} id="pm-phone" />
+                                                    </div>
+                                                    <div className="flex items-center justify-between bg-white p-3 rounded-xl border border-slate-100">
+                                                        <p><span className="font-bold text-slate-700">Cédula:</span> {paymentMethods.pagoMovil.idf}</p>
+                                                        <CopyButton text={paymentMethods.pagoMovil.idf} id="pm-id" />
+                                                    </div>
 
                                                     <div className="mt-4 pt-4 border-t border-slate-200">
                                                         <label className="block text-xs font-bold text-slate-500 mb-2">Comprobante o Referencia</label>
@@ -1091,9 +1119,15 @@ export default function Taxi() {
                                             </button>
 
                                             {selectedPaymentMethod === 'zelle' && (
-                                                <div className="p-4 bg-slate-50 border-t border-slate-100 text-sm space-y-2 pointer-events-auto">
-                                                    <p><span className="font-bold text-slate-700">Correo:</span> {paymentMethods.zelle.email}</p>
-                                                    <p><span className="font-bold text-slate-700">Nombre:</span> {paymentMethods.zelle.name}</p>
+                                                <div className="p-4 bg-slate-50 border-t border-slate-100 text-sm space-y-3 pointer-events-auto">
+                                                    <div className="flex items-center justify-between bg-white p-3 rounded-xl border border-slate-100">
+                                                        <p><span className="font-bold text-slate-700">Correo:</span> {paymentMethods.zelle.email}</p>
+                                                        <CopyButton text={paymentMethods.zelle.email} id="zelle-email" />
+                                                    </div>
+                                                    <div className="flex items-center justify-between bg-white p-3 rounded-xl border border-slate-100">
+                                                        <p><span className="font-bold text-slate-700">Nombre:</span> {paymentMethods.zelle.name}</p>
+                                                        <CopyButton text={paymentMethods.zelle.name} id="zelle-name" />
+                                                    </div>
 
                                                     <div className="mt-4 pt-4 border-t border-slate-200">
                                                         <label className="block text-xs font-bold text-slate-500 mb-2">Comprobante o Referencia</label>
