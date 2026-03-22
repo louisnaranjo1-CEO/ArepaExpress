@@ -932,8 +932,8 @@ _Enviado desde Deli Express App_`
                                 </div>
                                 <div>
                                     <h4 className="text-sm font-bold text-slate-900 mb-3 flex items-center gap-2"><Truck className="w-4 h-4 text-slate-400" /> Vehículo (Placa: {selectedDriver.vehiclePlate})</h4>
-                                    <a href={selectedDriver.documents.vehicleUrl} target="_blank" rel="noreferrer" className="block relative group rounded-2xl overflow-hidden border border-slate-200 aspect-video bg-slate-100">
-                                        <img src={selectedDriver.documents.vehicleUrl} alt="Vehicle" className="w-full h-full object-cover" />
+                                    <a href={selectedDriver.documents.vehicleUrl || (selectedDriver.documents as any).vehicleImageUrl} target="_blank" rel="noreferrer" className="block relative group rounded-2xl overflow-hidden border border-slate-200 aspect-video bg-slate-100">
+                                        <img src={selectedDriver.documents.vehicleUrl || (selectedDriver.documents as any).vehicleImageUrl} alt="Vehicle" className="w-full h-full object-cover" />
                                         <div className="absolute inset-0 bg-slate-900/50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
                                             <ExternalLink className="text-white w-8 h-8" />
                                         </div>

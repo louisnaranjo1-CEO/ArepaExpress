@@ -150,21 +150,21 @@ export default function DriverProfile() {
 
             // Upload Selfie
             if (selfieFile) {
-                const sRef = ref(storage, `delivery_drivers/${user.uid}/selfie_${Date.now()}`);
+                const sRef = ref(storage, `delivery_docs/${user.uid}/selfie_${Date.now()}`);
                 const snap = await uploadBytes(sRef, selfieFile);
                 documents.selfieUrl = await getDownloadURL(snap.ref);
             }
 
             // Upload License
             if (licenseFile) {
-                const lRef = ref(storage, `delivery_drivers/${user.uid}/license_${Date.now()}`);
+                const lRef = ref(storage, `delivery_docs/${user.uid}/license_${Date.now()}`);
                 const snap = await uploadBytes(lRef, licenseFile);
                 documents.licenseUrl = await getDownloadURL(snap.ref);
             }
 
             // Upload Vehicle Photo
             if (vehicleFile) {
-                const vRef = ref(storage, `delivery_drivers/${user.uid}/vehicle_${Date.now()}`);
+                const vRef = ref(storage, `delivery_docs/${user.uid}/vehicle_${Date.now()}`);
                 const snap = await uploadBytes(vRef, vehicleFile);
                 documents.vehicleUrl = await getDownloadURL(snap.ref);
             }
@@ -437,8 +437,8 @@ export default function DriverProfile() {
                                     <Truck className="w-4 h-4 text-indigo-500" />
                                 </div>
                                 <div className="relative group/vehicle h-32 rounded-2xl bg-slate-50 border-2 border-dashed border-slate-200 flex flex-col items-center justify-center overflow-hidden transition-all group-hover/vehicle:border-indigo-500/50">
-                                    {(vehiclePreview || driverProfile?.documents?.vehicleImageUrl) ? (
-                                        <img src={vehiclePreview || driverProfile.documents.vehicleImageUrl} alt="Vehicle" className="w-full h-full object-cover" />
+                                    {(vehiclePreview || driverProfile?.documents?.vehicleUrl) ? (
+                                        <img src={vehiclePreview || driverProfile.documents.vehicleUrl} alt="Vehicle" className="w-full h-full object-cover" />
                                     ) : (
                                         <div className="flex flex-col items-center gap-1 text-slate-400">
                                             <ImageIcon className="w-6 h-6" />
