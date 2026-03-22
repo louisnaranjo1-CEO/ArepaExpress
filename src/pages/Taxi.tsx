@@ -101,6 +101,8 @@ export default function Taxi() {
     const [guestCedula, setGuestCedula] = useState('');
 
 
+    const [isFollowingUser, setIsFollowingUser] = useState(false);
+    const watchIdRef = useRef<number | null>(null);
     const geocoderRef = useRef<google.maps.Geocoder | null>(null);
     const mapCenterRef = useRef(defaultCenter);
 
@@ -199,6 +201,13 @@ export default function Taxi() {
     // 4. Map Event Listeners
     const handleMapDragStart = () => {
         setIsDragging(true);
+        if (isFollowingUser) {
+            setIsFollowingUser(false);
+            if (watchIdRef.current !== null) {
+                navigator.geolocation.clearWatch(watchIdRef.current);
+                watchIdRef.current = null;
+            }
+        }
     };
 
     const handleMapDragEnd = () => {
@@ -212,6 +221,50 @@ export default function Taxi() {
             }
         }
     };
+
+    const toggleFollowUser = () => {
+        if (!navigator.geolocation) {
+            toast.error("Tu navegador no soporta geolocalización");
+            return;
+        }
+
+        if (isFollowingUser) {
+            setIsFollowingUser(false);
+            if (watchIdRef.current !== null) {
+                navigator.geolocation.clearWatch(watchIdRef.current);
+                watchIdRef.current = null;
+            }
+        } else {
+            setIsFollowingUser(true);
+            const id = navigator.geolocation.watchPosition(
+                (pos) => {
+                    const newPos = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+                    setCurrentCenter(newPos);
+                    mapCenterRef.current = newPos;
+                    if (map) {
+                        map.panTo(newPos);
+                        updateAddressFromCenter(newPos, step === 'destination' ? 'destination' : 'origin');
+                    }
+                },
+                (error) => {
+                    console.error("WatchPosition error:", error);
+                    setIsFollowingUser(false);
+                    toast.error("No se pudo obtener tu ubicación en tiempo real");
+                },
+                { enableHighAccuracy: true }
+            );
+            watchIdRef.current = id;
+        }
+    };
+
+    // Cleanup watcher on unmount
+    useEffect(() => {
+        return () => {
+            if (watchIdRef.current !== null) {
+                navigator.geolocation.clearWatch(watchIdRef.current);
+            }
+        };
+    }, []);
 
     // 5. Reset Route on location change
     useEffect(() => {
@@ -673,18 +726,18 @@ export default function Taxi() {
             {/* Locate Me Button Overlay */}
             {(step === 'origin' || step === 'destination') && (
                 <button
-                    onClick={() => {
-                        if (navigator.geolocation && map) {
-                            navigator.geolocation.getCurrentPosition((pos) => {
-                                const newPos = { lat: pos.coords.latitude, lng: pos.coords.longitude };
-                                map.panTo(newPos);
-                                updateAddressFromCenter(newPos, step);
-                            });
-                        }
-                    }}
-                    className="absolute bottom-40 right-6 z-20 w-12 h-12 bg-white rounded-full shadow-xl flex items-center justify-center active:scale-95 text-orange-500"
+                    onClick={toggleFollowUser}
+                    className={`absolute bottom-[35%] right-6 z-40 w-14 h-14 rounded-full shadow-2xl flex items-center justify-center transition-all duration-300 active:scale-90 ${
+                        isFollowingUser 
+                        ? 'bg-orange-500 text-white animate-pulse ring-4 ring-orange-500/30' 
+                        : 'bg-white text-orange-500'
+                    }`}
+                    title={isFollowingUser ? "Detener seguimiento" : "Ubicación en tiempo real"}
                 >
-                    <Navigation className="w-5 h-5 fill-orange-500/20" />
+                    <Navigation className={`w-6 h-6 ${isFollowingUser ? 'fill-white' : 'fill-orange-500/20'}`} />
+                    {isFollowingUser && (
+                        <div className="absolute -top-1 -right-1 w-4 h-4 bg-emerald-500 rounded-full border-2 border-white shadow-sm animate-bounce" />
+                    )}
                 </button>
             )}
 
@@ -717,9 +770,21 @@ export default function Taxi() {
                             <button
                                 onClick={confirmOrigin}
                                 disabled={isDragging || !origin}
-                                className="w-full bg-black text-white py-4 rounded-xl font-black shadow-lg shadow-black/20 flex justify-center items-center gap-2 active:scale-95 transition-all disabled:opacity-50 mb-6"
+                                className="w-full bg-black text-white py-4 rounded-xl font-black shadow-lg shadow-black/20 flex justify-center items-center gap-2 active:scale-95 transition-all disabled:opacity-50 mb-4"
                             >
                                 Confirmar Partida
+                            </button>
+
+                            <button
+                                onClick={toggleFollowUser}
+                                className={`w-full py-3 rounded-xl font-bold flex justify-center items-center gap-2 transition-all border-2 mb-6 ${
+                                    isFollowingUser 
+                                    ? 'bg-emerald-50 text-emerald-600 border-emerald-200' 
+                                    : 'bg-slate-50 text-slate-600 border-slate-100'
+                                }`}
+                            >
+                                <Navigation className={`w-4 h-4 ${isFollowingUser ? 'fill-emerald-600' : ''}`} />
+                                {isFollowingUser ? 'Siguiendo ubicación en vivo' : 'Usar mi ubicación actual'}
                             </button>
 
                             {userData?.addresses && userData.addresses.length > 0 && (
