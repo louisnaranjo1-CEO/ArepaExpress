@@ -268,6 +268,51 @@ export default function DriverProfile() {
                         </div>
                     </div>
 
+                    {/* Audio Alerts Toggle */}
+                    <div className="space-y-3 pb-6 border-b border-slate-100">
+                        <label className="block text-xs font-black text-slate-400 uppercase tracking-widest ml-1">Alertas Sonoras</label>
+                        <div
+                            onClick={async () => {
+                                if (!user) return;
+                                setUpdatingNotifications(true);
+                                try {
+                                    const newValue = !(driverProfile?.audioAlertsEnabled ?? true);
+                                    await updateDoc(doc(db, 'delivery_drivers', user.uid), {
+                                        audioAlertsEnabled: newValue
+                                    });
+                                } catch (err) {
+                                    console.error("Error toggling audio alerts", err);
+                                } finally {
+                                    setUpdatingNotifications(false);
+                                }
+                            }}
+                            className={`w-full flex items-center justify-between p-4 bg-slate-50 rounded-2xl transition-all cursor-pointer hover:bg-slate-100 ${updatingNotifications ? 'opacity-70 pointer-events-none' : ''}`}
+                        >
+                            <div className="flex items-center gap-3">
+                                <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center shadow-sm">
+                                    <Smartphone className="w-5 h-5 text-indigo-500" />
+                                </div>
+                                <div className="flex flex-col">
+                                    <span className="font-bold text-slate-700">Sonido de Notificación</span>
+                                    <span className="text-[10px] text-slate-400 font-medium">Reproducir alerta al recibir pedidos</span>
+                                </div>
+                            </div>
+                            <div
+                                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${(driverProfile?.audioAlertsEnabled ?? true) ? 'bg-indigo-600' : 'bg-slate-300'
+                                    }`}
+                            >
+                                {updatingNotifications ? (
+                                    <div className="ml-1 w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                                ) : (
+                                    <span
+                                        className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${(driverProfile?.audioAlertsEnabled ?? true) ? 'translate-x-6' : 'translate-x-1'
+                                            }`}
+                                    />
+                                )}
+                            </div>
+                        </div>
+                    </div>
+
                     <form onSubmit={handleChangeEmail} className="space-y-3">
                         <label className="block text-xs font-black text-slate-400 uppercase tracking-widest ml-1">Cambiar Correo Electrónico</label>
                         <div className="flex gap-2">

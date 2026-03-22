@@ -1,11 +1,12 @@
 import { useEffect, useRef } from 'react';
-import { collection, query, where, onSnapshot } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, doc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 
 const NOTIFICATION_SOUND_URL = "https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/Digital_Cascade_01.mp3?alt=media";
 
 export function useGlobalAudioAlerts(role?: 'cpanel' | 'restaurant' | 'delivery' | 'user', userId?: string) {
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const audioAlertsEnabledRef = useRef<boolean>(true);
 
   useEffect(() => {
     audioRef.current = new Audio(NOTIFICATION_SOUND_URL);
@@ -18,6 +19,8 @@ export function useGlobalAudioAlerts(role?: 'cpanel' | 'restaurant' | 'delivery'
     let unsubscribes: (() => void)[] = [];
 
     const playAlert = () => {
+      if (!audioAlertsEnabledRef.current && role !== 'cpanel') return;
+      
       if (audioRef.current) {
         // Reset time to play multiple overlapping sounds in succession if needed
         audioRef.current.currentTime = 0;
@@ -106,6 +109,15 @@ export function useGlobalAudioAlerts(role?: 'cpanel' | 'restaurant' | 'delivery'
     }
 
     if (role === 'restaurant' && userId) {
+      // Preference Listener for Sound
+      unsubscribes.push(
+        onSnapshot(doc(db, 'restaurants', userId), (snap) => {
+            if (snap.exists()) {
+                audioAlertsEnabledRef.current = snap.data().audioAlertsEnabled ?? true;
+            }
+        })
+      );
+
       // Nuevos pedidos para este restaurante
       let initialOrders = true;
       unsubscribes.push(
@@ -125,6 +137,15 @@ export function useGlobalAudioAlerts(role?: 'cpanel' | 'restaurant' | 'delivery'
     }
 
     if (role === 'delivery' && userId) {
+      // Preference Listener for Sound
+      unsubscribes.push(
+        onSnapshot(doc(db, 'delivery_drivers', userId), (snap) => {
+            if (snap.exists()) {
+                audioAlertsEnabledRef.current = snap.data().audioAlertsEnabled ?? true;
+            }
+        })
+      );
+
       // Nuevas solicitudes de transporte Globales (pending)
       let initialDeliveryRequests = true;
       unsubscribes.push(

@@ -1,10 +1,10 @@
 import React from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, Store, UtensilsCrossed, ClipboardList, LogOut, ChevronRight, Menu, X, Settings, HelpCircle, Trash2, User, ChevronUp, Users, UserCheck, Printer, Key, Mail as MailIcon, AlertTriangle, Grid, CreditCard, Layout, Star, MessageSquare, Megaphone, DollarSign, Gift } from 'lucide-react';
+import { LayoutDashboard, Store, UtensilsCrossed, ClipboardList, LogOut, ChevronRight, Menu, X, Settings, HelpCircle, Trash2, User, ChevronUp, Users, UserCheck, Printer, Key, Mail as MailIcon, AlertTriangle, Grid, CreditCard, Layout, Star, MessageSquare, Megaphone, DollarSign, Gift, Volume2, VolumeX } from 'lucide-react';
 import { auth, db } from '../../lib/firebase';
 import { useAuth } from '../../context/AuthContext';
 import { updateUserEmail, updateUserPassword } from '../../lib/auth-service';
-import { doc, getDoc, deleteDoc, collection, query, where, onSnapshot } from 'firebase/firestore';
+import { doc, getDoc, deleteDoc, collection, query, where, onSnapshot, updateDoc } from 'firebase/firestore';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { useGlobalAudioAlerts } from '../../hooks/useGlobalAudioAlerts';
@@ -27,6 +27,8 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
     const [isUpdating, setIsUpdating] = React.useState(false);
     const [notifications, setNotifications] = React.useState<any[]>([]);
     const [billingInfo, setBillingInfo] = React.useState<{ type: 'warning' | 'danger' | 'none', daysLeft?: number, daysLate?: number, amount?: number }>({ type: 'none' });
+    const [audioAlertsEnabled, setAudioAlertsEnabled] = React.useState(true);
+    const [isUpdatingAudio, setIsUpdatingAudio] = React.useState(false);
 
     useGlobalAudioAlerts('restaurant', user?.uid);
 
@@ -44,6 +46,7 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
                 if (data.billingDay && data.billingAmount) {
                     calculateBilling(data.billingDay, data.billingAmount);
                 }
+                setAudioAlertsEnabled(data.audioAlertsEnabled ?? true);
             }
         }
         fetchRestaurant();
@@ -160,6 +163,24 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
         }
     };
 
+    const handleToggleAudio = async () => {
+        if (!user) return;
+        setIsUpdatingAudio(true);
+        try {
+            const newValue = !audioAlertsEnabled;
+            setAudioAlertsEnabled(newValue);
+            await updateDoc(doc(db, 'restaurants', user.uid), {
+                audioAlertsEnabled: newValue
+            });
+        } catch (error) {
+            console.error("Error toggling audio alerts:", error);
+            setAudioAlertsEnabled(!audioAlertsEnabled); // Revert
+            alert("Error al actualizar la configuración de alertas sonoras.");
+        } finally {
+            setIsUpdatingAudio(false);
+        }
+    };
+
     const navItems = [
         { path: '/', icon: LayoutDashboard, label: 'Dashboard' },
         { path: '/orders', icon: ClipboardList, label: 'Pedidos' },
@@ -265,6 +286,29 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
                                 <div className="p-4 bg-slate-50 border-t border-slate-100 italic">
                                     <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">Configuración de Cuenta</p>
                                     <div className="space-y-2">
+                                        <button
+                                            onClick={handleToggleAudio}
+                                            disabled={isUpdatingAudio}
+                                            className="w-full flex items-center justify-between p-3 bg-white border border-slate-200 rounded-xl text-slate-600 font-bold hover:border-primary transition-all text-sm disabled:opacity-70"
+                                        >
+                                            <div className="flex items-center gap-3">
+                                                {audioAlertsEnabled ? (
+                                                    <Volume2 className="w-4 h-4 text-primary" />
+                                                ) : (
+                                                    <VolumeX className="w-4 h-4 text-slate-400" />
+                                                )}
+                                                <span>Alertas Sonoras</span>
+                                            </div>
+                                            <div
+                                                className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${audioAlertsEnabled ? 'bg-primary' : 'bg-slate-300'
+                                                    }`}
+                                            >
+                                                <span
+                                                    className={`inline-block h-3 w-3 transform rounded-full bg-white transition-transform ${audioAlertsEnabled ? 'translate-x-5' : 'translate-x-1'
+                                                        }`}
+                                                />
+                                            </div>
+                                        </button>
                                         <button
                                             onClick={() => { setConfigMode('email'); setShowConfigMenu(true); setIsProfileMenuOpen(false); }}
                                             className="w-full flex items-center gap-3 p-3 bg-white border border-slate-200 rounded-xl text-slate-600 font-bold hover:border-primary transition-all text-sm"
