@@ -140,7 +140,9 @@ service cloud.firestore {
 
     // Delivery update requests
     match /delivery_update_requests/{requestId} {
-      allow read, write: if isCPanelAdmin();
+      allow read: if isCPanelAdmin() || (request.auth != null && resource.data.driverId == request.auth.uid);
+      allow create: if request.auth != null && request.resource.data.driverId == request.auth.uid;
+      allow update, delete: if isCPanelAdmin();
     }
 
     // CPanel Managed Collections
