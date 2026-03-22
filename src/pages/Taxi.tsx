@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { collection, addDoc, serverTimestamp, doc, getDoc, updateDoc, getDocs, query, where, writeBatch } from 'firebase/firestore';
+import { collection, addDoc, serverTimestamp, doc, getDoc, updateDoc, getDocs, query, where, writeBatch, onSnapshot } from 'firebase/firestore';
 import { db, storage } from '../lib/firebase';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { Car, Bike, MapPin, Navigation, ArrowRight, CheckCircle2, X, Heart, History, Star, Wallet, Upload, Copy, Check } from 'lucide-react';
@@ -105,6 +105,23 @@ export default function Taxi() {
     const watchIdRef = useRef<number | null>(null);
     const geocoderRef = useRef<google.maps.Geocoder | null>(null);
     const mapCenterRef = useRef(defaultCenter);
+
+    // 0. Check for active transport request
+    useEffect(() => {
+        if (!user) return;
+        const q = query(
+            collection(db, 'transport_requests'),
+            where('userId', '==', user.uid),
+            where('status', 'in', ['searching', 'verifying_payment', 'accepted', 'arriving', 'in_progress'])
+        );
+        const unsubscribe = onSnapshot(q, (snapshot) => {
+            if (!snapshot.empty) {
+                const activeRequest = snapshot.docs[0];
+                navigate(`/taxi/track/${activeRequest.id}`);
+            }
+        });
+        return () => unsubscribe();
+    }, [user, navigate]);
 
     // 1. Fetch Admin Rates and Settings
     useEffect(() => {
