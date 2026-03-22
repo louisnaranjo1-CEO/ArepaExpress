@@ -100,6 +100,7 @@ export default function RestaurantsManager() {
                                 <th className="px-8 py-5">Restaurante</th>
                                 <th className="px-8 py-5">Categoría</th>
                                 <th className="px-8 py-5 text-center">Estado</th>
+                                <th className="px-8 py-5 text-center">Suscripción</th>
                                 <th className="px-8 py-5 text-right">Acción</th>
                             </tr>
                         </thead>
@@ -107,6 +108,9 @@ export default function RestaurantsManager() {
                             {restaurants.map((restaurant) => {
                                 const isActive = restaurant.isActive !== false;
                                 const logo = (restaurant as any).logoUrl || restaurant.image;
+                                
+                                const subEnd = (restaurant as any).subscriptionEnd ? new Date((restaurant as any).subscriptionEnd) : null;
+                                const hasActiveSub = subEnd && subEnd > new Date();
 
                                 return (
                                     <tr
@@ -156,6 +160,16 @@ export default function RestaurantsManager() {
                                                     restaurant.status === 'busy' ? 'Ocupado' :
                                                         restaurant.status === 'unavailable' ? 'No Disponible' : 'Activo'}
                                             </span>
+                                        </td>
+                                        <td className="px-8 py-5 text-center">
+                                            {hasActiveSub ? (
+                                                <div className="flex flex-col items-center">
+                                                    <span className="text-[10px] font-black text-emerald-600 bg-emerald-50 px-2 py-1 rounded-md uppercase mb-1">Activo</span>
+                                                    <span className="text-[9px] font-bold text-slate-400">Vence: {subEnd?.toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric' })}</span>
+                                                </div>
+                                            ) : (
+                                                <span className="text-[10px] font-black text-slate-400 bg-slate-100 px-2 py-1 rounded-md uppercase">Inactivo</span>
+                                            )}
                                         </td>
                                         <td className="px-8 py-5 text-right">
                                             <div className="flex items-center justify-end gap-3">

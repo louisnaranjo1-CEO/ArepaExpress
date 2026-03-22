@@ -5,6 +5,7 @@ import { useAuth } from '../../context/AuthContext';
 import { doc, onSnapshot } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import { setDriverAvailability, AvailabilityStatus } from '../../lib/delivery-service';
+import { useGlobalAudioAlerts } from '../../hooks/useGlobalAudioAlerts';
 
 interface DeliveryLayoutProps {
     children: React.ReactNode;
@@ -15,6 +16,8 @@ export default function DeliveryLayout({ children }: DeliveryLayoutProps) {
     const [driverStatus, setDriverStatus] = useState<AvailabilityStatus>('offline');
     const [updating, setUpdating] = useState(false);
     const [showPicker, setShowPicker] = useState(false);
+
+    useGlobalAudioAlerts('delivery', user?.uid);
 
     useEffect(() => {
         if (!user) return;

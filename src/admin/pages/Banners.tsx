@@ -148,7 +148,8 @@ export default function Banners() {
                 restaurantId: user.uid,
                 restaurantName: businessData.name || '',
                 updatedAt: serverTimestamp(),
-                isActive: true,
+                isActive: false,
+                status: 'pending_approval',
                 // Inherit visibility from subscription
                 visibilityScope: businessData.subscription.scope || 'city',
                 targetState: businessData.location?.state || '',
@@ -385,10 +386,10 @@ export default function Banners() {
                                 <button
                                     type="submit"
                                     disabled={uploading}
-                                    className="px-10 py-3 bg-indigo-600 text-white rounded-2xl font-black shadow-xl shadow-indigo-600/20 hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-50 flex items-center gap-2"
+                                    className="px-10 py-3 bg-emerald-600 text-white rounded-2xl font-black shadow-xl shadow-emerald-600/20 hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-50 flex items-center gap-2"
                                 >
                                     {uploading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Save className="w-5 h-5 invisible" />}
-                                    {uploading ? 'Guardando...' : 'Publicar Banner'}
+                                    {uploading ? 'Solicitando...' : 'Solicitar Banner'}
                                 </button>
                             </div>
                         </div>
@@ -425,9 +426,17 @@ export default function Banners() {
                         </div>
                         <div className="p-6">
                             <h3 className="font-black text-slate-900 mb-1">{banner.title}</h3>
-                            <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-slate-400">
-                                <CheckCircle2 className="w-3 h-3 text-emerald-500" />
-                                <span>Visible en {banner.visibilityScope === 'national' ? 'Todo el País' : banner.targetState}</span>
+                            <div className="flex flex-col gap-1 mt-2">
+                                <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-slate-400">
+                                    <CheckCircle2 className={`w-3 h-3 ${banner.status === 'pending_approval' ? 'text-amber-500' : 'text-emerald-500'}`} />
+                                    <span className={banner.status === 'pending_approval' ? 'text-amber-600' : 'text-emerald-600'}>
+                                        {banner.status === 'pending_approval' ? 'Pendiente de Aprobación' : 'Aprobado'}
+                                    </span>
+                                </div>
+                                <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-slate-400">
+                                    <CheckCircle2 className="w-3 h-3 text-emerald-500" />
+                                    <span>Visible en {banner.visibilityScope === 'national' ? 'Todo el País' : banner.targetState}</span>
+                                </div>
                             </div>
                         </div>
                     </div>

@@ -44,6 +44,7 @@ interface RestaurantData {
         address: string;
         reference?: string;
     };
+    subscriptionEnd?: string;
 }
 
 interface StatCardProps {
@@ -88,6 +89,7 @@ export default function RestaurantProfile() {
     const [popularProducts, setPopularProducts] = useState<any[]>([]);
     const [activeTab, setActiveTab] = useState<'overview' | 'products' | 'orders' | 'followers'>('overview');
     const [loading, setLoading] = useState(true);
+    const [pendingBannerCount, setPendingBannerCount] = useState(0);
     const [isEditModalOpen, setIsEditModalOpen] = useState(false);
     const [editData, setEditData] = useState<Partial<RestaurantData>>({});
     const [isUpdating, setIsUpdating] = useState(false);
@@ -142,6 +144,10 @@ export default function RestaurantProfile() {
 
                 setRecentOrders(orders.sort((a: any, b: any) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0)).slice(0, 5));
                 setPopularProducts(products.slice(0, 4));
+
+                // Banners pending for approval
+                const bannersSnap = await getDocs(query(collection(db, 'banners'), where('restaurantId', '==', id), where('status', '==', 'pending_approval')));
+                setPendingBannerCount(bannersSnap.size);
 
                 // Categories & Icons
                 const catSnap = await getDocs(collection(db, 'global_categories'));
@@ -305,6 +311,27 @@ export default function RestaurantProfile() {
                 </div>
             </div>
 
+            {pendingBannerCount > 0 && (
+                <div className="bg-amber-50 border border-amber-200 rounded-3xl p-6 flex items-center justify-between">
+                    <div className="flex items-center gap-4">
+                        <div className="w-12 h-12 bg-amber-100 rounded-2xl flex items-center justify-center text-amber-600">
+                            <ImageIcon className="w-6 h-6" />
+                        </div>
+                        <div>
+                            <h3 className="font-black text-amber-900 text-lg tracking-tight">Solicitud de Banner Pendiente</h3>
+                            <p className="font-medium text-amber-700/80 text-sm">Hay {pendingBannerCount} banner(s) esperando tu aprobación para este local.</p>
+                        </div>
+                    </div>
+                    <button 
+                        onClick={() => navigate('/finances')}
+                        className="px-6 py-3 bg-amber-600 hover:bg-amber-700 text-white font-black text-sm uppercase tracking-widest rounded-2xl transition-all shadow-lg shadow-amber-600/20 active:scale-95 flex items-center gap-2"
+                    >
+                        Gestionar
+                        <ChevronRight className="w-4 h-4" />
+                    </button>
+                </div>
+            )}
+
             {/* Profile Overview */}
             <div className="relative overflow-hidden rounded-[48px] bg-white border border-slate-100 shadow-xl shadow-slate-200/40">
                 <div className="h-64 relative">
@@ -357,6 +384,17 @@ export default function RestaurantProfile() {
                             <div>
                                 <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">WhatsApp</p>
                                 <p className="font-bold text-slate-700">{restaurant.whatsapp || 'No registrado'}</p>
+                            </div>
+                        </div>
+                        <div className="p-4 bg-slate-50 rounded-2xl flex items-center gap-3">
+                            <CheckCircle className={`w-5 h-5 ${restaurant.subscriptionEnd && new Date(restaurant.subscriptionEnd) > new Date() ? 'text-emerald-500' : 'text-slate-400'}`} />
+                            <div>
+                                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Suscripción</p>
+                                <p className={`font-bold text-sm ${restaurant.subscriptionEnd && new Date(restaurant.subscriptionEnd) > new Date() ? 'text-emerald-600' : 'text-slate-500'}`}>
+                                    {restaurant.subscriptionEnd && new Date(restaurant.subscriptionEnd) > new Date() 
+                                        ? `Activa (Vence: ${new Date(restaurant.subscriptionEnd).toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year:'numeric' })})`
+                                        : 'Inactiva / Vencida'}
+                                </p>
                             </div>
                         </div>
                     </div>

@@ -3,6 +3,7 @@ import { NavLink, useNavigate } from 'react-router-dom';
 import { LayoutDashboard, Store, Users, Image as ImageIcon, LogOut, ChevronRight, Menu, X, Tag, Truck, Wallet, Car, Share2, Gift, Ticket } from 'lucide-react';
 import { collection, query, where, onSnapshot } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
+import { useGlobalAudioAlerts } from '../../hooks/useGlobalAudioAlerts';
 
 interface CpanelLayoutProps {
     children: React.ReactNode;
@@ -13,6 +14,8 @@ export default function CpanelLayout({ children, onLogout }: CpanelLayoutProps) 
     const navigate = useNavigate();
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
     const [pendingTransports, setPendingTransports] = useState(0);
+
+    useGlobalAudioAlerts('cpanel');
 
     useEffect(() => {
         // Listen to pending transport requests that need admin payment verification

@@ -15,23 +15,30 @@ import ReviewModal from '../components/ReviewModal';
 import { Copy, Check } from 'lucide-react';
 import toast from 'react-hot-toast';
 
-interface OrderInfo {
+interface ActivityItem {
     id: string;
-    total: number;
+    type: 'order' | 'transport';
+    total?: number;
     status: string;
     createdAt: any;
-    items: any[];
+    // Order specific
+    items?: any[];
     deliveryMethod?: string;
     hasReviewed?: boolean;
     restaurantId?: string;
+    // Transport specific
+    origin?: { lat: number, lng: number, address: string };
+    destination?: { lat: number, lng: number, address: string };
+    fare?: number;
+    serviceType?: string;
 }
 
 export default function Profile() {
     const { user, userData, isProfileComplete } = useAuth();
     const navigate = useNavigate();
     const [isSigningIn, setIsSigningIn] = useState(false);
-    const [orders, setOrders] = useState<OrderInfo[]>([]);
-    const [loadingOrders, setLoadingOrders] = useState(false);
+    const [activities, setActivities] = useState<ActivityItem[]>([]);
+    const [loadingActivities, setLoadingActivities] = useState(false);
     const [showAddressPicker, setShowAddressPicker] = useState(false);
     const [showEditProfileModal, setShowEditProfileModal] = useState(false);
     const [updatingNotifications, setUpdatingNotifications] = useState(false);
@@ -86,32 +93,55 @@ export default function Profile() {
     };
 
     useEffect(() => {
-        const fetchOrders = async () => {
+        const fetchActivities = async () => {
             if (!user) return;
-            setLoadingOrders(true);
+            setLoadingActivities(true);
             try {
-                const q = query(
+                // Fetch Orders
+                const qOrders = query(
                     collection(db, 'orders'),
                     where('userId', '==', user.uid),
                     orderBy('createdAt', 'desc')
                 );
-                const querySnapshot = await getDocs(q);
-                const fetchedOrders = querySnapshot.docs.map(doc => {
+                const orderSnapshot = await getDocs(qOrders);
+                const fetchedOrders = orderSnapshot.docs.map(doc => {
                     const data = doc.data();
-                    // Identify the restaurant ID from the first item if not globally set
                     const restId = data.restaurantId || (data.items && data.items.length > 0 ? data.items[0].restaurantId : null);
-
                     return {
                         id: doc.id,
+                        type: 'order',
                         restaurantId: restId,
                         ...data
-                    } as OrderInfo;
+                    } as ActivityItem;
                 });
-                setOrders(fetchedOrders);
+
+                // Fetch Transports
+                const qTransports = query(
+                    collection(db, 'transport_requests'),
+                    where('userId', '==', user.uid),
+                    orderBy('createdAt', 'desc')
+                );
+                const transportSnapshot = await getDocs(qTransports);
+                const fetchedTransports = transportSnapshot.docs.map(doc => {
+                    return {
+                        id: doc.id,
+                        type: 'transport',
+                        ...doc.data()
+                    } as ActivityItem;
+                });
+
+                // Combine and sort
+                const combined = [...fetchedOrders, ...fetchedTransports].sort((a, b) => {
+                    const timeA = a.createdAt?.toMillis() || 0;
+                    const timeB = b.createdAt?.toMillis() || 0;
+                    return timeB - timeA;
+                });
+
+                setActivities(combined);
             } catch (err) {
-                console.error("Error fetching orders:", err);
+                console.error("Error fetching activities:", err);
             } finally {
-                setLoadingOrders(false);
+                setLoadingActivities(false);
             }
         };
 
@@ -126,7 +156,7 @@ export default function Profile() {
             }
         };
 
-        fetchOrders();
+        fetchActivities();
         fetchPaymentMethods();
     }, [user]);
 
@@ -846,64 +876,112 @@ export default function Profile() {
                             </div>
                         )}
 
-                        {/* Order History */}
+                        {/* Activity History */}
                         <div ref={ordersRef} className="space-y-4 pt-2">
                             <h3 className="text-lg font-black text-slate-900 px-2 flex items-center gap-2">
                                 <FileText className="w-5 h-5 text-primary" />
-                                Últimos Pedidos
+                                Historial de Actividad
                             </h3>
 
-                            {loadingOrders ? (
+                            {loadingActivities ? (
                                 <div className="flex justify-center py-4">
                                     <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin"></div>
                                 </div>
-                            ) : orders.length > 0 ? (
+                            ) : activities.length > 0 ? (
                                 <div className="space-y-3">
-                                    {orders.map(order => (
-                                        <div key={order.id} className="bg-slate-50 border border-slate-100 p-4 rounded-2xl flex flex-col gap-2">
+                                    {activities.map(activity => (
+                                        <div key={activity.id} className="bg-slate-50 border border-slate-100 p-4 rounded-2xl flex flex-col gap-2">
                                             <div className="flex justify-between items-start">
                                                 <div>
-                                                    <p className="font-bold text-slate-900 text-sm">Pedido #{order.id.slice(-6).toUpperCase()}</p>
-                                                    <div className="flex items-center gap-1 text-xs text-slate-500 mt-1">
+                                                    <div className="flex items-center gap-2">
+                                                        {activity.type === 'transport' ? (
+                                                            <div className="p-1.5 bg-blue-100 rounded-lg text-blue-600">
+                                                                <Navigation className="w-4 h-4" />
+                                                            </div>
+                                                        ) : (
+                                                            <div className="p-1.5 bg-orange-100 rounded-lg text-orange-600">
+                                                                <ShoppingBag className="w-4 h-4" />
+                                                            </div>
+                                                        )}
+                                                        <p className="font-bold text-slate-900 text-sm">
+                                                            {activity.type === 'transport' ? 'Viaje en Taxi' : 'Pedido de Comida'} <span className="text-slate-400 text-xs">#{activity.id.slice(-6).toUpperCase()}</span>
+                                                        </p>
+                                                    </div>
+                                                    <div className="flex items-center gap-1 text-xs text-slate-500 mt-1.5 ml-8">
                                                         <Clock className="w-3 h-3" />
-                                                        <span>{order.createdAt?.toDate().toLocaleDateString()} a las {order.createdAt?.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                                                        <span>{activity.createdAt?.toDate().toLocaleDateString()} a las {activity.createdAt?.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
                                                     </div>
                                                 </div>
-                                                <span className={`px-2 py-1 rounded text-xs font-bold ${order.status === 'pending' ? 'bg-orange-100 text-orange-600' :
-                                                    order.status === 'completed' ? 'bg-green-100 text-green-600' :
-                                                        'bg-slate-200 text-slate-600'
-                                                    }`}>
-                                                    {order.status === 'pending' ? 'Pendiente' :
-                                                        order.status === 'completed' ? 'Completado' : 'Cancelado'}
+                                                <span className={`px-2 py-1 rounded text-[10px] font-bold uppercase tracking-wider mt-1 ${
+                                                    activity.status === 'pending' || activity.status === 'finding_driver' ? 'bg-orange-100 text-orange-600' :
+                                                    activity.status === 'completed' ? 'bg-green-100 text-green-600' :
+                                                    (activity.status === 'accepted' || activity.status === 'arriving' || activity.status === 'in_progress' || activity.status === 'in_transit' || activity.status === 'driver_assigned') ? 'bg-blue-100 text-blue-600' :
+                                                    'bg-slate-200 text-slate-600'
+                                                }`}>
+                                                    {activity.status === 'pending' ? 'Buscando' :
+                                                    activity.status === 'finding_driver' ? 'Buscando Piloto' :
+                                                    activity.status === 'driver_assigned' || activity.status === 'accepted' ? 'Asignado' :
+                                                    activity.status === 'in_transit' || activity.status === 'in_progress' || activity.status === 'arriving' ? 'En Camino' :
+                                                    activity.status === 'completed' ? 'Completado' : 'Cancelado'}
                                                 </span>
                                             </div>
                                             <div className="h-px bg-slate-200 my-1"></div>
-                                            <div className="flex justify-between items-end">
-                                                <div className="text-xs text-slate-500">
-                                                    {order.items.length} artículo{order.items.length !== 1 ? 's' : ''}
+                                            
+                                            {/* Details Section */}
+                                            {activity.type === 'transport' ? (
+                                                <div className="text-xs text-slate-500 flex flex-col gap-1.5">
+                                                    <div className="flex items-start gap-1">
+                                                        <div className="min-w-4 pt-0.5 max-w-4 flex justify-center"><div className="w-2 h-2 rounded-full bg-blue-500 ring-2 ring-blue-200"></div></div>
+                                                        <span className="line-clamp-1">{activity.origin?.address || 'Punto de partida'}</span>
+                                                    </div>
+                                                    <div className="flex items-start gap-1">
+                                                        <div className="min-w-4 pt-0.5 max-w-4 flex justify-center"><MapPin className="w-3.5 h-3.5 text-red-500" /></div>
+                                                        <span className="line-clamp-1 font-medium">{activity.destination?.address || 'Destino'}</span>
+                                                    </div>
                                                 </div>
-                                                <span className="font-black text-primary text-base">${order.total.toFixed(2)}</span>
+                                            ) : (
+                                                <div className="text-xs text-slate-500 flex items-center gap-1.5">
+                                                    <span className="bg-slate-200 px-2 py-0.5 rounded-md font-bold text-slate-600">
+                                                        {activity.items?.length || 0} art.
+                                                    </span>
+                                                    <span className="line-clamp-1 italic">{activity.items?.map(i => i.name).join(', ')}</span>
+                                                </div>
+                                            )}
+
+                                            <div className="flex justify-end items-end mt-1">
+                                                <span className="font-black text-primary text-base">
+                                                    ${(activity.type === 'transport' ? (activity.fare || 0) : (activity.total || 0)).toFixed(2)}
+                                                </span>
                                             </div>
-                                            {/* Tracking Button for App Delivery */}
-                                            {order.deliveryMethod === 'app_delivery' && (order.status === 'finding_driver' || order.status === 'driver_assigned' || order.status === 'in_transit') && (
+                                            
+                                            {/* Action Buttons */}
+                                            {activity.type === 'transport' && (activity.status === 'finding_driver' || activity.status === 'accepted' || activity.status === 'arriving' || activity.status === 'in_progress') && (
                                                 <button
-                                                    onClick={() => navigate(`/track/${order.id}`)}
+                                                    onClick={() => navigate(`/taxi/track/${activity.id}`)}
+                                                    className="mt-2 w-full bg-secondary/10 text-secondary font-bold py-3 rounded-xl flex justify-center items-center gap-2 active:scale-95 transition-transform"
+                                                >
+                                                    <Navigation className="w-4 h-4" /> Ver Viaje
+                                                </button>
+                                            )}
+                                            {activity.type === 'order' && activity.deliveryMethod === 'app_delivery' && (activity.status === 'finding_driver' || activity.status === 'driver_assigned' || activity.status === 'in_transit') && (
+                                                <button
+                                                    onClick={() => navigate(`/track/${activity.id}`)}
                                                     className="mt-2 w-full bg-secondary/10 text-secondary font-bold py-3 rounded-xl flex justify-center items-center gap-2 active:scale-95 transition-transform"
                                                 >
                                                     <Navigation className="w-4 h-4" /> Rastrear Pedido
                                                 </button>
                                             )}
 
-                                            {/* Leave Review Button */}
-                                            {order.status === 'completed' && !order.hasReviewed && order.restaurantId && (
+                                            {/* Leave Review Button (Only for orders currently based on existing code) */}
+                                            {activity.type === 'order' && activity.status === 'completed' && !activity.hasReviewed && activity.restaurantId && (
                                                 <button
-                                                    onClick={() => setReviewModalData({ isOpen: true, orderId: order.id, restaurantId: order.restaurantId! })}
+                                                    onClick={() => setReviewModalData({ isOpen: true, orderId: activity.id, restaurantId: activity.restaurantId! })}
                                                     className="mt-2 w-full bg-orange-50 text-orange-600 font-bold py-3 rounded-xl flex justify-center items-center gap-2 active:scale-95 transition-transform"
                                                 >
                                                     <Star className="w-4 h-4 fill-orange-600" /> Dejar Reseña
                                                 </button>
                                             )}
-                                            {order.hasReviewed && (
+                                            {activity.type === 'order' && activity.hasReviewed && (
                                                 <div className="mt-2 w-full bg-slate-50 text-slate-400 font-bold py-2 rounded-xl flex justify-center items-center gap-2 text-xs">
                                                     <Star className="w-4 h-4 fill-slate-300" /> Reseña Enviada
                                                 </div>
@@ -914,8 +992,8 @@ export default function Profile() {
                             ) : (
                                 <div className="bg-slate-50 border border-slate-100 p-6 rounded-2xl text-center flex flex-col items-center justify-center">
                                     <ShoppingBag className="w-8 h-8 text-slate-300 mb-2" />
-                                    <p className="text-sm font-bold text-slate-500">Aún no tienes pedidos</p>
-                                    <p className="text-xs text-slate-400 mt-1">¡Ve a explorar nuestros restaurantes!</p>
+                                    <p className="text-sm font-bold text-slate-500">Aún no tienes actividad</p>
+                                    <p className="text-xs text-slate-400 mt-1">¡Explora la app para hacer tu primer pedido o viaje!</p>
                                 </div>
                             )}
                         </div>
@@ -1061,7 +1139,7 @@ export default function Profile() {
                         onReviewSubmitted={() => {
                             setReviewModalData(null);
                             // Make optimistic update to orders list
-                            setOrders(prev => prev.map(o => o.id === reviewModalData.orderId ? { ...o, hasReviewed: true } : o));
+                            setActivities(prev => prev.map(o => o.id === reviewModalData.orderId ? { ...o, hasReviewed: true } : o));
                             alert('¡Gracias por tu reseña!');
                         }}
                     />

@@ -19,10 +19,13 @@ import { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from './lib/firebase';
+import { useGlobalAudioAlerts } from './hooks/useGlobalAudioAlerts';
 
 function RedirectHandler({ children }: { children: React.ReactNode }) {
     const { user, userData } = useAuth();
     const navigate = useNavigate();
+    
+    useGlobalAudioAlerts('user', user?.uid);
 
     useEffect(() => {
         if (user && userData) {

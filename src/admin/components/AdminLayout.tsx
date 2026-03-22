@@ -7,6 +7,7 @@ import { updateUserEmail, updateUserPassword } from '../../lib/auth-service';
 import { doc, getDoc, deleteDoc, collection, query, where, onSnapshot } from 'firebase/firestore';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
+import { useGlobalAudioAlerts } from '../../hooks/useGlobalAudioAlerts';
 
 interface AdminLayoutProps {
     children: React.ReactNode;
@@ -27,24 +28,7 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
     const [notifications, setNotifications] = React.useState<any[]>([]);
     const [billingInfo, setBillingInfo] = React.useState<{ type: 'warning' | 'danger' | 'none', daysLeft?: number, daysLate?: number, amount?: number }>({ type: 'none' });
 
-    // Sound for notifications (optional, if you have an asset, but we can rely on visual for now)
-    const playNotificationSound = () => {
-        try {
-            // Just a simple beep using Web Audio API if browser allows
-            const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
-            const oscillator = audioCtx.createOscillator();
-            const gainNode = audioCtx.createGain();
-            oscillator.connect(gainNode);
-            gainNode.connect(audioCtx.destination);
-            oscillator.type = 'sine';
-            oscillator.frequency.value = 800;
-            gainNode.gain.setValueAtTime(0.1, audioCtx.currentTime);
-            oscillator.start();
-            setTimeout(() => oscillator.stop(), 200);
-        } catch (e) {
-            console.log('Audio disabled by browser auto-play policy');
-        }
-    };
+    useGlobalAudioAlerts('restaurant', user?.uid);
 
     React.useEffect(() => {
         if (!user) return;
@@ -87,7 +71,6 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
                         };
 
                         setNotifications(prev => [...prev, newNotification]);
-                        playNotificationSound();
 
                         // Auto-dismiss after 8 seconds
                         setTimeout(() => {

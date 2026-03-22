@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { doc, getDoc, setDoc, collection, query, onSnapshot, orderBy, updateDoc } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { db, storage } from '../../lib/firebase';
-import { Save, Wallet, Receipt, CreditCard, DollarSign, Activity, Image as ImageIcon, UploadCloud, Trash2, Globe, Layout, CheckCircle, XCircle } from 'lucide-react';
+import { Save, Wallet, Receipt, CreditCard, DollarSign, Activity, Image as ImageIcon, UploadCloud, Trash2, Globe, Layout, CheckCircle, XCircle, Store } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 export default function FinancesManager() {
@@ -11,6 +11,7 @@ export default function FinancesManager() {
     const [uploadingLogo, setUploadingLogo] = useState<string | null>(null);
     const [activeTab, setActiveTab] = useState<'payments' | 'subscriptions' | 'banners'>('payments');
     const [bannerRequests, setBannerRequests] = useState<any[]>([]);
+    const [restaurants, setRestaurants] = useState<any[]>([]);
 
     // Default configuration structure
     const [config, setConfig] = useState<any>({
@@ -110,10 +111,23 @@ export default function FinancesManager() {
             }
         };
 
+        const fetchRestaurants = async () => {
+            try {
+                const restQuery = query(collection(db, 'restaurants'), orderBy('name'));
+                const unsubscribeRests = onSnapshot(restQuery, (snap) => {
+                    setRestaurants(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+                });
+                return unsubscribeRests;
+            } catch (error) {
+                console.error("Error fetching restaurants for subscriptions:", error);
+            }
+        };
+
         fetchConfig();
+        const unsubRestsPromise = fetchRestaurants();
 
         // Fetch Banner Requests realtime
-        const bannerQuery = query(collection(db, 'banner_requests'), orderBy('createdAt', 'desc'));
+        const bannerQuery = query(collection(db, 'banners'), orderBy('createdAt', 'desc'));
         const unsubscribe = onSnapshot(bannerQuery, (snap) => {
             const requests = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
             setBannerRequests(requests);
@@ -121,7 +135,10 @@ export default function FinancesManager() {
             console.error("Error fetching banner requests:", error);
         });
 
-        return () => unsubscribe();
+        return () => {
+             unsubscribe();
+             unsubRestsPromise.then(unsub => unsub && unsub());
+        };
     }, []);
 
     const handleSave = async () => {
@@ -140,9 +157,30 @@ export default function FinancesManager() {
         }
     };
 
+    const handleRenewSubscription = async (restaurantId: string) => {
+        if (!window.confirm("¿Confirmas que este local ha pagado su suscripción? Se habilitarán 30 días adicionales de servicio.")) return;
+        
+        try {
+            const nextMonth = new Date();
+            // adding exactly 30 days
+            nextMonth.setDate(nextMonth.getDate() + 30);
+            
+            await updateDoc(doc(db, 'restaurants', restaurantId), {
+                subscriptionEnd: nextMonth.toISOString()
+            });
+            toast.success("Suscripción renovada por 30 días");
+        } catch (error) {
+            console.error("Error renewing subscription:", error);
+            toast.error("Error al renovar la suscripción");
+        }
+    };
+
     const handleUpdateBannerStatus = async (id: string, newStatus: 'approved' | 'rejected') => {
         try {
-            await updateDoc(doc(db, 'banner_requests', id), { status: newStatus });
+            await updateDoc(doc(db, 'banners', id), { 
+                status: newStatus,
+                isActive: newStatus === 'approved' 
+            });
             toast.success(`Solicitud ${newStatus === 'approved' ? 'aprobada' : 'rechazada'}`);
         } catch (error) {
             console.error(error);
@@ -596,6 +634,80 @@ export default function FinancesManager() {
                             </div>
                         </div>
                     </div>
+
+                    <div className="bg-white rounded-[32px] border-2 border-slate-100 p-8 mt-8">
+                        <div className="flex items-center gap-3 mb-8">
+                            <div className="w-10 h-10 bg-emerald-50 rounded-xl flex items-center justify-center text-emerald-600">
+                                <Wallet className="w-5 h-5" />
+                            </div>
+                            <div>
+                                <h3 className="font-black text-slate-800 tracking-tight text-lg">Estado de Suscripciones (Locales)</h3>
+                                <p className="text-sm text-slate-500">Gestiona los pagos recibidos y visualiza las fechas de vencimiento.</p>
+                            </div>
+                        </div>
+
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-left whitespace-nowrap">
+                                <thead className="bg-slate-50 border-b border-slate-100">
+                                    <tr>
+                                        <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Restaurante</th>
+                                        <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Estado de Suscripción</th>
+                                        <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Próximo Pago</th>
+                                        <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Acción</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-50">
+                                    {restaurants.map((restaurant) => {
+                                        const now = new Date();
+                                        const end = restaurant.subscriptionEnd ? new Date(restaurant.subscriptionEnd) : null;
+                                        const hasActiveSub = end && end > now;
+                                        const daysRemaining = hasActiveSub ? Math.ceil((end.getTime() - now.getTime()) / (1000 * 3600 * 24)) : 0;
+                                        
+                                        return (
+                                            <tr key={restaurant.id} className="hover:bg-slate-50/50 transition-colors">
+                                                <td className="px-6 py-4">
+                                                    <div className="flex items-center gap-3">
+                                                        <div className="w-10 h-10 rounded-xl overflow-hidden bg-slate-100 border border-slate-200">
+                                                            {restaurant.logoUrl || restaurant.image ? (
+                                                                <img src={restaurant.logoUrl || restaurant.image} alt={restaurant.name} className="w-full h-full object-cover" />
+                                                            ) : (
+                                                                <div className="w-full h-full flex items-center justify-center bg-slate-100">
+                                                                    <Store className="w-5 h-5 text-slate-300" />
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                        <span className="font-bold text-slate-800">{restaurant.name}</span>
+                                                    </div>
+                                                </td>
+                                                <td className="px-6 py-4 text-center">
+                                                    {hasActiveSub ? (
+                                                        <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest bg-emerald-100 text-emerald-700">
+                                                            <CheckCircle className="w-3.5 h-3.5" /> Activo ({daysRemaining} días)
+                                                        </span>
+                                                    ) : (
+                                                        <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest bg-red-100 text-red-700">
+                                                            <XCircle className="w-3.5 h-3.5" /> Inactivo / Vencido
+                                                        </span>
+                                                    )}
+                                                </td>
+                                                <td className="px-6 py-4 text-center text-sm font-bold text-slate-600">
+                                                    {end ? end.toLocaleDateString('es-ES', { day: '2-digit', month: 'long', year: 'numeric' }) : 'Sin registro'}
+                                                </td>
+                                                <td className="px-6 py-4 text-right">
+                                                    <button
+                                                        onClick={() => handleRenewSubscription(restaurant.id)}
+                                                        className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-[10px] font-black uppercase tracking-widest rounded-xl transition-all shadow-lg shadow-indigo-600/20 active:scale-95"
+                                                    >
+                                                        Aprobar Pago (+30 días)
+                                                    </button>
+                                                </td>
+                                            </tr>
+                                        );
+                                    })}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
                 </div>
             ) : (
                 <div className="space-y-6 pb-20">
@@ -635,14 +747,16 @@ export default function FinancesManager() {
                                                     {req.status === 'approved' ? 'Aprobado' : req.status === 'rejected' ? 'Rechazado' : 'Pendiente'}
                                                 </span>
                                             </div>
-                                            <p className="text-sm text-slate-500 font-medium mb-1">Plan: <span className="text-indigo-600 font-bold">{req.planName}</span></p>
-                                            <p className="text-sm text-slate-500 font-medium mb-4">Precio: <span className="font-bold">${req.price}</span></p>
+                                            <h5 className="font-bold text-slate-700 mb-1">{req.title || 'Sin Título'}</h5>
+                                            <p className="text-sm text-slate-500 font-medium mb-1 line-clamp-1">{req.linkUrl}</p>
+                                            <p className="text-sm text-slate-500 font-medium mb-4">Duración: <span className="font-bold">{req.duration}s</span></p>
 
                                             <div className="mt-auto space-y-2">
                                                 <span className="text-xs text-slate-400 font-medium opacity-80 mb-3 block text-center">
                                                     {req.createdAt?.toDate().toLocaleDateString('es-ES', { day: '2-digit', month: 'long', year: 'numeric' })}
+                                                {req.createdAt?.toDate?.()?.toLocaleDateString('es-ES', { day: '2-digit', month: 'long', year: 'numeric' }) || 'Fecha desconocida'}
                                                 </span>
-                                                {req.status === 'pending' && (
+                                                {req.status === 'pending_approval' && (
                                                     <div className="grid grid-cols-2 gap-2 mt-2 pt-4 border-t border-slate-100">
                                                         <button
                                                             onClick={() => handleUpdateBannerStatus(req.id, 'rejected')}
