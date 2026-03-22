@@ -287,9 +287,15 @@ export default function TransportRequests() {
                                                     </span>
                                                     {getStatusBadge(req.status)}
                                                 </div>
-                                                <div className="flex items-center gap-3 text-sm font-medium text-slate-500">
+                                                <div className="flex items-center gap-3 text-sm font-medium text-slate-500 flex-wrap mt-1">
                                                     <span className="flex items-center gap-1"><User className="w-4 h-4" /> {req.userName}</span>
                                                     <span className="flex items-center gap-1"><Calendar className="w-4 h-4" /> {req.createdAt?.toDate().toLocaleString()}</span>
+                                                    {req.driverAssignedAt && req.driverArrivedAt && (
+                                                        <span className="flex items-center gap-1 text-amber-600 bg-amber-50 px-2 py-0.5 rounded border border-amber-100 font-bold ml-2">
+                                                            <Clock className="w-4 h-4" /> 
+                                                            Llegó en: {Math.max(1, Math.round((req.driverArrivedAt.toDate().getTime() - req.driverAssignedAt.toDate().getTime()) / 60000))} min
+                                                        </span>
+                                                    )}
                                                 </div>
                                             </div>
                                         </div>
@@ -592,6 +598,7 @@ export default function TransportRequests() {
                         <RideChat
                             requestId={selectedChatRequest}
                             onClose={() => setSelectedChatRequest(null)}
+                            readOnly={true}
                         />
                     </div>
                 </div>

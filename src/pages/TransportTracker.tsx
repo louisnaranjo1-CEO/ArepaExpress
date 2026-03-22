@@ -79,6 +79,12 @@ export default function TransportTracker() {
         return () => unsubscribe();
     }, [requestId]);
 
+    useEffect(() => {
+        if (request && ['completed', 'cancelled'].includes(request.status)) {
+            setShowChat(false);
+        }
+    }, [request?.status]);
+
     const handleRateTrip = async () => {
         if (!requestId || rating === 0) return;
         setSubmittingRating(true);
@@ -345,9 +351,11 @@ export default function TransportTracker() {
                             </div>
                         </div>
                         <div className="flex gap-2">
-                            <button onClick={() => setShowChat(true)} className="w-12 h-12 bg-orange-50 text-orange-500 rounded-full flex items-center justify-center active:scale-95 transition-transform">
-                                <MessageCircle className="w-5 h-5" />
-                            </button>
+                            {['searching', 'verifying_payment', 'accepted', 'arriving', 'in_progress'].includes(request.status) && (
+                                <button onClick={() => setShowChat(true)} className="w-12 h-12 bg-orange-50 text-orange-500 rounded-full flex items-center justify-center active:scale-95 transition-transform">
+                                    <MessageCircle className="w-5 h-5" />
+                                </button>
+                            )}
                             <a href={`tel:${driver.phone}`} className="w-12 h-12 bg-slate-100 text-slate-700 rounded-full flex items-center justify-center active:scale-95 transition-transform">
                                 <Phone className="w-5 h-5 fill-current" />
                             </a>

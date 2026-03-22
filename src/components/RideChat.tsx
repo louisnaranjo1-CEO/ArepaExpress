@@ -7,9 +7,10 @@ import { Send, X } from 'lucide-react';
 interface ChatProps {
     requestId: string;
     onClose?: () => void;
+    readOnly?: boolean;
 }
 
-export default function RideChat({ requestId, onClose }: ChatProps) {
+export default function RideChat({ requestId, onClose, readOnly = false }: ChatProps) {
     const { user } = useAuth();
     const [messages, setMessages] = useState<any[]>([]);
     const [newMessage, setNewMessage] = useState('');
@@ -97,24 +98,26 @@ export default function RideChat({ requestId, onClose }: ChatProps) {
             </div>
 
             {/* Input Area */}
-            <div className="p-4 bg-white border-t border-slate-200">
-                <form onSubmit={handleSendMessage} className="flex gap-2 relative">
-                    <input
-                        type="text"
-                        value={newMessage}
-                        onChange={(e) => setNewMessage(e.target.value)}
-                        placeholder="Escribe un mensaje..."
-                        className="flex-1 bg-slate-50 border border-slate-200 rounded-full px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-600/50 pr-12 font-medium"
-                    />
-                    <button
-                        type="submit"
-                        disabled={!newMessage.trim()}
-                        className="absolute right-1 top-1 w-10 h-10 bg-indigo-600 text-white rounded-full flex items-center justify-center disabled:opacity-50 disabled:bg-slate-300 hover:bg-indigo-700 transition-colors shadow-sm"
-                    >
-                        <Send className="w-4 h-4 ml-0.5" />
-                    </button>
-                </form>
-            </div>
+            {!readOnly && (
+                <div className="p-4 bg-white border-t border-slate-200">
+                    <form onSubmit={handleSendMessage} className="flex gap-2 relative">
+                        <input
+                            type="text"
+                            value={newMessage}
+                            onChange={(e) => setNewMessage(e.target.value)}
+                            placeholder="Escribe un mensaje..."
+                            className="flex-1 bg-slate-50 border border-slate-200 rounded-full px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-600/50 pr-12 font-medium"
+                        />
+                        <button
+                            type="submit"
+                            disabled={!newMessage.trim()}
+                            className="absolute right-1 top-1 w-10 h-10 bg-indigo-600 text-white rounded-full flex items-center justify-center disabled:opacity-50 disabled:bg-slate-300 hover:bg-indigo-700 transition-colors shadow-sm"
+                        >
+                            <Send className="w-4 h-4 ml-0.5" />
+                        </button>
+                    </form>
+                </div>
+            )}
         </div>
     );
 }

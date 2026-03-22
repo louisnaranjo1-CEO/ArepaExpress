@@ -249,7 +249,7 @@ export default function OrdersRadar() {
         if (!activeTransport || processingAction) return;
         setProcessingAction('arriving');
         try {
-            await updateDoc(doc(db, 'transport_requests', activeTransport.id), { status: 'arriving' });
+            await updateDoc(doc(db, 'transport_requests', activeTransport.id), { status: 'arriving', driverArrivedAt: serverTimestamp() });
         } finally {
             setProcessingAction(null);
         }
