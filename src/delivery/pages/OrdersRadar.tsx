@@ -6,6 +6,7 @@ import { MapPin, Navigation, Package, Clock, ShieldCheck, Car, Bike, Compass as 
 import { updateDriverLocation } from '../../lib/delivery-service';
 import { calculateDistance } from '../../lib/geo';
 import { motion, AnimatePresence } from 'framer-motion';
+import RideChat from '../../components/RideChat';
 
 export default function OrdersRadar() {
     const { user } = useAuth();
@@ -16,6 +17,7 @@ export default function OrdersRadar() {
     const [activeTransport, setActiveTransport] = useState<any>(null);
     const [loading, setLoading] = useState(true);
     const [latestFeedback, setLatestFeedback] = useState<any>(null);
+    const [showChat, setShowChat] = useState(false);
 
     // 1. Fetch Driver Profile for vehicleType
     useEffect(() => {
@@ -304,6 +306,7 @@ export default function OrdersRadar() {
     // --- VISTA DE TRANSPORTE ACTIVO ---
     if (activeTransport) {
         return (
+            <>
             <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="space-y-4">
                 <div className="bg-primary/5 border border-primary/10 p-5 rounded-[2.5rem] mb-4 flex items-center gap-4">
                     <div className="w-12 h-12 bg-primary/10 rounded-2xl flex items-center justify-center text-primary">
@@ -388,7 +391,7 @@ export default function OrdersRadar() {
                             <Navigation className="w-5 h-5" /> Abrir GPS
                         </a>
                         <button
-                            onClick={() => window.open(`/taxi/track/${activeTransport.id}?chat=true`, '_blank')}
+                            onClick={() => setShowChat(true)}
                             className="w-full mt-2 bg-indigo-50 text-indigo-600 font-bold py-4 rounded-2xl flex justify-center items-center gap-2 active:scale-95 transition-all"
                         >
                             <MessageSquare className="w-5 h-5" /> Ver Chat
@@ -396,7 +399,24 @@ export default function OrdersRadar() {
                     </div>
                 </div>
             </motion.div>
-        );
+
+            {/* Modal de Chat Integrado */}
+            <AnimatePresence>
+                {showChat && activeTransport && (
+                    <motion.div
+                        initial={{ opacity: 0, y: 100 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: 100 }}
+                        className="fixed inset-0 z-50 bg-slate-50 flex flex-col"
+                    >
+                        <RideChat
+                            requestId={activeTransport.id}
+                            onClose={() => setShowChat(false)}
+                        />
+                    </motion.div>
+                )}
+            </AnimatePresence>
+        </>);
     }
 
     // --- VISTA DE PEDIDO ACTIVO ---
