@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, Store, Users, Image as ImageIcon, LogOut, ChevronRight, Menu, X, Tag, Truck, Wallet, Car, Share2, Gift, Ticket } from 'lucide-react';
+import { LayoutDashboard, Store, Users, Image as ImageIcon, LogOut, ChevronRight, Menu, X, Tag, Truck, Wallet, Car, Share2, Gift, Ticket, MessageSquareWarning } from 'lucide-react';
 import { collection, query, where, onSnapshot } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import { useGlobalAudioAlerts } from '../../hooks/useGlobalAudioAlerts';
@@ -14,21 +14,35 @@ export default function CpanelLayout({ children, onLogout }: CpanelLayoutProps) 
     const navigate = useNavigate();
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
     const [pendingTransports, setPendingTransports] = useState(0);
+    const [pendingTickets, setPendingTickets] = useState(0);
 
     useGlobalAudioAlerts('cpanel');
 
     useEffect(() => {
         // Listen to pending transport requests that need admin payment verification
-        const q = query(
+        const qTransports = query(
             collection(db, 'transport_requests'),
             where('status', '==', 'verifying_payment')
         );
 
-        const unsubscribe = onSnapshot(q, (snapshot) => {
+        const unsubscribeTransports = onSnapshot(qTransports, (snapshot) => {
             setPendingTransports(snapshot.size);
         });
+        
+        // Listen to open support tickets
+        const qTickets = query(
+            collection(db, 'support_tickets'),
+            where('status', '==', 'open')
+        );
 
-        return () => unsubscribe();
+        const unsubscribeTickets = onSnapshot(qTickets, (snapshot) => {
+            setPendingTickets(snapshot.size);
+        });
+
+        return () => {
+            unsubscribeTransports();
+            unsubscribeTickets();
+        };
     }, []);
 
     const handleLogout = () => {
@@ -48,6 +62,7 @@ export default function CpanelLayout({ children, onLogout }: CpanelLayoutProps) 
         { path: '/fidelization', icon: Gift, label: 'Fidelización' },
         { path: '/raffles', icon: Ticket, label: 'Sorteos y Rifas' },
         { path: '/icons', icon: Share2, label: 'Iconos' },
+        { path: '/support', icon: MessageSquareWarning, label: 'Reportes de Falla', badge: pendingTickets },
     ];
 
     return (

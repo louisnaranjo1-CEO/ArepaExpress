@@ -190,6 +190,14 @@ service cloud.firestore {
       allow write: if isCPanelAdmin();
     }
 
+    // Support Tickets
+    match /support_tickets/{ticketId} {
+      allow read: if request.auth != null && (request.auth.uid == resource.data.userId || isCPanelAdmin());
+      allow create: if request.auth != null && request.auth.uid == request.resource.data.userId;
+      allow update: if isCPanelAdmin();
+      allow delete: if isCPanelAdmin();
+    }
+
     // Default deny
     match /{document=**} {
       allow read, write: if false;

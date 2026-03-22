@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { User, Mail, MapPin, CreditCard, LogOut, ShoppingBag, Settings, ChevronRight, Clock, FileText, Bell, Navigation, X, Shield, UploadCloud, Star, Wallet, Gift, Award } from 'lucide-react';
+import { User, Mail, MapPin, CreditCard, LogOut, ShoppingBag, Settings, ChevronRight, Clock, FileText, Bell, Navigation, X, Shield, UploadCloud, Star, Wallet, Gift, Award, MessageSquareWarning, Plus, Send, AlertCircle, CheckCircle } from 'lucide-react';
 import { requestNotificationPermission, disableNotifications } from '../lib/notifications';
 import { useAuth } from '../context/AuthContext';
 import { auth, db, storage } from '../lib/firebase';
@@ -14,6 +14,19 @@ import { motion, AnimatePresence } from 'framer-motion';
 import ReviewModal from '../components/ReviewModal';
 import { Copy, Check } from 'lucide-react';
 import toast from 'react-hot-toast';
+
+interface SupportTicket {
+    id: string;
+    userId: string;
+    userName: string;
+    userEmail: string;
+    userPhone: string;
+    title: string;
+    description: string;
+    status: 'open' | 'closed';
+    createdAt: any;
+    adminResponse?: string;
+}
 
 interface ActivityItem {
     id: string;
@@ -77,6 +90,14 @@ export default function Profile() {
     const [showReferralModal, setShowReferralModal] = useState(false);
     const [tempGoogleUser, setTempGoogleUser] = useState<any>(null);
     const [isApplyingReferral, setIsApplyingReferral] = useState(false);
+
+    // Support Ticket State
+    const [supportTickets, setSupportTickets] = useState<SupportTicket[]>([]);
+    const [loadingTickets, setLoadingTickets] = useState(false);
+    const [showSupportModal, setShowSupportModal] = useState(false);
+    const [showNewTicketModal, setShowNewTicketModal] = useState(false);
+    const [ticketForm, setTicketForm] = useState({ title: '', description: '' });
+    const [isSubmittingTicket, setIsSubmittingTicket] = useState(false);
 
     useEffect(() => {
         if (userData) {
@@ -160,12 +181,81 @@ export default function Profile() {
         fetchPaymentMethods();
     }, [user]);
 
+    // Fetch Support Tickets
+    useEffect(() => {
+        const fetchTickets = async () => {
+            if (!user) return;
+            setLoadingTickets(true);
+            try {
+                const qTickets = query(
+                    collection(db, 'support_tickets'),
+                    where('userId', '==', user.uid),
+                    orderBy('createdAt', 'desc')
+                );
+                const snapshot = await getDocs(qTickets);
+                const fetchedTickets = snapshot.docs.map(doc => ({
+                    id: doc.id,
+                    ...doc.data()
+                })) as SupportTicket[];
+                setSupportTickets(fetchedTickets);
+            } catch (error) {
+                console.error("Error fetching support tickets:", error);
+            } finally {
+                setLoadingTickets(false);
+            }
+        };
+        fetchTickets();
+    }, [user]);
+
     const handleCopy = (text: string, id: string) => {
         navigator.clipboard.writeText(text);
         setCopiedId(id);
         toast.success("Copiado al portapapeles");
         setTimeout(() => setCopiedId(null), 2000);
     };
+
+    const handleSubmitTicket = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!user || !userData) return;
+        if (!ticketForm.title.trim() || !ticketForm.description.trim()) {
+            toast.error("Por favor completa todos los campos");
+            return;
+        }
+
+        setIsSubmittingTicket(true);
+        try {
+            const newTicket = {
+                userId: user.uid,
+                userName: userData.displayName || 'Usuario sin nombre',
+                userEmail: user.email || '',
+                userPhone: userData.phone || '',
+                title: ticketForm.title,
+                description: ticketForm.description,
+                status: 'open',
+                createdAt: serverTimestamp()
+            };
+
+            const docRef = await addDoc(collection(db, 'support_tickets'), newTicket);
+            
+            // Add locally to update UI immediately
+            setSupportTickets(prev => [{
+                ...newTicket,
+                id: docRef.id,
+                createdAt: { toDate: () => new Date() } // Mock timestamp for local display immediately
+            } as any, ...prev]);
+
+            toast.success("Reporte enviado con éxito");
+            setTicketForm({ title: '', description: '' });
+            setShowNewTicketModal(false);
+            setShowSupportModal(true);
+        } catch (error) {
+            console.error("Error submitting ticket:", error);
+            toast.error("Error al enviar el reporte");
+        } finally {
+            setIsSubmittingTicket(false);
+        }
+    };
+
 
     const [error, setError] = useState<string | null>(null);
     const [activeFaq, setActiveFaq] = useState<number | null>(null);
@@ -1033,6 +1123,23 @@ export default function Profile() {
 
                             <div className="space-y-3 pt-6 border-t border-slate-100">
                                 <h3 className="text-lg font-black text-slate-900 px-2 flex items-center gap-2">
+                                    <MessageSquareWarning className="w-5 h-5 text-red-500" />
+                                    Soporte Técnico
+                                </h3>
+                                <div 
+                                    onClick={() => setShowSupportModal(true)}
+                                    className="w-full flex items-center justify-between p-4 bg-red-50 hover:bg-red-100 rounded-2xl transition-colors cursor-pointer"
+                                >
+                                    <div className="flex flex-col">
+                                        <span className="font-bold text-red-700">Reportar una Falla</span>
+                                        <span className="text-[10px] text-red-500 font-medium">¿Tienes problemas con la app? Ayúdanos a mejorar.</span>
+                                    </div>
+                                    <ChevronRight className="w-5 h-5 text-red-400" />
+                                </div>
+                            </div>
+
+                            <div className="space-y-3 pt-6 border-t border-slate-100">
+                                <h3 className="text-lg font-black text-slate-900 px-2 flex items-center gap-2">
                                     <FileText className="w-5 h-5 text-primary" />
                                     📋 Sección de Soporte: Preguntas Frecuentes (FAQ)
                                 </h3>
@@ -1145,6 +1252,160 @@ export default function Profile() {
                     />
                 )
             }
+
+            {/* Support Tickets Modal */}
+            <AnimatePresence>
+                {showSupportModal && (
+                    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm overflow-y-auto">
+                        <motion.div
+                            initial={{ opacity: 0, scale: 0.95, y: 20 }}
+                            animate={{ opacity: 1, scale: 1, y: 0 }}
+                            exit={{ opacity: 0, scale: 0.95, y: 20 }}
+                            className="bg-white rounded-[40px] w-full max-w-2xl shadow-2xl overflow-hidden my-auto flex flex-col max-h-[90vh]"
+                        >
+                            <div className="p-6 border-b border-slate-50 flex items-center justify-between bg-slate-50/50 shrink-0">
+                                <div className="flex items-center gap-4">
+                                    <div className="p-3 bg-red-100 rounded-2xl text-red-600">
+                                        <MessageSquareWarning className="w-6 h-6" />
+                                    </div>
+                                    <div>
+                                        <h3 className="text-xl font-black text-slate-900 leading-none">Mis Reportes</h3>
+                                        <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1">Historial de soporte técnico</p>
+                                    </div>
+                                </div>
+                                <button onClick={() => setShowSupportModal(false)} className="p-3 hover:bg-slate-200 rounded-2xl transition-all">
+                                    <X className="w-6 h-6 text-slate-400" />
+                                </button>
+                            </div>
+
+                            <div className="p-6 overflow-y-auto flex-1 bg-slate-50/30">
+                                {loadingTickets ? (
+                                    <div className="flex justify-center py-8">
+                                        <div className="w-8 h-8 border-4 border-red-500 border-t-transparent rounded-full animate-spin"></div>
+                                    </div>
+                                ) : supportTickets.length > 0 ? (
+                                    <div className="space-y-4">
+                                        {supportTickets.map(ticket => (
+                                            <div key={ticket.id} className="bg-white border text-left border-slate-200 p-5 rounded-2xl shadow-sm">
+                                                <div className="flex justify-between items-start mb-2">
+                                                    <h4 className="font-bold text-slate-800 text-sm">{ticket.title}</h4>
+                                                    <span className={`px-2 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider whitespace-nowrap ml-3 ${
+                                                        ticket.status === 'open' ? 'bg-orange-100 text-orange-600' : 'bg-green-100 text-green-600'
+                                                    }`}>
+                                                        {ticket.status === 'open' ? 'Abierto' : 'Resuelto'}
+                                                    </span>
+                                                </div>
+                                                <p className="text-xs text-slate-500 mb-3 whitespace-pre-wrap">{ticket.description}</p>
+                                                
+                                                <div className="flex items-center gap-1 text-[10px] text-slate-400 font-medium mb-3">
+                                                    <Clock className="w-3 h-3" />
+                                                    <span>{ticket.createdAt?.toDate ? ticket.createdAt.toDate().toLocaleDateString() : 'Reciente'}</span>
+                                                </div>
+
+                                                {ticket.adminResponse && (
+                                                    <div className="mt-3 bg-slate-50 p-4 rounded-xl border border-slate-100 relative">
+                                                        <div className="absolute -top-3 left-4 bg-primary text-white text-[10px] font-bold px-2 py-0.5 rounded-md uppercase tracking-widest">Respuesta del Admin</div>
+                                                        <p className="text-sm font-medium text-slate-700 mt-1">{ticket.adminResponse}</p>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        ))}
+                                    </div>
+                                ) : (
+                                    <div className="text-center py-12">
+                                        <AlertCircle className="w-12 h-12 text-slate-300 mx-auto mb-3" />
+                                        <p className="text-slate-500 font-bold">No tienes reportes pendientes</p>
+                                        <p className="text-xs text-slate-400 mt-1">Si encuentras alguna falla, repórtala aquí.</p>
+                                    </div>
+                                )}
+                            </div>
+
+                            <div className="p-6 border-t border-slate-100 bg-white shrink-0">
+                                <button
+                                    onClick={() => {
+                                        setShowSupportModal(false);
+                                        setShowNewTicketModal(true);
+                                    }}
+                                    className="w-full bg-red-500 hover:bg-red-600 text-white font-black py-4 rounded-2xl flex items-center justify-center gap-2 transition-colors"
+                                >
+                                    <Plus className="w-5 h-5" /> Nuevo Reporte
+                                </button>
+                            </div>
+                        </motion.div>
+                    </div>
+                )}
+            </AnimatePresence>
+
+            {/* New Support Ticket Modal */}
+            <AnimatePresence>
+                {showNewTicketModal && (
+                    <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm overflow-y-auto">
+                        <motion.div
+                            initial={{ opacity: 0, scale: 0.95, y: 20 }}
+                            animate={{ opacity: 1, scale: 1, y: 0 }}
+                            exit={{ opacity: 0, scale: 0.95, y: 20 }}
+                            className="bg-white rounded-[40px] w-full max-w-2xl shadow-2xl overflow-hidden my-auto"
+                        >
+                            <div className="p-6 border-b border-slate-50 flex items-center justify-between bg-slate-50/50">
+                                <div className="flex items-center gap-4">
+                                    <div className="p-3 bg-red-100 rounded-2xl text-red-500">
+                                        <AlertCircle className="w-6 h-6" />
+                                    </div>
+                                    <div>
+                                        <h3 className="text-xl font-black text-slate-900 leading-none">Nuevo Reporte</h3>
+                                        <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1">Detalla la falla encontrada</p>
+                                    </div>
+                                </div>
+                                <button onClick={() => {
+                                    setShowNewTicketModal(false);
+                                    setShowSupportModal(true);
+                                }} className="p-3 hover:bg-slate-200 rounded-2xl transition-all">
+                                    <X className="w-6 h-6 text-slate-400" />
+                                </button>
+                            </div>
+
+                            <form onSubmit={handleSubmitTicket} className="p-6 space-y-6">
+                                <div className="space-y-2">
+                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Asunto / Título</label>
+                                    <input
+                                        type="text"
+                                        required
+                                        value={ticketForm.title}
+                                        onChange={(e) => setTicketForm({...ticketForm, title: e.target.value})}
+                                        className="w-full bg-slate-50 border border-slate-100 rounded-2xl p-4 font-bold text-slate-700 focus:bg-white focus:border-red-300 transition-all outline-none"
+                                        placeholder="Ej. Problema al hacer un pedido"
+                                    />
+                                </div>
+
+                                <div className="space-y-2">
+                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Descripción de la Falla</label>
+                                    <textarea
+                                        required
+                                        value={ticketForm.description}
+                                        onChange={(e) => setTicketForm({...ticketForm, description: e.target.value})}
+                                        className="w-full bg-slate-50 border border-slate-100 rounded-2xl p-4 font-medium text-slate-700 focus:bg-white focus:border-red-300 transition-all outline-none h-32 resize-none"
+                                        placeholder="Por favor describe detalladamente lo que sucedió..."
+                                    />
+                                </div>
+
+                                <button
+                                    type="submit"
+                                    disabled={isSubmittingTicket}
+                                    className={`w-full bg-red-500 text-white font-black py-4 rounded-2xl flex justify-center items-center gap-2 transition-all ${isSubmittingTicket ? 'opacity-70' : 'hover:bg-red-600 active:scale-95'}`}
+                                >
+                                    {isSubmittingTicket ? (
+                                        <div className="w-6 h-6 border-4 border-white border-t-transparent rounded-full animate-spin"></div>
+                                    ) : (
+                                        <>
+                                            <Send className="w-5 h-5" /> Enviar Reporte
+                                        </>
+                                    )}
+                                </button>
+                            </form>
+                        </motion.div>
+                    </div>
+                )}
+            </AnimatePresence>
 
             {/* Edit Profile Modal */}
             <AnimatePresence>
