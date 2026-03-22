@@ -234,12 +234,15 @@ export default function TransportTracker() {
                         onUnmount={onUnmount}
                         options={mapOptions}
                     />
-                ) : (
-                    <div className="absolute inset-0 z-40 bg-white">
-                        <RideChat requestId={requestId!} onClose={() => setShowChat(false)} />
-                    </div>
-                )}
+                ) : null}
             </div>
+
+            {/* Modal de Chat Integrado, fixed a pantalla completa */}
+            {showChat && (
+                <div className="fixed inset-0 z-[100] bg-white flex flex-col">
+                    <RideChat requestId={requestId!} onClose={() => setShowChat(false)} />
+                </div>
+            )}
 
             {/* Bottom Sheet */}
             <div className="relative z-30 bg-white rounded-t-[2rem] shadow-[0_-10px_40px_rgba(0,0,0,0.1)] pt-2 pb-6 px-6">
