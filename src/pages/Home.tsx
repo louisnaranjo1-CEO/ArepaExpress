@@ -186,8 +186,10 @@ export default function Home() {
 
           return false;
         });
+        // Shuffle the filtered banners randomly
+        const shuffledBanners = [...filteredBanners].sort(() => Math.random() - 0.5);
 
-        setBanners(filteredBanners);
+        setBanners(shuffledBanners);
       } catch (error) {
         console.error("Error fetching banners: ", error);
       }
