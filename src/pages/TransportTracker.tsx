@@ -1,7 +1,8 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
-import { doc, onSnapshot, getDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
-import { db } from '../lib/firebase';
+import { doc, onSnapshot, getDoc, updateDoc, serverTimestamp, query, collection, orderBy, limit } from 'firebase/firestore';
+import { ref, getDownloadURL } from 'firebase/storage';
+import { db, storage } from '../lib/firebase';
 import { DeliveryDriver } from '../lib/delivery-service';
 import toast from 'react-hot-toast';
 import { Navigation, Clock, CheckCircle2, Phone, ArrowLeft, Car, ShieldCheck, MessageCircle, Star, XCircle, MapPin } from 'lucide-react';
@@ -45,6 +46,12 @@ export default function TransportTracker() {
     const [comment, setComment] = useState('');
     const [submittingRating, setSubmittingRating] = useState(false);
     const [hasRated, setHasRated] = useState(false);
+    const [unreadCount, setUnreadCount] = useState(0);
+    
+    // Notification sound
+    const notificationSoundUrl = useRef<string | null>(null);
+    const prevStatus = useRef<string | null>(null);
+    const lastChatIdSeen = useRef<string | null>(null);
 
     // Map states
     const { isLoaded } = useJsApiLoader({
@@ -78,6 +85,127 @@ export default function TransportTracker() {
 
         return () => unsubscribe();
     }, [requestId]);
+
+    // Fetch notification sound
+    useEffect(() => {
+        const fetchSound = async () => {
+            try {
+                const soundRef = ref(storage, 'Digital_Cascade_01.mp3');
+                const url = await getDownloadURL(soundRef);
+                notificationSoundUrl.current = url;
+            } catch (err) {
+                console.error("No se pudo cargar el sonido de notificación:", err);
+            }
+        };
+        fetchSound();
+    }, []);
+
+    // Monitor status changes for notification sound
+    useEffect(() => {
+        if (!request?.status) return;
+
+        const notifyStatuses = ['accepted', 'arriving', 'in_progress', 'completed'];
+        
+        // Si el estado cambia a uno de los estados de notificación y es un cambio real
+        if (notifyStatuses.includes(request.status) && prevStatus.current && prevStatus.current !== request.status) {
+            // Obtener info del estado para la alerta
+            const info = getStatusInfo();
+            
+            // Sonar
+            if (notificationSoundUrl.current) {
+                const audio = new Audio(notificationSoundUrl.current);
+                audio.play().catch(e => console.error("Error playing status audio:", e));
+            }
+
+            // Mostrar Alerta Visual (Pantalla)
+            toast((t) => (
+                <div className="flex flex-col gap-1 p-1">
+                    <p className="font-black text-slate-900 text-sm flex items-center gap-2">
+                        <info.icon className="w-4 h-4 text-orange-500" />
+                        {info.title}
+                    </p>
+                    <p className="text-slate-500 text-xs font-bold leading-tight">{info.subtitle}</p>
+                </div>
+            ), {
+                position: 'top-center',
+                duration: 5000,
+                style: {
+                    borderRadius: '1.25rem',
+                    padding: '12px 16px',
+                    border: '1px solid rgba(0,0,0,0.05)',
+                    boxShadow: '0 10px 25px rgba(0,0,0,0.1)'
+                }
+            });
+        }
+        
+        prevStatus.current = request.status;
+    }, [request?.status]);
+
+    // Chat notifications for passenger
+    useEffect(() => {
+        if (!requestId || showChat) {
+            if (showChat) setUnreadCount(0);
+            return;
+        }
+
+        const q = query(
+            collection(db, `transport_requests/${requestId}/messages`),
+            orderBy('createdAt', 'desc'),
+            limit(1)
+        );
+
+        const unsub = onSnapshot(q, (snapshot) => {
+            if (!snapshot.empty) {
+                const latestMsg = snapshot.docs[0];
+                const data = latestMsg.data();
+                
+                // Si es un mensaje nuevo y es del conductor
+                if (lastChatIdSeen.current !== null && 
+                    lastChatIdSeen.current !== latestMsg.id && 
+                    data.senderId !== request?.userId) {
+                    
+                    const now = Date.now();
+                    const msgTime = data.createdAt?.toMillis() || now;
+                    if (now - msgTime < 30000) {
+                        // Play sound
+                        if (notificationSoundUrl.current) {
+                            const audio = new Audio(notificationSoundUrl.current);
+                            audio.play().catch(e => console.error("Error playing chat audio:", e));
+                        }
+
+                        // Alerta Visual (Toast)
+                        toast((t) => (
+                            <div className="flex flex-col gap-1 p-1">
+                                <p className="font-black text-slate-900 text-sm flex items-center gap-2">
+                                    <MessageCircle className="w-4 h-4 text-orange-500" />
+                                    Nuevo Mensaje del Conductor
+                                </p>
+                                <p className="text-slate-500 text-xs font-bold leading-tight line-clamp-2">
+                                    {data.text || "Ha enviado un archivo o ubicación"}
+                                </p>
+                            </div>
+                        ), {
+                            position: 'top-center',
+                            duration: 4000,
+                            style: {
+                                borderRadius: '1.25rem',
+                                padding: '12px 16px',
+                                border: '1px solid rgba(0,0,0,0.05)',
+                                boxShadow: '0 10px 25px rgba(0,0,0,0.1)'
+                            }
+                        });
+
+                        setUnreadCount(prev => prev + 1);
+                    }
+                }
+                lastChatIdSeen.current = latestMsg.id;
+            } else {
+                lastChatIdSeen.current = "";
+            }
+        });
+
+        return () => unsub();
+    }, [requestId, showChat, request?.userId]);
 
     useEffect(() => {
         if (request && ['completed', 'cancelled'].includes(request.status)) {
@@ -355,8 +483,13 @@ export default function TransportTracker() {
                         </div>
                         <div className="flex gap-2">
                             {['searching', 'verifying_payment', 'accepted', 'arriving', 'in_progress'].includes(request.status) && (
-                                <button onClick={() => setShowChat(true)} className="w-12 h-12 bg-orange-50 text-orange-500 rounded-full flex items-center justify-center active:scale-95 transition-transform">
+                                <button onClick={() => setShowChat(true)} className="w-12 h-12 bg-orange-50 text-orange-500 rounded-full flex items-center justify-center active:scale-95 transition-transform relative">
                                     <MessageCircle className="w-5 h-5" />
+                                    {unreadCount > 0 && (
+                                        <div className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white text-[10px] font-black rounded-full border-2 border-white flex items-center justify-center animate-bounce">
+                                            {unreadCount}
+                                        </div>
+                                    )}
                                 </button>
                             )}
                             <a href={`tel:${driver.phone}`} className="w-12 h-12 bg-slate-100 text-slate-700 rounded-full flex items-center justify-center active:scale-95 transition-transform">

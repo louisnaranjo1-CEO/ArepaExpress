@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { collection, query, where, onSnapshot, updateDoc, doc, serverTimestamp, getDoc, orderBy, limit, increment } from 'firebase/firestore';
-import { db } from '../../lib/firebase';
+import { ref, getDownloadURL } from 'firebase/storage';
+import { storage, db } from '../../lib/firebase';
 import { useAuth } from '../../context/AuthContext';
-import { MapPin, Navigation, Package, Clock, ShieldCheck, Car, Bike, Compass as CompassIcon, MessageSquare, Star } from 'lucide-react';
+import { MapPin, Navigation, Package, Clock, ShieldCheck, Car, Bike, Compass as CompassIcon, MessageSquare, Star, BellRing, MessageCircle } from 'lucide-react';
+import toast from 'react-hot-toast';
 import { updateDriverLocation } from '../../lib/delivery-service';
 import { calculateDistance } from '../../lib/geo';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -18,6 +20,9 @@ export default function OrdersRadar() {
     const [loading, setLoading] = useState(true);
     const [latestFeedback, setLatestFeedback] = useState<any>(null);
     const [showChat, setShowChat] = useState(false);
+    const [unreadChatCount, setUnreadChatCount] = useState(0);
+    const lastChatIdSeen = React.useRef<string | null>(null);
+    const notificationSoundUrl = React.useRef<string | null>(null);
 
     // 1. Fetch Driver Profile for vehicleType
     useEffect(() => {
@@ -174,6 +179,95 @@ export default function OrdersRadar() {
 
         return () => clearInterval(locInterval);
     }, [user, activeOrder, activeTransport]);
+
+    // 5. Cargar sonido de notificación y escuchar chat
+    useEffect(() => {
+        const fetchSound = async () => {
+            try {
+                const soundRef = ref(storage, 'Digital_Cascade_01.mp3');
+                const url = await getDownloadURL(soundRef);
+                notificationSoundUrl.current = url;
+            } catch (err) {
+                console.error("No se pudo cargar el sonido de notificación:", err);
+            }
+        };
+        fetchSound();
+    }, []);
+
+    useEffect(() => {
+        if (!activeTransport || !user) {
+            setUnreadChatCount(0);
+            return;
+        }
+
+        const q = query(
+            collection(db, `transport_requests/${activeTransport.id}/messages`),
+            orderBy('createdAt', 'desc'),
+            limit(1)
+        );
+
+        const unsub = onSnapshot(q, (snapshot) => {
+            if (!snapshot.empty) {
+                const latestMsg = snapshot.docs[0];
+                const data = latestMsg.data();
+                
+                // Si es un mensaje nuevo y no es mío
+                if (lastChatIdSeen.current !== null && 
+                    lastChatIdSeen.current !== latestMsg.id && 
+                    data.senderId !== user.uid) {
+                    
+                    // Solo sonar si es un mensaje de hace menos de 30 segundos (evitar sonar por viejos al reconectar)
+                    const now = Date.now();
+                    const msgTime = data.createdAt?.toMillis() || now;
+                    if (now - msgTime < 30000) {
+                        // Play sound
+                        if (notificationSoundUrl.current) {
+                            const audio = new Audio(notificationSoundUrl.current);
+                            audio.play().catch(e => console.error("Error playing audio:", e));
+                        }
+
+                        // Alerta Visual (Toast)
+                        toast((t) => (
+                            <div className="flex flex-col gap-1 p-1">
+                                <p className="font-black text-slate-900 text-sm flex items-center gap-2">
+                                    <MessageCircle className="w-4 h-4 text-orange-500" />
+                                    Nuevo Mensaje
+                                </p>
+                                <p className="text-slate-500 text-xs font-bold leading-tight line-clamp-2">
+                                    {data.text || "Ha enviado un archivo o ubicación"}
+                                </p>
+                            </div>
+                        ), {
+                            position: 'top-center',
+                            duration: 4000,
+                            style: {
+                                borderRadius: '1.25rem',
+                                padding: '12px 16px',
+                                border: '1px solid rgba(0,0,0,0.05)',
+                                boxShadow: '0 10px 25px rgba(0,0,0,0.1)'
+                            }
+                        });
+
+                        // Update count if chat is closed
+                        if (!showChat) {
+                            setUnreadChatCount(prev => prev + 1);
+                        }
+                    }
+                }
+                lastChatIdSeen.current = latestMsg.id;
+            } else {
+                lastChatIdSeen.current = ""; // No hay mensajes
+            }
+        });
+
+        return () => unsub();
+    }, [activeTransport, user, showChat]);
+
+    useEffect(() => {
+        if (showChat) {
+            setUnreadChatCount(0);
+        }
+    }, [showChat]);
 
     const [processingAction, setProcessingAction] = useState<string | null>(null);
 
@@ -392,9 +486,22 @@ export default function OrdersRadar() {
                         </a>
                         <button
                             onClick={() => setShowChat(true)}
-                            className="w-full mt-2 bg-indigo-50 text-indigo-600 font-bold py-4 rounded-2xl flex justify-center items-center gap-2 active:scale-95 transition-all"
+                            className="w-full mt-2 bg-indigo-50 text-indigo-600 font-bold py-4 rounded-2xl flex justify-center items-center gap-2 active:scale-95 transition-all relative overflow-hidden"
                         >
-                            <MessageSquare className="w-5 h-5" /> Ver Chat
+                            <MessageSquare className="w-5 h-5" /> 
+                            Ver Chat
+                            {unreadChatCount > 0 && (
+                                <motion.div 
+                                    initial={{ scale: 0 }} 
+                                    animate={{ scale: 1 }} 
+                                    className="absolute top-3 right-4 bg-red-500 text-white text-[10px] font-black w-6 h-6 rounded-full flex items-center justify-center border-2 border-indigo-50 shadow-sm"
+                                >
+                                    {unreadChatCount}
+                                </motion.div>
+                            )}
+                            {unreadChatCount > 0 && (
+                                <div className="absolute inset-0 bg-red-500/5 animate-pulse pointer-events-none"></div>
+                            )}
                         </button>
                     </div>
                 </div>

@@ -393,7 +393,7 @@ export default function Home() {
               <Search className="w-5 h-5 text-slate-400 group-hover:text-primary transition-colors" />
             </div>
             <div className="flex w-full p-4 pl-12 pr-12 text-sm text-slate-500 border border-slate-200 rounded-xl bg-slate-50 shadow-sm cursor-text hover:border-primary/30 transition-colors">
-              Buscar arepas, sushi, hamburguesas...
+              Epale! que vamos a pedir en un 2x3?
             </div>
           </Link>
           <div className="absolute inset-y-0 right-0 flex items-center pr-3">
@@ -519,12 +519,28 @@ export default function Home() {
       {/* Promotional Banners */}
       {banners.length > 0 && (
         <section className="mt-4 px-5">
-          <div className="relative w-full aspect-[2/1] rounded-2xl overflow-hidden shadow-lg border border-slate-100">
-            <AnimatePresence mode="wait">
-              {banners.map((banner, index) => (
-                index === currentBannerIndex && (
-                  <motion.a
-                    key={banner.id}
+          <div className="relative w-full aspect-[2/1] rounded-2xl overflow-hidden shadow-lg border border-slate-100 bg-slate-50">
+            <motion.div
+              className="flex h-full w-full"
+              drag="x"
+              dragConstraints={{ left: 0, right: 0 }}
+              dragElastic={0.2}
+              onDragEnd={(e, info) => {
+                const threshold = 50;
+                if (info.offset.x < -threshold) {
+                  // Forward
+                  setCurrentBannerIndex((prev) => (prev + 1) % banners.length);
+                } else if (info.offset.x > threshold) {
+                  // Backward
+                  setCurrentBannerIndex((prev) => (prev - 1 + banners.length) % banners.length);
+                }
+              }}
+              animate={{ x: `-${currentBannerIndex * 100}%` }}
+              transition={{ type: "spring", stiffness: 300, damping: 30, mass: 0.8 }}
+            >
+              {banners.map((banner) => (
+                <div key={banner.id} className="min-w-full h-full">
+                  <a
                     href={banner.linkUrl || '#'}
                     onClick={(e) => {
                       if (banner.type === 'fidelization') {
@@ -537,31 +553,29 @@ export default function Home() {
                     }}
                     target={banner.linkUrl && !banner.linkUrl.startsWith('/') ? "_blank" : undefined}
                     rel="noopener noreferrer"
-                    initial={{ opacity: 0, x: 20 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    exit={{ opacity: 0, x: -20 }}
-                    transition={{ duration: 0.5, ease: "easeOut" }}
-                    className="absolute inset-0 block"
+                    className="w-full h-full block"
                   >
                     <img
                       src={banner.imageUrl}
                       alt={banner.title}
-                      className="w-full h-full object-cover"
+                      className="w-full h-full object-cover select-none pointer-events-none"
+                      draggable={false}
                     />
-                    {/* Optional: Indicator Dots */}
-                    <div className="absolute bottom-3 right-3 flex gap-1.5 z-20">
-                      {banners.map((_, i) => (
-                        <div
-                          key={i}
-                          className={`h-1.5 rounded-full transition-all duration-300 ${i === currentBannerIndex ? 'w-4 bg-white' : 'w-1.5 bg-white/50'
-                            }`}
-                        ></div>
-                      ))}
-                    </div>
-                  </motion.a>
-                )
+                  </a>
+                </div>
               ))}
-            </AnimatePresence>
+            </motion.div>
+
+            {/* Indicator Dots */}
+            <div className="absolute bottom-3 right-3 flex gap-1.5 z-20 pointer-events-none">
+              {banners.map((_, i) => (
+                <div
+                  key={i}
+                  className={`h-1.5 rounded-full transition-all duration-300 ${i === currentBannerIndex ? 'w-4 bg-white shadow-sm' : 'w-1.5 bg-white/40'
+                    }`}
+                ></div>
+              ))}
+            </div>
           </div>
         </section>
       )}

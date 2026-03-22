@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { collection, query, orderBy, onSnapshot, doc, updateDoc, deleteDoc, writeBatch, getDocs, where, serverTimestamp } from 'firebase/firestore';
+import React, { useState, useEffect, useRef } from 'react';
+import { collection, query, orderBy, onSnapshot, doc, updateDoc, deleteDoc, writeBatch, getDocs, where, serverTimestamp, limit } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { db, storage } from '../../lib/firebase';
 import { Car, Bike, Clock, CheckCircle2, XCircle, Search, Calendar, DollarSign, MapPin, User, ShieldCheck, Upload, Image as ImageIcon, MessageSquare, Star } from 'lucide-react';
@@ -19,6 +19,10 @@ export default function TransportRequests() {
     const [payoutReceipt, setPayoutReceipt] = useState<File | null>(null);
     const [payoutLoading, setPayoutLoading] = useState(false);
 
+    // Notification sound
+    const notificationSoundUrl = useRef<string | null>(null);
+    const lastRequestTimestamp = useRef<number>(Date.now());
+
     useEffect(() => {
         const q = query(
             collection(db, 'transport_requests'),
@@ -35,6 +39,53 @@ export default function TransportRequests() {
         });
 
         return () => unsubscribe();
+    }, []);
+
+    // Fetch sound and listen for new requests
+    useEffect(() => {
+        const fetchSound = async () => {
+            try {
+                const soundRef = ref(storage, 'Digital_Cascade_01.mp3');
+                const url = await getDownloadURL(soundRef);
+                notificationSoundUrl.current = url;
+            } catch (err) {
+                console.error("No se pudo cargar el sonido de notificación:", err);
+            }
+        };
+        fetchSound();
+
+        // Listen for new requests specifically for sound notification
+        const q = query(
+            collection(db, 'transport_requests'),
+            where('status', 'in', ['verifying_payment', 'searching']),
+            orderBy('createdAt', 'desc'),
+            limit(1)
+        );
+
+        const unsub = onSnapshot(q, (snapshot) => {
+            if (!snapshot.empty) {
+                const latestDoc = snapshot.docs[0];
+                const data = latestDoc.data();
+                const createdAt = data.createdAt?.toMillis() || Date.now();
+                
+                // Si es un documento nuevo (creado después de que se cargó el panel)
+                if (createdAt > lastRequestTimestamp.current) {
+                    if (notificationSoundUrl.current) {
+                        const audio = new Audio(notificationSoundUrl.current);
+                        audio.play().catch(e => console.error("Error playing audio:", e));
+                        
+                        // Alerta visual de nuevo pedido
+                        toast.success(`¡Nuevo ${data.serviceType || 'servicio'} solicitado!`, {
+                            duration: 5000,
+                            icon: '🔔'
+                        });
+                    }
+                    lastRequestTimestamp.current = createdAt;
+                }
+            }
+        });
+
+        return () => unsub();
     }, []);
 
     const handleVerifyPayment = async (id: string, isApproved: boolean) => {
