@@ -169,11 +169,16 @@ _Enviado desde Deli Express App_`
         try {
             const batch = writeBatch(db);
             const driverRef = doc(db, 'delivery_drivers', request.driverId);
-            batch.update(driverRef, {
-                cedula: request.newData.cedula,
-                vehicleType: request.newData.vehicleType,
-                vehiclePlate: request.newData.vehiclePlate
-            });
+            
+            const driverUpdate: any = {};
+            if (request.newData.cedula) driverUpdate.cedula = request.newData.cedula;
+            if (request.newData.vehicleType) driverUpdate.vehicleType = request.newData.vehicleType;
+            if (request.newData.vehiclePlate) driverUpdate.vehiclePlate = request.newData.vehiclePlate;
+            if (request.newData.documents) driverUpdate.documents = request.newData.documents;
+
+            if (Object.keys(driverUpdate).length > 0) {
+                batch.update(driverRef, driverUpdate);
+            }
 
             const requestRef = doc(db, 'delivery_update_requests', request.id);
             batch.update(requestRef, { status: 'approved' });
