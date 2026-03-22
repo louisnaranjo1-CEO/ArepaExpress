@@ -107,11 +107,7 @@ service cloud.firestore {
       allow delete: if isCPanelAdmin();
 
       match /messages/{messageId} {
-        allow read, write: if request.auth != null && (
-          request.auth.uid == get(/databases/$(database)/documents/transport_requests/$(requestId)).data.userId || 
-          request.auth.uid == get(/databases/$(database)/documents/transport_requests/$(requestId)).data.driverId || 
-          isCPanelAdmin()
-        );
+        allow read, write: if request.auth != null;
       }
     }
 
