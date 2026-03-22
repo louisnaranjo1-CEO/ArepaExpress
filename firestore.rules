@@ -97,7 +97,7 @@ service cloud.firestore {
         resource.data.status == 'searching' ||
         isCPanelAdmin()
       );
-      allow create: if request.auth != null && (request.auth.uid == request.resource.data.userId || isCPanelAdmin());
+      allow create: if (request.auth != null && (request.auth.uid == request.resource.data.userId || isCPanelAdmin())) || request.resource.data.userId.matches('guest_.*');
       allow update: if request.auth != null && (
         request.auth.uid == resource.data.userId || 
         request.auth.uid == resource.data.driverId ||

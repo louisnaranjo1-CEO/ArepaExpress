@@ -11,7 +11,7 @@ export default function TransportRequests() {
     const [loading, setLoading] = useState(true);
     const [filter, setFilter] = useState('all'); // all, verifying_payment, finding_driver, in_progress, completed, cancelled
     const [searchTerm, setSearchTerm] = useState('');
-    const [view, setView] = useState<'viajes' | 'contabilidad'>('viajes');
+    const [view, setView] = useState<'viajes' | 'contabilidad' | 'comprobantes'>('viajes');
     const [selectedChatRequest, setSelectedChatRequest] = useState<string | null>(null);
 
     const [showPayoutModal, setShowPayoutModal] = useState(false);
@@ -75,6 +75,35 @@ export default function TransportRequests() {
                 console.error("Error deleting record:", error);
                 toast.error("Error al eliminar el registro");
             }
+        }
+    };
+
+    const handleDeleteProof = async (req: any) => {
+        if (!window.confirm("¿Segur@ que deseas eliminar este comprobante para liberar espacio? La imagen se borrará del servidor.")) return;
+        
+        try {
+            const proofUrl = req.paymentProofUrl || req.paymentProof;
+            if (proofUrl) {
+                // In v9, `ref()` can take an HTTP URL directly if it matches the storage bucket
+                const fileRef = ref(storage, proofUrl);
+                try {
+                    // Import deleteObject on the fly or just use the global storage reference
+                    const { deleteObject } = await import('firebase/storage');
+                    await deleteObject(fileRef);
+                } catch (e) {
+                    console.error("Warning: Error deleting physical file, maybe already deleted", e);
+                }
+            }
+            
+            // Remove the reference from the document
+            await updateDoc(doc(db, 'transport_requests', req.id), {
+                paymentProof: null,
+                paymentProofUrl: null
+            });
+            toast.success("Comprobante eliminado");
+        } catch (error) {
+            console.error("Error deleting proof:", error);
+            toast.error("Error al actualizar la solicitud");
         }
     };
 
@@ -228,6 +257,12 @@ export default function TransportRequests() {
                     >
                         Contabilidad
                     </button>
+                    <button
+                        onClick={() => setView('comprobantes')}
+                        className={`px-6 py-2 rounded-lg font-bold text-sm transition-all ${view === 'comprobantes' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                    >
+                        Comprobantes
+                    </button>
                 </div>
             </div>
 
@@ -360,14 +395,24 @@ export default function TransportRequests() {
                                                 <div>
                                                     <p className="font-bold text-amber-900">Verificación de Pago Requerida</p>
                                                     <p className="text-sm text-amber-700 font-medium">Ref: <span className="font-black">{req.paymentRef || 'No adjunta'}</span></p>
-                                                    {req.paymentProof && (
+                                                    {(req.paymentProofUrl || req.paymentProof) && (
                                                         <a
-                                                            href={req.paymentProof}
+                                                            href={req.paymentProofUrl || req.paymentProof}
                                                             target="_blank"
                                                             rel="noopener noreferrer"
-                                                            className="inline-flex items-center gap-1 mt-2 text-xs font-bold text-indigo-600 bg-indigo-50 px-3 py-1.5 rounded-lg hover:bg-indigo-100 transition-colors"
+                                                            className="block mt-3 rounded-xl overflow-hidden border border-amber-200 hover:border-amber-400 transition-colors bg-white/50"
                                                         >
-                                                            <ImageIcon className="w-4 h-4" /> Ver Comprobante
+                                                            <img 
+                                                                src={req.paymentProofUrl || req.paymentProof} 
+                                                                alt="Comprobante de Pago" 
+                                                                className="max-h-48 w-auto object-contain mx-auto"
+                                                                onError={(e) => {
+                                                                    (e.target as HTMLImageElement).style.display = 'none';
+                                                                }}
+                                                            />
+                                                            <div className="text-center py-1 bg-amber-100/50 text-amber-800 text-xs font-bold uppercase tracking-wider">
+                                                                Ver Imágen Completa
+                                                            </div>
                                                         </a>
                                                     )}
                                                 </div>
@@ -453,7 +498,7 @@ export default function TransportRequests() {
                         )}
                     </div>
                 </>
-            ) : (
+            ) : view === 'contabilidad' ? (
                 <div className="space-y-4">
                     {getDriverStats().length === 0 ? (
                         <div className="bg-white rounded-3xl p-12 text-center border border-slate-200 flex flex-col items-center">
@@ -509,6 +554,51 @@ export default function TransportRequests() {
                             ))}
                         </div>
                     )}
+                </div>
+            ) : (
+                <div className="space-y-6">
+                    <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
+                        <h2 className="text-xl font-black text-slate-900 mb-2">Galería de Comprobantes Históricos</h2>
+                        <p className="text-slate-500 text-sm">Aquí puedes revisar todas las capturas de pantalla de los pagos móviles enviados por clientes y eliminarlas para ahorrar espacio en el servidor de Firebase.</p>
+                    </div>
+                    
+                    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+                        {requests.filter(req => req.paymentProofUrl || req.paymentProof).length === 0 ? (
+                            <div className="col-span-full bg-slate-50 rounded-3xl p-12 text-center border border-slate-200">
+                                <ImageIcon className="w-16 h-16 text-slate-300 mx-auto mb-4" />
+                                <h3 className="text-xl font-bold text-slate-900">No hay comprobantes</h3>
+                                <p className="text-slate-500 mt-2">Actualmente no existen capturas adjuntas en la base de datos de viajes.</p>
+                            </div>
+                        ) : (
+                            requests.filter(req => req.paymentProofUrl || req.paymentProof).map(req => (
+                                <div key={`proof-${req.id}`} className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex flex-col hover:border-indigo-300 transition-colors group">
+                                    <a href={req.paymentProofUrl || req.paymentProof} target="_blank" rel="noopener noreferrer" className="relative aspect-[3/4] bg-slate-100 block overflow-hidden">
+                                        <img 
+                                            src={req.paymentProofUrl || req.paymentProof} 
+                                            alt={`Ref ${req.paymentRef}`} 
+                                            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                                            loading="lazy"
+                                        />
+                                        <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent flex flex-col justify-end p-3 opacity-0 group-hover:opacity-100 transition-opacity">
+                                            <p className="text-white text-xs font-bold truncate">Ref: {req.paymentRef || 'N/A'}</p>
+                                        </div>
+                                    </a>
+                                    <div className="p-3 bg-white flex flex-col gap-2">
+                                        <div>
+                                            <div className="text-xs font-black text-slate-800 truncate mb-0.5">{req.userName}</div>
+                                            <div className="text-[10px] text-slate-500 font-medium">{req.createdAt?.toDate().toLocaleDateString()}</div>
+                                        </div>
+                                        <button
+                                            onClick={() => handleDeleteProof(req)}
+                                            className="w-full py-1.5 bg-red-50 text-red-600 hover:bg-red-100 hover:text-red-700 text-xs font-bold rounded-lg transition-colors flex items-center justify-center gap-1"
+                                        >
+                                            <XCircle className="w-3.5 h-3.5" /> Eliminar
+                                        </button>
+                                    </div>
+                                </div>
+                            ))
+                        )}
+                    </div>
                 </div>
             )}
 

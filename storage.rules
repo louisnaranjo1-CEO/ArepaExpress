@@ -37,8 +37,8 @@ service firebase.storage {
     }
 
     match /taxi_proofs/{userId}/{allPaths=**} {
-      allow read: if request.auth != null && (request.auth.uid == userId || isCPanelAdmin());
-      allow write: if request.auth != null && request.auth.uid == userId;
+      allow read: if isCPanelAdmin() || (request.auth != null && request.auth.uid == userId);
+      allow write: if true; // Permitimos a todos, incluyendo invitados ('guest_...'), subir recibos de taxi
     }
 
     match /wallet_recharges/{userId}/{allPaths=**} {
