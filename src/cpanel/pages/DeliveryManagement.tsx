@@ -315,10 +315,42 @@ _Enviado desde Deli Express App_`
                                     <div key={req.id} className="bg-amber-50 rounded-[24px] border border-amber-200 overflow-hidden shadow-sm">
                                         <div className="p-5 border-b border-amber-200/50">
                                             <h3 className="font-bold text-slate-900 leading-tight mb-3">{req.driverName}</h3>
-                                            <div className="space-y-2 text-sm bg-white p-3 rounded-xl border border-amber-100">
-                                                <p className="flex justify-between"><span className="text-slate-500 font-medium">Cédula:</span> <span className="font-bold text-slate-800">{req.newData.cedula}</span></p>
-                                                <p className="flex justify-between"><span className="text-slate-500 font-medium">Vehículo:</span> <span className="font-bold text-slate-800 capitalize">{req.newData.vehicleType}</span></p>
-                                                <p className="flex justify-between"><span className="text-slate-500 font-medium">Placa:</span> <span className="font-bold text-slate-800 uppercase">{req.newData.vehiclePlate}</span></p>
+                                            <div className="space-y-4 text-sm bg-white p-3 rounded-xl border border-amber-100">
+                                                <div className="space-y-2">
+                                                    <p className="flex justify-between"><span className="text-slate-500 font-medium">Cédula:</span> <span className="font-bold text-slate-800">{req.newData.cedula}</span></p>
+                                                    <p className="flex justify-between"><span className="text-slate-500 font-medium">Vehículo:</span> <span className="font-bold text-slate-800 capitalize">{req.newData.vehicleType}</span></p>
+                                                    <p className="flex justify-between"><span className="text-slate-500 font-medium">Placa:</span> <span className="font-bold text-slate-800 uppercase">{req.newData.vehiclePlate}</span></p>
+                                                </div>
+                                                
+                                                {/* Images Section */}
+                                                {req.newData.documents && (
+                                                    <div className="grid grid-cols-3 gap-2 pt-3 border-t border-amber-100/50">
+                                                        {req.newData.documents.selfieUrl && (
+                                                            <div className="flex flex-col items-center">
+                                                                <span className="text-[9px] font-bold text-slate-400 uppercase mb-1">Selfie</span>
+                                                                <a href={req.newData.documents.selfieUrl} target="_blank" rel="noreferrer">
+                                                                    <img src={req.newData.documents.selfieUrl} alt="Selfie" className="w-16 h-16 object-cover rounded-xl border border-slate-200" />
+                                                                </a>
+                                                            </div>
+                                                        )}
+                                                        {req.newData.documents.licenseUrl && (
+                                                            <div className="flex flex-col items-center">
+                                                                <span className="text-[9px] font-bold text-slate-400 uppercase mb-1">Licencia</span>
+                                                                <a href={req.newData.documents.licenseUrl} target="_blank" rel="noreferrer">
+                                                                    <img src={req.newData.documents.licenseUrl} alt="Licencia" className="w-16 h-16 object-cover rounded-xl border border-slate-200" />
+                                                                </a>
+                                                            </div>
+                                                        )}
+                                                        {req.newData.documents.vehicleUrl && (
+                                                            <div className="flex flex-col items-center">
+                                                                <span className="text-[9px] font-bold text-slate-400 uppercase mb-1">Vehículo</span>
+                                                                <a href={req.newData.documents.vehicleUrl} target="_blank" rel="noreferrer">
+                                                                    <img src={req.newData.documents.vehicleUrl} alt="Vehículo" className="w-16 h-16 object-cover rounded-xl border border-slate-200" />
+                                                                </a>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                )}
                                             </div>
                                         </div>
                                         <div className="p-4 grid grid-cols-2 gap-3">
