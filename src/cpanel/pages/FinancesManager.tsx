@@ -74,7 +74,8 @@ export default function FinancesManager() {
                 scope: 'city'
             }
         },
-        bannerUpdateLimit: 3
+        bannerUpdateLimit: 3,
+        allyPrice: 4.99
     });
 
     useEffect(() => {
@@ -572,8 +573,8 @@ export default function FinancesManager() {
                                 <Activity className="w-5 h-5" />
                             </div>
                             <div>
-                                <h3 className="font-black text-slate-800 tracking-tight text-lg">Configuración de Planes</h3>
-                                <p className="text-sm text-slate-500">Define los costos y límites para cada nivel de suscripción</p>
+                                <h3 className="font-black text-slate-800 tracking-tight text-lg">Configuración de Planes (Banners)</h3>
+                                <p className="text-sm text-slate-500">Define los costos y límites para cada nivel de publicidad con banners</p>
                             </div>
                         </div>
 
@@ -618,6 +619,33 @@ export default function FinancesManager() {
                                     </div>
                                 </div>
                             ))}
+                        </div>
+
+                        <div className="mt-8 pt-8 border-t border-slate-100">
+                            <div className="flex items-center gap-3 mb-6">
+                                <div className="w-10 h-10 bg-green-50 rounded-xl flex items-center justify-center text-green-600">
+                                    <Store className="w-5 h-5" />
+                                </div>
+                                <div>
+                                    <h3 className="font-black text-slate-800 tracking-tight text-lg">Suscripción para ser Aliado</h3>
+                                    <p className="text-sm text-slate-500">Monto mensual que deben pagar los locales para mantener su sitio activo</p>
+                                </div>
+                            </div>
+
+                            <div className="p-6 bg-slate-50 rounded-3xl border border-slate-100 max-w-sm">
+                                <div className="space-y-1">
+                                    <label className="text-[10px] font-black text-slate-400 uppercase px-1">Costo Mensual de Aliado ($)</label>
+                                    <input
+                                        type="number"
+                                        value={subscriptionConfig.allyPrice !== undefined ? subscriptionConfig.allyPrice : 4.99}
+                                        onChange={e => {
+                                            setSubscriptionConfig({ ...subscriptionConfig, allyPrice: Number(e.target.value) });
+                                        }}
+                                        className="w-full bg-white border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold outline-none focus:ring-2 focus:ring-green-600/20"
+                                    />
+                                    <p className="text-[10px] text-slate-500 mt-2 px-1">Pago recurrente necesario para renovaciones (+30 días).</p>
+                                </div>
+                            </div>
                         </div>
 
                         <div className="mt-8 pt-8 border-t border-slate-100">

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { User, Mail, MapPin, CreditCard, LogOut, ShoppingBag, Settings, ChevronRight, Clock, FileText, Bell, Navigation, X, Shield, UploadCloud, Star, Wallet, Gift, Award, MessageSquareWarning, Plus, Send, AlertCircle, CheckCircle } from 'lucide-react';
+import { User, Mail, MapPin, CreditCard, LogOut, ShoppingBag, Settings, ChevronRight, Clock, FileText, Bell, Navigation, X, Shield, UploadCloud, Star, Wallet, Gift, Award, MessageSquareWarning, Plus, Send, AlertCircle, CheckCircle, Store } from 'lucide-react';
 import { requestNotificationPermission, disableNotifications } from '../lib/notifications';
 import { useAuth } from '../context/AuthContext';
 import { auth, db, storage } from '../lib/firebase';
@@ -14,6 +14,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import ReviewModal from '../components/ReviewModal';
 import { Copy, Check } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { vibrate } from '../utils/haptics';
 
 interface SupportTicket {
     id: string;
@@ -543,7 +544,17 @@ export default function Profile() {
                 )}
                 <div className="space-y-4 w-full max-w-xs relative">
                     <button
-                        onClick={handleGoogleSignIn}
+                        onClick={async () => {
+                            vibrate(50);
+                            setIsSigningIn(true);
+                            try {
+                                await signInWithGoogle();
+                            } catch (err: any) {
+                                toast.error('Error al iniciar sesión con Google');
+                            } finally {
+                                setIsSigningIn(false);
+                            }
+                        }}
                         disabled={isSigningIn}
                         className="w-full bg-primary text-white py-4 rounded-2xl font-bold shadow-lg shadow-primary/30 hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-70 disabled:hover:scale-100 flex items-center justify-center gap-2"
                     >
@@ -575,6 +586,7 @@ export default function Profile() {
                     </button>
                     <button
                         onClick={() => {
+                            vibrate(30);
                             setIsLoginMode(true);
                             setShowEmailModal(true);
                         }}
@@ -585,6 +597,7 @@ export default function Profile() {
                     </button>
                     <button
                         onClick={() => {
+                            vibrate(30);
                             setIsLoginMode(false);
                             setShowEmailModal(true);
                         }}
@@ -623,6 +636,19 @@ export default function Profile() {
                     >
                         <Navigation className="w-5 h-5 opacity-50" />
                         Acceso Delivery / Taxi
+                    </button>
+
+                    <div className="flex items-center gap-4 my-2 pt-2">
+                        <div className="h-px bg-slate-100 flex-1"></div>
+                        <span className="text-[10px] font-black text-slate-300 uppercase tracking-widest">¿Quieres que tu negocio crezca?</span>
+                        <div className="h-px bg-slate-100 flex-1"></div>
+                    </div>
+                    <button
+                        onClick={() => window.location.href = 'https://restaurante.deliexpress.app'}
+                        className="w-full bg-green-500/10 text-green-600 py-4 rounded-2xl font-bold hover:bg-green-500/20 transition-colors flex items-center justify-center gap-2"
+                    >
+                        <Store className="w-5 h-5 opacity-50" />
+                        Conviértete en aliado y deja que te encuentren en un 2x3
                     </button>
                 </div>
 

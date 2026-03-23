@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react';
 import { collection, query, where, onSnapshot, doc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 
-const NOTIFICATION_SOUND_URL = "https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/Digital_Cascade_01.mp3?alt=media";
+const NOTIFICATION_SOUND_URL = "https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/Digital_Cascade_01.mp3?alt=media&token=211ed9a7-2b49-469f-8869-3fc2cd38d2f5";
 
 export function useGlobalAudioAlerts(role?: 'cpanel' | 'restaurant' | 'delivery' | 'user', userId?: string) {
   const audioRef = useRef<HTMLAudioElement | null>(null);

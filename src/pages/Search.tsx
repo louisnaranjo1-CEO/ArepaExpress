@@ -5,6 +5,7 @@ import { db } from '../lib/firebase';
 import { Restaurant, Product } from '../lib/seed';
 import { Link, useLocation } from 'react-router-dom';
 import FilterModal, { FilterState } from '../components/FilterModal';
+import { vibrate } from '../utils/haptics';
 
 export interface Category {
     id: string;
@@ -215,7 +216,7 @@ export default function Search() {
                                 const logoImg = (res as any).logoUrl || res.image;
 
                                 return (
-                                    <Link to={`/restaurant/${res.id}`} key={res.id} className="block group relative bg-white rounded-[32px] overflow-hidden shadow-xl shadow-slate-200/50 border border-slate-100 hover:border-primary/20 transition-all hover:scale-[1.01] active:scale-[0.99] cursor-pointer">
+                                    <Link to={`/restaurant/${res.id}`} key={res.id} onClick={() => vibrate(30)} className="block group relative bg-white rounded-[32px] overflow-hidden shadow-xl shadow-slate-200/50 border border-slate-100 hover:border-primary/20 transition-all hover:scale-[1.01] active:scale-[0.99] cursor-pointer">
                                         <div className="relative h-48 overflow-hidden bg-slate-100">
                                             {coverImg ? (
                                                 <img src={coverImg} alt={res.name} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" />

@@ -11,6 +11,7 @@ export default function Subscriptions() {
     const [loading, setLoading] = useState(true);
     const [subConfig, setSubConfig] = useState<any>(null);
     const [businessSub, setBusinessSub] = useState<any>(null);
+    const [restaurantData, setRestaurantData] = useState<any>(null);
     const [bannerStats, setBannerStats] = useState({
         used: 0,
         total: 0,
@@ -33,6 +34,7 @@ export default function Subscriptions() {
         const unsubSub = onSnapshot(doc(db, 'restaurants', user.uid), (doc) => {
             if (doc.exists()) {
                 const data = doc.data();
+                setRestaurantData(data);
                 setBusinessSub(data.subscription || null);
             }
             setLoading(false);
@@ -78,15 +80,49 @@ export default function Subscriptions() {
     }
 
     const currentPlan = businessSub ? subConfig?.plans?.[businessSub.planId] : null;
+    const now = new Date();
+    const allyEnd = restaurantData?.subscriptionEnd ? new Date(restaurantData.subscriptionEnd) : null;
+    const isAllySubscribed = allyEnd && allyEnd > now;
+    const allyPrice = subConfig?.allyPrice || 4.99;
 
     return (
         <div className="max-w-5xl mx-auto space-y-8 animate-in fade-in duration-700">
             <header>
                 <h1 className="text-3xl font-black text-slate-900 tracking-tight">Suscripción y Publicidad</h1>
-                <p className="text-slate-500 font-medium">Gestiona tu plan y visibilidad en la plataforma.</p>
+                <p className="text-slate-500 font-medium">Gestiona tu estatus y visibilidad en la plataforma.</p>
             </header>
 
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            {/* Suscripción de Aliado */}
+            <div className={`p-8 rounded-[2.5rem] border-2 shadow-xl relative overflow-hidden transition-all ${isAllySubscribed ? 'bg-emerald-50 border-emerald-100 shadow-emerald-200/40' : 'bg-amber-50 border-amber-200 shadow-amber-200/40'}`}>
+                <div className="flex items-start gap-4 text-left">
+                    <div className={`w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 shadow-lg ${isAllySubscribed ? 'bg-emerald-500 text-white shadow-emerald-500/30' : 'bg-amber-500 text-white shadow-amber-500/30'}`}>
+                        {isAllySubscribed ? <CheckCircle2 className="w-6 h-6" /> : <AlertCircle className="w-6 h-6" />}
+                    </div>
+                    <div>
+                        <div className="flex items-center gap-3 mb-2">
+                            <h2 className={`text-2xl font-black ${isAllySubscribed ? 'text-emerald-900' : 'text-amber-900'}`}>Suscripción de Aliado</h2>
+                            <span className={`px-3 py-1 text-xs font-black uppercase tracking-widest rounded-full ${isAllySubscribed ? 'bg-emerald-200 text-emerald-800' : 'bg-amber-200 text-amber-800'}`}>
+                                {isAllySubscribed ? 'Activa' : 'Inactiva o Vencida'}
+                            </span>
+                        </div>
+                        <p className={`text-sm font-medium ${isAllySubscribed ? 'text-emerald-800/80' : 'text-amber-800/80'} mb-4 leading-relaxed`}>
+                            {isAllySubscribed
+                                ? `Tu cuenta está activa en la plataforma hasta el ${format(allyEnd, "dd 'de' MMMM, yyyy", { locale: es })}. ¡Sigue recibiendo pedidos sin interrupciones!`
+                                : `Tu sitio actualmente se encuentra inactivo. Debes pagar $${allyPrice} al mes al número de cuenta que aparece en el pago móvil en tu panel para que tu cuenta sea activada por nuestro equipo.`}
+                        </p>
+                        
+                        {!isAllySubscribed && (
+                            <div className="bg-white/60 p-4 rounded-xl border border-amber-200/50 mt-4">
+                                <p className="text-sm font-bold text-amber-900">
+                                    Costo: <span className="text-xl">$4.99 al mes</span>.
+                                </p>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mt-8">
                 {/* Current Plan Status */}
                 <div className="lg:col-span-2 space-y-8">
                     <div className="bg-white rounded-[2.5rem] border-2 border-slate-100 p-8 shadow-xl shadow-slate-200/40 relative overflow-hidden">
@@ -186,7 +222,7 @@ export default function Subscriptions() {
 
                 {/* Plans List */}
                 <div className="space-y-6">
-                    <h3 className="text-xl font-black text-slate-900 px-2">Planes Disponibles</h3>
+                    <h3 className="text-xl font-black text-slate-900 px-2">Planes Disponibles (Banners)</h3>
                     {subConfig?.plans && Object.values(subConfig.plans).map((plan: any) => (
                         <div
                             key={plan.id}

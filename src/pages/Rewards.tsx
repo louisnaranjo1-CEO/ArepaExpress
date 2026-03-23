@@ -85,7 +85,7 @@ export default function Rewards() {
             try {
                 const finalUrl = `${shareConfig.url.replace(/\/$/, '')}/auth?ref=${referralCode}`;
                 await navigator.share({
-                    title: '¡Acompáñame en 2X3!',
+                    title: '¡Acompáñame en DeliExpress!',
                     text: `${shareConfig.message}\nMi código es: ${referralCode}`,
                     url: finalUrl
                 });

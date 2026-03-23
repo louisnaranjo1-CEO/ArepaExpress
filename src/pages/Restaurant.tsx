@@ -49,7 +49,7 @@ export default function RestaurantPage() {
 
     if (navigator.share) {
       navigator.share({
-        title: `¡Mira este restaurante en Arepa Express!`,
+        title: `Mira este sitio en DeliExpress`,
         text: `Te recomiendo ${restaurant?.name}. Regístrate con mi código y participa en sorteos.`,
         url: shareUrl,
       }).catch(console.error);

@@ -11,6 +11,7 @@ import CitySelectorModal from '../components/CitySelectorModal';
 import WelcomePopup from '../components/WelcomePopup';
 import { recommendationsService } from '../lib/recommendations';
 import { toast } from 'react-hot-toast';
+import { vibrate } from '../utils/haptics';
 
 interface RecommendedProduct extends Product {
   restaurantId: string;
@@ -665,7 +666,7 @@ export default function Home() {
               const logoImg = (restaurant as any).logoUrl || restaurant.image;
 
               return (
-                <Link key={restaurant.id} to={`/restaurant/${restaurant.id}`} className="group relative flex flex-col gap-3">
+                <Link key={restaurant.id} to={`/restaurant/${restaurant.id}`} onClick={() => vibrate(30)} className="group relative flex flex-col gap-3">
                   <div className="relative w-full aspect-[16/10] overflow-hidden rounded-xl shadow-sm bg-slate-100">
                     <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent z-10"></div>
                     <div className="absolute top-3 left-3 z-20 bg-white/90 backdrop-blur-sm px-2.5 py-1 rounded-full flex items-center gap-1 shadow-sm">

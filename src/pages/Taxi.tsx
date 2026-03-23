@@ -8,6 +8,7 @@ import { Car, Bike, MapPin, Navigation, ArrowRight, CheckCircle2, X, Heart, Hist
 import { GoogleMap, useJsApiLoader, Marker, DirectionsRenderer } from '@react-google-maps/api';
 import toast from 'react-hot-toast';
 import { calculateDistance } from '../lib/geo';
+import { vibrate } from '../utils/haptics';
 
 interface Location {
     lat: number;
@@ -804,7 +805,10 @@ export default function Taxi() {
                             </div>
 
                             <button
-                                onClick={confirmOrigin}
+                                onClick={() => {
+                                    vibrate(50);
+                                    confirmOrigin();
+                                }}
                                 disabled={isDragging || !origin}
                                 className="w-full bg-black text-white py-4 rounded-xl font-black shadow-lg shadow-black/20 flex justify-center items-center gap-2 active:scale-95 transition-all disabled:opacity-50 mb-4"
                             >
@@ -812,7 +816,10 @@ export default function Taxi() {
                             </button>
 
                             <button
-                                onClick={toggleFollowUser}
+                                onClick={() => {
+                                    vibrate(50);
+                                    toggleFollowUser();
+                                }}
                                 className={`w-full py-3 rounded-xl font-bold flex justify-center items-center gap-2 transition-all border-2 mb-6 ${
                                     isFollowingUser 
                                     ? 'bg-emerald-50 text-emerald-600 border-emerald-200' 
