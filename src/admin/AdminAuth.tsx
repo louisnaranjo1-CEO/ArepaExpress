@@ -59,8 +59,15 @@ export default function AdminAuth() {
 
             <div className="w-full max-w-md animate-in fade-in slide-in-from-bottom-8 duration-700">
                 <div className="text-center mb-8">
-                    <div className="inline-flex items-center justify-center w-20 h-20 bg-primary rounded-[30%] shadow-2xl shadow-primary/30 mb-6 rotate-3 hover:rotate-0 transition-transform duration-500">
-                        <Store className="w-10 h-10 text-white" />
+                    <div 
+                        onClick={() => window.location.href = 'https://deliexpress.app'}
+                        className="flex items-center justify-center h-24 mb-6 hover:rotate-2 transition-transform duration-500 cursor-pointer active:scale-95"
+                    >
+                        <img 
+                            src="https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/otro.png?alt=media" 
+                            alt="DeliExpress Logo" 
+                            className="h-full object-contain"
+                        />
                     </div>
                     <h1 className="text-4xl font-black text-slate-900 tracking-tight">DeliExpress <span className="text-primary">Admin</span></h1>
                     <p className="text-slate-500 mt-2 font-medium">

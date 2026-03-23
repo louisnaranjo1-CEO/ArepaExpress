@@ -270,15 +270,15 @@ export default function Profile() {
 
     const FAQ_DATA = [
         {
-            q: "¿Qué es 2x3?",
+            q: "¿Qué es DeliExpress?",
             a: "Es la aplicación móvil todo-en-uno que conecta a nivel nacional a restaurantes, supermercados, bodegas y emprendimientos con los usuarios. Es una plataforma diseñada para facilitar compras sin colas, ofrecer servicios de delivery y transporte, y potenciar el crecimiento tecnológico de los negocios locales."
         },
         {
-            q: "¿Qué productos o servicios puedo encontrar en 2x3?",
+            q: "¿Qué productos o servicios puedo encontrar en DeliExpress?",
             a: "¡Prácticamente todo! Puedes explorar catálogos de comida, artículos de primera necesidad y servicios profesionales. Además, contamos con una red integrada de Delivery y Taxi siempre disponible para llevarte lo que necesites o trasladarte a donde desees."
         },
         {
-            q: "¿Cómo puedo ser aliado a 2x3?",
+            q: "¿Cómo puedo ser aliado a DeliExpress?",
             a: "Es muy sencillo transformar tu negocio. Solo debes ingresar a la aplicación y enviar tu solicitud formal a través de la sección \"Ser Aliado\". Al unirte, recibirás acceso a nuestro panel administrativo, sistema de comandas y herramientas de publicidad interna."
         }
     ];
@@ -530,8 +530,15 @@ export default function Profile() {
     if (!user) {
         return (
             <div className="flex flex-col items-center justify-center min-h-[80vh] px-6 text-center animate-in fade-in slide-in-from-bottom-4 duration-500">
-                <div className="w-32 h-32 bg-primary/10 rounded-full flex items-center justify-center mb-6">
-                    <User className="w-16 h-16 text-primary" />
+                <div 
+                    onClick={() => toast('¡Epale! ¿Iniciamos ya?', { icon: '🚀', style: { borderRadius: '15px', background: '#333', color: '#fff' } })}
+                    className="w-32 h-32 bg-white rounded-full flex items-center justify-center mb-6 shadow-xl cursor-pointer active:scale-95 transition-transform overflow-hidden p-4"
+                >
+                    <img 
+                        src="https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/otro.png?alt=media" 
+                        alt="DeliExpress Logo"
+                        className="w-full h-full object-contain"
+                    />
                 </div>
                 <h1 className="text-3xl font-black text-slate-900 mb-2">¿Epale, que buscamos hoy?</h1>
                 <p className="text-slate-500 mb-8 max-w-[280px]">
@@ -627,7 +634,7 @@ export default function Profile() {
 
                     <div className="flex items-center gap-4 my-2 pt-2">
                         <div className="h-px bg-slate-100 flex-1"></div>
-                        <span className="text-[10px] font-black text-slate-300 uppercase tracking-widest">Emprende y se un freelancer en un 2x3</span>
+                        <span className="text-[10px] font-black text-slate-300 uppercase tracking-widest">Emprende y se un freelancer en DeliExpress</span>
                         <div className="h-px bg-slate-100 flex-1"></div>
                     </div>
                     <button
@@ -648,7 +655,7 @@ export default function Profile() {
                         className="w-full bg-green-500/10 text-green-600 py-4 rounded-2xl font-bold hover:bg-green-500/20 transition-colors flex items-center justify-center gap-2"
                     >
                         <Store className="w-5 h-5 opacity-50" />
-                        Conviértete en aliado y deja que te encuentren en un 2x3
+                        Conviértete en aliado y deja que te encuentren en DeliExpress
                     </button>
                 </div>
 
@@ -668,7 +675,7 @@ export default function Profile() {
                                             {isLoginMode ? "Iniciar Sesión" : "Crear Cuenta"}
                                         </h3>
                                         <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-0.5">
-                                            2X3 Lover 🚀
+                                            DeliExpress Lover 🚀
                                         </p>
                                     </div>
                                     <button onClick={() => setShowEmailModal(false)} className="p-2 hover:bg-slate-200 rounded-xl transition-all">
@@ -771,7 +778,7 @@ export default function Profile() {
                                     ¡Gana 200 puntos! 🎉
                                 </h3>
                                 <p className="text-slate-500 text-sm text-center mb-6 font-medium">
-                                    ¿Alguien te invitó a 2X3? Ingresa su código ahora y ambos recibirán puntos gratis.
+                                    ¿Alguien te invitó a DeliExpress? Ingresa su código ahora y ambos recibirán puntos gratis.
                                 </p>
 
                                 <div className="space-y-4">

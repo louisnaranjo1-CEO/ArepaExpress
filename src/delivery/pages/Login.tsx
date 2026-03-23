@@ -72,20 +72,21 @@ export default function Login() {
                     <motion.div
                         initial={{ scale: 0.8, opacity: 0 }}
                         animate={{ scale: 1, opacity: 1 }}
-                        className="w-20 h-20 bg-white rounded-[1.75rem] shadow-2xl flex items-center justify-center mb-6"
+                        onClick={() => window.location.href = 'https://deliexpress.app'}
+                        className="h-24 shadow-2xl flex items-center justify-center mb-6 cursor-pointer active:scale-95 transition-transform"
                     >
                         <img
-                            src="https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/logo%20oficial.png?alt=media&token=2dd047ea-6c45-4347-8869-1a1edf4253f4"
-                            alt="2X3"
-                            className="w-14 h-14 object-contain"
+                            src="https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/otro.png?alt=media"
+                            alt="DeliExpress"
+                            className="h-full object-contain"
                         />
                     </motion.div>
 
                     <h1 className="text-3xl font-black text-white text-center mb-2 tracking-tighter">
-                        Delivery <span className="text-indigo-400">Express</span>
+                        Deli<span className="text-indigo-400">Express</span>
                     </h1>
                     <p className="text-slate-400 text-center text-sm font-medium px-4">
-                        Toma el control de tu tiempo y gana dinero entregando con 2X3.
+                        Toma el control de tu tiempo y gana dinero entregando con DeliExpress.
                     </p>
                 </div>
 
@@ -218,7 +219,7 @@ export default function Login() {
                 </button>
 
                 <p className="text-[10px] text-slate-600 font-bold text-center max-w-[280px] leading-relaxed">
-                    Al usar 2X3 Express, confirmas que has leído y aceptas nuestros
+                    Al usar DeliExpress, confirmas que has leído y aceptas nuestros
                     <a href="#" className="underline text-slate-500 px-1">Términos de Servicio</a> y
                     <a href="#" className="underline text-slate-500 pl-1">Política de Privacidad</a>.
                 </p>
