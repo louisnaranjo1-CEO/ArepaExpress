@@ -24,7 +24,7 @@ export default function RestaurantPage() {
   const [isFollowing, setIsFollowing] = useState(false);
   const [followerCount, setFollowerCount] = useState(0);
   const [selectedProduct, setSelectedProduct] = useState<any | null>(null);
-
+  const [selectedVariant, setSelectedVariant] = useState<any | null>(null);
   const getSocialIcon = (url: string) => {
     if (url.includes('instagram.com')) return <Instagram className="w-4 h-4" />;
     if (url.includes('tiktok.com')) return <Music2 className="w-4 h-4" />;
@@ -180,13 +180,20 @@ export default function RestaurantPage() {
     return matchesCategory && isAvailable;
   });
 
-  const handleAddToCart = (product: Product) => {
-    const finalPrice = product.promoPrice && product.promoPrice > 0 ? product.promoPrice : product.price;
+  const handleAddToCart = (product: Product, variant?: any) => {
+    let finalPrice = product.promoPrice && product.promoPrice > 0 ? product.promoPrice : (product.price || 0);
+    let finalName = product.name;
+
+    if (variant) {
+      finalPrice = variant.price;
+      finalName = `${product.name} - ${variant.name}`;
+    }
+
     addItem({
-      id: `${product.id}`,
+      id: `${product.id}${variant ? `-${variant.name}` : ''}`,
       productId: product.id!,
       restaurantId: restaurant.id!,
-      name: product.name,
+      name: finalName,
       price: finalPrice,
       quantity: 1,
       image: product.image,
@@ -667,6 +674,7 @@ export default function RestaurantPage() {
                     className="flex gap-4 py-5 border-b border-slate-100 group cursor-pointer"
                     onClick={() => {
                       setSelectedProduct(product);
+                      setSelectedVariant(null);
                       recommendationsService.recordProductView(product.id!, product.category, restaurant.id!);
                     }}
                   >
@@ -798,7 +806,12 @@ export default function RestaurantPage() {
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
-                          handleAddToCart(product);
+                          if (product.variants && product.variants.length > 0) {
+                            setSelectedProduct(product);
+                            setSelectedVariant(null);
+                          } else {
+                            handleAddToCart(product);
+                          }
                           // Adding to cart also counts as a strong view
                           recommendationsService.recordProductView(product.id!, product.category, restaurant.id!);
                         }}
@@ -1134,13 +1147,17 @@ export default function RestaurantPage() {
                 {/* Variants if any */}
                 {selectedProduct.variants && selectedProduct.variants.length > 0 && !selectedProduct.consultPrice && (
                   <div className="mb-8">
-                    <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-4 ml-1">Presentaciones</h4>
+                    <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-4 ml-1">Presentaciones <span className="text-red-500">*</span></h4>
                     <div className="grid grid-cols-2 gap-3">
                       {selectedProduct.variants.map((v: any, idx: number) => (
-                        <div key={idx} className="bg-slate-50 border border-slate-100 p-4 rounded-3xl flex flex-col gap-1">
-                          <span className="text-[10px] font-black uppercase text-slate-400">{v.name}</span>
-                          <span className="text-lg font-black text-slate-800">${v.price.toFixed(2)}</span>
-                        </div>
+                        <button 
+                          key={idx} 
+                          onClick={() => setSelectedVariant(v)}
+                          className={`border p-4 rounded-3xl flex flex-col gap-1 text-left transition-all ${selectedVariant?.name === v.name ? 'bg-primary border-primary shadow-lg shadow-primary/20 scale-105' : 'bg-slate-50 border-slate-100 hover:border-primary/30'}`}
+                        >
+                          <span className={`text-[10px] font-black uppercase ${selectedVariant?.name === v.name ? 'text-white/80' : 'text-slate-400'}`}>{v.name}</span>
+                          <span className={`text-lg font-black ${selectedVariant?.name === v.name ? 'text-white' : 'text-slate-800'}`}>${v.price.toFixed(2)}</span>
+                        </button>
                       ))}
                     </div>
                   </div>
@@ -1192,14 +1209,22 @@ export default function RestaurantPage() {
               {/* Footer / Add to Cart */}
               <div className="absolute bottom-0 left-0 w-full p-8 bg-white/80 backdrop-blur-md border-t border-slate-100">
                 <button
+                  disabled={selectedProduct.variants && selectedProduct.variants.length > 0 && !selectedVariant}
                   onClick={() => {
-                    handleAddToCart(selectedProduct);
+                    handleAddToCart(selectedProduct, selectedVariant);
                     setSelectedProduct(null);
+                    setSelectedVariant(null);
                   }}
-                  className="w-full bg-primary text-white py-4 rounded-3xl font-black text-base shadow-2xl shadow-primary/30 flex items-center justify-center gap-3 hover:scale-[1.02] active:scale-[0.98] transition-all"
+                  className={`w-full py-4 rounded-3xl font-black text-base shadow-2xl flex items-center justify-center gap-3 transition-all ${
+                    selectedProduct.variants && selectedProduct.variants.length > 0 && !selectedVariant
+                      ? 'bg-slate-200 text-slate-400 cursor-not-allowed shadow-none'
+                      : 'bg-primary text-white shadow-primary/30 hover:scale-[1.02] active:scale-[0.98]'
+                  }`}
                 >
                   <Plus className="w-5 h-5" />
-                  Añadir al Pedido
+                  {selectedProduct.variants && selectedProduct.variants.length > 0 && !selectedVariant 
+                    ? 'Selecciona una presentación' 
+                    : 'Añadir al Pedido'}
                 </button>
               </div>
             </motion.div>

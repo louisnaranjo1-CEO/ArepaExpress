@@ -174,18 +174,22 @@ export default function ProductManagement() {
             const newPriceInput = parseFloat(formData.price);
             const investment = formData.investment ? parseFloat(formData.investment) : 0;
 
-            if (!formData.consultPrice && isNaN(newPriceInput)) {
+            if (!formData.consultPrice && formData.variants.length === 0 && isNaN(newPriceInput)) {
                 alert("Por favor, ingresa un precio válido");
                 setSubmitting(false);
                 return;
             }
 
-            let finalPrice = newPriceInput;
+            let finalPrice = isNaN(newPriceInput) ? 0 : newPriceInput;
             let finalPromoPrice = 0;
 
-            if (editingProduct) {
+            if (formData.variants.length > 0 && finalPrice === 0) {
+                 finalPrice = Math.min(...formData.variants.map((v: any) => v.price)) || 0;
+            }
+
+            if (editingProduct && !isNaN(newPriceInput)) {
                 const oldBasePrice = editingProduct.price;
-                if (newPriceInput < oldBasePrice) {
+                if (newPriceInput < oldBasePrice && newPriceInput > 0) {
                     // It's a discount
                     finalPrice = oldBasePrice;
                     finalPromoPrice = newPriceInput;
@@ -194,7 +198,7 @@ export default function ProductManagement() {
                     finalPrice = newPriceInput;
                     finalPromoPrice = 0;
                 }
-            } else {
+            } else if (!editingProduct && !isNaN(newPriceInput)) {
                 // New product, price is base
                 finalPrice = newPriceInput;
                 finalPromoPrice = 0;
@@ -706,14 +710,14 @@ export default function ProductManagement() {
                                         <input
                                             type="number"
                                             step="0.01"
-                                            required
+                                            required={formData.variants.length === 0}
                                             value={formData.price}
                                             onChange={(e) => setFormData({ ...formData, price: e.target.value })}
                                             className="w-full bg-slate-50 border-2 border-transparent focus:border-primary p-3 rounded-2xl outline-none font-bold text-slate-700"
-                                            placeholder="Si bajas el precio actual, se creará una oferta autom."
+                                            placeholder={formData.variants.length > 0 ? "Opcional si usas variantes" : "Si bajas el precio actual, se creará una oferta autom."}
                                         />
                                         <p className="text-[9px] text-slate-400 ml-2 font-bold italic">
-                                            El sistema detectará descuentos automáticamente si bajas el precio base.
+                                            {formData.variants.length > 0 ? "El precio se calculará automáticamente según la variante seleccionada." : "El sistema detectará descuentos automáticamente si bajas el precio base."}
                                         </p>
                                     </div>
                                     <div className="space-y-1">
