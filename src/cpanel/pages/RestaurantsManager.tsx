@@ -99,6 +99,7 @@ export default function RestaurantsManager() {
                             <tr>
                                 <th className="px-8 py-5">Restaurante</th>
                                 <th className="px-8 py-5">Categoría</th>
+                                <th className="px-8 py-5">Correo</th>
                                 <th className="px-8 py-5 text-center">Estado</th>
                                 <th className="px-8 py-5 text-center">Suscripción</th>
                                 <th className="px-8 py-5 text-right">Acción</th>
@@ -144,6 +145,9 @@ export default function RestaurantsManager() {
                                         </td>
                                         <td className="px-8 py-5">
                                             <span className="text-sm font-medium text-slate-600">{restaurant.category}</span>
+                                        </td>
+                                        <td className="px-8 py-5">
+                                            <span className="text-sm text-slate-500">{(restaurant as any).email || 'No disponible'}</span>
                                         </td>
                                         <td className="px-8 py-5 text-center">
                                             <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest ${!isActive ? 'bg-slate-100 text-slate-700' :
