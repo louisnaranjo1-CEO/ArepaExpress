@@ -666,7 +666,9 @@ export default function RestaurantPage() {
           <div className="px-5 pb-32 flex-1 mt-4">
             {filteredProducts.length > 0 ? (
               filteredProducts.map((product) => {
-                const productImages = product.images && product.images.length > 0 ? product.images : [product.image];
+                const productImages = product.images && product.images.length > 0 
+                  ? product.images 
+                  : [product.image && !product.image.includes('unsplash.com') ? product.image : (restaurant?.logoUrl || restaurant?.image || '')];
 
                 return (
                   <div
@@ -792,7 +794,7 @@ export default function RestaurantPage() {
                       ) : (
                         <div
                           className="w-full h-full rounded-2xl bg-cover bg-center shadow-sm bg-slate-100"
-                          style={{ backgroundImage: `url("${product.image || 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&q=80'}")` }}
+                          style={{ backgroundImage: `url("${productImages[0] || ''}")` }}
                         ></div>
                       )}
 
@@ -1085,7 +1087,7 @@ export default function RestaurantPage() {
                 {(() => {
                   const images = selectedProduct.images && selectedProduct.images.length > 0
                     ? selectedProduct.images
-                    : [selectedProduct.image || 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&q=80'];
+                    : [selectedProduct.image && !selectedProduct.image.includes('unsplash.com') ? selectedProduct.image : (restaurant?.logoUrl || restaurant?.image || '')];
 
                   return (
                     <div className="w-full h-full overflow-x-auto flex snap-x snap-mandatory scrollbar-hide">

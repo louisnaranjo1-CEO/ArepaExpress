@@ -44,6 +44,7 @@ export default function ProductManagement() {
     const [editingProduct, setEditingProduct] = useState<Product | null>(null);
     const [submitting, setSubmitting] = useState(false);
     const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
+    const [restaurantLogo, setRestaurantLogo] = useState<string>('');
 
     // Form states
     const [formData, setFormData] = useState({
@@ -70,7 +71,21 @@ export default function ProductManagement() {
         if (!user) return;
         fetchProducts();
         fetchStations();
+        fetchRestaurantLogo();
     }, [user]);
+
+    const fetchRestaurantLogo = async () => {
+        try {
+            const docRef = doc(db, 'restaurants', user!.uid);
+            const docSnap = await getDoc(docRef);
+            if (docSnap.exists()) {
+                const data = docSnap.data();
+                setRestaurantLogo(data.logoUrl || data.image || '');
+            }
+        } catch (error) {
+            console.error("Error fetching restaurant logo:", error);
+        }
+    };
 
     const fetchStations = async () => {
         try {
@@ -209,8 +224,8 @@ export default function ProductManagement() {
                 price: formData.consultPrice ? 0 : finalPrice,
                 investment,
                 promoPrice: formData.consultPrice ? 0 : finalPromoPrice,
-                images: allImages,
-                image: allImages[0] || '', // Principal image
+                images: allImages.length > 0 ? allImages : (restaurantLogo ? [restaurantLogo] : []),
+                image: allImages[0] || restaurantLogo || '', // Principal image
                 updatedAt: new Date()
             };
 
