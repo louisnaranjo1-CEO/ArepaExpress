@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { UtensilsCrossed, Plus, Search, Filter, Edit2, Trash2, Image as ImageIcon, Check, ChevronDown, X, Loader2, DollarSign, Tag, TrendingUp, Instagram, Youtube, Music2 } from 'lucide-react';
+import { UtensilsCrossed, Plus, Search, Filter, Edit2, Trash2, Image as ImageIcon, Check, ChevronDown, X, Loader2, DollarSign, Tag, TrendingUp, Instagram, Youtube, Music2, LayoutGrid, List } from 'lucide-react';
 import { db, storage } from '../../lib/firebase';
 import { collection, query, getDocs, doc, deleteDoc, updateDoc, addDoc, getDoc, writeBatch } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
@@ -43,6 +43,7 @@ export default function ProductManagement() {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingProduct, setEditingProduct] = useState<Product | null>(null);
     const [submitting, setSubmitting] = useState(false);
+    const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
 
     // Form states
     const [formData, setFormData] = useState({
@@ -410,7 +411,7 @@ export default function ProductManagement() {
             </div>
 
             <div className="flex flex-col md:flex-row gap-4">
-                <div className="relative flex-1">
+                <div className="relative flex-1 shrink-0">
                     <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
                     <input
                         type="text"
@@ -421,13 +422,30 @@ export default function ProductManagement() {
                     />
                 </div>
 
+                <div className="flex items-center gap-2 bg-white p-1 rounded-2xl border border-slate-200 shrink-0 w-max self-start md:self-auto order-first md:order-none">
+                     <button
+                        onClick={() => setViewMode('grid')}
+                        className={`px-4 py-3 rounded-xl transition-all focus:outline-none flex items-center gap-2 ${viewMode === 'grid' ? 'bg-primary text-white shadow-md' : 'text-slate-400 hover:text-slate-600 hover:bg-slate-50'}`}
+                        title="Cuadrícula Grande"
+                     >
+                        <LayoutGrid className="w-5 h-5" />
+                     </button>
+                     <button
+                        onClick={() => setViewMode('list')}
+                        className={`px-4 py-3 rounded-xl transition-all focus:outline-none flex items-center gap-2 ${viewMode === 'list' ? 'bg-primary text-white shadow-md' : 'text-slate-400 hover:text-slate-600 hover:bg-slate-50'}`}
+                        title="Lista Compacta"
+                     >
+                        <List className="w-5 h-5" />
+                     </button>
+                </div>
+
                 {/* Categories Tabs */}
-                <div className="flex overflow-x-auto gap-2 pb-2 md:pb-0 scrollbar-hide">
+                <div className="flex overflow-x-auto gap-2 pb-2 md:pb-0 scrollbar-hide w-full max-w-full">
                     {activeCategories.map((cat) => (
                         <button
                             key={cat}
                             onClick={() => setActiveCategory(cat)}
-                            className={`px-6 py-4 rounded-2xl font-bold whitespace-nowrap transition-all border ${activeCategory === cat
+                            className={`px-5 py-3 md:px-6 md:py-4 rounded-2xl font-bold whitespace-nowrap transition-all border ${activeCategory === cat
                                 ? 'bg-primary text-white border-primary shadow-lg shadow-primary/20'
                                 : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50'
                                 }`}
@@ -443,6 +461,80 @@ export default function ProductManagement() {
                     <UtensilsCrossed className="w-16 h-16 text-slate-200 mx-auto mb-4" />
                     <p className="text-slate-400 font-bold text-xl">No se encontraron productos</p>
                     <p className="text-slate-300 font-medium max-w-xs mx-auto mt-2 italic">Empieza a crear tu menú haciendo clic en "Añadir Producto".</p>
+                </div>
+            ) : viewMode === 'list' ? (
+                <div className="flex flex-col gap-3">
+                    {filteredProducts.map((p) => (
+                        <div key={p.id} className="bg-white rounded-[24px] overflow-hidden border border-slate-100 shadow-sm hover:shadow-md transition-all duration-300 flex flex-row group">
+                           <div className="w-24 md:w-40 h-auto self-stretch bg-slate-100 relative shrink-0">
+                                {p.image ? (
+                                    <img src={p.image} alt={p.name} className="w-full h-full object-cover group-hover:scale-[1.05] transition-transform duration-500" />
+                                ) : (
+                                    <div className="absolute inset-0 flex items-center justify-center text-slate-300">
+                                        <ImageIcon className="w-6 h-6 md:w-10 md:h-10 opacity-50" />
+                                    </div>
+                                )}
+                                {!p.isActive && (
+                                    <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-[2px] flex items-center justify-center">
+                                        <span className="bg-white text-slate-900 px-1.5 py-0.5 rounded font-black text-[8px] uppercase tracking-widest">Inactivo</span>
+                                    </div>
+                                )}
+                           </div>
+
+                           <div className="p-3 md:p-5 flex-1 flex flex-col justify-between min-w-0">
+                                <div className="flex justify-between items-start gap-2">
+                                    <div className="min-w-0">
+                                        <h3 className="text-sm md:text-lg font-black text-slate-900 truncate leading-tight">{p.name}</h3>
+                                        <div className="flex items-center gap-1.5 flex-wrap mt-1">
+                                            <span className="bg-slate-50 text-slate-500 text-[9px] md:text-[10px] font-black px-1.5 py-0.5 rounded uppercase tracking-wider border border-slate-100">{p.category}</span>
+                                            {p.consultPrice ? (
+                                                <span className="bg-orange-50 text-orange-500 text-[10px] md:text-xs font-black px-2 py-0.5 rounded border border-orange-100">Cotización</span>
+                                            ) : (
+                                                <span className="bg-emerald-50 text-emerald-600 text-[11px] md:text-sm font-black px-2 py-0.5 rounded border border-emerald-100">
+                                                   {p.variants && p.variants.length > 0 ? `Desde $${Math.min(...p.variants.map(v => v.price)).toFixed(2)}` : `$${p.price.toFixed(2)}`}
+                                                </span>
+                                            )}
+                                        </div>
+                                    </div>
+                                    <div className="flex items-center gap-1.5 shrink-0">
+                                        <button onClick={() => handleOpenModal(p)} className="p-2 md:p-2.5 bg-blue-50 text-blue-600 rounded-xl hover:bg-blue-100 transition-colors">
+                                            <Edit2 className="w-3.5 h-3.5 md:w-5 md:h-5" />
+                                        </button>
+                                        <button onClick={() => handleDelete(p.id)} className="p-2 md:p-2.5 bg-red-50 text-red-600 rounded-xl hover:bg-red-100 transition-colors">
+                                            <Trash2 className="w-3.5 h-3.5 md:w-5 md:h-5" />
+                                        </button>
+                                    </div>
+                                </div>
+                                
+                                <p className="text-xs text-slate-400 truncate mt-1 hidden md:block w-[80%]">{p.description}</p>
+                                
+                                <div className="flex items-center justify-between mt-3 flex-wrap gap-2">
+                                    <div className="flex items-center gap-3">
+                                        <button
+                                            onClick={() => toggleAvailability(p)}
+                                            className={`p-1 md:p-1.5 rounded-lg border transition-all flex items-center gap-1 ${p.isAvailable ? 'bg-green-50 text-green-600 border-green-200' : 'bg-slate-50 text-slate-400 border-slate-200'}`}
+                                            title={p.isAvailable ? 'Disponible' : 'No disponible'}
+                                        >
+                                            <Check className={`w-3 h-3 md:w-4 md:h-4 ${p.isAvailable ? 'opacity-100' : 'opacity-40'}`} />
+                                            <span className="text-[10px] font-bold md:inline-block hidden">{p.isAvailable ? 'Dispon.' : 'Paused'}</span>
+                                        </button>
+                                        
+                                        {!p.consultPrice && p.promoPrice && p.promoPrice > 0 && (
+                                            <div className="text-[10px] font-black text-orange-500 bg-orange-50 px-2 flex items-center py-1 rounded-md">
+                                                 OFERTA -{Math.round((1 - p.promoPrice / p.price) * 100)}%
+                                            </div>
+                                        )}
+                                    </div>
+                                    <div className="flex items-center bg-green-50/50 px-2 py-1 rounded-xl border border-green-100 ml-auto md:ml-0">
+                                        <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mr-1 md:mr-2">Utilidad</p>
+                                        <p className="text-xs md:text-sm font-black text-green-600">
+                                            {p.consultPrice ? '--' : `+$${((p.promoPrice && p.promoPrice > 0 ? p.promoPrice : p.price) - (p.investment || 0)).toFixed(2)}`}
+                                        </p>
+                                    </div>
+                                </div>
+                           </div>
+                        </div>
+                    ))}
                 </div>
             ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
