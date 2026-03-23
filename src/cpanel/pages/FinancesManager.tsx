@@ -57,21 +57,24 @@ export default function FinancesManager() {
                 name: 'Plan Nacional',
                 price: 0,
                 updateLimit: 3,
-                scope: 'national'
+                scope: 'national',
+                availability: 'available'
             },
             state: {
                 id: 'state',
                 name: 'Plan Estadal',
                 price: 0,
                 updateLimit: 3,
-                scope: 'state'
+                scope: 'state',
+                availability: 'available'
             },
             city: {
                 id: 'city',
                 name: 'Plan Municipal',
                 price: 0,
                 updateLimit: 3,
-                scope: 'city'
+                scope: 'city',
+                availability: 'available'
             }
         },
         bannerUpdateLimit: 3,
@@ -615,6 +618,23 @@ export default function FinancesManager() {
                                                 className="w-full bg-white border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-600/20"
                                             />
                                             <p className="text-[10px] text-slate-500 mt-1 px-1">Cambios de banners permitidos al mes</p>
+                                        </div>
+                                        <div className="space-y-1">
+                                            <label className="text-[10px] font-black text-slate-400 uppercase px-1">Disponibilidad</label>
+                                            <select
+                                                value={plan.availability || 'available'}
+                                                onChange={e => {
+                                                    const newPlans = { ...subscriptionConfig.plans };
+                                                    newPlans[plan.id] = { ...plan, availability: e.target.value };
+                                                    setSubscriptionConfig({ ...subscriptionConfig, plans: newPlans });
+                                                }}
+                                                className="w-full bg-white border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-600/20"
+                                            >
+                                                <option value="available">Disponible</option>
+                                                <option value="not_available">No disponible</option>
+                                                <option value="full">Cupos llenos</option>
+                                                <option value="soon">Muy pronto</option>
+                                            </select>
                                         </div>
                                     </div>
                                 </div>

@@ -262,13 +262,19 @@ export default function Subscriptions() {
                             </div>
 
                             <button
-                                disabled={currentPlan?.id === plan.id}
+                                disabled={currentPlan?.id === plan.id || (plan.availability && plan.availability !== 'available')}
                                 className={`w-full py-3.5 rounded-xl font-black transition-all ${currentPlan?.id === plan.id
                                         ? 'bg-emerald-50 text-emerald-600 cursor-default'
-                                        : 'bg-slate-900 text-white hover:bg-black shadow-lg shadow-slate-900/10'
+                                        : (plan.availability && plan.availability !== 'available')
+                                            ? 'bg-slate-100 text-slate-400 cursor-not-allowed border border-slate-200'
+                                            : 'bg-slate-900 text-white hover:bg-black shadow-lg shadow-slate-900/10'
                                     }`}
                             >
-                                {currentPlan?.id === plan.id ? 'Plan Actual' : 'Seleccionar Plan'}
+                                {currentPlan?.id === plan.id ? 'Plan Actual'
+                                    : (plan.availability === 'not_available') ? 'No disponible'
+                                    : (plan.availability === 'full') ? 'Cupos llenos'
+                                    : (plan.availability === 'soon') ? 'Muy pronto'
+                                    : 'Seleccionar Plan'}
                             </button>
                         </div>
                     ))}
