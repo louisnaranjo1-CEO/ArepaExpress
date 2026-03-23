@@ -313,7 +313,7 @@ export default function RestaurantProfile() {
     }
 
     return (
-        <div className="max-w-4xl space-y-8 animate-in fade-in duration-700 pb-20">
+        <div className="max-w-7xl mx-auto w-full space-y-8 animate-in fade-in duration-700 pb-20">
             <div className="flex justify-between items-end flex-wrap gap-4">
                 <div>
                     <h1 className="text-3xl font-black text-slate-900">Configuración del Negocio</h1>
