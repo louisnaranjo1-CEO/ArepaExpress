@@ -338,12 +338,12 @@ export default function Home() {
             {/* Logo */}
             <div
               onClick={() => setIsInfoModalOpen(true)}
-              className="w-24 h-10 bg-white rounded-xl p-1 shadow-sm border border-slate-100 flex items-center justify-center shrink-0 cursor-pointer active:scale-95 transition-transform"
+              className="w-36 h-14 flex items-center justify-start shrink-0 cursor-pointer active:scale-95 transition-transform"
             >
               <img
                 src="https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/otro.png?alt=media"
                 alt="Deliexpress Logo"
-                className="w-full h-full object-contain"
+                className="w-full h-full object-contain object-left scale-110 origin-left"
               />
             </div>
 
