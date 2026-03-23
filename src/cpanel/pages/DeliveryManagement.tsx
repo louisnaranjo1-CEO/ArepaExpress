@@ -34,7 +34,7 @@ export default function DeliveryManagement() {
             ejecutivo: [{ from: 0, to: 2, clientPrice: 7.0, driverPrice: 5.0 }]
         },
         whatsappMessageTemplate: `👋 ¡Hola *{RestaurantName}*!
-Soy *{UserName}* y vengo desde la app en un 2x3 🚀. Mi identificación es *{Cedula}* y requiero el siguiente pedido:
+Soy *{UserName}* y vengo desde la app con DeliExpress 🚀. Mi identificación es *{Cedula}* y requiero el siguiente pedido:
 
 🛒 *Detalles del Pedido:*
 {OrderItems}
@@ -49,7 +49,7 @@ Soy *{UserName}* y vengo desde la app en un 2x3 🚀. Mi identificación es *{Ce
 
 {OrderNotes}
 
-_Enviado desde Deli Express App_`
+_Enviado desde DeliExpress App_`
     });
     const [activeShift, setActiveShift] = useState<'day' | 'night'>('day');
     const [savingSettings, setSavingSettings] = useState(false);

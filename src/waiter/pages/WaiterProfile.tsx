@@ -160,7 +160,7 @@ export default function WaiterProfile() {
                 </div>
 
                 <p className="text-center text-[10px] font-black text-slate-300 uppercase tracking-[0.3em] pt-4">
-                    2X3 v1.0.4
+                    DeliExpress v1.0.4
                 </p>
             </main>
         </WaiterLayout>

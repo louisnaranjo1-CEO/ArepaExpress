@@ -430,7 +430,7 @@ export default function RestaurantProfile() {
                                         value={name}
                                         onChange={(e) => setName(e.target.value)}
                                         className="w-full bg-slate-50 border-2 border-transparent focus:border-primary focus:bg-white p-4 rounded-2xl outline-none transition-all font-bold text-slate-700"
-                                        placeholder="Ej: 2X3"
+                                        placeholder="Ej: DeliExpress"
                                     />
                                 </div>
                                 <div className="space-y-2">

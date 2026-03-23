@@ -37,7 +37,7 @@ export default function UsersManager() {
     const [filterRole, setFilterRole] = useState('all');
     const [sortBy, setSortBy] = useState<'recent' | 'referrals'>('recent');
     const [showShareLinkModal, setShowShareLinkModal] = useState(false);
-    const [shareMessage, setShareMessage] = useState('¡Hola! Únete a la nueva era del delivery con 2X3 y obtén premios increíbles.');
+    const [shareMessage, setShareMessage] = useState('¡Hola! Únete a la nueva era del delivery con DeliExpress y obtén premios increíbles.');
     const [shareUrl, setShareUrl] = useState('https://deliexpress.app');
     const [savingConfig, setSavingConfig] = useState(false);
 
@@ -492,7 +492,7 @@ export default function UsersManager() {
                                 <div>
                                     <h3 className="text-2xl font-black text-slate-900 flex items-center gap-2">
                                         <Gift className="w-6 h-6 text-indigo-500" />
-                                        Compartir 2X3
+                                        Compartir DeliExpress
                                     </h3>
                                     <p className="text-slate-500 text-sm mt-1">Configura el mensaje que enviarán los usuarios para invitar a sus amigos.</p>
                                 </div>
@@ -508,7 +508,7 @@ export default function UsersManager() {
                                         value={shareMessage}
                                         onChange={e => setShareMessage(e.target.value)}
                                         className="w-full bg-slate-50 border-2 border-slate-100 focus:border-indigo-500 px-4 py-3 rounded-2xl outline-none font-bold text-slate-700 transition-all resize-none h-24 text-sm"
-                                        placeholder="Ej: ¡Usa 2X3 y obtén recompensas!"
+                                        placeholder="Ej: ¡Usa DeliExpress y obtén recompensas!"
                                     />
                                     <p className="text-[10px] font-medium text-slate-400 ml-1">Nota: El código del usuario y la URL se agregarán al final automáticamente.</p>
                                 </div>

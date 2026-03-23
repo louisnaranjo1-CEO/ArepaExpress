@@ -341,16 +341,16 @@ export default function TransportTracker() {
             <div className="flex-1 relative z-0 flex items-center justify-center bg-slate-50">
                 {request.status === 'completed' ? (
                     <div className="flex flex-col items-center justify-center gap-6 animate-fade-in px-8">
-                        <div className="w-48 h-48 bg-white rounded-[40px] shadow-2xl shadow-primary/20 p-8 flex items-center justify-center border-4 border-primary/10">
+                        <div className="w-48 h-48 bg-white rounded-[40px] shadow-2xl shadow-primary/20 p-8 flex items-center justify-center">
                             <img
-                                src="https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/logo%20oficial.png?alt=media&token=2dd047ea-6c45-4347-8869-1a1edf4253f4"
-                                alt="2X3 Logo"
+                                src="https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/otro.png?alt=media&token=8e68e4c5-9c88-4c27-9c9c-0c3a88c3e8a5"
+                                alt="DeliExpress Logo"
                                 className="w-full h-full object-contain animate-bounce-subtle"
                             />
                         </div>
                         <div className="text-center">
                             <h3 className="text-2xl font-black text-slate-900 mb-2">¡Servicio Finalizado!</h3>
-                            <p className="text-slate-500 font-bold max-w-[250px]">Gracias por confiar en el transporte express de 2X3</p>
+                            <p className="text-slate-500 font-bold max-w-[250px]">Gracias por confiar en el transporte express de DeliExpress</p>
                         </div>
                     </div>
                 ) : !showChat ? (
@@ -393,7 +393,7 @@ export default function TransportTracker() {
                         <div className="absolute -top-4 -right-4 w-20 h-20 bg-white/20 rounded-full blur-xl animate-pulse"></div>
                         <h3 className="text-white font-black text-xl mb-2 relative z-10">🎁 ¡Gana viajes gratis!</h3>
                         <p className="text-white/90 text-xs font-medium mb-3 relative z-10">
-                            Regístrate en 2X3 y obtén increíbles premios, descuentos y acumula puntos en todos los viajes.
+                            Regístrate en DeliExpress y obtén increíbles premios, descuentos y acumula puntos en todos los viajes.
                         </p>
                         <button onClick={() => navigate('/profile')} className="inline-block bg-white text-orange-600 text-sm font-bold px-5 py-2 rounded-xl shadow-md hover:scale-105 active:scale-95 transition-transform relative z-10">
                             Registrarme ahora

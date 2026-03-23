@@ -532,12 +532,12 @@ export default function Profile() {
             <div className="flex flex-col items-center justify-center min-h-[80vh] px-6 text-center animate-in fade-in slide-in-from-bottom-4 duration-500">
                 <div 
                     onClick={() => toast('¡Epale! ¿Iniciamos ya?', { icon: '🚀', style: { borderRadius: '15px', background: '#333', color: '#fff' } })}
-                    className="w-32 h-32 bg-white rounded-full flex items-center justify-center mb-6 shadow-xl cursor-pointer active:scale-95 transition-transform overflow-hidden p-4"
+                    className="w-80 h-32 flex items-center justify-center mb-8 cursor-pointer active:scale-95 transition-transform p-2 overflow-visible"
                 >
                     <img 
                         src="https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/otro.png?alt=media" 
                         alt="DeliExpress Logo"
-                        className="w-full h-full object-contain"
+                        className="w-auto h-full object-contain filter drop-shadow-xl"
                     />
                 </div>
                 <h1 className="text-3xl font-black text-slate-900 mb-2">¿Epale, que buscamos hoy?</h1>
@@ -910,7 +910,7 @@ export default function Profile() {
                             )}
                         </div>
                         <div className="flex-1">
-                            <h2 className="text-2xl font-black">{user.displayName || '2X3 Fan'}</h2>
+                            <h2 className="text-2xl font-black">{user.displayName || 'DeliExpress Fan'}</h2>
                             <div className="flex flex-col gap-1">
                                 <div className="flex items-center gap-1 text-white/80 text-xs">
                                     <Mail className="w-3 h-3" />
@@ -1235,8 +1235,11 @@ export default function Profile() {
                     </div>
                 </div>
 
-                <div className="mt-8 text-center p-6 grayscale opacity-50">
-                    <img src="https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/logo%20oficial.png?alt=media&token=2dd047ea-6c45-4347-8869-1a1edf4253f4" alt="2X3" className="h-10 mx-auto mb-2" />
+                <div 
+                    className="mt-8 text-center p-6 grayscale opacity-50 cursor-pointer active:scale-95 transition-transform"
+                    onClick={() => window.location.href = 'https://deliexpress.app'}
+                >
+                    <img src="https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/otro.png?alt=media" alt="DeliExpress" className="h-12 mx-auto mb-2" />
                     <p className="text-[10px] uppercase tracking-widest font-bold text-slate-400">Hecho con ❤️ en Venezuela</p>
                 </div>
             </div>
@@ -1612,7 +1615,7 @@ export default function Profile() {
                             <div className="p-8 border-b border-slate-50 flex items-center justify-between bg-slate-50/50">
                                 <div>
                                     <h3 className="text-xl font-black text-slate-900 flex items-center gap-2">
-                                        <Wallet className="w-6 h-6 text-primary" /> Mi Billetera 2X3
+                                        <Wallet className="w-6 h-6 text-primary" /> Mi Billetera DeliExpress
                                     </h3>
                                     <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1">Fondos para Transporte</p>
                                 </div>
@@ -1630,10 +1633,16 @@ export default function Profile() {
 
                                     <div className="absolute inset-0 flex flex-col justify-between p-6 z-10">
                                         <div className="flex justify-between items-start">
-                                            <div className="w-12 h-12 bg-white/10 backdrop-blur-md rounded-xl p-2 flex items-center justify-center border border-white/20">
+                                            <div 
+                                                className="w-12 h-12 bg-white/10 backdrop-blur-md rounded-xl p-2 flex items-center justify-center border border-white/20 cursor-pointer active:scale-95 transition-transform"
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    window.location.href = 'https://deliexpress.app';
+                                                }}
+                                            >
                                                 <img
-                                                    src="https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/logo%20oficial.png?alt=media&token=2dd047ea-6c45-4347-8869-1a1edf4253f4"
-                                                    alt="2X3"
+                                                    src="https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/otro.png?alt=media"
+                                                    alt="DeliExpress"
                                                     className="w-full h-full object-contain brightness-0 invert"
                                                 />
                                             </div>
@@ -1643,7 +1652,7 @@ export default function Profile() {
                                         <div>
                                             <p className="text-white/40 text-[9px] font-black uppercase tracking-widest mb-1 italic">Titular de la tarjeta</p>
                                             <p className="text-white text-lg font-black tracking-wider uppercase drop-shadow-md truncate max-w-full">
-                                                {userData?.displayName || user?.displayName || 'Usuario 2X3'}
+                                                {userData?.displayName || user?.displayName || 'Usuario DeliExpress'}
                                             </p>
 
                                             <div className="mt-4 flex justify-between items-end">

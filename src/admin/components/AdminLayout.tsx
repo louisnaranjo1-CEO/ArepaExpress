@@ -213,16 +213,16 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
                 <div className="flex flex-col h-full">
                     {/* Sidebar Header */}
                     <div className="p-6 border-b border-slate-100 flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center p-1.5 shadow-sm ring-1 ring-slate-200">
+                        <div className="flex items-center gap-3 cursor-pointer active:scale-95 transition-transform" onClick={() => window.location.href = 'https://deliexpress.app'}>
+                            <div className="w-14 h-14 flex items-center justify-center p-1 overflow-visible">
                                 <img
-                                    src="https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/logo%20oficial.png?alt=media&token=2dd047ea-6c45-4347-8869-1a1edf4253f4"
-                                    alt="2X3 Logo"
-                                    className="w-full h-full object-contain"
+                                    src="https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/otro.png?alt=media"
+                                    alt="DeliExpress Logo"
+                                    className="w-full h-full object-contain filter drop-shadow-sm"
                                 />
                             </div>
-                            <div>
-                                <h1 className="font-black text-slate-900 leading-tight">2X3 Panel</h1>
+                            <div className="flex flex-col">
+                                <h1 className="font-black text-slate-900 leading-tight">Delipanel</h1>
                                 <p className="text-[10px] font-bold text-primary uppercase tracking-wider">Business Hub</p>
                             </div>
                         </div>

@@ -18,9 +18,9 @@ export default function Rewards() {
     const [showBannerModal, setShowBannerModal] = useState(false);
 
     const userPoints = userData?.points || 0;
-    const referralCode = userData?.referralCode || user?.uid?.substring(0, 6).toUpperCase() || 'INVITA2X3';
+    const referralCode = userData?.referralCode || user?.uid?.substring(0, 6).toUpperCase() || 'INVITADELI';
     const [shareConfig, setShareConfig] = useState({
-        message: '¡Usa 2X3 y obtén recompensas!',
+        message: '¡Usa DeliExpress y obtén recompensas!',
         url: window.location.origin
     });
 

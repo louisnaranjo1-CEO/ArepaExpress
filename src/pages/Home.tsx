@@ -334,16 +334,16 @@ export default function Home() {
       <header className="sticky top-0 z-40 bg-white/90 backdrop-blur-md px-4 pt-6 pb-2">
         <div className="flex items-center justify-between mb-4 gap-2">
           {/* Left group: Logo + Points + Location */}
-          <div className="flex items-center gap-2 overflow-hidden">
+          <div className="flex items-center gap-4 overflow-visible">
             {/* Logo */}
             <div
               onClick={() => window.location.href = 'https://deliexpress.app'}
-              className="w-44 h-16 flex items-center justify-start shrink-0 cursor-pointer active:scale-95 transition-transform -ml-2"
+              className="h-16 w-auto flex items-center justify-start shrink-0 cursor-pointer active:scale-95 transition-transform overflow-visible"
             >
               <img
                 src="https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/otro.png?alt=media"
                 alt="DeliExpress Logo"
-                className="w-full h-full object-contain object-left scale-150 origin-left"
+                className="h-14 w-auto object-contain filter drop-shadow-sm"
               />
             </div>
 

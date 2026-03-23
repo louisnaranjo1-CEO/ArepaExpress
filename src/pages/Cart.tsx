@@ -312,7 +312,7 @@ export default function Cart() {
 
       let rawMessage = systemSettings?.whatsappMessageTemplate;
       if (!rawMessage) {
-        rawMessage = `👋 ¡Hola *{RestaurantName}*!\nSoy *{UserName}* y vengo desde la app en un 2x3 🚀. Mi identificación es *{Cedula}* y requiero el siguiente pedido:\n\n🛒 *Detalles del Pedido:*\n{OrderItems}\n\n🛵 *Delivery:* \${DeliveryFee}\n💰 *Total:* \${Total}\n\n📍 Adjunto mi ubicación para la entrega y mi número de contacto por si requieren llamar.\n\n🗺️ *Ubicación:* {LocationText}\n📱 *Mi número:* {UserPhone}\n\n{OrderNotes}\n\n_Enviado desde Deli Express App_`;
+        rawMessage = `👋 ¡Hola *{RestaurantName}*!\nSoy *{UserName}* y vengo desde la app con DeliExpress 🚀. Mi identificación es *{Cedula}* y requiero el siguiente pedido:\n\n🛒 *Detalles del Pedido:*\n{OrderItems}\n\n🛵 *Delivery:* \${DeliveryFee}\n💰 *Total:* \${Total}\n\n📍 Adjunto mi ubicación para la entrega y mi número de contacto por si requieren llamar.\n\n🗺️ *Ubicación:* {LocationText}\n📱 *Mi número:* {UserPhone}\n\n{OrderNotes}\n\n_Enviado desde DeliExpress App_`;
       }
 
       const formattedMessage = rawMessage
