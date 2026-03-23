@@ -189,14 +189,21 @@ export default function Profile() {
             try {
                 const qTickets = query(
                     collection(db, 'support_tickets'),
-                    where('userId', '==', user.uid),
-                    orderBy('createdAt', 'desc')
+                    where('userId', '==', user.uid)
                 );
                 const snapshot = await getDocs(qTickets);
                 const fetchedTickets = snapshot.docs.map(doc => ({
                     id: doc.id,
                     ...doc.data()
                 })) as SupportTicket[];
+                
+                // Sort locally by createdAt desc
+                fetchedTickets.sort((a, b) => {
+                    const timeA = a.createdAt?.toMillis ? a.createdAt.toMillis() : Date.now();
+                    const timeB = b.createdAt?.toMillis ? b.createdAt.toMillis() : Date.now();
+                    return timeB - timeA;
+                });
+                
                 setSupportTickets(fetchedTickets);
             } catch (error) {
                 console.error("Error fetching support tickets:", error);
@@ -525,9 +532,9 @@ export default function Profile() {
                 <div className="w-32 h-32 bg-primary/10 rounded-full flex items-center justify-center mb-6">
                     <User className="w-16 h-16 text-primary" />
                 </div>
-                <h1 className="text-3xl font-black text-slate-900 mb-2">¡Hola, 2X3 Lover! 🚀</h1>
+                <h1 className="text-3xl font-black text-slate-900 mb-2">¿Epale, que buscamos hoy?</h1>
                 <p className="text-slate-500 mb-8 max-w-[280px]">
-                    Ingresa para guardar tus restaurantes favoritos y pedir lo que más te gusta.
+                    Ingresa para guardar tus sitios favoritos, pedir lo que más te gusta o dejar que te llevemos.
                 </p>
                 {error && (
                     <div className="mb-4 p-4 bg-red-50 text-red-600 rounded-2xl text-xs font-bold animate-in shake-in duration-300">
@@ -587,9 +594,7 @@ export default function Profile() {
                     </button>
                     <div className="flex items-center gap-4 my-2">
                         <div className="h-px bg-slate-100 flex-1"></div>
-                        <div className="flex items-center gap-2 mb-1">
-                            <img src="https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/unnamed%20(14).jpg?alt=media&token=425d2b78-43d8-4f05-8e7c-87d2cb58abdd" alt="Cashea" className="h-6 w-auto object-contain rounded-md mix-blend-multiply" />
-                        </div><span className="text-[10px] font-black text-slate-300 uppercase tracking-widest">¿trabajas con nuestros aliados?</span>
+                        <span className="text-[10px] font-black text-slate-300 uppercase tracking-widest">¿trabajas con nuestros aliados?</span>
                         <div className="h-px bg-slate-100 flex-1"></div>
                     </div>
                     <button
@@ -613,7 +618,7 @@ export default function Profile() {
                         <div className="h-px bg-slate-100 flex-1"></div>
                     </div>
                     <button
-                        onClick={() => navigate('/delivery')}
+                        onClick={() => window.location.href = 'https://deliexpress.app/delivery/login'}
                         className="w-full bg-primary/10 text-primary py-4 rounded-2xl font-bold hover:bg-primary/20 transition-colors flex items-center justify-center gap-2"
                     >
                         <Navigation className="w-5 h-5 opacity-50" />
