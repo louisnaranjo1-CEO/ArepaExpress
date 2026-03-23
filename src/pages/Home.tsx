@@ -332,24 +332,24 @@ export default function Home() {
       <WelcomePopup manualState={manualState} manualCity={manualCity} />
       {/* Header */}
       <header className="sticky top-0 z-40 bg-white/90 backdrop-blur-md px-4 pt-6 pb-2">
-        <div className="flex items-center justify-between mb-4 gap-3">
+        <div className="flex items-center justify-between mb-4 gap-2">
           {/* Left group: Logo + Points + Location */}
-          <div className="flex items-center gap-3 overflow-hidden">
+          <div className="flex items-center gap-2 overflow-hidden">
             {/* Logo */}
             <div
               onClick={() => setIsInfoModalOpen(true)}
-              className="w-10 h-10 bg-white rounded-xl p-1.5 shadow-sm border border-slate-100 flex items-center justify-center shrink-0 cursor-pointer active:scale-95 transition-transform"
+              className="w-24 h-10 bg-white rounded-xl p-1 shadow-sm border border-slate-100 flex items-center justify-center shrink-0 cursor-pointer active:scale-95 transition-transform"
             >
               <img
-                src="https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/logo%20oficial.png?alt=media&token=2dd047ea-6c45-4347-8869-1a1edf4253f4"
-                alt="2X3 Logo"
+                src="https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/otro.png?alt=media"
+                alt="Deliexpress Logo"
                 className="w-full h-full object-contain"
               />
             </div>
 
             {/* Points */}
             <div
-              onClick={() => toast('¡Estamos preparando algo en un 2x3 para ti!', { icon: '🎁', style: { borderRadius: '15px', background: '#333', color: '#fff' } })}
+              onClick={() => toast('¡Estamos preparando algo en Deliexpress para ti!', { icon: '🎁', style: { borderRadius: '15px', background: '#333', color: '#fff' } })}
               className="flex flex-col shrink-0 cursor-pointer active:scale-95 transition-transform"
             >
               <span className="text-[9px] font-black uppercase text-slate-400 tracking-tighter leading-none mb-0.5">Puntos</span>
@@ -362,13 +362,13 @@ export default function Home() {
             {/* Location Selector */}
             <button
               onClick={() => setIsCityModalOpen(true)}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-2xl bg-slate-50 border border-slate-100 hover:border-primary/30 transition-all active:scale-95 overflow-hidden group"
+              className="flex items-center gap-1 px-2 py-1.5 rounded-2xl bg-slate-50 border border-slate-100 hover:border-primary/30 transition-all active:scale-95 overflow-hidden group"
             >
               <MapPin className="w-3.5 h-3.5 text-primary shrink-0" />
               <div className="flex flex-col items-start overflow-hidden">
-                <span className="text-[9px] font-bold text-slate-400 uppercase leading-none mb-0.5">Ubicación</span>
+                <span className="text-[8px] font-bold text-slate-400 uppercase leading-none mb-0.5">Ubicación</span>
                 <div className="flex items-center gap-1">
-                  <span className="text-[11px] font-bold text-slate-700 truncate max-w-[70px] leading-none">{locationName}</span>
+                  <span className="text-[11px] font-bold text-slate-700 truncate max-w-[60px] leading-none">{locationName}</span>
                   <ChevronDown className="w-2.5 h-2.5 text-slate-400 group-hover:text-primary transition-colors shrink-0" />
                 </div>
               </div>
@@ -394,7 +394,7 @@ export default function Home() {
               <Search className="w-5 h-5 text-slate-400 group-hover:text-primary transition-colors" />
             </div>
             <div className="flex w-full p-4 pl-12 pr-12 text-sm text-slate-500 border border-slate-200 rounded-xl bg-slate-50 shadow-sm cursor-text hover:border-primary/30 transition-colors">
-              Epale! que vamos a pedir en un 2x3?
+              Epale! que vamos a pedir en Deliexpress?
             </div>
           </Link>
           <div className="absolute inset-y-0 right-0 flex items-center pr-3">
@@ -439,10 +439,10 @@ export default function Home() {
 
               <div className="flex flex-col items-center mb-6 pt-4 relative">
                 <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-32 h-32 bg-primary/20 rounded-full blur-2xl animate-pulse"></div>
-                <div className="w-24 h-24 bg-white rounded-full p-2.5 shadow-xl shadow-primary/20 border border-primary/10 flex items-center justify-center relative z-10 animate-pulse">
+                <div className="w-28 h-28 bg-white rounded-full p-2.5 shadow-xl shadow-primary/20 border border-primary/10 flex items-center justify-center relative z-10 animate-pulse">
                   <img
-                    src="https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/logo%20oficial.png?alt=media&token=2dd047ea-6c45-4347-8869-1a1edf4253f4"
-                    alt="2X3 Logo"
+                    src="https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/otro.png?alt=media"
+                    alt="Deliexpress Logo"
                     className="w-full h-full object-contain drop-shadow-[0_0_15px_rgba(255,102,0,0.5)]"
                   />
                 </div>
@@ -451,7 +451,7 @@ export default function Home() {
 
               <div className="space-y-6 text-sm">
                 <p className="text-slate-600 font-medium leading-relaxed">
-                  <span className="font-bold text-slate-900">2x3 no es solo una aplicación;</span> es el ecosistema digital más robusto de Venezuela diseñado para conectar a usuarios, comercios y trabajadores independientes en una sola interfaz.
+                  <span className="font-bold text-slate-900">Deliexpress no es solo una aplicación;</span> es el ecosistema digital más robusto de Venezuela diseñado para conectar a usuarios, comercios y trabajadores independientes en una sola interfaz.
                 </p>
                 <p className="text-slate-600 font-medium leading-relaxed">
                   Nuestra misión es eliminar las fricciones del día a día: adiós a las colas, adiós a la incertidumbre de precios y hola a la inmediatez.

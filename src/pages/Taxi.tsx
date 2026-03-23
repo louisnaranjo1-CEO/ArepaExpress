@@ -727,27 +727,7 @@ export default function Taxi() {
                     )}
                 </GoogleMap>
 
-                {/* Brand Header Overlay */}
-                <div className="absolute top-0 left-0 right-0 z-10 p-4 pt-6 bg-gradient-to-b from-black/30 to-transparent pointer-events-none">
-                    <div className="flex items-center justify-between">
-                        <div className="flex flex-col items-center gap-2 pointer-events-auto">
-                            <div className="w-16 h-16 rounded-2xl overflow-hidden shadow-2xl border-2 border-white/50 bg-white p-2.5 animate-bounce-subtle">
-                                <img
-                                    src="https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/logo%20oficial.png?alt=media&token=2dd047ea-6c45-4347-8869-1a1edf4253f4"
-                                    alt="2X3 Logo"
-                                    className="w-full h-full object-contain"
-                                />
-                            </div>
-                            <div className="flex flex-col items-center">
-                                <div className="bg-white/95 backdrop-blur-md px-4 py-1.5 rounded-2xl shadow-xl border border-white/30 flex items-center gap-2">
-                                    <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></div>
-                                    <span className="text-sm font-black uppercase text-slate-900 tracking-tighter italic">2X3 <span className="text-primary">Transport</span></span>
-                                </div>
-                                <span className="text-[10px] font-black text-white drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)] mt-1.5 uppercase tracking-[0.2em]">Tu Mundo en un Toque</span>
-                            </div>
-                        </div>
-                    </div>
-                </div>
+
             </div>
 
             {/* Back Button Overlay */}
