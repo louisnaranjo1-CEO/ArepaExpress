@@ -769,7 +769,7 @@ export default function Home() {
               );
             })
 
-          ) : (
+          ) : !manualCity ? (
             <div className="flex flex-col items-center justify-center py-20 px-6 text-center animate-in fade-in slide-in-from-bottom-4 relative">
               <div className="absolute -top-12 2xl:-top-16 opacity-70 flex flex-col items-center animate-bounce">
                 <span className="text-primary font-black uppercase text-[10px] tracking-widest mb-1 text-center bg-white px-3 py-1 rounded-full shadow-sm border border-orange-100">¡Presiona Aquí Arriba!</span>
@@ -784,6 +784,10 @@ export default function Home() {
               <p className="text-slate-500 font-bold max-w-[280px] leading-relaxed">
                 Selecciona arriba tu <span className="text-primary font-black">Estado y Ciudad</span> en la que vives para presentarte lugares increíbles.
               </p>
+            </div>
+          ) : (
+            <div className="text-center py-12 text-slate-500">
+              No hay restaurantes disponibles en este momento.
             </div>
           )}
         </div>
