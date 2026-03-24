@@ -17,6 +17,7 @@ export default function OrdersRadar() {
     const [availableTransport, setAvailableTransport] = useState<any[]>([]);
     const [activeOrder, setActiveOrder] = useState<any>(null);
     const [activeTransport, setActiveTransport] = useState<any>(null);
+    const [myReservations, setMyReservations] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     const [latestFeedback, setLatestFeedback] = useState<any>(null);
     const [showChat, setShowChat] = useState(false);
@@ -57,7 +58,7 @@ export default function OrdersRadar() {
             }
         });
 
-        // Escuchar transport activo
+        // Escuchar transport activo y reservas programadas
         const activeTransportQ = query(
             collection(db, 'transport_requests'),
             where('driverId', '==', user.uid),
@@ -65,9 +66,19 @@ export default function OrdersRadar() {
         );
         const unsubActiveTransport = onSnapshot(activeTransportQ, (snapshot) => {
             if (!snapshot.empty) {
-                setActiveTransport({ id: snapshot.docs[0].id, ...snapshot.docs[0].data() });
+                const allReqs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as any));
+                
+                // Mostrar en pantalla completa ("Viaje en Curso") si NO es programado (viaje normal), 
+                // O si es programado pero el transportista ya indicó que va en camino ('arriving') o en progreso ('in_progress').
+                const mainActive = allReqs.find((req: any) => !req.scheduled || req.status === 'arriving' || req.status === 'in_progress');
+                setActiveTransport(mainActive || null);
+                
+                // Las reservas que solo han sido aceptadas van a una lista especial para que el transportista pueda iniciarlas luego
+                const pendingReservations = allReqs.filter((req: any) => req.scheduled && req.status === 'accepted');
+                setMyReservations(pendingReservations);
             } else {
                 setActiveTransport(null);
+                setMyReservations([]);
             }
         });
 
@@ -603,7 +614,7 @@ export default function OrdersRadar() {
         );
     }
 
-    const hasNoIncoming = availableOrders.length === 0 && availableTransport.length === 0;
+    const hasNoIncoming = availableOrders.length === 0 && availableTransport.length === 0 && myReservations.length === 0;
 
     return (
         <div className="space-y-6 pb-10">
@@ -662,6 +673,43 @@ export default function OrdersRadar() {
                 </motion.div>
             ) : (
                 <div className="space-y-5">
+                    {/* Mis Reservas */}
+                    {myReservations.length > 0 && (
+                        <div className="mb-8">
+                            <h3 className="text-[12px] font-black uppercase text-purple-600 tracking-widest pl-2 mb-3">Mis Próximas Reservas</h3>
+                            <div className="space-y-4">
+                                {myReservations.map(req => (
+                                    <motion.div
+                                        key={req.id}
+                                        initial={{ opacity: 0, x: -20 }}
+                                        animate={{ opacity: 1, x: 0 }}
+                                        className="bg-purple-50 rounded-[2.5rem] p-6 shadow-md border border-purple-100 relative group"
+                                    >
+                                        <div className="flex justify-between items-center mb-4">
+                                            <div className="flex items-center gap-2 px-3 py-1 bg-purple-600 text-white rounded-full text-[10px] font-black uppercase tracking-wider">
+                                                <Clock className="w-3.5 h-3.5" /> RESERVA ACEPTADA
+                                            </div>
+                                            <div className="text-xl font-black text-emerald-600">${(req.price || 0).toFixed(2)}</div>
+                                        </div>
+
+                                        <div className="text-sm font-black text-purple-900 mb-4 bg-white/60 p-3 rounded-2xl">
+                                            {req.scheduledAt && typeof req.scheduledAt.toDate === 'function' ? (
+                                                <>Para: {req.scheduledAt.toDate().toLocaleString('es-VE', { weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })}</>
+                                            ) : 'Fecha Pendiente'}
+                                        </div>
+
+                                        <button
+                                            onClick={() => setActiveTransport(req)}
+                                            className="w-full bg-white text-purple-700 font-black py-3 rounded-xl shadow-sm border border-purple-200 active:scale-95 transition-all text-sm"
+                                        >
+                                            VER O INICIAR AHORA
+                                        </button>
+                                    </motion.div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+
                     {/* Lista de Viajes (Taxi) */}
                     <AnimatePresence mode="popLayout">
                         {availableTransport.map(req => (

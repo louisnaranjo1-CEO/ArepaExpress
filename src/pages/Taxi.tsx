@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { collection, addDoc, serverTimestamp, doc, getDoc, updateDoc, getDocs, query, where, writeBatch, onSnapshot } from 'firebase/firestore';
+import { collection, addDoc, serverTimestamp, doc, getDoc, updateDoc, getDocs, query, where, writeBatch, onSnapshot, Timestamp } from 'firebase/firestore';
 import { db, storage } from '../lib/firebase';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { Car, Bike, MapPin, Navigation, ArrowRight, CheckCircle2, X, Heart, History, Star, Wallet, Upload, Copy, Check, Calendar, Clock as ClockIcon } from 'lucide-react';
@@ -542,7 +542,7 @@ export default function Taxi() {
                 paymentRef: paymentRef || '',
                 paymentProofUrl: proofUrl,
                 scheduled: isScheduled,
-                scheduledAt: isScheduled ? scheduledDateTime : null,
+                scheduledAt: isScheduled && scheduledDateTime ? Timestamp.fromDate(new Date(scheduledDateTime)) : null,
                 createdAt: serverTimestamp(),
             };
 
