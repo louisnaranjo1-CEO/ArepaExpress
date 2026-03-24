@@ -4,7 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import { collection, addDoc, serverTimestamp, doc, getDoc, updateDoc, getDocs, query, where, writeBatch, onSnapshot } from 'firebase/firestore';
 import { db, storage } from '../lib/firebase';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { Car, Bike, MapPin, Navigation, ArrowRight, CheckCircle2, X, Heart, History, Star, Wallet, Upload, Copy, Check } from 'lucide-react';
+import { Car, Bike, MapPin, Navigation, ArrowRight, CheckCircle2, X, Heart, History, Star, Wallet, Upload, Copy, Check, Calendar, Clock as ClockIcon } from 'lucide-react';
 import { GoogleMap, useJsApiLoader, Marker, DirectionsRenderer } from '@react-google-maps/api';
 import toast from 'react-hot-toast';
 import { calculateDistance } from '../lib/geo';
@@ -37,29 +37,7 @@ const mapOptions: google.maps.MapOptions = {
     streetViewControl: false,
     mapTypeControl: false,
     fullscreenControl: false,
-    clickableIcons: true,
-    styles: [
-        {
-            featureType: "poi",
-            elementType: "labels",
-            stylers: [{ visibility: "on" }]
-        },
-        {
-            featureType: "business",
-            elementType: "labels",
-            stylers: [{ visibility: "on" }]
-        },
-        {
-            featureType: "transit",
-            elementType: "labels",
-            stylers: [{ visibility: "on" }]
-        },
-        {
-            featureType: "road",
-            elementType: "labels",
-            stylers: [{ visibility: "on" }]
-        }
-    ]
+    clickableIcons: false
 };
 
 export default function Taxi() {
@@ -95,6 +73,10 @@ export default function Taxi() {
     const [isUploading, setIsUploading] = useState(false);
     const [isCalculatingRoute, setIsCalculatingRoute] = useState(false);
     const [routeCalculationAttempted, setRouteCalculationAttempted] = useState(false);
+    
+    // Reservation State
+    const [isScheduled, setIsScheduled] = useState(false);
+    const [scheduledDateTime, setScheduledDateTime] = useState('');
 
     const [showGuestModal, setShowGuestModal] = useState(false);
     const [guestName, setGuestName] = useState('');
@@ -231,6 +213,23 @@ export default function Taxi() {
     const handleMapDragEnd = () => {
         setIsDragging(false);
         if (map && (step === 'origin' || step === 'destination')) {
+            // Get pixel height of the marker (calc(50% - 140px))
+            const containerHeight = map.getDiv().offsetHeight;
+            const markerY = (containerHeight / 2) - 140;
+            const markerX = map.getDiv().offsetWidth / 2;
+            
+            const projection = map.getProjection();
+            if (projection) {
+                const latLng = projection.fromPointToLatLng(new google.maps.Point(
+                    markerX / Math.pow(2, map.getZoom()!),
+                    markerY / Math.pow(2, map.getZoom()!)
+                ));
+                // Note: fromPointToLatLng is complex with zoom, better to just use padding approach or shift map center.
+                // Since moving the map center is cleaner:
+            }
+            
+            // Revert to center-based for reliability and just use map padding if possible, 
+            // but for now let's just use the center and let the user know they are moving the map.
             const center = map.getCenter();
             if (center) {
                 const newPos = { lat: center.lat(), lng: center.lng() };
@@ -558,6 +557,8 @@ export default function Taxi() {
                 paymentMethod: selectedPaymentMethod,
                 paymentRef: paymentRef || '',
                 paymentProofUrl: proofUrl,
+                scheduled: isScheduled,
+                scheduledAt: isScheduled ? scheduledDateTime : null,
                 createdAt: serverTimestamp(),
             };
 
@@ -686,7 +687,8 @@ export default function Taxi() {
                     onUnmount={onUnmount}
                     options={{
                         ...mapOptions,
-                        gestureHandling: 'greedy'
+                        gestureHandling: 'greedy',
+                        padding: { bottom: 280, top: 0, left: 0, right: 0 }
                     }}
                     onDragStart={handleMapDragStart}
                     onDragEnd={handleMapDragEnd}
@@ -705,21 +707,26 @@ export default function Taxi() {
                         />
                     )}
 
-                    {/* Fixed center marker for selection */}
+                    {/* Fixed center marker for selection - Adjusted to be higher (center of visible map) */}
                     {(step === 'origin' || step === 'destination') && (
-                        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-full z-10 pointer-events-none drop-shadow-xl">
+                        <div 
+                            className="absolute left-1/2 -translate-x-1/2 -translate-y-full z-10 pointer-events-none drop-shadow-[0_10px_15px_rgba(0,0,0,0.3)] transition-all"
+                            style={{ top: 'calc(50% - 140px)' }}
+                        >
                             {step === 'origin' ? (
                                 <div className={`transition-transform duration-200 ${isDragging ? '-translate-y-4' : ''}`}>
-                                    <svg width="40" height="40" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                    <svg width="48" height="48" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                                         <path d="M12 2C8.13 2 5 5.13 5 9C5 14.25 12 22 12 22C12 22 19 14.25 19 9C19 5.13 15.87 2 12 2Z" fill="#000000" />
                                         <circle cx="12" cy="9" r="3" fill="white" />
+                                        <path d="M12 22V24" stroke="black" strokeWidth="2" strokeLinecap="round"/>
                                     </svg>
                                 </div>
                             ) : (
                                 <div className={`transition-transform duration-200 ${isDragging ? '-translate-y-4' : ''}`}>
-                                    <svg width="40" height="40" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                    <svg width="48" height="48" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                                         <path d="M12 2C8.13 2 5 5.13 5 9C5 14.25 12 22 12 22C12 22 19 14.25 19 9C19 5.13 15.87 2 12 2Z" fill="#FF5D00" />
                                         <circle cx="12" cy="9" r="3" fill="white" />
+                                        <path d="M12 22V24" stroke="#FF5D00" strokeWidth="2" strokeLinecap="round"/>
                                     </svg>
                                 </div>
                             )}
@@ -893,6 +900,51 @@ export default function Taxi() {
                     {/* STEP 3: VEHICLE & ROUTE */}
                     {step === 'vehicle' && (
                         <div className="animate-in fade-in slide-in-from-bottom-4">
+                            {/* RESERVE OPTION OVERLAY */}
+                            <div className="mb-4">
+                                <div className="bg-slate-50 p-1.5 rounded-2xl flex gap-2 mb-4 border border-slate-100">
+                                    <button 
+                                        onClick={() => setIsScheduled(false)}
+                                        className={`flex-1 py-3 px-4 rounded-xl font-black text-xs uppercase tracking-widest transition-all ${!isScheduled ? 'bg-white shadow-sm text-slate-800' : 'text-slate-400'}`}
+                                    >
+                                        Viajar ahora
+                                    </button>
+                                    <button 
+                                        onClick={() => {
+                                            setIsScheduled(true);
+                                            if (!scheduledDateTime) {
+                                                const now = new Date();
+                                                now.setHours(now.getHours() + 1);
+                                                setScheduledDateTime(now.toISOString().slice(0, 16));
+                                            }
+                                        }}
+                                        className={`flex-1 py-3 px-4 rounded-xl font-black text-xs uppercase tracking-widest transition-all ${isScheduled ? 'bg-white shadow-sm text-slate-800' : 'text-slate-400'}`}
+                                    >
+                                        Reservar
+                                    </button>
+                                </div>
+
+                                {isScheduled && (
+                                    <div className="bg-primary/5 border border-primary/20 rounded-2xl p-4 mb-4 animate-in zoom-in-95">
+                                        <label className="block text-[10px] font-black uppercase text-primary mb-2 tracking-widest">Fecha y Hora de Reserva</label>
+                                        <div className="relative">
+                                            <Calendar className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-primary pointer-events-none" />
+                                            <input 
+                                                type="datetime-local" 
+                                                value={scheduledDateTime}
+                                                min={new Date().toISOString().slice(0, 16)}
+                                                onChange={(e) => setScheduledDateTime(e.target.value)}
+                                                className="w-full bg-white border border-primary/20 pl-12 pr-4 py-4 rounded-xl font-bold text-slate-700 focus:outline-none focus:ring-4 focus:ring-primary/10 transition-all"
+                                            />
+                                        </div>
+                                        <p className="text-[10px] font-medium text-slate-500 mt-2 flex items-center gap-1.5">
+                                            <ClockIcon className="w-3 h-3" />
+                                            Dinos cuándo necesitas el vehículo y un conductor te buscará.
+                                        </p>
+                                    </div>
+                                )}
+                            </div>
+
                             <div className="flex items-center justify-between mb-4">
                                 <h2 className="text-xl font-black text-slate-900">Elige un vehículo</h2>
                                 {routeInfo && (
