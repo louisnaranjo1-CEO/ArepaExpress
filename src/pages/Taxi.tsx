@@ -89,6 +89,8 @@ export default function Taxi() {
     const geocoderRef = useRef<google.maps.Geocoder | null>(null);
     const mapCenterRef = useRef(defaultCenter);
 
+    const [activeReservations, setActiveReservations] = useState<any[]>([]);
+
     // 0. Check for active transport request
     useEffect(() => {
         if (!user) return;
@@ -99,8 +101,23 @@ export default function Taxi() {
         );
         const unsubscribe = onSnapshot(q, (snapshot) => {
             if (!snapshot.empty) {
-                const activeRequest = snapshot.docs[0];
-                navigate(`/taxi/track/${activeRequest.id}`);
+                const reqs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as any));
+                
+                // Rides that should force redirect to Tracker: 
+                // Immediate rides, OR scheduled rides already executing
+                const mainActive = reqs.find((r: any) => !r.scheduled || ['arriving', 'in_progress'].includes(r.status));
+                
+                if (mainActive) {
+                    // Si apenas acabo de reservar y estoy en 'searching', el flujo normal 
+                    // de submit hara navigate. Pero aqui no queremos forzar el navigate a menos
+                    // que sea un viaje normal o uno iniciado.
+                    navigate(`/taxi/track/${mainActive.id}`);
+                }
+                
+                const pendingSchedules = reqs.filter((r: any) => r.scheduled && ['searching', 'verifying_payment', 'accepted'].includes(r.status));
+                setActiveReservations(pendingSchedules);
+            } else {
+                setActiveReservations([]);
             }
         });
         return () => unsubscribe();

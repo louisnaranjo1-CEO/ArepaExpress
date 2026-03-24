@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
-import { doc, onSnapshot, getDoc, updateDoc, serverTimestamp, query, collection, orderBy, limit } from 'firebase/firestore';
+import { doc, onSnapshot, getDoc, updateDoc, serverTimestamp, query, collection, orderBy, limit, increment, addDoc } from 'firebase/firestore';
 import { ref, getDownloadURL } from 'firebase/storage';
 import { db, storage } from '../lib/firebase';
 import { DeliveryDriver } from '../lib/delivery-service';
@@ -232,6 +232,39 @@ export default function TransportTracker() {
         }
     };
 
+    const handleCancelReservation = async () => {
+        if (!requestId || !request) return;
+        if (!confirm("¿Seguro que deseas cancelar esta reserva? El dinero será devuelto a tu billetera virtual.")) return;
+        try {
+            await updateDoc(doc(db, 'transport_requests', requestId), {
+                status: 'cancelled',
+                cancelledAt: serverTimestamp()
+            });
+
+            if (request.price && request.price > 0 && !request.userId.startsWith('guest_')) {
+                const userRef = doc(db, 'users', request.userId);
+                await updateDoc(userRef, {
+                    walletBalance: increment(request.price)
+                });
+
+                await addDoc(collection(db, 'wallet_recharges'), {
+                    userId: request.userId,
+                    amount: request.price,
+                    status: 'approved',
+                    paymentMethod: 'Reembolso',
+                    reference: 'Cancelación Reserva ' + requestId.slice(0, 6),
+                    createdAt: serverTimestamp(),
+                });
+            }
+
+            toast.success("Reserva cancelada. Fondos reembolsados a tu billetera.");
+            navigate('/taxi');
+        } catch (error) {
+            console.error("Error cancelling reservation:", error);
+            toast.error("Error al cancelar la reserva");
+        }
+    };
+
     const onLoad = useCallback(function callback(map: google.maps.Map) {
         setMap(map);
         setDirectionsService(new google.maps.DirectionsService());
@@ -405,6 +438,21 @@ export default function TransportTracker() {
                         </p>
                     </div>
                 </div>
+
+                {/* Cancelar Reserva Botón */}
+                {request.scheduled && ['searching', 'accepted'].includes(request.status) && (
+                    <div className="mb-6 p-4 bg-red-50 border border-red-100 rounded-2xl flex flex-col items-center">
+                        <p className="text-xs text-red-600 font-bold text-center mb-3">
+                            Puedes cancelar esta reserva. El pago será reembolsado como saldo a tu billetera virtual de DeliExpress.
+                        </p>
+                        <button
+                            onClick={handleCancelReservation}
+                            className="w-full bg-white text-red-500 font-black py-3 rounded-xl border border-red-200 shadow-sm active:scale-95 transition-all flex justify-center items-center gap-2"
+                        >
+                            <XCircle className="w-5 h-5" /> CANCELAR MÍ RESERVA
+                        </button>
+                    </div>
+                )}
 
                 {/* Guest Banner */}
                 {request.userId?.startsWith('guest_') && (
