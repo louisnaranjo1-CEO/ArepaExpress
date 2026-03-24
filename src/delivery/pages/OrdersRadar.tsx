@@ -677,10 +677,20 @@ export default function OrdersRadar() {
                                 <div className="flex justify-between items-center mb-6 relative">
                                     <div className="flex items-center gap-2 px-3 py-1 bg-primary text-white rounded-full text-[10px] font-black uppercase tracking-wider shadow-lg shadow-primary/20">
                                         {req.vehicleType === 'moto' ? <Bike className="w-3.5 h-3.5" /> : <Car className="w-3.5 h-3.5" />}
-                                        SOLICITUD TAXI
+                                        {req.scheduled ? 'VIAJE PROGRAMADO' : 'SOLICITUD TAXI'}
                                     </div>
                                     <div className="text-2xl font-black text-emerald-600">${(req.price || 0).toFixed(2)}</div>
                                 </div>
+
+                                {req.scheduled && (
+                                    <div className="flex items-center gap-2 bg-purple-50 text-purple-600 p-3 rounded-2xl border border-purple-100 mb-4 animate-in fade-in slide-in-from-top-1">
+                                        <Clock className="w-4 h-4" />
+                                        <div className="flex flex-col">
+                                            <span className="text-[10px] font-black uppercase tracking-wider leading-none">Para el día:</span>
+                                            <span className="text-sm font-black">{req.scheduledAt?.toDate().toLocaleString('es-VE', { weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })}</span>
+                                        </div>
+                                    </div>
+                                )}
 
                                 <div className="space-y-4 mb-8 relative">
                                     <div className="flex items-start gap-4">

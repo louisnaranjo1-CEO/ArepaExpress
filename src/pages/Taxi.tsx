@@ -213,23 +213,7 @@ export default function Taxi() {
     const handleMapDragEnd = () => {
         setIsDragging(false);
         if (map && (step === 'origin' || step === 'destination')) {
-            // Get pixel height of the marker (calc(50% - 140px))
-            const containerHeight = map.getDiv().offsetHeight;
-            const markerY = (containerHeight / 2) - 140;
-            const markerX = map.getDiv().offsetWidth / 2;
-            
-            const projection = map.getProjection();
-            if (projection) {
-                const latLng = projection.fromPointToLatLng(new google.maps.Point(
-                    markerX / Math.pow(2, map.getZoom()!),
-                    markerY / Math.pow(2, map.getZoom()!)
-                ));
-                // Note: fromPointToLatLng is complex with zoom, better to just use padding approach or shift map center.
-                // Since moving the map center is cleaner:
-            }
-            
-            // Revert to center-based for reliability and just use map padding if possible, 
-            // but for now let's just use the center and let the user know they are moving the map.
+            // map center is now true center for marker selection
             const center = map.getCenter();
             if (center) {
                 const newPos = { lat: center.lat(), lng: center.lng() };
@@ -710,8 +694,7 @@ export default function Taxi() {
                     {/* Fixed center marker for selection - Adjusted to be higher (center of visible map) */}
                     {(step === 'origin' || step === 'destination') && (
                         <div 
-                            className="absolute left-1/2 -translate-x-1/2 -translate-y-full z-10 pointer-events-none drop-shadow-[0_10px_15px_rgba(0,0,0,0.3)] transition-all"
-                            style={{ top: 'calc(50% - 140px)' }}
+                            className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-full z-10 pointer-events-none drop-shadow-[0_10px_15px_rgba(0,0,0,0.3)] transition-all"
                         >
                             {step === 'origin' ? (
                                 <div className={`transition-transform duration-200 ${isDragging ? '-translate-y-4' : ''}`}>

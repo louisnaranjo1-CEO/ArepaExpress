@@ -339,7 +339,7 @@ export default function TransportTracker() {
 
             {/* Map/Logo Area */}
             <div className="flex-1 relative z-0 flex items-center justify-center bg-slate-50">
-                {request.status === 'completed' ? (
+                {request.status === 'completed' || request.status === 'searching' || request.status === 'verifying_payment' ? (
                     <div className="flex flex-col items-center justify-center gap-6 animate-fade-in px-8">
                         <div className="w-48 h-48 bg-white rounded-[40px] shadow-2xl shadow-primary/20 p-8 flex items-center justify-center">
                             <img
@@ -349,8 +349,16 @@ export default function TransportTracker() {
                             />
                         </div>
                         <div className="text-center">
-                            <h3 className="text-2xl font-black text-slate-900 mb-2">¡Servicio Finalizado!</h3>
-                            <p className="text-slate-500 font-bold max-w-[250px]">Gracias por confiar en el transporte express de DeliExpress</p>
+                            <h3 className="text-2xl font-black text-slate-900 mb-2">
+                                {request.status === 'completed' ? '¡Servicio Finalizado!' : 
+                                 request.status === 'verifying_payment' ? 'Verificando Pago' : 
+                                 'Buscando Conductor'}
+                            </h3>
+                            <p className="text-slate-500 font-bold max-w-[250px]">
+                                {request.status === 'completed' ? 'Gracias por confiar en el transporte express de DeliExpress' : 
+                                 request.status === 'verifying_payment' ? 'Estamos procesando tu comprobante...' :
+                                 'Conectando con vehículos en tu zona...'}
+                            </p>
                         </div>
                     </div>
                 ) : !showChat ? (
@@ -382,8 +390,19 @@ export default function TransportTracker() {
                         <StatusIcon className="w-7 h-7" />
                     </div>
                     <div>
-                        <h2 className="text-xl font-black text-slate-900">{statusInfo.title}</h2>
-                        <p className="font-bold text-slate-500 ">{statusInfo.subtitle}</p>
+                        <div className="flex items-center gap-2">
+                            <h2 className="text-xl font-black text-slate-900">{statusInfo.title}</h2>
+                            {request.scheduled && (
+                                <span className="bg-purple-100 text-purple-700 px-2 py-0.5 rounded-lg text-[10px] font-black uppercase tracking-wider animate-pulse border border-purple-200">
+                                    RESERVA
+                                </span>
+                            )}
+                        </div>
+                        <p className="font-bold text-slate-500 ">
+                            {request.scheduled && request.status === 'searching' 
+                                ? `Programado para: ${request.scheduledAt?.toDate().toLocaleString('es-VE', { weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })}`
+                                : statusInfo.subtitle}
+                        </p>
                     </div>
                 </div>
 

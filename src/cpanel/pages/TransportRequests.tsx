@@ -372,10 +372,24 @@ export default function TransportRequests() {
                                                         ID: {req.id.slice(0, 6)}
                                                     </span>
                                                     {getStatusBadge(req.status)}
+                                                    {req.scheduled && (
+                                                        <span className="bg-purple-100 text-purple-800 px-3 py-1 rounded-full text-xs font-black flex items-center gap-1">
+                                                            <Clock className="w-3 h-3" /> RESERVA
+                                                        </span>
+                                                    )}
                                                 </div>
                                                 <div className="flex items-center gap-3 text-sm font-medium text-slate-500 flex-wrap mt-1">
                                                     <span className="flex items-center gap-1"><User className="w-4 h-4" /> {req.userName}</span>
-                                                    <span className="flex items-center gap-1"><Calendar className="w-4 h-4" /> {req.createdAt?.toDate().toLocaleString()}</span>
+                                                    <span className="flex items-center gap-1">
+                                                        <Calendar className="w-4 h-4" /> 
+                                                        {req.scheduled ? (
+                                                            <span className="text-purple-600 font-black">
+                                                                Para: {req.scheduledAt?.toDate().toLocaleString()}
+                                                            </span>
+                                                        ) : (
+                                                            req.createdAt?.toDate().toLocaleString()
+                                                        )}
+                                                    </span>
                                                     {req.driverAssignedAt && req.driverArrivedAt && (
                                                         <span className="flex items-center gap-1 text-amber-600 bg-amber-50 px-2 py-0.5 rounded border border-amber-100 font-bold ml-2">
                                                             <Clock className="w-4 h-4" /> 
