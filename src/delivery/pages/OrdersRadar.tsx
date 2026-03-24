@@ -687,7 +687,11 @@ export default function OrdersRadar() {
                                         <Clock className="w-4 h-4" />
                                         <div className="flex flex-col">
                                             <span className="text-[10px] font-black uppercase tracking-wider leading-none">Para el día:</span>
-                                            <span className="text-sm font-black">{req.scheduledAt?.toDate().toLocaleString('es-VE', { weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })}</span>
+                                            <span className="text-sm font-black">
+                                                {req.scheduledAt && typeof req.scheduledAt.toDate === 'function'
+                                                    ? req.scheduledAt.toDate().toLocaleString('es-VE', { weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })
+                                                    : 'Fecha pendiente'}
+                                            </span>
                                         </div>
                                     </div>
                                 )}

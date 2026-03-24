@@ -384,10 +384,14 @@ export default function TransportRequests() {
                                                         <Calendar className="w-4 h-4" /> 
                                                         {req.scheduled ? (
                                                             <span className="text-purple-600 font-black">
-                                                                Para: {req.scheduledAt?.toDate().toLocaleString()}
+                                                                Para: {req.scheduledAt && typeof req.scheduledAt.toDate === 'function' 
+                                                                    ? req.scheduledAt.toDate().toLocaleString('es-VE') 
+                                                                    : 'Fecha pendiente'}
                                                             </span>
                                                         ) : (
-                                                            req.createdAt?.toDate().toLocaleString()
+                                                            req.createdAt && typeof req.createdAt.toDate === 'function' 
+                                                                ? req.createdAt.toDate().toLocaleString('es-VE') 
+                                                                : 'Fecha desconocida'
                                                         )}
                                                     </span>
                                                     {req.driverAssignedAt && req.driverArrivedAt && (

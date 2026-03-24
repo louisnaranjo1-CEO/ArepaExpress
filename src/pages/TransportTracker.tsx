@@ -400,7 +400,7 @@ export default function TransportTracker() {
                         </div>
                         <p className="font-bold text-slate-500 ">
                             {request.scheduled && request.status === 'searching' 
-                                ? `Programado para: ${request.scheduledAt?.toDate().toLocaleString('es-VE', { weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })}`
+                                ? `Programado para: ${request.scheduledAt && typeof request.scheduledAt.toDate === 'function' ? request.scheduledAt.toDate().toLocaleString('es-VE', { weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' }) : 'Fecha pendiente'}`
                                 : statusInfo.subtitle}
                         </p>
                     </div>
