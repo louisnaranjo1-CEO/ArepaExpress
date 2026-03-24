@@ -394,7 +394,7 @@ export default function TransportRequests() {
                                                                 : 'Fecha desconocida'
                                                         )}
                                                     </span>
-                                                    {req.driverAssignedAt && req.driverArrivedAt && (
+                                                    {req.driverAssignedAt && req.driverArrivedAt && typeof req.driverArrivedAt.toDate === 'function' && typeof req.driverAssignedAt.toDate === 'function' && (
                                                         <span className="flex items-center gap-1 text-amber-600 bg-amber-50 px-2 py-0.5 rounded border border-amber-100 font-bold ml-2">
                                                             <Clock className="w-4 h-4" /> 
                                                             Llegó en: {Math.max(1, Math.round((req.driverArrivedAt.toDate().getTime() - req.driverAssignedAt.toDate().getTime()) / 60000))} min

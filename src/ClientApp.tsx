@@ -32,14 +32,24 @@ function RedirectHandler({ children }: { children: React.ReactNode }) {
             const checkRoleAndRedirect = async () => {
                 // If it's a delivery driver or taxi
                 if (userData.role === 'delivery' || userData.role === 'driver') {
-                    window.location.href = '/delivery';
+                    const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+                    if (isLocalhost) {
+                        window.location.href = `${window.location.protocol}//delivery.localhost:${window.location.port}`;
+                    } else {
+                        window.location.href = 'https://delivery.deliexpress.app';
+                    }
                     return;
                 }
 
                 // Double check delivery_drivers collection
                 const driverDoc = await getDoc(doc(db, 'delivery_drivers', user.uid));
                 if (driverDoc.exists()) {
-                    window.location.href = '/delivery';
+                    const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+                    if (isLocalhost) {
+                        window.location.href = `${window.location.protocol}//delivery.localhost:${window.location.port}`;
+                    } else {
+                        window.location.href = 'https://delivery.deliexpress.app';
+                    }
                     return;
                 }
 

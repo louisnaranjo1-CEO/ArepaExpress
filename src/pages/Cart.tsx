@@ -15,6 +15,7 @@ export default function Cart() {
   const [isCheckingOut, setIsCheckingOut] = useState(false);
   const [orderId, setOrderId] = useState<string | null>(null);
   const [purchaseConfirmed, setPurchaseConfirmed] = useState<boolean | null>(null);
+  const [whatsappLink, setWhatsappLink] = useState<string | null>(null);
   const [restaurantData, setRestaurantData] = useState<any>(null);
   const [checkoutSuccess, setCheckoutSuccess] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -267,7 +268,7 @@ export default function Cart() {
         userPhone: isWaiter ? '' : (userData?.phone || guestPhone || 'Sin número'),
         userEmail: isWaiter ? waiterData.email : (user?.email || 'N/A'),
         restaurantId: restaurantId,
-        restaurantName: items[0].restaurantName,
+        restaurantName: restaurantData?.name || 'Restaurante Expreso',
         restaurantCity: restaurantData?.location?.city || '',
         restaurantCoords: restaurantData?.location?.coords || null,
         source: isWaiter ? 'waiter' : 'client',
@@ -276,16 +277,16 @@ export default function Cart() {
         paymentStatus: isWaiter ? paymentStatus : 'pending',
         table: isWaiter ? tableNumber : null,
         items: items.map(item => ({
-          id: item.id,
-          name: item.name,
-          price: item.price,
+          id: item.id || '',
+          name: item.name || '',
+          price: item.price || 0,
           pointsPrice: item.pointsPrice || 0,
           paidWithPoints: !!pointsPaymentConfig[item.id],
-          quantity: item.quantity,
-          image: item.image,
-          category: item.category,
-          printerId: item.printerId,
-          consultPrice: item.consultPrice
+          quantity: item.quantity || 1,
+          image: item.image || null,
+          category: item.category || null,
+          printerId: item.printerId || null,
+          consultPrice: !!item.consultPrice
         })),
         subtotal: cartSubtotalUSD,
         deliveryFee: deliveryFee,
@@ -297,7 +298,7 @@ export default function Cart() {
         deliveryAddress: address,
         userCoordinates: (!isWaiter && selectedAddress?.lat) ? { lat: selectedAddress.lat, lng: selectedAddress.lng } : null,
         addressReference: isWaiter ? `Atendido por: ${waiterData.name}` : (selectedAddress?.reference || ''),
-        orderNote: orderNote.trim(),
+        orderNote: (orderNote || '').trim(),
         createdAt: serverTimestamp()
       };
 
@@ -360,10 +361,17 @@ export default function Cart() {
         .replace(/{OrderNotes}/g, noteText);
 
       const message = encodeURIComponent(formattedMessage);
-
-      // 4. Redirect
       const whatsappNumber = restaurantData.whatsapp.replace(/\D/g, '');
-      window.open(`https://wa.me/${whatsappNumber}?text=${message}`, '_blank');
+      const finalWhatsappLink = `https://wa.me/${whatsappNumber}?text=${message}`;
+      
+      setWhatsappLink(finalWhatsappLink);
+
+      // Attempt to auto-open (might be blocked by browser)
+      try {
+        window.location.href = finalWhatsappLink;
+      } catch (e) {
+        console.warn("Auto-redirect failed", e);
+      }
 
       clearCart();
       setCheckoutSuccess(true);
@@ -399,28 +407,53 @@ export default function Cart() {
     if (purchaseConfirmed === null) {
       return (
         <div className="flex flex-col items-center justify-center min-h-screen px-6 text-center bg-white animate-in fade-in zoom-in duration-500">
-          <div className="w-24 h-24 bg-orange-100 rounded-full flex items-center justify-center mb-6">
-            <svg className="w-12 h-12 text-primary" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M3 21l1.65-3.8a9 9 0 1 1 3.4 2.9L3 21" />
-              <path d="M9 10a.5.5 0 0 0 1 0V9a.5.5 0 0 0-1 0v1a5 5 0 0 0 5 5h1a.5.5 0 0 0 0-1h-1a.5.5 0 0 0 0 1" />
+          <div className="w-24 h-24 bg-green-100 rounded-full flex items-center justify-center mb-6">
+            <svg className="w-12 h-12 text-green-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z" />
             </svg>
           </div>
-          <h1 className="text-3xl font-black text-slate-900 mb-2">¿Completaste tu compra? 🤔</h1>
+          <h1 className="text-3xl font-black text-slate-900 mb-2">Paso Final 🚀</h1>
           <p className="text-slate-500 mb-8 max-w-[280px]">
-            Confirma si enviaste el mensaje de WhatsApp al restaurante para preparar tu pedido.
+             {isWaiter 
+              ? 'La comanda está lista para ser enviada a la cocina.' 
+              : 'Haz clic en el botón de abajo para enviar tu pedido por WhatsApp directamente al restaurante.'}
           </p>
-          <div className="w-full max-w-xs space-y-3">
-            <button
-              onClick={handleConfirmPurchase}
-              className="w-full bg-green-500 hover:bg-green-600 text-white py-4 rounded-2xl font-bold shadow-lg shadow-green-500/30 transition-all flex items-center justify-center gap-2"
-            >
-              Sí, pedido enviado
-            </button>
+          <div className="w-full max-w-xs space-y-4">
+            {!isWaiter && whatsappLink && (
+              <a
+                href={whatsappLink}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={handleConfirmPurchase}
+                className="w-full bg-[#25D366] hover:bg-[#128C7E] text-white py-4 rounded-2xl font-bold shadow-lg shadow-[#25D366]/30 transition-all flex items-center justify-center gap-2 text-lg"
+              >
+                Enviar a WhatsApp
+              </a>
+            )}
+            
+            {isWaiter && (
+              <button
+                onClick={handleConfirmPurchase}
+                className="w-full bg-primary hover:bg-orange-600 text-white py-4 rounded-2xl font-bold shadow-lg shadow-primary/30 transition-all flex items-center justify-center gap-2"
+              >
+                Confirmar Comanda
+              </button>
+            )}
+
+            {!isWaiter && (
+               <button
+                  onClick={handleConfirmPurchase}
+                  className="w-full text-slate-500 hover:text-slate-800 py-3 font-bold text-sm transition-colors"
+                >
+                  Ya envié el mensaje
+                </button>
+            )}
+
             <button
               onClick={handleCancelPurchase}
               className="w-full bg-slate-100 hover:bg-slate-200 text-slate-600 py-4 rounded-2xl font-bold transition-all"
             >
-              No, tuve un problema
+              Cancelar pedido
             </button>
           </div>
         </div>
