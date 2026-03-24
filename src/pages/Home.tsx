@@ -1,4 +1,4 @@
-import { MapPin, ChevronDown, Bell, Search, SlidersHorizontal, Utensils, Star, Heart, Clock, Store, Truck, Zap, Tag, X, Layout, Gift } from 'lucide-react';
+import { MapPin, ChevronDown, Bell, Search, SlidersHorizontal, Utensils, Star, Heart, Clock, Store, Truck, Zap, Tag, X, Layout, Gift, ArrowUp } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Link, useNavigate } from 'react-router-dom';
 import { useState, useEffect, useMemo } from 'react';
@@ -770,8 +770,20 @@ export default function Home() {
             })
 
           ) : (
-            <div className="text-center py-12 text-slate-500">
-              No hay restaurantes disponibles en este momento.
+            <div className="flex flex-col items-center justify-center py-20 px-6 text-center animate-in fade-in slide-in-from-bottom-4 relative">
+              <div className="absolute -top-12 2xl:-top-16 opacity-70 flex flex-col items-center animate-bounce">
+                <span className="text-primary font-black uppercase text-[10px] tracking-widest mb-1 text-center bg-white px-3 py-1 rounded-full shadow-sm border border-orange-100">¡Presiona Aquí Arriba!</span>
+                <ArrowUp className="w-8 h-8 text-primary" strokeWidth={3} />
+              </div>
+              
+              <div className="w-24 h-24 bg-orange-100 rounded-[2.5rem] flex items-center justify-center mb-6 shadow-md border-4 border-white rotate-3">
+                <MapPin className="w-12 h-12 text-primary" />
+              </div>
+              
+              <h3 className="text-2xl font-black text-slate-800 mb-3">¡Épale! 👋</h3>
+              <p className="text-slate-500 font-bold max-w-[280px] leading-relaxed">
+                Selecciona arriba tu <span className="text-primary font-black">Estado y Ciudad</span> en la que vives para presentarte lugares increíbles.
+              </p>
             </div>
           )}
         </div>
