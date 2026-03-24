@@ -38,6 +38,7 @@ export default defineConfig(({ mode }) => {
           ]
         },
         workbox: {
+          maximumFileSizeToCacheInBytes: 3145728, // 3 MiB
           runtimeCaching: [
             {
               urlPattern: ({ request }) => request.destination === 'image',
@@ -78,6 +79,22 @@ export default defineConfig(({ mode }) => {
       alias: {
         '@': path.resolve(__dirname, '.'),
       },
+    },
+    build: {
+      rollupOptions: {
+        output: {
+          manualChunks: (id) => {
+            if (id.includes('node_modules')) {
+              if (id.includes('firebase')) return 'firebase';
+              if (id.includes('@react-google-maps')) return 'maps';
+              if (id.includes('framer-motion')) return 'motion';
+              if (id.includes('lucide-react')) return 'icons';
+              return 'vendor';
+            }
+          },
+        },
+      },
+      chunkSizeWarningLimit: 1000,
     },
     server: {
       // HMR is disabled in AI Studio via DISABLE_HMR env var.
