@@ -64,6 +64,7 @@ export default function WaiterMenu() {
             restaurantId: restaurant.id!,
             name: product.name,
             price: finalPrice,
+            pointsPrice: (product as any).pointsPrice,
             quantity: 1,
             image: product.image,
             category: product.category,

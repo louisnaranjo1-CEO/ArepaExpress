@@ -195,6 +195,7 @@ export default function RestaurantPage() {
       restaurantId: restaurant.id!,
       name: finalName,
       price: finalPrice,
+      pointsPrice: product.pointsPrice,
       quantity: 1,
       image: product.image,
       category: product.category,

@@ -31,6 +31,7 @@ interface Product {
     variants?: ProductVariant[];
     printerId?: string;
     consultPrice?: boolean;
+    pointsPrice?: number;
 }
 
 export default function ProductManagement() {
@@ -61,7 +62,8 @@ export default function ProductManagement() {
         youtubeLink: '',
         variants: [] as ProductVariant[],
         printerId: '',
-        consultPrice: false
+        consultPrice: false,
+        pointsPrice: ''
     });
     const [existingImages, setExistingImages] = useState<string[]>([]);
     const [newImageFiles, setNewImageFiles] = useState<File[]>([]);
@@ -132,7 +134,8 @@ export default function ProductManagement() {
                 youtubeLink: product.youtubeLink || '',
                 variants: product.variants || [],
                 printerId: product.printerId || '',
-                consultPrice: product.consultPrice || false
+                consultPrice: product.consultPrice || false,
+                pointsPrice: product.pointsPrice?.toString() || ''
             });
             setExistingImages(product.images || (product.image ? [product.image] : []));
             setNewImageFiles([]);
@@ -153,7 +156,8 @@ export default function ProductManagement() {
                 youtubeLink: '',
                 variants: [],
                 printerId: '',
-                consultPrice: false
+                consultPrice: false,
+                pointsPrice: ''
             });
             setExistingImages([]);
             setNewImageFiles([]);
@@ -219,11 +223,14 @@ export default function ProductManagement() {
                 finalPromoPrice = 0;
             }
 
+            const pointsPriceValue = formData.pointsPrice ? parseFloat(formData.pointsPrice) : 0;
+
             const productData = {
                 ...formData,
                 price: formData.consultPrice ? 0 : finalPrice,
                 investment,
                 promoPrice: formData.consultPrice ? 0 : finalPromoPrice,
+                pointsPrice: pointsPriceValue,
                 images: allImages.length > 0 ? allImages : (restaurantLogo ? [restaurantLogo] : []),
                 image: allImages[0] || restaurantLogo || '', // Principal image
                 updatedAt: new Date()
@@ -274,7 +281,8 @@ export default function ProductManagement() {
                 youtubeLink: '',
                 variants: [],
                 printerId: '',
-                consultPrice: false
+                consultPrice: false,
+                pointsPrice: ''
             });
             setNewImageFiles([]);
             setExistingImages([]);
@@ -513,6 +521,11 @@ export default function ProductManagement() {
                                                    {p.variants && p.variants.length > 0 ? `Desde $${Math.min(...p.variants.map(v => v.price)).toFixed(2)}` : `$${p.price.toFixed(2)}`}
                                                 </span>
                                             )}
+                                            {p.pointsPrice && p.pointsPrice > 0 && (
+                                                <span className="bg-amber-50 text-amber-600 text-[11px] md:text-sm font-black px-2 py-0.5 rounded border border-amber-100 flex items-center gap-1">
+                                                    <Tag className="w-3 h-3" /> {p.pointsPrice} pts
+                                                </span>
+                                            )}
                                         </div>
                                     </div>
                                     <div className="flex items-center gap-1.5 shrink-0">
@@ -567,14 +580,21 @@ export default function ProductManagement() {
                                         <ImageIcon className="w-12 h-12" />
                                     </div>
                                 )}
-                                <div className="absolute top-4 right-4 bg-white/90 backdrop-blur-md px-3 py-1 rounded-full text-sm font-black text-primary shadow-sm">
-                                    {p.consultPrice ? (
-                                        "Cotización"
-                                    ) : p.variants && p.variants.length > 0 ? (
-                                        `Desde $${Math.min(...p.variants.map(v => v.price)).toFixed(2)}`
-                                    ) : (
-                                        `$${p.price.toFixed(2)}`
-                                    )}
+                                <div className="absolute top-4 right-4 bg-white/90 backdrop-blur-md px-3 py-1 rounded-full text-sm font-black text-primary shadow-sm flex items-center gap-2">
+                                    {p.pointsPrice && p.pointsPrice > 0 ? (
+                                        <span className="text-amber-500 font-bold flex items-center gap-1 border-r border-slate-200 pr-2">
+                                            <Tag className="w-3 h-3" /> {p.pointsPrice} pts
+                                        </span>
+                                    ) : null}
+                                    <span>
+                                        {p.consultPrice ? (
+                                            "Cotización"
+                                        ) : p.variants && p.variants.length > 0 ? (
+                                            `Desde $${Math.min(...p.variants.map(v => v.price)).toFixed(2)}`
+                                        ) : (
+                                            `$${p.price.toFixed(2)}`
+                                        )}
+                                    </span>
                                 </div>
                                 {!p.isActive && (
                                     <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-[2px] flex items-center justify-center">
@@ -717,8 +737,8 @@ export default function ProductManagement() {
                             </div>
 
                             {!formData.consultPrice && (
-                                <div className="grid grid-cols-3 gap-4">
-                                    <div className="space-y-1 col-span-2">
+                                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                                    <div className="space-y-1 md:col-span-2">
                                         <label className="text-xs font-black text-slate-400 uppercase ml-2 flex items-center gap-1">
                                             <DollarSign className="w-3 h-3" /> Precio Venta
                                         </label>
@@ -731,9 +751,6 @@ export default function ProductManagement() {
                                             className="w-full bg-slate-50 border-2 border-transparent focus:border-primary p-3 rounded-2xl outline-none font-bold text-slate-700"
                                             placeholder={formData.variants.length > 0 ? "Opcional si usas variantes" : "Si bajas el precio actual, se creará una oferta autom."}
                                         />
-                                        <p className="text-[9px] text-slate-400 ml-2 font-bold italic">
-                                            {formData.variants.length > 0 ? "El precio se calculará automáticamente según la variante seleccionada." : "El sistema detectará descuentos automáticamente si bajas el precio base."}
-                                        </p>
                                     </div>
                                     <div className="space-y-1">
                                         <label className="text-xs font-black text-slate-400 uppercase ml-2 flex items-center gap-1">
@@ -745,6 +762,20 @@ export default function ProductManagement() {
                                             value={formData.investment}
                                             onChange={(e) => setFormData({ ...formData, investment: e.target.value })}
                                             className="w-full bg-slate-50 border-2 border-transparent focus:border-primary p-3 rounded-2xl outline-none font-bold text-slate-700"
+                                        />
+                                    </div>
+                                    <div className="space-y-1">
+                                        <label className="text-xs font-black text-slate-400 uppercase ml-2 flex items-center gap-1">
+                                            <Tag className="w-3 h-3" /> Precio (Puntos)
+                                        </label>
+                                        <input
+                                            type="number"
+                                            min="0"
+                                            step="1"
+                                            value={formData.pointsPrice}
+                                            onChange={(e) => setFormData({ ...formData, pointsPrice: e.target.value })}
+                                            className="w-full bg-slate-50 border-2 border-transparent focus:border-primary p-3 rounded-2xl outline-none font-bold text-slate-700"
+                                            placeholder="Opc. Ej: 500"
                                         />
                                     </div>
                                 </div>

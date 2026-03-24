@@ -2,8 +2,8 @@ import { MapPin, ChevronDown, Bell, Search, SlidersHorizontal, Utensils, Star, H
 import { motion, AnimatePresence } from 'framer-motion';
 import { Link, useNavigate } from 'react-router-dom';
 import { useState, useEffect, useMemo } from 'react';
-import { collection, getDocs, query, where, doc, updateDoc, increment, collectionGroup, limit } from 'firebase/firestore';
-import { db } from '../lib/firebase';
+import { collection, getDocs, query, where, doc, updateDoc, increment, collectionGroup, limit, serverTimestamp } from 'firebase/firestore';
+import { db, auth } from '../lib/firebase';
 import { Restaurant, Product } from '../lib/seed';
 import { useAuth } from '../context/AuthContext';
 import { calculateDistance, formatDistance } from '../lib/geo';
@@ -12,6 +12,7 @@ import WelcomePopup from '../components/WelcomePopup';
 import { recommendationsService } from '../lib/recommendations';
 import { toast } from 'react-hot-toast';
 import { vibrate } from '../utils/haptics';
+import PointsModal from '../components/PointsModal';
 
 interface RecommendedProduct extends Product {
   restaurantId: string;
@@ -55,6 +56,7 @@ export default function Home() {
   });
   const [isCityModalOpen, setIsCityModalOpen] = useState(false);
   const [isInfoModalOpen, setIsInfoModalOpen] = useState(false);
+  const [isPointsModalOpen, setIsPointsModalOpen] = useState(false);
 
 
   useEffect(() => {
@@ -92,7 +94,22 @@ export default function Home() {
               const city = addressComponents.find((c: any) => c.types.includes('locality'))?.long_name ||
                 addressComponents.find((c: any) => c.types.includes('administrative_area_level_2'))?.long_name;
               const state = addressComponents.find((c: any) => c.types.includes('administrative_area_level_1'))?.short_name;
-              if (city && state) setLocationName(`${city}`);
+              if (city && state) {
+                setLocationName(`${city}`);
+                // Sync with Firestore if logged in
+                if (userData?.uid || auth.currentUser?.uid) {
+                  const uid = userData?.uid || auth.currentUser?.uid;
+                  try {
+                    await updateDoc(doc(db, 'users', uid), {
+                      lastCity: city,
+                      lastState: state,
+                      lastLocationUpdate: serverTimestamp()
+                    });
+                  } catch (e) {
+                    console.error("Error syncing location:", e);
+                  }
+                }
+              }
             }
           } catch (error) {
             console.error("Geocoding error:", error);
@@ -323,6 +340,15 @@ export default function Home() {
     setManualState(state);
     setManualCity(city);
     setLocationName(`${city}`);
+    // Sync with Firestore if logged in
+    if (userData?.uid || auth.currentUser?.uid) {
+      const uid = userData?.uid || auth.currentUser?.uid;
+      updateDoc(doc(db, 'users', uid), {
+        lastCity: city,
+        lastState: state,
+        lastLocationUpdate: serverTimestamp()
+      }).catch(console.error);
+    }
     // Clear GPS coordinates so distance doesn't mess up sorting if user is physically far away
     setUserLocation(null);
   };
@@ -349,7 +375,7 @@ export default function Home() {
 
             {/* Points */}
             <div
-              onClick={() => toast('¡Estamos preparando algo en Deliexpress para ti!', { icon: '🎁', style: { borderRadius: '15px', background: '#333', color: '#fff' } })}
+              onClick={() => { vibrate(30); setIsPointsModalOpen(true); }}
               className="flex flex-col shrink-0 cursor-pointer active:scale-95 transition-transform"
             >
               <span className="text-[9px] font-black uppercase text-slate-400 tracking-tighter leading-none mb-0.5">Puntos</span>
@@ -750,6 +776,10 @@ export default function Home() {
           )}
         </div>
       </main>
+      <PointsModal 
+        isOpen={isPointsModalOpen} 
+        onClose={() => setIsPointsModalOpen(false)} 
+      />
     </div>
   );
 }
@@ -816,6 +846,7 @@ function ProductCarousel({ title, products }: { title: string, products: Recomme
           );
         })}
       </div>
+      
     </div>
   );
 }

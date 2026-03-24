@@ -11,6 +11,7 @@ export interface Product {
     name: string;
     description: string;
     price: number;
+    pointsPrice?: number;
     image: string;
     images?: string[];
     socialMediaLink?: string;

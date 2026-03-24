@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { Gift, Plus, Trash2, Edit2, Save, X, Image as ImageIcon, Upload } from 'lucide-react';
+import { Gift, Plus, Trash2, Edit2, Save, X, Image as ImageIcon, Upload, Tag } from 'lucide-react';
 import { db, storage } from '../../lib/firebase';
-import { collection, addDoc, getDocs, deleteDoc, doc, updateDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, addDoc, getDocs, deleteDoc, doc, updateDoc, serverTimestamp, query, where } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { toast } from 'react-hot-toast';
 
@@ -21,6 +21,7 @@ interface RestaurantRewardsManagerProps {
 
 export default function RestaurantRewardsManager({ restaurantId }: RestaurantRewardsManagerProps) {
     const [rewards, setRewards] = useState<RestaurantReward[]>([]);
+    const [pointsProducts, setPointsProducts] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     const [showAddModal, setShowAddModal] = useState(false);
     const [isUploading, setIsUploading] = useState(false);
@@ -44,7 +45,13 @@ export default function RestaurantRewardsManager({ restaurantId }: RestaurantRew
         try {
             const querySnapshot = await getDocs(collection(db, `restaurants/${restaurantId}/rewards`));
             const data = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as RestaurantReward));
+            
+            // Fetch products configured with points price
+            const prodSnap = await getDocs(query(collection(db, `restaurants/${restaurantId}/products`), where('pointsPrice', '>', 0)));
+            const pData = prodSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            
             setRewards(data);
+            setPointsProducts(pData);
         } catch (error) {
             console.error("Error fetching restaurant rewards:", error);
             toast.error("Error al cargar recompensas");
@@ -148,6 +155,20 @@ export default function RestaurantRewardsManager({ restaurantId }: RestaurantRew
                     <Plus className="w-4 h-4" /> Nueva Recompensa
                 </button>
             </div>
+
+            {!loading && pointsProducts.length > 0 && (
+                <div className="mx-6 mt-6 bg-amber-50 border border-amber-200 rounded-2xl p-4 flex items-center justify-between shadow-sm">
+                    <div>
+                        <h4 className="font-black text-amber-800 flex items-center gap-2">
+                            <Tag className="w-4 h-4" /> Productos del Menú Canjeables
+                        </h4>
+                        <p className="text-xs text-amber-700 font-medium">Tienes {pointsProducts.length} producto(s) en tu menú configurado(s) para ser canjeados con puntos.</p>
+                    </div>
+                    <div className="bg-amber-100 text-amber-600 font-black px-4 py-2 rounded-xl text-lg shadow-sm border border-amber-200 whitespace-nowrap">
+                        {pointsProducts.length}
+                    </div>
+                </div>
+            )}
 
             {loading ? (
                 <div className="p-12 flex justify-center">

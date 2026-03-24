@@ -71,6 +71,27 @@ export default function Cart() {
   const [restaurantRewards, setRestaurantRewards] = useState<any[]>([]);
   const [selectedReward, setSelectedReward] = useState<any>(null);
 
+  const [pointsPaymentConfig, setPointsPaymentConfig] = useState<Record<string, boolean>>({});
+
+  const userRestaurantPoints = userData?.restaurantPoints?.[items[0]?.restaurantId] || 0;
+
+  const totalCartPointsUsed = items.reduce((acc, item) => {
+    if (pointsPaymentConfig[item.id] && item.pointsPrice) {
+      return acc + (item.pointsPrice * item.quantity);
+    }
+    return acc;
+  }, 0);
+
+  const rewardPointsUsed = selectedReward ? selectedReward.pointsCost : 0;
+  const totalPointsUsed = totalCartPointsUsed + rewardPointsUsed;
+
+  const cartSubtotalUSD = items.reduce((acc, item) => {
+    if (pointsPaymentConfig[item.id]) {
+      return acc; // paid with points
+    }
+    return acc + ((item.price || 0) * item.quantity);
+  }, 0);
+
   const handleUseCurrentLocation = () => {
     setShowAddressSelector(false);
     setShowMapPicker(true);
@@ -206,7 +227,7 @@ export default function Cart() {
   const driverPayout = isWaiter ? 0 : feeInfo.driverPayout;
   const currentShift = feeInfo.shift;
 
-  const finalTotal = totalPrice + deliveryFee;
+  const finalTotal = cartSubtotalUSD + deliveryFee;
 
   const handleCheckout = async () => {
     if (items.length === 0) return;
@@ -258,13 +279,15 @@ export default function Cart() {
           id: item.id,
           name: item.name,
           price: item.price,
+          pointsPrice: item.pointsPrice || 0,
+          paidWithPoints: !!pointsPaymentConfig[item.id],
           quantity: item.quantity,
           image: item.image,
           category: item.category,
           printerId: item.printerId,
           consultPrice: item.consultPrice
         })),
-        subtotal: totalPrice,
+        subtotal: cartSubtotalUSD,
         deliveryFee: deliveryFee,
         driverPayout: driverPayout,
         deliveryShift: currentShift,
@@ -289,15 +312,19 @@ export default function Cart() {
         return;
       }
 
-      if (selectedReward && !isWaiter && user) {
+      let totalPointsToDeduct = totalCartPointsUsed;
+      if (selectedReward) totalPointsToDeduct += selectedReward.pointsCost;
+
+      if (totalPointsToDeduct > 0 && !isWaiter && user) {
         await updateDoc(doc(db, 'users', user.uid), {
-          [`restaurantPoints.${restaurantId}`]: increment(-selectedReward.pointsCost)
+          [`restaurantPoints.${restaurantId}`]: increment(-totalPointsToDeduct)
         });
       }
 
       // 3. Generate WhatsApp Message
       let itemsList = items.map(item => {
         if (item.consultPrice || item.price === 0 || !item.price) return `• ${item.quantity}x ${item.name} (Precio a consultar)`;
+        if (pointsPaymentConfig[item.id]) return `• ${item.quantity}x ${item.name} (-${item.pointsPrice! * item.quantity} pts)`;
         return `• ${item.quantity}x ${item.name} ($${(item.price * item.quantity).toFixed(2)})`;
       }).join('\n');
 
@@ -661,17 +688,11 @@ export default function Cart() {
                     </div>
                     <div className="flex gap-4 items-start">
                       <div className="relative w-20 h-20 shrink-0 rounded-lg overflow-hidden bg-neutral-light">
-                        {selectedAddress ? (
-                          <img
-                            src={`https://maps.googleapis.com/maps/api/staticmap?center=${selectedAddress.lat},${selectedAddress.lng}&zoom=15&size=200x200&markers=color:red%7C${selectedAddress.lat},${selectedAddress.lng}&key=AIzaSyCb1c-p1R6AZGetk8YzKiLuxjaxjmPqJX8`}
-                            alt="Mapa"
-                            className="w-full h-full object-cover"
-                          />
-                        ) : (
-                          <div className="w-full h-full flex items-center justify-center bg-slate-100">
-                            <MapPin className="w-6 h-6 text-slate-300" />
-                          </div>
-                        )}
+                        <img
+                          src="https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/otro.png?alt=media"
+                          alt="DeliExpress Logo"
+                          className="w-full h-full object-contain p-2"
+                        />
                       </div>
                       <div className="flex flex-col justify-center min-h-[5rem]">
                         <p className="text-slate-900 text-sm font-bold flex items-center gap-1">
@@ -720,7 +741,7 @@ export default function Cart() {
                 </button>
 
                 {/* Rewards Selection */}
-                {!isWaiter && user && restaurantRewards.length > 0 && (
+                {!isWaiter && user && (restaurantRewards.length > 0 || items.some(i => i.pointsPrice && i.pointsPrice > 0)) && (
                   <div className="bg-orange-50 p-5 rounded-2xl shadow-sm border border-orange-100 mt-4">
                     <div className="flex items-center gap-2 mb-3">
                       <Gift className="w-5 h-5 text-orange-500" />
@@ -728,18 +749,44 @@ export default function Cart() {
                     </div>
                     
                     <p className="text-sm font-medium text-orange-800 mb-4">
-                      Tienes <span className="font-black">{userData?.restaurantPoints?.[items[0].restaurantId] || 0}</span> puntos acumulados en este local.
+                      Tienes <span className="font-black">{userRestaurantPoints}</span> puntos acumulados en este local.
                     </p>
 
                     <div className="flex gap-3 overflow-x-auto pb-2 custom-scrollbar">
-                      {restaurantRewards.map(reward => {
-                        const userPoints = userData?.restaurantPoints?.[items[0].restaurantId] || 0;
-                        const canRedeem = userPoints >= reward.pointsCost;
-                        const isSelected = selectedReward?.id === reward.id;
+                      {items.filter(i => i.pointsPrice && i.pointsPrice > 0).map(item => {
+                        const cost = (item.pointsPrice || 0) * item.quantity;
+                        const isSelected = pointsPaymentConfig[item.id];
+                        const availablePoints = userRestaurantPoints - totalPointsUsed + (isSelected ? cost : 0);
+                        const canRedeem = availablePoints >= cost;
 
                         return (
                           <button
-                            key={reward.id}
+                            key={'cart-'+item.id}
+                            disabled={!canRedeem && !isSelected}
+                            onClick={() => setPointsPaymentConfig(prev => ({ ...prev, [item.id]: !prev[item.id] }))}
+                            className={`min-w-[140px] max-w-[180px] p-3 rounded-xl border-2 text-left transition-all relative overflow-hidden flex-shrink-0 ${isSelected ? 'border-orange-500 bg-orange-500 shadow-lg shadow-orange-500/20 text-white' : canRedeem ? 'border-orange-200 bg-white hover:border-orange-400' : 'border-slate-100 bg-slate-50 opacity-50 cursor-not-allowed'}`}
+                          >
+                            <p className={`text-xs font-black line-clamp-2 ${isSelected ? 'text-white' : 'text-slate-800'}`}>Pagar {item.name} con puntos</p>
+                            <div className={`mt-2 inline-flex items-center gap-1 text-[10px] font-black uppercase px-2 py-0.5 rounded-md ${isSelected ? 'bg-white/20 text-white' : 'bg-orange-100 text-orange-600'}`}>
+                              {cost} pts
+                            </div>
+                            {isSelected && (
+                              <div className="absolute top-2 right-2">
+                                <CheckCircle2 className="w-4 h-4 text-white" />
+                              </div>
+                            )}
+                          </button>
+                        );
+                      })}
+
+                      {restaurantRewards.map(reward => {
+                        const isSelected = selectedReward?.id === reward.id;
+                        const availablePoints = userRestaurantPoints - totalPointsUsed + (isSelected ? reward.pointsCost : 0);
+                        const canRedeem = availablePoints >= reward.pointsCost;
+
+                        return (
+                          <button
+                            key={'reward-'+reward.id}
                             disabled={!canRedeem && !isSelected}
                             onClick={() => setSelectedReward(isSelected ? null : reward)}
                             className={`min-w-[140px] max-w-[180px] p-3 rounded-xl border-2 text-left transition-all relative overflow-hidden flex-shrink-0 ${isSelected ? 'border-orange-500 bg-orange-500 shadow-lg shadow-orange-500/20 text-white' : canRedeem ? 'border-orange-200 bg-white hover:border-orange-400' : 'border-slate-100 bg-slate-50 opacity-50 cursor-not-allowed'}`}
@@ -763,7 +810,10 @@ export default function Cart() {
                 <div className="bg-surface-light p-5 rounded-2xl shadow-sm space-y-3 mt-4 border border-neutral-light/50">
                   <div className="flex justify-between text-sm">
                     <span className="text-slate-500">Subtotal</span>
-                    <span className="font-semibold text-slate-900">${totalPrice.toFixed(2)}</span>
+                    <div className="flex items-center gap-2">
+                      {totalPointsUsed > 0 && <span className="line-through text-slate-400 text-xs">${totalPrice.toFixed(2)}</span>}
+                      <span className="font-semibold text-slate-900">${cartSubtotalUSD.toFixed(2)}</span>
+                    </div>
                   </div>
                   {!isWaiter && (
                     <div className="flex justify-between text-sm">

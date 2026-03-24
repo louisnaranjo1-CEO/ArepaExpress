@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { collection, getDocs, query, orderBy, where, doc, getDoc, setDoc, updateDoc, onSnapshot, writeBatch } from 'firebase/firestore';
+import { collection, getDocs, query, orderBy, where, doc, getDoc, setDoc, updateDoc, onSnapshot, writeBatch, collectionGroup } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import { User, ChevronRight, Mail, Phone, Calendar, ShoppingBag, Heart, X, MapPin, Wallet, CheckCircle, XCircle, Search, Filter, Image as ImageIcon, Activity, Clock, ExternalLink, Gift, Users } from 'lucide-react';
 import { format } from 'date-fns';
@@ -23,6 +23,8 @@ interface UserProfile {
     totalReferrals?: number;
     points?: number;
     restaurantPoints?: Record<string, number>;
+    lastCity?: string;
+    lastState?: string;
 }
 
 export default function UsersManager() {
@@ -158,7 +160,7 @@ export default function UsersManager() {
         setSelectedDriverData(null);
 
         try {
-            const ordersSnap = await getDocs(query(collection(db, 'orders'), where('userId', '==', user.id)));
+            const ordersSnap = await getDocs(query(collectionGroup(db, 'orders'), where('userId', '==', user.id)));
             const ordersData = ordersSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
             setUserOrders(ordersData);
 
@@ -651,9 +653,11 @@ export default function UsersManager() {
                                             icon={MapPin} 
                                             label="Última Ubicación" 
                                             value={
-                                                typeof selectedUser.address === 'string' ? selectedUser.address : 
-                                                (selectedUser as any).addresses?.[0]?.name ? `${(selectedUser as any).addresses[0].name} (${(selectedUser as any).addresses[0].reference || 'Sin ref'})` :
-                                                'Sin ubicación registrada'
+                                                selectedUser.lastCity 
+                                                    ? `${selectedUser.lastCity}${selectedUser.lastState ? `, ${selectedUser.lastState}` : ''}`
+                                                    : typeof selectedUser.address === 'string' ? selectedUser.address : 
+                                                    (selectedUser as any).addresses?.[0]?.name ? `${(selectedUser as any).addresses[0].name} (${(selectedUser as any).addresses[0].reference || 'Sin ref'})` :
+                                                    'Sin ubicación registrada'
                                             } 
                                         />
                                     </div>
