@@ -32,14 +32,14 @@ function RedirectHandler({ children }: { children: React.ReactNode }) {
             const checkRoleAndRedirect = async () => {
                 // If it's a delivery driver or taxi
                 if (userData.role === 'delivery' || userData.role === 'driver') {
-                    navigate('/delivery');
+                    window.location.href = '/delivery';
                     return;
                 }
 
                 // Double check delivery_drivers collection
                 const driverDoc = await getDoc(doc(db, 'delivery_drivers', user.uid));
                 if (driverDoc.exists()) {
-                    navigate('/delivery');
+                    window.location.href = '/delivery';
                     return;
                 }
 
