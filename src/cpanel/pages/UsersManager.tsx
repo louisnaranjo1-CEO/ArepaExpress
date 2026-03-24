@@ -22,6 +22,7 @@ interface UserProfile {
     lastLogin?: any; // Firebase Timestamp
     totalReferrals?: number;
     points?: number;
+    restaurantPoints?: Record<string, number>;
 }
 
 export default function UsersManager() {
@@ -40,6 +41,7 @@ export default function UsersManager() {
     const [shareMessage, setShareMessage] = useState('¡Hola! Únete a la nueva era del delivery con DeliExpress y obtén premios increíbles.');
     const [shareUrl, setShareUrl] = useState('https://deliexpress.app');
     const [savingConfig, setSavingConfig] = useState(false);
+    const [restaurantNames, setRestaurantNames] = useState<Record<string, string>>({});
 
     useEffect(() => {
         const fetchSystemConfig = async () => {
@@ -165,6 +167,22 @@ export default function UsersManager() {
                 const driverSnap = await getDoc(doc(db, 'delivery_drivers', user.id));
                 if (driverSnap.exists()) {
                     setSelectedDriverData(driverSnap.data());
+                }
+            }
+            // Fetch restaurant names for points if needed
+            if (user.restaurantPoints) {
+                const namesToFetch = Object.keys(user.restaurantPoints).filter(id => !restaurantNames[id]);
+                if (namesToFetch.length > 0) {
+                    const names: Record<string, string> = { ...restaurantNames };
+                    await Promise.all(namesToFetch.map(async (id) => {
+                        const rDoc = await getDoc(doc(db, 'restaurants', id));
+                        if (rDoc.exists()) {
+                            names[id] = rDoc.data().name;
+                        } else {
+                            names[id] = 'Local Desconocido';
+                        }
+                    }));
+                    setRestaurantNames(names);
                 }
             }
         } catch (error) {
@@ -629,14 +647,47 @@ export default function UsersManager() {
                                         <InfoItem icon={Mail} label="Correo" value={selectedUser.email || 'No proporcionado'} />
                                         <InfoItem icon={Phone} label="Teléfono" value={selectedUser.phone || 'No proporcionado'} />
                                         <InfoItem icon={Calendar} label="Registro" value={selectedUser.createdAt ? format(selectedUser.createdAt.toDate(), 'PPP', { locale: es }) : 'N/A'} />
-                                        <InfoItem icon={MapPin} label="Última Ubicación" value={selectedUser.address || 'Caracas, Venezuela'} />
+                                        <InfoItem 
+                                            icon={MapPin} 
+                                            label="Última Ubicación" 
+                                            value={
+                                                typeof selectedUser.address === 'string' ? selectedUser.address : 
+                                                (selectedUser as any).addresses?.[0]?.name ? `${(selectedUser as any).addresses[0].name} (${(selectedUser as any).addresses[0].reference || 'Sin ref'})` :
+                                                'Sin ubicación registrada'
+                                            } 
+                                        />
                                     </div>
                                 </div>
                                 <div className="space-y-6">
                                     <h3 className="text-xs font-black text-slate-900 uppercase tracking-widest flex items-center gap-2 border-b border-slate-50 pb-3">Historial y Métricas</h3>
                                     <div className="grid grid-cols-2 gap-4">
                                         <ActivityStat icon={ShoppingBag} label="Pedidos" value={userOrders.length.toString()} color="text-emerald-500" bg="bg-emerald-50" />
-                                        <ActivityStat icon={Heart} label="Favoritos" value={(selectedUser.favorites?.length || 0).toString()} color="text-red-500" bg="bg-red-50" />
+                                        <ActivityStat icon={Wallet} label="Total Gastado" value={`$${userOrders.reduce((acc, o) => acc + (o.total || 0), 0).toFixed(2)}`} color="text-blue-500" bg="bg-blue-50" />
+                                    </div>
+                                    <div className="p-5 rounded-[28px] bg-slate-50 border border-slate-100">
+                                        <div className="flex items-center justify-between mb-4">
+                                            <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Puntos Acumulados</p>
+                                            <Gift className="w-4 h-4 text-indigo-500" />
+                                        </div>
+                                        <div className="space-y-2">
+                                            <div className="flex justify-between items-center bg-white p-2 rounded-xl border border-slate-100">
+                                                <span className="text-[10px] font-bold text-slate-600">DeliPuntos (Global)</span>
+                                                <span className="text-xs font-black text-indigo-600">{(selectedUser.points || 0).toLocaleString()} pts</span>
+                                            </div>
+                                            {selectedUser.restaurantPoints && Object.entries(selectedUser.restaurantPoints).length > 0 && (
+                                                <div className="pt-2">
+                                                    <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-2 pl-1">Por Restaurante</p>
+                                                    <div className="max-h-32 overflow-y-auto space-y-1.5 pr-1 custom-scrollbar">
+                                                        {Object.entries(selectedUser.restaurantPoints).map(([id, pts]) => (
+                                                            <div key={id} className="flex justify-between items-center bg-orange-50/50 p-2 rounded-xl border border-orange-100/50">
+                                                                <span className="text-[10px] font-bold text-slate-800 truncate mr-2">{restaurantNames[id] || `Local ${id.slice(0, 5)}`}</span>
+                                                                <span className="text-[10px] font-black text-orange-600 shrink-0">{Math.floor(pts as number)} pts</span>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </div>
                                     </div>
                                     <div className="p-5 rounded-[28px] bg-slate-50 border border-slate-100 flex items-center justify-between">
                                         <div>
@@ -664,8 +715,18 @@ export default function UsersManager() {
                         </div>
 
                         <div className="p-8 bg-slate-50 border-t border-slate-100 flex flex-col md:flex-row gap-4">
-                            <button className="flex-1 py-4 bg-slate-900 text-white rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl shadow-slate-900/20 hover:bg-slate-800 transition-all">
-                                CONTACTAR POR WHATSAPP
+                            <button 
+                                onClick={() => {
+                                    if (selectedUser.phone) {
+                                        const cleanPhone = selectedUser.phone.replace(/\D/g, '');
+                                        window.open(`https://wa.me/${cleanPhone.startsWith('58') ? cleanPhone : `58${cleanPhone}`}`, '_blank');
+                                    } else {
+                                        alert("El usuario no tiene un número de teléfono registrado.");
+                                    }
+                                }}
+                                className="flex-1 py-4 bg-slate-900 text-white rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl shadow-slate-900/20 hover:bg-slate-800 transition-all flex items-center justify-center gap-2"
+                            >
+                                <Phone className="w-4 h-4" /> CONTACTAR POR WHATSAPP
                             </button>
                             <button className="flex-1 py-4 bg-white border border-slate-200 text-red-600 rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-red-50 transition-colors">
                                 SUSPENDER CUENTA
