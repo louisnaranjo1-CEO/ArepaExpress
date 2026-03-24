@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { GoogleMap, useJsApiLoader, Marker } from '@react-google-maps/api';
 import { X, MapPin, Navigation, Check } from 'lucide-react';
 
@@ -10,6 +10,16 @@ const containerStyle = {
 const defaultCenter = {
     lat: 10.4806, // Caracas, Venezuela
     lng: -66.9036
+};
+
+// Custom map theme to hide default POIs
+const mapOptions: google.maps.MapOptions = {
+    disableDefaultUI: true,
+    zoomControl: false,
+    streetViewControl: false,
+    mapTypeControl: false,
+    fullscreenControl: false,
+    clickableIcons: true,
 };
 
 interface AddressPickerProps {
@@ -36,6 +46,16 @@ export default function AddressPicker({ onClose, onSave, initialData }: AddressP
     const onUnmount = useCallback(function callback(map: google.maps.Map) {
         setMap(null);
     }, []);
+
+    useEffect(() => {
+        if (!initialData && navigator.geolocation) {
+            navigator.geolocation.getCurrentPosition((pos) => {
+                const newPos = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+                setPosition(newPos);
+                if (map) map.panTo(newPos);
+            });
+        }
+    }, [map, initialData]);
 
     const onClick = (e: google.maps.MapMouseEvent) => {
         if (e.latLng) {
@@ -86,10 +106,7 @@ export default function AddressPicker({ onClose, onSave, initialData }: AddressP
                             onLoad={onLoad}
                             onUnmount={onUnmount}
                             onClick={onClick}
-                            options={{
-                                disableDefaultUI: true,
-                                zoomControl: true
-                            }}
+                            options={mapOptions}
                         >
                             <Marker
                                 position={position}
@@ -108,7 +125,7 @@ export default function AddressPicker({ onClose, onSave, initialData }: AddressP
                         </div>
                     )}
 
-                    {/* Quick locate button */}
+                    {/* Real-time locate button */}
                     <button
                         onClick={() => {
                             if (navigator.geolocation) {
@@ -119,9 +136,10 @@ export default function AddressPicker({ onClose, onSave, initialData }: AddressP
                                 });
                             }
                         }}
-                        className="absolute bottom-6 right-6 w-12 h-12 bg-white rounded-2xl shadow-xl flex items-center justify-center text-primary border border-slate-100 active:scale-95 transition-all"
+                        className="absolute bottom-6 right-6 bg-white rounded-2xl shadow-xl flex items-center gap-2 text-primary border border-slate-100 active:scale-95 transition-all p-3 group"
                     >
-                        <Navigation className="w-5 h-5 fill-primary/20" />
+                        <Navigation className="w-5 h-5 fill-primary/20 group-hover:animate-pulse" />
+                        <span className="text-[10px] font-black uppercase tracking-widest pr-1">Ubicación en tiempo real</span>
                     </button>
                 </div>
 

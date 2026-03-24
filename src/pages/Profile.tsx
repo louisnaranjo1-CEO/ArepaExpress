@@ -47,6 +47,30 @@ interface ActivityItem {
     serviceType?: string;
 }
 
+const RestaurantPointCard: React.FC<{ restId: string, points: number }> = ({ restId, points }) => {
+    const [name, setName] = useState('Cargando...');
+    useEffect(() => {
+        getDoc(doc(db, 'restaurants', restId)).then(d => {
+            if (d.exists()) setName(d.data().name);
+            else setName('Local Afiliado');
+        });
+    }, [restId]);
+
+    if (points <= 0) return null;
+
+    return (
+        <div className="bg-orange-50 border border-orange-100 p-3 rounded-2xl flex items-center gap-3 hover:bg-orange-100 transition-colors">
+            <div className="w-10 h-10 bg-white rounded-full flex items-center justify-center text-orange-500 font-black text-[10px] shadow-sm shadow-orange-500/10 shrink-0">
+                {Math.floor(points)}
+            </div>
+            <div className="flex-1 min-w-0">
+                <p className="text-[10px] text-orange-600/70 font-black uppercase tracking-wider">Tus Puntos</p>
+                <p className="text-sm font-black text-slate-800 truncate">{name}</p>
+            </div>
+        </div>
+    );
+};
+
 export default function Profile() {
     const { user, userData, isProfileComplete } = useAuth();
     const navigate = useNavigate();
@@ -964,6 +988,22 @@ export default function Profile() {
                                 <span className="text-[10px] font-bold text-primary text-center leading-tight">Regalos</span>
                             </div>
                         </div>
+
+                        {userData?.restaurantPoints && Object.keys(userData.restaurantPoints).length > 0 && (
+                            <div className="space-y-3 mt-4">
+                                <div className="flex items-center justify-between">
+                                    <h3 className="text-lg font-black text-slate-900 px-2 flex items-center gap-2">
+                                        <Award className="w-5 h-5 text-orange-500" />
+                                        Puntos en Restaurantes
+                                    </h3>
+                                </div>
+                                <div className="grid grid-cols-2 gap-3">
+                                    {Object.entries(userData.restaurantPoints).map(([restId, pts]) => (
+                                        <RestaurantPointCard key={restId} restId={restId} points={pts as number} />
+                                    ))}
+                                </div>
+                            </div>
+                        )}
 
                         {(userData?.addresses && userData.addresses.length > 0) && (
                             <div className="space-y-3 mt-4">

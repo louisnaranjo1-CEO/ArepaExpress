@@ -8,11 +8,12 @@ import {
     ShoppingBag, Box, Users, TrendingUp, Calendar,
     ChevronRight, ExternalLink, Instagram, MessageSquare,
     DollarSign, Clock, CheckCircle, Package, Truck, X, Save, Upload,
-    Image as ImageIcon, Camera, Share2, Zap
+    Image as ImageIcon, Camera, Share2, Zap, Gift
 } from 'lucide-react';
 import { GLOBAL_CATEGORIES, CATEGORY_SECTORS } from '../../lib/constants';
 import { updateDoc } from 'firebase/firestore';
 import { motion, AnimatePresence } from 'framer-motion';
+import RestaurantRewardsManager from '../components/RestaurantRewardsManager';
 
 interface Category {
     id: string;
@@ -438,6 +439,7 @@ export default function RestaurantProfile() {
                         { id: 'products', label: 'Menú / Productos', icon: Box },
                         { id: 'orders', label: 'Historial Pedidos', icon: ShoppingBag },
                         { id: 'followers', label: 'Clientes / Seguidores', icon: Users },
+                        { id: 'rewards', label: 'Canje de Puntos', icon: Gift },
                     ].map((tab) => (
                         <button
                             key={tab.id}
@@ -523,7 +525,13 @@ export default function RestaurantProfile() {
                         </div>
                     )}
 
-                    {activeTab !== 'overview' && (
+                    {activeTab === 'rewards' && (
+                        <div className="animate-in fade-in slide-in-from-bottom-2 duration-500">
+                            <RestaurantRewardsManager restaurantId={id!} />
+                        </div>
+                    )}
+
+                    {activeTab !== 'overview' && activeTab !== 'rewards' && (
                         <div className="bg-white rounded-[40px] border border-slate-100 p-20 text-center animate-in fade-in zoom-in-95 duration-300 shadow-sm">
                             <div className="w-20 h-20 bg-slate-50 rounded-[32px] flex items-center justify-center mx-auto mb-6">
                                 <Box className="w-10 h-10 text-slate-200" />

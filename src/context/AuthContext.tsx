@@ -28,6 +28,7 @@ interface UserData {
     phone?: string;
     walletBalance?: number;
     points?: number;
+    restaurantPoints?: Record<string, number>;
     cedula?: string;
     lastLogin?: any;
     lastSeen?: any;

@@ -1,11 +1,12 @@
-import { ArrowLeft, ShoppingCart, MapPin, CreditCard, Trash2, Minus, Plus, ArrowRight, CheckCircle2 } from 'lucide-react';
+import { ArrowLeft, ShoppingCart, MapPin, CreditCard, Trash2, Minus, Plus, ArrowRight, CheckCircle2, Gift } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useCart } from '../context/CartContext';
 import { useAuth } from '../context/AuthContext';
 import { useState, useEffect } from 'react';
-import { collection, addDoc, serverTimestamp, doc, getDoc, updateDoc } from 'firebase/firestore';
+import { collection, addDoc, serverTimestamp, doc, getDoc, updateDoc, getDocs, query, where, increment } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { calculateDistance, formatDistance } from '../lib/geo';
+import AddressPicker from '../components/AddressPicker';
 
 export default function Cart() {
   const { items, totalPrice, updateQuantity, removeItem, clearCart } = useCart();
@@ -65,37 +66,27 @@ export default function Cart() {
   const defaultAddress = userData?.addresses?.find((a: any) => a.isDefault) || userData?.address;
   const [selectedAddress, setSelectedAddress] = useState<any>(null);
   const [showAddressSelector, setShowAddressSelector] = useState(false);
+  const [showMapPicker, setShowMapPicker] = useState(false);
+
+  const [restaurantRewards, setRestaurantRewards] = useState<any[]>([]);
+  const [selectedReward, setSelectedReward] = useState<any>(null);
 
   const handleUseCurrentLocation = () => {
-    if (!navigator.geolocation) {
-      alert('Tu navegador no soporta la geolocalización.');
-      return;
-    }
+    setShowAddressSelector(false);
+    setShowMapPicker(true);
+  };
 
-    setLoadingDistance(true);
-    navigator.geolocation.getCurrentPosition(
-      (position) => {
-        const reference = prompt('Por favor, indica una referencia o punto de llegada (Ej. Casa roja, apartamento 4B):');
-        if (reference) {
-          const locationAddress = {
-            id: 'current-location',
-            name: 'Ubicación actual',
-            lat: position.coords.latitude,
-            lng: position.coords.longitude,
-            reference: reference,
-            isDefault: false
-          };
-          setSelectedAddress(locationAddress);
-          setShowAddressSelector(false);
-        }
-        setLoadingDistance(false);
-      },
-      (error) => {
-        console.error('Error getting location:', error);
-        alert('No pudimos obtener tu ubicación. Por favor acepta los permisos.');
-        setLoadingDistance(false);
-      }
-    );
+  const handleSaveAddressFromMap = (data: { name: string; lat: number; lng: number; reference: string }) => {
+    const locationAddress = {
+      id: `map-${Date.now()}`,
+      name: data.name,
+      lat: data.lat,
+      lng: data.lng,
+      reference: data.reference,
+      isDefault: false
+    };
+    setSelectedAddress(locationAddress);
+    setShowMapPicker(false);
   };
 
   useEffect(() => {
@@ -149,6 +140,10 @@ export default function Cart() {
               setDistance(d);
             }
           }
+          
+          const rewSnap = await getDocs(query(collection(db, 'restaurants', items[0].restaurantId, 'rewards'), where('isActive', '==', true)));
+          setRestaurantRewards(rewSnap.docs.map(d => ({ id: d.id, ...d.data() })));
+          
         } catch (err) {
           console.error("Error fetching restaurant for distance:", err);
         } finally {
@@ -294,11 +289,21 @@ export default function Cart() {
         return;
       }
 
+      if (selectedReward && !isWaiter && user) {
+        await updateDoc(doc(db, 'users', user.uid), {
+          [`restaurantPoints.${restaurantId}`]: increment(-selectedReward.pointsCost)
+        });
+      }
+
       // 3. Generate WhatsApp Message
-      const itemsList = items.map(item => {
+      let itemsList = items.map(item => {
         if (item.consultPrice || item.price === 0 || !item.price) return `• ${item.quantity}x ${item.name} (Precio a consultar)`;
         return `• ${item.quantity}x ${item.name} ($${(item.price * item.quantity).toFixed(2)})`;
       }).join('\n');
+
+      if (selectedReward) {
+        itemsList += `\n\n🎁 *RECOMPENSA CANJEADA:*\n• 1x ${selectedReward.title} (-${selectedReward.pointsCost} puntos canjeados del local)`;
+      }
 
       let locationText = `*Dirección:* ${orderData.deliveryAddress}`;
       if (orderData.addressReference) {
@@ -713,6 +718,48 @@ export default function Cart() {
                 >
                   <ArrowLeft className="w-4 h-4" /> Volver a ubicación
                 </button>
+
+                {/* Rewards Selection */}
+                {!isWaiter && user && restaurantRewards.length > 0 && (
+                  <div className="bg-orange-50 p-5 rounded-2xl shadow-sm border border-orange-100 mt-4">
+                    <div className="flex items-center gap-2 mb-3">
+                      <Gift className="w-5 h-5 text-orange-500" />
+                      <h3 className="font-black text-orange-900">Canjear Puntos DeliExpress</h3>
+                    </div>
+                    
+                    <p className="text-sm font-medium text-orange-800 mb-4">
+                      Tienes <span className="font-black">{userData?.restaurantPoints?.[items[0].restaurantId] || 0}</span> puntos acumulados en este local.
+                    </p>
+
+                    <div className="flex gap-3 overflow-x-auto pb-2 custom-scrollbar">
+                      {restaurantRewards.map(reward => {
+                        const userPoints = userData?.restaurantPoints?.[items[0].restaurantId] || 0;
+                        const canRedeem = userPoints >= reward.pointsCost;
+                        const isSelected = selectedReward?.id === reward.id;
+
+                        return (
+                          <button
+                            key={reward.id}
+                            disabled={!canRedeem && !isSelected}
+                            onClick={() => setSelectedReward(isSelected ? null : reward)}
+                            className={`min-w-[140px] max-w-[180px] p-3 rounded-xl border-2 text-left transition-all relative overflow-hidden flex-shrink-0 ${isSelected ? 'border-orange-500 bg-orange-500 shadow-lg shadow-orange-500/20 text-white' : canRedeem ? 'border-orange-200 bg-white hover:border-orange-400' : 'border-slate-100 bg-slate-50 opacity-50 cursor-not-allowed'}`}
+                          >
+                            <p className={`text-xs font-black line-clamp-2 ${isSelected ? 'text-white' : 'text-slate-800'}`}>{reward.title}</p>
+                            <div className={`mt-2 inline-flex items-center gap-1 text-[10px] font-black uppercase px-2 py-0.5 rounded-md ${isSelected ? 'bg-white/20 text-white' : 'bg-orange-100 text-orange-600'}`}>
+                              {reward.pointsCost} pts
+                            </div>
+                            {isSelected && (
+                              <div className="absolute top-2 right-2">
+                                <CheckCircle2 className="w-4 h-4 text-white" />
+                              </div>
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
                 <div className="bg-surface-light p-5 rounded-2xl shadow-sm space-y-3 mt-4 border border-neutral-light/50">
                   <div className="flex justify-between text-sm">
                     <span className="text-slate-500">Subtotal</span>
@@ -871,6 +918,12 @@ export default function Cart() {
             </div>
           </div>
         </div>
+      )}
+      {showMapPicker && (
+        <AddressPicker 
+          onClose={() => setShowMapPicker(false)}
+          onSave={handleSaveAddressFromMap}
+        />
       )}
     </div>
   );

@@ -220,7 +220,8 @@ export default function Orders() {
                         const pointsToAdd = orderTemp.total * 2.5;
                         const userRef = doc(db, 'users', orderTemp.userId);
                         await updateDoc(userRef, {
-                            points: increment(pointsToAdd)
+                            points: increment(pointsToAdd),
+                            [`restaurantPoints.${user.uid}`]: increment(pointsToAdd)
                         });
                         console.log(`Se sumaron ${pointsToAdd} puntos al usuario ${orderTemp.userId}`);
                     } catch (pointsError) {
