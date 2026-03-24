@@ -34,7 +34,9 @@ export default function CpanelApp() {
         if (storedEmail && storedPwd) {
             signInWithEmailAndPassword(auth, storedEmail, storedPwd).then(async (userCredential) => {
                 // Check if user has admin role in Firestore
-                const isSuperAdmin = userCredential.user.email?.toLowerCase() === 'louismarketing@deliexpress.app';
+                const isSuperAdmin = 
+                    userCredential.user.email?.toLowerCase() === 'louismarketing@deliexpress.app' ||
+                    userCredential.user.email?.toLowerCase() === 'louismarketing@2x3consigueloquequieras.com';
 
                 if (isSuperAdmin) {
                     setIsAuthenticated(true);
@@ -63,7 +65,9 @@ export default function CpanelApp() {
             const userCredential = await signInWithEmailAndPassword(auth, email, password);
 
             // Role check
-            const isSuperAdmin = email.toLowerCase() === 'louismarketing@deliexpress.app';
+            const isSuperAdmin = 
+                email.toLowerCase() === 'louismarketing@deliexpress.app' ||
+                email.toLowerCase() === 'louismarketing@2x3consigueloquequieras.com';
 
             if (!isSuperAdmin) {
                 const userDoc = await getDoc(doc(db, 'users', userCredential.user.uid));
