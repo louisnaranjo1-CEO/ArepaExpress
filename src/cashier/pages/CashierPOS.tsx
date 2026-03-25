@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { doc, getDoc, collection, getDocs, setDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
+import { doc, getDoc, collection, getDocs, setDoc, updateDoc, serverTimestamp, query, where } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
-import { ArrowLeft, Plus, Minus, Trash2, ShoppingBag, CheckCircle, Loader2, Star, Clock, Store, Truck, X, Tag, MessageSquare } from 'lucide-react';
+import { ArrowLeft, Plus, Minus, Trash2, ShoppingBag, CheckCircle, Loader2, Star, Clock, Store, Truck, X, Tag, MessageSquare, MapPin, Instagram, Youtube, Music2, ExternalLink } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import ReviewsModal from '../components/ReviewsModal';
 
 export default function CashierPOS() {
     const navigate = useNavigate();
@@ -27,8 +28,19 @@ export default function CashierPOS() {
     const [selectedVariant, setSelectedVariant] = useState<any | null>(null);
     const [itemNotes, setItemNotes] = useState('');
 
+    const [tables, setTables] = useState<any[]>([]);
+    const [showTableModal, setShowTableModal] = useState(false);
+    const [selectedTable, setSelectedTable] = useState<any | null>(null);
+    const [activeOrder, setActiveOrder] = useState<any | null>(null);
+    const [showPrintModal, setShowPrintModal] = useState(false);
+    const [newItemsToPrint, setNewItemsToPrint] = useState<any[]>([]);
+    const [paymentStatus, setPaymentStatus] = useState<'sold' | 'pending'>('sold');
+    const [showReviewsModal, setShowReviewsModal] = useState(false);
+    const [showHoursModal, setShowHoursModal] = useState(false);
+
     const restaurantId = localStorage.getItem('cashierRestaurantId');
-    const cashierData = JSON.parse(localStorage.getItem('cashierData') || '{}');
+    const cashierDataRaw = localStorage.getItem('cashierData');
+    const cashierData = cashierDataRaw ? JSON.parse(cashierDataRaw) : { name: 'Cajera', id: 'local' };
 
     useEffect(() => {
         const fetchData = async () => {
@@ -47,13 +59,17 @@ export default function CashierPOS() {
                 const fetchedProducts = productsSnap.docs.map(p => ({ id: p.id, ...p.data() }));
                 setProducts(fetchedProducts);
 
-                // Fetch Order if editing
+                // Fetch Tables
+                const tablesRef = collection(db, 'restaurants', restaurantId, 'tables');
+                const tablesSnap = await getDocs(tablesRef);
+                setTables(tablesSnap.docs.map(d => ({ id: d.id, ...d.data() })));
+
+                // Fetch Order if editing specifically by ID
                 if (orderId) {
                     const orderDoc = await getDoc(doc(db, 'orders', orderId));
                     if (orderDoc.exists()) {
                         const data = orderDoc.data();
-                        setWaiterOrderInfo(data);
-                        setCartItems(data.items || []);
+                        loadOrderToPOS(orderDoc.id, data);
                     }
                 }
             } catch (error) {
@@ -66,6 +82,42 @@ export default function CashierPOS() {
         fetchData();
     }, [restaurantId, orderId]);
 
+    const loadOrderToPOS = (id: string, data: any) => {
+        setActiveOrder({ id, ...data });
+        setCartItems(data.items || []);
+        if (data.table) {
+            const tableObj = tables.find(t => t.number === data.table) || { number: data.table };
+            setSelectedTable(tableObj);
+        }
+    };
+
+    const handleTableSelect = async (table: any) => {
+        setSelectedTable(table);
+        setShowTableModal(false);
+        
+        // Search for active order on this table
+        try {
+            const ordersRef = collection(db, 'orders');
+            const q = query(
+                ordersRef, 
+                where("restaurantId", "==", restaurantId),
+                where("table", "==", table.number),
+                where("status", "in", ["preparing", "ready"])
+            );
+            const querySnap = await getDocs(q);
+            
+            if (!querySnap.empty) {
+                const orderDoc = querySnap.docs[0];
+                loadOrderToPOS(orderDoc.id, orderDoc.data());
+            } else {
+                setActiveOrder(null);
+                setCartItems([]);
+            }
+        } catch (err) {
+            console.error("Error checking active orders for table:", err);
+        }
+    };
+
     const categories = ['Todos', ...Array.from(new Set(products.map(p => p.category)))];
 
     const filteredProducts = products.filter(p => {
@@ -73,9 +125,42 @@ export default function CashierPOS() {
         return matchesCategory && p.isAvailable !== false;
     });
 
-    const subtotal = cartItems.reduce((acc, item) => acc + (item.price * item.quantity), 0);
-    const total = subtotal; 
+    const subtotal = cartItems.reduce((acc: number, item: any) => acc + (item.price * item.quantity), 0);
+    const total = subtotal + (isDelivery ? (restaurant?.deliveryFee || 0) : 0);
 
+    const getSocialIcon = (url: string) => {
+        if (url.includes('instagram.com')) return <Instagram className="w-4 h-4" />;
+        if (url.includes('tiktok.com')) return <Music2 className="w-4 h-4" />;
+        if (url.includes('youtube.com') || url.includes('youtu.be')) return <Youtube className="w-4 h-4" />;
+        return <ExternalLink className="w-4 h-4" />;
+    };
+
+    const getSocialColor = (url: string) => {
+        if (url.includes('instagram.com')) return 'bg-gradient-to-tr from-yellow-400 via-red-500 to-purple-600';
+        if (url.includes('tiktok.com')) return 'bg-black';
+        if (url.includes('youtube.com') || url.includes('youtu.be')) return 'bg-red-600';
+        return 'bg-primary';
+    };
+
+    const getRestaurantStatus = () => {
+        if (!restaurant || !restaurant.workingHours || restaurant.workingHours.length === 0) return { isOpen: true, text: 'Abierto' };
+
+        const now = new Date();
+        const days = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
+        const currentDay = days[now.getDay()];
+        const hours = now.getHours().toString().padStart(2, '0');
+        const minutes = now.getMinutes().toString().padStart(2, '0');
+        const currentTimeStr = `${hours}:${minutes}`;
+
+        const todaySchedule = restaurant.workingHours.find((day: any) => day.day === currentDay);
+
+        if (!todaySchedule || todaySchedule.closed) return { isOpen: false, text: 'Cerrado' };
+
+        const isOpen = currentTimeStr >= todaySchedule.open && currentTimeStr <= todaySchedule.close;
+        return { isOpen, text: isOpen ? 'Abierto' : 'Cerrado', todaySchedule };
+    };
+
+    const statusObj = getRestaurantStatus();
     const handleProductClick = (product: any) => {
         setSelectedProduct(product);
         setSelectedVariant(null);
@@ -109,7 +194,9 @@ export default function CashierPOS() {
             image: selectedProduct.image,
             category: selectedProduct.category,
             variantName: selectedVariant?.name,
-            notes: itemNotes
+            notes: itemNotes,
+            printed: false, // Mark as NOT printed
+            printerId: selectedProduct.printerId || ''
         }]);
 
         setSelectedProduct(null);
@@ -125,85 +212,123 @@ export default function CashierPOS() {
         }).filter(item => item.quantity > 0));
     };
 
-    const handleSaveOrder = async () => {
+    const handleSaveOrderPlan = async () => {
         if (!restaurantId || cartItems.length === 0) return;
-        setIsSubmitting(true);
-
-        try {
-            if (orderId) {
-                await updateDoc(doc(db, 'orders', orderId), {
-                    items: cartItems,
-                    subtotal: subtotal,
-                    total: total + (waiterOrderInfo?.deliveryFee || 0)
-                });
-                alert("Orden actualizada correctamente.");
-                navigate('/');
-            } else {
-                setShowCheckoutModal(true);
-            }
-        } catch (error) {
-            console.error("Error saving order:", error);
-            alert("Hubo un error al guardar.");
-        } finally {
-            setIsSubmitting(false);
-        }
+        
+        // Items that haven't been printed yet
+        const toPrint = cartItems.filter(item => !item.printed);
+        setNewItemsToPrint(toPrint);
+        
+        setShowCheckoutModal(true);
     };
 
     const handleConfirmPayment = async () => {
-        if (!paymentMethod) {
+        if (paymentStatus === 'sold' && !paymentMethod) {
             alert("Seleccione un método de pago");
             return;
         }
 
         setIsSubmitting(true);
         try {
-            const newOrderRef = doc(collection(db, 'orders'));
-            const orderData: any = {
-                userId: 'local_walk_in',
-                restaurantId,
-                items: cartItems,
+            const orderItems = cartItems.map(item => ({...item}));
+            
+            const commonData = {
+                items: orderItems,
                 subtotal: subtotal,
                 total: total,
                 status: 'preparing',
-                paymentStatus: 'sold',
-                paymentMethod: paymentMethod,
-                source: 'local',
-                cashierName: cashierData.name,
-                cashierId: cashierData.id,
-                userName: 'Cliente Local',
-                createdAt: serverTimestamp()
+                paymentStatus: paymentStatus, // 'sold' or 'pending'
+                paymentMethod: paymentStatus === 'sold' ? paymentMethod : 'none',
+                updatedAt: serverTimestamp(),
+                table: selectedTable?.number || waiterOrderInfo?.table || 'Sin Mesa',
+                cashierName: cashierData.name || 'Cajera POS',
+                cashierId: cashierData.id || 'local'
             };
 
-            if (isDelivery && deliveryAddress.trim()) {
-                orderData.isDelivery = true;
-                orderData.deliveryAddress = deliveryAddress;
-                orderData.userName = 'Cliente (Delivery Local)';
+            let finalOrderId = activeOrder?.id || orderId;
+
+            if (finalOrderId) {
+                // Update existing order
+                await updateDoc(doc(db, 'orders', finalOrderId), commonData);
+            } else {
+                // Create new order
+                const newOrderRef = doc(collection(db, 'orders'));
+                finalOrderId = newOrderRef.id;
+                await setDoc(newOrderRef, {
+                    ...commonData,
+                    userId: 'local_walk_in',
+                    restaurantId,
+                    userName: 'Cliente Local',
+                    source: 'local',
+                    createdAt: serverTimestamp(),
+                });
             }
 
-            await setDoc(newOrderRef, orderData);
-            alert("Pedido cobrado exitosamente.");
-            navigate('/');
+            // Set active order for printing
+            setActiveOrder({ id: finalOrderId, ...commonData });
+            
+            setShowCheckoutModal(false);
+            
+            // If there's something new to print, show print modal
+            if (newItemsToPrint.length > 0) {
+                setShowPrintModal(true);
+            } else {
+                alert("Pedido procesado correctamente.");
+                resetPOS();
+            }
         } catch (error) {
-            console.error("Error confirming local payment:", error);
-            alert("Hubo un error al procesar el pago.");
+            console.error("Error confirming local order:", error);
+            alert("Hubo un error al procesar el pedido. Verifique su conexión.");
         } finally {
             setIsSubmitting(false);
-            setShowCheckoutModal(false);
         }
+    };
+
+    const handlePrintedCommand = async () => {
+        if (!activeOrder) return;
+        
+        setIsSubmitting(true);
+        try {
+            // Mark items as printed in local cart and final order
+            const updatedItems = cartItems.map(item => ({
+                ...item,
+                printed: true
+            }));
+            
+            await updateDoc(doc(db, 'orders', activeOrder.id), {
+                items: updatedItems
+            });
+            
+            alert("Comanda enviada a impresión.");
+            resetPOS();
+        } catch (error) {
+            console.error("Error marking as printed:", error);
+        } finally {
+            setIsSubmitting(false);
+            setShowPrintModal(false);
+        }
+    };
+
+    const resetPOS = () => {
+        setCartItems([]);
+        setSelectedTable(null);
+        setActiveOrder(null);
+        setNewItemsToPrint([]);
+        setShowPrintModal(false);
+        setPaymentMethod('');
+        navigate('/pos'); // Refresh if needed
     };
 
     if (loading) {
         return <div className="min-h-screen bg-slate-50 flex items-center justify-center"><Loader2 className="w-8 h-8 animate-spin text-primary" /></div>;
     }
 
-    const statusObj = restaurant ? { isOpen: true, text: 'Abierto' } : { isOpen: false, text: 'Cerrado' };
-
     return (
         <div className="h-screen flex flex-col md:flex-row bg-slate-50 overflow-hidden">
             {/* Main Product Catalog */}
             <div className="flex-1 flex flex-col h-full overflow-hidden border-r border-slate-200 bg-white">
                 
-                {/* Restaurant Banner (Synced with App) */}
+                {/* Restaurant Banner & Table Selector */}
                 {restaurant && (
                     <div className="relative w-full h-32 md:h-40 shrink-0 bg-slate-100 overflow-hidden">
                         <div 
@@ -217,26 +342,88 @@ export default function CashierPOS() {
                             <div className="flex-1 pb-1">
                                 <h1 className="text-xl md:text-2xl font-black text-white leading-tight drop-shadow-md">{restaurant.name}</h1>
                                 <div className="flex items-center gap-3 mt-1">
-                                    <div className="flex items-center gap-1 bg-white/20 backdrop-blur-md px-2 py-0.5 rounded-full border border-white/20">
-                                        <Star className="w-3 h-3 text-yellow-400 fill-yellow-400" />
-                                        <span className="text-[10px] font-black text-white">{restaurant.rating || "5.0"}</span>
-                                    </div>
-                                    <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-emerald-500/20 backdrop-blur-md border border-emerald-500/30 text-[10px] font-black uppercase text-emerald-400 tracking-wider">
+                                    <button 
+                                        onClick={() => setShowTableModal(true)}
+                                        className="flex items-center gap-2 bg-white/20 backdrop-blur-md px-3 py-1 rounded-full border border-white/20 hover:bg-white/30 transition-all"
+                                    >
+                                        <Store className="w-3 h-3 text-white" />
+                                        <span className="text-[10px] font-black text-white uppercase tracking-wider">
+                                            {selectedTable ? `Mesa: ${selectedTable.number}` : "Seleccionar Mesa"}
+                                        </span>
+                                    </button>
+                                    <div className="flex items-center gap-1.5 px-2 py-1 rounded-full bg-emerald-500/20 backdrop-blur-md border border-emerald-500/30 text-[10px] font-black uppercase text-emerald-400 tracking-wider">
                                         <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></div>
                                         {statusObj.text}
                                     </div>
-                                    <div className="flex items-center gap-1 text-white/80 text-[10px] font-bold">
-                                        <Clock className="w-3 h-3" />
-                                        <span>{restaurant.deliveryTime || "30-45 min"}</span>
-                                    </div>
                                 </div>
                             </div>
-                            <button onClick={() => navigate('/')} className="mb-2 w-10 h-10 bg-white/20 backdrop-blur-md rounded-full flex items-center justify-center hover:bg-white/30 text-white transition-all">
+                            <button onClick={resetPOS} className="mb-2 w-10 h-10 bg-white/20 backdrop-blur-md rounded-full flex items-center justify-center hover:bg-white/30 text-white transition-all">
                                 <ArrowLeft className="w-6 h-6" />
                             </button>
                         </div>
                     </div>
                 )}
+
+            {/* Restaurant Info Bar */}
+            <div className="bg-slate-900 text-white px-6 py-3 flex items-center justify-between gap-4 overflow-x-auto hide-scrollbar shrink-0">
+                <div className="flex items-center gap-6 shrink-0">
+                    <div className="flex items-center gap-3">
+                        <div className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest flex items-center gap-1.5 ${statusObj.isOpen ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 'bg-red-500/20 text-red-400 border border-red-500/30'}`}>
+                            <div className={`w-1.5 h-1.5 rounded-full ${statusObj.isOpen ? 'bg-emerald-400 animate-pulse' : 'bg-red-400'}`}></div>
+                            {statusObj.text}
+                        </div>
+                        <button 
+                            onClick={() => setShowHoursModal(true)}
+                            className="flex items-center gap-1.5 text-slate-400 hover:text-white transition-colors"
+                        >
+                            <Clock className="w-3.5 h-3.5" />
+                            <span className="text-xs font-bold whitespace-nowrap">
+                                {statusObj.todaySchedule ? `${statusObj.todaySchedule.open} - ${statusObj.todaySchedule.close}` : 'Ver Horario'}
+                            </span>
+                        </button>
+                    </div>
+
+                    {restaurant?.location?.address && (
+                        <div className="flex items-center gap-2 text-slate-400 max-w-xs">
+                            <MapPin className="w-3.5 h-3.5 shrink-0" />
+                            <span className="text-xs font-medium truncate">{restaurant.location.address}</span>
+                        </div>
+                    )}
+
+                    {restaurant?.rating && (
+                        <div className="flex items-center gap-1.5 bg-white/10 px-2.5 py-1 rounded-lg border border-white/5">
+                            <Star className="w-3 h-3 text-amber-400 fill-amber-400" />
+                            <span className="text-xs font-black">{restaurant.rating.toFixed(1)}</span>
+                        </div>
+                    )}
+                </div>
+
+                <div className="flex items-center gap-4 shrink-0">
+                    <div className="flex items-center gap-2">
+                        {restaurant?.socialLinks?.map((link: any, i: number) => (
+                            <a 
+                                key={i}
+                                href={link.url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className={`w-8 h-8 rounded-xl flex items-center justify-center text-white transition-all hover:scale-110 active:scale-95 ${getSocialColor(link.url)}`}
+                            >
+                                {getSocialIcon(link.url)}
+                            </a>
+                        ))}
+                    </div>
+
+                    <div className="h-6 w-px bg-white/10 mx-1"></div>
+
+                    <button 
+                        onClick={() => setShowReviewsModal(true)}
+                        className="flex items-center gap-2 bg-primary/10 hover:bg-primary/20 text-primary px-4 py-1.5 rounded-xl border border-primary/20 transition-all group"
+                    >
+                        <MessageSquare className="w-4 h-4 group-hover:scale-110 transition-transform" />
+                        <span className="text-xs font-black uppercase tracking-wider">Reseñas</span>
+                    </button>
+                </div>
+            </div>
 
                 {/* Categories */}
                 <div className="p-4 border-b border-slate-50 bg-slate-50/50 shrink-0">
@@ -324,6 +511,7 @@ export default function CashierPOS() {
                                     <div className="flex items-center gap-2">
                                         <span className="text-sm font-black text-primary">${item.price.toFixed(2)}</span>
                                         {item.notes && <div className="flex items-center gap-1 text-[9px] font-bold text-amber-500 bg-amber-50 px-1.5 py-0.5 rounded-md"><MessageSquare className="w-2.5 h-2.5" /> Nota</div>}
+                                        {item.printed && <div className="text-[8px] font-black uppercase text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded-md">Impreso</div>}
                                     </div>
                                 </div>
                                 <div className="flex items-center gap-2.5 shrink-0 bg-slate-50 rounded-2xl p-1.5 border border-slate-100">
@@ -356,12 +544,12 @@ export default function CashierPOS() {
                         </div>
                     </div>
                     <button
-                        onClick={handleSaveOrder}
+                        onClick={handleSaveOrderPlan}
                         disabled={cartItems.length === 0 || isSubmitting}
                         className="w-full bg-primary text-white py-5 rounded-[2rem] font-black text-lg shadow-2xl shadow-primary/30 hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-50 flex items-center justify-center gap-3 group"
                     >
                         {isSubmitting ? <Loader2 className="w-6 h-6 animate-spin" /> : 
-                        orderId ? "Guardar Cambios" : <><Plus className="w-6 h-6 group-hover:rotate-90 transition-transform" /> Procesar y Cobrar</>}
+                        (activeOrder || orderId) ? "Actualizar y Procesar" : <><Plus className="w-6 h-6 group-hover:rotate-90 transition-transform" /> Procesar Pedido</>}
                     </button>
                 </div>
             </div>
@@ -461,25 +649,52 @@ export default function CashierPOS() {
                         
                         <div className="bg-slate-50 p-6 rounded-[2rem] mb-8 flex flex-col border border-slate-100">
                             <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Total Neto</span>
-                            <span className="text-4xl font-black text-primary leading-none">${total.toFixed(2)}</span>
+                            <div className="flex items-baseline gap-2">
+                                <span className="text-4xl font-black text-primary leading-none">${total.toFixed(2)}</span>
+                                {paymentStatus === 'pending' && <span className="text-[10px] font-black text-amber-500 uppercase">Pendiente</span>}
+                            </div>
                         </div>
 
                         <div className="space-y-4 mb-8">
-                            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest pl-2">Método de Pago</label>
-                            <div className="grid grid-cols-2 gap-3">
-                                {['Punto', 'Pago Móvil', 'Efectivo', 'Zelle'].map((method) => (
-                                    <button
-                                        key={method}
-                                        onClick={() => setPaymentMethod(method)}
-                                        className={`w-full px-4 py-4 rounded-2xl text-xs font-black transition-all border-2 flex items-center justify-center uppercase tracking-wider ${
-                                            paymentMethod === method ? 'border-primary bg-primary/5 text-primary shadow-lg shadow-primary/5' : 'border-slate-50 bg-slate-50 text-slate-500 hover:border-slate-200'
-                                        }`}
-                                    >
-                                        {method}
-                                    </button>
-                                ))}
+                            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest pl-2">Estado de Pago</label>
+                            <div className="flex gap-2 p-1 bg-slate-50 rounded-2xl border border-slate-200">
+                                <button 
+                                    onClick={() => setPaymentStatus('sold')}
+                                    className={`flex-1 py-3 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all ${
+                                        paymentStatus === 'sold' ? 'bg-primary text-white shadow-lg shadow-primary/20' : 'text-slate-400'
+                                    }`}
+                                >
+                                    Ya Pagó
+                                </button>
+                                <button 
+                                    onClick={() => setPaymentStatus('pending')}
+                                    className={`flex-1 py-3 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all ${
+                                        paymentStatus === 'pending' ? 'bg-amber-500 text-white shadow-lg shadow-amber-500/20' : 'text-slate-400'
+                                    }`}
+                                >
+                                    Pagar Después
+                                </button>
                             </div>
                         </div>
+
+                        {paymentStatus === 'sold' && (
+                            <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-4 mb-8">
+                                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest pl-2">Método de Pago</label>
+                                <div className="grid grid-cols-2 gap-3">
+                                    {['Punto', 'Pago Móvil', 'Efectivo', 'Zelle'].map((method) => (
+                                        <button
+                                            key={method}
+                                            onClick={() => setPaymentMethod(method)}
+                                            className={`w-full px-4 py-4 rounded-2xl text-xs font-black transition-all border-2 flex items-center justify-center uppercase tracking-wider ${
+                                                paymentMethod === method ? 'border-primary bg-primary/5 text-primary shadow-lg shadow-primary/5' : 'border-slate-50 bg-slate-50 text-slate-500 hover:border-slate-200'
+                                            }`}
+                                        >
+                                            {method}
+                                        </button>
+                                    ))}
+                                </div>
+                            </motion.div>
+                        )}
 
                         <div className="mb-8">
                             <label className="flex items-center gap-3 cursor-pointer mb-4 group p-1 pl-2">
@@ -515,15 +730,190 @@ export default function CashierPOS() {
                             </button>
                             <button
                                 onClick={handleConfirmPayment}
-                                disabled={!paymentMethod || isSubmitting}
-                                className="flex-[2] bg-emerald-500 text-white py-5 rounded-[1.75rem] font-black shadow-xl shadow-emerald-500/30 hover:bg-emerald-600 transition-all active:scale-95 disabled:opacity-50 flex items-center justify-center uppercase text-xs tracking-widest"
+                                disabled={(paymentStatus === 'sold' && !paymentMethod) || isSubmitting}
+                                className={`flex-[2] py-5 rounded-[1.75rem] font-black shadow-xl transition-all active:scale-95 disabled:opacity-50 flex items-center justify-center uppercase text-xs tracking-widest ${
+                                    paymentStatus === 'sold' ? 'bg-emerald-500 text-white shadow-emerald-500/30' : 'bg-amber-500 text-white shadow-amber-500/30'
+                                }`}
                             >
-                                {isSubmitting ? <Loader2 className="w-5 h-5 animate-spin" /> : <><CheckCircle className="w-5 h-5 mr-2" /> Confirmar</>}
+                                {isSubmitting ? <Loader2 className="w-5 h-5 animate-spin" /> : (
+                                    <>
+                                        {paymentStatus === 'sold' ? <CheckCircle className="w-5 h-5 mr-2" /> : <Clock className="w-5 h-5 mr-2" />}
+                                        {paymentStatus === 'sold' ? 'Confirmar Pago' : 'Confirmar Pedido'}
+                                    </>
+                                )}
                             </button>
                         </div>
                     </motion.div>
                 </div>
             )}
+
+            {/* Print Command Modal */}
+            <AnimatePresence>
+                {showPrintModal && (
+                    <div className="fixed inset-0 z-[120] flex items-center justify-center bg-slate-900/80 backdrop-blur-xl p-4">
+                        <motion.div 
+                            initial={{ opacity: 0, scale: 0.9, y: 30 }}
+                            animate={{ opacity: 1, scale: 1, y: 0 }}
+                            className="bg-white rounded-[3rem] p-10 w-full max-w-lg shadow-2xl relative overflow-hidden"
+                        >
+                            <div className="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-primary via-amber-500 to-primary"></div>
+                            
+                            <h3 className="text-3xl font-black text-slate-900 mb-2 uppercase tracking-tight">Impresión de Comanda</h3>
+                            <p className="text-sm text-slate-400 font-bold mb-8">Artículos nuevos detectados para enviar a cocina/barra</p>
+
+                            <div className="space-y-6 max-h-[50vh] overflow-y-auto pr-2 mb-8">
+                                {newItemsToPrint.map((item, idx) => (
+                                    <div key={idx} className="flex items-center gap-4 p-4 bg-slate-50 rounded-3xl border border-slate-100">
+                                        <div className="w-3 h-3 rounded-full bg-primary animate-pulse"></div>
+                                        <div className="flex-1">
+                                            <div className="flex justify-between">
+                                                <span className="font-black text-slate-900 text-sm">{item.quantity}x {item.name}</span>
+                                            </div>
+                                            {item.notes && <p className="text-[10px] text-amber-600 font-bold mt-1 italic">"{item.notes}"</p>}
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+
+                            <div className="flex gap-4">
+                                <button
+                                    onClick={() => setShowPrintModal(false)}
+                                    className="flex-1 bg-slate-100 text-slate-500 py-6 rounded-3xl font-black uppercase text-xs tracking-widest hover:bg-slate-200 transition-colors"
+                                >
+                                    Cerrar
+                                </button>
+                                <button
+                                    onClick={handlePrintedCommand}
+                                    className="flex-[2] bg-primary text-white py-6 rounded-3xl font-black shadow-2xl shadow-primary/30 hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-3 uppercase text-xs tracking-widest"
+                                >
+                                    {isSubmitting ? <Loader2 className="w-6 h-6 animate-spin" /> : <><Truck className="w-6 h-6" /> Mandar a Producción</>}
+                                </button>
+                            </div>
+                        </motion.div>
+                    </div>
+                )}
+            </AnimatePresence>
+
+            {/* Table Selection Modal */}
+            <AnimatePresence>
+                {showTableModal && (
+                    <div className="fixed inset-0 z-[115] flex items-center justify-center bg-slate-900/60 backdrop-blur-md p-4">
+                        <motion.div 
+                            initial={{ opacity: 0, scale: 0.9 }}
+                            animate={{ opacity: 1, scale: 1 }}
+                            className="bg-white rounded-[3rem] p-8 w-full max-w-xl shadow-2xl"
+                        >
+                            <div className="flex justify-between items-center mb-8">
+                                <div>
+                                    <h3 className="text-2xl font-black text-slate-900 uppercase tracking-tight">Seleccionar Lugar/Mesa</h3>
+                                    <p className="text-xs text-slate-400 font-bold tracking-widest uppercase">Mesas activas del restaurante</p>
+                                </div>
+                                <button onClick={() => setShowTableModal(false)} className="w-10 h-10 bg-slate-50 rounded-full flex items-center justify-center text-slate-400">
+                                    <X className="w-6 h-6" />
+                                </button>
+                            </div>
+
+                            <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-8">
+                                <button
+                                    onClick={() => { setSelectedTable(null); setShowTableModal(false); }}
+                                    className={`p-6 rounded-3xl border-2 transition-all flex flex-col items-center gap-2 group ${
+                                        !selectedTable ? 'border-primary bg-primary/5 shadow-lg shadow-primary/5' : 'border-slate-50 bg-slate-50 hover:border-slate-200'
+                                    }`}
+                                >
+                                    <ShoppingBag className={`w-8 h-8 ${!selectedTable ? 'text-primary' : 'text-slate-300'}`} />
+                                    <span className={`text-[10px] font-black uppercase tracking-widest ${!selectedTable ? 'text-primary' : 'text-slate-500'}`}>Para Llevar</span>
+                                </button>
+                                
+                                {tables.map((table) => (
+                                    <button
+                                        key={table.id}
+                                        onClick={() => handleTableSelect(table)}
+                                        className={`p-6 rounded-3xl border-2 transition-all flex flex-col items-center gap-2 group ${
+                                            selectedTable?.id === table.id ? 'border-primary bg-primary/5 shadow-lg shadow-primary/5' : 'border-slate-50 bg-slate-50 hover:border-slate-200'
+                                        }`}
+                                    >
+                                        <div className={`w-8 h-8 rounded-xl flex items-center justify-center font-black text-xl transition-all ${
+                                            selectedTable?.id === table.id ? 'bg-primary text-white' : 'bg-slate-200 text-slate-400'
+                                        }`}>
+                                            {table.number.slice(0, 2)}
+                                        </div>
+                                        <span className={`text-[10px] font-black uppercase tracking-widest ${selectedTable?.id === table.id ? 'text-primary' : 'text-slate-500'}`}>
+                                            Mesa {table.number}
+                                        </span>
+                                    </button>
+                                ))}
+                            </div>
+                        </motion.div>
+                    </div>
+                )}
+            </AnimatePresence>
+            {/* Modals Adicionales */}
+            <ReviewsModal 
+                isOpen={showReviewsModal} 
+                onClose={() => setShowReviewsModal(false)} 
+                restaurantId={restaurantId || ''} 
+            />
+
+            {/* Modal de Horarios */}
+            {showHoursModal && (
+                <div className="fixed inset-0 z-[110] flex items-center justify-center bg-slate-900/40 backdrop-blur-sm px-4">
+                    <div className="bg-white rounded-[2.5rem] p-8 w-full max-w-md shadow-2xl animate-in zoom-in-95 duration-200">
+                        <div className="flex justify-between items-center mb-6">
+                            <div className="flex items-center gap-3">
+                                <div className="w-10 h-10 bg-primary/10 rounded-xl flex items-center justify-center">
+                                    <Clock className="w-6 h-6 text-primary" />
+                                </div>
+                                <h3 className="text-xl font-black text-slate-900">Horario de Trabajo</h3>
+                            </div>
+                            <button onClick={() => setShowHoursModal(false)} className="text-slate-400 hover:text-slate-600 p-2">
+                                <X className="w-6 h-6" />
+                            </button>
+                        </div>
+                        
+                        <div className="space-y-3">
+                            {restaurant?.workingHours?.map((day: any, i: number) => (
+                                <div key={i} className={`flex justify-between items-center p-3 rounded-2xl ${day.day === (['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'][new Date().getDay()]) ? 'bg-primary/5 border border-primary/10 ring-1 ring-primary/20' : 'bg-slate-50'}`}>
+                                    <span className={`font-bold ${day.day === (['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'][new Date().getDay()]) ? 'text-primary' : 'text-slate-600'}`}>{day.day}</span>
+                                    {day.closed ? (
+                                        <span className="text-xs font-black text-red-400 uppercase tracking-widest">Cerrado</span>
+                                    ) : (
+                                        <span className="text-sm font-black text-slate-900">{day.open} - {day.close}</span>
+                                    )}
+                                </div>
+                            ))}
+                        </div>
+
+                        <button 
+                            onClick={() => setShowHoursModal(false)}
+                            className="w-full mt-8 py-4 bg-slate-900 text-white font-black rounded-2xl hover:bg-slate-800 transition-all uppercase tracking-[0.2em] shadow-lg shadow-slate-900/20"
+                        >
+                            Entendido
+                        </button>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }
+
+const resetPOS = (
+    setCartItems: Function,
+    setPaymentMethod: Function,
+    setIsDelivery: Function,
+    setDeliveryAddress: Function,
+    setShowCheckoutModal: Function,
+    setPaymentStatus: Function,
+    setSelectedTable: Function,
+    setOrderId: Function,
+    setNewItemsToPrint: Function
+) => {
+    setCartItems([]);
+    setPaymentMethod('');
+    setIsDelivery(false);
+    setDeliveryAddress('');
+    setShowCheckoutModal(false);
+    setPaymentStatus('sold');
+    setSelectedTable(null);
+    setOrderId('');
+    setNewItemsToPrint([]);
+};

@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { LogOut, DollarSign, CheckCircle, Clock, X, Loader2, Store, CreditCard, User, Plus, Edit, ClipboardList } from 'lucide-react';
+import { LogOut, DollarSign, CheckCircle, Clock, X, Loader2, Store, CreditCard, User, Plus, Edit, ClipboardList, MapPin, Instagram, Youtube, Music2, ExternalLink, Star, MessageSquare } from 'lucide-react';
 import { db } from '../../lib/firebase';
-import { collection, query, where, onSnapshot, orderBy, doc, updateDoc } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, orderBy, doc, updateDoc, getDoc } from 'firebase/firestore';
 import { useNavigate } from 'react-router-dom';
 import ProductTicker from '../components/ProductTicker';
+import ReviewsModal from '../components/ReviewsModal';
 
 interface Order {
     id: string;
@@ -26,6 +27,9 @@ export default function CashierDashboard() {
     const [orders, setOrders] = useState<Order[]>([]);
     const [cashierData, setCashierData] = useState<any>(null);
     const [restaurantId, setRestaurantId] = useState<string | null>(null);
+    const [restaurant, setRestaurant] = useState<any | null>(null);
+    const [showReviewsModal, setShowReviewsModal] = useState(false);
+    const [showHoursModal, setShowHoursModal] = useState(false);
 
     const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
     const [closeSaleModalOpen, setCloseSaleModalOpen] = useState(false);
@@ -49,6 +53,20 @@ export default function CashierDashboard() {
 
         setCashierData(JSON.parse(storedCashier));
         setRestaurantId(storedRestaurantId);
+
+        // Fetch Restaurant Data
+        const fetchRestaurant = async () => {
+            try {
+                const docRef = doc(db, 'restaurants', storedRestaurantId);
+                const docSnap = await getDoc(docRef);
+                if (docSnap.exists()) {
+                    setRestaurant({ id: docSnap.id, ...docSnap.data() });
+                }
+            } catch (error) {
+                console.error("Error fetching restaurant:", error);
+            }
+        };
+        fetchRestaurant();
 
         const ordersRef = collection(db, 'orders');
         const q = query(
@@ -195,6 +213,40 @@ export default function CashierDashboard() {
         app: orders.filter(o => o.source !== 'waiter')
     };
 
+    const getSocialIcon = (url: string) => {
+        if (url.includes('instagram.com')) return <Instagram className="w-4 h-4" />;
+        if (url.includes('tiktok.com')) return <Music2 className="w-4 h-4" />;
+        if (url.includes('youtube.com') || url.includes('youtu.be')) return <Youtube className="w-4 h-4" />;
+        return <ExternalLink className="w-4 h-4" />;
+    };
+
+    const getSocialColor = (url: string) => {
+        if (url.includes('instagram.com')) return 'bg-gradient-to-tr from-yellow-400 via-red-500 to-purple-600';
+        if (url.includes('tiktok.com')) return 'bg-black';
+        if (url.includes('youtube.com') || url.includes('youtu.be')) return 'bg-red-600';
+        return 'bg-primary';
+    };
+
+    const getRestaurantStatus = () => {
+        if (!restaurant || !restaurant.workingHours || restaurant.workingHours.length === 0) return { isOpen: true, text: 'Abierto' };
+
+        const now = new Date();
+        const days = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
+        const currentDay = days[now.getDay()];
+        const hours = now.getHours().toString().padStart(2, '0');
+        const minutes = now.getMinutes().toString().padStart(2, '0');
+        const currentTimeStr = `${hours}:${minutes}`;
+
+        const todaySchedule = restaurant.workingHours.find((day: any) => day.day === currentDay);
+
+        if (!todaySchedule || todaySchedule.closed) return { isOpen: false, text: 'Cerrado' };
+
+        const isOpen = currentTimeStr >= todaySchedule.open && currentTimeStr <= todaySchedule.close;
+        return { isOpen, text: isOpen ? 'Abierto' : 'Cerrado', todaySchedule };
+    };
+
+    const statusObj = getRestaurantStatus();
+
     return (
         <div className="min-h-screen bg-slate-50 flex flex-col">
             <ProductTicker restaurantId={restaurantId || ''} />
@@ -239,6 +291,72 @@ export default function CashierDashboard() {
                     </button>
                 </div>
             </header>
+
+            {/* Restaurant Info Bar */}
+            <div className="bg-slate-900 text-white px-6 py-3 flex items-center justify-between gap-4 overflow-x-auto hide-scrollbar shrink-0">
+                <div className="flex items-center gap-6 shrink-0">
+                    {/* Status & Hours */}
+                    <div className="flex items-center gap-3">
+                        <div className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest flex items-center gap-1.5 ${statusObj.isOpen ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 'bg-red-500/20 text-red-400 border border-red-500/30'}`}>
+                            <div className={`w-1.5 h-1.5 rounded-full ${statusObj.isOpen ? 'bg-emerald-400 animate-pulse' : 'bg-red-400'}`}></div>
+                            {statusObj.text}
+                        </div>
+                        <button 
+                            onClick={() => setShowHoursModal(true)}
+                            className="flex items-center gap-1.5 text-slate-400 hover:text-white transition-colors"
+                        >
+                            <Clock className="w-3.5 h-3.5" />
+                            <span className="text-xs font-bold whitespace-nowrap">
+                                {statusObj.todaySchedule ? `${statusObj.todaySchedule.open} - ${statusObj.todaySchedule.close}` : 'Ver Horario'}
+                            </span>
+                        </button>
+                    </div>
+
+                    {/* Location */}
+                    {restaurant?.location?.address && (
+                        <div className="flex items-center gap-2 text-slate-400 max-w-xs">
+                            <MapPin className="w-3.5 h-3.5 shrink-0" />
+                            <span className="text-xs font-medium truncate">{restaurant.location.address}</span>
+                        </div>
+                    )}
+
+                    {/* Rating */}
+                    {restaurant?.rating && (
+                        <div className="flex items-center gap-1.5 bg-white/10 px-2.5 py-1 rounded-lg border border-white/5">
+                            <Star className="w-3 h-3 text-amber-400 fill-amber-400" />
+                            <span className="text-xs font-black">{restaurant.rating.toFixed(1)}</span>
+                        </div>
+                    )}
+                </div>
+
+                <div className="flex items-center gap-4 shrink-0">
+                    {/* Social Media */}
+                    <div className="flex items-center gap-2">
+                        {restaurant?.socialLinks?.map((link: any, i: number) => (
+                            <a 
+                                key={i}
+                                href={link.url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className={`w-8 h-8 rounded-xl flex items-center justify-center text-white transition-all hover:scale-110 active:scale-95 ${getSocialColor(link.url)}`}
+                            >
+                                {getSocialIcon(link.url)}
+                            </a>
+                        ))}
+                    </div>
+
+                    <div className="h-6 w-px bg-white/10 mx-1"></div>
+
+                    {/* Reviews Button */}
+                    <button 
+                        onClick={() => setShowReviewsModal(true)}
+                        className="flex items-center gap-2 bg-primary/10 hover:bg-primary/20 text-primary px-4 py-1.5 rounded-xl border border-primary/20 transition-all group"
+                    >
+                        <MessageSquare className="w-4 h-4 group-hover:scale-110 transition-transform" />
+                        <span className="text-xs font-black uppercase tracking-wider">Reseñas</span>
+                    </button>
+                </div>
+            </div>
 
             <main className="flex-1 p-6 max-w-7xl mx-auto w-full space-y-8">
                 {/* Waiter Orders to Charge */}
@@ -348,6 +466,52 @@ export default function CashierDashboard() {
                     )}
                 </section>
             </main>
+
+            {/* Modals Adicionales */}
+            <ReviewsModal 
+                isOpen={showReviewsModal} 
+                onClose={() => setShowReviewsModal(false)} 
+                restaurantId={restaurantId || ''} 
+            />
+
+            {/* Modal de Horarios */}
+            {showHoursModal && (
+                <div className="fixed inset-0 z-[110] flex items-center justify-center bg-slate-900/40 backdrop-blur-sm px-4">
+                    <div className="bg-white rounded-[2.5rem] p-8 w-full max-w-md shadow-2xl animate-in zoom-in-95 duration-200">
+                        <div className="flex justify-between items-center mb-6">
+                            <div className="flex items-center gap-3">
+                                <div className="w-10 h-10 bg-primary/10 rounded-xl flex items-center justify-center">
+                                    <Clock className="w-6 h-6 text-primary" />
+                                </div>
+                                <h3 className="text-xl font-black text-slate-900">Horario de Trabajo</h3>
+                            </div>
+                            <button onClick={() => setShowHoursModal(false)} className="text-slate-400 hover:text-slate-600 p-2">
+                                <X className="w-6 h-6" />
+                            </button>
+                        </div>
+                        
+                        <div className="space-y-3">
+                            {restaurant?.workingHours?.map((day: any, i: number) => (
+                                <div key={i} className={`flex justify-between items-center p-3 rounded-2xl ${day.day === (['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'][new Date().getDay()]) ? 'bg-primary/5 border border-primary/10 ring-1 ring-primary/20' : 'bg-slate-50'}`}>
+                                    <span className={`font-bold ${day.day === (['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'][new Date().getDay()]) ? 'text-primary' : 'text-slate-600'}`}>{day.day}</span>
+                                    {day.closed ? (
+                                        <span className="text-xs font-black text-red-400 uppercase tracking-widest">Cerrado</span>
+                                    ) : (
+                                        <span className="text-sm font-black text-slate-900">{day.open} - {day.close}</span>
+                                    )}
+                                </div>
+                            ))}
+                        </div>
+
+                        <button 
+                            onClick={() => setShowHoursModal(false)}
+                            className="w-full mt-8 py-4 bg-slate-900 text-white font-black rounded-2xl hover:bg-slate-800 transition-all uppercase tracking-[0.2em] shadow-lg shadow-slate-900/20"
+                        >
+                            Entendido
+                        </button>
+                    </div>
+                </div>
+            )}
 
             {/* Modal de Cobro */}
             {closeSaleModalOpen && selectedOrder && (
