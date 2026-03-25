@@ -83,7 +83,8 @@ export default function WaitersManager() {
     };
 
     const uploadPhoto = async (file: File) => {
-        const fileRef = ref(storage, `waiters/${Date.now()}_${file.name}`);
+        if (!restaurantId) return '';
+        const fileRef = ref(storage, `restaurants/${restaurantId}/waiters/${Date.now()}_${file.name}`);
         await uploadBytes(fileRef, file);
         return await getDownloadURL(fileRef);
     };

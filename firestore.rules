@@ -6,10 +6,12 @@ service cloud.firestore {
     // Helper function for Cpanel Admin
     function isCPanelAdmin() {
       return request.auth != null && (
-        request.auth.token.email.lower() == 'louismarketing@2x3consigueloquequieras.com' ||
-        request.auth.token.email.lower() == 'louisnaranjo1@gmail.com' ||
-        request.auth.token.admin == true ||
-        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin'
+        (request.auth.token.keys().hasAll(['email']) && request.auth.token.email != null && (
+          request.auth.token.email.lower() == 'louismarketing@2x3consigueloquequieras.com' ||
+          request.auth.token.email.lower() == 'louisnaranjo1@gmail.com'
+        )) ||
+        (request.auth.token.keys().hasAll(['admin']) && request.auth.token.admin == true) ||
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin')
       );
     }
 
@@ -46,28 +48,30 @@ service cloud.firestore {
       allow update: if (request.auth != null && resource.data.restaurantId == request.auth.uid && request.resource.data.restaurantId == request.auth.uid) || isCPanelAdmin();
       allow delete: if (request.auth != null && resource.data.restaurantId == request.auth.uid) || isCPanelAdmin();
     }
+
+    // Cashier Index for login
+    match /cashier_index/{email} {
+      allow read: if true;
+      allow create: if (request.auth != null && request.resource.data.restaurantId == request.auth.uid) || isCPanelAdmin();
+      allow update: if (request.auth != null && resource.data.restaurantId == request.auth.uid && request.resource.data.restaurantId == request.auth.uid) || isCPanelAdmin();
+      allow delete: if (request.auth != null && resource.data.restaurantId == request.auth.uid) || isCPanelAdmin();
+    }
     
     // User orders
     match /orders/{orderId} {
-      // Users can read if they are owner, restaurant, assigned driver or if it's finding driver
-      allow read: if request.auth != null && (
-        request.auth.uid == resource.data.userId || 
-        request.auth.uid == resource.data.restaurantId ||
-        request.auth.uid == resource.data.deliveryDriverId ||
-        resource.data.status == 'finding_driver' ||
-        isCPanelAdmin()
-      );
-      // Users can only create orders for themselves
-      allow create: if (request.auth != null && request.auth.uid == request.resource.data.userId) || isCPanelAdmin();
-      // Restaurants and Drivers can update status
-      allow update: if request.auth != null && (
+      allow read: if true; // Allow guests, waiters, and cashiers to read orders
+      // Allow guests and waiters (no auth) to create orders
+      allow create: if true;
+      // Restaurants and Drivers can update status, plus cashiers (unauthenticated) for payment
+      allow update: if (request.auth != null && (
         request.auth.uid == resource.data.restaurantId || 
         request.auth.uid == resource.data.deliveryDriverId ||
         exists(/databases/$(database)/documents/restaurants/$(resource.data.restaurantId)/waiters/$(request.auth.uid)) ||
         // Allow self-assignment
-        (resource.data.status == 'finding_driver' && request.resource.data.status == 'driver_assigned') ||
-        isCPanelAdmin()
-      );
+        (resource.data.status == 'finding_driver' && request.resource.data.status == 'driver_assigned')
+      )) || 
+      (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['restaurantId', 'userId', 'items'])) ||
+      isCPanelAdmin();
       allow delete: if isCPanelAdmin();
     }
 

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Search, Filter, Clock, MapPin, ChevronRight, Package, Truck, CheckCircle, Loader2, Bell, ExternalLink, X, ShoppingCart, Plus, Minus, Trash2, User, CreditCard, Store, ShoppingBag, Users, Upload, Image as ImageIcon } from 'lucide-react';
+import { Search, Filter, Clock, MapPin, ChevronRight, Package, Truck, CheckCircle, Loader2, Bell, ExternalLink, X, ShoppingCart, Plus, Minus, Trash2, User, CreditCard, Store, ShoppingBag, Users, Upload, Image as ImageIcon, DollarSign } from 'lucide-react';
 import { db } from '../../lib/firebase';
 import { collection, query, where, onSnapshot, orderBy, doc, updateDoc, getDocs, increment, addDoc, serverTimestamp, getDoc } from 'firebase/firestore';
 import { useAuth } from '../../context/AuthContext';
@@ -65,6 +65,32 @@ export default function Orders() {
     const [selectedOrderForEdit, setSelectedOrderForEdit] = useState<Order | null>(null);
     const [editOrderItems, setEditOrderItems] = useState<OrderItem[]>([]);
     const [editOrderNote, setEditOrderNote] = useState('');
+
+    const [closeSaleModalOpen, setCloseSaleModalOpen] = useState(false);
+    const [selectedOrderForClose, setSelectedOrderForClose] = useState<Order | null>(null);
+    const [closeTip, setCloseTip] = useState(0);
+
+    const handleCloseSale = async () => {
+        if (!selectedOrderForClose) return;
+        setIsAccepting(true);
+        try {
+            const updates: any = {
+                paymentMethod: paymentMethod,
+                paymentStatus: 'sold',
+                tip: closeTip,
+                total: selectedOrderForClose.subtotal + ((selectedOrderForClose as any).deliveryFee || 0) + closeTip
+            };
+            await updateDoc(doc(db, 'orders', selectedOrderForClose.id), updates);
+            setCloseSaleModalOpen(false);
+            setSelectedOrderForClose(null);
+            setCloseTip(0);
+        } catch (error) {
+            console.error(error);
+            alert("Error al cerrar venta");
+        } finally {
+            setIsAccepting(false);
+        }
+    };
 
     useEffect(() => {
         const fetchDrivers = async () => {
@@ -811,17 +837,26 @@ export default function Orders() {
                                     </>
                                 )}
                                 {order.status === 'preparing' && (
-                                    <button
-                                        onClick={() => { setSelectedOrderForDispatch(order); setDispatchModalOpen(true); }}
-                                        disabled={printingOrderId === order.id}
-                                        className="flex-1 bg-blue-500 text-white py-4 rounded-2xl font-black shadow-lg shadow-blue-500/20 hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-2 disabled:opacity-50"
-                                    >
-                                        {printingOrderId === order.id ? (
-                                            <><Loader2 className="w-5 h-5 animate-spin" /> Imprimiendo...</>
-                                        ) : (
-                                            <>Enviar Pedido</>
-                                        )}
-                                    </button>
+                                    order.source === 'waiter' ? (
+                                        <button
+                                            onClick={() => updateStatus(order.id, 'delivered')}
+                                            className="flex-1 bg-indigo-500 text-white py-4 rounded-2xl font-black shadow-lg shadow-indigo-500/20 hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-2"
+                                        >
+                                            Entregar a Mesa
+                                        </button>
+                                    ) : (
+                                        <button
+                                            onClick={() => { setSelectedOrderForDispatch(order); setDispatchModalOpen(true); }}
+                                            disabled={printingOrderId === order.id}
+                                            className="flex-1 bg-blue-500 text-white py-4 rounded-2xl font-black shadow-lg shadow-blue-500/20 hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+                                        >
+                                            {printingOrderId === order.id ? (
+                                                <><Loader2 className="w-5 h-5 animate-spin" /> Imprimiendo...</>
+                                            ) : (
+                                                <>Enviar Pedido</>
+                                            )}
+                                        </button>
+                                    )
                                 )}
                                 {order.status === 'delivering' && (
                                     <button
@@ -846,6 +881,14 @@ export default function Orders() {
                                             <X className="w-4 h-4" /> No Vendido
                                         </button>
                                     </div>
+                                )}
+                                {order.status === 'delivered' && order.paymentStatus === 'pending' && order.source === 'waiter' && (
+                                    <button
+                                        onClick={() => { setSelectedOrderForClose(order); setCloseSaleModalOpen(true); }}
+                                        className="w-full bg-emerald-500 text-white py-4 rounded-2xl font-black shadow-lg shadow-emerald-500/20 hover:bg-emerald-600 transition-all flex items-center justify-center gap-2"
+                                    >
+                                        <DollarSign className="w-5 h-5" /> Cerrar Venta y Cobrar
+                                    </button>
                                 )}
                                 <button className="p-4 bg-slate-100 text-slate-400 rounded-2xl hover:bg-slate-200 transition-colors">
                                     <ExternalLink className="w-5 h-5" />

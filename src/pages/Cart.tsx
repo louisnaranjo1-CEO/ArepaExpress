@@ -284,7 +284,6 @@ export default function Cart() {
         source: isWaiter ? 'waiter' : 'client',
         waiterId: isWaiter ? waiterData.id : null,
         waiterName: isWaiter ? waiterData.name : null,
-        paymentStatus: isWaiter ? paymentStatus : 'pending',
         table: isWaiter ? tableNumber : null,
         items: items.map(item => ({
           id: item.id || '',
@@ -304,7 +303,8 @@ export default function Cart() {
         deliveryShift: currentShift,
         distance: distance || 0,
         total: finalTotal,
-        status: isWaiter ? (paymentStatus === 'paid' ? 'kitchen' : 'pending') : 'pending',
+        status: isWaiter ? 'preparing' : 'pending',
+        paymentStatus: isWaiter ? 'pending' : (paymentStatus || 'pending'),
         deliveryAddress: address,
         userCoordinates: (!isWaiter && selectedAddress?.lat) ? { lat: selectedAddress.lat, lng: selectedAddress.lng } : null,
         addressReference: isWaiter ? `Atendido por: ${waiterData.name}` : (selectedAddress?.reference || ''),

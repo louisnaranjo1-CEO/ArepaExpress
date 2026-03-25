@@ -29,7 +29,8 @@ export default function Finance() {
     const [totalExpenses, setTotalExpenses] = useState(0);
     const [expenses, setExpenses] = useState<Expense[]>([]);
     const [closures, setClosures] = useState<CashRegister[]>([]);
-    const [activeTab, setActiveTab] = useState<'expenses' | 'closures'>('expenses');
+    const [sales, setSales] = useState<any[]>([]);
+    const [activeTab, setActiveTab] = useState<'expenses' | 'closures' | 'sales'>('sales');
 
     // Modal state
     const [showExpenseModal, setShowExpenseModal] = useState(false);
@@ -73,10 +74,14 @@ export default function Finance() {
             );
             const ordersSnap = await getDocs(qOrders);
             let income = 0;
+            const salesList: any[] = [];
             ordersSnap.forEach(doc => {
-                income += doc.data().total;
+                const data = doc.data();
+                income += data.total;
+                salesList.push({ id: doc.id, ...data });
             });
             setGrossIncome(income);
+            setSales(salesList.sort((a, b) => b.createdAt?.toDate().getTime() - a.createdAt?.toDate().getTime()));
 
             // Fetch expenses
             const expensesRef = collection(db, 'restaurants', user.uid, 'expenses');
@@ -234,6 +239,12 @@ export default function Finance() {
             <div className="bg-white rounded-[35px] border border-slate-100 shadow-sm overflow-hidden">
                 <div className="flex border-b border-slate-100">
                     <button
+                        onClick={() => setActiveTab('sales')}
+                        className={`flex-1 py-5 font-black text-sm uppercase tracking-wider transition-colors ${activeTab === 'sales' ? 'text-primary border-b-2 border-primary' : 'text-slate-400 hover:text-slate-600 hover:bg-slate-50'}`}
+                    >
+                        Ventas Hoy
+                    </button>
+                    <button
                         onClick={() => setActiveTab('expenses')}
                         className={`flex-1 py-5 font-black text-sm uppercase tracking-wider transition-colors ${activeTab === 'expenses' ? 'text-primary border-b-2 border-primary' : 'text-slate-400 hover:text-slate-600 hover:bg-slate-50'}`}
                     >
@@ -248,6 +259,49 @@ export default function Finance() {
                 </div>
 
                 <div className="p-6">
+                    {activeTab === 'sales' && (
+                        <div className="space-y-4">
+                            {sales.length === 0 ? (
+                                <div className="text-center py-10 opacity-50">
+                                    <DollarSign className="w-12 h-12 mx-auto mb-3 text-slate-400" />
+                                    <p className="font-bold text-slate-500">No hay ventas registradas hoy</p>
+                                </div>
+                            ) : (
+                                sales.map(sale => (
+                                    <div key={sale.id} className="flex flex-col sm:flex-row sm:items-center justify-between p-4 bg-slate-50 rounded-2xl gap-4 hover:bg-slate-100 transition-colors">
+                                        <div className="flex items-center gap-4">
+                                            <div className="w-12 h-12 bg-white rounded-xl shadow-sm border border-slate-200 flex items-center justify-center text-green-500">
+                                                <CheckCircle className="w-6 h-6" />
+                                            </div>
+                                            <div>
+                                                <h4 className="font-black text-slate-800">{sale.userName || 'Anónimo'}</h4>
+                                                <div className="flex items-center gap-2 mt-1">
+                                                    <span className="text-[10px] bg-green-100 text-green-700 px-2 py-0.5 rounded-md font-bold uppercase tracking-wider">{sale.paymentMethod || 'Pagado'}</span>
+                                                    {sale.source === 'waiter' && (
+                                                        <span className="text-[10px] bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-md font-bold uppercase tracking-wider">
+                                                            Mesero: {sale.waiterName || 'Desconocido'}
+                                                        </span>
+                                                    )}
+                                                    <span className="text-xs text-slate-400 font-bold flex items-center gap-1">
+                                                        <Clock className="w-3 h-3" />
+                                                        {sale.createdAt ? sale.createdAt.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}
+                                                    </span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div className="text-right">
+                                            <p className="font-black text-xl text-green-600">${sale.total.toFixed(2)}</p>
+                                            {sale.tip > 0 && (
+                                                <p className="text-xs text-slate-500 font-bold uppercase tracking-widest mt-1">
+                                                    Propina: <span className="text-primary">${sale.tip.toFixed(2)}</span>
+                                                </p>
+                                            )}
+                                        </div>
+                                    </div>
+                                ))
+                            )}
+                        </div>
+                    )}
                     {activeTab === 'expenses' && (
                         <div className="space-y-4">
                             {expenses.length === 0 ? (

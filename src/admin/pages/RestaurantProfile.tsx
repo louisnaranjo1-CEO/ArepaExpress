@@ -79,6 +79,8 @@ export default function RestaurantProfile() {
     const [rif, setRif] = useState('');
     const [whatsapp, setWhatsapp] = useState('');
     const [ownDelivery, setOwnDelivery] = useState(false);
+    const [appDelivery, setAppDelivery] = useState(false);
+    const [pickupOnly, setPickupOnly] = useState(false);
     const [deliveryTime, setDeliveryTime] = useState('30-45 min');
     const [logoUrl, setLogoUrl] = useState('');
     const [coverUrl, setCoverUrl] = useState('');
@@ -128,6 +130,8 @@ export default function RestaurantProfile() {
                     setRif(data.rif || '');
                     setWhatsapp(data.whatsapp || '');
                     setOwnDelivery(data.ownDelivery || false);
+                    setAppDelivery(data.appDelivery || false);
+                    setPickupOnly(data.pickupOnly || false);
                     setDeliveryTime(data.deliveryTime || '30-45 min');
                     setLogoUrl(data.logoUrl || '');
                     setCoverUrl(data.coverUrl || '');
@@ -223,6 +227,8 @@ export default function RestaurantProfile() {
                 rif,
                 whatsapp,
                 ownDelivery,
+                appDelivery,
+                pickupOnly,
                 deliveryTime,
                 logoUrl: currentLogoUrl,
                 coverUrl: currentCoverUrl,
@@ -604,13 +610,56 @@ export default function RestaurantProfile() {
                             Logística
                         </h2>
 
-                        <div
-                            className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl cursor-pointer group"
-                            onClick={() => setOwnDelivery(!ownDelivery)}
-                        >
-                            <span className="font-bold text-slate-700">Servicio de Delivery Propio</span>
-                            <div className={`w-12 h-6 rounded-full relative transition-colors ${ownDelivery ? 'bg-primary' : 'bg-slate-200'}`}>
-                                <div className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow-sm transition-all ${ownDelivery ? 'left-7' : 'left-1'}`}></div>
+                        <div className="space-y-4">
+                            <div
+                                className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl cursor-pointer group"
+                                onClick={() => {
+                                    setOwnDelivery(!ownDelivery);
+                                    if (!ownDelivery) {
+                                        setAppDelivery(false);
+                                        setPickupOnly(false);
+                                    }
+                                }}
+                            >
+                                <span className="font-bold text-slate-700">Servicio de Delivery Propio</span>
+                                <div className={`w-12 h-6 rounded-full relative transition-colors ${ownDelivery ? 'bg-primary' : 'bg-slate-200'}`}>
+                                    <div className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow-sm transition-all ${ownDelivery ? 'left-7' : 'left-1'}`}></div>
+                                </div>
+                            </div>
+
+                            <div
+                                className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl cursor-pointer group"
+                                onClick={() => {
+                                    setAppDelivery(!appDelivery);
+                                    if (!appDelivery) {
+                                        setOwnDelivery(false);
+                                        setPickupOnly(false);
+                                    }
+                                }}
+                            >
+                                <span className="font-bold text-slate-700">Utilizar Delivery de la App (2x3)</span>
+                                <div className={`w-12 h-6 rounded-full relative transition-colors ${appDelivery ? 'bg-primary' : 'bg-slate-200'}`}>
+                                    <div className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow-sm transition-all ${appDelivery ? 'left-7' : 'left-1'}`}></div>
+                                </div>
+                            </div>
+
+                            <div
+                                className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl cursor-pointer group"
+                                onClick={() => {
+                                    setPickupOnly(!pickupOnly);
+                                    if (!pickupOnly) {
+                                        setOwnDelivery(false);
+                                        setAppDelivery(false);
+                                    }
+                                }}
+                            >
+                                <div>
+                                    <span className="font-bold text-slate-700 block">Solo Retiro en Tienda</span>
+                                    <span className="text-xs text-slate-500">No se envía producto, el cliente debe ir a buscarlo.</span>
+                                </div>
+                                <div className={`w-12 h-6 rounded-full relative transition-colors ${pickupOnly ? 'bg-primary' : 'bg-slate-200'}`}>
+                                    <div className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow-sm transition-all ${pickupOnly ? 'left-7' : 'left-1'}`}></div>
+                                </div>
                             </div>
                         </div>
 
