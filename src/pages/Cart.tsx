@@ -256,7 +256,7 @@ export default function Cart() {
                   className="w-full bg-slate-50 border-none rounded-2xl p-4 text-sm min-h-[100px]"
                 />
                 <button onClick={() => setCurrentStep(2)} className="w-full bg-primary text-white py-4 rounded-2xl font-bold">Siguiente</button>
-              </>
+              </div>
             )}
             {currentStep === 2 && (
               <div className="space-y-6">

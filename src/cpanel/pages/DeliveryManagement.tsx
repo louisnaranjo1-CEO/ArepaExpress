@@ -3,8 +3,9 @@ import { collection, query, getDocs, doc, updateDoc, onSnapshot, where, writeBat
 import { db, storage } from '../../lib/firebase';
 import { ref, deleteObject } from 'firebase/storage';
 import { DeliveryDriver } from '../../lib/delivery-service';
-import { Truck, CheckCircle2, XCircle, FileText, User, DollarSign, ExternalLink, Plus, Trash2, Clock, Sun, Moon, Activity } from 'lucide-react';
+import { Truck, CheckCircle2, XCircle, FileText, User, DollarSign, ExternalLink, Plus, Trash2, Clock, Sun, Moon, Activity, MapPin, Map as MapIcon, Navigation } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { GoogleMap, useJsApiLoader, Marker, InfoWindow } from '@react-google-maps/api';
 
 export default function DeliveryManagement() {
     const [drivers, setDrivers] = useState<DeliveryDriver[]>([]);
@@ -53,6 +54,14 @@ _Enviado desde DeliExpress App_`
     });
     const [activeShift, setActiveShift] = useState<'day' | 'night'>('day');
     const [savingSettings, setSavingSettings] = useState(false);
+    const [showFleetMap, setShowFleetMap] = useState(false);
+    const [mapCenter, setMapCenter] = useState({ lat: 10.4806, lng: -66.9036 }); // Caracas
+    const [activeMarker, setActiveMarker] = useState<string | null>(null);
+
+    const { isLoaded } = useJsApiLoader({
+        id: 'google-map-script',
+        googleMapsApiKey: "AIzaSyCb1c-p1R6AZGetk8YzKiLuxjaxjmPqJX8"
+    });
 
     useEffect(() => {
         const q = query(collection(db, 'delivery_drivers'));
@@ -282,6 +291,15 @@ _Enviado desde DeliExpress App_`
                 <div>
                     <h1 className="text-3xl font-black text-slate-900">Delivery Express</h1>
                     <p className="text-slate-500 font-medium">Gestión administrativa de la flota de pilotos.</p>
+                </div>
+                <div className="flex gap-3">
+                    <button
+                        onClick={() => setShowFleetMap(true)}
+                        className="bg-indigo-600 text-white px-6 py-3 rounded-2xl font-black text-sm flex items-center gap-2 shadow-lg shadow-indigo-600/20 hover:scale-[1.02] active:scale-[0.98] transition-all"
+                    >
+                        <MapIcon className="w-5 h-5" />
+                        Ver Mapa de Flota
+                    </button>
                 </div>
             </div>
 
@@ -515,6 +533,20 @@ _Enviado desde DeliExpress App_`
                                             </div>
                                         </td>
                                         <td className="p-4 pr-6 text-right space-x-3">
+                                            {driver.homeLocation?.coords && (
+                                                <button
+                                                    onClick={() => {
+                                                        if (driver.homeLocation?.coords) {
+                                                            setMapCenter(driver.homeLocation.coords);
+                                                            setActiveMarker(driver.id);
+                                                            setShowFleetMap(true);
+                                                        }
+                                                    }}
+                                                    className="text-emerald-600 text-xs font-bold hover:underline"
+                                                >
+                                                    Ver Mapa
+                                                </button>
+                                            )}
                                             <button
                                                 onClick={() => handleOpenFinanceModal(driver)}
                                                 className="text-indigo-600 text-xs font-bold hover:underline opacity-0 group-hover:opacity-100 transition-opacity"
@@ -1054,6 +1086,116 @@ _Enviado desde DeliExpress App_`
                                 >
                                     Cancelar
                                 </button>
+                            </div>
+                        </motion.div>
+                    </motion.div>
+                )}
+
+                {/* Fleet Map Modal */}
+                {showFleetMap && (
+                    <motion.div
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        className="fixed inset-0 bg-slate-900/60 backdrop-blur-md flex items-center justify-center p-4 z-[100]"
+                    >
+                        <motion.div
+                            initial={{ scale: 0.9, opacity: 0, y: 20 }}
+                            animate={{ scale: 1, opacity: 1, y: 0 }}
+                            className="bg-white w-full max-w-5xl h-[85vh] rounded-[40px] overflow-hidden flex flex-col shadow-2xl"
+                        >
+                            <div className="p-6 flex items-center justify-between border-b border-slate-100">
+                                <div>
+                                    <h2 className="text-2xl font-black text-slate-900 flex items-center gap-3">
+                                        <MapIcon className="w-6 h-6 text-indigo-600" />
+                                        Mapa de Flota de Pilotos
+                                    </h2>
+                                    <p className="text-sm font-bold text-slate-500 uppercase tracking-widest mt-1">
+                                        Visualización de ubicaciones base ({activeDrivers.filter(d => d.homeLocation?.coords).length} pilotos con GPS)
+                                    </p>
+                                </div>
+                                <button
+                                    onClick={() => {
+                                        setShowFleetMap(false);
+                                        setActiveMarker(null);
+                                    }}
+                                    className="w-12 h-12 bg-slate-100 rounded-full flex items-center justify-center text-slate-400 hover:bg-red-50 hover:text-red-500 transition-colors"
+                                >
+                                    <XCircle className="w-6 h-6" />
+                                </button>
+                            </div>
+
+                            <div className="flex-1 relative bg-slate-100">
+                                {isLoaded ? (
+                                    <GoogleMap
+                                        mapContainerStyle={{ width: '100%', height: '100%' }}
+                                        center={mapCenter}
+                                        zoom={12}
+                                        options={{
+                                            styles: [
+                                                {
+                                                    "featureType": "poi",
+                                                    "stylers": [{ "visibility": "off" }]
+                                                }
+                                            ],
+                                            disableDefaultUI: false,
+                                            zoomControl: true,
+                                            streetViewControl: false,
+                                        }}
+                                    >
+                                        {activeDrivers.filter(d => d.homeLocation?.coords).map(driver => (
+                                            <Marker
+                                                key={driver.id}
+                                                position={driver.homeLocation!.coords!}
+                                                onClick={() => setActiveMarker(driver.id)}
+                                                icon={{
+                                                    url: driver.vehicleType === 'moto' 
+                                                        ? 'https://maps.google.com/mapfiles/ms/icons/blue-dot.png'
+                                                        : 'https://maps.google.com/mapfiles/ms/icons/red-dot.png',
+                                                }}
+                                            >
+                                                {activeMarker === driver.id && (
+                                                    <InfoWindow onCloseClick={() => setActiveMarker(null)}>
+                                                        <div className="p-3 min-w-[200px]">
+                                                            <div className="flex items-center gap-3 mb-3">
+                                                                <img src={driver.documents.selfieUrl} alt="" className="w-12 h-12 rounded-full object-cover" />
+                                                                <div>
+                                                                    <p className="font-black text-slate-900 leading-none">{driver.fullName}</p>
+                                                                    <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mt-1">{driver.vehicleType} • {driver.vehiclePlate}</p>
+                                                                </div>
+                                                            </div>
+                                                            <div className="space-y-1.5 border-t border-slate-100 pt-3">
+                                                                <p className="text-xs font-bold text-slate-700 flex items-center gap-2">
+                                                                    <MapPin className="w-3.5 h-3.5 text-slate-400" />
+                                                                    {driver.homeLocation?.city}, {driver.homeLocation?.state}
+                                                                </p>
+                                                                <p className="text-xs font-bold text-slate-600 flex items-center gap-2">
+                                                                    <Activity className="w-3.5 h-3.5 text-slate-400" />
+                                                                    Estado: <span className={driver.isOnline ? 'text-emerald-600' : 'text-slate-400'}>{driver.isOnline ? 'Online' : 'Offline'}</span>
+                                                                </p>
+                                                            </div>
+                                                            <div className="mt-4 flex gap-2">
+                                                                <a 
+                                                                    href={`https://www.google.com/maps/dir/?api=1&destination=${driver.homeLocation?.coords?.lat},${driver.homeLocation?.coords?.lng}`}
+                                                                    target="_blank"
+                                                                    rel="noreferrer"
+                                                                    className="flex-1 bg-indigo-600 text-white text-[10px] font-black uppercase py-2 px-3 rounded-lg text-center shadow-lg shadow-indigo-600/20"
+                                                                >
+                                                                    Cómo llegar
+                                                                </a>
+                                                            </div>
+                                                        </div>
+                                                    </InfoWindow>
+                                                )}
+                                            </Marker>
+                                        ))}
+                                    </GoogleMap>
+                                ) : (
+                                    <div className="w-full h-full flex flex-col items-center justify-center gap-3">
+                                        <div className="w-10 h-10 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>
+                                        <p className="text-sm font-bold text-slate-400 uppercase tracking-widest">Cargando Mapa...</p>
+                                    </div>
+                                )}
                             </div>
                         </motion.div>
                     </motion.div>
