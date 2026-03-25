@@ -2,6 +2,7 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import React, { useEffect, useState } from 'react';
 import CashierLogin from './pages/CashierLogin';
 import CashierDashboard from './pages/CashierDashboard';
+import CashierPOS from './pages/CashierPOS';
 
 export default function CashierApp() {
     const isCashierSubdomain = window.location.hostname.startsWith('caja.');
@@ -14,6 +15,11 @@ export default function CashierApp() {
                 <Route path="/" element={
                     <RequireCashierAuth>
                         <CashierDashboard />
+                    </RequireCashierAuth>
+                } />
+                <Route path="/pos/:orderId?" element={
+                    <RequireCashierAuth>
+                        <CashierPOS />
                     </RequireCashierAuth>
                 } />
                 <Route path="*" element={<Navigate to="/" replace />} />

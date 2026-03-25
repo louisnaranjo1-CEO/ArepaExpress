@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { LogOut, DollarSign, CheckCircle, Clock, X, Loader2, Store, CreditCard, User } from 'lucide-react';
+import { LogOut, DollarSign, CheckCircle, Clock, X, Loader2, Store, CreditCard, User, Plus, Edit, ClipboardList } from 'lucide-react';
 import { db } from '../../lib/firebase';
 import { collection, query, where, onSnapshot, orderBy, doc, updateDoc } from 'firebase/firestore';
 import { useNavigate } from 'react-router-dom';
@@ -31,6 +31,11 @@ export default function CashierDashboard() {
     const [paymentMethod, setPaymentMethod] = useState('');
     const [closeTip, setCloseTip] = useState(0);
     const [isAccepting, setIsAccepting] = useState(false);
+
+    // Cierre de caja
+    const [closeRegisterModalOpen, setCloseRegisterModalOpen] = useState(false);
+    const [registerReport, setRegisterReport] = useState<any>(null);
+    const [isLoadingReport, setIsLoadingReport] = useState(false);
 
     useEffect(() => {
         const storedCashier = localStorage.getItem('cashierData');
@@ -87,6 +92,71 @@ export default function CashierDashboard() {
         navigate('/login');
     };
 
+    const handleOpenRegisterReport = async () => {
+        if (!restaurantId) return;
+        setIsLoadingReport(true);
+        setCloseRegisterModalOpen(true);
+        
+        try {
+            // Get today's start date
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+
+            // Fetch all sold orders for today
+            const ordersRef = collection(db, 'orders');
+            // Firestore queries usually require composite index for inequality/equality combos. 
+            // So we fetch all of today's and filter 'sold' client side if no index exists, 
+            // but we can query by restaurantId and order by createdAt and filter locally.
+            // Since we already have the real-time query for this restaurant without where clause on time, 
+            // let's do a fast one-time fetch or just use snapshot if we collected all today's but we didn't.
+            // Actually, best is to do a manual fetch, order by createdAt desc, and stop iterating when < today.
+            
+            // Simpler: Just fetch all from restaurant where paymentStatus == 'sold' and date >= today.
+            // But Date in firestore requires Timestamp. We'll fetch all or just the ones from our state if they have ALL.
+            // Our state `orders` only has pending ones! We must query DB.
+            const querySnapshot = await import('firebase/firestore').then(({ getDocs, where, query, collection }) => {
+                return getDocs(query(
+                    collection(db, 'orders'),
+                    where('restaurantId', '==', restaurantId),
+                    where('paymentStatus', '==', 'sold')
+                ));
+            });
+            
+            let totalGeneral = 0;
+            const pmData: Record<string, number> = {};
+            let propinasMeseros = 0;
+
+            querySnapshot.forEach(doc => {
+                const data = doc.data();
+                const ts = data.createdAt ? (data.createdAt.toDate ? data.createdAt.toDate() : new Date(data.createdAt)) : new Date(0);
+                if (ts >= today) { // Only today's sorted out
+                    const tot = (data.total || 0);
+                    totalGeneral += tot;
+                    
+                    const method = data.paymentMethod || 'Otro';
+                    pmData[method] = (pmData[method] || 0) + tot;
+                    
+                    if (data.source === 'waiter' && data.tip) {
+                        propinasMeseros += data.tip;
+                    }
+                }
+            });
+
+            setRegisterReport({
+                totalGeneral,
+                paymentMethods: pmData,
+                propinasMeseros,
+                count: querySnapshot.size
+            });
+            
+        } catch (error) {
+            console.error("Error generating report:", error);
+            alert("No se pudo generar el reporte.");
+        } finally {
+            setIsLoadingReport(false);
+        }
+    };
+
     const handleCloseSale = async () => {
         if (!selectedOrder || !paymentMethod) {
             alert("Por favor seleccione un método de pago.");
@@ -139,13 +209,29 @@ export default function CashierDashboard() {
                         </p>
                     </div>
                 </div>
-                <button
-                    onClick={handleLogout}
-                    className="flex items-center gap-2 px-4 py-2 bg-slate-100 text-slate-600 rounded-xl font-bold hover:bg-slate-200 transition-colors"
-                >
-                    <LogOut className="w-4 h-4" />
-                    <span className="hidden sm:inline">Salir</span>
-                </button>
+                <div className="flex items-center gap-3">
+                    <button
+                        onClick={handleOpenRegisterReport}
+                        className="flex items-center gap-2 px-4 py-2 bg-amber-500 text-white rounded-xl font-bold hover:bg-amber-600 transition-colors shadow-lg shadow-amber-500/20"
+                    >
+                        <ClipboardList className="w-4 h-4" />
+                        <span className="hidden sm:inline">Cierre Caja</span>
+                    </button>
+                    <button
+                        onClick={() => navigate('/pos')}
+                        className="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-xl font-bold hover:bg-primary/90 transition-colors shadow-lg shadow-primary/20"
+                    >
+                        <Plus className="w-4 h-4" />
+                        <span className="hidden sm:inline">Nuevo Pedido</span>
+                    </button>
+                    <button
+                        onClick={handleLogout}
+                        className="flex items-center gap-2 px-4 py-2 bg-slate-100 text-slate-600 rounded-xl font-bold hover:bg-slate-200 transition-colors"
+                    >
+                        <LogOut className="w-4 h-4" />
+                        <span className="hidden sm:inline">Salir</span>
+                    </button>
+                </div>
             </header>
 
             <main className="flex-1 p-6 max-w-7xl mx-auto w-full space-y-8">
@@ -193,13 +279,21 @@ export default function CashierDashboard() {
                                             </span>
                                         </div>
                                     </div>
-                                    <button
-                                        onClick={() => { setSelectedOrder(order); setCloseSaleModalOpen(true); }}
-                                        className="w-full bg-emerald-500 text-white py-3.5 rounded-2xl font-black flex items-center justify-center gap-2 hover:bg-emerald-600 transition-colors shadow-lg shadow-emerald-500/20"
-                                    >
-                                        <DollarSign className="w-5 h-5" />
-                                        Cobrar Cuenta
-                                    </button>
+                                    <div className="flex gap-2 mt-4">
+                                        <button
+                                            onClick={() => navigate(`/pos/${order.id}`)}
+                                            className="flex-1 bg-slate-100 text-slate-600 py-3.5 rounded-2xl font-black flex items-center justify-center gap-2 hover:bg-slate-200 transition-colors"
+                                        >
+                                            <Edit className="w-5 h-5" />
+                                        </button>
+                                        <button
+                                            onClick={() => { setSelectedOrder(order); setCloseSaleModalOpen(true); }}
+                                            className="flex-[3] bg-emerald-500 text-white py-3.5 rounded-2xl font-black flex items-center justify-center gap-2 hover:bg-emerald-600 transition-colors shadow-lg shadow-emerald-500/20"
+                                        >
+                                            <DollarSign className="w-5 h-5" />
+                                            Cobrar Cuenta
+                                        </button>
+                                    </div>
                                 </div>
                             ))}
                         </div>
@@ -316,6 +410,75 @@ export default function CashierDashboard() {
                         >
                             {isAccepting ? <Loader2 className="w-5 h-5 animate-spin" /> : <><CheckCircle className="w-5 h-5" /> Marcar como Pagado</>}
                         </button>
+                    </div>
+                </div>
+            )}
+            {/* Modal de Cierre de Caja */}
+            {closeRegisterModalOpen && (
+                <div className="fixed inset-0 z-[110] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm px-4">
+                    <div className="bg-white rounded-3xl p-6 w-full max-w-sm shadow-2xl animate-in zoom-in-95 duration-200 flex flex-col max-h-[90vh]">
+                        <div className="flex justify-between items-center mb-6 shrink-0">
+                            <div>
+                                <h3 className="text-xl font-black text-slate-900">Reporte del Día</h3>
+                                <p className="text-xs font-bold text-slate-500">{new Date().toLocaleDateString()}</p>
+                            </div>
+                            <button onClick={() => setCloseRegisterModalOpen(false)} className="text-slate-400 hover:text-slate-600">
+                                <X className="w-6 h-6" />
+                            </button>
+                        </div>
+                        
+                        <div className="overflow-y-auto flex-1 hide-scrollbar -mx-2 px-2">
+                        {isLoadingReport ? (
+                            <div className="py-20 flex justify-center">
+                                <Loader2 className="w-8 h-8 animate-spin text-primary" />
+                            </div>
+                        ) : registerReport ? (
+                            <div className="space-y-6 pb-4">
+                                <div className="bg-emerald-50 p-5 rounded-2xl border border-emerald-100 flex flex-col items-center justify-center text-center">
+                                    <span className="text-sm font-bold text-emerald-600 mb-1 uppercase tracking-widest">Total Ingresado</span>
+                                    <span className="text-4xl font-black text-emerald-700">${registerReport.totalGeneral.toFixed(2)}</span>
+                                </div>
+
+                                <div>
+                                    <h4 className="text-sm font-black text-slate-800 border-b border-slate-100 pb-2 mb-3">Por Método de Pago</h4>
+                                    <div className="space-y-3">
+                                        {Object.entries(registerReport.paymentMethods).map(([method, amount]) => (
+                                            <div key={method} className="flex justify-between items-center">
+                                                <span className="text-sm font-bold text-slate-600">{method}</span>
+                                                <span className="text-base font-black text-slate-900">${(amount as number).toFixed(2)}</span>
+                                            </div>
+                                        ))}
+                                        {Object.keys(registerReport.paymentMethods).length === 0 && (
+                                            <p className="text-xs text-slate-400 italic">No hay pagos registrados hoy.</p>
+                                        )}
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <h4 className="text-sm font-black text-slate-800 border-b border-slate-100 pb-2 mb-3">Otros Conceptos</h4>
+                                    <div className="flex justify-between items-center">
+                                        <span className="text-sm font-bold text-slate-600">Propinas Recaudadas (Meseros)</span>
+                                        <span className="text-base font-black text-orange-600">${registerReport.propinasMeseros.toFixed(2)}</span>
+                                    </div>
+                                </div>
+                            </div>
+                        ) : null}
+                        </div>
+
+                        {!isLoadingReport && (
+                            <div className="pt-4 border-t border-slate-100 mt-2 shrink-0">
+                                <button
+                                    onClick={() => {
+                                        // Later this can do more actions like sending email or locking session
+                                        alert("Cierre de caja guardado localmente (Simulado).");
+                                        setCloseRegisterModalOpen(false);
+                                    }}
+                                    className="w-full bg-slate-900 text-white py-4 rounded-2xl font-black shadow-xl hover:bg-black transition-colors"
+                                >
+                                    Confirmar y Terminar Turno
+                                </button>
+                            </div>
+                        )}
                     </div>
                 </div>
             )}
