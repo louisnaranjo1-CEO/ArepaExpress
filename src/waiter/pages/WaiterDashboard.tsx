@@ -1,7 +1,10 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Bell, Search, Menu, Plus, ChevronDown, CheckCircle, Clock, AlertCircle, LogOut, User, Settings, Check, X, Smartphone, CreditCard, History } from 'lucide-react';
 import WaiterLayout from '../components/WaiterLayout';
 import { motion, AnimatePresence } from 'framer-motion';
+import TableOptionsModal from '../components/TableOptionsModal';
+import MergeTransferModal from '../components/MergeTransferModal';
+import SplitBillModal from '../components/SplitBillModal';
 import { collection, query, onSnapshot, orderBy, where, doc, updateDoc, writeBatch, serverTimestamp, getDoc } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import { useNavigate } from 'react-router-dom';
@@ -31,6 +34,11 @@ export default function WaiterDashboard() {
     const [showNotifications, setShowNotifications] = useState(false);
     const [showSidebar, setShowSidebar] = useState(false);
     const [notifications, setNotifications] = useState<any[]>([]);
+    const [selectedTable, setSelectedTable] = useState<any | null>(null);
+    const [showOptionsModal, setShowOptionsModal] = useState(false);
+    const [showMergeTransferModal, setShowMergeTransferModal] = useState(false);
+    const [showSplitBillModal, setShowSplitBillModal] = useState(false);
+    const [mergeTransferMode, setMergeTransferMode] = useState<'merge' | 'transfer'>('merge');
     const navigate = useNavigate();
     const dropdownRef = useRef<HTMLDivElement>(null);
     const notificationRef = useRef<HTMLDivElement>(null);
@@ -148,6 +156,33 @@ export default function WaiterDashboard() {
         }
     };
 
+    const handleConfirmMergeTransfer = async (targetTableNumber: string) => {
+        if (!selectedTable) return;
+        const restaurantId = localStorage.getItem('waiterRestaurantId');
+        if (!restaurantId) return;
+
+        // Find active orders for the selected table
+        const activeOrders = orders.filter(o => 
+            o.table === selectedTable.number && 
+            !(o.status === 'delivered' && o.paymentStatus === 'sold') &&
+            o.status !== 'rejected'
+        );
+
+        if (activeOrders.length === 0) return;
+
+        const batch = writeBatch(db);
+        activeOrders.forEach(order => {
+            batch.update(doc(db, 'orders', order.id), {
+                table: targetTableNumber,
+                updatedAt: serverTimestamp(),
+            });
+        });
+
+        await batch.commit();
+        setShowMergeTransferModal(false);
+        setSelectedTable(null);
+    };
+
     const handleTableAction = async (table: Table & { derivedStatus: string }) => {
         const restaurantId = localStorage.getItem('waiterRestaurantId');
         if (!restaurantId) return;
@@ -165,17 +200,13 @@ export default function WaiterDashboard() {
                     batch.update(doc(db, 'orders', o.id), { status: 'occupied', updatedAt: serverTimestamp() });
                 });
                 await batch.commit();
-                // After clearing, we might want to go to menu too? User said "cualquiera de esas mesas"
-                navigate(`/menu?table=${table.number}`);
+                setSelectedTable(table);
+                setShowOptionsModal(true);
                 break;
             case 'occupied':
-                // Move to menu to add more items
-                navigate(`/menu?table=${table.number}`);
-                break;
             case 'billing':
-                // Still go to menu or orders? 
-                // Let's stick to menu as requested for "proceso de selección" or maybe view order
-                navigate(`/menu?table=${table.number}`);
+                setSelectedTable(table);
+                setShowOptionsModal(true);
                 break;
         }
     };
@@ -222,6 +253,14 @@ export default function WaiterDashboard() {
 
         return { ...table, derivedStatus, timeLabel };
     });
+    const selectedTableActiveOrders = useMemo(() => {
+        if (!selectedTable) return [];
+        return orders.filter(o => 
+            o.table === selectedTable.number && 
+            !(o.status === 'delivered' && o.paymentStatus === 'sold') &&
+            o.status !== 'rejected'
+        );
+    }, [selectedTable, orders]);
 
     const filteredTables = tablesWithStatus.filter(table => {
         const status = table.derivedStatus as string;
@@ -512,6 +551,60 @@ export default function WaiterDashboard() {
             >
                 <Plus className="w-8 h-8 group-hover:scale-110" />
             </button>
+
+            {/* Modals */}
+            <TableOptionsModal 
+                isOpen={showOptionsModal}
+                onClose={() => {
+                    setShowOptionsModal(false);
+                    setSelectedTable(null);
+                }}
+                table={selectedTable}
+                onAddOrder={() => {
+                    setShowOptionsModal(false);
+                    if (selectedTable) navigate(`/menu?table=${selectedTable.number}`);
+                }}
+                onJoinTable={() => {
+                    setShowOptionsModal(false);
+                    setMergeTransferMode('merge');
+                    setShowMergeTransferModal(true);
+                }}
+                onTransferTable={() => {
+                    setShowOptionsModal(false);
+                    setMergeTransferMode('transfer');
+                    setShowMergeTransferModal(true);
+                }}
+                onSplitBill={() => {
+                    setShowOptionsModal(false);
+                    setShowSplitBillModal(true);
+                }}
+                onCheckout={() => {
+                    setShowOptionsModal(false);
+                    if (selectedTable) navigate(`/menu?table=${selectedTable.number}`); // For now, navigate to menu to see items
+                }}
+            />
+
+            <MergeTransferModal
+                isOpen={showMergeTransferModal}
+                onClose={() => {
+                    setShowMergeTransferModal(false);
+                    setSelectedTable(null);
+                }}
+                mode={mergeTransferMode}
+                currentTable={selectedTable}
+                tables={tablesWithStatus}
+                onConfirm={handleConfirmMergeTransfer}
+            />
+
+            <SplitBillModal
+                isOpen={showSplitBillModal}
+                onClose={() => {
+                    setShowSplitBillModal(false);
+                    setSelectedTable(null);
+                }}
+                table={selectedTable}
+                activeOrders={selectedTableActiveOrders}
+            />
         </WaiterLayout>
     );
 }
