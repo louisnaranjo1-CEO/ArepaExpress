@@ -259,8 +259,18 @@ export default function Cart() {
         throw new Error("El restaurante no tiene un número de WhatsApp configurado.");
       }
 
-      // Use user's address from context if available
-      const address = isWaiter ? `Mesa: ${tableNumber}` : (selectedAddress?.reference || "Recoger en local");
+      // Utilizar la dirección completa y referencia si es delivery, sino 'Recoger en local'
+      let addressStr = "Recoger en local";
+      if (isWaiter) {
+          addressStr = `Mesa: ${tableNumber}`;
+      } else if (selectedAddress) {
+          const namePart = selectedAddress.name || selectedAddress.address || '';
+          const refPart = selectedAddress.reference ? `Ref: ${selectedAddress.reference}` : '';
+          addressStr = [namePart, refPart].filter(Boolean).join(' - ');
+          if (!addressStr.trim()) addressStr = "Dirección no especificada";
+      }
+
+      const address = addressStr;
 
       const orderData = {
         userId: isWaiter ? waiterData.id : (user?.uid || 'guest_' + Date.now()),

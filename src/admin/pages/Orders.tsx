@@ -1,9 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { Search, Filter, Clock, MapPin, ChevronRight, Package, Truck, CheckCircle, Loader2, Bell, ExternalLink, X, ShoppingCart, Plus, Minus, Trash2, User, CreditCard, Store, ShoppingBag, Users } from 'lucide-react';
+import { Search, Filter, Clock, MapPin, ChevronRight, Package, Truck, CheckCircle, Loader2, Bell, ExternalLink, X, ShoppingCart, Plus, Minus, Trash2, User, CreditCard, Store, ShoppingBag, Users, Upload, Image as ImageIcon } from 'lucide-react';
 import { db } from '../../lib/firebase';
-import { collection, query, where, onSnapshot, orderBy, doc, updateDoc, getDocs, increment, addDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, orderBy, doc, updateDoc, getDocs, increment, addDoc, serverTimestamp, getDoc } from 'firebase/firestore';
 import { useAuth } from '../../context/AuthContext';
 import { printToUsbDevice, formatTicket, PrintOrder } from '../../lib/usb-printer';
+
+import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 
 interface OrderItem {
     id: string;
@@ -23,6 +25,9 @@ interface Order {
     paymentStatus?: 'sold' | 'not_sold';
     createdAt: any;
     deliveryAddress: string;
+    paymentMethod?: string;
+    paymentReference?: string;
+    paymentProofUrl?: string;
     userName?: string;
     source?: string;
     waiterId?: string;
@@ -37,6 +42,51 @@ export default function Orders() {
     const [loading, setLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
     const [printingOrderId, setPrintingOrderId] = useState<string | null>(null);
+
+    // Modals State
+    const [acceptModalOpen, setAcceptModalOpen] = useState(false);
+    const [selectedOrderForAccept, setSelectedOrderForAccept] = useState<Order | null>(null);
+    const [paymentMethod, setPaymentMethod] = useState<string>('Punto de Venta');
+    const [isAccepting, setIsAccepting] = useState(false);
+
+    const [dispatchModalOpen, setDispatchModalOpen] = useState(false);
+    const [selectedOrderForDispatch, setSelectedOrderForDispatch] = useState<Order | null>(null);
+    const [dispatchType, setDispatchType] = useState<'platform' | 'own'>('own');
+    const [selectedDriver, setSelectedDriver] = useState<string>('');
+    const [drivers, setDrivers] = useState<any[]>([]);
+
+    // Payment Proofs State
+    const [referenceInputs, setReferenceInputs] = useState<Record<string, string>>({});
+    const [proofUploadFiles, setProofUploadFiles] = useState<Record<string, File>>({});
+    const [isUploadingProof, setIsUploadingProof] = useState<Record<string, boolean>>({});
+
+    // Edit Order Modal State
+    const [editModalOpen, setEditModalOpen] = useState(false);
+    const [selectedOrderForEdit, setSelectedOrderForEdit] = useState<Order | null>(null);
+    const [editOrderItems, setEditOrderItems] = useState<OrderItem[]>([]);
+    const [editOrderNote, setEditOrderNote] = useState('');
+
+    useEffect(() => {
+        const fetchDrivers = async () => {
+             const usersRef = collection(db, 'users');
+             const q = query(usersRef, where('role', '==', 'delivery'));
+             const snap = await getDocs(q);
+             setDrivers(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+        };
+        fetchDrivers();
+    }, []);
+
+    const [restaurantConfig, setRestaurantConfig] = useState<any>(null);
+
+    useEffect(() => {
+        if (!user) return;
+        const fetchConfig = async () => {
+            const docRef = doc(db, 'restaurants', user.uid);
+            const snap = await getDoc(docRef);
+            if (snap.exists()) setRestaurantConfig(snap.data());
+        };
+        fetchConfig();
+    }, [user]);
 
     // POS State
     const [showPOS, setShowPOS] = useState(false);
@@ -198,6 +248,165 @@ export default function Orders() {
         } finally {
             setPrintingOrderId(null);
         }
+    };
+
+    const handleConfirmAccept = async () => {
+        if (!selectedOrderForAccept) return;
+        setIsAccepting(true);
+        try {
+            const updates: any = { 
+                status: 'preparing', 
+                paymentMethod: paymentMethod,
+                paymentStatus: (paymentMethod === 'Crédito (2x3)') ? 'pending' : 'sold'
+            };
+
+            // 2x3 Logic
+            if (paymentMethod === 'Crédito (2x3)' && restaurantConfig?.hasTwoByThree) {
+                const total = selectedOrderForAccept.total;
+                const initialPct = restaurantConfig.twoByThreeInitial || 50;
+                const installmentsCount = restaurantConfig.twoByThreeInstallments || 2;
+                
+                const initialAmount = total * (initialPct / 100);
+                const remaining = total - initialAmount;
+                const installmentAmount = remaining / installmentsCount;
+
+                const installments = [];
+                // Cuota Inicial
+                installments.push({
+                    id: 'init_' + Date.now(),
+                    amount: initialAmount,
+                    status: 'pending',
+                    dueDate: new Date().toISOString(),
+                    type: 'initial'
+                });
+
+                // Cuotas restantes
+                let nextDate = new Date();
+                for (let i = 0; i < installmentsCount; i++) {
+                    nextDate = new Date(nextDate.getTime() + 15 * 24 * 60 * 60 * 1000); // 15 días (quincenal)
+                    installments.push({
+                        id: `inst_${i}_` + Date.now(),
+                        amount: installmentAmount,
+                        status: 'pending',
+                        dueDate: nextDate.toISOString(),
+                        type: 'installment',
+                        number: i + 1
+                    });
+                }
+                updates.installments = installments;
+                updates.isTwoByThree = true;
+            }
+
+            const orderRef = doc(db, 'orders', selectedOrderForAccept.id);
+            await updateDoc(orderRef, updates);
+            
+            const orderTemp = { ...selectedOrderForAccept, ...updates };
+            await handlePrintOrder(orderTemp.id, orderTemp as Order);
+            
+            setAcceptModalOpen(false);
+            setSelectedOrderForAccept(null);
+        } catch (error) {
+            console.error("Error setting preparing status:", error);
+            alert("Error al procesar el pedido.");
+        } finally {
+            setIsAccepting(false);
+        }
+    };
+
+    const handleConfirmDispatch = async () => {
+        if (!selectedOrderForDispatch) return;
+        setIsAccepting(true);
+        try {
+            const updates: any = { status: 'delivering' };
+            if (dispatchType === 'platform' && selectedDriver) {
+                updates.waiterId = selectedDriver;
+                updates.waiterName = drivers.find(d => d.id === selectedDriver)?.displayName || 'Motorizado';
+            }
+            const orderRef = doc(db, 'orders', selectedOrderForDispatch.id);
+            await updateDoc(orderRef, updates);
+            
+            setDispatchModalOpen(false);
+            setSelectedOrderForDispatch(null);
+            setDispatchType('own');
+            setSelectedDriver('');
+        } catch (error) {
+            console.error("Error setting delivering status:", error);
+            alert("Error al despachar.");
+        } finally {
+            setIsAccepting(false);
+        }
+    };
+
+    const handleSavePaymentProof = async (orderId: string) => {
+        const refVal = referenceInputs[orderId] || '';
+        const file = proofUploadFiles[orderId];
+        
+        if (!refVal && !file) return;
+
+        setIsUploadingProof(prev => ({...prev, [orderId]: true}));
+        try {
+            const updates: any = {};
+            if (refVal) updates.paymentReference = refVal;
+            
+            if (file) {
+                const storage = getStorage();
+                const fileRef = ref(storage, `payment_proofs/${orderId}_${Date.now()}`);
+                await uploadBytes(fileRef, file);
+                const url = await getDownloadURL(fileRef);
+                updates.paymentProofUrl = url;
+            }
+            
+            await updateDoc(doc(db, 'orders', orderId), updates);
+            
+            setReferenceInputs(prev => ({...prev, [orderId]: ''}));
+            setProofUploadFiles(prev => {
+                const next = {...prev};
+                delete next[orderId];
+                return next;
+            });
+            alert("Comprobante guardado exitosamente");
+        } catch(e) {
+            console.error(e);
+            alert("Error al subir el comprobante");
+        } finally {
+            setIsUploadingProof(prev => ({...prev, [orderId]: false}));
+        }
+    };
+
+    const handleUpdateOrderItems = async () => {
+        if (!selectedOrderForEdit) return;
+        setIsAccepting(true);
+        try {
+            const newTotal = editOrderItems.reduce((acc, item) => acc + (item.price * item.quantity), 0);
+            const fee = (selectedOrderForEdit as any).deliveryFee || 0;
+            const updates = {
+                items: editOrderItems,
+                total: newTotal + fee,
+                orderNote: editOrderNote
+            };
+            await updateDoc(doc(db, 'orders', selectedOrderForEdit.id), updates);
+            setEditModalOpen(false);
+            setSelectedOrderForEdit(null);
+        } catch(e) {
+            console.error(e);
+            alert("Error al editar");
+        } finally {
+            setIsAccepting(false);
+        }
+    };
+
+    const updateEditItemQty = (id: string, delta: number) => {
+        setEditOrderItems(prev => prev.map(i => {
+            if (i.id === id) {
+                const n = i.quantity + delta;
+                return n > 0 ? { ...i, quantity: n } : i;
+            }
+            return i;
+        }));
+    };
+
+    const removeEditItem = (id: string) => {
+        setEditOrderItems(prev => prev.filter(i => i.id !== id));
     };
 
     const updateStatus = async (orderId: string, newStatus: string, paymentStatus?: string) => {
@@ -492,16 +701,98 @@ export default function Orders() {
                                 ))}
                             </div>
 
+                            {(order as any).orderNote && (
+                                <div className="bg-yellow-50 border border-yellow-200 text-yellow-800 p-4 rounded-xl mb-6 text-sm">
+                                    <span className="font-black uppercase tracking-widest text-[10px] block mb-1">Nota del Cliente:</span>
+                                    <p className="font-bold">{((order as any).orderNote)}</p>
+                                </div>
+                            )}
+
                             <div className="flex items-start gap-3 p-4 bg-slate-50 rounded-2xl mb-8">
                                 <MapPin className="w-5 h-5 text-primary shrink-0" />
                                 <p className="text-sm font-bold text-slate-600 leading-relaxed italic">{order.deliveryAddress}</p>
                             </div>
 
+                            {/* Payment Details Block */}
+                            {order.paymentMethod && (
+                                <div className="bg-slate-50 border border-slate-100 rounded-2xl p-4 mb-6">
+                                    <div className="flex items-center justify-between mb-3">
+                                        <div>
+                                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Método de Pago</p>
+                                            <p className="font-black text-slate-800 flex items-center gap-2">
+                                                <CreditCard className="w-4 h-4 text-primary" /> {order.paymentMethod}
+                                            </p>
+                                        </div>
+                                        {(order.paymentReference || order.paymentProofUrl) ? (
+                                            <div className="text-right flex items-center gap-2">
+                                                {order.paymentReference && (
+                                                    <span className="bg-white border border-slate-200 px-3 py-1 rounded-lg text-xs font-bold text-slate-600 shadow-sm">
+                                                        Ref: {order.paymentReference}
+                                                    </span>
+                                                )}
+                                                {order.paymentProofUrl && (
+                                                    <a href={order.paymentProofUrl} target="_blank" rel="noopener noreferrer" className="bg-primary/10 text-primary p-2 rounded-lg hover:bg-primary/20 transition-all">
+                                                        <ImageIcon className="w-4 h-4" />
+                                                    </a>
+                                                )}
+                                            </div>
+                                        ) : null}
+                                    </div>
+                                    
+                                    {/* Inline Proof Upload Form */}
+                                    {order.status !== 'rejected' && !order.paymentProofUrl && ['Pago Móvil', 'Transferencia'].includes(order.paymentMethod) && (
+                                        <div className="flex gap-2 items-center mt-3 pt-3 border-t border-slate-200/50">
+                                            <div className="flex-1">
+                                                <input 
+                                                    type="text" 
+                                                    placeholder="Ref (6 dígitos)" 
+                                                    className="w-full bg-white border border-slate-200 px-3 py-2 rounded-xl text-sm outline-none focus:border-primary font-bold text-slate-700"
+                                                    value={referenceInputs[order.id] || ''}
+                                                    onChange={(e) => setReferenceInputs(prev => ({...prev, [order.id]: e.target.value}))}
+                                                />
+                                            </div>
+                                            <label className="bg-white border border-slate-200 p-2 rounded-xl text-slate-500 hover:text-primary hover:border-primary transition-all cursor-pointer">
+                                                <input 
+                                                    type="file" 
+                                                    accept="image/*" 
+                                                    className="hidden" 
+                                                    onChange={(e) => {
+                                                        const file = e.target.files?.[0];
+                                                        if (file) setProofUploadFiles(prev => ({...prev, [order.id]: file}));
+                                                    }}
+                                                />
+                                                <ImageIcon className={`w-5 h-5 ${proofUploadFiles[order.id] ? 'text-primary' : ''}`} />
+                                            </label>
+                                            <button 
+                                                onClick={() => handleSavePaymentProof(order.id)}
+                                                disabled={isUploadingProof[order.id] || (!referenceInputs[order.id] && !proofUploadFiles[order.id])}
+                                                className="bg-primary text-white p-2 rounded-xl hover:bg-primary/90 transition-all disabled:opacity-50"
+                                                title="Guardar Pago"
+                                            >
+                                                {isUploadingProof[order.id] ? <Loader2 className="w-5 h-5 animate-spin" /> : <Upload className="w-5 h-5" />}
+                                            </button>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+
                             <div className="flex flex-wrap items-center gap-3">
                                 {order.status === 'pending' && (
                                     <>
                                         <button
-                                            onClick={() => updateStatus(order.id, 'preparing')}
+                                            onClick={() => { 
+                                                setSelectedOrderForEdit(order); 
+                                                setEditOrderItems([...order.items]); 
+                                                setEditOrderNote((order as any).orderNote || ''); 
+                                                setEditModalOpen(true); 
+                                            }}
+                                            className="px-6 bg-slate-100 text-slate-500 py-4 rounded-2xl font-black hover:bg-slate-200 transition-all flex items-center justify-center gap-2"
+                                            title="Editar Pedido"
+                                        >
+                                            <ExternalLink className="w-5 h-5" />
+                                        </button>
+                                        <button
+                                            onClick={() => { setSelectedOrderForAccept(order); setAcceptModalOpen(true); }}
                                             disabled={printingOrderId === order.id}
                                             className="flex-1 min-w-[140px] bg-primary text-white py-4 rounded-2xl font-black shadow-lg shadow-primary/20 hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-2 disabled:opacity-50"
                                         >
@@ -521,7 +812,7 @@ export default function Orders() {
                                 )}
                                 {order.status === 'preparing' && (
                                     <button
-                                        onClick={() => updateStatus(order.id, 'delivering')}
+                                        onClick={() => { setSelectedOrderForDispatch(order); setDispatchModalOpen(true); }}
                                         disabled={printingOrderId === order.id}
                                         className="flex-1 bg-blue-500 text-white py-4 rounded-2xl font-black shadow-lg shadow-blue-500/20 hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-2 disabled:opacity-50"
                                     >
@@ -562,6 +853,160 @@ export default function Orders() {
                             </div>
                         </div>
                     ))}
+                </div>
+            )}
+
+            {/* Accept Order Modal */}
+            {acceptModalOpen && selectedOrderForAccept && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/40 backdrop-blur-sm px-4">
+                    <div className="bg-white rounded-3xl p-6 w-full max-w-sm shadow-2xl animate-in zoom-in-95 duration-200">
+                        <div className="flex justify-between items-center mb-6">
+                            <h3 className="text-xl font-black text-slate-900">Aceptar y Cobrar</h3>
+                            <button onClick={() => setAcceptModalOpen(false)} className="text-slate-400 hover:text-slate-600">
+                                <X className="w-6 h-6" />
+                            </button>
+                        </div>
+                        <p className="text-slate-500 font-medium mb-4 text-sm">
+                            Selecciona el método de pago para la orden de <span className="font-bold text-primary">{selectedOrderForAccept.userName}</span> por <span className="font-black text-slate-800">${selectedOrderForAccept.total.toFixed(2)}</span>.
+                        </p>
+                        <div className="space-y-3 mb-6">
+                            {['Punto de Venta', 'Pago Móvil', 'Efectivo', 'Crédito (2x3)'].map((method) => (
+                                <button
+                                    key={method}
+                                    onClick={() => setPaymentMethod(method)}
+                                    className={`w-full text-left px-5 py-4 rounded-2xl font-bold transition-all border-2 ${
+                                        paymentMethod === method ? 'border-primary bg-primary/5 text-primary' : 'border-slate-100 bg-white text-slate-600 hover:border-slate-200'
+                                    }`}
+                                >
+                                    {method}
+                                </button>
+                            ))}
+                        </div>
+                        <button
+                            onClick={handleConfirmAccept}
+                            disabled={isAccepting}
+                            className="w-full bg-primary text-white py-4 rounded-2xl font-black shadow-lg shadow-primary/20 hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+                        >
+                            {isAccepting ? <Loader2 className="w-5 h-5 animate-spin" /> : <><CheckCircle className="w-5 h-5" /> Confirmar e Imprimir</>}
+                        </button>
+                    </div>
+                </div>
+            )}
+
+            {/* Dispatch Order Modal */}
+            {dispatchModalOpen && selectedOrderForDispatch && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/40 backdrop-blur-sm px-4">
+                    <div className="bg-white rounded-3xl p-6 w-full max-w-sm shadow-2xl animate-in zoom-in-95 duration-200">
+                        <div className="flex justify-between items-center mb-6">
+                            <h3 className="text-xl font-black text-slate-900">Despachar Pedido</h3>
+                            <button onClick={() => setDispatchModalOpen(false)} className="text-slate-400 hover:text-slate-600">
+                                <X className="w-6 h-6" />
+                            </button>
+                        </div>
+                        <div className="grid grid-cols-2 gap-3 mb-6">
+                            <button
+                                onClick={() => setDispatchType('own')}
+                                className={`flex flex-col items-center gap-2 p-4 rounded-2xl border-2 font-bold transition-all ${dispatchType === 'own' ? 'border-primary bg-primary/5 text-primary' : 'border-slate-100 text-slate-500 hover:bg-slate-50'}`}
+                            >
+                                <Store className="w-6 h-6" />
+                                <span className="text-xs text-center">Propio / Cliente recoge</span>
+                            </button>
+                            <button
+                                onClick={() => setDispatchType('platform')}
+                                className={`flex flex-col items-center gap-2 p-4 rounded-2xl border-2 font-bold transition-all ${dispatchType === 'platform' ? 'border-blue-500 bg-blue-50 text-blue-600' : 'border-slate-100 text-slate-500 hover:bg-slate-50'}`}
+                            >
+                                <Users className="w-6 h-6" />
+                                <span className="text-xs text-center">Motorizado de App</span>
+                            </button>
+                        </div>
+
+                        {dispatchType === 'platform' && (
+                            <div className="mb-6">
+                                <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">Seleccionar Motorizado</label>
+                                <select 
+                                    className="w-full bg-slate-50 border border-slate-200 p-4 rounded-2xl outline-none focus:border-blue-500 font-bold text-slate-700"
+                                    value={selectedDriver}
+                                    onChange={(e) => setSelectedDriver(e.target.value)}
+                                >
+                                    <option value="">-- Elige un Motorizado --</option>
+                                    {drivers.map(d => (
+                                        <option key={d.id} value={d.id}>{d.displayName || d.name || d.email}</option>
+                                    ))}
+                                </select>
+                            </div>
+                        )}
+
+                        <button
+                            onClick={handleConfirmDispatch}
+                            disabled={isAccepting || (dispatchType === 'platform' && !selectedDriver)}
+                            className={`w-full text-white py-4 rounded-2xl font-black shadow-lg hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-2 disabled:opacity-50 ${dispatchType === 'platform' ? 'bg-blue-500 shadow-blue-500/20' : 'bg-primary shadow-primary/20'}`}
+                        >
+                            {isAccepting ? <Loader2 className="w-5 h-5 animate-spin" /> : <><Truck className="w-5 h-5" /> Enviar en Camino</>}
+                        </button>
+                    </div>
+                </div>
+            )}
+
+            {/* Edit Order Modal */}
+            {editModalOpen && selectedOrderForEdit && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/40 backdrop-blur-sm px-4">
+                    <div className="bg-white rounded-3xl p-6 w-full max-w-lg shadow-2xl animate-in zoom-in-95 duration-200 flex flex-col max-h-[90vh]">
+                        <div className="flex justify-between items-center mb-6 shrink-0">
+                            <h3 className="text-xl font-black text-slate-900">Editar Pedido</h3>
+                            <button onClick={() => setEditModalOpen(false)} className="text-slate-400 hover:text-slate-600">
+                                <X className="w-6 h-6" />
+                            </button>
+                        </div>
+                        
+                        <div className="flex-1 overflow-y-auto pr-2 space-y-4">
+                            {editOrderItems.map(item => (
+                                <div key={item.id} className="flex items-center justify-between bg-slate-50 p-3 rounded-2xl border border-slate-100">
+                                    <div className="flex-1">
+                                        <p className="font-bold text-slate-800">{item.name}</p>
+                                        <p className="text-xs text-primary font-bold">${item.price.toFixed(2)}</p>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                        <button onClick={() => updateEditItemQty(item.id, -1)} className="p-2 bg-white rounded-xl shadow-sm text-slate-500 hover:text-slate-700">
+                                            <Minus className="w-4 h-4" />
+                                        </button>
+                                        <span className="w-6 text-center font-black">{item.quantity}</span>
+                                        <button onClick={() => updateEditItemQty(item.id, 1)} className="p-2 bg-white rounded-xl shadow-sm text-slate-500 hover:text-slate-700">
+                                            <Plus className="w-4 h-4" />
+                                        </button>
+                                        <button onClick={() => removeEditItem(item.id)} className="p-2 bg-red-50 text-red-500 rounded-xl hover:bg-red-100 ml-2">
+                                            <Trash2 className="w-4 h-4" />
+                                        </button>
+                                    </div>
+                                </div>
+                            ))}
+
+                            <div className="mt-4">
+                                <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">Notas del Pedido</label>
+                                <textarea
+                                    value={editOrderNote}
+                                    onChange={(e) => setEditOrderNote(e.target.value)}
+                                    placeholder="Ej: Sin mayonesa, papas extras..."
+                                    className="w-full bg-slate-50 border border-slate-200 p-4 rounded-2xl outline-none focus:border-primary font-bold text-slate-700 min-h-[100px] resize-none"
+                                />
+                            </div>
+                        </div>
+
+                        <div className="shrink-0 pt-4 mt-4 border-t border-slate-100">
+                            <div className="flex justify-between items-center mb-4 text-lg">
+                                <span className="font-bold text-slate-500">Nuevo Total:</span>
+                                <span className="font-black text-primary">
+                                    ${(editOrderItems.reduce((acc, item) => acc + (item.price * item.quantity), 0) + ((selectedOrderForEdit as any).deliveryFee || 0)).toFixed(2)}
+                                </span>
+                            </div>
+                            <button
+                                onClick={handleUpdateOrderItems}
+                                disabled={isAccepting}
+                                className="w-full bg-primary text-white py-4 rounded-2xl font-black shadow-lg shadow-primary/20 hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+                            >
+                                {isAccepting ? <Loader2 className="w-5 h-5 animate-spin" /> : <><CheckCircle className="w-5 h-5" /> Guardar Cambios</>}
+                            </button>
+                        </div>
+                    </div>
                 </div>
             )}
 

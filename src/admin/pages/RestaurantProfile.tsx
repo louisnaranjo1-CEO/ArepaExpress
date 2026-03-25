@@ -109,6 +109,11 @@ export default function RestaurantProfile() {
     const [hasCashea, setHasCashea] = useState(false);
     const [casheaIcon, setCasheaIcon] = useState<string | null>(null);
 
+    // 2x3 Config
+    const [hasTwoByThree, setHasTwoByThree] = useState(false);
+    const [twoByThreeInitial, setTwoByThreeInitial] = useState(50);
+    const [twoByThreeInstallments, setTwoByThreeInstallments] = useState(2);
+
     useEffect(() => {
         if (!user) return;
 
@@ -134,6 +139,9 @@ export default function RestaurantProfile() {
                     setCategoryId(data.categoryId || '');
                     setSubCategoryId(data.subCategoryId || '');
                     setHasCashea(data.hasCashea || false);
+                    setHasTwoByThree(data.hasTwoByThree || false);
+                    setTwoByThreeInitial(data.twoByThreeInitial || 50);
+                    setTwoByThreeInstallments(data.twoByThreeInstallments || 2);
 
                     // Fetch followers list
                     const followersRef = collection(db, 'restaurants', user.uid, 'followers');
@@ -225,6 +233,9 @@ export default function RestaurantProfile() {
                 categoryId,
                 subCategoryId,
                 hasCashea,
+                hasTwoByThree,
+                twoByThreeInitial,
+                twoByThreeInstallments,
                 updatedAt: new Date()
             });
 
@@ -702,6 +713,59 @@ export default function RestaurantProfile() {
                             <div className={`w-12 h-6 rounded-full relative transition-colors ${hasCashea ? 'bg-yellow-400' : 'bg-slate-200'}`}>
                                 <div className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow-sm transition-all ${hasCashea ? 'left-7' : 'left-1'}`}></div>
                             </div>
+                        </div>
+
+                        {/* 2x3 Config */}
+                        <div className={`p-4 rounded-2xl border-2 transition-all ${hasTwoByThree ? 'bg-primary/5 border-primary/20' : 'bg-slate-50 border-transparent hover:border-slate-100'}`}>
+                            <div 
+                                className="flex items-center justify-between cursor-pointer"
+                                onClick={() => setHasTwoByThree(!hasTwoByThree)}
+                            >
+                                <div className="flex items-center gap-3">
+                                    <div className={`w-12 h-12 rounded-xl flex items-center justify-center transition-all ${hasTwoByThree ? 'bg-primary shadow-lg shadow-primary/30' : 'bg-white shadow-sm border border-slate-100'}`}>
+                                        <span className={`font-black text-xl italic ${hasTwoByThree ? 'text-white' : 'text-slate-400'}`}>2x3</span>
+                                    </div>
+                                    <div>
+                                        <p className={`font-black tracking-tight leading-none mb-1 ${hasTwoByThree ? 'text-primary' : 'text-slate-700'}`}>Sistema "2x3 Resuelve"</p>
+                                        <p className={`text-[10px] font-bold ${hasTwoByThree ? 'text-primary/70' : 'text-slate-400'}`}>
+                                            Permitir pagos financiados en cuotas
+                                        </p>
+                                    </div>
+                                </div>
+                                <div className={`w-12 h-6 rounded-full relative transition-colors ${hasTwoByThree ? 'bg-primary' : 'bg-slate-200'}`}>
+                                    <div className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow-sm transition-all ${hasTwoByThree ? 'left-7' : 'left-1'}`}></div>
+                                </div>
+                            </div>
+
+                            {hasTwoByThree && (
+                                <div className="mt-4 pt-4 border-t border-primary/10 grid grid-cols-2 gap-4">
+                                    <div className="space-y-1">
+                                        <label className="text-[10px] font-black text-slate-500 uppercase ml-1">Pago Inicial (%)</label>
+                                        <div className="relative">
+                                            <input 
+                                                type="number" 
+                                                min="10" max="90"
+                                                value={twoByThreeInitial}
+                                                onChange={(e) => setTwoByThreeInitial(Number(e.target.value))}
+                                                className="w-full bg-white border border-slate-200 p-3 pr-8 rounded-xl outline-none focus:border-primary font-bold text-slate-700 text-sm"
+                                            />
+                                            <span className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 font-bold">%</span>
+                                        </div>
+                                    </div>
+                                    <div className="space-y-1">
+                                        <label className="text-[10px] font-black text-slate-500 uppercase ml-1">Nº de Cuotas Restantes</label>
+                                        <div className="relative">
+                                            <input 
+                                                type="number" 
+                                                min="1" max="10"
+                                                value={twoByThreeInstallments}
+                                                onChange={(e) => setTwoByThreeInstallments(Number(e.target.value))}
+                                                className="w-full bg-white border border-slate-200 p-3 rounded-xl outline-none focus:border-primary font-bold text-slate-700 text-sm"
+                                            />
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
                         </div>
                     </section>
 
