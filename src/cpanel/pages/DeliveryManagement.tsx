@@ -1154,7 +1154,7 @@ _Enviado desde DeliExpress App_`
                                                         : 'https://maps.google.com/mapfiles/ms/icons/red-dot.png',
                                                 }}
                                             >
-                                                {activeMarker === driver.id && (
+                                                {activeMarker === driver.id ? (
                                                     <InfoWindow onCloseClick={() => setActiveMarker(null)}>
                                                         <div className="p-3 min-w-[200px]">
                                                             <div className="flex items-center gap-3 mb-3">
@@ -1186,7 +1186,7 @@ _Enviado desde DeliExpress App_`
                                                             </div>
                                                         </div>
                                                     </InfoWindow>
-                                                )}
+                                                ) : null}
                                             </Marker>
                                         ))}
                                     </GoogleMap>
