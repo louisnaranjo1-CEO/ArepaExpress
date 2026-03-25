@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { doc, getDoc, collection, getDocs, setDoc, updateDoc, serverTimestamp, query, where } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
-import { ArrowLeft, Plus, Minus, Trash2, ShoppingBag, CheckCircle, Loader2, Star, Clock, Store, Truck, X, Tag, MessageSquare, MapPin, Instagram, Youtube, Music2, ExternalLink } from 'lucide-react';
+import { ArrowLeft, Plus, Minus, Trash2, ShoppingBag, CheckCircle, Loader2, Star, Clock, Store, Truck, X, Tag, MessageSquare, MapPin, Instagram, Youtube, Music2, ExternalLink, Search, LayoutGrid, List } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import ReviewsModal from '../components/ReviewsModal';
 
@@ -37,6 +37,8 @@ export default function CashierPOS() {
     const [paymentStatus, setPaymentStatus] = useState<'sold' | 'pending'>('sold');
     const [showReviewsModal, setShowReviewsModal] = useState(false);
     const [showHoursModal, setShowHoursModal] = useState(false);
+    const [searchTerm, setSearchTerm] = useState('');
+    const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
 
     const restaurantId = localStorage.getItem('cashierRestaurantId');
     const cashierDataRaw = localStorage.getItem('cashierData');
@@ -121,8 +123,12 @@ export default function CashierPOS() {
     const categories = ['Todos', ...Array.from(new Set(products.map(p => p.category)))];
 
     const filteredProducts = products.filter(p => {
+        const query = searchTerm.toLowerCase();
         const matchesCategory = activeCategory === 'Todos' || p.category === activeCategory;
-        return matchesCategory && p.isAvailable !== false;
+        const matchesSearch = p.name.toLowerCase().includes(query) || 
+                            (p.category && p.category.toLowerCase().includes(query)) ||
+                            (p.description && p.description.toLowerCase().includes(query));
+        return matchesCategory && matchesSearch && p.isAvailable !== false;
     });
 
     const subtotal = cartItems.reduce((acc: number, item: any) => acc + (item.price * item.quantity), 0);
@@ -425,15 +431,54 @@ export default function CashierPOS() {
                 </div>
             </div>
 
+                {/* Toolbar: Search & View Mode */}
+                <div className="px-5 py-4 border-b border-slate-100 flex flex-col sm:flex-row gap-4 items-center justify-between bg-white shrink-0">
+                    <div className="relative w-full sm:max-w-xs">
+                        <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                        <input 
+                            type="text" 
+                            placeholder="Buscar producto o categoría..."
+                            value={searchTerm}
+                            onChange={(e) => setSearchTerm(e.target.value)}
+                            className="w-full pl-11 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-[1.25rem] text-sm font-medium focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all"
+                        />
+                        {searchTerm && (
+                            <button 
+                                onClick={() => setSearchTerm('')}
+                                className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                            >
+                                <X className="w-4 h-4" />
+                            </button>
+                        )}
+                    </div>
+
+                    <div className="flex items-center gap-1.5 bg-slate-100 p-1 rounded-2xl shrink-0">
+                        <button 
+                            onClick={() => setViewMode('grid')}
+                            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all ${viewMode === 'grid' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                        >
+                            <LayoutGrid className="w-3.5 h-3.5" />
+                            Cuadrícula
+                        </button>
+                        <button 
+                            onClick={() => setViewMode('list')}
+                            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all ${viewMode === 'list' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                        >
+                            <List className="w-3.5 h-3.5" />
+                            Lista
+                        </button>
+                    </div>
+                </div>
+
                 {/* Categories */}
-                <div className="p-4 border-b border-slate-50 bg-slate-50/50 shrink-0">
+                <div className="px-5 py-3 border-b border-slate-50 bg-slate-50/20 shrink-0 overflow-hidden">
                     <div className="flex gap-2 overflow-x-auto hide-scrollbar pb-1">
                         {categories.map(cat => (
                             <button
                                 key={cat}
                                 onClick={() => setActiveCategory(cat)}
-                                className={`px-5 py-2.5 rounded-2xl text-[11px] font-black whitespace-nowrap transition-all uppercase tracking-wider ${
-                                    activeCategory === cat ? 'bg-primary text-white shadow-lg shadow-primary/20 scale-105' : 'bg-white text-slate-500 border border-slate-200 hover:border-primary/30'
+                                className={`px-5 py-2.5 rounded-2xl text-[10px] font-black whitespace-nowrap transition-all uppercase tracking-wider border ${
+                                    activeCategory === cat ? 'bg-primary text-white border-primary shadow-lg shadow-primary/20 scale-105' : 'bg-white text-slate-500 border-slate-200 hover:border-primary/30'
                                 }`}
                             >
                                 {cat}
@@ -442,42 +487,103 @@ export default function CashierPOS() {
                     </div>
                 </div>
 
-                {/* Product Grid */}
-                <div className="flex-1 overflow-y-auto p-4 content-start space-y-6">
-                    <div className="grid grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4 gap-5">
-                        {filteredProducts.map(product => {
-                            const hasVariants = product.variants && product.variants.length > 0;
-                            const displayPrice = hasVariants ? Math.min(...product.variants.map((v:any) => v.price)) : (product.promoPrice || product.price);
-                            
-                            return (
-                                <div key={product.id} className="bg-white border-2 border-slate-50 rounded-3xl p-3 shadow-sm hover:shadow-xl hover:border-primary/10 transition-all group cursor-pointer flex flex-col" onClick={() => handleProductClick(product)}>
-                                    <div className="w-full aspect-[4/3] bg-slate-50 rounded-2xl mb-3 overflow-hidden relative">
-                                        {product.image && <img src={product.image} alt="" className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" />}
-                                        <div className="absolute top-2 right-2 w-8 h-8 bg-white text-primary rounded-xl flex items-center justify-center shadow-lg transform translate-y-2 opacity-0 group-hover:translate-y-0 group-hover:opacity-100 transition-all">
-                                            <Plus className="w-5 h-5" />
-                                        </div>
-                                    </div>
-                                    <h3 className="text-sm font-black text-slate-900 mb-1 leading-tight">{product.name}</h3>
-                                    {product.description && <p className="text-[10px] text-slate-400 line-clamp-2 mb-3 leading-tight font-medium">{product.description}</p>}
-                                    <div className="mt-auto pt-2 flex items-center justify-between">
-                                        <div className="flex flex-col">
-                                            {hasVariants && <span className="text-[8px] font-black text-slate-300 uppercase tracking-widest leading-none mb-0.5">Desde</span>}
-                                            <span className="text-lg font-black text-slate-900 leading-none">${displayPrice.toFixed(2)}</span>
-                                        </div>
-                                        {hasVariants && (
-                                            <div className="flex gap-1">
-                                                {product.variants.slice(0, 3).map((v:any, i:number) => (
-                                                    <div key={i} className="px-1.5 py-0.5 bg-slate-50 rounded-md text-[7px] font-black text-slate-400 uppercase tracking-tighter">
-                                                        {v.name.slice(0, 3)}
-                                                    </div>
-                                                ))}
+                {/* Product Area */}
+                <div className="flex-1 overflow-y-auto p-5 content-start transition-all duration-300">
+                    {viewMode === 'grid' ? (
+                        <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-5">
+                            {filteredProducts.map(product => {
+                                const hasVariants = product.variants && product.variants.length > 0;
+                                const displayPrice = hasVariants ? Math.min(...product.variants.map((v:any) => v.price)) : (product.promoPrice || product.price);
+                                
+                                return (
+                                    <motion.div
+                                        layout
+                                        key={product.id}
+                                        onClick={() => handleProductClick(product)}
+                                        className="bg-white rounded-[2rem] border-2 border-slate-50 p-4 shadow-sm hover:shadow-xl hover:border-primary/10 transition-all cursor-pointer group flex flex-col"
+                                    >
+                                        <div className="w-full aspect-square bg-slate-50 rounded-2xl mb-4 overflow-hidden relative">
+                                            {product.image && <img src={product.image} alt="" className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" />}
+                                            <div className="absolute top-3 right-3 w-10 h-10 bg-white/90 backdrop-blur-sm text-primary rounded-2xl flex items-center justify-center shadow-lg transform translate-y-2 opacity-0 group-hover:translate-y-0 group-hover:opacity-100 transition-all">
+                                                <Plus className="w-6 h-6" />
                                             </div>
-                                        )}
-                                    </div>
-                                </div>
-                            );
-                        })}
-                    </div>
+                                            {product.isAvailable === false && (
+                                                <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-[2px] flex items-center justify-center">
+                                                    <span className="bg-red-500 text-white text-[10px] font-black px-3 py-1 rounded-full uppercase tracking-widest">Agotado</span>
+                                                </div>
+                                            )}
+                                        </div>
+                                        <div className="flex-1">
+                                            <h3 className="text-sm font-black text-slate-900 mb-1 leading-tight line-clamp-2">{product.name}</h3>
+                                            <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-3">{product.category}</p>
+                                        </div>
+                                        <div className="flex items-center justify-between pt-2 border-t border-slate-50">
+                                            <div className="flex flex-col">
+                                                {hasVariants && <span className="text-[8px] font-black text-primary uppercase tracking-widest leading-none mb-1">Desde</span>}
+                                                <span className="text-xl font-black text-slate-900 leading-none">${displayPrice.toFixed(2)}</span>
+                                            </div>
+                                            <div className="w-8 h-8 rounded-xl bg-slate-50 flex items-center justify-center text-slate-400 group-hover:bg-primary group-hover:text-white transition-all">
+                                                <Plus className="w-4 h-4" />
+                                            </div>
+                                        </div>
+                                    </motion.div>
+                                );
+                            })}
+                        </div>
+                    ) : (
+                        <div className="flex flex-col gap-3 max-w-4xl mx-auto">
+                            {filteredProducts.map(product => {
+                                const hasVariants = product.variants && product.variants.length > 0;
+                                const displayPrice = hasVariants ? Math.min(...product.variants.map((v:any) => v.price)) : (product.promoPrice || product.price);
+                                
+                                return (
+                                    <motion.div
+                                        layout
+                                        key={product.id}
+                                        onClick={() => handleProductClick(product)}
+                                        className="bg-white rounded-[1.75rem] border-2 border-slate-50 p-4 shadow-sm hover:shadow-md hover:border-primary/10 transition-all cursor-pointer group flex items-center gap-5"
+                                    >
+                                        <div className="w-20 h-20 bg-slate-50 rounded-2xl overflow-hidden shrink-0 relative">
+                                            {product.image && <img src={product.image} alt="" className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" />}
+                                            {product.isAvailable === false && (
+                                                <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-[1px] flex items-center justify-center">
+                                                    <span className="text-[8px] font-black text-white uppercase tracking-tighter">Agotado</span>
+                                                </div>
+                                            )}
+                                        </div>
+                                        <div className="flex-1 min-w-0">
+                                            <h3 className="text-base font-black text-slate-900 leading-tight truncate">{product.name}</h3>
+                                            <p className="text-xs text-slate-400 font-bold uppercase tracking-wider mt-1">{product.category}</p>
+                                            {product.description && <p className="text-xs text-slate-400 line-clamp-1 mt-1 font-medium">{product.description}</p>}
+                                        </div>
+                                        <div className="text-right shrink-0 px-4 border-l border-slate-50">
+                                            {hasVariants && <div className="text-[8px] font-black text-primary uppercase tracking-widest mb-1 text-right">Desde</div>}
+                                            <div className="text-2xl font-black text-slate-900 leading-none">${displayPrice.toFixed(2)}</div>
+                                        </div>
+                                        <div className="w-12 h-12 rounded-2xl bg-slate-50 flex items-center justify-center text-slate-400 group-hover:bg-primary group-hover:text-white transition-all shrink-0">
+                                            <Plus className="w-6 h-6" />
+                                        </div>
+                                    </motion.div>
+                                );
+                            })}
+                        </div>
+                    )}
+
+                    {filteredProducts.length === 0 && (
+                        <div className="flex flex-col items-center justify-center py-24 text-center">
+                            <div className="w-24 h-24 bg-slate-50 rounded-[2.5rem] flex items-center justify-center mb-6 border-2 border-slate-100/50">
+                                <Search className="w-10 h-10 text-slate-200" />
+                            </div>
+                            <h3 className="text-lg font-black text-slate-900 uppercase tracking-tight">No hay resultados</h3>
+                            <p className="text-sm font-bold text-slate-400 mt-1">Intenta con otro nombre o categoría</p>
+                            <button 
+                                onClick={() => { setSearchTerm(''); setActiveCategory('Todos'); }}
+                                className="mt-8 px-8 py-3 bg-primary text-white font-black rounded-2xl hover:scale-105 active:scale-95 transition-all shadow-xl shadow-primary/20 uppercase text-xs tracking-widest"
+                            >
+                                Ver todos los productos
+                            </button>
+                        </div>
+                    )}
                 </div>
             </div>
 
