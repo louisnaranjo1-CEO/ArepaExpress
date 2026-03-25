@@ -76,19 +76,7 @@ export default function CashierDashboard() {
         fetchRestaurant();
 
         const ordersRef = collection(db, 'orders');
-        const q = query(
-            ordersRef,
-            where('restaurantId', '==', storedRestaurantId),
-            where('paymentStatus', '==', 'pending'),
-            orderBy('createdAt', 'desc')
-        );
 
-        const unsubscribe = onSnapshot(q, (snapshot) => {
-            const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Order));
-            setOrders(data);
-        });
-
-        // Also fetch orders with missing paymentStatus but not rejected/delivered
         const q2 = query(
             ordersRef,
             where('restaurantId', '==', storedRestaurantId),
@@ -106,7 +94,6 @@ export default function CashierDashboard() {
         });
 
         return () => {
-            unsubscribe();
             unsubscribe2();
         };
     }, [navigate]);
@@ -276,11 +263,12 @@ export default function CashierDashboard() {
         }
         setIsAccepting(true);
         try {
+            const safeSubtotal = selectedOrder.subtotal ?? selectedOrder.total ?? 0;
             const updates: any = {
                 paymentMethod: paymentMethod,
                 paymentStatus: 'sold',
                 tip: closeTip,
-                total: selectedOrder.subtotal + (selectedOrder.deliveryFee || 0) + closeTip
+                total: safeSubtotal + (selectedOrder.deliveryFee || 0) + closeTip
             };
 
             // If it's a waiter's order, mark as delivered if it was preparing
