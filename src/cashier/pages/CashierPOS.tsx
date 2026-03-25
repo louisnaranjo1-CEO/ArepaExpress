@@ -5,6 +5,8 @@ import { db } from '../../lib/firebase';
 import { ArrowLeft, Plus, Minus, Trash2, ShoppingBag, CheckCircle, Loader2, Star, Clock, Store, Truck, X, Tag, MessageSquare, MapPin, Instagram, Youtube, Music2, ExternalLink, Search, LayoutGrid, List } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import ReviewsModal from '../components/ReviewsModal';
+import { printToUsbDevice, formatTicket } from '../../lib/usb-printer';
+import toast from 'react-hot-toast';
 
 export default function CashierPOS() {
     const navigate = useNavigate();
@@ -39,6 +41,7 @@ export default function CashierPOS() {
     const [showHoursModal, setShowHoursModal] = useState(false);
     const [searchTerm, setSearchTerm] = useState('');
     const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
+    const [stations, setStations] = useState<any[]>([]);
 
     const restaurantId = localStorage.getItem('cashierRestaurantId');
     const cashierDataRaw = localStorage.getItem('cashierData');
@@ -65,6 +68,11 @@ export default function CashierPOS() {
                 const tablesRef = collection(db, 'restaurants', restaurantId, 'tables');
                 const tablesSnap = await getDocs(tablesRef);
                 setTables(tablesSnap.docs.map(d => ({ id: d.id, ...d.data() })));
+
+                // Fetch Printer Stations
+                const stationsRef = collection(db, 'restaurants', restaurantId, 'printers');
+                const stationsSnap = await getDocs(stationsRef);
+                setStations(stationsSnap.docs.map(d => ({ id: d.id, ...d.data() })));
 
                 // Fetch Order if editing specifically by ID
                 if (orderId) {
@@ -131,7 +139,7 @@ export default function CashierPOS() {
         return matchesCategory && matchesSearch && p.isAvailable !== false;
     });
 
-    const subtotal = cartItems.reduce((acc: number, item: any) => acc + (item.price * item.quantity), 0);
+    const subtotal = (cartItems || []).reduce((acc: number, item: any) => acc + (item.price * item.quantity), 0);
     const total = subtotal + (isDelivery ? (restaurant?.deliveryFee || 0) : 0);
 
     const getSocialIcon = (url: string) => {
@@ -295,6 +303,33 @@ export default function CashierPOS() {
         
         setIsSubmitting(true);
         try {
+            // Group items by printer station
+            const toPrint = newItemsToPrint;
+            const printResults = [];
+
+            // Find configured stations for these items
+            for (const item of toPrint) {
+                const station = stations.find(s => s.categories && s.categories.includes(item.category));
+                if (station && station.vendorId && station.productId) {
+                    const ticketData = formatTicket({
+                        id: activeOrder.id,
+                        userName: activeOrder.userName || 'Cliente Local',
+                        userPhone: activeOrder.userPhone || '',
+                        items: [item],
+                        tableNumber: activeOrder.table || '',
+                        stationName: station.name,
+                        orderNote: item.notes,
+                        createdAt: new Date()
+                    });
+
+                    const success = await printToUsbDevice(station.vendorId, station.productId, ticketData);
+                    printResults.push({ item: item.name, station: station.name, success });
+                } else {
+                    console.warn(`No station configured for category: ${item.category}`);
+                    printResults.push({ item: item.name, station: 'Ninguna', success: false });
+                }
+            }
+
             // Mark items as printed in local cart and final order
             const updatedItems = cartItems.map(item => ({
                 ...item,
@@ -305,10 +340,19 @@ export default function CashierPOS() {
                 items: updatedItems
             });
             
-            alert("Comanda enviada a impresión.");
+            const totalSuccess = printResults.filter(r => r.success).length;
+            if (totalSuccess > 0) {
+                toast.success(`${totalSuccess} comandas impresas correctamente`);
+            } else if (printResults.some(r => r.station !== 'Ninguna')) {
+                toast.error("Error al imprimir comandas. Verifique las impresoras.");
+            } else {
+                toast.success("Pedido actualizado (sin estaciones de impresión configuradas)");
+            }
+
             resetPOS();
         } catch (error) {
             console.error("Error marking as printed:", error);
+            toast.error("Error al procesar la impresión");
         } finally {
             setIsSubmitting(false);
             setShowPrintModal(false);
@@ -367,7 +411,7 @@ export default function CashierPOS() {
                                     </div>
                                 </div>
                             </div>
-                        <button onClick={resetPOS} className="absolute top-4 right-4 w-10 h-10 bg-white/20 backdrop-blur-md rounded-full flex items-center justify-center hover:bg-white/30 text-white transition-all">
+                        <button onClick={() => navigate('/')} className="absolute top-4 left-4 z-[100] w-10 h-10 bg-black/20 backdrop-blur-md rounded-full flex items-center justify-center hover:bg-black/30 text-white transition-all">
                             <ArrowLeft className="w-6 h-6" />
                         </button>
                         </div>

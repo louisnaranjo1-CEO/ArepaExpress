@@ -65,7 +65,7 @@ export default function SplitBillModal({
     }, [isOpen, allItems]);
 
     // Calculate totals
-    const grandTotal = activeOrders.reduce((sum, order) => sum + order.total, 0);
+    const grandTotal = (activeOrders || []).reduce((sum, order) => sum + (order?.total || 0), 0);
 
     const handleConfirmSplit = async () => {
         setIsProcessing(true);
@@ -122,9 +122,9 @@ export default function SplitBillModal({
                 accounts.forEach((acc, i) => {
                     if (acc.items.length === 0) return; // Skip empty accounts
                     
-                    const subtotal = acc.items.reduce((sum, item) => sum + item.price, 0);
+                    const subtotal = (acc.items || []).reduce((sum, item) => sum + (item?.price || 0), 0);
                     // Add logic to group items back by ID to reduce array size
-                    const groupedItems = acc.items.reduce((accArr: any[], currentItem: any) => {
+                    const groupedItems = (acc.items || []).reduce((accArr: any[], currentItem: any) => {
                         const existing = accArr.find(i => i.id === currentItem.id && JSON.stringify(i.variant) === JSON.stringify(currentItem.variant));
                         if (existing) {
                             existing.quantity += 1;
@@ -311,7 +311,7 @@ export default function SplitBillModal({
                                 {/* Right: Accounts */}
                                 <div className="flex-1 overflow-x-auto p-4 flex gap-4 bg-slate-100">
                                     {accounts.map(acc => {
-                                        const accTotal = acc.items.reduce((sum, item) => sum + item.price, 0);
+                                        const accTotal = (acc.items || []).reduce((sum, item) => sum + (item?.price || 0), 0);
                                         return (
                                             <div key={acc.id} className="min-w-[280px] w-[280px] bg-white rounded-3xl border border-slate-200 flex flex-col overflow-hidden max-h-full">
                                                 <div className="p-4 bg-slate-800 text-white flex justify-between items-center shrink-0">

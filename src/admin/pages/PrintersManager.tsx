@@ -201,10 +201,9 @@ export default function PrintersManager() {
                         <h3 className="text-xl font-black text-slate-800 mb-2">{station.name}</h3>
 
                         <div className="flex items-center justify-between">
-                            <span className={`px - 4 py - 1.5 rounded - full text - xs font - black uppercase tracking - widest ${station.isActive ? 'bg-emerald-50 text-emerald-600' : 'bg-slate-100 text-slate-400'
-                                } `}>
-                                {station.isActive ? 'Activa' : 'Inactiva'}
-                            </span>
+                                <span className={`px-4 py-1.5 rounded-full text-xs font-black uppercase tracking-widest ${station.isActive ? 'bg-emerald-50 text-emerald-600' : 'bg-slate-100 text-slate-400'}`}>
+                                    {station.isActive ? 'Activa' : 'Inactiva'}
+                                </span>
                         </div>
 
                         {station.printerName && (
@@ -274,10 +273,10 @@ export default function PrintersManager() {
                                                             : [...formData.categories, cat]
                                                     });
                                                 }}
-                                                className={`flex items - center gap - 2 px - 3 py - 2 rounded - xl text - xs font - bold transition - all ${formData.categories.includes(cat)
+                                                className={`flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-bold transition-all ${formData.categories.includes(cat)
                                                         ? 'bg-primary text-white shadow-lg shadow-primary/20'
                                                         : 'bg-white text-slate-500 border border-slate-100'
-                                                    } `}
+                                                    }`}
                                             >
                                                 {cat}
                                                 {formData.categories.includes(cat) && <Check className="w-3 h-3" />}

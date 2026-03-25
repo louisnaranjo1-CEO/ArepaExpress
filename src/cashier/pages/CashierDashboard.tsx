@@ -67,7 +67,7 @@ export default function CashierDashboard() {
                 const docRef = doc(db, 'restaurants', storedRestaurantId);
                 const docSnap = await getDoc(docRef);
                 if (docSnap.exists()) {
-                    setRestaurant({ id: docSnap.id, ...docSnap.data() });
+                   setRestaurant({ id: docSnap.id, ...docSnap.data() });
                 }
             } catch (error) {
                 console.error("Error fetching restaurant:", error);
@@ -617,8 +617,8 @@ export default function CashierDashboard() {
                                 </div>
                             ) : null}
                             <div className="flex justify-between items-center border-t border-slate-200 pt-2 mt-2">
-                                <span className="text-sm font-black text-slate-900">TOTAL:</span>
-                                <span className="font-black text-xl text-primary">${((selectedOrder.subtotal || 0) + (selectedOrder.deliveryFee || 0)).toFixed(2)}</span>
+                                 <span className="text-sm font-black text-slate-900">Total:</span>
+                                 <span className="font-black text-xl text-primary"> ${((selectedOrder.subtotal || 0) + (selectedOrder.deliveryFee || 0)).toFixed(2)}</span>
                             </div>
                         </div>
 
