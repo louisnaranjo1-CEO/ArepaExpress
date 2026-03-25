@@ -161,6 +161,7 @@ export default function Cart() {
     if (!isWaiter && user && (!userData?.phone || !userData?.cedula)) { alert("Completa tu perfil primero."); navigate('/profile'); return; }
 
     setIsCheckingOut(true);
+    setError(null);
     try {
       const restaurantId = items[0].restaurantId;
       const restaurantDoc = await getDoc(doc(db, 'restaurants', restaurantId));
@@ -169,24 +170,42 @@ export default function Cart() {
 
       let addressStr = isWaiter ? `Mesa: ${tableNumber}` : (selectedAddress ? `${selectedAddress.name} - ${selectedAddress.reference}` : "Recoger en local");
 
+      // Sanitize items just in case they have undefined properties
+      const sanitizedItems = items.map(item => {
+        const i = { ...item, paidWithPoints: !!pointsPaymentConfig[item.id] };
+        Object.keys(i).forEach(key => i[key] === undefined && delete i[key]);
+        return i;
+      });
+
       const orderData = {
-        userId: isWaiter ? waiterData.id : (user?.uid || 'guest_' + Date.now()),
-        userName: isWaiter ? (customerName || `Cliente Mesa ${tableNumber}`) : (user?.displayName || guestName || 'Cliente Invitado'),
-        userPhone: isWaiter ? '' : (userData?.phone || guestPhone),
-        userEmail: isWaiter ? waiterData.email : (user?.email || 'N/A'),
+        userId: isWaiter ? (waiterData.id || 'waiter') : (user?.uid || 'guest_' + Date.now()),
+        userName: isWaiter ? (customerName || `Cliente Mesa ${tableNumber || 'N/A'}`) : (user?.displayName || guestName || 'Cliente Invitado'),
+        userPhone: isWaiter ? '' : (userData?.phone || guestPhone || ''),
+        userEmail: isWaiter ? (waiterData.email || 'N/A') : (user?.email || 'N/A'),
         restaurantId,
         restaurantName: rData?.name || 'DeliExpress Restaurant',
         restaurantCity: rData?.location?.city || '',
         source: isWaiter ? 'waiter' : 'client',
-        waiterId: isWaiter ? waiterData.id : null,
-        waiterName: isWaiter ? waiterData.name : null,
-        table: isWaiter ? tableNumber : null,
-        items: items.map(item => ({ ...item, paidWithPoints: !!pointsPaymentConfig[item.id] })),
-        subtotal: cartSubtotalUSD, deliveryFee, driverPayout, deliveryShift: currentShift, distance: distance || 0,
-        total: finalTotal, status: isWaiter ? 'preparing' : 'pending', paymentStatus: isWaiter ? 'pending' : 'pending',
+        waiterId: isWaiter ? (waiterData.id || null) : null,
+        waiterName: isWaiter ? (waiterData.name || null) : null,
+        table: isWaiter ? (tableNumber || null) : null,
+        items: sanitizedItems,
+        subtotal: cartSubtotalUSD || 0, 
+        deliveryFee: deliveryFee || 0, 
+        driverPayout: driverPayout || 0, 
+        deliveryShift: currentShift || 'day', 
+        distance: distance || 0,
+        total: finalTotal || 0, 
+        status: isWaiter ? 'preparing' : 'pending', 
+        paymentStatus: isWaiter ? paymentStatus : 'pending', // Use the selected payment status
         notified: false,
-        deliveryAddress: addressStr, createdAt: serverTimestamp(), orderNote: orderNote.trim()
+        deliveryAddress: addressStr, 
+        createdAt: serverTimestamp(), 
+        orderNote: orderNote.trim() || ''
       };
+
+      // Remove any undefined keys at the root level
+      Object.keys(orderData).forEach(key => (orderData as any)[key] === undefined && delete (orderData as any)[key]);
 
       const docRef = await addDoc(collection(db, 'orders'), orderData);
       setOrderId(docRef.id);
@@ -201,7 +220,12 @@ export default function Cart() {
       window.location.href = link;
       clearCart();
       setCheckoutSuccess(true);
-    } catch (err: any) { setError(err.message); } finally { setIsCheckingOut(false); }
+    } catch (err: any) { 
+      console.error('Checkout error:', err);
+      setError(err.message || 'Error al procesar la orden. Intente nuevamente.'); 
+    } finally { 
+      setIsCheckingOut(false); 
+    }
   };
 
   if (checkoutSuccess) {
@@ -284,6 +308,11 @@ export default function Cart() {
                   <div className="flex gap-2">
                     <button onClick={() => setPaymentStatus('pending')} className={`flex-1 py-3 rounded-xl font-bold border-2 ${paymentStatus === 'pending' ? 'border-amber-500 bg-amber-50' : 'border-slate-100'}`}>Por Pagar</button>
                     <button onClick={() => setPaymentStatus('paid')} className={`flex-1 py-3 rounded-xl font-bold border-2 ${paymentStatus === 'paid' ? 'border-emerald-500 bg-emerald-50' : 'border-slate-100'}`}>Pagado</button>
+                  </div>
+                )}
+                {error && (
+                  <div className="p-4 bg-red-100 text-red-700 rounded-2xl border border-red-200 font-bold text-sm">
+                    {error}
                   </div>
                 )}
                 <button onClick={handleCheckout} disabled={isCheckingOut} className="w-full bg-primary text-white py-4 rounded-2xl font-bold">
