@@ -179,10 +179,12 @@ export default function Cart() {
         restaurantCity: rData?.location?.city || '',
         source: isWaiter ? 'waiter' : 'client',
         waiterId: isWaiter ? waiterData.id : null,
+        waiterName: isWaiter ? waiterData.name : null,
         table: isWaiter ? tableNumber : null,
         items: items.map(item => ({ ...item, paidWithPoints: !!pointsPaymentConfig[item.id] })),
         subtotal: cartSubtotalUSD, deliveryFee, driverPayout, deliveryShift: currentShift, distance: distance || 0,
         total: finalTotal, status: isWaiter ? 'preparing' : 'pending', paymentStatus: isWaiter ? 'pending' : 'pending',
+        notified: false,
         deliveryAddress: addressStr, createdAt: serverTimestamp(), orderNote: orderNote.trim()
       };
 

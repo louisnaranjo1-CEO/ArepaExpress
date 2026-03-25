@@ -5,6 +5,8 @@ import { collection, query, where, onSnapshot, orderBy, doc, updateDoc, getDoc }
 import { useNavigate } from 'react-router-dom';
 import ProductTicker from '../components/ProductTicker';
 import ReviewsModal from '../components/ReviewsModal';
+import { motion, AnimatePresence } from 'framer-motion';
+import toast from 'react-hot-toast';
 
 interface Order {
     id: string;
@@ -20,6 +22,7 @@ interface Order {
     table?: string;
     createdAt?: any;
     deliveryFee?: number;
+    notified?: boolean;
 }
 
 export default function CashierDashboard() {
@@ -41,6 +44,10 @@ export default function CashierDashboard() {
     const [closeRegisterModalOpen, setCloseRegisterModalOpen] = useState(false);
     const [registerReport, setRegisterReport] = useState<any>(null);
     const [isLoadingReport, setIsLoadingReport] = useState(false);
+    const [notifiedOrderIds, setNotifiedOrderIds] = useState<Set<string>>(new Set());
+
+    // Audio object for the notification sound
+    const [notificationSound] = useState(() => new Audio('https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/Digital_Cascade_01.mp3?alt=media&token=211ed9a7-2b49-469f-8869-3fc2cd38d2f5'));
 
     useEffect(() => {
         const storedCashier = localStorage.getItem('cashierData');
@@ -103,6 +110,92 @@ export default function CashierDashboard() {
             unsubscribe2();
         };
     }, [navigate]);
+
+    // Real-time notification monitor
+    useEffect(() => {
+        const unnotifiedWaiterOrders = orders.filter(o => 
+            o.source === 'waiter' && 
+            o.notified === false && 
+            !notifiedOrderIds.has(o.id)
+        );
+
+        if (unnotifiedWaiterOrders.length > 0) {
+            unnotifiedWaiterOrders.forEach(async (order) => {
+                // Play Sound
+                notificationSound.play().catch(e => console.error("Error playing sound:", e));
+
+                // Show Custom Toast Alert
+                toast.custom((t) => (
+                    <motion.div 
+                        initial={{ opacity: 0, scale: 0.9, y: 20 }}
+                        animate={{ opacity: 1, scale: 1, y: 0 }}
+                        exit={{ opacity: 0, scale: 0.9, y: 20 }}
+                        transition={{ duration: 0.4, type: "spring", stiffness: 200, damping: 20 }}
+                        className={`max-w-md w-full bg-white shadow-[0_20px_50px_rgba(0,0,0,0.15)] rounded-[2.2rem] pointer-events-auto flex ring-1 ring-black ring-opacity-5 overflow-hidden border-2 border-primary/20 backdrop-blur-xl`}
+                    >
+                        <div className="flex-1 w-0 p-6">
+                            <div className="flex items-start">
+                                <div className="shrink-0 pt-0.5">
+                                    <div className="h-14 w-14 rounded-2xl bg-primary/10 flex items-center justify-center text-primary relative overflow-hidden group">
+                                        <ClipboardList className="w-7 h-7 relative z-10" />
+                                        <div className="absolute inset-0 bg-primary/20 scale-0 group-hover:scale-100 transition-transform duration-500 rounded-full" />
+                                    </div>
+                                </div>
+                                <div className="ml-5 flex-1 text-left">
+                                    <h3 className="text-xs font-black text-primary uppercase tracking-[0.2em] mb-1">Nueva Comanda</h3>
+                                    <div className="flex flex-col gap-0.5">
+                                        <div className="flex items-center gap-2">
+                                            <span className="text-xs font-bold text-slate-400">Mesero:</span>
+                                            <span className="text-sm font-black text-slate-900">{order.waiterName || 'Desconocido'}</span>
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                            <span className="text-xs font-bold text-slate-400">Mesa:</span>
+                                            <span className="text-sm font-black text-slate-900">{order.table || 'N/A'}</span>
+                                        </div>
+                                    </div>
+                                    
+                                    <div className="mt-5 flex items-center justify-between bg-slate-50/80 p-4 rounded-[1.5rem] border border-slate-100 group/item">
+                                        <div className="flex flex-col">
+                                            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Total Orden</span>
+                                            <span className="text-2xl font-black text-slate-900 leading-none mt-1 tracking-tight">
+                                                <span className="text-primary text-sm font-bold mr-0.5">$</span>
+                                                {(order.total || 0).toFixed(2)}
+                                            </span>
+                                        </div>
+                                        <button 
+                                            onClick={() => {
+                                                navigate(`/pos/${order.id}`);
+                                                toast.dismiss(t.id);
+                                            }}
+                                            className="bg-primary text-white text-[10px] font-black uppercase tracking-widest px-5 py-3 rounded-2xl shadow-xl shadow-primary/30 hover:shadow-primary/40 hover:-translate-y-0.5 active:translate-y-0 transition-all duration-300"
+                                        >
+                                            Atender Ahora
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div className="flex border-l border-slate-100">
+                            <button
+                                onClick={() => toast.dismiss(t.id)}
+                                className="w-full border border-transparent rounded-none rounded-r-[2.2rem] px-5 flex items-center justify-center text-[10px] font-black text-slate-400 uppercase tracking-widest hover:text-slate-600 focus:outline-none hover:bg-slate-50/50 transition-colors"
+                            >
+                                Ignorar
+                            </button>
+                        </div>
+                    </motion.div>
+                ), { duration: 15000, id: order.id });
+
+                // Mark as notified in Firestore and local state
+                try {
+                    await updateDoc(doc(db, 'orders', order.id), { notified: true });
+                    setNotifiedOrderIds(prev => new Set(prev).add(order.id));
+                } catch (err) {
+                    console.error("Error updating notified status:", err);
+                }
+            });
+        }
+    }, [orders, notifiedOrderIds, notificationSound, navigate, db]);
 
     const handleLogout = () => {
         localStorage.removeItem('cashierData');

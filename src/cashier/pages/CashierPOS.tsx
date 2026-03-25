@@ -322,7 +322,11 @@ export default function CashierPOS() {
         setNewItemsToPrint([]);
         setShowPrintModal(false);
         setPaymentMethod('');
-        navigate('/pos'); // Refresh if needed
+        setIsDelivery(false);
+        setDeliveryAddress('');
+        setShowCheckoutModal(false);
+        setPaymentStatus('sold');
+        navigate('/'); // Go back to dashboard after finish or cancel
     };
 
     if (loading) {
@@ -363,9 +367,9 @@ export default function CashierPOS() {
                                     </div>
                                 </div>
                             </div>
-                            <button onClick={resetPOS} className="mb-2 w-10 h-10 bg-white/20 backdrop-blur-md rounded-full flex items-center justify-center hover:bg-white/30 text-white transition-all">
-                                <ArrowLeft className="w-6 h-6" />
-                            </button>
+                        <button onClick={resetPOS} className="absolute top-4 right-4 w-10 h-10 bg-white/20 backdrop-blur-md rounded-full flex items-center justify-center hover:bg-white/30 text-white transition-all">
+                            <ArrowLeft className="w-6 h-6" />
+                        </button>
                         </div>
                     </div>
                 )}
@@ -1001,25 +1005,3 @@ export default function CashierPOS() {
         </div>
     );
 }
-
-const resetPOS = (
-    setCartItems: Function,
-    setPaymentMethod: Function,
-    setIsDelivery: Function,
-    setDeliveryAddress: Function,
-    setShowCheckoutModal: Function,
-    setPaymentStatus: Function,
-    setSelectedTable: Function,
-    setOrderId: Function,
-    setNewItemsToPrint: Function
-) => {
-    setCartItems([]);
-    setPaymentMethod('');
-    setIsDelivery(false);
-    setDeliveryAddress('');
-    setShowCheckoutModal(false);
-    setPaymentStatus('sold');
-    setSelectedTable(null);
-    setOrderId('');
-    setNewItemsToPrint([]);
-};
