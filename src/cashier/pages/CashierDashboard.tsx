@@ -3,6 +3,7 @@ import { LogOut, DollarSign, CheckCircle, Clock, X, Loader2, Store, CreditCard, 
 import { db } from '../../lib/firebase';
 import { collection, query, where, onSnapshot, orderBy, doc, updateDoc } from 'firebase/firestore';
 import { useNavigate } from 'react-router-dom';
+import ProductTicker from '../components/ProductTicker';
 
 interface Order {
     id: string;
@@ -196,6 +197,7 @@ export default function CashierDashboard() {
 
     return (
         <div className="min-h-screen bg-slate-50 flex flex-col">
+            <ProductTicker restaurantId={restaurantId || ''} />
             {/* Header */}
             <header className="bg-white px-6 py-4 flex items-center justify-between border-b border-slate-200 sticky top-0 z-40">
                 <div className="flex items-center gap-3">
