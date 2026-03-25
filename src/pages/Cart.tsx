@@ -7,6 +7,7 @@ import { collection, addDoc, serverTimestamp, doc, getDoc, updateDoc, getDocs, q
 import { db } from '../lib/firebase';
 import { calculateDistance, formatDistance } from '../lib/geo';
 import AddressPicker from '../components/AddressPicker';
+import WaiterLayout from '../waiter/components/WaiterLayout';
 
 export default function Cart() {
   const { items, totalPrice, updateQuantity, removeItem, clearCart } = useCart();
@@ -28,35 +29,6 @@ export default function Cart() {
   const [guestPhone, setGuestPhone] = useState('');
   const [guestCedula, setGuestCedula] = useState('');
 
-  // Helper: check if current time is within a shift range
-  const isTimeInRange = (time: string, start: string, end: string) => {
-    const [h, m] = time.split(':').map(Number);
-    const [sh, sm] = start.split(':').map(Number);
-    const [eh, em] = end.split(':').map(Number);
-
-    const nowTotal = h * 60 + m;
-    const sTotal = sh * 60 + sm;
-    const eTotal = eh * 60 + em;
-
-    if (sTotal <= eTotal) {
-      return nowTotal >= sTotal && nowTotal <= eTotal;
-    } else {
-      // Shift spans over midnight
-      return nowTotal >= sTotal || nowTotal <= eTotal;
-    }
-  };
-
-  // Helper: calculate rate based on tiered ranges
-  const calculateTieredRate = (dist: number, tiers: any[]) => {
-    if (!tiers || tiers.length === 0) return 2.0;
-    const match = tiers.find(t => dist >= t.from && dist <= t.to);
-    if (match) return match.price;
-
-    // Fallback: If distance exceeds all ranges, use the highest one
-    const sorted = [...tiers].sort((a, b) => b.to - a.to);
-    return sorted[0]?.price || 2.0;
-  };
-
   const isWaiter = localStorage.getItem('isWaiter') === 'true';
   const waiterData = JSON.parse(localStorage.getItem('waiterData') || '{}');
   const waiterRestaurantId = localStorage.getItem('waiterRestaurantId');
@@ -71,8 +43,8 @@ export default function Cart() {
 
   const [restaurantRewards, setRestaurantRewards] = useState<any[]>([]);
   const [selectedReward, setSelectedReward] = useState<any>(null);
-
   const [pointsPaymentConfig, setPointsPaymentConfig] = useState<Record<string, boolean>>({});
+  const [systemSettings, setSystemSettings] = useState<any>(null);
 
   const userRestaurantPoints = userData?.restaurantPoints?.[items[0]?.restaurantId] || 0;
 
@@ -87,58 +59,47 @@ export default function Cart() {
   const totalPointsUsed = totalCartPointsUsed + rewardPointsUsed;
 
   const cartSubtotalUSD = items.reduce((acc, item) => {
-    if (pointsPaymentConfig[item.id]) {
-      return acc; // paid with points
-    }
+    if (pointsPaymentConfig[item.id]) return acc;
     return acc + ((item.price || 0) * item.quantity);
   }, 0);
 
-  const handleUseCurrentLocation = () => {
-    setShowAddressSelector(false);
-    setShowMapPicker(true);
+  const isTimeInRange = (time: string, start: string, end: string) => {
+    const [h, m] = time.split(':').map(Number);
+    const [sh, sm] = start.split(':').map(Number);
+    const [eh, em] = end.split(':').map(Number);
+    const nowTotal = h * 60 + m;
+    const sTotal = sh * 60 + sm;
+    const eTotal = eh * 60 + em;
+    if (sTotal <= eTotal) return nowTotal >= sTotal && nowTotal <= eTotal;
+    return nowTotal >= sTotal || nowTotal <= eTotal;
   };
 
-  const handleSaveAddressFromMap = (data: { name: string; lat: number; lng: number; reference: string }) => {
-    const locationAddress = {
-      id: `map-${Date.now()}`,
-      name: data.name,
-      lat: data.lat,
-      lng: data.lng,
-      reference: data.reference,
-      isDefault: false
-    };
-    setSelectedAddress(locationAddress);
-    setShowMapPicker(false);
+  const calculateTieredRate = (dist: number, tiers: any[]) => {
+    if (!tiers || tiers.length === 0) return 2.0;
+    const match = tiers.find(t => dist >= t.from && dist <= t.to);
+    if (match) return match.price;
+    const sorted = [...tiers].sort((a, b) => b.to - a.to);
+    return sorted[0]?.price || 2.0;
   };
-
-  useEffect(() => {
-    if (defaultAddress && !selectedAddress) {
-      setSelectedAddress(defaultAddress);
-    }
-  }, [defaultAddress]);
-
-  const [systemSettings, setSystemSettings] = useState<any>(null);
 
   useEffect(() => {
     const fetchSettings = async () => {
       try {
         const sDoc = await getDoc(doc(db, 'delivery_settings', 'settings'));
-        if (sDoc.exists()) {
-          setSystemSettings(sDoc.data());
-        }
-      } catch (err) {
-        console.error("Error fetching system delivery settings:", err);
-      }
+        if (sDoc.exists()) setSystemSettings(sDoc.data());
+      } catch (err) { console.error(err); }
     };
     fetchSettings();
   }, []);
 
   useEffect(() => {
+    if (defaultAddress && !selectedAddress) setSelectedAddress(defaultAddress);
+  }, [defaultAddress]);
+
+  useEffect(() => {
     if (isWaiter && items.length > 0 && !tableNumber) {
       const firstItemTable = items[0].table;
-      if (firstItemTable) {
-        setTableNumber(firstItemTable);
-      }
+      if (firstItemTable) setTableNumber(firstItemTable);
     }
   }, [isWaiter, items, tableNumber]);
 
@@ -151,26 +112,14 @@ export default function Cart() {
           if (rDoc.exists()) {
             const data = rDoc.data();
             setRestaurantData(data);
-
             if (selectedAddress && data.location?.coords) {
-              const d = calculateDistance(
-                selectedAddress.lat,
-                selectedAddress.lng,
-                data.location.coords.lat,
-                data.location.coords.lng
-              );
+              const d = calculateDistance(selectedAddress.lat, selectedAddress.lng, data.location.coords.lat, data.location.coords.lng);
               setDistance(d);
             }
           }
-          
           const rewSnap = await getDocs(query(collection(db, 'restaurants', items[0].restaurantId, 'rewards'), where('isActive', '==', true)));
           setRestaurantRewards(rewSnap.docs.map(d => ({ id: d.id, ...d.data() })));
-          
-        } catch (err) {
-          console.error("Error fetching restaurant for distance:", err);
-        } finally {
-          setLoadingDistance(false);
-        }
+        } catch (err) { console.error(err); } finally { setLoadingDistance(false); }
       }
     };
     fetchRest();
@@ -178,14 +127,9 @@ export default function Cart() {
 
   const calculateDeliveryFeeInfo = () => {
     if (!distance) return { clientFee: 2.00, driverPayout: 1.50, shift: 'day' };
-
-    // 1. Restaurant's own delivery logic (Overrides system if enabled)
-    if (restaurantData?.ownDelivery && restaurantData?.deliveryRates && restaurantData.deliveryRates.length > 0) {
-      const matchingRate = restaurantData.deliveryRates.find(
-        (rate: any) => distance >= rate.minKm && distance <= rate.maxKm
-      );
+    if (restaurantData?.ownDelivery && restaurantData?.deliveryRates?.length > 0) {
+      const matchingRate = restaurantData.deliveryRates.find((rate: any) => distance >= rate.minKm && distance <= rate.maxKm);
       if (matchingRate) return { clientFee: matchingRate.price, driverPayout: matchingRate.price * 0.8, shift: 'own' };
-
       const maxRange = Math.max(...restaurantData.deliveryRates.map((r: any) => r.maxKm));
       if (distance > maxRange) {
         const lastRate = restaurantData.deliveryRates.sort((a: any, b: any) => b.maxKm - a.maxKm)[0];
@@ -193,831 +137,176 @@ export default function Cart() {
         return { clientFee: fee, driverPayout: fee * 0.8, shift: 'own' };
       }
     }
-
-    // 2. Multi-Shift System Delivery (Standard)
     if (systemSettings) {
       const now = new Date();
       const currentTimeStr = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
-
-      // Default to day shift if something fails
-      let activeShift: 'day' | 'night' = 'day';
-      if (systemSettings.dayShift && systemSettings.nightShift) {
-        const isDay = isTimeInRange(currentTimeStr, systemSettings.dayShift.start, systemSettings.dayShift.end);
-        activeShift = isDay ? 'day' : 'night';
-      }
-
+      let activeShift: 'day' | 'night' = isTimeInRange(currentTimeStr, systemSettings.dayShift?.start || '08:00', systemSettings.dayShift?.end || '20:00') ? 'day' : 'night';
       const shiftConfig = activeShift === 'day' ? systemSettings.dayShift : systemSettings.nightShift;
-
       if (shiftConfig) {
-        const clientFee = calculateTieredRate(distance, shiftConfig.clientRates);
-        const driverPayout = calculateTieredRate(distance, shiftConfig.driverRates);
-        return { clientFee, driverPayout, shift: activeShift };
+        return { clientFee: calculateTieredRate(distance, shiftConfig.clientRates), driverPayout: calculateTieredRate(distance, shiftConfig.driverRates), shift: activeShift };
       }
     }
-
-    // Fallback default
-    return {
-      clientFee: Math.max(1, 1 + distance * 0.5),
-      driverPayout: Math.max(0.8, 0.8 + distance * 0.3),
-      shift: 'unknown'
-    };
+    return { clientFee: Math.max(1, 1 + distance * 0.5), driverPayout: Math.max(0.8, 0.8 + distance * 0.3), shift: 'unknown' };
   };
 
   const feeInfo = calculateDeliveryFeeInfo();
   const deliveryFee = isWaiter ? 0 : feeInfo.clientFee;
   const driverPayout = isWaiter ? 0 : feeInfo.driverPayout;
   const currentShift = feeInfo.shift;
-
   const finalTotal = cartSubtotalUSD + deliveryFee;
 
   const handleCheckout = async () => {
     if (items.length === 0) return;
-
-    if (!isWaiter && !user) {
-      if (!guestName || !guestPhone || !guestCedula) {
-        setShowGuestModal(true);
-        return;
-      }
-    }
-
-    if (!isWaiter && user && (!userData?.phone || !userData?.cedula)) {
-      alert("Debes completar tu perfil (Celular y Cédula) en la sección de tu cuenta antes de hacer un pedido.");
-      navigate('/profile');
-      return;
-    }
+    if (!isWaiter && !user && (!guestName || !guestPhone || !guestCedula)) { setShowGuestModal(true); return; }
+    if (!isWaiter && user && (!userData?.phone || !userData?.cedula)) { alert("Completa tu perfil primero."); navigate('/profile'); return; }
 
     setIsCheckingOut(true);
-    setError(null);
-
     try {
-      // 1. Fetch restaurant data (specifically WhatsApp)
       const restaurantId = items[0].restaurantId;
       const restaurantDoc = await getDoc(doc(db, 'restaurants', restaurantId));
-      const restaurantData = restaurantDoc.exists() ? restaurantDoc.data() : null;
+      const rData = restaurantDoc.exists() ? restaurantDoc.data() : null;
+      if (!isWaiter && !rData?.whatsapp) throw new Error("No WhatsApp config");
 
-      if (!isWaiter && !restaurantData?.whatsapp) {
-        throw new Error("El restaurante no tiene un número de WhatsApp configurado.");
-      }
-
-      // Utilizar la dirección completa y referencia si es delivery, sino 'Recoger en local'
-      let addressStr = "Recoger en local";
-      if (isWaiter) {
-          addressStr = `Mesa: ${tableNumber}`;
-      } else if (selectedAddress) {
-          const namePart = selectedAddress.name || selectedAddress.address || '';
-          const refPart = selectedAddress.reference ? `Ref: ${selectedAddress.reference}` : '';
-          addressStr = [namePart, refPart].filter(Boolean).join(' - ');
-          if (!addressStr.trim()) addressStr = "Dirección no especificada";
-      }
-
-      const address = addressStr;
+      let addressStr = isWaiter ? `Mesa: ${tableNumber}` : (selectedAddress ? `${selectedAddress.name} - ${selectedAddress.reference}` : "Recoger en local");
 
       const orderData = {
         userId: isWaiter ? waiterData.id : (user?.uid || 'guest_' + Date.now()),
         userName: isWaiter ? (customerName || `Cliente Mesa ${tableNumber}`) : (user?.displayName || guestName || 'Cliente Invitado'),
-        userPhone: isWaiter ? '' : (userData?.phone || guestPhone || 'Sin número'),
+        userPhone: isWaiter ? '' : (userData?.phone || guestPhone),
         userEmail: isWaiter ? waiterData.email : (user?.email || 'N/A'),
-        restaurantId: restaurantId,
-        restaurantName: restaurantData?.name || 'Restaurante Expreso',
-        restaurantCity: restaurantData?.location?.city || '',
-        restaurantCoords: restaurantData?.location?.coords || null,
+        restaurantId,
+        restaurantName: rData?.name || 'DeliExpress Restaurant',
+        restaurantCity: rData?.location?.city || '',
         source: isWaiter ? 'waiter' : 'client',
         waiterId: isWaiter ? waiterData.id : null,
-        waiterName: isWaiter ? waiterData.name : null,
         table: isWaiter ? tableNumber : null,
-        items: items.map(item => ({
-          id: item.id || '',
-          name: item.name || '',
-          price: item.price || 0,
-          pointsPrice: item.pointsPrice || 0,
-          paidWithPoints: !!pointsPaymentConfig[item.id],
-          quantity: item.quantity || 1,
-          image: item.image || null,
-          category: item.category || null,
-          printerId: item.printerId || null,
-          consultPrice: !!item.consultPrice
-        })),
-        subtotal: cartSubtotalUSD,
-        deliveryFee: deliveryFee,
-        driverPayout: driverPayout,
-        deliveryShift: currentShift,
-        distance: distance || 0,
-        total: finalTotal,
-        status: isWaiter ? 'preparing' : 'pending',
-        paymentStatus: isWaiter ? 'pending' : (paymentStatus || 'pending'),
-        deliveryAddress: address,
-        userCoordinates: (!isWaiter && selectedAddress?.lat) ? { lat: selectedAddress.lat, lng: selectedAddress.lng } : null,
-        addressReference: isWaiter ? `Atendido por: ${waiterData.name}` : (selectedAddress?.reference || ''),
-        orderNote: (orderNote || '').trim(),
-        createdAt: serverTimestamp()
+        items: items.map(item => ({ ...item, paidWithPoints: !!pointsPaymentConfig[item.id] })),
+        subtotal: cartSubtotalUSD, deliveryFee, driverPayout, deliveryShift: currentShift, distance: distance || 0,
+        total: finalTotal, status: isWaiter ? 'preparing' : 'pending', paymentStatus: isWaiter ? 'pending' : 'pending',
+        deliveryAddress: addressStr, createdAt: serverTimestamp(), orderNote: orderNote.trim()
       };
 
-      // 2. Save to Firestore
       const docRef = await addDoc(collection(db, 'orders'), orderData);
       setOrderId(docRef.id);
 
-      if (isWaiter) {
-        clearCart();
-        setCheckoutSuccess(true);
-        setPurchaseConfirmed(true);
-        return;
-      }
+      if (isWaiter) { clearCart(); setCheckoutSuccess(true); setPurchaseConfirmed(true); return; }
 
-      let totalPointsToDeduct = totalCartPointsUsed;
-      if (selectedReward) totalPointsToDeduct += selectedReward.pointsCost;
-
-      if (totalPointsToDeduct > 0 && !isWaiter && user) {
-        await updateDoc(doc(db, 'users', user.uid), {
-          [`restaurantPoints.${restaurantId}`]: increment(-totalPointsToDeduct)
-        });
-      }
-
-      // 3. Generate WhatsApp Message
-      let itemsList = items.map(item => {
-        if (item.consultPrice || item.price === 0 || !item.price) return `• ${item.quantity}x ${item.name} (Precio a consultar)`;
-        if (pointsPaymentConfig[item.id]) return `• ${item.quantity}x ${item.name} (-${item.pointsPrice! * item.quantity} pts)`;
-        return `• ${item.quantity}x ${item.name} ($${(item.price * item.quantity).toFixed(2)})`;
-      }).join('\n');
-
-      if (selectedReward) {
-        itemsList += `\n\n🎁 *RECOMPENSA CANJEADA:*\n• 1x ${selectedReward.title} (-${selectedReward.pointsCost} puntos canjeados del local)`;
-      }
-
-      let locationText = `*Dirección:* ${orderData.deliveryAddress}`;
-      if (orderData.addressReference) {
-        locationText += `\n*Referencia:* ${orderData.addressReference}`;
-      }
-      if (orderData.userCoordinates) {
-        locationText += `\n*Ubicación GPS:* https://www.google.com/maps?q=${orderData.userCoordinates.lat},${orderData.userCoordinates.lng}`;
-      }
-
-      const noteText = orderData.orderNote ? `*Notas del Pedido:*\n_${orderData.orderNote}_` : '';
-
-      let rawMessage = systemSettings?.whatsappMessageTemplate;
-      if (!rawMessage) {
-        rawMessage = `👋 ¡Hola *{RestaurantName}*!\nSoy *{UserName}* y vengo desde la app con DeliExpress 🚀. Mi identificación es *{Cedula}* y requiero el siguiente pedido:\n\n🛒 *Detalles del Pedido:*\n{OrderItems}\n\n🛵 *Delivery:* \${DeliveryFee}\n💰 *Total:* \${Total}\n\n📍 Adjunto mi ubicación para la entrega y mi número de contacto por si requieren llamar.\n\n🗺️ *Ubicación:* {LocationText}\n📱 *Mi número:* {UserPhone}\n\n{OrderNotes}\n\n_Enviado desde DeliExpress App_`;
-      }
-
-      const formattedMessage = rawMessage
-        .replace(/{OrderId}/g, docRef.id.slice(-6).toUpperCase())
-        .replace(/{RestaurantName}/g, orderData.restaurantName)
-        .replace(/{UserName}/g, orderData.userName)
-        .replace(/{Cedula}/g, userData?.cedula || guestCedula || 'N/A')
-        .replace(/{UserPhone}/g, orderData.userPhone)
-        .replace(/{OrderItems}/g, itemsList)
-        .replace(/{DeliveryFee}/g, orderData.deliveryFee.toFixed(2))
-        .replace(/{Total}/g, `${orderData.total.toFixed(2)}${items.some(i => i.consultPrice) ? ' + consulta' : ''}`)
-        .replace(/{LocationText}/g, locationText)
-        .replace(/{OrderNotes}/g, noteText);
-
-      const message = encodeURIComponent(formattedMessage);
-      const whatsappNumber = restaurantData.whatsapp.replace(/\D/g, '');
-      const finalWhatsappLink = `https://wa.me/${whatsappNumber}?text=${message}`;
-      
-      setWhatsappLink(finalWhatsappLink);
-
-      // Attempt to auto-open (might be blocked by browser)
-      try {
-        window.location.href = finalWhatsappLink;
-      } catch (e) {
-        console.warn("Auto-redirect failed", e);
-      }
-
+      let itemsList = items.map(item => `• ${item.quantity}x ${item.name} ($${(item.price * item.quantity).toFixed(2)})`).join('\n');
+      const formattedMessage = `👋 ¡Hola ${rData?.name}!\nSoy ${orderData.userName}. Mi identificación es ${userData?.cedula || guestCedula}\n\n🛒 Pedido:\n${itemsList}\n\n💰 Total: $${finalTotal.toFixed(2)}\n📍 Ubicación: ${addressStr}`;
+      const whatsappNumber = rData.whatsapp.replace(/\D/g, '');
+      const link = `https://wa.me/${whatsappNumber}?text=${encodeURIComponent(formattedMessage)}`;
+      setWhatsappLink(link);
+      window.location.href = link;
       clearCart();
       setCheckoutSuccess(true);
-    } catch (err: any) {
-      console.error("Error confirming order:", err);
-      setError(err.message || "Hubo un error al procesar tu orden. Inténtalo de nuevo.");
-    } finally {
-      setIsCheckingOut(false);
-    }
-  };
-
-  const handleConfirmPurchase = async () => {
-    if (!orderId) return;
-    try {
-      await updateDoc(doc(db, 'orders', orderId), { status: 'confirmed' });
-      setPurchaseConfirmed(true);
-    } catch (e) {
-      console.error(e);
-    }
-  };
-
-  const handleCancelPurchase = async () => {
-    if (!orderId) return;
-    try {
-      await updateDoc(doc(db, 'orders', orderId), { status: 'cancelled' });
-      setPurchaseConfirmed(false);
-    } catch (e) {
-      console.error(e);
-    }
+    } catch (err: any) { setError(err.message); } finally { setIsCheckingOut(false); }
   };
 
   if (checkoutSuccess) {
-    if (purchaseConfirmed === null) {
-      return (
-        <div className="flex flex-col items-center justify-center min-h-screen px-6 text-center bg-white animate-in fade-in zoom-in duration-500">
-          <div className="w-24 h-24 bg-green-100 rounded-full flex items-center justify-center mb-6">
-            <svg className="w-12 h-12 text-green-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z" />
-            </svg>
-          </div>
-          <h1 className="text-3xl font-black text-slate-900 mb-2">Paso Final 🚀</h1>
-          <p className="text-slate-500 mb-8 max-w-[280px]">
-             {isWaiter 
-              ? 'La comanda está lista para ser enviada a la cocina.' 
-              : 'Haz clic en el botón de abajo para enviar tu pedido por WhatsApp directamente al restaurante.'}
-          </p>
-          <div className="w-full max-w-xs space-y-4">
-            {!isWaiter && whatsappLink && (
-              <a
-                href={whatsappLink}
-                target="_blank"
-                rel="noopener noreferrer"
-                onClick={handleConfirmPurchase}
-                className="w-full bg-[#25D366] hover:bg-[#128C7E] text-white py-4 rounded-2xl font-bold shadow-lg shadow-[#25D366]/30 transition-all flex items-center justify-center gap-2 text-lg"
-              >
-                Enviar a WhatsApp
-              </a>
-            )}
-            
-            {isWaiter && (
-              <button
-                onClick={handleConfirmPurchase}
-                className="w-full bg-primary hover:bg-orange-600 text-white py-4 rounded-2xl font-bold shadow-lg shadow-primary/30 transition-all flex items-center justify-center gap-2"
-              >
-                Confirmar Comanda
-              </button>
-            )}
-
-            {!isWaiter && (
-               <button
-                  onClick={handleConfirmPurchase}
-                  className="w-full text-slate-500 hover:text-slate-800 py-3 font-bold text-sm transition-colors"
-                >
-                  Ya envié el mensaje
-                </button>
-            )}
-
-            <button
-              onClick={handleCancelPurchase}
-              className="w-full bg-slate-100 hover:bg-slate-200 text-slate-600 py-4 rounded-2xl font-bold transition-all"
-            >
-              Cancelar pedido
-            </button>
-          </div>
-        </div>
-      );
-    }
-
     return (
-      <div className="flex flex-col items-center justify-center min-h-screen px-6 text-center bg-white animate-in fade-in zoom-in duration-500">
+      <div className="flex flex-col items-center justify-center min-h-screen px-6 text-center bg-white">
         <div className={`w-24 h-24 rounded-full flex items-center justify-center mb-6 ${purchaseConfirmed ? 'bg-green-100' : 'bg-slate-100'}`}>
-          {purchaseConfirmed ? (
-            <CheckCircle2 className="w-12 h-12 text-green-500" />
-          ) : (
-            <svg className="w-12 h-12 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10" /><line x1="15" y1="9" x2="9" y2="15" /><line x1="9" y1="9" x2="15" y2="15" /></svg>
-          )}
+          {purchaseConfirmed ? <CheckCircle2 className="w-12 h-12 text-green-500" /> : <Trash2 className="w-12 h-12 text-slate-400" />}
         </div>
-        <h1 className="text-3xl font-black text-slate-900 mb-2">
-          {purchaseConfirmed ? '¡Pedido Confirmado! 🎉' : 'Pedido Cancelado'}
-        </h1>
-        <p className="text-slate-500 mb-8 max-w-[280px]">
-          {purchaseConfirmed
-            ? (isWaiter ? 'La comanda ha sido enviada con éxito a cocina/sistema.' : 'Tu orden está siendo preparada y llegará pronto a tu puerta.')
-            : 'Tu orden no fue procesada. Puedes volver a intentarlo cuando quieras.'}
-        </p>
-
-        {!isWaiter && !user && purchaseConfirmed && (
-          <div className="bg-gradient-to-r from-orange-500 to-amber-500 p-5 rounded-2xl shadow-lg mb-8 max-w-sm w-full mx-auto relative overflow-hidden">
-            <div className="absolute -top-4 -right-4 w-20 h-20 bg-white/20 rounded-full blur-xl animate-pulse"></div>
-            <h3 className="text-white font-black text-xl mb-2 relative z-10">🎁 ¡No te pierdas de nada!</h3>
-            <p className="text-white/90 text-sm font-medium mb-4 relative z-10">
-              Regístrate ahora, gana increíbles premios, acumula puntos y accede a beneficios exclusivos en cada compra.
-            </p>
-            <Link to="/profile" className="inline-block bg-white text-orange-600 font-bold px-6 py-2 rounded-xl shadow-md hover:scale-105 active:scale-95 transition-transform relative z-10">
-              Registrarme y Ganar
-            </Link>
-          </div>
-        )}
-
-        <Link to={isWaiter ? `/restaurant/${waiterRestaurantId || ''}` : "/"} className="w-full max-w-xs bg-primary hover:bg-orange-600 text-white py-4 rounded-2xl font-bold shadow-lg shadow-orange-500/30 transition-all flex items-center justify-center gap-2">
+        <h1 className="text-2xl font-black mb-2">{purchaseConfirmed ? '¡Pedido Confirmado! 🎉' : 'Pedido Cancelado'}</h1>
+        <p className="text-slate-500 mb-8">{purchaseConfirmed ? 'Tu orden está en proceso.' : 'Tu orden fue cancelada.'}</p>
+        <Link to={isWaiter ? `/menu` : "/"} className="w-full max-w-xs bg-primary text-white py-4 rounded-2xl font-bold shadow-lg">
           {isWaiter ? 'Volver al Menú' : 'Ir al inicio'}
         </Link>
-        {!isWaiter && user && (
-          <Link to="/profile" className="mt-4 text-slate-500 font-bold hover:text-primary transition-colors">
-            Ver mis pedidos
-          </Link>
-        )}
       </div>
     );
   }
 
-  // Helper component for Clock icon since it was missing in the import
-  function Clock(props: any) {
-    return (
-      <svg
-        {...props}
-        xmlns="http://www.w3.org/2000/svg"
-        width="24"
-        height="24"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      >
-        <circle cx="12" cy="12" r="10" />
-        <polyline points="12 6 12 12 16 14" />
-      </svg>
-    );
-  }
-
-  return (
-    <div className="relative flex h-full min-h-screen w-full flex-col overflow-x-hidden bg-background-light group/design-root">
-      {/* Background Pattern */}
-      <div className="absolute inset-0 food-pattern pointer-events-none z-0"></div>
-
-      {/* Sticky Header */}
-      <div className="sticky top-0 z-20 bg-surface-light/80 backdrop-blur-md px-4 pb-2 pt-4 flex items-center justify-between border-b border-neutral-light">
-        <button
-          onClick={() => navigate(-1)}
-          className="text-slate-900 flex size-12 shrink-0 items-center justify-center rounded-full hover:bg-neutral-light transition-colors cursor-pointer"
-        >
-          <ArrowLeft className="w-6 h-6" />
-        </button>
-        <h2 className="text-slate-900 text-lg font-bold leading-tight tracking-[-0.015em] flex-1 text-center pr-12">
-          Mi Carrito
-        </h2>
+  const content = (
+    <div className="relative flex h-full min-h-screen w-full flex-col bg-background-light overflow-x-hidden">
+      <div className="sticky top-0 z-20 bg-white/80 backdrop-blur-md px-4 py-4 flex items-center border-b border-slate-100">
+        <button onClick={() => navigate(-1)} className="p-2"><ArrowLeft /></button>
+        <h2 className="flex-1 text-center font-bold">{isWaiter ? 'Comanda' : 'Mi Carrito'}</h2>
       </div>
 
-      {/* Progress Steps */}
-      <div className="relative z-10 px-6 py-6 w-full">
-        <div className="flex items-center justify-between relative">
-          {/* Line */}
-          <div className="absolute left-0 top-1/2 w-full h-1 bg-neutral-light -z-10 rounded-full"></div>
-
-          {/* Step 1: Cart */}
-          <div className="flex flex-col items-center gap-2">
-            <div className={`size-8 rounded-full flex items-center justify-center ring-4 ring-background-light ${currentStep >= 1 ? 'bg-primary text-white' : 'bg-neutral-light text-slate-400'}`}>
-              <ShoppingCart className="w-4 h-4" />
-            </div>
-            <span className={`text-xs font-semibold ${currentStep >= 1 ? 'text-primary' : 'text-slate-400'}`}>Carrito</span>
-          </div>
-
-          {/* Step 2: Address */}
-          <div className="flex flex-col items-center gap-2">
-            <div className={`size-8 rounded-full flex items-center justify-center ring-4 ring-background-light ${currentStep >= 2 ? 'bg-primary text-white' : 'bg-neutral-light text-slate-400'}`}>
-              <MapPin className="w-4 h-4" />
-            </div>
-            <span className={`text-xs ${currentStep >= 2 ? 'font-semibold text-primary' : 'font-medium text-slate-400'}`}>{isWaiter ? 'Mesa' : 'Dirección'}</span>
-          </div>
-
-          {/* Step 3: Payment */}
-          <div className="flex flex-col items-center gap-2">
-            <div className={`size-8 rounded-full flex items-center justify-center ring-4 ring-background-light ${currentStep >= 3 ? 'bg-primary text-white' : 'bg-neutral-light text-slate-400'}`}>
-              <CreditCard className="w-4 h-4" />
-            </div>
-            <span className={`text-xs ${currentStep >= 3 ? 'font-semibold text-primary' : 'font-medium text-slate-400'}`}>Pago</span>
-          </div>
-        </div>
-      </div>
-
-      {/* Scrollable Content */}
-      <div className="flex-1 overflow-y-auto px-4 pb-6 z-10 space-y-6">
-
+      <div className="flex-1 overflow-y-auto px-4 pb-24 space-y-6 pt-4">
         {items.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-12 text-center">
-            <div className="w-24 h-24 bg-slate-100 rounded-full flex items-center justify-center mb-4">
-              <ShoppingCart className="w-10 h-10 text-slate-300" />
-            </div>
-            <h3 className="text-xl font-bold text-slate-900 mb-2">Tu carrito está vacío</h3>
-            <p className="text-slate-500 mb-6">Aún no has agregado ningún delicioso producto.</p>
-            <Link to="/" className="px-6 py-3 bg-primary text-white font-bold rounded-2xl shadow-lg shadow-primary/30">
-              Ir a explorar
-            </Link>
+          <div className="text-center py-20">
+            <ShoppingCart className="w-16 h-16 mx-auto text-slate-200 mb-4" />
+            <p className="text-slate-500">Carrito vacío</p>
           </div>
         ) : (
           <>
             {currentStep === 1 && (
-              <>
-                <div className="space-y-4">
-                  <div className="flex justify-between items-end px-1">
-                    <h3 className="text-lg font-bold text-slate-900">Tu Pedido</h3>
-                    <button onClick={clearCart} className="text-xs text-slate-400 font-bold hover:text-red-500">Vaciar carrito</button>
-                  </div>
-
-                  {items.map((item) => (
-                    <div key={item.id} className="flex items-center gap-4 bg-surface-light p-3 rounded-xl shadow-sm border border-neutral-light/50 hover:border-primary/30 transition-colors">
-                      <div className="shrink-0 relative">
-                        <div
-                          className="bg-center bg-no-repeat bg-cover rounded-lg size-20 shadow-inner"
-                          style={{ backgroundImage: `url("${item.image}?q=80&w=200&auto=format&fit=crop")` }}
-                        ></div>
-                      </div>
-                      <div className="flex flex-col flex-1 gap-1">
-                        <div className="flex justify-between items-start">
-                          <p className="text-slate-900 text-base font-bold leading-tight line-clamp-1">{item.name}</p>
-                          <button onClick={() => removeItem(item.id)} className="text-slate-400 hover:text-red-500 transition-colors">
-                            <Trash2 className="w-5 h-5" />
-                          </button>
-                        </div>
-                        <div className="flex items-center justify-between mt-3">
-                          {item.consultPrice || item.price === 0 || !item.price ? (
-                            <p className="font-bold text-orange-600 text-xs">Precio a consultar</p>
-                          ) : (
-                            <p className="text-primary font-bold text-base">${item.price.toFixed(2)}</p>
-                          )}
-                          <div className="flex items-center gap-3 bg-neutral-light rounded-full px-2 py-1">
-                            <button
-                              onClick={() => updateQuantity(item.id, item.quantity - 1)}
-                              className="size-6 flex items-center justify-center rounded-full bg-surface-light text-slate-900 shadow-sm hover:scale-110 active:scale-95 transition-transform cursor-pointer"
-                            >
-                              <Minus className="w-4 h-4" />
-                            </button>
-                            <span className="text-sm font-bold w-4 text-center">{item.quantity}</span>
-                            <button
-                              onClick={() => updateQuantity(item.id, item.quantity + 1)}
-                              className="size-6 flex items-center justify-center rounded-full bg-primary text-white shadow-sm hover:scale-110 active:scale-95 transition-transform cursor-pointer"
-                            >
-                              <Plus className="w-4 h-4" />
-                            </button>
-                          </div>
-                        </div>
-                      </div>
+              <div className="space-y-4">
+                {items.map(item => (
+                  <div key={item.id} className="flex gap-4 bg-white p-3 rounded-2xl shadow-sm border border-slate-100">
+                    <img src={item.image} className="size-16 rounded-xl object-cover" />
+                    <div className="flex-1">
+                       <p className="font-bold text-slate-900 text-sm">{item.name}</p>
+                       <p className="text-primary font-bold text-sm">${item.price.toFixed(2)}</p>
+                       <div className="flex items-center gap-3 mt-2">
+                         <button onClick={() => updateQuantity(item.id, item.quantity - 1)} className="size-6 bg-slate-100 rounded-full flex items-center justify-center">-</button>
+                         <span className="font-bold text-sm">{item.quantity}</span>
+                         <button onClick={() => updateQuantity(item.id, item.quantity + 1)} className="size-6 bg-primary text-white rounded-full flex items-center justify-center">+</button>
+                         <button onClick={() => removeItem(item.id)} className="ml-auto text-slate-300"><Trash2 className="w-4 h-4" /></button>
+                       </div>
                     </div>
-                  ))}
-                </div>
-
-                {/* Order Note */}
-                <div className="mt-4 bg-surface-light p-4 rounded-xl shadow-sm border border-neutral-light/50">
-                  <label className="text-sm font-bold text-slate-900 mb-2 block">Cuentanos como deseas tu pedido (Opcional)</label>
-                  <textarea
-                    placeholder="Ej. Hamburguesa sin cebolla, torta que diga feliz cumple..."
-                    value={orderNote}
-                    onChange={(e) => setOrderNote(e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary min-h-[80px]"
-                  />
-                </div>
-
-                {/* Summary for Step 1 */}
-                <div className="bg-surface-light p-5 rounded-2xl shadow-sm space-y-3 mt-4 border border-neutral-light/50">
-                  <div className="flex justify-between text-sm">
-                    <span className="text-slate-500">Subtotal</span>
-                    <span className="font-semibold text-slate-900">
-                      ${totalPrice.toFixed(2)}
-                      {items.some(i => i.consultPrice) && <span className="text-[10px] text-orange-500 ml-1">+ consulta</span>}
-                    </span>
                   </div>
-                </div>
-                <div className="sticky bottom-6 mt-6">
-                  <button
-                    onClick={() => setCurrentStep(2)}
-                    disabled={items.length === 0}
-                    className="w-full bg-primary hover:bg-orange-600 disabled:bg-slate-300 disabled:text-slate-500 text-white font-bold text-lg py-4 rounded-2xl shadow-lg shadow-orange-500/30 transition-all transform active:scale-95 flex items-center justify-center gap-2 group"
-                  >
-                    Confirmar Pedido
-                    <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
-                  </button>
-                  {!user && (
-                    <p className="text-xs text-center text-slate-500 font-medium mt-3">Te pediremos iniciar sesión antes de confirmar ubicación</p>
-                  )}
-                </div>
+                ))}
+                <textarea 
+                  placeholder="Notas..." 
+                  value={orderNote} 
+                  onChange={e => setOrderNote(e.target.value)}
+                  className="w-full bg-slate-50 border-none rounded-2xl p-4 text-sm min-h-[100px]"
+                />
+                <button onClick={() => setCurrentStep(2)} className="w-full bg-primary text-white py-4 rounded-2xl font-bold">Siguiente</button>
               </>
             )}
-
             {currentStep === 2 && (
-              <>
-                <button
-                  onClick={() => setCurrentStep(1)}
-                  className="text-primary text-sm font-bold mb-4 flex items-center gap-1 hover:underline"
-                >
-                  <ArrowLeft className="w-4 h-4" /> Volver a mi pedido
-                </button>
+              <div className="space-y-6">
                 {isWaiter ? (
-                  <div className="bg-surface-light p-5 rounded-2xl shadow-sm border border-neutral-light/50 space-y-4">
-                    <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider opacity-70 mb-2">Datos de la Orden</h3>
-                    <div>
-                      <label className="text-xs font-bold text-slate-500 mb-1 block">Número de Mesa / Para llevar</label>
-                      <input
-                        type="text"
-                        placeholder="Ej. Mesa 5"
-                        value={tableNumber}
-                        onChange={(e) => setTableNumber(e.target.value)}
-                        className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-primary"
-                      />
-                    </div>
-                    <div>
-                      <label className="text-xs font-bold text-slate-500 mb-1 block">Nombre del Cliente (Opcional)</label>
-                      <input
-                        type="text"
-                        placeholder="Ej. Juan Pérez"
-                        value={customerName}
-                        onChange={(e) => setCustomerName(e.target.value)}
-                        className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-primary"
-                      />
-                    </div>
+                  <div className="space-y-4">
+                    <input placeholder="Mesa" value={tableNumber} onChange={e => setTableNumber(e.target.value)} className="w-full p-4 bg-white rounded-2xl border border-slate-100" />
+                    <input placeholder="Cliente" value={customerName} onChange={e => setCustomerName(e.target.value)} className="w-full p-4 bg-white rounded-2xl border border-slate-100" />
                   </div>
                 ) : (
-                  <div className="bg-surface-light p-4 rounded-xl shadow-sm border border-neutral-light/50">
-                    <div className="flex justify-between items-center mb-3">
-                      <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider opacity-70">Entrega en</h3>
-                      {userData?.addresses && userData.addresses.length > 0 ? (
-                        <button onClick={() => setShowAddressSelector(true)} className="text-primary text-xs font-bold hover:underline">Cambiar</button>
-                      ) : (
-                        <Link to="/profile" className="text-primary text-xs font-bold hover:underline">Cambiar</Link>
-                      )}
-                    </div>
-                    <div className="flex gap-4 items-start">
-                      <div className="relative w-20 h-20 shrink-0 rounded-lg overflow-hidden bg-neutral-light">
-                        <img
-                          src="https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/otro.png?alt=media"
-                          alt="DeliExpress Logo"
-                          className="w-full h-full object-contain p-2"
-                        />
-                      </div>
-                      <div className="flex flex-col justify-center min-h-[5rem]">
-                        <p className="text-slate-900 text-sm font-bold flex items-center gap-1">
-                          {selectedAddress?.name || "Mi Ubicación"}
-                          {loadingDistance && <span className="w-2 h-2 rounded-full bg-primary animate-pulse ml-1"></span>}
-                        </p>
-                        <p className="text-slate-500 text-xs font-medium leading-relaxed mt-0.5 line-clamp-2">
-                          {selectedAddress?.reference || "Agrega tu dirección en el perfil"}
-                        </p>
-                        <div className="flex items-center gap-1 mt-2 text-primary">
-                          <Clock className="w-3.5 h-3.5 fill-primary/20" />
-                          <span className="text-xs font-bold">
-                            {distance ? `${Math.round(15 + distance * 5)} - ${Math.round(25 + distance * 5)} min` : "15 - 25 min"}
-                          </span>
-                          {distance && (
-                            <span className="text-[10px] text-slate-400 font-bold ml-2">({formatDistance(distance)})</span>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
+                  <p>Dirección: {selectedAddress?.name || 'No seleccionada'}</p>
                 )}
-
-                <div className="sticky bottom-6 mt-6">
-                  <button
-                    onClick={() => {
-                      setCurrentStep(3);
-                    }}
-                    disabled={isWaiter ? !tableNumber : !selectedAddress}
-                    className="w-full bg-primary hover:bg-orange-600 disabled:bg-slate-300 disabled:text-slate-500 text-white font-bold text-lg py-4 rounded-2xl shadow-lg shadow-orange-500/30 transition-all transform active:scale-95 flex items-center justify-center gap-2 group"
-                  >
-                    {isWaiter ? 'Continuar al Pago' : 'Confirmar Ubicación'}
-                    <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
-                  </button>
-                </div>
-              </>
+                <button onClick={() => setCurrentStep(3)} className="w-full bg-primary text-white py-4 rounded-2xl font-bold">Confirmar Datos</button>
+              </div>
             )}
-
             {currentStep === 3 && (
-              <>
-                <button
-                  onClick={() => setCurrentStep(2)}
-                  className="text-primary text-sm font-bold mb-4 flex items-center gap-1 hover:underline"
-                >
-                  <ArrowLeft className="w-4 h-4" /> Volver a ubicación
-                </button>
-
-                {/* Rewards Selection */}
-                {!isWaiter && user && (restaurantRewards.length > 0 || items.some(i => i.pointsPrice && i.pointsPrice > 0)) && (
-                  <div className="bg-orange-50 p-5 rounded-2xl shadow-sm border border-orange-100 mt-4">
-                    <div className="flex items-center gap-2 mb-3">
-                      <Gift className="w-5 h-5 text-orange-500" />
-                      <h3 className="font-black text-orange-900">Canjear Puntos DeliExpress</h3>
-                    </div>
-                    
-                    <p className="text-sm font-medium text-orange-800 mb-4">
-                      Tienes <span className="font-black">{userRestaurantPoints}</span> puntos acumulados en este local.
-                    </p>
-
-                    <div className="flex gap-3 overflow-x-auto pb-2 custom-scrollbar">
-                      {items.filter(i => i.pointsPrice && i.pointsPrice > 0).map(item => {
-                        const cost = (item.pointsPrice || 0) * item.quantity;
-                        const isSelected = pointsPaymentConfig[item.id];
-                        const availablePoints = userRestaurantPoints - totalPointsUsed + (isSelected ? cost : 0);
-                        const canRedeem = availablePoints >= cost;
-
-                        return (
-                          <button
-                            key={'cart-'+item.id}
-                            disabled={!canRedeem && !isSelected}
-                            onClick={() => setPointsPaymentConfig(prev => ({ ...prev, [item.id]: !prev[item.id] }))}
-                            className={`min-w-[140px] max-w-[180px] p-3 rounded-xl border-2 text-left transition-all relative overflow-hidden flex-shrink-0 ${isSelected ? 'border-orange-500 bg-orange-500 shadow-lg shadow-orange-500/20 text-white' : canRedeem ? 'border-orange-200 bg-white hover:border-orange-400' : 'border-slate-100 bg-slate-50 opacity-50 cursor-not-allowed'}`}
-                          >
-                            <p className={`text-xs font-black line-clamp-2 ${isSelected ? 'text-white' : 'text-slate-800'}`}>Pagar {item.name} con puntos</p>
-                            <div className={`mt-2 inline-flex items-center gap-1 text-[10px] font-black uppercase px-2 py-0.5 rounded-md ${isSelected ? 'bg-white/20 text-white' : 'bg-orange-100 text-orange-600'}`}>
-                              {cost} pts
-                            </div>
-                            {isSelected && (
-                              <div className="absolute top-2 right-2">
-                                <CheckCircle2 className="w-4 h-4 text-white" />
-                              </div>
-                            )}
-                          </button>
-                        );
-                      })}
-
-                      {restaurantRewards.map(reward => {
-                        const isSelected = selectedReward?.id === reward.id;
-                        const availablePoints = userRestaurantPoints - totalPointsUsed + (isSelected ? reward.pointsCost : 0);
-                        const canRedeem = availablePoints >= reward.pointsCost;
-
-                        return (
-                          <button
-                            key={'reward-'+reward.id}
-                            disabled={!canRedeem && !isSelected}
-                            onClick={() => setSelectedReward(isSelected ? null : reward)}
-                            className={`min-w-[140px] max-w-[180px] p-3 rounded-xl border-2 text-left transition-all relative overflow-hidden flex-shrink-0 ${isSelected ? 'border-orange-500 bg-orange-500 shadow-lg shadow-orange-500/20 text-white' : canRedeem ? 'border-orange-200 bg-white hover:border-orange-400' : 'border-slate-100 bg-slate-50 opacity-50 cursor-not-allowed'}`}
-                          >
-                            <p className={`text-xs font-black line-clamp-2 ${isSelected ? 'text-white' : 'text-slate-800'}`}>{reward.title}</p>
-                            <div className={`mt-2 inline-flex items-center gap-1 text-[10px] font-black uppercase px-2 py-0.5 rounded-md ${isSelected ? 'bg-white/20 text-white' : 'bg-orange-100 text-orange-600'}`}>
-                              {reward.pointsCost} pts
-                            </div>
-                            {isSelected && (
-                              <div className="absolute top-2 right-2">
-                                <CheckCircle2 className="w-4 h-4 text-white" />
-                              </div>
-                            )}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                )}
-
-                <div className="bg-surface-light p-5 rounded-2xl shadow-sm space-y-3 mt-4 border border-neutral-light/50">
-                  <div className="flex justify-between text-sm">
-                    <span className="text-slate-500">Subtotal</span>
-                    <div className="flex items-center gap-2">
-                      {totalPointsUsed > 0 && <span className="line-through text-slate-400 text-xs">${totalPrice.toFixed(2)}</span>}
-                      <span className="font-semibold text-slate-900">${cartSubtotalUSD.toFixed(2)}</span>
-                    </div>
-                  </div>
-                  {!isWaiter && (
-                    <div className="flex justify-between text-sm">
-                      <span className="text-slate-500">Delivery</span>
-                      <span className="font-semibold text-slate-900">${deliveryFee.toFixed(2)}</span>
-                    </div>
-                  )}
-                  <div className="h-px bg-neutral-light w-full my-2"></div>
-                  <div className="flex justify-between items-end">
-                    <span className="text-slate-900 font-bold text-lg">Total</span>
-                    <div className="flex flex-col items-end">
-                      <span className="text-2xl font-extrabold text-primary">
-                        ${finalTotal.toFixed(2)}
-                        {items.some(i => i.consultPrice) && <span className="text-[10px] text-orange-500 font-bold">+ CONSULTA</span>}
-                      </span>
-                    </div>
-                  </div>
+              <div className="space-y-6">
+                <div className="bg-white p-5 rounded-2xl shadow-sm space-y-2">
+                  <div className="flex justify-between"><span>Subtotal</span><span>${totalPrice.toFixed(2)}</span></div>
+                  {!isWaiter && <div className="flex justify-between"><span>Delivery</span><span>${deliveryFee.toFixed(2)}</span></div>}
+                  <div className="border-t pt-2 flex justify-between font-bold text-xl"><span>Total</span><span className="text-primary">${finalTotal.toFixed(2)}</span></div>
                 </div>
-
                 {isWaiter && (
-                  <div className="bg-surface-light p-4 rounded-xl shadow-sm border border-neutral-light/50 space-y-3 mt-4">
-                    <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider opacity-70 mb-2">Estado de Pago</h3>
-                    <div className="flex gap-2">
-                      <button onClick={() => setPaymentStatus('pending')} className={`flex-1 py-3 rounded-xl font-bold border-2 transition-all ${paymentStatus === 'pending' ? 'border-amber-500 bg-amber-50 text-amber-700' : 'border-slate-100 bg-slate-50 text-slate-400'}`}>Por Pagar</button>
-                      <button onClick={() => setPaymentStatus('paid')} className={`flex-1 py-3 rounded-xl font-bold border-2 transition-all ${paymentStatus === 'paid' ? 'border-emerald-500 bg-emerald-50 text-emerald-700' : 'border-slate-100 bg-slate-50 text-slate-400'}`}>Pagado</button>
-                    </div>
+                  <div className="flex gap-2">
+                    <button onClick={() => setPaymentStatus('pending')} className={`flex-1 py-3 rounded-xl font-bold border-2 ${paymentStatus === 'pending' ? 'border-amber-500 bg-amber-50' : 'border-slate-100'}`}>Por Pagar</button>
+                    <button onClick={() => setPaymentStatus('paid')} className={`flex-1 py-3 rounded-xl font-bold border-2 ${paymentStatus === 'paid' ? 'border-emerald-500 bg-emerald-50' : 'border-slate-100'}`}>Pagado</button>
                   </div>
                 )}
-
-                {error && (
-                  <p className="text-red-500 text-sm font-bold text-center mt-4 bg-red-50 p-3 rounded-lg">{error}</p>
-                )}
-
-                <div className="sticky bottom-6 mt-6">
-                  <button
-                    onClick={handleCheckout}
-                    disabled={isCheckingOut || items.length === 0}
-                    className="w-full bg-primary hover:bg-orange-600 disabled:bg-slate-300 disabled:text-slate-500 text-white font-bold text-lg py-4 rounded-2xl shadow-lg shadow-orange-500/30 transition-all transform active:scale-95 flex items-center justify-center gap-2 group"
-                  >
-                    {isCheckingOut ? (
-                      <div className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                    ) : (
-                      <>
-                        {isWaiter ? 'Enviar Comanda a Cocina' : 'Confirmar Pago en WhatsApp'}
-                        <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
-                      </>
-                    )}
-                  </button>
-                </div>
-              </>
+                <button onClick={handleCheckout} disabled={isCheckingOut} className="w-full bg-primary text-white py-4 rounded-2xl font-bold">
+                  {isCheckingOut ? 'Procesando...' : (isWaiter ? 'Enviar Comanda' : 'Pedir por WhatsApp')}
+                </button>
+              </div>
             )}
           </>
         )}
       </div>
 
-      {showAddressSelector && (
-        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center animate-in fade-in">
-          <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" onClick={() => setShowAddressSelector(false)}></div>
-          <div className="relative w-full sm:w-80 bg-white rounded-t-3xl sm:rounded-3xl p-6 shadow-2xl animate-in slide-in-from-bottom-10 sm:slide-in-from-bottom-0 sm:zoom-in-95">
-            <h3 className="text-xl font-bold text-slate-900 mb-4 text-center">Seleccionar Dirección</h3>
-            <div className="space-y-3 max-h-[60vh] overflow-y-auto">
-              {/* Opción de Ubicación Actual */}
-              <button
-                onClick={handleUseCurrentLocation}
-                className="w-full text-left p-4 rounded-xl border-2 cursor-pointer transition-all border-slate-200 bg-white hover:border-primary hover:bg-primary/5 flex items-center gap-3"
-              >
-                <div className="size-10 rounded-full bg-primary/10 flex items-center justify-center text-primary shrink-0">
-                  <MapPin className="w-5 h-5" />
-                </div>
-                <div>
-                  <span className="font-bold text-slate-900 block">Usar mi ubicación actual</span>
-                  <p className="text-xs font-medium text-slate-500">Activa tu GPS para encontrarte</p>
-                </div>
-              </button>
-
-              {userData?.addresses?.map((addr: any) => (
-                <div
-                  key={addr.id}
-                  onClick={() => {
-                    setSelectedAddress(addr);
-                    setShowAddressSelector(false);
-                  }}
-                  className={`p-4 rounded-xl border-2 cursor-pointer transition-all ${selectedAddress?.id === addr.id ? 'border-primary bg-primary/5' : 'border-transparent bg-slate-50 hover:bg-slate-100'
-                    }`}
-                >
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="font-bold text-slate-900">{addr.name}</span>
-                    {selectedAddress?.id === addr.id && <CheckCircle2 className="w-5 h-5 text-primary" />}
-                  </div>
-                  <p className="text-xs font-medium text-slate-500 line-clamp-2">{addr.reference}</p>
-                </div>
-              ))}
-            </div>
-            <Link to="/profile" className="block w-full text-center mt-4 text-primary font-bold text-sm bg-primary/10 py-3 rounded-xl hover:bg-primary/20 transition-colors">
-              Gestionar Direcciones
-            </Link>
-          </div>
-        </div>
-      )}
-
       {showGuestModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center animate-in fade-in">
-          <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={() => setShowGuestModal(false)}></div>
-          <div className="relative w-full max-w-sm mx-4 bg-white rounded-3xl p-6 shadow-2xl animate-in zoom-in-95">
-            <h3 className="text-xl font-black text-slate-900 mb-2 text-center">Datos del Pedido</h3>
-            <p className="text-sm text-slate-500 mb-6 text-center">Requerimos estos datos básicos para enviarle la información al restaurante</p>
-
-            <div className="space-y-4">
-              <div>
-                <label className="text-xs font-bold text-slate-500 mb-1 block">Nombre y Apellido</label>
-                <input
-                  type="text"
-                  value={guestName}
-                  onChange={(e) => setGuestName(e.target.value)}
-                  placeholder="Ej. Juan Pérez"
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm focus:border-primary focus:outline-none"
-                />
-              </div>
-              <div>
-                <label className="text-xs font-bold text-slate-500 mb-1 block">Cédula</label>
-                <input
-                  type="text"
-                  value={guestCedula}
-                  onChange={(e) => setGuestCedula(e.target.value.replace(/\D/g, ''))}
-                  placeholder="Ej. 12345678"
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm focus:border-primary focus:outline-none"
-                />
-              </div>
-              <div>
-                <label className="text-xs font-bold text-slate-500 mb-1 block">Teléfono (WhatsApp)</label>
-                <input
-                  type="tel"
-                  value={guestPhone}
-                  onChange={(e) => setGuestPhone(e.target.value.replace(/\D/g, ''))}
-                  placeholder="Ej. 04141234567"
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm focus:border-primary focus:outline-none"
-                />
-              </div>
-              <button
-                onClick={() => {
-                  if (!guestName || !guestCedula || !guestPhone) {
-                    alert("Por favor completa todos los campos");
-                    return;
-                  }
-                  setShowGuestModal(false);
-                  handleCheckout();
-                }}
-                className="w-full bg-primary hover:bg-orange-600 text-white font-bold py-3 mt-2 rounded-xl"
-              >
-                Continuar con el Pedido
-              </button>
-            </div>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/50" onClick={() => setShowGuestModal(false)}></div>
+          <div className="relative bg-white w-full max-w-sm rounded-3xl p-6">
+            <h3 className="text-lg font-bold mb-4">Datos del Cliente</h3>
+            <input placeholder="Nombre" value={guestName} onChange={e=>setGuestName(e.target.value)} className="w-full p-3 bg-slate-100 rounded-xl mb-3" />
+            <input placeholder="Cédula" value={guestCedula} onChange={e=>setGuestCedula(e.target.value)} className="w-full p-3 bg-slate-100 rounded-xl mb-3" />
+            <input placeholder="Teléfono" value={guestPhone} onChange={e=>setGuestPhone(e.target.value)} className="w-full p-3 bg-slate-100 rounded-xl mb-4" />
+            <button onClick={() => { setShowGuestModal(false); handleCheckout(); }} className="w-full bg-primary text-white py-3 rounded-xl font-bold">Continuar</button>
           </div>
         </div>
-      )}
-      {showMapPicker && (
-        <AddressPicker 
-          onClose={() => setShowMapPicker(false)}
-          onSave={handleSaveAddressFromMap}
-        />
       )}
     </div>
   );
+
+  return isWaiter ? <WaiterLayout>{content}</WaiterLayout> : content;
 }

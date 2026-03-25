@@ -199,8 +199,12 @@ export default function CashierDashboard() {
             {/* Header */}
             <header className="bg-white px-6 py-4 flex items-center justify-between border-b border-slate-200 sticky top-0 z-40">
                 <div className="flex items-center gap-3">
-                    <div className="w-12 h-12 bg-primary/10 rounded-2xl flex items-center justify-center text-primary">
-                        <Store className="w-6 h-6" />
+                    <div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center shadow-sm overflow-hidden border border-slate-100">
+                        {cashierData?.photo || cashierData?.photoURL ? (
+                            <img src={cashierData.photo || cashierData.photoURL} alt={cashierData.name} className="w-full h-full object-cover" />
+                        ) : (
+                            <Store className="w-6 h-6 text-primary" />
+                        )}
                     </div>
                     <div>
                         <h1 className="font-black text-slate-900 text-lg leading-tight">Caja y Cobros</h1>

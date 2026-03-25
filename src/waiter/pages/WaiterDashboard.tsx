@@ -26,7 +26,7 @@ export default function WaiterDashboard() {
     const [tables, setTables] = useState<Table[]>([]);
     const [orders, setOrders] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
-    const [waiterInfo, setWaiterInfo] = useState<{ id: string, name: string, role?: string, availability?: string }>({ id: '', name: 'Mesero' });
+    const [waiterInfo, setWaiterInfo] = useState<{ id: string, name: string, role?: string, availability?: string, photo?: string }>({ id: '', name: 'Mesero' });
     const [showProfileMenu, setShowProfileMenu] = useState(false);
     const [showNotifications, setShowNotifications] = useState(false);
     const [showSidebar, setShowSidebar] = useState(false);
@@ -42,7 +42,13 @@ export default function WaiterDashboard() {
         if (waiterDataRaw) {
             try {
                 const data = JSON.parse(waiterDataRaw);
-                setWaiterInfo({ id: data.id, name: data.name, role: data.role, availability: data.availability || 'active' });
+                setWaiterInfo({ 
+                    id: data.id, 
+                    name: data.name, 
+                    role: data.role, 
+                    availability: data.availability || 'active',
+                    photo: data.photo || data.photoURL
+                });
             } catch (e) {
                 console.error("Error parsing waiter data", e);
             }
@@ -374,9 +380,9 @@ export default function WaiterDashboard() {
                         <div className="flex items-center gap-4">
                             <div className="relative">
                                 <img
-                                    src="https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/otro.png?alt=media"
+                                    src={waiterInfo.photo || "https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/otro.png?alt=media"}
                                     alt={waiterInfo.name}
-                                    className="w-16 h-16 rounded-full object-contain border-4 border-slate-50 bg-white"
+                                    className="w-16 h-16 rounded-full object-cover border-4 border-slate-50 bg-white"
                                 />
                                 <div className={`absolute bottom-0 right-0 w-4 h-4 rounded-full border-2 border-white ${waiterInfo.availability === 'offline' ? 'bg-slate-400' : 'bg-emerald-500'}`}></div>
                             </div>
