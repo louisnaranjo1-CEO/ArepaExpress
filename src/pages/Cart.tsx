@@ -28,6 +28,7 @@ export default function Cart() {
   const [guestName, setGuestName] = useState('');
   const [guestPhone, setGuestPhone] = useState('');
   const [guestCedula, setGuestCedula] = useState('');
+  const [deliveryMethod, setDeliveryMethod] = useState<'delivery' | 'pickup'>('delivery');
 
   const isWaiter = localStorage.getItem('isWaiter') === 'true';
   const waiterData = JSON.parse(localStorage.getItem('waiterData') || '{}');
@@ -112,6 +113,11 @@ export default function Cart() {
           if (rDoc.exists()) {
             const data = rDoc.data();
             setRestaurantData(data);
+            if (!data.ownDelivery && !data.appDelivery && data.pickupOnly) {
+              setDeliveryMethod('pickup');
+            } else if (data.ownDelivery || data.appDelivery) {
+              setDeliveryMethod('delivery');
+            }
             if (selectedAddress && data.location?.coords) {
               const d = calculateDistance(selectedAddress.lat, selectedAddress.lng, data.location.coords.lat, data.location.coords.lng);
               setDistance(d);
@@ -150,8 +156,8 @@ export default function Cart() {
   };
 
   const feeInfo = calculateDeliveryFeeInfo();
-  const deliveryFee = isWaiter ? 0 : feeInfo.clientFee;
-  const driverPayout = isWaiter ? 0 : feeInfo.driverPayout;
+  const deliveryFee = (isWaiter || deliveryMethod === 'pickup') ? 0 : feeInfo.clientFee;
+  const driverPayout = (isWaiter || deliveryMethod === 'pickup') ? 0 : feeInfo.driverPayout;
   const currentShift = feeInfo.shift;
   const finalTotal = cartSubtotalUSD + deliveryFee;
 
@@ -168,7 +174,7 @@ export default function Cart() {
       const rData = restaurantDoc.exists() ? restaurantDoc.data() : null;
       if (!isWaiter && !rData?.whatsapp) throw new Error("No WhatsApp config");
 
-      let addressStr = isWaiter ? `Mesa: ${tableNumber}` : (selectedAddress ? `${selectedAddress.name} - ${selectedAddress.reference}` : "Recoger en local");
+      let addressStr = isWaiter ? `Mesa: ${tableNumber}` : (deliveryMethod === 'pickup' ? "Recoger en local" : (selectedAddress ? `${selectedAddress.name} - ${selectedAddress.reference}` : "Recoger en local"));
 
       // Sanitize items just in case they have undefined properties
       const sanitizedItems = items.map(item => {
@@ -200,7 +206,7 @@ export default function Cart() {
         paymentStatus: isWaiter ? paymentStatus : 'pending', // Use the selected payment status
         notified: false,
         deliveryAddress: addressStr, 
-        deliveryCoords: (!isWaiter && selectedAddress && selectedAddress.lat) ? { lat: selectedAddress.lat, lng: selectedAddress.lng } : null,
+        deliveryCoords: (!isWaiter && deliveryMethod === 'delivery' && selectedAddress && selectedAddress.lat) ? { lat: selectedAddress.lat, lng: selectedAddress.lng } : null,
         createdAt: serverTimestamp(), 
         orderNote: orderNote.trim() || ''
       };
@@ -215,7 +221,7 @@ export default function Cart() {
 
       let itemsList = items.map(item => `• ${item.quantity}x ${item.name} ($${(item.price * item.quantity).toFixed(2)})`).join('\n');
       
-      const mapsLink = (selectedAddress && selectedAddress.lat) ? `\n🗺️ Ubicación GPS: https://www.google.com/maps?q=${selectedAddress.lat},${selectedAddress.lng}` : '';
+      const mapsLink = (deliveryMethod === 'delivery' && selectedAddress && selectedAddress.lat) ? `\n🗺️ Ubicación GPS: https://www.google.com/maps?q=${selectedAddress.lat},${selectedAddress.lng}` : '';
       const notesString = orderNote.trim() ? `\n📝 Notas: ${orderNote.trim()}` : '';
       
       const formattedMessage = `👋 ¡Hola ${rData?.name}!\nSoy ${orderData.userName}. Mi identificación es ${userData?.cedula || guestCedula}\n\n🛒 Pedido:\n${itemsList}${notesString}\n\n💰 Total: $${finalTotal.toFixed(2)}\n📍 Dirección: ${addressStr}${mapsLink}`;
@@ -298,37 +304,76 @@ export default function Cart() {
                   </div>
                 ) : (
                   <div className="space-y-4">
-                     <p className="font-bold text-slate-800 text-sm uppercase tracking-wider">Dirección de Entrega</p>
-                     
-                     {selectedAddress ? (
-                         <div className="bg-slate-50 p-4 border border-slate-200 rounded-2xl flex justify-between items-center group">
-                             <div className="flex-1">
-                                <div className="flex items-center gap-2 mb-1">
-                                    <MapPin className="w-4 h-4 text-primary" />
-                                    <p className="font-bold text-slate-900 leading-none">{selectedAddress.name}</p>
-                                </div>
-                                <p className="text-xs text-slate-500 font-medium pl-6 leading-tight">
-                                    <span className="font-bold text-slate-400">Ref:</span> {selectedAddress.reference || "Sin referencia adicional"}
-                                </p>
-                             </div>
-                             <button onClick={() => setShowMapPicker(true)} className="text-primary text-xs font-bold uppercase tracking-widest pl-4 hover:underline">Cambiar</button>
+                     <div className="flex gap-2 p-1 bg-slate-50 rounded-2xl border border-slate-200">
+                        {(restaurantData?.ownDelivery || restaurantData?.appDelivery) && (
+                          <button
+                            onClick={() => setDeliveryMethod('delivery')}
+                            className={`flex-1 py-3 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all ${
+                              deliveryMethod === 'delivery' ? 'bg-primary text-white shadow-lg' : 'text-slate-400 hover:text-slate-600'
+                            }`}
+                          >
+                            Delivery
+                          </button>
+                        )}
+                        {restaurantData?.pickupOnly && (
+                          <button
+                            onClick={() => setDeliveryMethod('pickup')}
+                            className={`flex-1 py-3 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all ${
+                              deliveryMethod === 'pickup' ? 'bg-primary text-white shadow-lg' : 'text-slate-400 hover:text-slate-600'
+                            }`}
+                          >
+                            Retiro en Tienda
+                          </button>
+                        )}
+                     </div>
+
+                     {deliveryMethod === 'delivery' && (
+                         <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2">
+                             <p className="font-bold text-slate-800 text-sm uppercase tracking-wider pl-2">Dirección de Entrega</p>
+                             
+                             {selectedAddress ? (
+                                 <div className="bg-slate-50 p-4 border border-slate-200 rounded-2xl flex justify-between items-center group">
+                                     <div className="flex-1">
+                                        <div className="flex items-center gap-2 mb-1">
+                                            <MapPin className="w-4 h-4 text-primary" />
+                                            <p className="font-bold text-slate-900 leading-none">{selectedAddress.name}</p>
+                                        </div>
+                                        <p className="text-xs text-slate-500 font-medium pl-6 leading-tight">
+                                            <span className="font-bold text-slate-400">Ref:</span> {selectedAddress.reference || "Sin referencia adicional"}
+                                        </p>
+                                     </div>
+                                     <button onClick={() => setShowMapPicker(true)} className="text-primary text-xs font-bold uppercase tracking-widest pl-4 hover:underline">Cambiar</button>
+                                 </div>
+                             ) : (
+                                 <button onClick={() => setShowMapPicker(true)} className="w-full flex items-center justify-center gap-2 py-5 bg-primary/10 text-primary rounded-2xl font-black border border-primary/20 hover:bg-primary/20 transition-all">
+                                     <MapPin className="w-5 h-5" />
+                                     Ubicar en Mapa
+                                 </button>
+                             )}
+                             
+                             <p className="text-[10px] text-slate-400 font-bold uppercase text-center px-4 leading-normal">
+                                Para asegurar una entrega exitosa, verifica que tu punto de referencia sea descriptivo (Ej. Casa amarilla con rejas blancas).
+                             </p>
                          </div>
-                     ) : (
-                         <button onClick={() => setShowMapPicker(true)} className="w-full flex items-center justify-center gap-2 py-5 bg-primary/10 text-primary rounded-2xl font-black border border-primary/20 hover:bg-primary/20 transition-all">
-                             <MapPin className="w-5 h-5" />
-                             Ubicar en el Mapa
-                         </button>
                      )}
-                     
-                     <p className="text-[10px] text-slate-400 font-bold uppercase text-center mt-2 px-4 leading-normal">
-                        Para asegurar una entrega exitosa, verifica que tu punto de referencia sea descriptivo (Ej. Casa amarilla con rejas blancas).
-                     </p>
+
+                     {deliveryMethod === 'pickup' && (
+                         <div className="p-6 bg-blue-50/50 rounded-2xl border border-blue-100 text-center animate-in fade-in slide-in-from-bottom-2">
+                             <div className="w-12 h-12 bg-blue-100 text-blue-500 rounded-full flex items-center justify-center mx-auto mb-3">
+                                <ShoppingCart className="w-6 h-6" />
+                             </div>
+                             <p className="font-black text-slate-800 uppercase tracking-tight">Retiro en Local</p>
+                             <p className="text-sm font-medium text-slate-500 mt-2 mx-auto max-w-[200px]">
+                                 {restaurantData?.location?.address || 'Dirección del restaurante'}
+                             </p>
+                         </div>
+                     )}
                   </div>
                 )}
                 
                 <button 
                   onClick={() => {
-                      if (!isWaiter && !selectedAddress) {
+                      if (!isWaiter && deliveryMethod === 'delivery' && !selectedAddress) {
                           alert("Por favor selecciona una dirección de entrega válida.");
                           return;
                       }
@@ -344,7 +389,7 @@ export default function Cart() {
               <div className="space-y-6">
                 <div className="bg-white p-5 rounded-2xl shadow-sm space-y-2">
                   <div className="flex justify-between"><span>Subtotal</span><span>${totalPrice.toFixed(2)}</span></div>
-                  {!isWaiter && <div className="flex justify-between"><span>Delivery</span><span>${deliveryFee.toFixed(2)}</span></div>}
+                  {!isWaiter && deliveryMethod === 'delivery' && <div className="flex justify-between font-bold text-slate-600"><span>Delivery</span><span>${deliveryFee.toFixed(2)}</span></div>}
                   <div className="border-t pt-2 flex justify-between font-bold text-xl"><span>Total</span><span className="text-primary">${finalTotal.toFixed(2)}</span></div>
                 </div>
                 {isWaiter && (

@@ -617,7 +617,6 @@ export default function RestaurantProfile() {
                                     setOwnDelivery(!ownDelivery);
                                     if (!ownDelivery) {
                                         setAppDelivery(false);
-                                        setPickupOnly(false);
                                     }
                                 }}
                             >
@@ -633,7 +632,6 @@ export default function RestaurantProfile() {
                                     setAppDelivery(!appDelivery);
                                     if (!appDelivery) {
                                         setOwnDelivery(false);
-                                        setPickupOnly(false);
                                     }
                                 }}
                             >
@@ -647,15 +645,11 @@ export default function RestaurantProfile() {
                                 className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl cursor-pointer group"
                                 onClick={() => {
                                     setPickupOnly(!pickupOnly);
-                                    if (!pickupOnly) {
-                                        setOwnDelivery(false);
-                                        setAppDelivery(false);
-                                    }
                                 }}
                             >
                                 <div>
-                                    <span className="font-bold text-slate-700 block">Solo Retiro en Tienda</span>
-                                    <span className="text-xs text-slate-500">No se envía producto, el cliente debe ir a buscarlo.</span>
+                                    <span className="font-bold text-slate-700 block">Retiro en Tienda (Pickup)</span>
+                                    <span className="text-xs text-slate-500">Permitir a los clientes recoger su pedido en el local.</span>
                                 </div>
                                 <div className={`w-12 h-6 rounded-full relative transition-colors ${pickupOnly ? 'bg-primary' : 'bg-slate-200'}`}>
                                     <div className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow-sm transition-all ${pickupOnly ? 'left-7' : 'left-1'}`}></div>

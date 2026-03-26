@@ -6,6 +6,7 @@ import { ArrowLeft, Plus, Minus, Trash2, ShoppingBag, CheckCircle, Loader2, Star
 import { motion, AnimatePresence } from 'framer-motion';
 import ReviewsModal from '../components/ReviewsModal';
 import { printToUsbDevice, formatTicket, downloadTicketImage } from '../../lib/usb-printer';
+import AddressPicker from '../../components/AddressPicker';
 import toast from 'react-hot-toast';
 
 export default function CashierPOS() {
@@ -25,6 +26,8 @@ export default function CashierPOS() {
     const [paymentMethod, setPaymentMethod] = useState('');
     const [isDelivery, setIsDelivery] = useState(false);
     const [deliveryAddress, setDeliveryAddress] = useState('');
+    const [selectedAddress, setSelectedAddress] = useState<any>(null);
+    const [showMapPicker, setShowMapPicker] = useState(false);
 
     const [selectedProduct, setSelectedProduct] = useState<any | null>(null);
     const [selectedVariant, setSelectedVariant] = useState<any | null>(null);
@@ -269,8 +272,15 @@ export default function CashierPOS() {
             };
 
             if (isDelivery) {
+                if (!selectedAddress) {
+                    alert('Por favor selecciona una dirección de entrega válida.');
+                    setIsSubmitting(false);
+                    return;
+                }
+                const addressStr = `${selectedAddress.name} - ${selectedAddress.reference || "Sin referencia adicional"}`;
                 commonData.isDelivery = true;
-                commonData.deliveryAddress = deliveryAddress || '';
+                commonData.deliveryAddress = addressStr;
+                commonData.deliveryCoords = { lat: selectedAddress.lat, lng: selectedAddress.lng };
                 commonData.deliveryFee = restaurant?.deliveryFee || 0;
             }
 
@@ -410,6 +420,7 @@ export default function CashierPOS() {
         setPaymentMethod('');
         setIsDelivery(false);
         setDeliveryAddress('');
+        setSelectedAddress(null);
         setShowCheckoutModal(false);
         setPaymentStatus('sold');
         navigate('/'); // Go back to dashboard after finish or cancel
@@ -905,14 +916,29 @@ export default function CashierPOS() {
 
                             {isDelivery && (
                                 <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} className="space-y-3 overflow-hidden">
-                                    <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest pl-2">Dirección de Entrega</label>
-                                    <textarea
-                                        value={deliveryAddress}
-                                        onChange={(e) => setDeliveryAddress(e.target.value)}
-                                        placeholder="Ingrese ubicación..."
-                                        className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-5 py-3 text-sm font-bold text-slate-700 outline-none focus:border-primary/50 resize-none"
-                                        rows={2}
-                                    />
+                                     <p className="font-bold text-slate-800 text-[10px] uppercase tracking-wider pl-2 mb-2">Dirección de Entrega</p>
+                                     {selectedAddress ? (
+                                         <div className="bg-slate-50 p-4 border border-slate-200 rounded-2xl flex justify-between items-center group mb-4">
+                                             <div className="flex-1">
+                                                <div className="flex items-center gap-2 mb-1">
+                                                    <MapPin className="w-4 h-4 text-primary" />
+                                                    <p className="font-bold text-slate-900 leading-none">{selectedAddress.name}</p>
+                                                </div>
+                                                <p className="text-xs text-slate-500 font-medium pl-6 leading-tight">
+                                                    <span className="font-bold text-slate-400">Ref:</span> {selectedAddress.reference || "Sin referencia adicional"}
+                                                </p>
+                                             </div>
+                                             <button onClick={() => setShowMapPicker(true)} className="text-primary text-[10px] font-black uppercase tracking-widest pl-4 hover:underline">Cambiar</button>
+                                         </div>
+                                     ) : (
+                                         <button onClick={() => setShowMapPicker(true)} className="w-full flex items-center justify-center gap-2 py-4 bg-primary/10 text-primary rounded-2xl font-black border border-primary/20 hover:bg-primary/20 transition-all mb-4">
+                                             <MapPin className="w-4 h-4" />
+                                             Ubicar en el Mapa
+                                         </button>
+                                     )}
+                                     <p className="text-[10px] text-slate-400 font-bold uppercase text-center mt-2 px-4 leading-normal">
+                                        Para asegurar una entrega exitosa, verifica que el mapa marque exacto y añade un punto de referencia descriptivo.
+                                     </p>
                                 </motion.div>
                             )}
                         </div>
@@ -1103,6 +1129,17 @@ export default function CashierPOS() {
                         </button>
                     </div>
                 </div>
+            )}
+
+            {showMapPicker && (
+                <AddressPicker 
+                    onClose={() => setShowMapPicker(false)}
+                    onSave={(data) => {
+                        setSelectedAddress(data);
+                        setShowMapPicker(false);
+                    }}
+                    initialData={selectedAddress}
+                />
             )}
         </div>
     );
