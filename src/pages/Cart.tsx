@@ -297,9 +297,47 @@ export default function Cart() {
                     <input placeholder="Cliente" value={customerName} onChange={e => setCustomerName(e.target.value)} className="w-full p-4 bg-white rounded-2xl border border-slate-100" />
                   </div>
                 ) : (
-                  <p>Dirección: {selectedAddress?.name || 'No seleccionada'}</p>
+                  <div className="space-y-4">
+                     <p className="font-bold text-slate-800 text-sm uppercase tracking-wider">Dirección de Entrega</p>
+                     
+                     {selectedAddress ? (
+                         <div className="bg-slate-50 p-4 border border-slate-200 rounded-2xl flex justify-between items-center group">
+                             <div className="flex-1">
+                                <div className="flex items-center gap-2 mb-1">
+                                    <MapPin className="w-4 h-4 text-primary" />
+                                    <p className="font-bold text-slate-900 leading-none">{selectedAddress.name}</p>
+                                </div>
+                                <p className="text-xs text-slate-500 font-medium pl-6 leading-tight">
+                                    <span className="font-bold text-slate-400">Ref:</span> {selectedAddress.reference || "Sin referencia adicional"}
+                                </p>
+                             </div>
+                             <button onClick={() => setShowMapPicker(true)} className="text-primary text-xs font-bold uppercase tracking-widest pl-4 hover:underline">Cambiar</button>
+                         </div>
+                     ) : (
+                         <button onClick={() => setShowMapPicker(true)} className="w-full flex items-center justify-center gap-2 py-5 bg-primary/10 text-primary rounded-2xl font-black border border-primary/20 hover:bg-primary/20 transition-all">
+                             <MapPin className="w-5 h-5" />
+                             Ubicar en el Mapa
+                         </button>
+                     )}
+                     
+                     <p className="text-[10px] text-slate-400 font-bold uppercase text-center mt-2 px-4 leading-normal">
+                        Para asegurar una entrega exitosa, verifica que tu punto de referencia sea descriptivo (Ej. Casa amarilla con rejas blancas).
+                     </p>
+                  </div>
                 )}
-                <button onClick={() => setCurrentStep(3)} className="w-full bg-primary text-white py-4 rounded-2xl font-bold">Confirmar Datos</button>
+                
+                <button 
+                  onClick={() => {
+                      if (!isWaiter && !selectedAddress) {
+                          alert("Por favor selecciona una dirección de entrega válida.");
+                          return;
+                      }
+                      setCurrentStep(3);
+                  }} 
+                  className="w-full bg-primary text-white py-4 rounded-2xl font-bold mt-2"
+                >
+                  Confirmar Datos
+                </button>
               </div>
             )}
             {currentStep === 3 && (
@@ -340,6 +378,16 @@ export default function Cart() {
             <button onClick={() => { setShowGuestModal(false); handleCheckout(); }} className="w-full bg-primary text-white py-3 rounded-xl font-bold">Continuar</button>
           </div>
         </div>
+      )}
+      {showMapPicker && (
+          <AddressPicker 
+              onClose={() => setShowMapPicker(false)}
+              onSave={(data) => {
+                  setSelectedAddress(data);
+                  setShowMapPicker(false);
+              }}
+              initialData={selectedAddress}
+          />
       )}
     </div>
   );
