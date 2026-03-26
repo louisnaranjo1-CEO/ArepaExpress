@@ -219,7 +219,10 @@ export default function Cart() {
 
       if (isWaiter) { clearCart(); setCheckoutSuccess(true); setPurchaseConfirmed(true); return; }
 
-      let itemsList = items.map(item => `• ${item.quantity}x ${item.name} ($${(item.price * item.quantity).toFixed(2)})`).join('\n');
+      let itemsList = items.map(item => {
+        const itemNote = (item as any).notes ? ` - 📝 *Nota:* ${(item as any).notes}` : '';
+        return `• ${item.quantity}x ${item.name}${itemNote} ($${((item.price || 0) * item.quantity).toFixed(2)})`;
+      }).join('\n');
       
       const mapsLink = (deliveryMethod === 'delivery' && selectedAddress && selectedAddress.lat) ? `\n🗺️ Ubicación GPS: https://www.google.com/maps?q=${selectedAddress.lat},${selectedAddress.lng}` : '';
       const notesString = orderNote.trim() ? `\n📝 Notas: ${orderNote.trim()}` : '';
@@ -272,27 +275,45 @@ export default function Cart() {
             {currentStep === 1 && (
               <div className="space-y-4">
                 {items.map(item => (
-                  <div key={item.id} className="flex gap-4 bg-white p-3 rounded-2xl shadow-sm border border-slate-100">
-                    <img src={item.image} className="size-16 rounded-xl object-cover" />
-                    <div className="flex-1">
-                       <p className="font-bold text-slate-900 text-sm">{item.name}</p>
-                       <p className="text-primary font-bold text-sm">${item.price.toFixed(2)}</p>
-                       <div className="flex items-center gap-3 mt-2">
-                         <button onClick={() => updateQuantity(item.id, item.quantity - 1)} className="size-6 bg-slate-100 rounded-full flex items-center justify-center">-</button>
-                         <span className="font-bold text-sm">{item.quantity}</span>
-                         <button onClick={() => updateQuantity(item.id, item.quantity + 1)} className="size-6 bg-primary text-white rounded-full flex items-center justify-center">+</button>
-                         <button onClick={() => removeItem(item.id)} className="ml-auto text-slate-300"><Trash2 className="w-4 h-4" /></button>
-                       </div>
+                  <div key={item.id} className="flex flex-col bg-white p-4 rounded-[28px] shadow-sm border border-slate-100/80 animate-in fade-in slide-in-from-left-2 duration-300">
+                    <div className="flex gap-4">
+                      <img src={item.image} className="size-20 rounded-2xl object-cover shadow-sm" />
+                      <div className="flex-1">
+                         <p className="font-black text-slate-800 text-sm leading-tight mb-1">{item.name}</p>
+                         <p className="text-primary font-black text-sm">${(item.price || 0).toFixed(2)}</p>
+                         <div className="flex items-center gap-3 mt-3">
+                           <div className="flex items-center bg-slate-50 rounded-full border border-slate-100 p-0.5">
+                             <button onClick={() => updateQuantity(item.id, item.quantity - 1)} className="size-8 bg-white shadow-sm rounded-full flex items-center justify-center text-slate-400 hover:text-slate-600 active:scale-90 transition-all">-</button>
+                             <span className="w-8 text-center font-black text-sm text-slate-700">{item.quantity}</span>
+                             <button onClick={() => updateQuantity(item.id, item.quantity + 1)} className="size-8 bg-primary text-white shadow-md rounded-full flex items-center justify-center active:scale-90 transition-all">+</button>
+                           </div>
+                           <button onClick={() => removeItem(item.id)} className="ml-auto w-10 h-10 flex items-center justify-center bg-red-50 text-red-500 rounded-2xl hover:bg-red-100 active:scale-90 transition-all">
+                             <Trash2 className="w-4 h-4" />
+                           </button>
+                         </div>
+                      </div>
+                    </div>
+                    <div className="mt-4 pt-3 border-t border-slate-50">
+                        <input 
+                          type="text" 
+                          placeholder="Instrucciones especiales para este plato..."
+                          value={(item as any).notes || ''}
+                          onChange={(e) => {
+                            (item as any).notes = e.target.value;
+                            updateQuantity(item.id, item.quantity);
+                          }}
+                          className="w-full bg-slate-50/50 border border-slate-200/50 rounded-xl px-4 py-2.5 text-xs font-medium text-slate-600 outline-none focus:border-primary/30 transition-all"
+                        />
                     </div>
                   </div>
                 ))}
                 <textarea 
-                  placeholder="Notas..." 
+                  placeholder="Notas adicionales para el pedido..." 
                   value={orderNote} 
                   onChange={e => setOrderNote(e.target.value)}
-                  className="w-full bg-slate-50 border-none rounded-2xl p-4 text-sm min-h-[100px]"
+                  className="w-full bg-white border border-slate-100 rounded-[28px] p-5 text-sm min-h-[120px] outline-none focus:border-primary/30 shadow-sm transition-all"
                 />
-                <button onClick={() => setCurrentStep(2)} className="w-full bg-primary text-white py-4 rounded-2xl font-bold">Siguiente</button>
+                <button onClick={() => setCurrentStep(2)} className="w-full bg-primary text-white py-5 rounded-[22px] font-black uppercase tracking-widest shadow-xl shadow-primary/10 hover:scale-[1.01] active:scale-95 transition-all">Siguiente</button>
               </div>
             )}
             {currentStep === 2 && (
@@ -386,26 +407,114 @@ export default function Cart() {
               </div>
             )}
             {currentStep === 3 && (
-              <div className="space-y-6">
-                <div className="bg-white p-5 rounded-2xl shadow-sm space-y-2">
-                  <div className="flex justify-between"><span>Subtotal</span><span>${totalPrice.toFixed(2)}</span></div>
-                  {!isWaiter && deliveryMethod === 'delivery' && <div className="flex justify-between font-bold text-slate-600"><span>Delivery</span><span>${deliveryFee.toFixed(2)}</span></div>}
-                  <div className="border-t pt-2 flex justify-between font-bold text-xl"><span>Total</span><span className="text-primary">${finalTotal.toFixed(2)}</span></div>
+              <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                <div className="bg-white rounded-[32px] shadow-xl shadow-slate-200/50 border border-slate-100 overflow-hidden">
+                  <div className="p-6 border-b border-slate-50 bg-slate-50/30">
+                    <h3 className="font-black text-slate-800 uppercase tracking-widest text-xs mb-4">Resumen del Pedido</h3>
+                    <div className="space-y-4">
+                      {items.map((item, idx) => (
+                        <div key={idx} className="flex justify-between items-start gap-4">
+                          <div className="flex-1">
+                            <p className="font-bold text-slate-700 text-sm leading-tight">
+                              <span className="text-primary font-black mr-2">{item.quantity}x</span>
+                              {item.name}
+                            </p>
+                            {(item as any).notes && (
+                              <p className="text-[10px] text-slate-400 font-medium italic mt-0.5">"{ (item as any).notes }"</p>
+                            )}
+                          </div>
+                          <span className="font-black text-slate-900 text-sm">${((item.price || 0) * item.quantity).toFixed(2)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="p-6 space-y-4">
+                    <div className="flex items-start gap-3">
+                      <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+                        <MapPin className="w-4 h-4 text-primary" />
+                      </div>
+                      <div className="flex-1">
+                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Entrega en</p>
+                        <p className="text-sm font-bold text-slate-700 leading-tight">
+                          {isWaiter ? `Mesa ${tableNumber}` : (deliveryMethod === 'pickup' ? 'Retiro en Tienda' : selectedAddress?.name)}
+                        </p>
+                        {!isWaiter && deliveryMethod === 'delivery' && selectedAddress?.reference && (
+                          <p className="text-[11px] text-slate-400 font-medium mt-1 italic leading-tight">Ref: {selectedAddress.reference}</p>
+                        )}
+                      </div>
+                      {!isWaiter && (
+                        <button onClick={() => setCurrentStep(2)} className="text-[10px] font-black text-primary uppercase tracking-widest bg-primary/5 px-3 py-1.5 rounded-lg hover:bg-primary/10 transition-all">Editar</button>
+                      )}
+                    </div>
+
+                    {orderNote.trim() && (
+                      <div className="flex items-start gap-3 pt-4 border-t border-slate-50">
+                        <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center shrink-0">
+                          <CheckCircle2 className="w-4 h-4 text-slate-400" />
+                        </div>
+                        <div className="flex-1">
+                          <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Notas Generales</p>
+                          <p className="text-sm font-medium text-slate-600 italic leading-snug">"{orderNote}"</p>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="p-6 bg-slate-900 text-white">
+                    <div className="space-y-2 mb-4 opacity-80 text-sm font-bold">
+                      <div className="flex justify-between"><span>Subtotal Productos</span><span>${cartSubtotalUSD.toFixed(2)}</span></div>
+                      {!isWaiter && deliveryMethod === 'delivery' && (
+                        <div className="flex justify-between"><span>Costo Delivery</span><span>${deliveryFee.toFixed(2)}</span></div>
+                      )}
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-lg font-black uppercase tracking-widest text-primary">Total Final</span>
+                      <span className="text-3xl font-black text-white">${finalTotal.toFixed(2)}</span>
+                    </div>
+                  </div>
                 </div>
-                {isWaiter && (
-                  <div className="flex gap-2">
-                    <button onClick={() => setPaymentStatus('pending')} className={`flex-1 py-3 rounded-xl font-bold border-2 ${paymentStatus === 'pending' ? 'border-amber-500 bg-amber-50' : 'border-slate-100'}`}>Por Pagar</button>
-                    <button onClick={() => setPaymentStatus('paid')} className={`flex-1 py-3 rounded-xl font-bold border-2 ${paymentStatus === 'paid' ? 'border-emerald-500 bg-emerald-50' : 'border-slate-100'}`}>Pagado</button>
-                  </div>
-                )}
-                {error && (
-                  <div className="p-4 bg-red-100 text-red-700 rounded-2xl border border-red-200 font-bold text-sm">
-                    {error}
-                  </div>
-                )}
-                <button onClick={handleCheckout} disabled={isCheckingOut} className="w-full bg-primary text-white py-4 rounded-2xl font-bold">
-                  {isCheckingOut ? 'Procesando...' : (isWaiter ? 'Enviar Comanda' : 'Pedir por WhatsApp')}
-                </button>
+
+                <div className="flex flex-col gap-3">
+                  <button 
+                    onClick={() => navigate(`/restaurant/${items[0].restaurantId}`)} 
+                    className="w-full bg-white border-2 border-slate-100 text-slate-600 py-4 rounded-[22px] font-black uppercase tracking-widest text-xs flex items-center justify-center gap-2 hover:bg-slate-50 transition-all shadow-sm"
+                  >
+                    <Plus className="w-4 h-4" />
+                    Agregar algo más
+                  </button>
+                  
+                  {isWaiter && (
+                    <div className="flex gap-2 mb-2">
+                      <button onClick={() => setPaymentStatus('pending')} className={`flex-1 py-4 rounded-[22px] font-black uppercase tracking-widest text-[10px] border-2 transition-all ${paymentStatus === 'pending' ? 'border-amber-500 bg-amber-50 text-amber-600 shadow-md' : 'border-slate-100 text-slate-400'}`}>Por Pagar</button>
+                      <button onClick={() => setPaymentStatus('paid')} className={`flex-1 py-4 rounded-[22px] font-black uppercase tracking-widest text-[10px] border-2 transition-all ${paymentStatus === 'paid' ? 'border-emerald-500 bg-emerald-50 text-emerald-600 shadow-md' : 'border-slate-100 text-slate-400'}`}>Pagado</button>
+                    </div>
+                  )}
+
+                  {error && (
+                    <div className="p-4 bg-red-50 text-red-500 rounded-2xl border border-red-100 font-bold text-xs text-center">
+                      {error}
+                    </div>
+                  )}
+
+                  <button 
+                    onClick={handleCheckout} 
+                    disabled={isCheckingOut} 
+                    className="w-full bg-primary text-white py-5 rounded-[22px] font-black uppercase tracking-widest shadow-xl shadow-primary/20 hover:scale-[1.02] active:scale-95 transition-all flex items-center justify-center gap-3 disabled:opacity-50"
+                  >
+                    {isCheckingOut ? (
+                      <span className="flex items-center gap-2">
+                        <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                        Procesando...
+                      </span>
+                    ) : (
+                      <>
+                        <ArrowRight className="w-5 h-5" />
+                        {isWaiter ? 'Enviar Comanda' : 'Pedir por WhatsApp'}
+                      </>
+                    )}
+                  </button>
+                </div>
               </div>
             )}
           </>
