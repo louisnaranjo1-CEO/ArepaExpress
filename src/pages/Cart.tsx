@@ -9,7 +9,11 @@ import { calculateDistance, formatDistance } from '../lib/geo';
 import AddressPicker from '../components/AddressPicker';
 import WaiterLayout from '../waiter/components/WaiterLayout';
 
-export default function Cart() {
+interface CartProps {
+  hideHeader?: boolean;
+}
+
+export default function Cart({ hideHeader = false }: CartProps) {
   const { items, totalPrice, updateQuantity, removeItem, clearCart } = useCart();
   const { user, userData } = useAuth();
   const navigate = useNavigate();
@@ -304,10 +308,12 @@ export default function Cart() {
 
   const content = (
     <div className="relative flex h-full min-h-screen w-full flex-col bg-background-light overflow-x-hidden">
-      <div className="sticky top-0 z-20 bg-white/80 backdrop-blur-md px-4 py-4 flex items-center border-b border-slate-100">
-        <button onClick={() => navigate(-1)} className="p-2"><ArrowLeft /></button>
-        <h2 className="flex-1 text-center font-bold">{isWaiter ? 'Comanda' : 'Mi Carrito'}</h2>
-      </div>
+      {!hideHeader && (
+        <div className="sticky top-0 z-20 bg-white/80 backdrop-blur-md px-4 py-4 flex items-center border-b border-slate-100">
+          <button onClick={() => navigate(-1)} className="p-2"><ArrowLeft /></button>
+          <h2 className="flex-1 text-center font-bold">{isWaiter ? 'Comanda' : 'Mi Carrito'}</h2>
+        </div>
+      )}
 
       <div className="flex-1 overflow-y-auto px-4 pb-24 space-y-6 pt-4">
         {items.length === 0 ? (

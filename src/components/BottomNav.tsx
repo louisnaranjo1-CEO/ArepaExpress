@@ -25,16 +25,16 @@ export default function BottomNav() {
           </div>
           <span className="text-[10px] font-black text-secondary mt-1">Taxi</span>
         </Link>
-        <Link to="/cart" onClick={() => vibrate(30)} className="relative flex flex-col items-center gap-1 flex-1 group">
+        <Link to="/orders" onClick={() => vibrate(30)} className="relative flex flex-col items-center gap-1 flex-1 group">
           <div className="relative">
-            <ShoppingBag className={`w-6 h-6 transition-transform group-hover:scale-110 ${currentPath === '/cart' ? 'text-primary' : 'text-slate-400 group-hover:text-primary'}`} />
+            <ShoppingBag className={`w-6 h-6 transition-transform group-hover:scale-110 ${(currentPath === '/orders' || currentPath === '/cart') ? 'text-primary' : 'text-slate-400 group-hover:text-primary'}`} />
             {totalItems > 0 && (
               <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-accent text-[8px] font-black text-white ring-2 ring-white shadow-md">
                 {totalItems}
               </span>
             )}
           </div>
-          <span className={`text-[10px] font-bold ${currentPath === '/cart' ? 'text-primary' : 'text-slate-400 group-hover:text-primary'}`}>Pedidos</span>
+          <span className={`text-[10px] font-bold ${(currentPath === '/orders' || currentPath === '/cart') ? 'text-primary' : 'text-slate-400 group-hover:text-primary'}`}>Pedidos</span>
         </Link>
         <Link to="/profile" onClick={() => vibrate(30)} className="flex flex-col items-center gap-1 flex-1 group">
           <User className={`w-6 h-6 transition-transform group-hover:scale-110 ${currentPath === '/profile' ? 'text-primary fill-primary/20' : 'text-slate-400 group-hover:text-primary'}`} />
