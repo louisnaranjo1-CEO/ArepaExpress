@@ -196,10 +196,11 @@ export default function Cart() {
         deliveryShift: currentShift || 'day', 
         distance: distance || 0,
         total: finalTotal || 0, 
-        status: isWaiter ? 'preparing' : 'pending', 
+        status: isWaiter ? 'preparing' : 'pendiente_pago', 
         paymentStatus: isWaiter ? paymentStatus : 'pending', // Use the selected payment status
         notified: false,
         deliveryAddress: addressStr, 
+        deliveryCoords: (!isWaiter && selectedAddress && selectedAddress.lat) ? { lat: selectedAddress.lat, lng: selectedAddress.lng } : null,
         createdAt: serverTimestamp(), 
         orderNote: orderNote.trim() || ''
       };
@@ -213,7 +214,11 @@ export default function Cart() {
       if (isWaiter) { clearCart(); setCheckoutSuccess(true); setPurchaseConfirmed(true); return; }
 
       let itemsList = items.map(item => `• ${item.quantity}x ${item.name} ($${(item.price * item.quantity).toFixed(2)})`).join('\n');
-      const formattedMessage = `👋 ¡Hola ${rData?.name}!\nSoy ${orderData.userName}. Mi identificación es ${userData?.cedula || guestCedula}\n\n🛒 Pedido:\n${itemsList}\n\n💰 Total: $${finalTotal.toFixed(2)}\n📍 Ubicación: ${addressStr}`;
+      
+      const mapsLink = (selectedAddress && selectedAddress.lat) ? `\n🗺️ Ubicación GPS: https://www.google.com/maps?q=${selectedAddress.lat},${selectedAddress.lng}` : '';
+      const notesString = orderNote.trim() ? `\n📝 Notas: ${orderNote.trim()}` : '';
+      
+      const formattedMessage = `👋 ¡Hola ${rData?.name}!\nSoy ${orderData.userName}. Mi identificación es ${userData?.cedula || guestCedula}\n\n🛒 Pedido:\n${itemsList}${notesString}\n\n💰 Total: $${finalTotal.toFixed(2)}\n📍 Dirección: ${addressStr}${mapsLink}`;
       const whatsappNumber = rData.whatsapp.replace(/\D/g, '');
       const link = `https://wa.me/${whatsappNumber}?text=${encodeURIComponent(formattedMessage)}`;
       setWhatsappLink(link);

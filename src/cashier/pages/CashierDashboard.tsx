@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { LogOut, DollarSign, CheckCircle, Clock, X, Loader2, Store, CreditCard, User, Plus, Edit, ClipboardList, MapPin, Instagram, Youtube, Music2, ExternalLink, Star, MessageSquare } from 'lucide-react';
+import { LogOut, DollarSign, CheckCircle, Clock, X, Loader2, Store, CreditCard, User, Plus, Edit, ClipboardList, MapPin, Instagram, Youtube, Music2, ExternalLink, Star, MessageSquare, Bike } from 'lucide-react';
 import { db } from '../../lib/firebase';
-import { collection, query, where, onSnapshot, orderBy, doc, updateDoc, getDoc } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, orderBy, doc, updateDoc, getDoc, getDocs } from 'firebase/firestore';
 import { useNavigate } from 'react-router-dom';
+import { printToUsbDevice, formatTicket, PrintOrder } from '../../lib/usb-printer';
 import ProductTicker from '../components/ProductTicker';
 import ReviewsModal from '../components/ReviewsModal';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -85,12 +86,12 @@ export default function CashierDashboard() {
 
         const unsubscribe2 = onSnapshot(q2, (snapshot) => {
             const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Order));
-            // Filter manually those that need payment and are NOT sold
-            const needsPayment = data.filter(o => 
-                (o.paymentStatus === 'pending' || !o.paymentStatus) && 
-                o.status !== 'rejected' && o.paymentStatus !== 'sold'
+            // Filter manually those that need payment and are NOT sold, PLUS the ones in preparing status for delivery
+            const relevantOrders = data.filter(o => 
+                ((o.paymentStatus === 'pending' || !o.paymentStatus) && o.status !== 'rejected' && o.paymentStatus !== 'sold') ||
+                (o.status === 'preparing' && o.source !== 'waiter')
             );
-            setOrders(needsPayment); // Overwrites the first query but gets all matching manually
+            setOrders(relevantOrders); // Overwrites the first query but gets all matching manually
         });
 
         return () => {
@@ -271,12 +272,57 @@ export default function CashierDashboard() {
                 total: safeSubtotal + (selectedOrder.deliveryFee || 0) + closeTip
             };
 
+            let shouldPrint = false;
             // If it's a waiter's order, mark as delivered if it was preparing
             if (selectedOrder.source === 'waiter') {
                 updates.status = 'delivered';
+            } else {
+                updates.status = 'preparing';
+                shouldPrint = true;
             }
 
             await updateDoc(doc(db, 'orders', selectedOrder.id), updates);
+            
+            // Print if it's a new App order verified by the Cashier
+            if (shouldPrint && restaurantId) {
+                try {
+                    const printersRef = collection(db, 'restaurants', restaurantId, 'printers');
+                    const snapshot = await import('firebase/firestore').then(({ getDocs }) => getDocs(printersRef));
+                    const printers = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() as any }));
+                    const printPromises: Promise<boolean>[] = [];
+
+                    for (const printer of printers) {
+                        if (!printer.vendorId || !printer.productId || !printer.isActive) continue;
+
+                        const itemsForThisPrinter = selectedOrder.items.filter(item => {
+                            const itemCat = (item as any).category || '';
+                            return printer.categories?.includes(itemCat);
+                        });
+
+                        if (itemsForThisPrinter.length > 0) {
+                            const printData: PrintOrder = {
+                                id: selectedOrder.id,
+                                userName: selectedOrder.userName || '',
+                                items: itemsForThisPrinter.map(i => ({ name: i.name, quantity: i.quantity, price: i.price })),
+                                stationName: printer.name,
+                                createdAt: selectedOrder.createdAt?.toDate ? selectedOrder.createdAt.toDate() : new Date(),
+                                orderNote: (selectedOrder as any).orderNote,
+                                tableNumber: (selectedOrder as any).tableNumber
+                            };
+
+                            const buffer = formatTicket(printData);
+                            printPromises.push(printToUsbDevice(printer.vendorId, printer.productId, buffer));
+                        }
+                    }
+
+                    if (printPromises.length > 0) {
+                        await Promise.all(printPromises);
+                    }
+                } catch (error) {
+                    console.error("Error al imprimir desde Caja:", error);
+                }
+            }
+
             setCloseSaleModalOpen(false);
             setSelectedOrder(null);
             setCloseTip(0);
@@ -289,9 +335,27 @@ export default function CashierDashboard() {
         }
     };
 
+    const handleRequestDelivery = async (orderId: string) => {
+        setIsAccepting(true);
+        try {
+            await updateDoc(doc(db, 'orders', orderId), {
+                status: 'buscando_piloto',
+                deliveryRequestedAt: new Date()
+            });
+
+            toast.success("Buscando repartidor... (Backend notificado)");
+        } catch (error) {
+            console.error("Error al publicar pedido:", error);
+            toast.error("Ocurrió un error al despachar.");
+        } finally {
+            setIsAccepting(false);
+        }
+    };
+
     const groupedOrders = {
         waiter: orders.filter(o => o.source === 'waiter'),
-        app: orders.filter(o => o.source !== 'waiter')
+        app: orders.filter(o => o.source !== 'waiter' && o.status !== 'preparing'),
+        preparingApp: orders.filter(o => o.source !== 'waiter' && o.status === 'preparing')
     };
 
     const getSocialIcon = (url: string) => {
@@ -499,6 +563,45 @@ export default function CashierDashboard() {
                                             Cobrar Cuenta
                                         </button>
                                     </div>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </section>
+
+                {/* App Orders to Dispatch */}
+                <section>
+                    <h2 className="text-xl font-black text-slate-800 mb-4 flex items-center gap-2 mt-12">
+                        <Bike className="w-6 h-6 text-orange-500" />
+                        Delivery - En Cocina ({groupedOrders.preparingApp.length})
+                    </h2>
+
+                    {groupedOrders.preparingApp.length === 0 ? (
+                        <div className="bg-white rounded-3xl p-10 text-center border border-slate-100 shadow-sm">
+                            <CheckCircle className="w-12 h-12 text-orange-400 mx-auto mb-3" />
+                            <p className="text-slate-500 font-bold">No hay pedidos en preparación para enviar.</p>
+                        </div>
+                    ) : (
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                            {groupedOrders.preparingApp.map(order => (
+                                <div key={order.id} className="bg-orange-50/30 rounded-3xl p-6 border border-orange-100 shadow-sm relative overflow-hidden group">
+                                    <div className="mb-4">
+                                        <p className="text-sm font-bold text-slate-400">Orden #{order.id.slice(-5).toUpperCase()}</p>
+                                        <h3 className="text-xl font-black text-slate-900 mt-1 truncate">{order.userName || 'Cliente'}</h3>
+                                    </div>
+                                    <div className="space-y-2 mb-6 bg-white p-3 rounded-2xl border border-orange-100">
+                                        <div className="flex justify-between items-center text-sm">
+                                            <span className="text-slate-500 font-bold">Estado:</span>
+                                            <span className="font-black text-orange-600">Preparando</span>
+                                        </div>
+                                    </div>
+                                    <button
+                                        onClick={() => handleRequestDelivery(order.id)}
+                                        disabled={isAccepting}
+                                        className="w-full bg-orange-500 text-white py-3.5 rounded-2xl font-black flex items-center justify-center gap-2 hover:bg-orange-600 transition-colors shadow-lg shadow-orange-500/20 disabled:opacity-50"
+                                    >
+                                        {isAccepting ? <Loader2 className="w-5 h-5 animate-spin" /> : <><Bike className="w-5 h-5" /> Solicitar Repartidor</>}
+                                    </button>
                                 </div>
                             ))}
                         </div>

@@ -21,7 +21,7 @@ interface Order {
     userId: string;
     items: OrderItem[];
     total: number;
-    status: 'pending' | 'preparing' | 'delivering' | 'delivered' | 'rejected';
+    status: 'pending' | 'pendiente_pago' | 'preparing' | 'delivering' | 'delivered' | 'rejected';
     paymentStatus?: 'sold' | 'not_sold';
     createdAt: any;
     deliveryAddress: string;
@@ -37,7 +37,7 @@ interface Order {
 
 export default function Orders() {
     const { user } = useAuth();
-    const [activeTab, setActiveTab] = useState<'pending' | 'preparing' | 'delivering' | 'delivered' | 'rejected'>('pending');
+    const [activeTab, setActiveTab] = useState<'pending' | 'pendiente_pago' | 'preparing' | 'delivering' | 'delivered' | 'rejected'>('pending');
     const [orders, setOrders] = useState<Order[]>([]);
     const [loading, setLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
@@ -198,7 +198,7 @@ export default function Orders() {
             });
 
             // Check for new pending orders for sound
-            const hasNewPending = items.some(o => o.status === 'pending' && (!orders.find(prev => prev.id === o.id)));
+            const hasNewPending = items.some(o => (o.status === 'pending' || o.status === 'pendiente_pago') && (!orders.find(prev => prev.id === o.id)));
             if (hasNewPending && orders.length > 0) {
                 const audio = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3');
                 audio.play().catch(e => console.log("Audio play blocked"));
@@ -574,7 +574,7 @@ export default function Orders() {
     };
 
     const stats = {
-        pending: orders.filter(o => o.status === 'pending').length,
+        pending: orders.filter(o => o.status === 'pending' || o.status === 'pendiente_pago').length,
         preparing: orders.filter(o => o.status === 'preparing').length,
         delivering: orders.filter(o => o.status === 'delivering').length,
         delivered: orders.filter(o => o.status === 'delivered').length,
@@ -582,7 +582,7 @@ export default function Orders() {
     };
 
     const filteredOrders = orders
-        .filter(o => o.status === (activeTab as any))
+        .filter(o => activeTab === 'pending' ? (o.status === 'pending' || o.status === 'pendiente_pago') : o.status === (activeTab as any))
         .filter(o =>
             o.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
             o.deliveryAddress.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -803,7 +803,7 @@ export default function Orders() {
                             )}
 
                             <div className="flex flex-wrap items-center gap-3">
-                                {order.status === 'pending' && (
+                                {(order.status === 'pending' || order.status === 'pendiente_pago') && (
                                     <>
                                         <button
                                             onClick={() => { 
@@ -825,7 +825,7 @@ export default function Orders() {
                                             {printingOrderId === order.id ? (
                                                 <><Loader2 className="w-5 h-5 animate-spin" /> Imprimiendo...</>
                                             ) : (
-                                                <>Aceptar</>
+                                                <>{order.status === 'pendiente_pago' ? 'Verificar y Enviar a Cocina' : 'Aceptar'}</>
                                             )}
                                         </button>
                                         <button

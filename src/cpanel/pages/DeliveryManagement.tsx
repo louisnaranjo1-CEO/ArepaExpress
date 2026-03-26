@@ -34,6 +34,7 @@ export default function DeliveryManagement() {
             carro: [{ from: 0, to: 2, clientPrice: 3.0, driverPrice: 2.0 }],
             ejecutivo: [{ from: 0, to: 2, clientPrice: 7.0, driverPrice: 5.0 }]
         },
+        deliveryRadius: 15,
         whatsappMessageTemplate: `👋 ¡Hola *{RestaurantName}*!
 Soy *{UserName}* y vengo desde la app con DeliExpress 🚀. Mi identificación es *{Cedula}* y requiero el siguiente pedido:
 
@@ -615,6 +616,29 @@ _Enviado desde DeliExpress App_`
                                         onChange={(e) => {
                                             const key = activeShift === 'day' ? 'dayShift' : 'nightShift';
                                             setSettings({ ...settings, [key]: { ...settings[key], end: e.target.value } });
+                                        }}
+                                        className="w-full bg-white border border-slate-200 px-4 py-2.5 rounded-xl font-bold text-slate-700 outline-none focus:ring-2 focus:ring-indigo-500/20"
+                                    />
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Delivery Express Configuration */}
+                        <div className="lg:col-span-2 bg-slate-50 p-6 rounded-[2rem] border border-slate-100 flex flex-col md:flex-row gap-6 items-center">
+                            <div className="flex items-center gap-3">
+                                <Navigation className="w-6 h-6 text-slate-400" />
+                                <h4 className="font-black text-slate-700 uppercase tracking-widest text-xs">Ajustes Delivery Express</h4>
+                            </div>
+                            <div className="flex items-center gap-4 flex-1">
+                                <div className="flex-1">
+                                    <label className="block text-[10px] font-black text-slate-400 uppercase mb-1 ml-1">Radio Máx. Búsqueda Pilotos (km)</label>
+                                    <input
+                                        type="number"
+                                        min="1"
+                                        max="50"
+                                        value={settings.deliveryRadius || 15}
+                                        onChange={(e) => {
+                                            setSettings({ ...settings, deliveryRadius: parseInt(e.target.value) || 15 });
                                         }}
                                         className="w-full bg-white border border-slate-200 px-4 py-2.5 rounded-xl font-bold text-slate-700 outline-none focus:ring-2 focus:ring-indigo-500/20"
                                     />

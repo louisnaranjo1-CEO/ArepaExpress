@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { collection, query, where, onSnapshot, updateDoc, doc, serverTimestamp, getDoc, orderBy, limit, increment } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, updateDoc, doc, serverTimestamp, getDoc, orderBy, limit, increment, runTransaction } from 'firebase/firestore';
 import { ref, getDownloadURL } from 'firebase/storage';
 import { storage, db } from '../../lib/firebase';
 import { useAuth } from '../../context/AuthContext';
@@ -48,7 +48,7 @@ export default function OrdersRadar() {
         const activeQ = query(
             collection(db, 'orders'),
             where('deliveryDriverId', '==', user.uid),
-            where('status', 'in', ['driver_assigned', 'in_transit'])
+            where('status', 'in', ['en_camino', 'in_transit'])
         );
         const unsubActive = onSnapshot(activeQ, (snapshot) => {
             if (!snapshot.empty) {
@@ -85,36 +85,15 @@ export default function OrdersRadar() {
         // Escuchar órdenes de comida disponibles
         const availableQ = query(
             collection(db, 'orders'),
-            where('deliveryMethod', '==', 'app_delivery'),
-            where('status', '==', 'finding_driver')
+            where('status', '==', 'buscando_piloto'),
+            where('eligibleDrivers', 'array-contains', user.uid)
         );
         const unsubAvailable = onSnapshot(availableQ, (snapshot) => {
             const orders = snapshot.docs.map(doc => {
                 const data = doc.data();
                 return { id: doc.id, ...data } as any;
             });
-
-            // Filtrar localmente por ciudad y distancia
-            let filteredOrders = orders;
-
-            if (driverProfile?.homeLocation?.city) {
-                filteredOrders = filteredOrders.filter(o =>
-                    !o.restaurantCity || o.restaurantCity === driverProfile.homeLocation.city
-                );
-            }
-
-            if (driverProfile?.homeLocation?.coords) {
-                const homeLat = driverProfile.homeLocation.coords.lat;
-                const homeLng = driverProfile.homeLocation.coords.lng;
-
-                filteredOrders = filteredOrders.filter(o => {
-                    if (!o.restaurantCoords) return true; // Si el restaurante no tiene coords, lo dejamos pasar si la ciudad coincide
-                    const dist = calculateDistance(homeLat, homeLng, o.restaurantCoords.lat, o.restaurantCoords.lng);
-                    return dist <= 10;
-                });
-            }
-
-            setAvailableOrders(filteredOrders);
+            setAvailableOrders(orders);
         });
 
         return () => {
@@ -288,18 +267,30 @@ export default function OrdersRadar() {
         setProcessingAction(orderId);
         try {
             const orderRef = doc(db, 'orders', orderId);
-            const orderSnap = await getDoc(orderRef);
-            if (orderSnap.exists() && orderSnap.data().status === 'finding_driver') {
-                await updateDoc(orderRef, {
-                    status: 'driver_assigned',
-                    deliveryDriverId: user.uid,
-                    driverAssignedAt: serverTimestamp()
-                });
-            } else {
-                alert("Este pedido ya fue tomado por otro piloto.");
-            }
-        } catch (error) {
+            await runTransaction(db, async (transaction) => {
+                const orderDoc = await transaction.get(orderRef);
+                if (!orderDoc.exists()) {
+                    throw new Error("El pedido no existe.");
+                }
+
+                const data = orderDoc.data();
+                if (data.status === 'buscando_piloto' && !data.deliveryDriverId) {
+                    transaction.update(orderRef, {
+                        status: 'en_camino',
+                        deliveryDriverId: user.uid,
+                        driverAssignedAt: serverTimestamp()
+                    });
+                } else {
+                    throw new Error("ALREADY_TAKEN");
+                }
+            });
+        } catch (error: any) {
             console.error("Error al aceptar orden:", error);
+            if (error.message === "ALREADY_TAKEN") {
+                toast.error("El pedido ya fue tomado por otro repartidor.");
+            } else {
+                toast.error("Hubo un problema al aceptar el viaje.");
+            }
         } finally {
             setProcessingAction(null);
         }
@@ -323,6 +314,18 @@ export default function OrdersRadar() {
                 status: 'delivered',
                 deliveredAt: serverTimestamp()
             });
+
+            if (activeOrder.restaurantId && activeOrder.deliveryFee) {
+                try {
+                    const restRef = doc(db, 'restaurants', activeOrder.restaurantId);
+                    await updateDoc(restRef, {
+                        deuda_delivery_acumulada: increment(activeOrder.deliveryFee)
+                    });
+                } catch (err) {
+                    console.error("Error sumando deuda al restaurante:", err);
+                }
+            }
+
             setActiveOrder(null);
         } finally {
             setProcessingAction(null);
@@ -555,7 +558,7 @@ export default function OrdersRadar() {
                     <div>
                         <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1 block">Ruta de Entrega</span>
                         <h2 className="text-2xl font-black text-slate-900 border-b border-slate-50 pb-4">
-                            {activeOrder.status === 'driver_assigned' ? 'Recolectar Pedido' : 'Entregar al Cliente'}
+                            {activeOrder.status === 'en_camino' ? 'Recolectar Pedido' : 'Entregar al Cliente'}
                         </h2>
                     </div>
 
@@ -584,7 +587,7 @@ export default function OrdersRadar() {
                     </div>
 
                     <div className="pt-2 grid gap-3">
-                        {activeOrder.status === 'driver_assigned' ? (
+                        {activeOrder.status === 'en_camino' ? (
                             <button
                                 onClick={handleMarkInTransit}
                                 disabled={processingAction !== null}
