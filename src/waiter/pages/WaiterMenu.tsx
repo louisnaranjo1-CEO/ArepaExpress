@@ -16,8 +16,11 @@ export default function WaiterMenu() {
     const [products, setProducts] = useState<Product[]>([]);
     const [loading, setLoading] = useState(true);
     const [activeCategory, setActiveCategory] = useState<string>('Todos');
+    const [searchQuery, setSearchQuery] = useState<string>('');
     const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
     const [selectedVariant, setSelectedVariant] = useState<any | null>(null);
+    const [selectionQty, setSelectionQty] = useState(1);
+    const [selectionNote, setSelectionNote] = useState('');
     const { addItem, totalItems, totalPrice, clearCart } = useCart();
 
     const restaurantId = localStorage.getItem('waiterRestaurantId');
@@ -55,11 +58,13 @@ export default function WaiterMenu() {
 
     const filteredProducts = products.filter(p => {
         const matchesCategory = activeCategory === 'Todos' || p.category === activeCategory;
+        const matchesSearch = p.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
+                             (p.description && p.description.toLowerCase().includes(searchQuery.toLowerCase()));
         const isAvailable = p.isAvailable !== false;
-        return matchesCategory && isAvailable;
+        return matchesCategory && matchesSearch && isAvailable;
     });
 
-    const handleAddToCart = (product: Product, variant?: any) => {
+    const handleAddToCart = (product: Product, variant?: any, qty: number = 1, note: string = '') => {
         let finalPrice = product.promoPrice && product.promoPrice > 0 ? product.promoPrice : (product.price || 0);
         let finalName = product.name;
 
@@ -69,13 +74,14 @@ export default function WaiterMenu() {
         }
 
         addItem({
-            id: `${product.id}${variant ? `-${variant.name}` : ''}`,
+            id: `${product.id}${variant ? `-${variant.name}` : ''}-${Date.now()}`,
             productId: product.id!,
             restaurantId: restaurant.id!,
             name: finalName,
             price: finalPrice,
             pointsPrice: (product as any).pointsPrice,
-            quantity: 1,
+            quantity: qty,
+            note: note,
             image: product.image,
             category: product.category,
             table: tableNumber || undefined
@@ -135,6 +141,20 @@ export default function WaiterMenu() {
 
                 <div className="h-6 shrink-0" />
 
+                {/* Search Bar */}
+                <div className="px-5 mt-4">
+                    <div className="relative group">
+                        <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 group-focus-within:text-primary transition-colors" />
+                        <input 
+                            type="text"
+                            placeholder="Buscar en el menú..."
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery(e.target.value)}
+                            className="w-full pl-12 pr-4 py-3.5 bg-slate-50 border border-slate-100 rounded-2xl outline-none focus:border-primary focus:bg-white transition-all font-bold text-slate-600 shadow-sm"
+                        />
+                    </div>
+                </div>
+
                 {/* Categories */}
                 <div className="sticky top-8 z-40 bg-white/95 backdrop-blur-sm border-b border-slate-50 py-3 mt-4">
                     <div className="flex overflow-x-auto gap-2 px-5 hide-scrollbar">
@@ -160,26 +180,41 @@ export default function WaiterMenu() {
                             key={product.id}
                             className="flex gap-4 py-4 border-b border-slate-50 items-center cursor-pointer group"
                             onClick={() => {
-                                if (product.variants && product.variants.length > 0) {
-                                    setSelectedProduct(product);
-                                    setSelectedVariant(null);
-                                }
+                                setSelectedProduct(product);
+                                setSelectedVariant(null);
+                                setSelectionQty(1);
+                                setSelectionNote('');
                             }}
                         >
                             <div className="flex-1">
                                 <h3 className="font-bold text-slate-800 text-sm mb-1">{product.name}</h3>
                                 <p className="text-[10px] text-slate-400 line-clamp-2 leading-relaxed mb-2">{product.description}</p>
                                 {product.variants && product.variants.length > 0 ? (
-                                    <div className="flex flex-col gap-1">
-                                        <span className="text-[9px] font-bold text-slate-400 uppercase tracking-tight">Desde</span>
-                                        <span className="font-black text-slate-900 text-base">
-                                            ${Math.min(...product.variants.map(v => v.price)).toFixed(2)}
-                                        </span>
+                                    <div className="w-full flex flex-col gap-2">
+                                        <div className="flex items-center gap-1.5">
+                                            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tight">Desde</span>
+                                            <span className="font-black text-slate-900 text-base">${Math.min(...product.variants.map(v => v.price)).toFixed(2)}</span>
+                                        </div>
+                                        <div className="flex gap-2 flex-wrap">
+                                            {product.variants.map((v, idx) => (
+                                                <div key={idx} className="bg-white border border-slate-100 px-2.5 py-1 rounded-xl flex flex-col gap-0 shadow-sm">
+                                                    <span className="text-[8px] font-black uppercase text-slate-400 leading-none">{v.name}</span>
+                                                    <span className="text-[11px] font-black text-slate-800 leading-none">${v.price.toFixed(2)}</span>
+                                                </div>
+                                            ))}
+                                        </div>
                                     </div>
                                 ) : (
-                                    <span className="font-black text-slate-900 text-base">
-                                        ${(product.promoPrice && product.promoPrice > 0 ? product.promoPrice : product.price || 0).toFixed(2)}
-                                    </span>
+                                    <div className="flex items-center gap-2">
+                                        {product.promoPrice && product.promoPrice > 0 ? (
+                                            <>
+                                                <span className="font-black text-primary text-base">${product.promoPrice.toFixed(2)}</span>
+                                                <span className="text-[10px] text-slate-400 line-through font-bold">${product.price.toFixed(2)}</span>
+                                            </>
+                                        ) : (
+                                            <span className="font-black text-slate-900 text-base">${product.price.toFixed(2)}</span>
+                                        )}
+                                    </div>
                                 )}
                             </div>
                             <div className="relative shrink-0 w-24 h-24">
@@ -191,12 +226,10 @@ export default function WaiterMenu() {
                                 <button
                                     onClick={(e) => {
                                         e.stopPropagation();
-                                        if (product.variants && product.variants.length > 0) {
-                                            setSelectedProduct(product);
-                                            setSelectedVariant(null);
-                                        } else {
-                                            handleAddToCart(product);
-                                        }
+                                        setSelectedProduct(product);
+                                        setSelectedVariant(null);
+                                        setSelectionQty(1);
+                                        setSelectionNote('');
                                     }}
                                     className="absolute -bottom-2 -right-2 w-8 h-8 bg-primary text-white rounded-full flex items-center justify-center shadow-lg active:scale-90 transition-transform z-10"
                                 >
@@ -207,10 +240,10 @@ export default function WaiterMenu() {
                     ))}
                 </div>
 
-                {/* Product Detail Modal */}
+                {/* SELECTION MODAL (Enhanced) */}
                 <AnimatePresence>
                     {selectedProduct && (
-                        <div className="fixed inset-0 z-[110] flex items-end justify-center">
+                        <div className="fixed inset-0 z-[200] flex items-end justify-center">
                             <motion.div
                                 initial={{ opacity: 0 }}
                                 animate={{ opacity: 1 }}
@@ -222,65 +255,121 @@ export default function WaiterMenu() {
                                 initial={{ opacity: 0, y: 100 }}
                                 animate={{ opacity: 1, y: 0 }}
                                 exit={{ opacity: 0, y: 100 }}
-                                className="bg-white rounded-t-[3rem] w-full max-w-lg shadow-2xl overflow-hidden relative z-10 flex flex-col max-h-[85vh]"
+                                className="bg-white rounded-t-[3rem] w-full max-w-lg shadow-2xl overflow-hidden relative z-[210] flex flex-col max-h-[90vh]"
                             >
-                                <div className="relative h-64 shrink-0 bg-slate-100">
-                                    <button
+                                {/* Header / Image */}
+                                <div className="relative h-56 shrink-0">
+                                    {selectedProduct.image ? (
+                                        <img src={selectedProduct.image} className="w-full h-full object-cover" alt={selectedProduct.name} />
+                                    ) : (
+                                        <div className="w-full h-full flex items-center justify-center text-slate-300 bg-slate-100">
+                                            <Tag className="w-16 h-16" />
+                                        </div>
+                                    )}
+                                    <button 
                                         onClick={() => setSelectedProduct(null)}
-                                        className="absolute top-5 right-5 w-8 h-8 bg-white/90 backdrop-blur-md rounded-full flex items-center justify-center text-slate-900 shadow-xl z-20"
+                                        className="absolute top-4 right-4 bg-black/20 backdrop-blur-md text-white p-2 rounded-full hover:bg-black/40 transition-colors"
                                     >
                                         <X className="w-5 h-5" />
                                     </button>
-                                    <img
-                                        src={selectedProduct.image}
-                                        alt={selectedProduct.name}
-                                        className="w-full h-full object-cover"
-                                    />
+                                    <div className="absolute bottom-0 left-0 right-0 p-6 bg-gradient-to-t from-black/80 to-transparent">
+                                        <h3 className="text-xl font-black text-white">{selectedProduct.name}</h3>
+                                        <p className="text-white/80 font-bold text-xs">
+                                            {selectedProduct.category} • ${(selectedProduct.promoPrice && selectedProduct.promoPrice > 0 ? selectedProduct.promoPrice : selectedProduct.price || 0).toFixed(2)}
+                                        </p>
+                                    </div>
                                 </div>
 
-                                <div className="p-6 pb-24 flex-1 overflow-y-auto">
-                                    <span className="px-3 py-1 bg-slate-100 text-slate-500 text-[9px] font-black uppercase tracking-widest rounded-full">
-                                        {selectedProduct.category}
-                                    </span>
-                                    <h2 className="text-2xl font-black text-slate-900 mt-2">{selectedProduct.name}</h2>
-                                    <p className="text-slate-500 text-sm mt-2 leading-relaxed">
-                                        {selectedProduct.description}
-                                    </p>
+                                <div className="flex-1 overflow-y-auto p-6 space-y-6 custom-scrollbar">
+                                    {/* Description */}
+                                    {selectedProduct.description && (
+                                        <div className="space-y-2">
+                                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Descripción</label>
+                                            <p className="text-slate-600 font-medium text-sm leading-relaxed bg-slate-50 p-4 rounded-2xl border border-slate-100">
+                                                {selectedProduct.description}
+                                            </p>
+                                        </div>
+                                    )}
 
+                                    {/* Variants selection */}
                                     {selectedProduct.variants && selectedProduct.variants.length > 0 && (
-                                        <div className="mt-6">
-                                            <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3 ml-1">Presentaciones <span className="text-red-500">*</span></h4>
-                                            <div className="grid grid-cols-2 gap-3">
-                                                {selectedProduct.variants.map((v: any, idx: number) => (
+                                        <div className="space-y-3">
+                                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Selecciona una Variante <span className="text-red-500 font-bold">*</span></label>
+                                            <div className="grid grid-cols-1 gap-2">
+                                                {selectedProduct.variants.map((variant: any, idx: number) => (
                                                     <button
                                                         key={idx}
-                                                        onClick={() => setSelectedVariant(v)}
-                                                        className={`border p-4 rounded-3xl flex flex-col gap-1 text-left transition-all ${selectedVariant?.name === v.name ? 'bg-primary border-primary shadow-lg shadow-primary/20' : 'bg-slate-50 border-slate-100'}`}
+                                                        onClick={() => setSelectedVariant(variant)}
+                                                        className={`flex items-center justify-between p-4 rounded-2xl border-2 transition-all font-bold ${
+                                                            selectedVariant?.name === variant.name 
+                                                            ? 'border-primary bg-primary/5 text-primary' 
+                                                            : 'border-slate-100 text-slate-600 hover:border-slate-200 bg-slate-50/50'
+                                                        }`}
                                                     >
-                                                        <span className={`text-[10px] font-black uppercase ${selectedVariant?.name === v.name ? 'text-white/80' : 'text-slate-400'}`}>{v.name}</span>
-                                                        <span className={`text-lg font-black ${selectedVariant?.name === v.name ? 'text-white' : 'text-slate-800'}`}>${v.price.toFixed(2)}</span>
+                                                        <div className="flex items-center gap-3">
+                                                            <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${selectedVariant?.name === variant.name ? 'border-primary bg-primary' : 'border-slate-300'}`}>
+                                                                {selectedVariant?.name === variant.name && <div className="w-2 h-2 bg-white rounded-full" />}
+                                                            </div>
+                                                            <span className="text-sm">{variant.name}</span>
+                                                        </div>
+                                                        <span className="font-black text-sm">${variant.price.toFixed(2)}</span>
                                                     </button>
                                                 ))}
                                             </div>
                                         </div>
                                     )}
+
+                                    {/* Quantity and Notes */}
+                                    <div className="space-y-6">
+                                        <div className="space-y-3">
+                                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Cantidad</label>
+                                            <div className="flex items-center bg-slate-100 p-1 rounded-2xl w-fit">
+                                                <button 
+                                                    onClick={() => setSelectionQty(Math.max(1, selectionQty - 1))}
+                                                    className="w-10 h-10 flex items-center justify-center bg-white rounded-xl shadow-sm text-slate-500 hover:text-slate-700 active:scale-95 transition-transform"
+                                                >
+                                                    <Plus className="w-4 h-4 rotate-45" />
+                                                </button>
+                                                <span className="w-12 text-center font-black text-lg">{selectionQty}</span>
+                                                <button 
+                                                    onClick={() => setSelectionQty(selectionQty + 1)}
+                                                    className="w-10 h-10 flex items-center justify-center bg-white rounded-xl shadow-sm text-primary hover:text-primary-dark active:scale-95 transition-transform"
+                                                >
+                                                    <Plus className="w-4 h-4" />
+                                                </button>
+                                            </div>
+                                        </div>
+
+                                        <div className="space-y-3">
+                                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Notas Especiales</label>
+                                            <input 
+                                                type="text"
+                                                placeholder="Ej: Sin cebolla, extra salsa..."
+                                                value={selectionNote}
+                                                onChange={(e) => setSelectionNote(e.target.value)}
+                                                className="w-full bg-slate-50 border border-slate-100 p-4 rounded-2xl outline-none focus:border-primary font-bold text-slate-700 h-14 transition-all text-sm"
+                                            />
+                                        </div>
+                                    </div>
                                 </div>
 
-                                <div className="absolute bottom-0 left-0 w-full p-6 bg-white/80 backdrop-blur-md border-t border-slate-100">
+                                {/* Modal Footer */}
+                                <div className="p-6 bg-slate-50 border-t border-slate-100 shrink-0">
                                     <button
                                         disabled={selectedProduct.variants && selectedProduct.variants.length > 0 && !selectedVariant}
                                         onClick={() => {
-                                            handleAddToCart(selectedProduct, selectedVariant);
+                                            handleAddToCart(selectedProduct, selectedVariant, selectionQty, selectionNote);
                                             setSelectedProduct(null);
                                             setSelectedVariant(null);
                                         }}
-                                        className={`w-full py-4 rounded-3xl font-black text-sm shadow-2xl flex items-center justify-center gap-3 transition-colors ${selectedProduct.variants && selectedProduct.variants.length > 0 && !selectedVariant
-                                            ? 'bg-slate-200 text-slate-400 cursor-not-allowed'
-                                            : 'bg-primary text-white'
-                                            }`}
+                                        className={`w-full py-5 rounded-3xl font-black text-lg shadow-xl flex items-center justify-center gap-3 transition-all active:scale-[0.98] ${
+                                            selectedProduct.variants && selectedProduct.variants.length > 0 && !selectedVariant
+                                            ? 'bg-slate-200 text-slate-400 cursor-not-allowed shadow-none'
+                                            : 'bg-primary text-white shadow-primary/30 hover:scale-[1.02]'
+                                        }`}
                                     >
-                                        <Plus className="w-5 h-5" />
-                                        Añadir al Pedido
+                                        <Plus className="w-6 h-6" />
+                                        Agregar • ${( (selectedVariant ? selectedVariant.price : (selectedProduct.promoPrice && selectedProduct.promoPrice > 0 ? selectedProduct.promoPrice : selectedProduct.price || 0)) * selectionQty ).toFixed(2)}
                                     </button>
                                 </div>
                             </motion.div>

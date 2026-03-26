@@ -71,6 +71,27 @@ export default function CashierDashboard() {
     const [editAddVariant, setEditAddVariant] = useState('');
     const [editAddQty, setEditAddQty] = useState(1);
     const [editAddNote, setEditAddNote] = useState('');
+    // POS & Table State
+    const [showPOS, setShowPOS] = useState(false);
+    const [posOrderType, setPosOrderType] = useState<'local' | 'takeout' | 'delivery'>('local');
+    const [posCart, setPosCart] = useState<any[]>([]);
+    const [posEditingOrderId, setPosEditingOrderId] = useState<string | null>(null);
+    const [posClientName, setPosClientName] = useState('');
+    const [posClientDNI, setPosClientDNI] = useState('');
+    const [posDeliveryAddress, setPosDeliveryAddress] = useState('');
+    const [posDeliveryFee, setPosDeliveryFee] = useState(0);
+    const [posActiveCategory, setPosActiveCategory] = useState<string>('Todos');
+    const [posSearchTerm, setPosSearchTerm] = useState('');
+    const [posCategories] = useState<string[]>(['Todos']);
+    const [isSubmittingPOS, setIsSubmittingPOS] = useState(false);
+    const [selectedWaiter, setSelectedWaiter] = useState<any | null>(null);
+
+    // Product Selection Modal (Variants/Description)
+    const [selectionModalOpen, setSelectionModalOpen] = useState(false);
+    const [selectedProductForSelection, setSelectedProductForSelection] = useState<any | null>(null);
+    const [selectionVariant, setSelectionVariant] = useState<any | null>(null);
+    const [selectionQty, setSelectionQty] = useState(1);
+    const [selectionNote, setSelectionNote] = useState('');
 
     // Dispatch State
     const [dispatchModalOpen, setDispatchModalOpen] = useState(false);
@@ -403,6 +424,32 @@ export default function CashierDashboard() {
             // Download Command for manual record/printing
             downloadOrderTxt(selectedOrder);
 
+            // Free Table if associated
+            if (restaurantId && (selectedOrder.tableId || selectedOrder.tableNumber || selectedOrder.table)) {
+                try {
+                    let tid = selectedOrder.tableId;
+                    if (!tid) {
+                        const tNum = selectedOrder.tableNumber || selectedOrder.table;
+                        const tablesRef = collection(db, 'restaurants', restaurantId, 'tables');
+                        const q = query(tablesRef, where('number', '==', tNum.toString()));
+                        const qSnap = await getDocs(q);
+                        if (!qSnap.empty) {
+                            tid = qSnap.docs[0].id;
+                        }
+                    }
+                    if (tid) {
+                        await updateDoc(doc(db, 'restaurants', restaurantId, 'tables', tid), {
+                            status: 'available',
+                            lastOrderId: '',
+                            waiterId: '',
+                            waiterName: ''
+                        });
+                    }
+                } catch (err) {
+                    console.error("Error freeing table:", err);
+                }
+            }
+
             setCloseSaleModalOpen(false);
             setSelectedOrder(null);
             setCloseTip(0);
@@ -554,8 +601,8 @@ ESTADO: ${order.status.toUpperCase()}
     const renderTablesView = () => {
         const tablesWithStatus = tables.map(table => {
             const tableOrders = orders.filter(o => 
-                ((o as any).tableId === table.id || (o as any).tableNumber === table.number || (o.table === table.number || o.table === table.id)) && 
-                ['occupied', 'calling', 'preparing', 'delivering', 'delivered'].includes(o.status) &&
+                ((o as any).tableId === table.id || (o as any).tableNumber === table.number || o.table === table.number) && 
+                ['occupied', 'calling', 'preparing', 'delivering', 'delivered', 'pending', 'pendiente_pago'].includes(o.status) &&
                 o.paymentStatus !== 'sold'
             );
 
@@ -619,17 +666,27 @@ ESTADO: ${order.status.toUpperCase()}
         if (!selectedTable) return;
         setAssignWaiterLoading(true);
         try {
+            const waiterInfo = waiter ? { id: waiter.id, name: waiter.name } : { id: 'cashier', name: 'Caja/Admin' };
+            
             if (selectedTable.derivedStatus === 'free') {
-                const waiterInfo = waiter ? { id: waiter.id, name: waiter.name } : { id: 'cashier', name: 'Caja/Admin' };
-                navigate('/pos', { state: { table: selectedTable.number, waiter: waiterInfo } });
+                // Open POS for a new order
+                setSelectedWaiter(waiterInfo);
+                setPosOrderType('local');
+                setPosCart([]);
+                setPosEditingOrderId(null);
+                setPosClientName('');
+                setPosClientDNI('');
+                setShowPOS(true);
+                setShowTableModal(false);
             } else if (selectedTable.activeOrder) {
+                // Just update responsibility
                 await updateDoc(doc(db, 'orders', selectedTable.activeOrder.id), {
-                    waiterId: waiter ? waiter.id : 'cashier',
-                    waiterName: waiter ? waiter.name : 'Caja/Admin'
+                    waiterId: waiterInfo.id,
+                    waiterName: waiterInfo.name
                 });
                 toast.success("Responsabilidad actualizada");
+                setShowTableModal(false);
             }
-            setShowTableModal(false);
         } catch (error) {
             console.error("Error delegating table:", error);
             toast.error("Error al asignar mesa");
@@ -759,6 +816,101 @@ ESTADO: ${order.status.toUpperCase()}
             </motion.div>
         );
     };
+    const handleCreatePOSOrder = async () => {
+        if (!restaurantId) return;
+        if (posCart.length === 0) return toast.error("El carrito está vacío");
+        if (posOrderType === 'delivery' && !posDeliveryAddress) return toast.error("Ingresa la dirección de envío");
+
+        setIsSubmittingPOS(true);
+        try {
+            const items = posCart.map(item => ({
+                id: item.id,
+                name: item.name,
+                price: item.price,
+                quantity: item.quantity,
+                category: item.category || '',
+                variant: item.variant || '',
+                note: item.note || ''
+            }));
+
+            const subtotal = items.reduce((acc, item) => acc + (item.price * item.quantity), 0);
+            const total = subtotal + posDeliveryFee;
+
+            let deliveryAddressStr = posOrderType === 'local' ? 'Consumo Local' : posOrderType === 'takeout' ? 'Para Llevar' : posDeliveryAddress;
+
+            let targetOrderRefId = '';
+
+            if (posEditingOrderId) {
+                // Update existing order
+                const orderRef = doc(db, 'orders', posEditingOrderId);
+                await updateDoc(orderRef, {
+                    items,
+                    total,
+                    userName: posClientName || 'Cliente en mostrador',
+                    clientId: posClientDNI || '',
+                    deliveryAddress: deliveryAddressStr,
+                    deliveryFee: posDeliveryFee,
+                    waiterId: selectedWaiter?.id || 'cashier',
+                    waiterName: selectedWaiter?.name || 'Caja/Admin',
+                    tableId: posOrderType === 'local' ? (selectedTable?.id || '') : '',
+                    tableNumber: posOrderType === 'local' ? (selectedTable?.number || '') : '',
+                    updatedAt: serverTimestamp()
+                });
+                targetOrderRefId = posEditingOrderId;
+                toast.success("Pedido actualizado");
+            } else {
+                // Create new order
+                const newOrderRef = await addDoc(collection(db, 'orders'), {
+                    restaurantId,
+                    userId: 'pos_customer',
+                    userName: posClientName || 'Cliente en mostrador',
+                    clientId: posClientDNI || '',
+                    items,
+                    total,
+                    status: 'preparing',
+                    paymentStatus: posOrderType === 'local' ? 'paid' : 'sold',
+                    createdAt: serverTimestamp(),
+                    deliveryAddress: deliveryAddressStr,
+                    source: 'pos',
+                    type: posOrderType,
+                    deliveryFee: posDeliveryFee,
+                    waiterId: selectedWaiter?.id || 'cashier',
+                    waiterName: selectedWaiter?.name || 'Caja/Admin',
+                    tableId: posOrderType === 'local' ? (selectedTable?.id || '') : '',
+                    tableNumber: posOrderType === 'local' ? (selectedTable?.number || '') : '',
+                });
+                targetOrderRefId = newOrderRef.id;
+                toast.success("Pedido creado");
+            }
+
+            // Update Table Status if local
+            if (posOrderType === 'local' && selectedTable) {
+                const tableRef = doc(db, 'restaurants', restaurantId, 'tables', selectedTable.id);
+                await updateDoc(tableRef, {
+                    status: 'occupied',
+                    lastOrderId: targetOrderRefId,
+                    waiterId: selectedWaiter?.id || 'cashier',
+                    waiterName: selectedWaiter?.name || 'Caja/Admin'
+                });
+            }
+
+            setShowPOS(false);
+            setPosCart([]);
+            setPosClientName('');
+            setPosClientDNI('');
+            setPosDeliveryAddress('');
+            setPosDeliveryFee(0);
+            setPosEditingOrderId(null);
+            setSelectedTable(null);
+            setSelectedWaiter(null);
+
+        } catch (error) {
+            console.error("Error creating POS order:", error);
+            toast.error("Error al procesar pedido");
+        } finally {
+            setIsSubmittingPOS(false);
+        }
+    };
 
     return (
         <div className="min-h-screen bg-slate-50 flex flex-col">
@@ -789,7 +941,15 @@ ESTADO: ${order.status.toUpperCase()}
                         <span className="hidden sm:inline">Cierre Caja</span>
                     </button>
                     <button
-                        onClick={() => navigate('/pos')}
+                        onClick={() => {
+                            setPosCart([]);
+                            setPosEditingOrderId(null);
+                            setPosOrderType('takeout');
+                            setPosClientName('');
+                            setSelectedTable(null);
+                            setSelectedWaiter({ id: 'cashier', name: 'Caja/Admin' });
+                            setShowPOS(true);
+                        }}
                         className="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-xl font-bold hover:bg-primary/90 transition-colors shadow-lg shadow-primary/20"
                     >
                         <Plus className="w-4 h-4" />
@@ -1435,13 +1595,25 @@ ESTADO: ${order.status.toUpperCase()}
                                     <div className="grid grid-cols-2 gap-3 pt-2">
                                         <button
                                             onClick={() => {
-                                                setSelectedOrderForEdit(selectedTable.activeOrder);
-                                                setEditModalOpen(true);
+                                                // Load existing order into POS
+                                                const order = selectedTable.activeOrder;
+                                                setPosCart(order.items.map((item: any) => ({
+                                                    ...item,
+                                                    id: item.id || Math.random().toString(36).substr(2, 9),
+                                                    price: Number(item.price),
+                                                    quantity: Number(item.quantity)
+                                                })));
+                                                setPosEditingOrderId(order.id);
+                                                setPosClientName(order.userName || '');
+                                                setPosClientDNI(order.clientId || '');
+                                                setPosOrderType(order.type || 'local');
+                                                setSelectedWaiter(order.waiterId ? { id: order.waiterId, name: order.waiterName } : null);
+                                                setShowPOS(true);
                                                 setShowTableModal(false);
                                             }}
-                                            className="flex items-center justify-center gap-2 p-4 bg-white border-2 border-slate-100 text-slate-600 rounded-2xl font-black hover:border-primary hover:text-primary transition-all text-sm"
+                                            className="flex items-center justify-center gap-2 p-4 bg-primary text-white rounded-2xl font-black shadow-lg shadow-primary/20 hover:scale-[1.02] transition-all text-sm"
                                         >
-                                            <Edit className="w-4 h-4" /> Editar Orden
+                                            <Edit className="w-4 h-4" /> Editar POS
                                         </button>
                                         <button
                                             onClick={() => {
@@ -1514,6 +1686,410 @@ ESTADO: ${order.status.toUpperCase()}
                                     </div>
                                 </div>
                             )}
+                        </div>
+                    </motion.div>
+                </div>
+            )}
+
+            {/* VISTA DEL POS (FULLSCREEN OVERLAY) */}
+            {showPOS && (
+                <div className="fixed inset-0 z-[200] bg-slate-50 flex flex-col sm:flex-row overflow-hidden">
+                    {/* Left Side: Products Catalog */}
+                    <div className="flex-1 flex flex-col min-w-0 bg-white">
+                        <header className="p-4 sm:p-6 border-b border-slate-100 flex flex-col sm:flex-row gap-4 justify-between items-start sm:items-center bg-white sticky top-0 z-10">
+                            <div className="flex items-center gap-4">
+                                <button 
+                                    onClick={() => setShowPOS(false)}
+                                    className="p-3 hover:bg-slate-100 rounded-2xl transition-colors text-slate-400 hover:text-slate-600"
+                                >
+                                    <X className="w-6 h-6" />
+                                </button>
+                                <div>
+                                    <h2 className="text-2xl font-black text-slate-900 leading-tight">Terminal POS</h2>
+                                    <div className="flex items-center gap-2 mt-1">
+                                        <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse" />
+                                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Listo para tomar pedido</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="relative w-full sm:w-72 group">
+                                <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 group-focus-within:text-primary transition-colors" />
+                                <input 
+                                    type="text"
+                                    placeholder="Buscar producto..."
+                                    value={posSearchTerm}
+                                    onChange={(e) => setPosSearchTerm(e.target.value)}
+                                    className="w-full pl-12 pr-4 py-3.5 bg-slate-50 border border-slate-100 rounded-2xl outline-none focus:border-primary focus:bg-white transition-all font-bold text-slate-600 shadow-sm"
+                                />
+                            </div>
+                        </header>
+
+                        {/* Categories Horizontal Scroll */}
+                        <div className="px-4 sm:px-6 py-4 flex gap-2 overflow-x-auto no-scrollbar border-b border-slate-50">
+                            {['Todos', ...new Set(posProducts.map(p => p.category))].map(cat => (
+                                <button
+                                    key={cat}
+                                    onClick={() => setPosActiveCategory(cat)}
+                                    className={`px-6 py-3 rounded-2xl font-black text-xs whitespace-nowrap transition-all ${
+                                        posActiveCategory === cat 
+                                        ? 'bg-primary text-white shadow-lg shadow-primary/20 scale-105' 
+                                        : 'bg-slate-50 text-slate-500 hover:bg-slate-100 hover:text-slate-700'
+                                    }`}
+                                >
+                                    {cat}
+                                </button>
+                            ))}
+                        </div>
+
+                        {/* Products Grid */}
+                        <div className="flex-1 overflow-y-auto p-4 sm:p-6 custom-scrollbar bg-slate-50/30">
+                            <div className="grid grid-cols-2 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                                {posProducts
+                                    .filter(p => posActiveCategory === 'Todos' || p.category === posActiveCategory)
+                                    .filter(p => p.name.toLowerCase().includes(posSearchTerm.toLowerCase()))
+                                    .map(product => (
+                                        <motion.button
+                                            key={product.id}
+                                            layout
+                                            initial={{ opacity: 0, scale: 0.9 }}
+                                            animate={{ opacity: 1, scale: 1 }}
+                                            whileHover={{ y: -5 }}
+                                            onClick={() => {
+                                                setSelectedProductForSelection(product);
+                                                setSelectionVariant(null);
+                                                setSelectionQty(1);
+                                                setSelectionNote('');
+                                                setSelectionModalOpen(true);
+                                            }}
+                                            className="group relative flex flex-col bg-white rounded-[2rem] overflow-hidden shadow-sm hover:shadow-xl transition-all border border-slate-100"
+                                        >
+                                            <div className="aspect-square bg-slate-100 relative overflow-hidden">
+                                                {product.image ? (
+                                                    <img src={product.image} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" alt={product.name} />
+                                                ) : (
+                                                    <div className="w-full h-full flex items-center justify-center text-slate-300">
+                                                        <Utensils className="w-8 h-8" />
+                                                    </div>
+                                                )}
+                                                <div className="absolute top-3 right-3 bg-white/90 backdrop-blur-md px-3 py-1.5 rounded-xl border border-white/50 shadow-sm">
+                                                    <p className="text-sm font-black text-slate-900">${(product.promoPrice > 0 ? product.promoPrice : product.price).toFixed(2)}</p>
+                                                </div>
+                                            </div>
+                                            <div className="p-4 text-left flex flex-col flex-1">
+                                                <h4 className="font-black text-slate-800 text-sm line-clamp-1 mb-1">{product.name}</h4>
+                                                <p className="text-[10px] text-slate-400 font-bold line-clamp-2 leading-tight mb-2 flex-grow">{product.description}</p>
+                                                
+                                                {product.hasVariants && product.priceVariants?.length > 0 && (
+                                                    <div className="flex gap-1.5 flex-wrap mt-auto">
+                                                        {product.priceVariants.map((v: any, idx: number) => (
+                                                            <div key={idx} className="bg-slate-50 border border-slate-100 px-1.5 py-0.5 rounded-lg flex flex-col gap-0">
+                                                                <span className="text-[7px] font-black uppercase text-slate-400 leading-none">{v.name}</span>
+                                                                <span className="text-[9px] font-black text-slate-700 leading-none">${v.price.toFixed(2)}</span>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                )}
+                                                {!product.hasVariants && (
+                                                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-auto">{product.category}</p>
+                                                )}
+                                            </div>
+                                        </motion.button>
+                                    ))}
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Right Side: Current Basket & Order Info */}
+                    <div className="w-full sm:w-96 flex flex-col bg-white border-l border-slate-200">
+                        <div className="p-6 border-b border-slate-100">
+                            <h3 className="text-lg font-black text-slate-900 flex items-center gap-2 mb-4">
+                                <ShoppingCart className="w-5 h-5 text-primary" /> Detalles del Pedido
+                            </h3>
+
+                            <div className="grid grid-cols-3 gap-2">
+                                {(['local' , 'takeout' , 'delivery'] as const).map(type => (
+                                    <button
+                                        key={type}
+                                        onClick={() => {
+                                            if (posEditingOrderId && type !== posOrderType) {
+                                                toast.error("No se puede cambiar el tipo en una edición");
+                                                return;
+                                            }
+                                            setPosOrderType(type);
+                                        }}
+                                        className={`py-3 rounded-2xl flex flex-col gap-1 items-center justify-center border-2 transition-all ${
+                                            posOrderType === type 
+                                            ? 'border-primary bg-primary/5 text-primary' 
+                                            : 'border-slate-100 text-slate-400 bg-slate-50 hover:bg-white hover:border-slate-200'
+                                        }`}
+                                    >
+                                        <div className="text-center">
+                                            <p className="text-[10px] font-black uppercase tracking-widest">
+                                                {type === 'local' ? 'Mesa' : type === 'takeout' ? 'Llevar' : 'Envio'}
+                                            </p>
+                                        </div>
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+
+                        {/* Order Form */}
+                        <div className="p-6 space-y-4 border-b border-slate-100 bg-slate-50/50">
+                            {posOrderType === 'local' ? (
+                                <div className="p-4 bg-primary/5 border border-primary/20 rounded-2xl">
+                                    <div className="flex items-center gap-3">
+                                        <div className="w-10 h-10 rounded-xl bg-primary flex items-center justify-center text-white shadow-lg">
+                                            <Utensils className="w-5 h-5" />
+                                        </div>
+                                        <div>
+                                            <p className="text-[10px] font-black text-primary/60 uppercase tracking-widest">Mesa Asignada</p>
+                                            <p className="text-lg font-black text-slate-900">Mesa {selectedTable?.number || '?'}</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            ) : (
+                                <div className="space-y-4">
+                                    <div className="space-y-1.5">
+                                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Nombre Cliente</label>
+                                        <input 
+                                            type="text"
+                                            value={posClientName}
+                                            onChange={(e) => setPosClientName(e.target.value)}
+                                            className="w-full px-4 py-3 bg-white border border-slate-200 rounded-2xl outline-none focus:border-primary font-bold transition-all shadow-sm"
+                                            placeholder="Nombre..."
+                                        />
+                                    </div>
+                                    {posOrderType === 'delivery' && (
+                                        <div className="space-y-1.5">
+                                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Dirección de Envío</label>
+                                            <textarea 
+                                                value={posDeliveryAddress}
+                                                onChange={(e) => setPosDeliveryAddress(e.target.value)}
+                                                className="w-full px-4 py-3 bg-white border border-slate-200 rounded-2xl outline-none focus:border-primary font-bold transition-all shadow-sm h-20 resize-none"
+                                                placeholder="Dirección exacta..."
+                                            />
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Items List */}
+                        <div className="flex-1 overflow-y-auto p-4 custom-scrollbar">
+                            <AnimatePresence mode="popLayout">
+                                {posCart.length > 0 ? (
+                                    posCart.map((item, idx) => (
+                                        <motion.div 
+                                            key={item.id}
+                                            layout
+                                            initial={{ opacity: 0, x: 20 }}
+                                            animate={{ opacity: 1, x: 0 }}
+                                            exit={{ opacity: 0, scale: 0.8 }}
+                                            className="flex items-center gap-3 p-3 bg-slate-50 rounded-2xl border border-slate-100 mb-2 group"
+                                        >
+                                            <div className="w-12 h-12 bg-white rounded-xl shadow-sm flex items-center justify-center shrink-0 border border-slate-100">
+                                                <span className="text-xs font-black text-primary">x{item.quantity}</span>
+                                            </div>
+                                            <div className="flex-1 min-w-0">
+                                                <p className="font-bold text-slate-800 text-sm truncate">{item.name}</p>
+                                                <p className="text-[10px] font-black text-slate-400">${item.price.toFixed(2)} c/u</p>
+                                            </div>
+                                            <div className="flex flex-col items-end gap-1">
+                                                <p className="font-black text-slate-900 text-sm text-right">${(item.price * item.quantity).toFixed(2)}</p>
+                                                <button 
+                                                    onClick={() => setPosCart(prev => prev.filter((_, i) => i !== idx))}
+                                                    className="p-1 px-2 hover:bg-red-50 text-red-400 hover:text-red-500 rounded-lg transition-colors"
+                                                >
+                                                    <Trash2 className="w-4 h-4" />
+                                                </button>
+                                            </div>
+                                        </motion.div>
+                                    ))
+                                ) : (
+                                    <div className="h-full flex flex-col items-center justify-center text-slate-300 p-8 text-center gap-4">
+                                        <div className="w-20 h-20 bg-slate-50 rounded-full flex items-center justify-center">
+                                            <ShoppingCart className="w-10 h-10" />
+                                        </div>
+                                        <p className="text-sm font-black uppercase tracking-widest">El carrito está vacío</p>
+                                    </div>
+                                )}
+                            </AnimatePresence>
+                        </div>
+
+                        {/* Footer / Summary */}
+                        <div className="p-6 bg-white border-t border-slate-100 shadow-[0_-10px_30px_rgba(0,0,0,0.02)]">
+                            <div className="space-y-2 mb-6">
+                                <div className="flex justify-between items-center text-sm">
+                                    <span className="text-slate-400 font-bold uppercase tracking-wider text-[10px]">Subtotal</span>
+                                    <span className="font-black text-slate-600">${posCart.reduce((acc, item) => acc + (item.price * item.quantity), 0).toFixed(2)}</span>
+                                </div>
+                                {posOrderType === 'delivery' && (
+                                    <div className="flex justify-between items-center text-sm">
+                                        <span className="text-slate-400 font-bold uppercase tracking-wider text-[10px]">Envío</span>
+                                        <span className="font-black text-slate-600">${posDeliveryFee.toFixed(2)}</span>
+                                    </div>
+                                )}
+                                <div className="flex justify-between items-center pt-2">
+                                    <span className="text-slate-900 font-black uppercase tracking-widest text-xs">Total</span>
+                                    <span className="text-3xl font-black text-primary">${(posCart.reduce((acc, item) => acc + (item.price * item.quantity), 0) + (posOrderType === 'delivery' ? posDeliveryFee : 0)).toFixed(2)}</span>
+                                </div>
+                            </div>
+
+                            <button
+                                onClick={handleCreatePOSOrder}
+                                disabled={isSubmittingPOS || posCart.length === 0}
+                                className="w-full bg-slate-900 text-white py-5 rounded-3xl font-black text-xl shadow-2xl hover:bg-black hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-50 disabled:hover:scale-100 flex items-center justify-center gap-3"
+                            >
+                                {isSubmittingPOS ? (
+                                    <Loader2 className="w-6 h-6 animate-spin" />
+                                ) : (
+                                    <>
+                                        {posEditingOrderId ? 'Actualizar Orden' : 'Confirmar Pedido'}
+                                        <Check className="w-6 h-6" />
+                                    </>
+                                )}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* SELECTION MODAL (Varianter / Notes) */}
+            {selectionModalOpen && selectedProductForSelection && (
+                <div className="fixed inset-0 z-[250] flex items-end sm:items-center justify-center bg-slate-900/40 backdrop-blur-sm p-0 sm:p-4">
+                    <motion.div 
+                        initial={{ opacity: 0, y: 100 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        className="bg-white w-full max-w-xl h-[90vh] sm:h-auto sm:max-h-[85vh] rounded-t-[3rem] sm:rounded-[3rem] shadow-2xl overflow-hidden flex flex-col"
+                    >
+                        {/* Cover Image/Header */}
+                        <div className="relative h-64 sm:h-72 shrink-0">
+                            {selectedProductForSelection.image ? (
+                                <img src={selectedProductForSelection.image} className="w-full h-full object-cover" alt={selectedProductForSelection.name} />
+                            ) : (
+                                <div className="w-full h-full flex items-center justify-center text-slate-300">
+                                    <Package className="w-16 h-16" />
+                                </div>
+                            )}
+                            <button 
+                                onClick={() => setSelectionModalOpen(false)}
+                                className="absolute top-4 right-4 bg-black/20 backdrop-blur-md text-white p-2 rounded-full hover:bg-black/40 transition-colors"
+                            >
+                                <X className="w-6 h-6" />
+                            </button>
+                            <div className="absolute bottom-0 left-0 right-0 p-6 bg-gradient-to-t from-black/80 to-transparent">
+                                <h3 className="text-2xl font-black text-white">{selectedProductForSelection.name}</h3>
+                                <p className="text-white/80 font-bold text-sm">
+                                    {selectedProductForSelection.category} • ${(selectedProductForSelection.promoPrice > 0 ? selectedProductForSelection.promoPrice : selectedProductForSelection.price).toFixed(2)}
+                                </p>
+                            </div>
+                        </div>
+
+                        <div className="flex-1 overflow-y-auto p-6 sm:p-8 space-y-6 custom-scrollbar">
+                            {/* Description */}
+                            {selectedProductForSelection.description && (
+                                <div className="space-y-2">
+                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Descripción</label>
+                                    <p className="text-slate-600 font-medium leading-relaxed bg-slate-50 p-4 rounded-2xl border border-slate-100">
+                                        {selectedProductForSelection.description}
+                                    </p>
+                                </div>
+                            )}
+
+                            {/* Variants selection */}
+                            {selectedProductForSelection.hasVariants && selectedProductForSelection.priceVariants?.length > 0 && (
+                                <div className="space-y-3">
+                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Selecciona una Variante</label>
+                                    <div className="grid grid-cols-1 gap-2">
+                                        {selectedProductForSelection.priceVariants.map((variant: any, idx: number) => (
+                                            <button
+                                                key={idx}
+                                                onClick={() => setSelectionVariant(variant)}
+                                                className={`flex items-center justify-between p-4 rounded-2xl border-2 transition-all font-bold ${
+                                                    selectionVariant?.name === variant.name 
+                                                    ? 'border-primary bg-primary/5 text-primary' 
+                                                    : 'border-slate-100 text-slate-600 hover:border-slate-200'
+                                                }`}
+                                            >
+                                                <div className="flex items-center gap-3">
+                                                    <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${selectionVariant?.name === variant.name ? 'border-primary bg-primary' : 'border-slate-300'}`}>
+                                                        {selectionVariant?.name === variant.name && <div className="w-2 h-2 bg-white rounded-full" />}
+                                                    </div>
+                                                    <span>{variant.name}</span>
+                                                </div>
+                                                <span className="font-black">${variant.price.toFixed(2)}</span>
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Quantity and Notes */}
+                            <div className="flex flex-col sm:flex-row gap-6">
+                                <div className="space-y-3 shrink-0">
+                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Cantidad</label>
+                                    <div className="flex items-center bg-slate-100 p-1 rounded-2xl w-fit">
+                                        <button 
+                                            onClick={() => setSelectionQty(Math.max(1, selectionQty - 1))}
+                                            className="w-12 h-12 flex items-center justify-center bg-white rounded-xl shadow-sm text-slate-500 hover:text-slate-700"
+                                        >
+                                            <Minus className="w-5 h-5" />
+                                        </button>
+                                        <span className="w-16 text-center font-black text-xl">{selectionQty}</span>
+                                        <button 
+                                            onClick={() => setSelectionQty(selectionQty + 1)}
+                                            className="w-12 h-12 flex items-center justify-center bg-white rounded-xl shadow-sm text-primary hover:text-primary-dark"
+                                        >
+                                            <Plus className="w-5 h-5" />
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <div className="space-y-3 flex-1">
+                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Notas Especiales</label>
+                                    <input 
+                                        type="text"
+                                        placeholder="Ej: Sin cebolla, extra salsa..."
+                                        value={selectionNote}
+                                        onChange={(e) => setSelectionNote(e.target.value)}
+                                        className="w-full bg-slate-50 border border-slate-200 p-4 rounded-2xl outline-none focus:border-primary font-bold text-slate-700 h-14"
+                                    />
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Modal Footer */}
+                        <div className="p-6 sm:p-8 bg-slate-50 border-t border-slate-100 shrink-0">
+                            <button
+                                onClick={() => {
+                                    if (selectedProductForSelection.hasVariants && !selectionVariant) {
+                                        toast.error("Por favor selecciona una variante");
+                                        return;
+                                    }
+                                    
+                                    const finalPrice = selectionVariant ? selectionVariant.price : (selectedProductForSelection.promoPrice > 0 ? selectedProductForSelection.promoPrice : selectedProductForSelection.price);
+                                    const finalName = selectionVariant ? `${selectedProductForSelection.name} (${selectionVariant.name})` : selectedProductForSelection.name;
+                                    
+                                    const newItem = {
+                                        id: `${selectedProductForSelection.id}-${selectionVariant?.name || 'default'}-${Date.now()}`,
+                                        productId: selectedProductForSelection.id,
+                                        name: finalName,
+                                        price: finalPrice,
+                                        quantity: selectionQty,
+                                        note: selectionNote,
+                                        category: selectedProductForSelection.category || ''
+                                    };
+                                    
+                                    setPosCart(prev => [...prev, newItem]);
+                                    setSelectionModalOpen(false);
+                                    toast.success("Producto agregado al carrito");
+                                }}
+                                className="w-full bg-primary text-white py-5 rounded-2xl font-black text-lg shadow-xl shadow-primary/30 hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-3"
+                            >
+                                <ShoppingCart className="w-6 h-6" />
+                                Agregar al Pedido • ${( (selectionVariant ? selectionVariant.price : (selectedProductForSelection.promoPrice > 0 ? selectedProductForSelection.promoPrice : selectedProductForSelection.price)) * selectionQty ).toFixed(2)}
+                            </button>
                         </div>
                     </motion.div>
                 </div>

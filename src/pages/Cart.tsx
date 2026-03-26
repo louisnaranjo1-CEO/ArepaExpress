@@ -20,6 +20,7 @@ export default function Cart() {
   const [restaurantData, setRestaurantData] = useState<any>(null);
   const [checkoutSuccess, setCheckoutSuccess] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isSyncingTable, setIsSyncingTable] = useState(false);
   const [distance, setDistance] = useState<number | null>(null);
   const [loadingDistance, setLoadingDistance] = useState(false);
   const [currentStep, setCurrentStep] = useState(1);
@@ -233,6 +234,23 @@ export default function Cart() {
       const docRef = await addDoc(collection(db, 'orders'), orderData);
       setOrderId(docRef.id);
 
+      // SYNC TABLE STATUS: Mark as occupied
+      if (isWaiter && tableId) {
+        setIsSyncingTable(true);
+        try {
+          const tableRef = doc(db, 'restaurants', restaurantId, 'tables', tableId);
+          await updateDoc(tableRef, {
+            status: 'occupied',
+            lastOrderId: docRef.id,
+            updatedAt: serverTimestamp()
+          });
+        } catch (tableErr) {
+          console.error("Error updating table status:", tableErr);
+        } finally {
+          setIsSyncingTable(false);
+        }
+      }
+
       if (isWaiter) { clearCart(); setCheckoutSuccess(true); setPurchaseConfirmed(true); return; }
 
       let itemsList = items.map(item => {
@@ -306,9 +324,14 @@ export default function Cart() {
                     <div className="flex gap-4">
                       <img src={item.image} className="size-20 rounded-2xl object-cover shadow-sm" />
                       <div className="flex-1">
-                         <p className="font-black text-slate-800 text-sm leading-tight mb-1">{item.name}</p>
-                         <p className="text-primary font-black text-sm">${(item.price || 0).toFixed(2)}</p>
-                         <div className="flex items-center gap-3 mt-3">
+                         <div className="flex justify-between items-start mb-1">
+                           <p className="font-black text-slate-800 text-sm leading-tight">{item.name}</p>
+                           <p className="text-primary font-black text-sm">${(item.price || 0).toFixed(2)}</p>
+                         </div>
+                         {(item as any).variant && (
+                           <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Variante: {(item as any).variant}</p>
+                         )}
+                         <div className="flex items-center gap-3 mt-1">
                            <div className="flex items-center bg-slate-50 rounded-full border border-slate-100 p-0.5">
                              <button onClick={() => updateQuantity(item.id, item.quantity - 1)} className="size-8 bg-white shadow-sm rounded-full flex items-center justify-center text-slate-400 hover:text-slate-600 active:scale-90 transition-all">-</button>
                              <span className="w-8 text-center font-black text-sm text-slate-700">{item.quantity}</span>
@@ -446,8 +469,11 @@ export default function Cart() {
                               <span className="text-primary font-black mr-2">{item.quantity}x</span>
                               {item.name}
                             </p>
+                            {(item as any).variant && (
+                              <p className="text-[10px] text-primary font-bold uppercase tracking-wider mt-0.5">{(item as any).variant}</p>
+                            )}
                             {(item as any).notes && (
-                              <p className="text-[10px] text-slate-400 font-medium italic mt-0.5">"{ (item as any).notes }"</p>
+                              <p className="text-[10px] text-slate-400 font-medium italic mt-0.5">Nota: "{ (item as any).notes }"</p>
                             )}
                           </div>
                           <span className="font-black text-slate-900 text-sm">${((item.price || 0) * item.quantity).toFixed(2)}</span>
@@ -526,13 +552,13 @@ export default function Cart() {
 
                   <button 
                     onClick={handleCheckout} 
-                    disabled={isCheckingOut} 
+                    disabled={isCheckingOut || isSyncingTable} 
                     className="w-full bg-primary text-white py-5 rounded-[22px] font-black uppercase tracking-widest shadow-xl shadow-primary/20 hover:scale-[1.02] active:scale-95 transition-all flex items-center justify-center gap-3 disabled:opacity-50"
                   >
-                    {isCheckingOut ? (
+                    {isCheckingOut || isSyncingTable ? (
                       <span className="flex items-center gap-2">
                         <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                        Procesando...
+                        {isSyncingTable ? 'Actualizando Mesa...' : 'Procesando...'}
                       </span>
                     ) : (
                       <>

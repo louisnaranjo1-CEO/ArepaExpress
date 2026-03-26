@@ -4,9 +4,10 @@ import { db } from '../../lib/firebase';
 import { collection, query, where, onSnapshot, orderBy, doc, updateDoc, getDocs, increment, addDoc, serverTimestamp, getDoc } from 'firebase/firestore';
 import { useAuth } from '../../context/AuthContext';
 import { printToUsbDevice, formatTicket, PrintOrder } from '../../lib/usb-printer';
-import ComandaPreview from '../components/ComandaPreview';
-
 import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { motion, AnimatePresence } from 'framer-motion';
+import toast from 'react-hot-toast';
+import ComandaPreview from '../components/ComandaPreview';
 
 interface OrderItem {
     id: string;
@@ -171,6 +172,15 @@ export default function Orders() {
     
     // Comanda Preview State
     const [selectedOrderForComanda, setSelectedOrderForComanda] = useState<Order | any | null>(null);
+
+    // Product Selection Modal (Variants/Description)
+    const [selectionModalOpen, setSelectionModalOpen] = useState(false);
+    const [selectedProductForSelection, setSelectedProductForSelection] = useState<any | null>(null);
+    const [selectionVariant, setSelectionVariant] = useState<any | null>(null);
+    const [selectionQty, setSelectionQty] = useState(1);
+    const [selectionNote, setSelectionNote] = useState('');
+
+    const [posEditingOrderId, setPosEditingOrderId] = useState<string | null>(null);
 
     useEffect(() => {
         if (!user || !showPOS) return;
@@ -597,39 +607,64 @@ export default function Orders() {
 
             let deliveryAddressStr = posOrderType === 'local' ? 'Consumo Local' : posOrderType === 'takeout' ? 'Para Llevar' : posDeliveryAddress;
 
-            const newOrderRef = await addDoc(collection(db, 'orders'), {
-                restaurantId: user.uid,
-                userId: 'pos_customer',
-                userName: posClientName || 'Cliente en mostrador',
-                clientId: posClientDNI || '',
-                items,
-                total,
-                status: 'preparing',
-                paymentStatus: 'sold', // Ya pagado
-                createdAt: serverTimestamp(),
-                deliveryAddress: deliveryAddressStr,
-                source: 'pos',
-                type: posOrderType,
-                deliveryFee: posDeliveryFee,
-                waiterId: selectedWaiter?.id || '',
-                waiterName: selectedWaiter?.name || '',
-                tableId: posOrderType === 'local' ? (selectedTable?.id || '') : '',
-                tableNumber: posOrderType === 'local' ? (selectedTable?.number || '') : '',
-            });
+            let targetOrderRefId = '';
+
+            if (posEditingOrderId) {
+                // Update existing order
+                const orderRef = doc(db, 'orders', posEditingOrderId);
+                await updateDoc(orderRef, {
+                    items,
+                    total,
+                    userName: posClientName || 'Cliente en mostrador',
+                    clientId: posClientDNI || '',
+                    deliveryAddress: deliveryAddressStr,
+                    deliveryFee: posDeliveryFee,
+                    waiterId: selectedWaiter?.id || '',
+                    waiterName: selectedWaiter?.name || '',
+                    tableId: posOrderType === 'local' ? (selectedTable?.id || '') : '',
+                    tableNumber: posOrderType === 'local' ? (selectedTable?.number || '') : '',
+                    updatedAt: serverTimestamp()
+                });
+                targetOrderRefId = posEditingOrderId;
+                toast.success("Pedido actualizado");
+            } else {
+                // Create new order
+                const newOrderRef = await addDoc(collection(db, 'orders'), {
+                    restaurantId: user.uid,
+                    userId: 'pos_customer',
+                    userName: posClientName || 'Cliente en mostrador',
+                    clientId: posClientDNI || '',
+                    items,
+                    total,
+                    status: 'preparing',
+                    paymentStatus: posOrderType === 'local' ? 'paid' : 'sold', // Local needs to stay active for table status
+                    createdAt: serverTimestamp(),
+                    deliveryAddress: deliveryAddressStr,
+                    source: 'pos',
+                    type: posOrderType,
+                    deliveryFee: posDeliveryFee,
+                    waiterId: selectedWaiter?.id || '',
+                    waiterName: selectedWaiter?.name || '',
+                    tableId: posOrderType === 'local' ? (selectedTable?.id || '') : '',
+                    tableNumber: posOrderType === 'local' ? (selectedTable?.number || '') : '',
+                });
+                targetOrderRefId = newOrderRef.id;
+                toast.success("Pedido creado");
+            }
 
             // Update Table Status if local
             if (posOrderType === 'local' && selectedTable) {
                 const tableRef = doc(db, 'restaurants', user.uid, 'tables', selectedTable.id);
                 await updateDoc(tableRef, {
                     status: 'occupied',
-                    lastOrderId: newOrderRef.id,
+                    lastOrderId: targetOrderRefId,
                     waiterId: selectedWaiter?.id || '',
                     waiterName: selectedWaiter?.name || ''
                 });
             }
 
             const printData = {
-                id: newOrderRef.id,
+                id: targetOrderRefId,
                 userName: posClientName || 'Cliente en mostrador',
                 items,
                 total,
@@ -643,6 +678,7 @@ export default function Orders() {
             } as any;
 
             setShowPOS(false);
+            setPosEditingOrderId(null);
             setPosCart([]);
             setPosClientName('');
             setPosClientDNI('');
@@ -749,7 +785,7 @@ export default function Orders() {
                 {tables.map((table) => {
                     const activeOrder = orders.find(o => 
                         ((o as any).tableId === table.id || (o as any).tableNumber === table.number || (o as any).table === table.number) && 
-                        ['occupied', 'calling', 'preparing', 'delivering', 'delivered'].includes(o.status) &&
+                        ['occupied', 'calling', 'preparing', 'delivering', 'delivered', 'pending', 'pendiente_pago'].includes(o.status) &&
                         o.paymentStatus !== 'sold'
                     );
                     
@@ -1156,7 +1192,7 @@ export default function Orders() {
                             const activeOrder = orders.find(o => 
                                 ((o as any).tableId === selectedTable.id || (o as any).tableNumber === selectedTable.number || o.table === selectedTable.number) && 
                                 ['occupied', 'calling', 'preparing', 'delivering', 'delivered'].includes(o.status) &&
-                                o.paymentStatus !== 'sold'
+                                (o.paymentStatus !== 'sold')
                             );
 
                             return (
@@ -1217,13 +1253,18 @@ export default function Orders() {
                                                 <div className="grid grid-cols-2 gap-3 pt-2">
                                                     <button
                                                         onClick={() => {
-                                                            setSelectedOrderForEdit(activeOrder);
-                                                            setEditModalOpen(true);
+                                                            setPosEditingOrderId(activeOrder.id);
+                                                            setPosCart(activeOrder.items || []);
+                                                            setPosClientName(activeOrder.userName || '');
+                                                            setPosOrderType('local');
+                                                            setSelectedTable(selectedTable);
+                                                            setSelectedWaiter(waiters.find(w => w.id === activeOrder.waiterId) || null);
+                                                            setShowPOS(true);
                                                             setShowTableModal(false);
                                                         }}
-                                                        className="flex items-center justify-center gap-2 p-4 bg-white border-2 border-slate-100 text-slate-600 rounded-2xl font-black hover:border-primary hover:text-primary transition-all text-sm"
+                                                        className="flex items-center justify-center gap-2 p-4 bg-indigo-500 text-white rounded-2xl font-black shadow-lg shadow-indigo-500/20 hover:scale-[1.02] transition-all text-sm"
                                                     >
-                                                        <Edit className="w-4 h-4" /> Editar Orden
+                                                        <ShoppingCart className="w-4 h-4" /> Editar POS
                                                     </button>
                                                     <button
                                                         onClick={() => {
@@ -1251,7 +1292,7 @@ export default function Orders() {
                                                             }`}
                                                         >
                                                             <div className="flex items-center gap-3">
-                                                                <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center">
+                                                                 <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center">
                                                                     <X className="w-4 h-4" />
                                                                 </div>
                                                                 <span>Sin Mesero (Libre)</span>
@@ -1284,6 +1325,10 @@ export default function Orders() {
                                                         onClick={() => {
                                                             // Set current table as selected for POS
                                                             setSelectedTable(selectedTable);
+                                                            setPosEditingOrderId(null);
+                                                            setPosCart([]);
+                                                            setPosClientName('');
+                                                            
                                                             // Open POS for this table
                                                             setPosOrderType('local');
                                                             setShowPOS(true);
@@ -1294,10 +1339,22 @@ export default function Orders() {
                                                         <ShoppingCart className="w-5 h-5" /> Abrir Nuevo Pedido en esta Mesa
                                                     </button>
                                                     <button
-                                                        onClick={() => handleAssignWaiter(selectedTable.id, { id: user.uid, name: 'Administrador' })}
+                                                        onClick={() => {
+                                                            const adminWaiter = { id: user.uid, name: 'Administrador' };
+                                                            handleAssignWaiter(selectedTable.id, adminWaiter);
+                                                            
+                                                            // Also open POS immediately
+                                                            setSelectedTable(selectedTable);
+                                                            setSelectedWaiter(adminWaiter);
+                                                            setPosEditingOrderId(null);
+                                                            setPosCart([]);
+                                                            setPosClientName('');
+                                                            setPosOrderType('local');
+                                                            setShowPOS(true);
+                                                        }}
                                                         className="w-full mt-3 bg-slate-100 text-slate-600 py-4 rounded-2xl font-black hover:bg-slate-200 transition-all flex items-center justify-center gap-2"
                                                     >
-                                                        Tomar Pedido Yo Mismo
+                                                         Tomar Pedido Yo Mismo
                                                     </button>
                                                 </div>
                                             </div>
@@ -1538,7 +1595,13 @@ export default function Orders() {
                                         .map(product => (
                                             <div
                                                 key={product.id}
-                                                onClick={() => addToPosCart(product)}
+                                                onClick={() => {
+                                                    setSelectedProductForSelection(product);
+                                                    setSelectionModalOpen(true);
+                                                    setSelectionQty(1);
+                                                    setSelectionNote('');
+                                                    setSelectionVariant(null);
+                                                }}
                                                 className="bg-white border-2 border-slate-100 rounded-2xl overflow-hidden cursor-pointer hover:border-primary/50 transition-all hover:shadow-lg group flex flex-col"
                                             >
                                                 <div className="h-24 bg-slate-100 relative overflow-hidden shrink-0">
@@ -1822,6 +1885,146 @@ export default function Orders() {
                         await handlePrintOrder(orderToPrint.id, orderToPrint as Order);
                     }}
                 />
+            )}
+
+            {/* Product Selection Modal (Variants / Description) */}
+            {selectionModalOpen && selectedProductForSelection && (
+                <div className="fixed inset-0 z-[110] flex items-center justify-center bg-slate-900/60 backdrop-blur-md px-4 p-4">
+                    <motion.div 
+                        initial={{ opacity: 0, scale: 0.9, y: 20 }}
+                        animate={{ opacity: 1, scale: 1, y: 0 }}
+                        className="bg-white rounded-[2.5rem] w-full max-w-lg shadow-2xl overflow-hidden flex flex-col max-h-[90vh]"
+                    >
+                        {/* Modal Header with Image */}
+                        <div className="relative h-48 sm:h-64 bg-slate-100 shrink-0">
+                            {selectedProductForSelection.image ? (
+                                <img src={selectedProductForSelection.image} className="w-full h-full object-cover" alt={selectedProductForSelection.name} />
+                            ) : (
+                                <div className="w-full h-full flex items-center justify-center text-slate-300">
+                                    <Package className="w-16 h-16" />
+                                </div>
+                            )}
+                            <button 
+                                onClick={() => setSelectionModalOpen(false)}
+                                className="absolute top-4 right-4 bg-black/20 backdrop-blur-md text-white p-2 rounded-full hover:bg-black/40 transition-colors"
+                            >
+                                <X className="w-6 h-6" />
+                            </button>
+                            <div className="absolute bottom-0 left-0 right-0 p-6 bg-gradient-to-t from-black/80 to-transparent">
+                                <h3 className="text-2xl font-black text-white">{selectedProductForSelection.name}</h3>
+                                <p className="text-white/80 font-bold text-sm">
+                                    {selectedProductForSelection.category} • ${(selectedProductForSelection.promoPrice > 0 ? selectedProductForSelection.promoPrice : selectedProductForSelection.price).toFixed(2)}
+                                </p>
+                            </div>
+                        </div>
+
+                        <div className="flex-1 overflow-y-auto p-6 sm:p-8 space-y-6">
+                            {/* Description */}
+                            {selectedProductForSelection.description && (
+                                <div className="space-y-2">
+                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Descripción</label>
+                                    <p className="text-slate-600 font-medium leading-relaxed bg-slate-50 p-4 rounded-2xl border border-slate-100">
+                                        {selectedProductForSelection.description}
+                                    </p>
+                                </div>
+                            )}
+
+                            {/* Variants selection */}
+                            {selectedProductForSelection.hasVariants && selectedProductForSelection.priceVariants?.length > 0 && (
+                                <div className="space-y-3">
+                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Selecciona una Variante</label>
+                                    <div className="grid grid-cols-1 gap-2">
+                                        {selectedProductForSelection.priceVariants.map((variant: any, idx: number) => (
+                                            <button
+                                                key={idx}
+                                                onClick={() => setSelectionVariant(variant)}
+                                                className={`flex items-center justify-between p-4 rounded-2xl border-2 transition-all font-bold ${
+                                                    selectionVariant?.name === variant.name 
+                                                    ? 'border-primary bg-primary/5 text-primary' 
+                                                    : 'border-slate-100 text-slate-600 hover:border-slate-200'
+                                                }`}
+                                            >
+                                                <div className="flex items-center gap-3">
+                                                    <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${selectionVariant?.name === variant.name ? 'border-primary bg-primary' : 'border-slate-300'}`}>
+                                                        {selectionVariant?.name === variant.name && <div className="w-2 h-2 bg-white rounded-full" />}
+                                                    </div>
+                                                    <span>{variant.name}</span>
+                                                </div>
+                                                <span className="font-black">${variant.price.toFixed(2)}</span>
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Quantity and Notes */}
+                            <div className="flex flex-col sm:flex-row gap-6">
+                                <div className="space-y-3 shrink-0">
+                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Cantidad</label>
+                                    <div className="flex items-center bg-slate-100 p-1 rounded-2xl w-fit">
+                                        <button 
+                                            onClick={() => setSelectionQty(Math.max(1, selectionQty - 1))}
+                                            className="w-12 h-12 flex items-center justify-center bg-white rounded-xl shadow-sm text-slate-500 hover:text-slate-700"
+                                        >
+                                            <Minus className="w-5 h-5" />
+                                        </button>
+                                        <span className="w-16 text-center font-black text-xl">{selectionQty}</span>
+                                        <button 
+                                            onClick={() => setSelectionQty(selectionQty + 1)}
+                                            className="w-12 h-12 flex items-center justify-center bg-white rounded-xl shadow-sm text-primary hover:text-primary-dark"
+                                        >
+                                            <Plus className="w-5 h-5" />
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <div className="space-y-3 flex-1">
+                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Notas Especiales</label>
+                                    <input 
+                                        type="text"
+                                        placeholder="Ej: Sin cebolla, extra salsa..."
+                                        value={selectionNote}
+                                        onChange={(e) => setSelectionNote(e.target.value)}
+                                        className="w-full bg-slate-50 border border-slate-200 p-4 rounded-2xl outline-none focus:border-primary font-bold text-slate-700 h-14"
+                                    />
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Modal Footer */}
+                        <div className="p-6 sm:p-8 bg-slate-50 border-t border-slate-100 shrink-0">
+                            <button
+                                onClick={() => {
+                                    if (selectedProductForSelection.hasVariants && !selectionVariant) {
+                                        toast.error("Por favor selecciona una variante");
+                                        return;
+                                    }
+                                    
+                                    const finalPrice = selectionVariant ? selectionVariant.price : (selectedProductForSelection.promoPrice > 0 ? selectedProductForSelection.promoPrice : selectedProductForSelection.price);
+                                    const finalName = selectionVariant ? `${selectedProductForSelection.name} (${selectionVariant.name})` : selectedProductForSelection.name;
+                                    
+                                    const newItem = {
+                                        id: `${selectedProductForSelection.id}-${selectionVariant?.name || 'default'}-${Date.now()}`,
+                                        productId: selectedProductForSelection.id,
+                                        name: finalName,
+                                        price: finalPrice,
+                                        quantity: selectionQty,
+                                        note: selectionNote,
+                                        category: selectedProductForSelection.category || ''
+                                    };
+                                    
+                                    setPosCart(prev => [...prev, newItem]);
+                                    setSelectionModalOpen(false);
+                                    toast.success("Producto agregado al carrito");
+                                }}
+                                className="w-full bg-primary text-white py-5 rounded-2xl font-black text-lg shadow-xl shadow-primary/30 hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-3"
+                            >
+                                <ShoppingCart className="w-6 h-6" />
+                                Agregar al Pedido • ${( (selectionVariant ? selectionVariant.price : (selectedProductForSelection.promoPrice > 0 ? selectedProductForSelection.promoPrice : selectedProductForSelection.price)) * selectionQty ).toFixed(2)}
+                            </button>
+                        </div>
+                    </motion.div>
+                </div>
             )}
         </div >
     );
