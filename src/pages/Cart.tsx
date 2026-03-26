@@ -231,9 +231,20 @@ export default function Cart() {
       const whatsappNumber = rData.whatsapp.replace(/\D/g, '');
       const link = `https://wa.me/${whatsappNumber}?text=${encodeURIComponent(formattedMessage)}`;
       setWhatsappLink(link);
-      window.location.href = link;
+      
+      // Abre en nueva pestaña para que no mate la recarga si era mobil y vuelve
+      window.open(link, '_blank', 'noopener,noreferrer');
+      
       clearCart();
+      setPurchaseConfirmed(true);
       setCheckoutSuccess(true);
+      
+      // Navegamos al track de pedido de una vez 
+      if (!isWaiter) {
+          navigate(`/track/${docRef.id}`);
+          return;
+      }
+
     } catch (err: any) { 
       console.error('Checkout error:', err);
       setError(err.message || 'Error al procesar la orden. Intente nuevamente.'); 
@@ -245,14 +256,14 @@ export default function Cart() {
   if (checkoutSuccess) {
     return (
       <div className="flex flex-col items-center justify-center min-h-screen px-6 text-center bg-white">
-        <div className={`w-24 h-24 rounded-full flex items-center justify-center mb-6 ${purchaseConfirmed ? 'bg-green-100' : 'bg-slate-100'}`}>
-          {purchaseConfirmed ? <CheckCircle2 className="w-12 h-12 text-green-500" /> : <Trash2 className="w-12 h-12 text-slate-400" />}
+        <div className={`w-24 h-24 rounded-full flex items-center justify-center mb-6 ${purchaseConfirmed ? 'bg-green-100' : 'bg-red-100'}`}>
+          {purchaseConfirmed ? <CheckCircle2 className="w-12 h-12 text-green-500" /> : <Trash2 className="w-12 h-12 text-red-500" />}
         </div>
         <h1 className="text-2xl font-black mb-2">{purchaseConfirmed ? '¡Pedido Confirmado! 🎉' : 'Pedido Cancelado'}</h1>
-        <p className="text-slate-500 mb-8">{purchaseConfirmed ? 'Tu orden está en proceso.' : 'Tu orden fue cancelada.'}</p>
-        <Link to={isWaiter ? `/menu` : "/"} className="w-full max-w-xs bg-primary text-white py-4 rounded-2xl font-bold shadow-lg">
+        <p className="text-slate-500 mb-8">{purchaseConfirmed ? 'Tu orden está siendo enviada a cocina.' : 'Hubo un problema con la confirmación.'}</p>
+        <button onClick={() => isWaiter ? navigate('/menu') : navigate('/')} className="w-full max-w-xs bg-primary text-white py-4 rounded-2xl font-bold shadow-lg">
           {isWaiter ? 'Volver al Menú' : 'Ir al inicio'}
-        </Link>
+        </button>
       </div>
     );
   }
