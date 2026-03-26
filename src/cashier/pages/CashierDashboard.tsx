@@ -1780,9 +1780,9 @@ ESTADO: ${order.status.toUpperCase()}
                                                 <h4 className="font-black text-slate-800 text-sm line-clamp-1 mb-1">{product.name}</h4>
                                                 <p className="text-[10px] text-slate-400 font-bold line-clamp-2 leading-tight mb-2 flex-grow">{product.description}</p>
                                                 
-                                                {product.hasVariants && product.priceVariants?.length > 0 && (
+                                                {product.variants && product.variants.length > 0 && (
                                                     <div className="flex gap-1.5 flex-wrap mt-auto">
-                                                        {product.priceVariants.map((v: any, idx: number) => (
+                                                        {product.variants.map((v: any, idx: number) => (
                                                             <div key={idx} className="bg-slate-50 border border-slate-100 px-1.5 py-0.5 rounded-lg flex flex-col gap-0">
                                                                 <span className="text-[7px] font-black uppercase text-slate-400 leading-none">{v.name}</span>
                                                                 <span className="text-[9px] font-black text-slate-700 leading-none">${v.price.toFixed(2)}</span>
@@ -1998,11 +1998,11 @@ ESTADO: ${order.status.toUpperCase()}
                             )}
 
                             {/* Variants selection */}
-                            {selectedProductForSelection.hasVariants && selectedProductForSelection.priceVariants?.length > 0 && (
+                            {selectedProductForSelection.variants && selectedProductForSelection.variants.length > 0 && (
                                 <div className="space-y-3">
                                     <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Selecciona una Variante</label>
                                     <div className="grid grid-cols-1 gap-2">
-                                        {selectedProductForSelection.priceVariants.map((variant: any, idx: number) => (
+                                        {selectedProductForSelection.variants.map((variant: any, idx: number) => (
                                             <button
                                                 key={idx}
                                                 onClick={() => setSelectionVariant(variant)}
@@ -2063,7 +2063,7 @@ ESTADO: ${order.status.toUpperCase()}
                         <div className="p-6 sm:p-8 bg-slate-50 border-t border-slate-100 shrink-0">
                             <button
                                 onClick={() => {
-                                    if (selectedProductForSelection.hasVariants && !selectionVariant) {
+                                    if (selectedProductForSelection.variants && selectedProductForSelection.variants.length > 0 && !selectionVariant) {
                                         toast.error("Por favor selecciona una variante");
                                         return;
                                     }
@@ -2088,7 +2088,7 @@ ESTADO: ${order.status.toUpperCase()}
                                 className="w-full bg-primary text-white py-5 rounded-2xl font-black text-lg shadow-xl shadow-primary/30 hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-3"
                             >
                                 <ShoppingCart className="w-6 h-6" />
-                                Agregar al Pedido • ${( (selectionVariant ? selectionVariant.price : (selectedProductForSelection.promoPrice > 0 ? selectedProductForSelection.promoPrice : selectedProductForSelection.price)) * selectionQty ).toFixed(2)}
+                                Agregar al Pedido • ${( (selectionVariant ? selectionVariant.price : (selectedProductForSelection.promoPrice > 0 ? selectedProductForSelection.promoPrice : (selectedProductForSelection.price || 0))) * selectionQty ).toFixed(2)}
                             </button>
                         </div>
                     </motion.div>
