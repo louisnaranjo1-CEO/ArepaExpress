@@ -6,6 +6,7 @@ import { useNavigate } from 'react-router-dom';
 import { printToUsbDevice, formatTicket, PrintOrder } from '../../lib/usb-printer';
 import ProductTicker from '../components/ProductTicker';
 import ReviewsModal from '../components/ReviewsModal';
+import ComandaPreview from '../../admin/components/ComandaPreview';
 import { motion, AnimatePresence } from 'framer-motion';
 import toast from 'react-hot-toast';
 import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
@@ -21,13 +22,19 @@ interface Order {
     source?: string;
     userName?: string;
     waiterName?: string;
+    waiterId?: string;
     table?: string;
+    tableNumber?: string;
+    tableId?: string;
     createdAt?: any;
+    deliveryAddress?: string;
     deliveryFee?: number;
     notified?: boolean;
     tip?: number;
     paymentProofURL?: string;
+    paymentProofUrl?: string;
     reference?: string;
+    paymentReference?: string;
 }
 
 export default function CashierDashboard() {
@@ -105,6 +112,11 @@ export default function CashierDashboard() {
     const [referenceInputs, setReferenceInputs] = useState<Record<string, string>>({});
     const [proofUploadFiles, setProofUploadFiles] = useState<Record<string, File>>({});
     const [isUploadingProof, setIsUploadingProof] = useState<Record<string, boolean>>({});
+
+    // Acceptance & Comanda
+    const [acceptModalOpen, setAcceptModalOpen] = useState(false);
+    const [selectedOrderForAccept, setSelectedOrderForAccept] = useState<Order | null>(null);
+    const [selectedOrderForComanda, setSelectedOrderForComanda] = useState<Order | null>(null);
 
     // Audio object for the notification sound
     const [notificationSound] = useState(() => new Audio('https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/Digital_Cascade_01.mp3?alt=media&token=211ed9a7-2b49-469f-8869-3fc2cd38d2f5'));
@@ -519,11 +531,125 @@ ESTADO: ${order.status.toUpperCase()}
     const updateStatus = async (orderId: string, newStatus: string) => {
         try {
             const orderRef = doc(db, 'orders', orderId);
+            const orderTemp = orders.find(o => o.id === orderId);
             await updateDoc(orderRef, { status: newStatus });
             toast.success(`Pedido actualizado a ${newStatus}`);
+            
+            // Si pasa a cocina, imprimir automáticamente si así se desea
+            if (newStatus === 'preparing' && orderTemp) {
+                await handlePrintOrder(orderId, orderTemp);
+            }
         } catch (error) {
             console.error("Error updating status:", error);
             toast.error("No se pudo actualizar el estado");
+        }
+    };
+
+    const handlePrintOrder = async (orderId: string, orderData: Order) => {
+        if (!restaurantId) return;
+        setPrintingOrderId(orderId);
+        try {
+            // Obtener todas las impresoras configuradas
+            const printersRef = collection(db, 'restaurants', restaurantId, 'printers');
+            const snapshot = await getDocs(printersRef);
+            const printers = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() as any }));
+
+            // Promesas de impresión
+            const printPromises: Promise<boolean>[] = [];
+
+            // Agrupar ítems por impresora según categoría
+            for (const printer of printers) {
+                if (!printer.vendorId || !printer.productId || !printer.isActive) continue;
+
+                const itemsForThisPrinter = orderData.items.filter(item => {
+                    const itemCat = (item as any).category || '';
+                    return printer.categories?.includes(itemCat) || printer.categories?.length === 0;
+                });
+
+                if (itemsForThisPrinter.length > 0) {
+                    const printData = {
+                        id: orderData.id,
+                        userName: orderData.userName,
+                        items: itemsForThisPrinter.map(i => ({ name: i.name, quantity: i.quantity, price: i.price, notes: (i as any).notes })),
+                        stationName: printer.name,
+                        createdAt: orderData.createdAt?.toDate ? orderData.createdAt.toDate() : new Date(),
+                        orderNote: (orderData as any).orderNote,
+                        tableNumber: orderData.tableNumber || orderData.table
+                    } as any;
+
+                    const buffer = formatTicket(printData);
+                    printPromises.push(printToUsbDevice(printer.vendorId, printer.productId, buffer));
+                }
+            }
+
+            if (printPromises.length > 0) {
+                await Promise.all(printPromises);
+                toast.success("Comanda enviada a impresoras");
+            }
+
+        } catch (error) {
+            console.error("Error general de impresión:", error);
+            toast.error("Error al intentar imprimir");
+        } finally {
+            setPrintingOrderId(null);
+        }
+    };
+
+    const handleConfirmAccept = async () => {
+        if (!selectedOrderForAccept || !restaurantId) return;
+        setIsAccepting(true);
+        try {
+            const updates: any = { 
+                status: 'preparing', 
+                paymentMethod: paymentMethod,
+                paymentStatus: (paymentMethod === 'Crédito (2x3)') ? 'pending' : 'sold',
+                updatedAt: serverTimestamp()
+            };
+
+            // Process optional reference and screenshot
+            if (paymentMethod === 'Pago Móvil' || paymentMethod === 'Transferencia' || paymentMethod === 'Zelle') {
+                const refVal = referenceInputs[selectedOrderForAccept.id];
+                const file = proofUploadFiles[selectedOrderForAccept.id];
+                if (refVal) updates.paymentReference = refVal;
+                
+                if (file) {
+                    const storage = getStorage();
+                    const fileRef = ref(storage, `payment_proofs/${selectedOrderForAccept.id}_${Date.now()}`);
+                    await uploadBytes(fileRef, file);
+                    const url = await getDownloadURL(fileRef);
+                    updates.paymentProofUrl = url;
+                }
+            }
+
+            // 2x3 Logic (Simplified for Cashier if config not fully available, but keeping pattern)
+            if (paymentMethod === 'Crédito (2x3)') {
+                const total = selectedOrderForAccept.total;
+                const installments = [
+                    { id: 'init_'+Date.now(), amount: total * 0.5, status: 'pending', dueDate: new Date().toISOString(), type: 'initial' },
+                    { id: 'inst1_'+Date.now(), amount: total * 0.25, status: 'pending', dueDate: new Date(Date.now() + 15*24*60*60*1000).toISOString(), type: 'installment' },
+                    { id: 'inst2_'+Date.now(), amount: total * 0.25, status: 'pending', dueDate: new Date(Date.now() + 30*24*60*60*1000).toISOString(), type: 'installment' }
+                ];
+                updates.installments = installments;
+                updates.isTwoByThree = true;
+            }
+
+            const orderRef = doc(db, 'orders', selectedOrderForAccept.id);
+            await updateDoc(orderRef, updates);
+            
+            const orderTemp = { ...selectedOrderForAccept, ...updates };
+            toast.success("Orden aceptada y enviada a cocina");
+            
+            setAcceptModalOpen(false);
+            setSelectedOrderForAccept(null);
+            
+            // Mostrar vista previa para impresión manual/revisión
+            setSelectedOrderForComanda(orderTemp as any);
+            
+        } catch (error) {
+            console.error("Error accepting order:", error);
+            toast.error("Error al procesar el pedido");
+        } finally {
+            setIsAccepting(false);
         }
     };
 
@@ -773,11 +899,22 @@ ESTADO: ${order.status.toUpperCase()}
 
                 {/* Actions */}
                 <div className="flex gap-2">
-                    {order.status === 'pending' && (
+                    {(order.status === 'pending' || order.status === 'pendiente_pago') && (
                         <>
                             <button
+                                onClick={() => { 
+                                    setSelectedOrderForAccept(order); 
+                                    setPaymentMethod(order.paymentMethod || '');
+                                    setAcceptModalOpen(true); 
+                                }}
+                                className="flex-1 bg-primary text-white py-4 rounded-2xl font-black text-xs flex items-center justify-center gap-2 hover:scale-[1.02] active:scale-[0.98] transition-all shadow-lg shadow-primary/20"
+                            >
+                                <CheckCircle className="w-4 h-4" />
+                                Verificar y Cocina
+                            </button>
+                            <button
                                 onClick={() => { setSelectedOrder(order); setCloseSaleModalOpen(true); }}
-                                className="flex-1 bg-emerald-500 text-white py-4 rounded-2xl font-black text-xs flex items-center justify-center gap-2 hover:bg-emerald-600 transition-all shadow-lg shadow-emerald-500/20"
+                                className="flex-1 bg-emerald-50 text-emerald-600 py-4 rounded-2xl font-black text-xs flex items-center justify-center gap-2 hover:bg-emerald-100 transition-all border border-emerald-100"
                             >
                                 <DollarSign className="w-4 h-4" />
                                 Cobrar
@@ -788,13 +925,6 @@ ESTADO: ${order.status.toUpperCase()}
                                 title="Editar Orden"
                             >
                                 <Edit className="w-4 h-4" />
-                            </button>
-                            <button
-                                onClick={() => downloadOrderTxt(order)}
-                                className="px-4 bg-slate-100 text-slate-600 rounded-2xl font-black hover:bg-slate-200 transition-all"
-                                title="Descargar Comanda (TXT)"
-                            >
-                                <ClipboardList className="w-4 h-4" />
                             </button>
                         </>
                     )}
@@ -2112,6 +2242,107 @@ ESTADO: ${order.status.toUpperCase()}
                         </div>
                     </motion.div>
                 </div>
+            )}
+
+            {/* MODAL DE ACEPTACIÓN / VERIFICACIÓN */}
+            {acceptModalOpen && selectedOrderForAccept && (
+                <div className="fixed inset-0 z-[200] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm px-4">
+                    <div className="bg-white rounded-[2.5rem] p-8 w-full max-w-sm shadow-2xl animate-in zoom-in-95 duration-200">
+                        <div className="flex justify-between items-center mb-6">
+                            <h3 className="text-xl font-black text-slate-900">Verificar y Cocina</h3>
+                            <button onClick={() => setAcceptModalOpen(false)} className="text-slate-400 hover:text-slate-600 p-2">
+                                <X className="w-6 h-6" />
+                            </button>
+                        </div>
+
+                        <div className="space-y-6">
+                            {/* Payment Method Selector */}
+                            <div className="space-y-3">
+                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Método de Pago Confirmado</label>
+                                <div className="grid grid-cols-2 gap-2">
+                                    {['Efectivo', 'Pago Móvil', 'Punto de Venta', 'Transferencia', 'Zelle', 'Crédito (2x3)'].map((method) => (
+                                        <button
+                                            key={method}
+                                            onClick={() => setPaymentMethod(method)}
+                                            className={`p-3 rounded-2xl text-[10px] font-black transition-all border-2 uppercase tracking-tighter ${
+                                                paymentMethod === method 
+                                                ? 'border-primary bg-primary/5 text-primary' 
+                                                : 'border-slate-100 bg-white text-slate-600 hover:border-slate-200'
+                                            }`}
+                                        >
+                                            {method}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+
+                            {/* Reference Input for Digital Payments */}
+                            {(paymentMethod === 'Pago Móvil' || paymentMethod === 'Transferencia' || paymentMethod === 'Zelle') && (
+                                <motion.div 
+                                    initial={{ opacity: 0, y: 10 }}
+                                    animate={{ opacity: 1, y: 0 }}
+                                    className="space-y-4"
+                                >
+                                    <div>
+                                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Referencia / ID</label>
+                                        <input 
+                                            type="text"
+                                            placeholder="Últimos 6 dígitos..."
+                                            value={referenceInputs[selectedOrderForAccept.id] || ''}
+                                            onChange={(e) => setReferenceInputs(prev => ({ ...prev, [selectedOrderForAccept.id]: e.target.value }))}
+                                            className="w-full bg-slate-50 border border-slate-200 p-4 rounded-2xl outline-none focus:border-primary font-bold text-slate-700"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Comprobante de Pago</label>
+                                        <div className="relative group/upload">
+                                            <input
+                                                type="file"
+                                                accept="image/*"
+                                                onChange={(e) => {
+                                                    const file = e.target.files?.[0];
+                                                    if (file) setProofUploadFiles(prev => ({ ...prev, [selectedOrderForAccept.id]: file }));
+                                                }}
+                                                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+                                            />
+                                            <div className="w-full border-2 border-dashed border-slate-200 rounded-2xl p-4 flex items-center justify-center gap-2 bg-slate-50 group-hover/upload:bg-white group-hover/upload:border-primary/30 transition-all">
+                                                {proofUploadFiles[selectedOrderForAccept.id] ? (
+                                                    <div className="flex items-center gap-2 text-primary font-bold text-xs">
+                                                        <CheckCircle className="w-4 h-4" /> Archivo seleccionado
+                                                    </div>
+                                                ) : (
+                                                    <div className="flex items-center gap-2 text-slate-400 font-bold text-xs">
+                                                        <Plus className="w-4 h-4" /> Adjuntar captura
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+                                    </div>
+                                </motion.div>
+                            )}
+
+                            <button
+                                onClick={handleConfirmAccept}
+                                disabled={isAccepting || !paymentMethod}
+                                className="w-full bg-primary text-white py-5 rounded-[2rem] font-black shadow-xl shadow-primary/30 hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+                            >
+                                {isAccepting ? <Loader2 className="w-5 h-5 animate-spin" /> : <><CheckCircle className="w-5 h-5" /> Confirmar y Enviar</>}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* VISTA PREVIA COMANDA (AFTER ACCEPT) */}
+            {selectedOrderForComanda && (
+                <ComandaPreview
+                    order={selectedOrderForComanda as any}
+                    restaurantName={restaurant?.name || 'Deliexpress'}
+                    onClose={() => setSelectedOrderForComanda(null)}
+                    onPrint={async (orderToPrint) => {
+                        await handlePrintOrder(orderToPrint.id, orderToPrint as any);
+                    }}
+                />
             )}
         </div>
     );

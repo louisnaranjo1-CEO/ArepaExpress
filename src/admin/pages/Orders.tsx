@@ -1373,6 +1373,115 @@ export default function Orders() {
                 </div>
             )}
 
+            {/* Acceptance Modal */}
+            {acceptModalOpen && selectedOrderForAccept && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/40 backdrop-blur-sm px-4">
+                    <div className="bg-white rounded-3xl p-6 w-full max-w-lg shadow-2xl animate-in zoom-in-95 duration-200 flex flex-col max-h-[90vh]">
+                        <div className="flex justify-between items-center mb-6 shrink-0">
+                            <h3 className="text-xl font-black text-slate-900">
+                                {selectedOrderForAccept.status === 'pendiente_pago' ? 'Verificar y Enviar a Cocina' : 'Aceptar Pedido'}
+                            </h3>
+                            <button onClick={() => setAcceptModalOpen(false)} className="text-slate-400 hover:text-slate-600">
+                                <X className="w-6 h-6" />
+                            </button>
+                        </div>
+
+                        <div className="flex-1 overflow-y-auto pr-2 space-y-6 scrollbar-hide">
+                            {/* Resumen de Orden */}
+                            <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100">
+                                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">Resumen del Pedido</p>
+                                <div className="space-y-2">
+                                    {selectedOrderForAccept.items.map((item, idx) => (
+                                        <div key={idx} className="flex justify-between text-sm">
+                                            <span className="font-bold text-slate-700">{item.quantity}x {item.name}</span>
+                                            <span className="font-black text-slate-900">${(item.price * item.quantity).toFixed(2)}</span>
+                                        </div>
+                                    ))}
+                                </div>
+                                <div className="mt-4 pt-4 border-t border-slate-200 flex justify-between items-center">
+                                    <span className="font-black text-slate-500 uppercase text-xs">Total a Liquidar</span>
+                                    <span className="text-xl font-black text-primary">${selectedOrderForAccept.total.toFixed(2)}</span>
+                                </div>
+                            </div>
+
+                            {/* Selección de Pago */}
+                            <div className="space-y-3">
+                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block px-1">Confirmar Método de Pago</label>
+                                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                                    {['Efectivo', 'Pago Móvil', 'Zelle', 'Punto de Venta', 'Transferencia', 'Crédito (2x3)'].map(method => (
+                                        <button
+                                            key={method}
+                                            onClick={() => setPaymentMethod(method)}
+                                            className={`p-3 rounded-xl text-[10px] font-black border-2 transition-all ${paymentMethod === method ? 'border-primary bg-primary/5 text-primary' : 'border-slate-100 text-slate-500 hover:border-slate-200'}`}
+                                        >
+                                            {method}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+
+                            {/* Campos dinámicos según el pago */}
+                            {['Pago Móvil', 'Transferencia'].includes(paymentMethod) && (
+                                <div className="space-y-4 animate-in slide-in-from-top-2 duration-300">
+                                    <div className="space-y-2">
+                                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block px-1">Referencia Transacción</label>
+                                        <input
+                                            type="text"
+                                            placeholder="Últimos 6 dígitos..."
+                                            value={referenceInputs[selectedOrderForAccept.id] || ''}
+                                            onChange={(e) => setReferenceInputs(prev => ({ ...prev, [selectedOrderForAccept.id]: e.target.value }))}
+                                            className="w-full bg-slate-50 border border-slate-200 p-4 rounded-2xl outline-none focus:border-primary font-bold text-slate-700 h-14"
+                                        />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block px-1">Captura de Pantalla</label>
+                                        <label className="flex flex-col items-center justify-center p-6 border-2 border-dashed border-slate-200 rounded-2xl hover:border-primary/50 cursor-pointer transition-all bg-slate-50">
+                                            <input
+                                                type="file"
+                                                accept="image/*"
+                                                className="hidden"
+                                                onChange={(e) => {
+                                                    const file = e.target.files?.[0];
+                                                    if (file) setProofUploadFiles(prev => ({ ...prev, [selectedOrderForAccept.id]: file }));
+                                                }}
+                                            />
+                                            {proofUploadFiles[selectedOrderForAccept.id] ? (
+                                                <div className="flex items-center gap-2 text-primary">
+                                                    <CheckCircle className="w-5 h-5" />
+                                                    <span className="font-bold text-xs truncate max-w-[200px]">{proofUploadFiles[selectedOrderForAccept.id].name}</span>
+                                                </div>
+                                            ) : (
+                                                <div className="flex flex-col items-center gap-2 text-slate-400">
+                                                    <Upload className="w-6 h-6" />
+                                                    <span className="text-[10px] font-black uppercase tracking-tighter">Subir Comprobante</span>
+                                                </div>
+                                            )}
+                                        </label>
+                                    </div>
+                                </div>
+                            )}
+
+                            {paymentMethod === 'Crédito (2x3)' && (
+                                <div className="p-4 bg-orange-50 border border-orange-100 rounded-2xl animate-in slide-in-from-top-2">
+                                    <h4 className="text-[10px] font-black text-orange-600 uppercase mb-1">Plan de Financiamiento 2x3</h4>
+                                    <p className="text-xs text-orange-800 font-medium">Se generarán las cuotas automáticamente según la configuración del negocio. La orden quedará marcada como "No Pagada" hasta completar el plan.</p>
+                                </div>
+                            )}
+                        </div>
+
+                        <div className="shrink-0 pt-6 mt-6 border-t border-slate-100">
+                            <button
+                                onClick={handleConfirmAccept}
+                                disabled={isAccepting}
+                                className="w-full bg-primary text-white py-4 rounded-2xl font-black shadow-xl shadow-primary/30 hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+                            >
+                                {isAccepting ? <Loader2 className="w-5 h-5 animate-spin" /> : <><CheckCircle className="w-5 h-5" /> Confirmar y Enviar a Cocina</>}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {/* Dispatch Order Modal */}
             {dispatchModalOpen && selectedOrderForDispatch && (
                 <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/40 backdrop-blur-sm px-4">
