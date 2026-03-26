@@ -613,7 +613,10 @@ ESTADO: ${order.status.toUpperCase()}
             // ensure billing maps to distinct state in cashier view
             if (table.status === 'billing' || status === 'billing') status = 'billing';
 
-            const activeOrder = tableOrders[0];
+            // For billing state, we prefer the 'not_sold' order which contains the consolidated items
+            const activeOrder = status === 'billing' 
+                ? tableOrders.find(o => o.paymentStatus === 'not_sold') || tableOrders[0]
+                : tableOrders[0];
 
             return {
                 ...table,
@@ -1797,7 +1800,7 @@ ESTADO: ${order.status.toUpperCase()}
                                                 <h4 className="font-black text-slate-800 text-sm line-clamp-1 mb-1">{product.name}</h4>
                                                 <p className="text-[10px] text-slate-400 font-bold line-clamp-2 leading-tight mb-2 flex-grow">{product.description}</p>
                                                 
-                                                {product.variants && product.variants.length > 0 && (
+                                                {product.variants && product.variants.length > 0 ? (
                                                     <div className="flex gap-1.5 flex-wrap mt-auto">
                                                         {product.variants.map((v: any, idx: number) => (
                                                             <div key={idx} className="bg-slate-50 border border-slate-100 px-1.5 py-0.5 rounded-lg flex flex-col gap-0">
@@ -1806,8 +1809,7 @@ ESTADO: ${order.status.toUpperCase()}
                                                             </div>
                                                         ))}
                                                     </div>
-                                                )}
-                                                {!product.hasVariants && (
+                                                ) : (
                                                     <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-auto">{product.category}</p>
                                                 )}
                                             </div>
