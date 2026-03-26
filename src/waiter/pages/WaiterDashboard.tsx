@@ -5,9 +5,10 @@ import { motion, AnimatePresence } from 'framer-motion';
 import TableOptionsModal from '../components/TableOptionsModal';
 import MergeTransferModal from '../components/MergeTransferModal';
 import SplitBillModal from '../components/SplitBillModal';
-import { collection, query, onSnapshot, orderBy, where, doc, updateDoc, writeBatch, serverTimestamp, getDoc } from 'firebase/firestore';
+import { collection, query, onSnapshot, orderBy, where, doc, updateDoc, writeBatch, serverTimestamp, getDoc, addDoc } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import { useNavigate } from 'react-router-dom';
+import toast from 'react-hot-toast';
 
 interface Table {
     id: string;
@@ -164,8 +165,9 @@ export default function WaiterDashboard() {
         // Find active orders for the selected table
         const activeOrders = orders.filter(o => 
             o.table === selectedTable.number && 
-            !(o.status === 'delivered' && o.paymentStatus === 'sold') &&
-            o.status !== 'rejected'
+            o.paymentStatus !== 'sold' && 
+            o.paymentStatus !== 'merged' &&
+            o.status !== 'cancelled'
         );
 
         if (activeOrders.length === 0) return;
@@ -190,7 +192,7 @@ export default function WaiterDashboard() {
         switch (table.derivedStatus) {
             case 'available':
                 // navigate to menu to start order
-                navigate(`/menu?table=${table.number}`);
+                navigate(`/menu?table=${table.number}&tableId=${table.id}`);
                 break;
             case 'calling':
                 // Clear all calling orders for this table
@@ -217,7 +219,8 @@ export default function WaiterDashboard() {
         const tableOrders = orders.filter(o =>
             ((o as any).tableId === table.id || (o as any).tableNumber === table.number || o.table === table.number) &&
             ['occupied', 'calling', 'preparing', 'delivering', 'delivered', 'pending', 'pendiente_pago'].includes(o.status) &&
-            o.paymentStatus !== 'sold'
+            o.paymentStatus !== 'sold' &&
+            o.paymentStatus !== 'merged'
         );
 
         let derivedStatus = table.status || 'available';
@@ -258,6 +261,7 @@ export default function WaiterDashboard() {
         return orders.filter(o => 
             o.table === selectedTable.number && 
             !(o.status === 'delivered' && o.paymentStatus === 'sold') &&
+            o.paymentStatus !== 'merged' &&
             o.status !== 'rejected'
         );
     }, [selectedTable, orders]);
@@ -282,6 +286,73 @@ export default function WaiterDashboard() {
         { name: 'Llamando', color: 'bg-rose-500' },
         { name: 'Cobrando', color: 'bg-secondary' },
     ];
+
+    const handleCheckout = async () => {
+        if (!selectedTable || selectedTableActiveOrders.length === 0) return;
+        
+        setShowOptionsModal(false);
+        const restaurantId = localStorage.getItem('waiterRestaurantId');
+        if (!restaurantId) return;
+
+        const toastId = toast.loading('Calculando cuenta...');
+        
+        try {
+            // 1. Consolidate items
+            const consolidatedItems = selectedTableActiveOrders.reduce((acc: any[], order: any) => {
+                (order.items || []).forEach((item: any) => {
+                    const itemKey = `${item.productId}-${item.name}`;
+                    const existing = acc.find(i => `${item.productId}-${i.name}` === itemKey);
+                    if (existing) {
+                        existing.quantity += item.quantity;
+                    } else {
+                        acc.push({ ...item });
+                    }
+                });
+                return acc;
+            }, []);
+            
+            const subtotal = consolidatedItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+            
+            // 2. Create the merged order
+            const mergedOrderRef = doc(collection(db, 'orders'));
+            const mergedOrderData = {
+                items: consolidatedItems,
+                table: selectedTable.number,
+                tableId: selectedTable.id,
+                status: 'delivered', // Delivered to effectively remove it from kitchen displays
+                paymentStatus: 'not_sold', // Needs payment 
+                source: 'waiter',
+                waiterName: waiterInfo?.name || selectedTable.waiterName || 'Mesero',
+                waiterId: waiterInfo?.id || selectedTable.waiterId || '',
+                restaurantId,
+                createdAt: serverTimestamp(),
+                subtotal: subtotal,
+                total: subtotal
+            };
+            
+            // 3. Mark old orders as merged/sold
+            const batch = writeBatch(db);
+            selectedTableActiveOrders.forEach(o => {
+                batch.update(doc(db, 'orders', o.id), {
+                    status: 'delivered', 
+                    paymentStatus: 'merged', 
+                });
+            });
+            batch.set(mergedOrderRef, mergedOrderData);
+
+            // 4. Update table status to billing
+            batch.update(doc(db, 'restaurants', restaurantId, 'tables', selectedTable.id), {
+                status: 'billing',
+                lastOrderId: mergedOrderRef.id
+            });
+            
+            await batch.commit();            
+            toast.success('Cuenta solicitada a caja', { id: toastId });
+        } catch (error) {
+            console.error('Error in checkout:', error);
+            toast.error('Error al pedir cuenta', { id: toastId });
+        }
+    };
 
     return (
         <WaiterLayout>
@@ -560,9 +631,10 @@ export default function WaiterDashboard() {
                     setSelectedTable(null);
                 }}
                 table={selectedTable}
+                activeOrders={selectedTableActiveOrders}
                 onAddOrder={() => {
                     setShowOptionsModal(false);
-                    if (selectedTable) navigate(`/menu?table=${selectedTable.number}`);
+                    if (selectedTable) navigate(`/menu?table=${selectedTable.number}&tableId=${selectedTable.id}`);
                 }}
                 onJoinTable={() => {
                     setShowOptionsModal(false);
@@ -578,10 +650,7 @@ export default function WaiterDashboard() {
                     setShowOptionsModal(false);
                     setShowSplitBillModal(true);
                 }}
-                onCheckout={() => {
-                    setShowOptionsModal(false);
-                    if (selectedTable) navigate(`/menu?table=${selectedTable.number}`); // For now, navigate to menu to see items
-                }}
+                onCheckout={handleCheckout}
             />
 
             <MergeTransferModal

@@ -786,10 +786,16 @@ export default function Orders() {
                     const activeOrder = orders.find(o => 
                         ((o as any).tableId === table.id || (o as any).tableNumber === table.number || (o as any).table === table.number) && 
                         ['occupied', 'calling', 'preparing', 'delivering', 'delivered', 'pending', 'pendiente_pago'].includes(o.status) &&
-                        o.paymentStatus !== 'sold'
+                        o.paymentStatus !== 'sold' &&
+                        o.paymentStatus !== 'merged'
                     );
                     
-                    const status = activeOrder ? (activeOrder.status === 'calling' ? 'calling' : 'occupied') : 'free';
+                    let status = table.status === 'available' ? 'free' : (table.status || 'free');
+                    if (status === 'billing') status = 'occupied';
+                    
+                    if (activeOrder) {
+                        status = activeOrder.status === 'calling' ? 'calling' : 'occupied';
+                    }
 
                     return (
                         <div

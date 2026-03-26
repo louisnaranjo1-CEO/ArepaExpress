@@ -603,12 +603,15 @@ ESTADO: ${order.status.toUpperCase()}
             const tableOrders = orders.filter(o => 
                 ((o as any).tableId === table.id || (o as any).tableNumber === table.number || o.table === table.number) && 
                 ['occupied', 'calling', 'preparing', 'delivering', 'delivered', 'pending', 'pendiente_pago'].includes(o.status) &&
-                o.paymentStatus !== 'sold'
+                o.paymentStatus !== 'sold' &&
+                o.paymentStatus !== 'merged'
             );
 
-            let status = 'free';
+            let status = table.status === 'available' ? 'free' : (table.status || 'free');
             if (tableOrders.some(o => o.status === 'calling')) status = 'calling';
             else if (tableOrders.length > 0) status = 'occupied';
+            // ensure billing maps to occupied in cashier view
+            if (status === 'billing') status = 'occupied';
 
             const activeOrder = tableOrders[0];
 
