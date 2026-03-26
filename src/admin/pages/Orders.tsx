@@ -38,7 +38,7 @@ interface Order {
 
 export default function Orders() {
     const { user } = useAuth();
-    const [activeTab, setActiveTab] = useState<'pending' | 'pendiente_pago' | 'preparing' | 'delivering' | 'delivered' | 'rejected'>('pending');
+    const [activeTab, setActiveTab] = useState<'pending' | 'pendiente_pago' | 'preparing' | 'delivering' | 'delivered' | 'rejected' | 'tables'>('pending');
     const [orders, setOrders] = useState<Order[]>([]);
     const [loading, setLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
@@ -109,7 +109,32 @@ export default function Orders() {
              setDrivers(snap.docs.map(d => ({ id: d.id, ...d.data() })));
         };
         fetchDrivers();
-    }, []);
+
+        if (user) {
+            // Real-time Tables for Admin
+            const tablesRef = collection(db, 'restaurants', user.uid, 'tables');
+            const unsubscribeTables = onSnapshot(tablesRef, (snapshot) => {
+                const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                data.sort((a: any, b: any) => {
+                    const numA = parseInt(a.number, 10);
+                    const numB = parseInt(b.number, 10);
+                    if (!isNaN(numA) && !isNaN(numB)) return numA - numB;
+                    return (a.number || '').localeCompare(b.number || '');
+                });
+                setTables(data);
+            });
+
+            // Fetch Waiters
+            const fetchWaiters = async () => {
+                const waitersRef = collection(db, 'restaurants', user.uid, 'waiters');
+                const snap = await getDocs(waitersRef);
+                setWaiters(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+            };
+            fetchWaiters();
+
+            return () => unsubscribeTables();
+        }
+    }, [user]);
 
     const [restaurantConfig, setRestaurantConfig] = useState<any>(null);
 
@@ -166,31 +191,7 @@ export default function Orders() {
             setPosCategories(['Todos', ...Array.from(cats)]);
         };
 
-        const fetchWaitersAndTables = async () => {
-            try {
-                // Fetch Waiters
-                const waitersRef = collection(db, 'restaurants', user.uid, 'waiters');
-                const waitersSnap = await getDocs(waitersRef);
-                const waitersList = waitersSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-                setWaiters(waitersList);
-
-                // Fetch Tables
-                const tablesRef = collection(db, 'restaurants', user.uid, 'tables');
-                const tablesSnap = await getDocs(tablesRef);
-                const tablesList = tablesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as any));
-                setTables(tablesList.sort((a, b) => {
-                    const numA = parseInt(a.number, 10);
-                    const numB = parseInt(b.number, 10);
-                    if (!isNaN(numA) && !isNaN(numB)) return numA - numB;
-                    return a.number.localeCompare(b.number);
-                }));
-            } catch (error) {
-                console.error("Error fetching POS data:", error);
-            }
-        };
-
         fetchPosProducts();
-        fetchWaitersAndTables();
     }, [user, showPOS]);
 
     useEffect(() => {
@@ -612,8 +613,20 @@ export default function Orders() {
                 deliveryFee: posDeliveryFee,
                 waiterId: selectedWaiter?.id || '',
                 waiterName: selectedWaiter?.name || '',
+                tableId: posOrderType === 'local' ? (selectedTable?.id || '') : '',
                 tableNumber: posOrderType === 'local' ? (selectedTable?.number || '') : '',
             });
+
+            // Update Table Status if local
+            if (posOrderType === 'local' && selectedTable) {
+                const tableRef = doc(db, 'restaurants', user.uid, 'tables', selectedTable.id);
+                await updateDoc(tableRef, {
+                    status: 'occupied',
+                    lastOrderId: newOrderRef.id,
+                    waiterId: selectedWaiter?.id || '',
+                    waiterName: selectedWaiter?.name || ''
+                });
+            }
 
             const printData = {
                 id: newOrderRef.id,
@@ -681,20 +694,112 @@ export default function Orders() {
     };
 
     const stats = {
-        pending: orders.filter(o => o.status === 'pending' || o.status === 'pendiente_pago').length,
+        pending: orders.filter(o => o.status === 'pending' || o.status === 'pendiente_pago' || o.status === 'calling').length,
         preparing: orders.filter(o => o.status === 'preparing').length,
         delivering: orders.filter(o => o.status === 'delivering').length,
         delivered: orders.filter(o => o.status === 'delivered').length,
         rejected: orders.filter(o => o.status === 'rejected').length,
+        tables: tables.length
     };
 
     const filteredOrders = orders
-        .filter(o => activeTab === 'pending' ? (o.status === 'pending' || o.status === 'pendiente_pago') : o.status === (activeTab as any))
+        .filter(o => {
+            if (activeTab === 'pending') return (o.status === 'pending' || o.status === 'pendiente_pago' || o.status === 'calling');
+            if (activeTab === 'tables') return false; // Handled by renderTablesView
+            return o.status === activeTab;
+        })
         .filter(o =>
             o.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
             o.deliveryAddress.toLowerCase().includes(searchTerm.toLowerCase()) ||
             (o.userName && o.userName.toLowerCase().includes(searchTerm.toLowerCase()))
         );
+
+    const [showTableModal, setShowTableModal] = useState(false);
+
+    const handleAssignWaiter = async (tableId: string, waiter: { id: string, name: string } | null) => {
+        if (!user) return;
+        try {
+            const tableRef = doc(db, 'restaurants', user.uid, 'tables', tableId);
+            await updateDoc(tableRef, {
+                waiterId: waiter ? waiter.id : '',
+                waiterName: waiter ? waiter.name : '',
+                status: waiter ? 'occupied' : 'free'
+            });
+
+            // Si hay una orden activa en esta mesa, actualizarla también
+            const activeOrder = orders.find(o => o.tableId === tableId && (o.status === 'occupied' || o.status === 'calling' || o.status === 'preparing'));
+            if (activeOrder) {
+                await updateDoc(doc(db, 'orders', activeOrder.id), {
+                    waiterId: waiter ? waiter.id : '',
+                    waiterName: waiter ? waiter.name : ''
+                });
+            }
+
+            setShowTableModal(false);
+            setSelectedTable(null);
+        } catch (error) {
+            console.error("Error assigning waiter:", error);
+            alert("Error al asignar mesero");
+        }
+    };
+
+    const renderTablesView = () => {
+        return (
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-6 animate-in fade-in slide-in-from-bottom-4">
+                {tables.map((table) => {
+                    const activeOrder = orders.find(o => 
+                        (o as any).tableId === table.id && 
+                        ['occupied', 'calling', 'preparing', 'delivered'].includes(o.status) &&
+                        o.paymentStatus !== 'sold'
+                    );
+                    
+                    const status = activeOrder ? (activeOrder.status === 'calling' ? 'calling' : 'occupied') : 'free';
+
+                    return (
+                        <div
+                            key={table.id}
+                            onClick={() => {
+                                setSelectedTable(table);
+                                setShowTableModal(true);
+                            }}
+                            className={`relative group cursor-pointer transition-all duration-300 ${
+                                status === 'calling' ? 'ring-4 ring-red-500 ring-offset-4 animate-pulse' : ''
+                            }`}
+                        >
+                            <div className={`aspect-square rounded-[35px] border-2 flex flex-col items-center justify-center gap-3 transition-all ${
+                                status === 'occupied' ? 'bg-indigo-50 border-indigo-200' :
+                                status === 'calling' ? 'bg-red-50 border-red-200' :
+                                'bg-white border-slate-100 hover:border-primary/30 hover:shadow-xl'
+                            }`}>
+                                <Users className={`w-8 h-8 ${
+                                    status === 'occupied' ? 'text-indigo-500' :
+                                    status === 'calling' ? 'text-red-500' :
+                                    'text-slate-300 group-hover:text-primary transition-colors'
+                                }`} />
+                                <div className="text-center">
+                                    <p className={`text-2xl font-black ${
+                                        status === 'occupied' ? 'text-indigo-900' :
+                                        status === 'calling' ? 'text-red-900' :
+                                        'text-slate-600'
+                                    }`}>#{table.number}</p>
+                                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">
+                                        {status === 'free' ? 'Disponible' : status === 'calling' ? 'Llamando' : 'Ocupada'}
+                                    </p>
+                                </div>
+                                {table.waiterName && (
+                                    <div className="absolute -bottom-2 bg-white border border-slate-100 px-3 py-1 rounded-full shadow-sm">
+                                        <p className="text-[10px] font-black text-indigo-600 truncate max-w-[80px]">
+                                            {table.waiterName}
+                                        </p>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    );
+                })}
+            </div>
+        );
+    };
     const renderOrderCard = (order: any) => (
         <div key={order.id} className="bg-white rounded-[35px] p-8 border border-slate-100 shadow-sm hover:shadow-xl transition-all group relative overflow-hidden">
             {order.paymentStatus === 'sold' && (
@@ -968,6 +1073,7 @@ export default function Orders() {
                     { id: 'preparing', label: 'Cocina', icon: Package, color: 'bg-blue-500' },
                     { id: 'delivering', label: 'Camino', icon: Truck, color: 'bg-purple-500' },
                     { id: 'delivered', label: 'Entregados', icon: CheckCircle, color: 'bg-green-500' },
+                    { id: 'tables', label: 'Mesas', icon: Users, color: 'bg-indigo-500' },
                     { id: 'rejected', label: 'Rechazados', icon: X, color: 'bg-red-500' },
                 ].map((tab) => (
                     <button
@@ -998,7 +1104,9 @@ export default function Orders() {
                 />
             </div>
 
-            {filteredOrders.length === 0 ? (
+            {activeTab === 'tables' ? (
+                renderTablesView()
+            ) : filteredOrders.length === 0 ? (
                 <div className="p-20 text-center border-2 border-dashed border-slate-100 rounded-[40px] grayscale opacity-50 bg-white/50">
                     <Clock className="w-16 h-16 text-slate-200 mx-auto mb-4" />
                     <p className="text-slate-400 font-bold text-xl">Sin pedidos en esta sección</p>
@@ -1033,100 +1141,97 @@ export default function Orders() {
                                 <div className="h-px flex-1 bg-emerald-100"></div>
                             </div>
                             <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
-                                {filteredOrders.filter(o => o.source !== 'waiter').map((order) => (
-                                    <OrderCard key={order.id} order={order} />
-                                ))}
+                                {filteredOrders.filter(o => o.source !== 'waiter').map((order) => renderOrderCard(order))}
                             </div>
                         </div>
                     )}
                 </div>
             )}
 
-            {/* Accept Order Modal */}
-            {acceptModalOpen && selectedOrderForAccept && (
+            {/* Table Assignment Modal */}
+            {showTableModal && selectedTable && (
                 <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/40 backdrop-blur-sm px-4">
-                    <div className="bg-white rounded-3xl p-6 w-full max-w-sm shadow-2xl animate-in zoom-in-95 duration-200">
-                        <div className="flex justify-between items-center mb-6">
-                            <h3 className="text-xl font-black text-slate-900">Aceptar y Cobrar</h3>
-                            <button onClick={() => setAcceptModalOpen(false)} className="text-slate-400 hover:text-slate-600">
+                    <div className="bg-white rounded-[40px] p-8 w-full max-w-md shadow-2xl animate-in zoom-in-95 duration-200">
+                        <div className="flex justify-between items-center mb-8">
+                            <div>
+                                <h3 className="text-2xl font-black text-slate-900">Mesa #{selectedTable.number}</h3>
+                                <p className="text-slate-500 font-bold uppercase tracking-widest text-[10px]">Gestión de Servicio</p>
+                            </div>
+                            <button onClick={() => setShowTableModal(false)} className="bg-slate-50 p-2 rounded-2xl text-slate-400 hover:text-slate-600 transition-colors">
                                 <X className="w-6 h-6" />
                             </button>
                         </div>
-                        <p className="text-slate-500 font-medium mb-4 text-sm">
-                            Selecciona el método de pago para la orden de <span className="font-bold text-primary">{selectedOrderForAccept.userName}</span> por <span className="font-black text-slate-800">${selectedOrderForAccept.total.toFixed(2)}</span>.
-                        </p>
-                        <div className="space-y-3 mb-6">
-                            {['Punto de Venta', 'Pago Móvil', 'Efectivo', 'Crédito (2x3)'].map((method) => (
-                                <button
-                                    key={method}
-                                    onClick={() => setPaymentMethod(method)}
-                                    className={`w-full text-left px-5 py-4 rounded-2xl font-bold transition-all border-2 ${
-                                        paymentMethod === method ? 'border-primary bg-primary/5 text-primary' : 'border-slate-100 bg-white text-slate-600 hover:border-slate-200'
-                                    }`}
-                                >
-                                    {method}
-                                </button>
-                            ))}
-                        </div>
 
-                        {paymentMethod === 'Pago Móvil' && (
-                            <div className="mb-6 space-y-4 animate-in fade-in slide-in-from-top-4">
-                                <div>
-                                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">Referencia (Últimos 6 dígitos)</label>
-                                    <input 
-                                        type="text"
-                                        maxLength={6}
-                                        placeholder="Ej: 123456"
-                                        value={referenceInputs[selectedOrderForAccept.id] || ''}
-                                        onChange={(e) => setReferenceInputs(prev => ({...prev, [selectedOrderForAccept.id!]: e.target.value.replace(/\D/g, '')}))}
-                                        className="w-full bg-slate-50 border border-slate-200 p-4 rounded-2xl outline-none focus:border-primary font-bold text-slate-700"
-                                    />
-                                </div>
-                                <div className="space-y-2">
-                                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">Capture de Pago</label>
-                                    <div className="flex items-center gap-2">
-                                        <label className={`flex-1 flex items-center justify-center gap-2 py-4 rounded-2xl border-2 border-dashed font-bold cursor-pointer transition-all ${proofUploadFiles[selectedOrderForAccept.id] ? 'border-green-500 bg-green-50 text-green-600' : 'border-slate-200 bg-slate-50 text-slate-500 hover:border-primary hover:text-primary hover:bg-primary/5'}`}>
-                                            <ImageIcon className="w-5 h-5" />
-                                            <span>{proofUploadFiles[selectedOrderForAccept.id] ? 'Capture Seleccionado' : 'Subir Capture (Opcional)'}</span>
-                                            <input 
-                                                type="file" 
-                                                accept="image/*" 
-                                                className="hidden" 
-                                                onChange={(e) => {
-                                                    if (e.target.files && e.target.files[0] && selectedOrderForAccept) {
-                                                        const docId = selectedOrderForAccept.id;
-                                                        const file = e.target.files[0];
-                                                        setProofUploadFiles(prev => ({...prev, [docId]: file}));
-                                                    }
-                                                }}
-                                            />
-                                        </label>
-                                        {proofUploadFiles[selectedOrderForAccept.id] && (
-                                            <button 
-                                                onClick={() => {
-                                                    setProofUploadFiles(prev => {
-                                                        const next = {...prev};
-                                                        delete next[selectedOrderForAccept.id!];
-                                                        return next;
-                                                    });
-                                                }}
-                                                className="p-4 bg-red-50 text-red-500 hover:bg-red-100 rounded-2xl transition-colors"
-                                            >
-                                                <X className="w-5 h-5" />
-                                            </button>
-                                        )}
-                                    </div>
+                        <div className="space-y-6">
+                            {/* Waiter Selection */}
+                            <div className="space-y-3">
+                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1 px-1">Asignar Mesero</label>
+                                <div className="grid grid-cols-1 gap-2 max-h-[200px] overflow-y-auto pr-2 custom-scrollbar">
+                                    <button
+                                        onClick={() => handleAssignWaiter(selectedTable.id, null)}
+                                        className={`flex items-center justify-between p-4 rounded-2xl font-bold transition-all border-2 ${
+                                            !selectedTable.waiterId ? 'border-primary bg-primary/5 text-primary' : 'border-slate-100 text-slate-500 hover:border-slate-200'
+                                        }`}
+                                    >
+                                        <div className="flex items-center gap-3">
+                                            <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center">
+                                                <X className="w-4 h-4" />
+                                            </div>
+                                            <span>Sin Mesero (Libre)</span>
+                                        </div>
+                                    </button>
+                                    
+                                    {waiters.map((waiter) => (
+                                        <button
+                                            key={waiter.id}
+                                            onClick={() => handleAssignWaiter(selectedTable.id, waiter)}
+                                            className={`flex items-center justify-between p-4 rounded-2xl font-bold transition-all border-2 ${
+                                                selectedTable.waiterId === waiter.id ? 'border-primary bg-primary/5 text-primary' : 'border-slate-100 text-slate-500 hover:border-slate-200'
+                                            }`}
+                                        >
+                                            <div className="flex items-center gap-3">
+                                                <div className="w-8 h-8 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600">
+                                                    <User className="w-4 h-4" />
+                                                </div>
+                                                <span>{waiter.name}</span>
+                                            </div>
+                                            {selectedTable.waiterId === waiter.id && <CheckCircle className="w-5 h-5" />}
+                                        </button>
+                                    ))}
                                 </div>
                             </div>
-                        )}
 
-                        <button
-                            onClick={handleConfirmAccept}
-                            disabled={isAccepting}
-                            className="w-full bg-primary text-white py-4 rounded-2xl font-black shadow-lg shadow-primary/20 hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-2 disabled:opacity-50"
-                        >
-                            {isAccepting ? <Loader2 className="w-5 h-5 animate-spin" /> : <><CheckCircle className="w-5 h-5" /> Confirmar e Imprimir</>}
-                        </button>
+                            {/* Direct Action for Admin */}
+                            <div className="pt-4 border-t border-slate-100">
+                                <button
+                                    onClick={() => {
+                                        // Set current table as selected for POS
+                                        setSelectedTable(selectedTable);
+                                        // Filter orders for this table to see if we should open POS or something else
+                                        const activeOrder = orders.find(o => (o as any).tableId === selectedTable.id && ['occupied', 'calling', 'preparing'].includes(o.status));
+                                        
+                                        if (activeOrder) {
+                                            // Maybe redirect to edit order or just show it
+                                            alert("Esta mesa ya tiene un pedido activo.");
+                                        } else {
+                                            // Open POS for this table
+                                            setPosOrderType('local');
+                                            setShowPOS(true);
+                                            setShowTableModal(false);
+                                        }
+                                    }}
+                                    className="w-full bg-primary text-white py-4 rounded-2xl font-black shadow-lg shadow-primary/20 hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-2"
+                                >
+                                    <ShoppingCart className="w-5 h-5" /> Abrir Nuevo Pedido en esta Mesa
+                                </button>
+                                <button
+                                    onClick={() => handleAssignWaiter(selectedTable.id, { id: user.uid, name: 'Administrador' })}
+                                    className="w-full mt-3 bg-slate-100 text-slate-600 py-4 rounded-2xl font-black hover:bg-slate-200 transition-all flex items-center justify-center gap-2"
+                                >
+                                    Tomar Pedido Yo Mismo
+                                </button>
+                            </div>
+                        </div>
                     </div>
                 </div>
             )}

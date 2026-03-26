@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import { doc, getDoc, collection, getDocs, setDoc, updateDoc, serverTimestamp, query, where } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import { ArrowLeft, Plus, Minus, Trash2, ShoppingBag, CheckCircle, Loader2, Star, Clock, Store, Truck, X, Tag, MessageSquare, MapPin, Instagram, Youtube, Music2, ExternalLink, Search, LayoutGrid, List } from 'lucide-react';
@@ -12,6 +12,8 @@ import toast from 'react-hot-toast';
 export default function CashierPOS() {
     const navigate = useNavigate();
     const { orderId } = useParams();
+    const location = useLocation();
+    const navState = location.state as { table: string, waiter: { id: string, name: string } } | null;
     
     const [restaurant, setRestaurant] = useState<any>(null);
     const [products, setProducts] = useState<any[]>([]);
@@ -95,6 +97,17 @@ export default function CashierPOS() {
 
         fetchData();
     }, [restaurantId, orderId]);
+
+    // Handle navigation state for table/waiter assignment
+    useEffect(() => {
+        if (navState && tables.length > 0) {
+            const tableObj = tables.find(t => t.number === navState.table);
+            if (tableObj) {
+                setSelectedTable(tableObj);
+                setWaiterOrderInfo(navState.waiter);
+            }
+        }
+    }, [navState, tables]);
 
     const loadOrderToPOS = (id: string, data: any) => {
         setActiveOrder({ id, ...data });
@@ -267,6 +280,9 @@ export default function CashierPOS() {
                 paymentMethod: paymentStatus === 'sold' ? paymentMethod : 'none',
                 updatedAt: serverTimestamp(),
                 table: selectedTable?.number || waiterOrderInfo?.table || 'Sin Mesa',
+                tableId: selectedTable?.id || '',
+                waiterId: waiterOrderInfo?.id || '',
+                waiterName: waiterOrderInfo?.name || '',
                 cashierName: cashierData.name || 'Cajera POS',
                 cashierId: cashierData.id || 'local'
             };
@@ -298,9 +314,20 @@ export default function CashierPOS() {
                     userId: 'local_walk_in',
                     restaurantId,
                     userName: 'Cliente Local',
-                    source: 'local',
+                    source: 'pos',
                     createdAt: serverTimestamp(),
                 });
+
+                // Update Table status to occupied
+                if (selectedTable) {
+                    const tableRef = doc(db, 'restaurants', restaurantId, 'tables', selectedTable.id);
+                    await updateDoc(tableRef, {
+                        status: 'occupied',
+                        lastOrderId: finalOrderId,
+                        waiterId: waiterOrderInfo?.id || 'cashier',
+                        waiterName: waiterOrderInfo?.name || 'Caja/Admin'
+                    });
+                }
             }
 
             // Set active order for printing

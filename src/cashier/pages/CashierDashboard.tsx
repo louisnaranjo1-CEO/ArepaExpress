@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { LogOut, DollarSign, CheckCircle, Clock, X, Loader2, Store, CreditCard, User, Plus, Edit, ClipboardList, MapPin, Instagram, Youtube, Music2, ExternalLink, Star, MessageSquare, Bike, Bell, Package, Truck, Search, Utensils, ShoppingCart, Trash2, Minus } from 'lucide-react';
+import { LogOut, DollarSign, CheckCircle, Clock, X, Loader2, Store, CreditCard, User, Plus, Edit, ClipboardList, MapPin, Instagram, Youtube, Music2, ExternalLink, Star, MessageSquare, Bike, Bell, Package, Truck, Search, Utensils, ShoppingCart, Trash2, Minus, ChevronDown, Check, History, AlertCircle } from 'lucide-react';
 import { db } from '../../lib/firebase';
 import { collection, query, where, onSnapshot, orderBy, doc, updateDoc, getDoc, getDocs, increment, addDoc, serverTimestamp } from 'firebase/firestore';
 import { useNavigate } from 'react-router-dom';
@@ -51,9 +51,15 @@ export default function CashierDashboard() {
     const [isLoadingReport, setIsLoadingReport] = useState(false);
     const [notifiedOrderIds, setNotifiedOrderIds] = useState<Set<string>>(new Set());
 
-    const [activeTab, setActiveTab] = useState<'pending' | 'preparing' | 'delivering' | 'delivered' | 'rejected'>('pending');
+    const [activeTab, setActiveTab] = useState<'pending' | 'preparing' | 'delivering' | 'delivered' | 'rejected' | 'tables'>('pending');
     const [searchTerm, setSearchTerm] = useState('');
     const [loading, setLoading] = useState(true);
+    const [tables, setTables] = useState<any[]>([]);
+    const [waiters, setWaiters] = useState<any[]>([]);
+    const [selectedTable, setSelectedTable] = useState<any | null>(null);
+    const [showTableModal, setShowTableModal] = useState(false);
+    const [assignWaiterLoading, setAssignWaiterLoading] = useState(false);
+
 
     // Edit Order State
     const [editModalOpen, setEditModalOpen] = useState(false);
@@ -130,8 +136,31 @@ export default function CashierDashboard() {
         };
         fetchProducts();
 
+        // Fetch waiters for assignment
+        const fetchWaiters = async () => {
+            const waitersRef = collection(db, 'restaurants', storedRestaurantId, 'waiters');
+            const snap = await getDocs(waitersRef);
+            setWaiters(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+        };
+        fetchWaiters();
+
+        // Real-time tables
+        const tablesRef = collection(db, 'restaurants', storedRestaurantId, 'tables');
+        const unsubscribeTables = onSnapshot(tablesRef, (snapshot) => {
+            const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            // Sort tables logically
+            data.sort((a: any, b: any) => {
+                const numA = parseInt(a.number, 10);
+                const numB = parseInt(b.number, 10);
+                if (!isNaN(numA) && !isNaN(numB)) return numA - numB;
+                return (a.number || '').localeCompare(b.number || '');
+            });
+            setTables(data);
+        });
+
         return () => {
             unsubscribe2();
+            unsubscribeTables();
         };
     }, [navigate]);
 
@@ -487,24 +516,27 @@ ESTADO: ${order.status.toUpperCase()}
 
     const stats = React.useMemo(() => {
         return {
-            pending: orders.filter(o => o.status === 'pending').length,
+            pending: orders.filter(o => ['pending', 'pendiente_pago', 'occupied', 'calling'].includes(o.status)).length,
             preparing: orders.filter(o => o.status === 'preparing').length,
-            delivering: orders.filter(o => o.status === 'delivering').length,
+            delivering: orders.filter(o => o.status === 'delivering' || o.status === 'buscando_piloto').length,
             delivered: orders.filter(o => o.status === 'delivered').length,
             rejected: orders.filter(o => o.status === 'rejected').length,
+            tables: tables.length
         };
-    }, [orders]);
+    }, [orders, tables]);
 
     const filteredOrders = React.useMemo(() => {
         let result = orders.filter(order => {
             // Filter by active tab
-            if (activeTab === 'pending') return order.status === 'pending';
+            if (activeTab === 'pending') return ['pending', 'pendiente_pago', 'occupied', 'calling'].includes(order.status);
             if (activeTab === 'preparing') return order.status === 'preparing';
-            if (activeTab === 'delivering') return order.status === 'delivering';
+            if (activeTab === 'delivering') return order.status === 'delivering' || order.status === 'buscando_piloto';
             if (activeTab === 'delivered') return order.status === 'delivered';
             if (activeTab === 'rejected') return order.status === 'rejected';
+            if (activeTab === 'tables') return false; // Orders are not shown in tables tab directly
             return true;
         });
+
 
         // Filter by search term
         if (searchTerm) {
@@ -518,6 +550,92 @@ ESTADO: ${order.status.toUpperCase()}
 
         return result;
     }, [orders, activeTab, searchTerm]);
+
+    const renderTablesView = () => {
+        const tablesWithStatus = tables.map(table => {
+            const tableOrders = orders.filter(o => 
+                (o.table === table.number || o.table === table.id) && 
+                !['delivered', 'rejected'].includes(o.status)
+            );
+
+            let status = 'free';
+            if (tableOrders.some(o => o.status === 'calling')) status = 'calling';
+            else if (tableOrders.length > 0) status = 'occupied';
+
+            const activeOrder = tableOrders[0];
+
+            return {
+                ...table,
+                derivedStatus: status,
+                activeOrder: activeOrder
+            };
+        });
+
+        return (
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-6 pt-4">
+                {tablesWithStatus.map(table => (
+                    <motion.button
+                        key={table.id}
+                        whileHover={{ scale: 1.05 }}
+                        whileTap={{ scale: 0.95 }}
+                        onClick={() => {
+                            setSelectedTable(table);
+                            setShowTableModal(true);
+                        }}
+                        className={`relative aspect-square rounded-[2.5rem] p-6 flex flex-col items-center justify-center gap-3 transition-all border-4 shadow-xl ${
+                            table.derivedStatus === 'calling'
+                                ? 'bg-red-50 border-red-200 text-red-600 animate-pulse'
+                                : table.derivedStatus === 'occupied'
+                                ? 'bg-indigo-50 border-indigo-200 text-indigo-600'
+                                : 'bg-white border-slate-100 text-slate-400 hover:border-slate-200 shadow-slate-200/50'
+                        }`}
+                    >
+                        <Utensils className={`w-10 h-10 ${table.derivedStatus !== 'free' ? 'opacity-100' : 'opacity-20'}`} />
+                        <span className="text-2xl font-black">{table.number}</span>
+                        
+                        {table.derivedStatus !== 'free' && (
+                            <div className="absolute top-4 right-4 flex gap-1">
+                                {table.derivedStatus === 'calling' && (
+                                    <div className="w-3 h-3 bg-red-500 rounded-full animate-ping" />
+                                )}
+                                <div className={`w-3 h-3 rounded-full ${table.derivedStatus === 'calling' ? 'bg-red-500' : 'bg-indigo-500'}`} />
+                            </div>
+                        )}
+
+                        {table.activeOrder?.waiterName && (
+                            <div className="absolute bottom-4 inset-x-4 px-2 py-1 bg-white/80 backdrop-blur-sm rounded-full border border-slate-100 flex items-center justify-center gap-1">
+                                <User className="w-3 h-3 text-slate-400" />
+                                <span className="text-[10px] font-black text-slate-600 truncate">{table.activeOrder.waiterName}</span>
+                            </div>
+                        )}
+                    </motion.button>
+                ))}
+            </div>
+        );
+    };
+
+    const handleAssignWaiter = async (waiter: any | null) => {
+        if (!selectedTable) return;
+        setAssignWaiterLoading(true);
+        try {
+            if (selectedTable.derivedStatus === 'free') {
+                const waiterInfo = waiter ? { id: waiter.id, name: waiter.name } : { id: 'cashier', name: 'Caja/Admin' };
+                navigate('/pos', { state: { table: selectedTable.number, waiter: waiterInfo } });
+            } else if (selectedTable.activeOrder) {
+                await updateDoc(doc(db, 'orders', selectedTable.activeOrder.id), {
+                    waiterId: waiter ? waiter.id : 'cashier',
+                    waiterName: waiter ? waiter.name : 'Caja/Admin'
+                });
+                toast.success("Responsabilidad actualizada");
+            }
+            setShowTableModal(false);
+        } catch (error) {
+            console.error("Error delegating table:", error);
+            toast.error("Error al asignar mesa");
+        } finally {
+            setAssignWaiterLoading(false);
+        }
+    };
 
     const renderOrderCard = (order: Order) => {
         const isWaiter = order.source === 'waiter';
@@ -695,6 +813,7 @@ ESTADO: ${order.status.toUpperCase()}
                         { id: 'delivering', label: 'Camino', icon: Truck, color: 'bg-purple-500' },
                         { id: 'delivered', label: 'Entregados', icon: CheckCircle, color: 'bg-green-500' },
                         { id: 'rejected', label: 'Rechazados', icon: X, color: 'bg-red-500' },
+                        { id: 'tables', label: 'Mesas', icon: Utensils, color: 'bg-indigo-500' },
                     ].map((tab) => (
                         <button
                             key={tab.id}
@@ -713,56 +832,60 @@ ESTADO: ${order.status.toUpperCase()}
                     ))}
                 </div>
 
-                <div className="relative">
-                    <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
-                    <input
-                        type="text"
-                        placeholder="Buscar por ID, dirección o cliente..."
-                        value={searchTerm}
-                        onChange={(e) => setSearchTerm(e.target.value)}
-                        className="w-full bg-white border border-slate-200 p-4 pl-12 rounded-2xl outline-none focus:border-primary transition-all font-bold text-slate-700 shadow-sm"
-                    />
-                </div>
+                {activeTab === 'tables' ? renderTablesView() : (
+                    <>
+                        <div className="relative">
+                            <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
+                            <input
+                                type="text"
+                                placeholder="Buscar por ID, dirección o cliente..."
+                                value={searchTerm}
+                                onChange={(e) => setSearchTerm(e.target.value)}
+                                className="w-full bg-white border border-slate-200 p-4 pl-12 rounded-2xl outline-none focus:border-primary transition-all font-bold text-slate-700 shadow-sm"
+                            />
+                        </div>
 
-                {filteredOrders.length === 0 ? (
-                    <div className="p-20 text-center border-2 border-dashed border-slate-100 rounded-[40px] grayscale opacity-50 bg-white/50">
-                        <Clock className="w-16 h-16 text-slate-200 mx-auto mb-4" />
-                        <p className="text-slate-400 font-bold text-xl">Sin pedidos en esta sección</p>
-                        <p className="text-slate-300 font-medium max-w-xs mx-auto mt-2 italic text-sm">Aquí aparecerán los pedidos que coincidan con el estado seleccionado.</p>
-                    </div>
-                ) : (
-                    <div className="space-y-12">
-                        {/* Grouped by Waiter vs App */}
-                        {filteredOrders.some(o => o.source === 'waiter') && (
-                            <div className="space-y-6">
-                                <div className="flex items-center gap-4">
-                                    <h2 className="text-sm font-black text-indigo-400 uppercase tracking-[0.3em] flex items-center gap-2 whitespace-nowrap">
-                                        <Utensils className="w-4 h-4" />
-                                        🍽️ Servicio en Mesa / Local ({filteredOrders.filter(o => o.source === 'waiter').length})
-                                    </h2>
-                                    <div className="h-px flex-1 bg-indigo-100"></div>
-                                </div>
-                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                                    {filteredOrders.filter(o => o.source === 'waiter').map(order => renderOrderCard(order))}
-                                </div>
+                        {filteredOrders.length === 0 ? (
+                            <div className="p-20 text-center border-2 border-dashed border-slate-100 rounded-[40px] grayscale opacity-50 bg-white/50">
+                                <Clock className="w-16 h-16 text-slate-200 mx-auto mb-4" />
+                                <p className="text-slate-400 font-bold text-xl">Sin pedidos en esta sección</p>
+                                <p className="text-slate-300 font-medium max-w-xs mx-auto mt-2 italic text-sm">Aquí aparecerán los pedidos que coincidan con el estado seleccionado.</p>
+                            </div>
+                        ) : (
+                            <div className="space-y-12">
+                                {/* Grouped by Waiter vs App */}
+                                {filteredOrders.some(o => o.source === 'waiter') && (
+                                    <div className="space-y-6">
+                                        <div className="flex items-center gap-4">
+                                            <h2 className="text-sm font-black text-indigo-400 uppercase tracking-[0.3em] flex items-center gap-2 whitespace-nowrap">
+                                                <Utensils className="w-4 h-4" />
+                                                🍽️ Servicio en Mesa / Local ({filteredOrders.filter(o => o.source === 'waiter').length})
+                                            </h2>
+                                            <div className="h-px flex-1 bg-indigo-100"></div>
+                                        </div>
+                                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                                            {filteredOrders.filter(o => o.source === 'waiter').map(order => renderOrderCard(order))}
+                                        </div>
+                                    </div>
+                                )}
+
+                                {filteredOrders.some(o => o.source !== 'waiter') && (
+                                    <div className="space-y-6">
+                                        <div className="flex items-center gap-4">
+                                            <h2 className="text-sm font-black text-emerald-400 uppercase tracking-[0.3em] flex items-center gap-2 whitespace-nowrap">
+                                                <Truck className="w-4 h-4" />
+                                                🚚 App / Delivery Express ({filteredOrders.filter(o => o.source !== 'waiter').length})
+                                            </h2>
+                                            <div className="h-px flex-1 bg-emerald-100"></div>
+                                        </div>
+                                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                                            {filteredOrders.filter(o => o.source !== 'waiter').map(order => renderOrderCard(order))}
+                                        </div>
+                                    </div>
+                                )}
                             </div>
                         )}
-
-                        {filteredOrders.some(o => o.source !== 'waiter') && (
-                            <div className="space-y-6">
-                                <div className="flex items-center gap-4">
-                                    <h2 className="text-sm font-black text-emerald-400 uppercase tracking-[0.3em] flex items-center gap-2 whitespace-nowrap">
-                                        <Truck className="w-4 h-4" />
-                                        🚚 App / Delivery Express ({filteredOrders.filter(o => o.source !== 'waiter').length})
-                                    </h2>
-                                    <div className="h-px flex-1 bg-emerald-100"></div>
-                                </div>
-                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                                    {filteredOrders.filter(o => o.source !== 'waiter').map(order => renderOrderCard(order))}
-                                </div>
-                            </div>
-                        )}
-                    </div>
+                    </>
                 )}
             </main>
 
@@ -1240,6 +1363,129 @@ ESTADO: ${order.status.toUpperCase()}
                             </div>
                         )}
                     </div>
+                </div>
+            )}
+
+            {/* Modal de Asignación de Mesa */}
+            {showTableModal && selectedTable && (
+                <div className="fixed inset-0 z-[120] flex items-center justify-center bg-slate-900/60 backdrop-blur-md px-4">
+                    <motion.div 
+                        initial={{ opacity: 0, scale: 0.9, y: 20 }}
+                        animate={{ opacity: 1, scale: 1, y: 0 }}
+                        className="bg-white rounded-[3rem] p-8 w-full max-w-lg shadow-2xl relative overflow-hidden"
+                    >
+                        <div className="absolute -top-24 -left-24 w-48 h-48 bg-indigo-50 rounded-full blur-3xl" />
+                        
+                        <div className="flex justify-between items-center mb-8 relative z-10">
+                            <div className="flex items-center gap-4">
+                                <div className={`w-14 h-14 rounded-2xl flex items-center justify-center shadow-lg ${
+                                    selectedTable.derivedStatus === 'free' ? 'bg-emerald-500 text-white shadow-emerald-200' : 'bg-indigo-500 text-white shadow-indigo-200'
+                                }`}>
+                                    <Utensils className="w-7 h-7" />
+                                </div>
+                                <div>
+                                    <h3 className="text-2xl font-black text-slate-900">Mesa {selectedTable.number}</h3>
+                                    <p className="text-sm font-bold text-slate-400 uppercase tracking-widest">
+                                        {selectedTable.derivedStatus === 'free' ? 'Disponible' : 'Ocupada / Con Pedido'}
+                                    </p>
+                                </div>
+                            </div>
+                            <button onClick={() => setShowTableModal(false)} className="h-12 w-12 rounded-2xl bg-slate-50 flex items-center justify-center text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-all">
+                                <X className="w-6 h-6" />
+                            </button>
+                        </div>
+
+                        <div className="space-y-6 relative z-10">
+                            {selectedTable.derivedStatus !== 'free' ? (
+                                <div className="bg-indigo-100/50 border border-indigo-100 rounded-[2rem] p-6 space-y-4">
+                                    <div className="flex items-center justify-between">
+                                        <div className="flex items-center gap-3">
+                                            <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center shadow-sm">
+                                                <User className="w-5 h-5 text-indigo-500" />
+                                            </div>
+                                            <div>
+                                                <p className="text-[10px] font-black text-indigo-300 uppercase tracking-widest">Atendido por</p>
+                                                <p className="font-black text-indigo-900">{selectedTable.activeOrder?.waiterName || 'Sin asignar'}</p>
+                                            </div>
+                                        </div>
+                                        <div className="px-3 py-1 bg-white rounded-full text-[10px] font-black text-indigo-600 uppercase tracking-widest shadow-sm">
+                                            Activa
+                                        </div>
+                                    </div>
+                                    
+                                    <div className="grid grid-cols-1 gap-3">
+                                        <button
+                                            onClick={() => {
+                                                setSearchTerm(`Mesa ${selectedTable.number}`);
+                                                setActiveTab('pending');
+                                                setShowTableModal(false);
+                                            }}
+                                            className="w-full bg-indigo-600 text-white py-4 rounded-2xl font-black shadow-lg shadow-indigo-200 flex items-center justify-center gap-2 hover:bg-indigo-700 transition-all"
+                                        >
+                                            <Search className="w-5 h-5" /> Ver Pedido Detallado
+                                        </button>
+                                        <button
+                                            onClick={() => handleAssignWaiter(null)}
+                                            className="w-full bg-white text-indigo-600 border-2 border-indigo-100 py-4 rounded-2xl font-black flex items-center justify-center gap-2 hover:bg-indigo-50 transition-all"
+                                        >
+                                            <Plus className="w-5 h-5" /> Reasignar/Atender Yo
+                                        </button>
+                                    </div>
+                                </div>
+                            ) : (
+                                <div className="space-y-4">
+                                    <p className="text-xs font-black text-slate-400 uppercase tracking-widest ml-2">¿Quién atenderá esta mesa?</p>
+                                    
+                                    <div className="grid grid-cols-1 gap-3 max-h-[40vh] overflow-y-auto pr-2 custom-scrollbar text-left">
+                                        {/* Cashier Option */}
+                                        <button
+                                            onClick={() => handleAssignWaiter(null)}
+                                            disabled={assignWaiterLoading}
+                                            className="group flex items-center justify-between p-4 bg-slate-50 hover:bg-primary hover:text-white rounded-[1.5rem] border border-slate-100 transition-all duration-300 w-full"
+                                        >
+                                            <div className="flex items-center gap-3">
+                                                <div className="w-12 h-12 bg-white rounded-xl flex items-center justify-center shadow-sm group-hover:bg-primary-dark transition-colors">
+                                                    <Store className="w-6 h-6 text-primary group-hover:text-white" />
+                                                </div>
+                                                <div className="text-left">
+                                                    <p className="font-black text-slate-900 group-hover:text-white">Atender Yo Mismo</p>
+                                                    <p className="text-[10px] font-black text-slate-400 group-hover:text-white/70 uppercase">Caja / Admin</p>
+                                                </div>
+                                            </div>
+                                            <ChevronDown className="w-5 h-5 opacity-0 group-hover:opacity-100 -rotate-90" />
+                                        </button>
+
+                                        {/* Waiters List */}
+                                        {waiters.map(waiter => (
+                                            <button
+                                                key={waiter.id}
+                                                onClick={() => handleAssignWaiter(waiter)}
+                                                disabled={assignWaiterLoading}
+                                                className="group flex items-center justify-between p-4 bg-slate-50 hover:bg-indigo-600 hover:text-white rounded-[1.5rem] border border-slate-100 transition-all duration-300 w-full"
+                                            >
+                                                <div className="flex items-center gap-3">
+                                                    <div className="w-12 h-12 bg-indigo-100 rounded-xl overflow-hidden shadow-sm">
+                                                        {waiter.photoURL ? (
+                                                            <img src={waiter.photoURL} alt={waiter.name} className="w-full h-full object-cover" />
+                                                        ) : (
+                                                            <div className="w-full h-full flex items-center justify-center text-indigo-400">
+                                                                <User className="w-6 h-6" />
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                    <div className="text-left">
+                                                        <p className="font-black text-slate-900 group-hover:text-white">{waiter.name}</p>
+                                                        <p className="text-[10px] font-black text-slate-400 group-hover:text-white/70 uppercase">Mesero Disponible</p>
+                                                    </div>
+                                                </div>
+                                                <ChevronDown className="w-5 h-5 opacity-0 group-hover:opacity-100 -rotate-90 transition-all" />
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    </motion.div>
                 </div>
             )}
         </div>
