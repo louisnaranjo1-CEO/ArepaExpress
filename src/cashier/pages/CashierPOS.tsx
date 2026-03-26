@@ -5,7 +5,7 @@ import { db } from '../../lib/firebase';
 import { ArrowLeft, Plus, Minus, Trash2, ShoppingBag, CheckCircle, Loader2, Star, Clock, Store, Truck, X, Tag, MessageSquare, MapPin, Instagram, Youtube, Music2, ExternalLink, Search, LayoutGrid, List } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import ReviewsModal from '../components/ReviewsModal';
-import { printToUsbDevice, formatTicket } from '../../lib/usb-printer';
+import { printToUsbDevice, formatTicket, downloadTicketImage } from '../../lib/usb-printer';
 import toast from 'react-hot-toast';
 
 export default function CashierPOS() {
@@ -42,6 +42,7 @@ export default function CashierPOS() {
     const [searchTerm, setSearchTerm] = useState('');
     const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
     const [stations, setStations] = useState<any[]>([]);
+    const [selectedPrinterId, setSelectedPrinterId] = useState<string>('auto');
 
     const restaurantId = localStorage.getItem('cashierRestaurantId');
     const cashierDataRaw = localStorage.getItem('cashierData');
@@ -317,15 +318,20 @@ export default function CashierPOS() {
         
         setIsSubmitting(true);
         try {
-            // Group items by printer station
-            const toPrint = newItemsToPrint;
             const printResults = [];
 
-            // Find configured stations for these items
-            for (const item of toPrint) {
-                const station = stations.find(s => s.categories && s.categories.includes(item.category));
-                if (station && station.vendorId && station.productId) {
-                    const ticketData = formatTicket({
+            for (const item of newItemsToPrint) {
+                let station;
+                if (selectedPrinterId === 'virtual') {
+                    station = { name: "Impresora Virtual", virtual: true };
+                } else if (selectedPrinterId !== 'auto') {
+                    station = stations.find(s => s.id === selectedPrinterId) || { name: 'Desconocida', virtual: true };
+                } else {
+                    station = stations.find(s => s.categories && s.categories.includes(item.category));
+                }
+
+                if (station) {
+                    const printData = {
                         id: activeOrder.id,
                         userName: activeOrder.userName || 'Cliente Local',
                         userPhone: activeOrder.userPhone || '',
@@ -334,9 +340,32 @@ export default function CashierPOS() {
                         stationName: station.name,
                         orderNote: item.notes,
                         createdAt: new Date()
-                    });
+                    };
 
-                    const success = await printToUsbDevice(station.vendorId, station.productId, ticketData);
+                    let success = false;
+                    
+                    const triggerDownload = () => {
+                        downloadTicketImage(printData);
+                        return true;
+                    };
+
+                    if ((station as any).virtual) {
+                        success = triggerDownload();
+                    } else if (station.vendorId && station.productId) {
+                        try {
+                            const ticketData = formatTicket(printData);
+                            success = await printToUsbDevice(station.vendorId, station.productId, ticketData);
+                            if (!success) {
+                                console.warn("Physical print failed, falling back to virtual.");
+                                success = triggerDownload();
+                            }
+                        } catch(e) {
+                            success = triggerDownload();
+                        }
+                    } else {
+                        success = triggerDownload();
+                    }
+                    
                     printResults.push({ item: item.name, station: station.name, success });
                 } else {
                     console.warn(`No station configured for category: ${item.category}`);
@@ -344,7 +373,6 @@ export default function CashierPOS() {
                 }
             }
 
-            // Mark items as printed in local cart and final order
             const updatedItems = cartItems.map(item => ({
                 ...item,
                 printed: true
@@ -356,11 +384,11 @@ export default function CashierPOS() {
             
             const totalSuccess = printResults.filter(r => r.success).length;
             if (totalSuccess > 0) {
-                toast.success(`${totalSuccess} comandas impresas correctamente`);
+                toast.success(`${totalSuccess} comandas procesadas correctamente`);
             } else if (printResults.some(r => r.station !== 'Ninguna')) {
-                toast.error("Error al imprimir comandas. Verifique las impresoras.");
+                toast.error("Error al procesar comandas.");
             } else {
-                toast.success("Pedido actualizado (sin estaciones de impresión configuradas)");
+                toast.success("Pedido actualizado (sin estaciones válidas configuradas)");
             }
 
             resetPOS();
@@ -927,9 +955,25 @@ export default function CashierPOS() {
                             <div className="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-primary via-amber-500 to-primary"></div>
                             
                             <h3 className="text-3xl font-black text-slate-900 mb-2 uppercase tracking-tight">Impresión de Comanda</h3>
-                            <p className="text-sm text-slate-400 font-bold mb-8">Artículos nuevos detectados para enviar a cocina/barra</p>
+                            <p className="text-sm text-slate-400 font-bold mb-6">Artículos nuevos detectados para enviar a cocina/barra</p>
 
-                            <div className="space-y-6 max-h-[50vh] overflow-y-auto pr-2 mb-8">
+                            <div className="mb-6 bg-slate-50 p-4 rounded-[2rem] border border-slate-100">
+                                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest pl-2 mb-3">Destino de Impresión</label>
+                                <select
+                                    value={selectedPrinterId}
+                                    onChange={(e) => setSelectedPrinterId(e.target.value)}
+                                    className="w-full bg-white border border-slate-200 rounded-2xl px-5 py-4 text-sm font-black text-slate-700 outline-none focus:border-primary/50 transition-all appearance-none cursor-pointer"
+                                    style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%239ca3af'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E")`, backgroundPosition: `right 1.25rem center`, backgroundRepeat: `no-repeat`, backgroundSize: `1.2em 1.2em` }}
+                                >
+                                    <option value="auto">🌟 Auto-asignar (Según Categoría)</option>
+                                    <option value="virtual">💻 Bypass / Descargar Imagen (Sin Impresora)</option>
+                                    {stations.map(st => (
+                                        <option key={st.id} value={st.id}>🖨️ {st.name}</option>
+                                    ))}
+                                </select>
+                            </div>
+
+                            <div className="space-y-6 max-h-[40vh] overflow-y-auto pr-2 mb-8">
                                 {newItemsToPrint.map((item, idx) => (
                                     <div key={idx} className="flex items-center gap-4 p-4 bg-slate-50 rounded-3xl border border-slate-100">
                                         <div className="w-3 h-3 rounded-full bg-primary animate-pulse"></div>

@@ -176,8 +176,7 @@ export const formatTicket = (order: PrintOrder): Uint8Array => {
     // Notes
     if (order.orderNote) {
         printer.text('------------------------------------------').newline()
-            .bold(true).text('NOTAS: ').newline()
-            .bold(false).text(order.orderNote).newline();
+            .bold(true).text('NOTAS: ').bold(false).text(order.orderNote).newline();
     }
 
     // Footer
@@ -187,6 +186,128 @@ export const formatTicket = (order: PrintOrder): Uint8Array => {
         .cut();
 
     return printer.generate();
+};
+
+export const formatTicketText = (order: PrintOrder): string => {
+    let result = '';
+    result += `${order.stationName}\n`;
+    result += `------------------------------------------\n`;
+    result += `PEDIDO #${order.id.slice(-4).toUpperCase()}\n`;
+    
+    if (order.tableNumber) {
+        result += `MESA: ${order.tableNumber}\n`;
+    } else {
+        result += `PARA LLEVAR\n`;
+    }
+    
+    const date = order.createdAt || new Date();
+    result += `${date.toLocaleDateString()} - ${date.toLocaleTimeString()}\n`;
+    result += `------------------------------------------\n`;
+    result += `CLIENTE: ${order.userName || 'Cliente General'}\n`;
+    if (order.userPhone) {
+        result += `TEL: ${order.userPhone}\n`;
+    }
+    result += `------------------------------------------\n`;
+    
+    order.items.forEach(item => {
+        result += `${item.quantity} x ${item.name}\n`;
+    });
+    
+    if (order.orderNote) {
+        result += `------------------------------------------\n`;
+        result += `NOTAS:\n${order.orderNote}\n`;
+    }
+    
+    result += `------------------------------------------\n`;
+    result += `*** Ticket de Cocina ***\n`;
+    
+    return result;
+};
+
+export const downloadTicketImage = (order: PrintOrder) => {
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    const width = 450;
+    
+    // Estimate height dynamically based on content
+    let height = 320; 
+    height += order.items.length * 30; 
+    if (order.orderNote) height += 80 + order.orderNote.split('\n').length * 24;
+    
+    canvas.width = width;
+    canvas.height = height;
+
+    // Draw white background
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, width, height);
+    
+    ctx.fillStyle = '#000000';
+    let y = 40;
+    let lineSpacing = 24;
+    
+    const drawText = (text: string, align: 'left' | 'center' = 'left', bold: boolean = false, size: number = 16) => {
+        ctx.font = `${bold ? '900 ' : '500 '}${size}px Courier New, monospace`;
+        if (align === 'center') {
+            const textWidth = ctx.measureText(text).width;
+            ctx.fillText(text, (width - textWidth) / 2, y);
+        } else {
+            ctx.fillText(text, 20, y);
+        }
+        y += lineSpacing;
+    };
+    
+    const drawDivider = () => {
+        drawText('------------------------------------', 'center', false, 18);
+    };
+
+    drawText(order.stationName, 'center', true, 22);
+    drawDivider();
+    drawText(`PEDIDO #${order.id.slice(-4).toUpperCase()}`, 'center', true, 26);
+    lineSpacing = 30;
+    
+    if (order.tableNumber) {
+        drawText(`MESA: ${order.tableNumber}`, 'center', true, 22);
+    } else {
+        drawText(`PARA LLEVAR`, 'center', true, 22);
+    }
+    
+    lineSpacing = 24;
+    const date = order.createdAt || new Date();
+    drawText(`${date.toLocaleDateString()} - ${date.toLocaleTimeString()}`, 'center', false, 14);
+    drawDivider();
+    
+    drawText(`CLIENTE: ${order.userName || 'Cliente General'}`, 'left', true, 16);
+    if (order.userPhone) {
+        drawText(`TEL: ${order.userPhone}`, 'left', false, 16);
+    }
+    drawDivider();
+    
+    lineSpacing = 30;
+    order.items.forEach(item => {
+        drawText(`${item.quantity} x ${item.name}`, 'left', true, 18);
+    });
+    
+    if (order.orderNote) {
+        lineSpacing = 24;
+        drawDivider();
+        drawText('NOTAS:', 'left', true, 16);
+        const lines = order.orderNote.split('\n');
+        lines.forEach(line => {
+             drawText(line, 'left', false, 16);
+        });
+    }
+    
+    lineSpacing = 24;
+    drawDivider();
+    drawText('*** Ticket de Cocina ***', 'center', false, 16);
+    
+    const url = canvas.toDataURL('image/png');
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `Comanda-${order.stationName}-${order.id.slice(-4)}.png`;
+    a.click();
 };
 
 export const requestUsbDevice = async (): Promise<PrinterDevice | null> => {
