@@ -610,8 +610,8 @@ ESTADO: ${order.status.toUpperCase()}
             let status = table.status === 'available' ? 'free' : (table.status || 'free');
             if (tableOrders.some(o => o.status === 'calling')) status = 'calling';
             else if (tableOrders.length > 0) status = 'occupied';
-            // ensure billing maps to occupied in cashier view
-            if (status === 'billing') status = 'occupied';
+            // ensure billing maps to distinct state in cashier view
+            if (table.status === 'billing' || status === 'billing') status = 'billing';
 
             const activeOrder = tableOrders[0];
 
@@ -624,43 +624,53 @@ ESTADO: ${order.status.toUpperCase()}
 
         return (
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-6 pt-4">
-                {tablesWithStatus.map(table => (
-                    <motion.button
-                        key={table.id}
-                        whileHover={{ scale: 1.05 }}
-                        whileTap={{ scale: 0.95 }}
-                        onClick={() => {
-                            setSelectedTable(table);
-                            setShowTableModal(true);
-                        }}
-                        className={`relative aspect-square rounded-[2.5rem] p-6 flex flex-col items-center justify-center gap-3 transition-all border-4 shadow-xl ${
-                            table.derivedStatus === 'calling'
-                                ? 'bg-red-50 border-red-200 text-red-600 animate-pulse'
-                                : table.derivedStatus === 'occupied'
-                                ? 'bg-indigo-50 border-indigo-200 text-indigo-600'
-                                : 'bg-white border-slate-100 text-slate-400 hover:border-slate-200 shadow-slate-200/50'
-                        }`}
-                    >
-                        <Utensils className={`w-10 h-10 ${table.derivedStatus !== 'free' ? 'opacity-100' : 'opacity-20'}`} />
-                        <span className="text-2xl font-black">{table.number}</span>
-                        
-                        {table.derivedStatus !== 'free' && (
-                            <div className="absolute top-4 right-4 flex gap-1">
-                                {table.derivedStatus === 'calling' && (
-                                    <div className="w-3 h-3 bg-red-500 rounded-full animate-ping" />
+                {tablesWithStatus.map((table) => {
+                    const status = table.derivedStatus;
+                    return (
+                        <div
+                            key={table.id}
+                            onClick={() => {
+                                setSelectedTable(table);
+                                setShowTableModal(true);
+                            }}
+                            className={`relative group cursor-pointer transition-all duration-300 ${
+                                status === 'calling' ? 'ring-4 ring-red-500 ring-offset-4 animate-pulse' : ''
+                            }`}
+                        >
+                            <div className={`aspect-square rounded-[35px] border-2 flex flex-col items-center justify-center gap-3 transition-all ${
+                                status === 'occupied' ? 'bg-indigo-50 border-indigo-200' :
+                                status === 'calling' ? 'bg-red-50 border-red-200 shadow-lg shadow-red-200/50' :
+                                status === 'billing' ? 'bg-emerald-50 border-emerald-200 shadow-lg shadow-emerald-200/50' :
+                                'bg-white border-slate-100 hover:border-primary/30 hover:shadow-xl'
+                            }`}>
+                                <Utensils className={`w-8 h-8 ${
+                                    status === 'occupied' ? 'text-indigo-500' :
+                                    status === 'calling' ? 'text-red-500' :
+                                    status === 'billing' ? 'text-emerald-500' :
+                                    'text-slate-300 group-hover:text-primary transition-colors'
+                                }`} />
+                                <div className="text-center">
+                                    <p className={`text-2xl font-black ${
+                                        status === 'occupied' ? 'text-indigo-900' :
+                                        status === 'calling' ? 'text-red-900' :
+                                        status === 'billing' ? 'text-emerald-900' :
+                                        'text-slate-600'
+                                    }`}>#{table.number}</p>
+                                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">
+                                        {status === 'free' ? 'Disponible' : status === 'calling' ? 'Llamando' : status === 'billing' ? 'Cobrando' : 'Ocupada'}
+                                    </p>
+                                </div>
+                                {table.activeOrder?.waiterName && (
+                                    <div className="absolute -bottom-2 bg-white border border-slate-100 px-3 py-1 rounded-full shadow-sm">
+                                        <p className="text-[10px] font-black text-indigo-600 truncate max-w-[80px]">
+                                            {table.activeOrder.waiterName}
+                                        </p>
+                                    </div>
                                 )}
-                                <div className={`w-3 h-3 rounded-full ${table.derivedStatus === 'calling' ? 'bg-red-500' : 'bg-indigo-500'}`} />
                             </div>
-                        )}
-
-                        {table.activeOrder?.waiterName && (
-                            <div className="absolute bottom-4 inset-x-4 px-2 py-1 bg-white/80 backdrop-blur-sm rounded-full border border-slate-100 flex items-center justify-center gap-1">
-                                <User className="w-3 h-3 text-slate-400" />
-                                <span className="text-[10px] font-black text-slate-600 truncate">{table.activeOrder.waiterName}</span>
-                            </div>
-                        )}
-                    </motion.button>
-                ))}
+                        </div>
+                    );
+                })}
             </div>
         );
     };
@@ -1543,14 +1553,18 @@ ESTADO: ${order.status.toUpperCase()}
                         <div className="flex justify-between items-center mb-8 relative z-10">
                             <div className="flex items-center gap-4">
                                 <div className={`w-14 h-14 rounded-2xl flex items-center justify-center shadow-lg ${
-                                    selectedTable.derivedStatus === 'free' ? 'bg-emerald-500 text-white shadow-emerald-200' : 'bg-indigo-500 text-white shadow-indigo-200'
+                                    selectedTable.derivedStatus === 'free' ? 'bg-emerald-500 text-white shadow-emerald-200' : 
+                                    selectedTable.derivedStatus === 'billing' ? 'bg-emerald-600 text-white shadow-emerald-200' :
+                                    'bg-indigo-500 text-white shadow-indigo-200'
                                 }`}>
                                     <Utensils className="w-7 h-7" />
                                 </div>
                                 <div>
                                     <h3 className="text-2xl font-black text-slate-900">Mesa {selectedTable.number}</h3>
                                     <p className="text-sm font-bold text-slate-400 uppercase tracking-widest">
-                                        {selectedTable.derivedStatus === 'free' ? 'Disponible' : 'Ocupada / Con Pedido'}
+                                        {selectedTable.derivedStatus === 'free' ? 'Disponible' : 
+                                         selectedTable.derivedStatus === 'billing' ? 'Cobrando / Pendiente' : 
+                                         'Ocupada / Con Pedido'}
                                     </p>
                                 </div>
                             </div>
