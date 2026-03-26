@@ -109,8 +109,12 @@ export default function Favorites() {
                     <div className="grid grid-cols-1 gap-4">
                         {favorites.map((res) => (
                             <Link to={`/restaurant/${res.id}`} key={res.id} className="group flex items-center gap-4 bg-white p-4 rounded-3xl shadow-xl shadow-slate-200/50 border border-slate-100 hover:border-primary/20 hover:scale-[1.02] active:scale-[0.98] transition-all">
-                                <div className="relative w-24 h-24 rounded-2xl overflow-hidden shrink-0 shadow-inner">
-                                    <img src={res.image} alt={res.name} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
+                                <div className="relative w-24 h-24 rounded-2xl overflow-hidden shrink-0 shadow-inner bg-slate-50 flex items-center justify-center">
+                                    <img 
+                                        src={res.logoUrl || res.image} 
+                                        alt={res.name} 
+                                        className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" 
+                                    />
                                     <div className="absolute top-2 left-2 bg-white/90 backdrop-blur px-2 py-0.5 rounded-full flex items-center gap-1 shadow-sm">
                                         <Heart className="w-3 h-3 text-red-500 fill-red-500" />
                                     </div>
