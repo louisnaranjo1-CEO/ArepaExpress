@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { LogOut, DollarSign, CheckCircle, Clock, X, Loader2, Store, CreditCard, User, Plus, Edit, ClipboardList, MapPin, Instagram, Youtube, Music2, ExternalLink, Star, MessageSquare, Bike, Bell, Package, Truck, Search, Utensils, ShoppingCart, Trash2, Minus, ChevronDown, Check, History, AlertCircle } from 'lucide-react';
+import { LogOut, DollarSign, CheckCircle, Clock, X, Loader2, Store, CreditCard, User, Plus, Edit, ClipboardList, MapPin, Instagram, Youtube, Music2, ExternalLink, Star, MessageSquare, Bike, Bell, Package, Truck, Search, Utensils, ShoppingCart, Trash2, Minus, ChevronDown, Check, History, AlertCircle, Receipt } from 'lucide-react';
 import { db } from '../../lib/firebase';
 import { collection, query, where, onSnapshot, orderBy, doc, updateDoc, getDoc, getDocs, increment, addDoc, serverTimestamp } from 'firebase/firestore';
 import { useNavigate } from 'react-router-dom';
@@ -639,6 +639,9 @@ ESTADO: ${order.status.toUpperCase()}
             const orderTemp = { ...selectedOrderForAccept, ...updates };
             toast.success("Orden aceptada y enviada a cocina");
             
+            // Automatic printing to kitchen stations
+            handlePrintOrder(selectedOrderForAccept.id, orderTemp as any);
+            
             setAcceptModalOpen(false);
             setSelectedOrderForAccept(null);
             
@@ -701,7 +704,7 @@ ESTADO: ${order.status.toUpperCase()}
     const filteredOrders = React.useMemo(() => {
         let result = orders.filter(order => {
             // Filter by active tab
-            if (activeTab === 'pending') return ['pending', 'pendiente_pago', 'occupied', 'calling'].includes(order.status);
+            if (activeTab === 'pending') return ['pending', 'pendiente_pago', 'occupied', 'calling', 'billing'].includes(order.status);
             if (activeTab === 'preparing') return order.status === 'preparing';
             if (activeTab === 'delivering') return order.status === 'delivering' || order.status === 'buscando_piloto';
             if (activeTab === 'delivered') return order.status === 'delivered';
@@ -728,7 +731,7 @@ ESTADO: ${order.status.toUpperCase()}
         const tablesWithStatus = tables.map(table => {
             const tableOrders = orders.filter(o => 
                 ((o as any).tableId === table.id || (o as any).tableNumber === table.number || o.table === table.number) && 
-                ['occupied', 'calling', 'preparing', 'delivering', 'delivered', 'pending', 'pendiente_pago'].includes(o.status) &&
+                ['occupied', 'calling', 'preparing', 'delivering', 'delivered', 'pending', 'pendiente_pago', 'billing'].includes(o.status) &&
                 o.paymentStatus !== 'sold' &&
                 o.paymentStatus !== 'merged'
             );
@@ -739,15 +742,16 @@ ESTADO: ${order.status.toUpperCase()}
             // ensure billing maps to distinct state in cashier view
             if (table.status === 'billing' || status === 'billing') status = 'billing';
 
-            // For billing state, we prefer the 'not_sold' order which contains the consolidated items
+            const ordersForTable = tableOrders.filter(o => o.paymentStatus !== 'sold');
             const activeOrder = status === 'billing' 
-                ? tableOrders.find(o => o.paymentStatus === 'not_sold') || tableOrders[0]
-                : tableOrders[0];
+                ? ordersForTable.find(o => o.paymentStatus === 'not_sold') || ordersForTable[0]
+                : ordersForTable[0];
 
             return {
                 ...table,
                 derivedStatus: status,
-                activeOrder: activeOrder
+                activeOrder,
+                allActiveOrders: ordersForTable
             };
         });
 
@@ -1027,6 +1031,18 @@ ESTADO: ${order.status.toUpperCase()}
                 });
                 targetOrderRefId = newOrderRef.id;
                 toast.success("Pedido creado");
+
+                // Automatic kitchen printing for POS orders
+                const newOrderData = { 
+                    id: targetOrderRefId, 
+                    items, 
+                    total, 
+                    userName: posClientName || 'Cliente en mostrador',
+                    tableNumber: posOrderType === 'local' ? (selectedTable?.number || '') : '',
+                    orderNote: '',
+                    createdAt: new Date()
+                };
+                handlePrintOrder(targetOrderRefId, newOrderData as any);
             }
 
             // Update Table Status if local
@@ -1716,9 +1732,35 @@ ESTADO: ${order.status.toUpperCase()}
                                         </div>
                                         <div>
                                             <p className="text-[10px] font-black text-indigo-400 uppercase tracking-widest">Mesero Responsable</p>
-                                            <p className="font-black text-indigo-900">{selectedTable.activeOrder?.waiterName || 'Sin asignar'}</p>
+                                            <p className="font-black text-indigo-900">{selectedTable.allActiveOrders?.[0]?.waiterName || selectedTable.activeOrder?.waiterName || 'Sin asignar'}</p>
                                         </div>
                                     </div>
+
+                                    {/* Multiple Orders / Split Bills Handling */}
+                                    {selectedTable.allActiveOrders && selectedTable.allActiveOrders.length > 1 && (
+                                        <div className="bg-amber-50 border border-amber-100 p-4 rounded-3xl mb-4">
+                                            <p className="text-[10px] font-black text-amber-600 uppercase tracking-widest mb-2 flex items-center gap-2">
+                                                <Receipt className="w-3 h-3" /> Cuentas Separadas ({selectedTable.allActiveOrders.length})
+                                            </p>
+                                            <div className="grid grid-cols-2 gap-2">
+                                                {selectedTable.allActiveOrders.map((order: any, idx: number) => (
+                                                    <button
+                                                        key={order.id}
+                                                        onClick={() => {
+                                                            setSelectedOrder(order);
+                                                            setCloseSaleModalOpen(true);
+                                                            setShowTableModal(false);
+                                                        }}
+                                                        className="bg-white border border-amber-200 p-3 rounded-2xl flex flex-col items-center justify-center hover:bg-amber-100 transition-all shadow-sm"
+                                                    >
+                                                        <span className="text-[10px] font-bold text-slate-400">Parte {idx + 1}</span>
+                                                        <span className="text-sm font-black text-slate-900">${(order.total || 0).toFixed(2)}</span>
+                                                        <span className="text-[8px] font-black text-emerald-600 uppercase mt-1">Cobrar</span>
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
 
                                     {/* Consumption Details */}
                                     <div className="space-y-3">

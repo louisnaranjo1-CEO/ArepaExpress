@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { ShoppingBag, Clock, ChevronRight, Package, Navigation, ArrowLeft } from 'lucide-react';
-import { collection, query, where, orderBy, onSnapshot, limit } from 'firebase/firestore';
+import { collection, query, where, orderBy, onSnapshot, limit, doc, getDoc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { useAuth } from '../context/AuthContext';
 import Cart from './Cart';
@@ -14,6 +14,7 @@ export default function Orders() {
     const [activeTab, setActiveTab] = useState<TabType>(initialTab);
     const { user } = useAuth();
     const [activeOrders, setActiveOrders] = useState<any[]>([]);
+    const [restaurantLogos, setRestaurantLogos] = useState<Record<string, string>>({});
     const [loadingOrders, setLoadingOrders] = useState(true);
     const navigate = useNavigate();
 
@@ -44,6 +45,36 @@ export default function Orders() {
 
         return () => unsubscribe();
     }, [user]);
+
+    // Fetch restaurant logos when orders change
+    useEffect(() => {
+        const fetchLogos = async () => {
+            const newLogos = { ...restaurantLogos };
+            let changed = false;
+
+            for (const order of activeOrders) {
+                if (order.restaurantId && !newLogos[order.restaurantId]) {
+                    try {
+                        const rDoc = await getDoc(doc(db, 'restaurants', order.restaurantId));
+                        if (rDoc.exists()) {
+                            newLogos[order.restaurantId] = rDoc.data().logoUrl || '';
+                            changed = true;
+                        }
+                    } catch (err) {
+                        console.error("Error fetching restaurant logo:", err);
+                    }
+                }
+            }
+
+            if (changed) {
+                setRestaurantLogos(newLogos);
+            }
+        };
+
+        if (activeOrders.length > 0) {
+            fetchLogos();
+        }
+    }, [activeOrders]);
 
     // Update URL when tab changes
     const handleTabChange = (tab: TabType) => {
@@ -151,12 +182,17 @@ export default function Orders() {
                                 
                                 <div className="flex justify-between items-start mb-4 relative z-10">
                                     <div className="flex items-center gap-3">
-                                        <div className="w-12 h-12 bg-slate-50 rounded-2xl flex items-center justify-center text-slate-400 group-hover:bg-primary/10 group-hover:text-primary transition-colors">
-                                            <ShoppingBag className="w-6 h-6" />
+                                        <div className="w-14 h-14 bg-slate-50 rounded-2xl flex items-center justify-center text-slate-400 group-hover:bg-primary/10 transition-all overflow-hidden border border-slate-100 shadow-inner">
+                                            {restaurantLogos[order.restaurantId] ? (
+                                                <img src={restaurantLogos[order.restaurantId]} alt="Logo" className="w-full h-full object-cover" />
+                                            ) : (
+                                                <ShoppingBag className="w-7 h-7" />
+                                            )}
                                         </div>
                                         <div>
-                                            <p className="font-black text-slate-900 group-hover:text-primary transition-colors">#{order.id.slice(-6).toUpperCase()}</p>
-                                            <p className="text-[10px] text-slate-500 font-bold uppercase tracking-tight mt-0.5">
+                                            <p className="font-black text-slate-900 group-hover:text-primary transition-colors text-lg">#{order.id.slice(-6).toUpperCase()}</p>
+                                            <p className="text-sm font-bold text-slate-900 truncate max-w-[150px]">{order.restaurantName || 'Restaurante'}</p>
+                                            <p className="text-[10px] text-slate-400 font-bold uppercase tracking-tight mt-0.5">
                                                 {order.createdAt?.toDate().toLocaleDateString()} • {order.createdAt?.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                                             </p>
                                         </div>

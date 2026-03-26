@@ -3,13 +3,14 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { doc, onSnapshot, getDoc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { DeliveryDriver } from '../lib/delivery-service';
-import { Navigation, Clock, CheckCircle2, Package, MapPin, Phone, ArrowLeft } from 'lucide-react';
+import { Navigation, Clock, CheckCircle2, Package, MapPin, Phone, ArrowLeft, Store } from 'lucide-react';
 
 export default function TrackOrder() {
     const { orderId } = useParams();
     const navigate = useNavigate();
     const [order, setOrder] = useState<any>(null);
     const [driver, setDriver] = useState<DeliveryDriver | null>(null);
+    const [restaurant, setRestaurant] = useState<any>(null);
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
@@ -25,6 +26,14 @@ export default function TrackOrder() {
                     const dDoc = await getDoc(doc(db, 'delivery_drivers', orderData.deliveryDriverId));
                     if (dDoc.exists()) {
                         setDriver({ id: dDoc.id, ...dDoc.data() } as DeliveryDriver);
+                    }
+                }
+
+                // Fetch restaurant logo
+                if (orderData.restaurantId && (!restaurant || restaurant.id !== orderData.restaurantId)) {
+                    const rDoc = await getDoc(doc(db, 'restaurants', orderData.restaurantId));
+                    if (rDoc.exists()) {
+                        setRestaurant({ id: rDoc.id, ...rDoc.data() });
                     }
                 }
             }
@@ -90,12 +99,57 @@ export default function TrackOrder() {
                 <h1 className="text-lg font-black text-slate-900">Rastrear Pedido</h1>
             </div>
 
-            {/* Map Placeholder Area */}
-            <div className="h-64 bg-slate-200 relative overflow-hidden flex flex-col items-center justify-center text-slate-400">
-                <Navigation className="w-12 h-12 mb-2 opacity-50" />
-                <p className="font-bold text-xs uppercase tracking-widest">Radar de Delivery</p>
-                <div className="absolute bottom-4 right-4 bg-white/90 backdrop-blur-sm px-3 py-2 rounded-xl text-xs font-bold text-slate-700 shadow-md">
-                    Actualizando en tiempo real...
+            {/* Map Placeholder Area - Using Premium Logo Brand Overlay */}
+            <div className="h-80 bg-slate-950 relative overflow-hidden flex flex-col items-center justify-center text-white p-6">
+                {/* Background Effects */}
+                <div className="absolute inset-0">
+                    <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-primary/20 via-transparent to-transparent animate-pulse"></div>
+                    <div className="h-full w-full bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')] opacity-10"></div>
+                </div>
+                
+                {/* Animated Scanner / Radar Background */}
+                <div className="absolute inset-0 flex items-center justify-center opacity-30 pointer-events-none">
+                    <div className="w-[500px] h-[500px] rounded-full border border-primary/20 flex items-center justify-center relative">
+                        <div className="absolute inset-0 rounded-full border border-primary/10 animate-[ping_3s_linear_infinite]"></div>
+                        <div className="absolute inset-20 rounded-full border border-primary/10 animate-[ping_4s_linear_infinite]"></div>
+                        {/* Rotating Radar Line */}
+                        <div className="absolute w-[250px] h-[250px] top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2">
+                            <div className="w-full h-1 bg-gradient-to-r from-transparent to-primary/40 origin-left animate-[spin_4s_linear_infinite]" style={{ transformOrigin: '0% 50%' }}></div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div className="relative flex flex-col items-center z-10">
+                    <div className="w-24 h-24 bg-white rounded-[2.5rem] shadow-2xl flex items-center justify-center mb-6 relative group border-4 border-slate-900 overflow-hidden">
+                        {restaurant?.logoUrl ? (
+                            <img src={restaurant.logoUrl} alt="Logo" className="w-full h-full object-cover p-2" />
+                        ) : (
+                            <Store className="w-10 h-10 text-primary" />
+                        )}
+                        <div className="absolute inset-0 bg-primary/10 animate-pulse group-hover:opacity-0 transition-opacity"></div>
+                    </div>
+                    
+                    <div className="text-center">
+                        <p className="font-black text-xs uppercase tracking-[0.4em] text-primary mb-3">Rastreo Activo</p>
+                        <h2 className="text-xl font-black text-white mb-1 uppercase tracking-tight">#{orderId?.slice(-5).toUpperCase()}</h2>
+                        <p className="text-white/40 text-[10px] font-bold uppercase tracking-[0.2em] max-w-[250px] mx-auto leading-relaxed">
+                            {currentStep === 1 && "Confirmando tu pedido con el restaurante..."}
+                            {currentStep === 2 && "Preparación en curso. ¡Casi listo!"}
+                            {currentStep === 3 && (driver ? `${driver.fullName.split(' ')[0]} está transportando tu orden` : "Asignando repartidor...")}
+                            {currentStep === 4 && "¡Pedido entregado! Disfruta tu comida"}
+                        </p>
+                    </div>
+                </div>
+
+                <div className="absolute bottom-6 left-6 right-6 bg-slate-900/40 backdrop-blur-xl px-5 py-3 rounded-full border border-white/5 flex items-center justify-between shadow-lg">
+                    <div className="flex items-center gap-3">
+                        <div className="relative w-2.5 h-2.5">
+                            <div className="absolute inset-0 bg-emerald-500 rounded-full animate-ping opacity-75"></div>
+                            <div className="relative w-2.5 h-2.5 bg-emerald-500 rounded-full shadow-lg shadow-emerald-500/50"></div>
+                        </div>
+                        <span className="text-[10px] font-black uppercase tracking-[0.2em] text-emerald-400">Track en Vivo</span>
+                    </div>
+                    <span className="text-[10px] font-black text-white/40 uppercase tracking-widest">{restaurant?.name || "DeliExpress"}</span>
                 </div>
             </div>
 
@@ -136,30 +190,92 @@ export default function TrackOrder() {
 
                 {/* Driver Info (If Assigned) */}
                 {driver && (currentStep >= 2) && (
-                    <div className="bg-white rounded-3xl p-5 shadow-sm border border-slate-100 flex items-center justify-between">
-                        <div className="flex items-center gap-4">
-                            <img src={driver.documents.selfieUrl} alt="Driver" className="w-14 h-14 rounded-full object-cover bg-slate-100 ring-4 ring-indigo-50" />
-                            <div>
-                                <p className="font-black text-slate-900">{driver.fullName.split(' ')[0]}</p>
-                                <p className="text-xs font-bold text-slate-500 capitalize">{driver.vehicleType} • {driver.vehiclePlate}</p>
-                            </div>
+                    <div className="bg-white rounded-3xl p-6 shadow-xl shadow-slate-200/40 border border-slate-100">
+                        <div className="flex items-center justify-between mb-4">
+                            <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Tu Repartidor</h3>
+                            <span className="bg-emerald-100 text-emerald-600 px-2 py-0.5 rounded-full text-[10px] font-bold">Asignado</span>
                         </div>
-                        <a href={`tel:${driver.phone}`} className="w-12 h-12 bg-emerald-50 text-emerald-600 rounded-full flex items-center justify-center active:scale-95 transition-transform">
-                            <Phone className="w-5 h-5 fill-current" />
-                        </a>
+                        <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-4">
+                                <div className="relative">
+                                    <img src={driver.documents.selfieUrl} alt="Driver" className="w-16 h-16 rounded-2xl object-cover bg-slate-100 shadow-lg" />
+                                    <div className="absolute -bottom-1 -right-1 w-6 h-6 bg-emerald-500 rounded-full border-2 border-white flex items-center justify-center">
+                                        <CheckCircle2 className="w-3 h-3 text-white" />
+                                    </div>
+                                </div>
+                                <div>
+                                    <p className="font-black text-slate-900 text-lg">{driver.fullName}</p>
+                                    <div className="flex items-center gap-2 mt-0.5">
+                                        <span className="text-xs font-bold text-slate-500 uppercase">{driver.vehicleType}</span>
+                                        <span className="w-1 h-1 bg-slate-200 rounded-full"></span>
+                                        <span className="text-xs font-black text-primary uppercase">{driver.vehiclePlate}</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <a href={`tel:${driver.phone}`} className="w-14 h-14 bg-primary text-white rounded-2xl flex flex-col items-center justify-center active:scale-95 transition-all shadow-lg shadow-primary/30">
+                                <Phone className="w-5 h-5 mb-0.5" />
+                                <span className="text-[8px] font-black uppercase">Llamar</span>
+                            </a>
+                        </div>
                     </div>
                 )}
 
-                {/* Order Details */}
-                <div className="bg-white rounded-3xl p-6 shadow-sm border border-slate-100">
-                    <h3 className="font-black text-slate-900 mb-4">Detalles de Entrega</h3>
+                {/* Order Summary */}
+                <div className="bg-white rounded-3xl p-6 shadow-xl shadow-slate-200/40 border border-slate-100">
+                    <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">Resumen de Orden</h3>
+                    <div className="space-y-4">
+                        {order.items?.map((item: any, index: number) => (
+                            <div key={index} className="flex justify-between items-center bg-slate-50/50 p-3 rounded-2xl">
+                                <div className="flex items-center gap-3">
+                                    <div className="w-8 h-8 bg-white rounded-xl flex items-center justify-center text-xs font-black text-primary shadow-sm">
+                                        {item.quantity}x
+                                    </div>
+                                    <div>
+                                        <p className="text-sm font-bold text-slate-900 leading-none">{item.name || item.productName}</p>
+                                        {item.selectedVariants && Object.keys(item.selectedVariants).length > 0 && (
+                                            <p className="text-[10px] text-slate-400 font-bold mt-1 uppercase">
+                                                {Object.values(item.selectedVariants).join(', ')}
+                                            </p>
+                                        )}
+                                    </div>
+                                </div>
+                                <p className="text-sm font-black text-slate-900">
+                                    {((item.price || 0) * (item.quantity || 1)).toLocaleString('es-VE', { style: 'currency', currency: 'USD' })}
+                                </p>
+                            </div>
+                        ))}
+                    </div>
+
+                    <div className="mt-6 pt-4 border-t border-slate-100 space-y-2">
+                        <div className="flex justify-between items-center text-xs font-bold text-slate-500 uppercase tracking-tight">
+                            <span>Subtotal</span>
+                            <span>{(order.subtotal || 0).toLocaleString('es-VE', { style: 'currency', currency: 'USD' })}</span>
+                        </div>
+                        {order.deliveryFee > 0 && (
+                            <div className="flex justify-between items-center text-xs font-bold text-slate-500 uppercase tracking-tight">
+                                <span>Delivery</span>
+                                <span>{order.deliveryFee.toLocaleString('es-VE', { style: 'currency', currency: 'USD' })}</span>
+                            </div>
+                        )}
+                        <div className="flex justify-between items-center pt-2">
+                            <span className="text-sm font-black text-slate-900 uppercase tracking-widest">Total</span>
+                            <span className="text-xl font-black text-primary">
+                                {order.total?.toLocaleString('es-VE', { style: 'currency', currency: 'USD' })}
+                            </span>
+                        </div>
+                    </div>
+                </div>
+
+                {/* Delivery details */}
+                <div className="bg-white rounded-3xl p-6 shadow-xl shadow-slate-200/40 border border-slate-100">
+                    <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">Detalles de Entrega</h3>
                     <div className="flex gap-4">
-                        <div className="w-10 h-10 bg-orange-50 text-orange-500 rounded-full flex items-center justify-center shrink-0">
-                            <MapPin className="w-5 h-5" />
+                        <div className="w-12 h-12 bg-primary/10 text-primary rounded-2xl flex items-center justify-center shrink-0">
+                            <MapPin className="w-6 h-6" />
                         </div>
                         <div>
-                            <p className="font-bold text-slate-900">{order.address?.name || 'Dirección de Entrega'}</p>
-                            <p className="text-xs text-slate-500 leading-relaxed mt-1">{order.address?.reference || 'Sin referencias'}</p>
+                            <p className="font-black text-slate-900 leading-tight">{order.address?.name || 'Dirección de Entrega'}</p>
+                            <p className="text-xs text-slate-500 font-medium leading-relaxed mt-1">{order.address?.reference || 'Sin referencias'}</p>
                         </div>
                     </div>
                 </div>
