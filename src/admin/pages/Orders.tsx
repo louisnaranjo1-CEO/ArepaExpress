@@ -4,6 +4,7 @@ import { db } from '../../lib/firebase';
 import { collection, query, where, onSnapshot, orderBy, doc, updateDoc, getDocs, increment, addDoc, serverTimestamp, getDoc } from 'firebase/firestore';
 import { useAuth } from '../../context/AuthContext';
 import { printToUsbDevice, formatTicket, PrintOrder } from '../../lib/usb-printer';
+import ComandaPreview from '../components/ComandaPreview';
 
 import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 
@@ -54,6 +55,9 @@ export default function Orders() {
     const [dispatchType, setDispatchType] = useState<'platform' | 'own'>('own');
     const [selectedDriver, setSelectedDriver] = useState<string>('');
     const [drivers, setDrivers] = useState<any[]>([]);
+    
+    // Radar UI State
+    const [radarOrderId, setRadarOrderId] = useState<string | null>(null);
 
     // Payment Proofs State
     const [referenceInputs, setReferenceInputs] = useState<Record<string, string>>({});
@@ -139,6 +143,9 @@ export default function Orders() {
     const [selectedTable, setSelectedTable] = useState<any | null>(null);
     const [waiterSearch, setWaiterSearch] = useState('');
     const [tableSearch, setTableSearch] = useState('');
+    
+    // Comanda Preview State
+    const [selectedOrderForComanda, setSelectedOrderForComanda] = useState<Order | any | null>(null);
 
     useEffect(() => {
         if (!user || !showPOS) return;
@@ -251,18 +258,50 @@ export default function Orders() {
                 // Si por alguna razón la impresora tiene categoría "Todas" y no hay match con nombres, mandamos.
                 // Para mantenerlo acorde al requerimiento, solo enviamos si hay items filtrados:
                 if (itemsForThisPrinter.length > 0) {
-                    const printData: PrintOrder = {
+                    const printData = {
                         id: orderData.id,
                         userName: orderData.userName,
-                        items: itemsForThisPrinter.map(i => ({ name: i.name, quantity: i.quantity, price: i.price })),
+                        items: itemsForThisPrinter.map(i => ({ name: i.name, quantity: i.quantity, price: i.price, notes: (i as any).notes })),
                         stationName: printer.name,
                         createdAt: orderData.createdAt?.toDate ? orderData.createdAt.toDate() : new Date(),
                         orderNote: (orderData as any).orderNote,
                         tableNumber: (orderData as any).tableNumber
-                    };
+                    } as any;
 
                     const buffer = formatTicket(printData);
                     printPromises.push(printToUsbDevice(printer.vendorId, printer.productId, buffer));
+
+                    // Generar y descargar version Texto (Backup manual o visualizacion)
+                    try {
+                        let txtContent = `=== TICKET: ${printer.name.toUpperCase()} ===\n`;
+                        txtContent += `Pedido ID: ${orderData.id.slice(-6).toUpperCase()}\n`;
+                        txtContent += `Cliente: ${orderData.userName || 'Consumidor Final'}\n`;
+                        if ((orderData as any).tableNumber) txtContent += `Mesa: ${(orderData as any).tableNumber}\n`;
+                        txtContent += `--------------------------------\n`;
+                        itemsForThisPrinter.forEach(item => {
+                            txtContent += `${item.quantity}x ${item.name}\n`;
+                            if ((item as any).notes) {
+                                txtContent += `  Nota: ${(item as any).notes}\n`;
+                            }
+                        });
+                        txtContent += `--------------------------------\n`;
+                        if ((orderData as any).orderNote) {
+                            txtContent += `Nota Pedido: ${(orderData as any).orderNote}\n`;
+                        }
+                        txtContent += `================================\n`;
+                        
+                        const blob = new Blob([txtContent], { type: 'text/plain' });
+                        const url = URL.createObjectURL(blob);
+                        const link = document.createElement('a');
+                        link.href = url;
+                        link.download = `Ticket_${printer.name.replace(/\s+/g, '_')}_${orderData.id.slice(-6)}.txt`;
+                        document.body.appendChild(link);
+                        link.click();
+                        document.body.removeChild(link);
+                        URL.revokeObjectURL(url);
+                    } catch (e) {
+                         console.error("Error generating text file backup:", e);
+                    }
                 }
             }
 
@@ -290,6 +329,21 @@ export default function Orders() {
                 paymentMethod: paymentMethod,
                 paymentStatus: (paymentMethod === 'Crédito (2x3)') ? 'pending' : 'sold'
             };
+
+            // Process optional Pago Móvil reference and screenshot
+            if (paymentMethod === 'Pago Móvil') {
+                const refVal = referenceInputs[selectedOrderForAccept.id];
+                const file = proofUploadFiles[selectedOrderForAccept.id];
+                if (refVal) updates.paymentReference = refVal;
+                
+                if (file) {
+                    const storage = getStorage();
+                    const fileRef = ref(storage, `payment_proofs/${selectedOrderForAccept.id}_${Date.now()}`);
+                    await uploadBytes(fileRef, file);
+                    const url = await getDownloadURL(fileRef);
+                    updates.paymentProofUrl = url;
+                }
+            }
 
             // 2x3 Logic
             if (paymentMethod === 'Crédito (2x3)' && restaurantConfig?.hasTwoByThree) {
@@ -332,10 +386,13 @@ export default function Orders() {
             await updateDoc(orderRef, updates);
             
             const orderTemp = { ...selectedOrderForAccept, ...updates };
-            await handlePrintOrder(orderTemp.id, orderTemp as Order);
             
             setAcceptModalOpen(false);
             setSelectedOrderForAccept(null);
+            
+            // Mostrar modal de vista previa de comanda en lugar de imprimir directo
+            setSelectedOrderForComanda(orderTemp as Order);
+            
         } catch (error) {
             console.error("Error setting preparing status:", error);
             alert("Error al procesar el pedido.");
@@ -348,14 +405,21 @@ export default function Orders() {
         if (!selectedOrderForDispatch) return;
         setIsAccepting(true);
         try {
-            const updates: any = { status: 'delivering' };
-            if (dispatchType === 'platform' && selectedDriver) {
-                updates.waiterId = selectedDriver;
-                updates.waiterName = drivers.find(d => d.id === selectedDriver)?.displayName || 'Motorizado';
+            const updates: any = {};
+            if (dispatchType === 'platform') {
+                updates.status = 'buscando_piloto';
+                // Trigger backend search
+            } else {
+                updates.status = 'delivering';
             }
+
             const orderRef = doc(db, 'orders', selectedOrderForDispatch.id);
             await updateDoc(orderRef, updates);
             
+            if (dispatchType === 'platform') {
+                setRadarOrderId(selectedOrderForDispatch.id);
+            }
+
             setDispatchModalOpen(false);
             setSelectedOrderForDispatch(null);
             setDispatchType('own');
@@ -565,8 +629,6 @@ export default function Orders() {
                 tableNumber: posOrderType === 'local' ? (selectedTable?.number || '') : '',
             } as any;
 
-            await handlePrintOrder(newOrderRef.id, printData);
-
             setShowPOS(false);
             setPosCart([]);
             setPosClientName('');
@@ -578,6 +640,9 @@ export default function Orders() {
             setSelectedTable(null);
             setWaiterSearch('');
             setTableSearch('');
+
+            // Mostramos la vista previa antes de mandar a la impresora
+            setSelectedOrderForComanda(printData);
 
         } catch (error) {
             console.error("Error creando orden POS:", error);
@@ -630,6 +695,233 @@ export default function Orders() {
             o.deliveryAddress.toLowerCase().includes(searchTerm.toLowerCase()) ||
             (o.userName && o.userName.toLowerCase().includes(searchTerm.toLowerCase()))
         );
+    const renderOrderCard = (order: any) => (
+        <div key={order.id} className="bg-white rounded-[35px] p-8 border border-slate-100 shadow-sm hover:shadow-xl transition-all group relative overflow-hidden">
+            {order.paymentStatus === 'sold' && (
+                <div className="absolute top-0 right-0 p-4">
+                    <span className="bg-green-100 text-green-600 text-[10px] font-black px-3 py-1 rounded-full uppercase tracking-widest">Venta Exitosa</span>
+                </div>
+            )}
+            {order.paymentStatus === 'not_sold' && (
+                <div className="absolute top-0 right-0 p-4">
+                    <span className="bg-red-100 text-red-600 text-[10px] font-black px-3 py-1 rounded-full uppercase tracking-widest">No Vendido</span>
+                </div>
+            )}
+
+            <div className="flex justify-between items-start mb-6">
+                <div>
+                    <div className="flex items-center gap-2 mb-1">
+                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">PEDIDO #{order.id.slice(-6).toUpperCase()}</span>
+                        {order.source === 'waiter' ? (
+                            <span className="bg-indigo-100 text-indigo-700 text-[10px] font-black px-2 py-0.5 rounded-md uppercase tracking-widest flex items-center gap-1">
+                                Mesero
+                            </span>
+                        ) : (
+                            <span className="bg-emerald-100 text-emerald-700 text-[10px] font-black px-2 py-0.5 rounded-md uppercase tracking-widest flex items-center gap-1">
+                                App
+                            </span>
+                        )}
+                    </div>
+                    <h3 className="text-xl font-black text-slate-900">{order.userName || 'Usuario de DeliExpress'}</h3>
+                    <p className="text-sm text-slate-400 font-bold flex items-center gap-1 mt-1">
+                        <Clock className="w-4 h-4" />
+                        {order.createdAt?.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    </p>
+                </div>
+                <div className="text-right">
+                    <p className="text-2xl font-black text-primary">${order.total.toFixed(2)}</p>
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Total Cobrado</p>
+                </div>
+            </div>
+
+            <div className="space-y-3 mb-6">
+                {order.items.map((item: any, idx: number) => (
+                    <div key={idx} className="flex items-center gap-3 bg-slate-50 p-3 rounded-2xl">
+                        <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center font-black text-primary border border-slate-100 shadow-sm">
+                            {item.quantity}x
+                        </div>
+                        <div className="flex-1">
+                            <p className="font-black text-slate-700">{item.name}</p>
+                            <p className="text-xs text-slate-400 font-bold">
+                                {item.consultPrice || item.price === 0 ? 'Precio a consultar' : `$${item.price.toFixed(2)} c/u`}
+                            </p>
+                        </div>
+                    </div>
+                ))}
+            </div>
+
+            {(order as any).orderNote && (
+                <div className="bg-yellow-50 border border-yellow-200 text-yellow-800 p-4 rounded-xl mb-6 text-sm">
+                    <span className="font-black uppercase tracking-widest text-[10px] block mb-1">Nota del Cliente:</span>
+                    <p className="font-bold">{((order as any).orderNote)}</p>
+                </div>
+            )}
+
+            <div className="flex items-start gap-3 p-4 bg-slate-50 rounded-2xl mb-8">
+                <MapPin className="w-5 h-5 text-primary shrink-0" />
+                <p className="text-sm font-bold text-slate-600 leading-relaxed italic">{order.deliveryAddress}</p>
+            </div>
+
+            {/* Payment Details Block */}
+            {order.paymentMethod && (
+                <div className="bg-slate-50 border border-slate-100 rounded-2xl p-4 mb-6">
+                    <div className="flex items-center justify-between mb-3">
+                        <div>
+                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Método de Pago</p>
+                            <p className="font-black text-slate-800 flex items-center gap-2">
+                                <CreditCard className="w-4 h-4 text-primary" /> {order.paymentMethod}
+                            </p>
+                        </div>
+                        {(order.paymentReference || order.paymentProofUrl) ? (
+                            <div className="text-right flex items-center gap-2">
+                                {order.paymentReference && (
+                                    <span className="bg-white border border-slate-200 px-3 py-1 rounded-lg text-xs font-bold text-slate-600 shadow-sm">
+                                        Ref: {order.paymentReference}
+                                    </span>
+                                )}
+                                {order.paymentProofUrl && (
+                                    <a href={order.paymentProofUrl} target="_blank" rel="noopener noreferrer" className="bg-primary/10 text-primary p-2 rounded-lg hover:bg-primary/20 transition-all">
+                                        <ImageIcon className="w-4 h-4" />
+                                    </a>
+                                )}
+                            </div>
+                        ) : null}
+                    </div>
+                    
+                    {/* Inline Proof Upload Form */}
+                    {order.status !== 'rejected' && !order.paymentProofUrl && ['Pago Móvil', 'Transferencia'].includes(order.paymentMethod) && (
+                        <div className="flex gap-2 items-center mt-3 pt-3 border-t border-slate-200/50">
+                            <div className="flex-1">
+                                <input 
+                                    type="text" 
+                                    placeholder="Ref (6 dígitos)" 
+                                    className="w-full bg-white border border-slate-200 px-3 py-2 rounded-xl text-sm outline-none focus:border-primary font-bold text-slate-700"
+                                    value={referenceInputs[order.id] || ''}
+                                    onChange={(e) => setReferenceInputs(prev => ({...prev, [order.id]: e.target.value}))}
+                                />
+                            </div>
+                            <label className="bg-white border border-slate-200 p-2 rounded-xl text-slate-500 hover:text-primary hover:border-primary transition-all cursor-pointer">
+                                <input 
+                                    type="file" 
+                                    accept="image/*" 
+                                    className="hidden" 
+                                    onChange={(e) => {
+                                        const file = e.target.files?.[0];
+                                        if (file) setProofUploadFiles(prev => ({...prev, [order.id]: file}));
+                                    }}
+                                />
+                                <ImageIcon className={`w-5 h-5 ${proofUploadFiles[order.id] ? 'text-primary' : ''}`} />
+                            </label>
+                            <button 
+                                onClick={() => handleSavePaymentProof(order.id)}
+                                disabled={isUploadingProof[order.id] || (!referenceInputs[order.id] && !proofUploadFiles[order.id])}
+                                className="bg-primary text-white p-2 rounded-xl hover:bg-primary/90 transition-all disabled:opacity-50"
+                                title="Guardar Pago"
+                            >
+                                {isUploadingProof[order.id] ? <Loader2 className="w-5 h-5 animate-spin" /> : <Upload className="w-5 h-5" />}
+                            </button>
+                        </div>
+                    )}
+                </div>
+            )}
+
+            <div className="flex flex-wrap items-center gap-3">
+                {(order.status === 'pending' || order.status === 'pendiente_pago') && (
+                    <>
+                        <button
+                            onClick={() => { 
+                                setSelectedOrderForEdit(order); 
+                                setEditOrderItems([...order.items]); 
+                                setEditOrderNote((order as any).orderNote || ''); 
+                                setEditModalOpen(true); 
+                            }}
+                            className="px-6 bg-slate-100 text-slate-500 py-4 rounded-2xl font-black hover:bg-slate-200 transition-all flex items-center justify-center gap-2"
+                            title="Editar Pedido"
+                        >
+                            <ExternalLink className="w-5 h-5" />
+                        </button>
+                        <button
+                            onClick={() => { setSelectedOrderForAccept(order); setAcceptModalOpen(true); }}
+                            disabled={printingOrderId === order.id}
+                            className="flex-1 min-w-[140px] bg-primary text-white py-4 rounded-2xl font-black shadow-lg shadow-primary/20 hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+                        >
+                            {printingOrderId === order.id ? (
+                                <><Loader2 className="w-5 h-5 animate-spin" /> Imprimiendo...</>
+                            ) : (
+                                <>{order.status === 'pendiente_pago' ? 'Verificar y Enviar a Cocina' : 'Aceptar'}</>
+                            )}
+                        </button>
+                        <button
+                            onClick={() => updateStatus(order.id, 'rejected')}
+                            className="px-6 bg-slate-100 text-slate-500 py-4 rounded-2xl font-black hover:bg-red-50 hover:text-red-500 transition-all"
+                        >
+                            Rechazar
+                        </button>
+                    </>
+                )}
+                {order.status === 'preparing' && (
+                    order.source === 'waiter' ? (
+                        <button
+                            onClick={() => updateStatus(order.id, 'delivered')}
+                            className="flex-1 bg-indigo-500 text-white py-4 rounded-2xl font-black shadow-lg shadow-indigo-500/20 hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-2"
+                        >
+                            Entregar a Mesa
+                        </button>
+                    ) : (
+                        <button
+                            onClick={() => { setSelectedOrderForDispatch(order); setDispatchModalOpen(true); }}
+                            disabled={printingOrderId === order.id}
+                            className="flex-1 bg-blue-500 text-white py-4 rounded-2xl font-black shadow-lg shadow-blue-500/20 hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+                        >
+                            {printingOrderId === order.id ? (
+                                <><Loader2 className="w-5 h-5 animate-spin" /> Imprimiendo...</>
+                            ) : (
+                                <>Enviar Pedido</>
+                            )}
+                        </button>
+                    )
+                )}
+                {order.status === 'delivering' && (
+                    <button
+                        onClick={() => updateStatus(order.id, 'delivered')}
+                        className="flex-1 bg-green-500 text-white py-4 rounded-2xl font-black shadow-lg shadow-green-500/20 hover:scale-[1.02] active:scale-[0.98] transition-all"
+                    >
+                        Confirmar Entrega
+                    </button>
+                )}
+                {order.status === 'delivered' && !order.paymentStatus && (
+                    <div className="flex w-full gap-2">
+                        <button
+                            onClick={() => updateStatus(order.id, 'delivered', 'sold')}
+                            className="flex-1 bg-green-100 text-green-700 py-3 rounded-xl font-black hover:bg-green-200 transition-all flex items-center justify-center gap-2"
+                        >
+                            <CheckCircle className="w-4 h-4" /> Venta Exitosa
+                        </button>
+                        <button
+                            onClick={() => updateStatus(order.id, 'delivered', 'not_sold')}
+                            className="flex-1 bg-red-50 text-red-600 py-3 rounded-xl font-black hover:bg-red-100 transition-all flex items-center justify-center gap-2"
+                        >
+                            <X className="w-4 h-4" /> No Vendido
+                        </button>
+                    </div>
+                )}
+                {order.status === 'delivered' && order.paymentStatus === 'pending' && order.source === 'waiter' && (
+                    <button
+                        onClick={() => { setSelectedOrderForClose(order); setCloseSaleModalOpen(true); }}
+                        className="w-full bg-emerald-500 text-white py-4 rounded-2xl font-black shadow-lg shadow-emerald-500/20 hover:bg-emerald-600 transition-all flex items-center justify-center gap-2"
+                    >
+                        <DollarSign className="w-5 h-5" /> Cerrar Venta y Cobrar
+                    </button>
+                )}
+                <button 
+                  onClick={() => { setSelectedOrderForEdit(order); setEditOrderItems([...order.items]); setEditOrderNote((order as any).orderNote || ''); setEditModalOpen(true); }}
+                  className="p-4 bg-slate-100 text-slate-400 rounded-2xl hover:bg-slate-200 transition-colors"
+                >
+                    <ExternalLink className="w-5 h-5" />
+                </button>
+            </div>
+        </div>
+    );
 
     if (loading) {
         return (
@@ -713,231 +1005,40 @@ export default function Orders() {
                     <p className="text-slate-300 font-medium max-w-xs mx-auto mt-2 italic">Aquí aparecerán los pedidos que coincidan con el estado seleccionado.</p>
                 </div>
             ) : (
-                <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
-                    {filteredOrders.map((order) => (
-                        <div key={order.id} className="bg-white rounded-[35px] p-8 border border-slate-100 shadow-sm hover:shadow-xl transition-all group relative overflow-hidden">
-                            {order.paymentStatus === 'sold' && (
-                                <div className="absolute top-0 right-0 p-4">
-                                    <span className="bg-green-100 text-green-600 text-[10px] font-black px-3 py-1 rounded-full uppercase tracking-widest">Venta Exitosa</span>
-                                </div>
-                            )}
-                            {order.paymentStatus === 'not_sold' && (
-                                <div className="absolute top-0 right-0 p-4">
-                                    <span className="bg-red-100 text-red-600 text-[10px] font-black px-3 py-1 rounded-full uppercase tracking-widest">No Vendido</span>
-                                </div>
-                            )}
-
-                            <div className="flex justify-between items-start mb-6">
-                                <div>
-                                    <div className="flex items-center gap-2 mb-1">
-                                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">PEDIDO #{order.id.slice(-6).toUpperCase()}</span>
-                                        {order.source === 'waiter' ? (
-                                            <span className="bg-indigo-100 text-indigo-700 text-[10px] font-black px-2 py-0.5 rounded-md uppercase tracking-widest flex items-center gap-1">
-                                                Mesero
-                                            </span>
-                                        ) : (
-                                            <span className="bg-emerald-100 text-emerald-700 text-[10px] font-black px-2 py-0.5 rounded-md uppercase tracking-widest flex items-center gap-1">
-                                                App
-                                            </span>
-                                        )}
-                                    </div>
-                                    <h3 className="text-xl font-black text-slate-900">{order.userName || 'Usuario de DeliExpress'}</h3>
-                                    <p className="text-sm text-slate-400 font-bold flex items-center gap-1 mt-1">
-                                        <Clock className="w-4 h-4" />
-                                        {order.createdAt?.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                                    </p>
-                                </div>
-                                <div className="text-right">
-                                    <p className="text-2xl font-black text-primary">${order.total.toFixed(2)}</p>
-                                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Total Cobrado</p>
-                                </div>
+                <div className="space-y-12">
+                    {/* Waiter Orders Section */}
+                    {filteredOrders.filter(o => o.source === 'waiter').length > 0 && (
+                        <div className="space-y-6">
+                            <div className="flex items-center gap-4 px-2">
+                                <div className="h-px flex-1 bg-indigo-100"></div>
+                                <h2 className="text-xl font-black text-indigo-500 flex items-center gap-2 uppercase tracking-widest bg-indigo-50 px-6 py-2 rounded-full border border-indigo-100">
+                                    <Users className="w-6 h-6" /> 🍽️ Servicio en Mesa / Local ({filteredOrders.filter(o => o.source === 'waiter').length})
+                                </h2>
+                                <div className="h-px flex-1 bg-indigo-100"></div>
                             </div>
-
-                            <div className="space-y-3 mb-6">
-                                {order.items.map((item, idx) => (
-                                    <div key={idx} className="flex items-center gap-3 bg-slate-50 p-3 rounded-2xl">
-                                        <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center font-black text-primary border border-slate-100 shadow-sm">
-                                            {item.quantity}x
-                                        </div>
-                                        <div className="flex-1">
-                                            <p className="font-black text-slate-700">{item.name}</p>
-                                            <p className="text-xs text-slate-400 font-bold">
-                                                {item.consultPrice || item.price === 0 ? 'Precio a consultar' : `$${item.price.toFixed(2)} c/u`}
-                                            </p>
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
-
-                            {(order as any).orderNote && (
-                                <div className="bg-yellow-50 border border-yellow-200 text-yellow-800 p-4 rounded-xl mb-6 text-sm">
-                                    <span className="font-black uppercase tracking-widest text-[10px] block mb-1">Nota del Cliente:</span>
-                                    <p className="font-bold">{((order as any).orderNote)}</p>
-                                </div>
-                            )}
-
-                            <div className="flex items-start gap-3 p-4 bg-slate-50 rounded-2xl mb-8">
-                                <MapPin className="w-5 h-5 text-primary shrink-0" />
-                                <p className="text-sm font-bold text-slate-600 leading-relaxed italic">{order.deliveryAddress}</p>
-                            </div>
-
-                            {/* Payment Details Block */}
-                            {order.paymentMethod && (
-                                <div className="bg-slate-50 border border-slate-100 rounded-2xl p-4 mb-6">
-                                    <div className="flex items-center justify-between mb-3">
-                                        <div>
-                                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Método de Pago</p>
-                                            <p className="font-black text-slate-800 flex items-center gap-2">
-                                                <CreditCard className="w-4 h-4 text-primary" /> {order.paymentMethod}
-                                            </p>
-                                        </div>
-                                        {(order.paymentReference || order.paymentProofUrl) ? (
-                                            <div className="text-right flex items-center gap-2">
-                                                {order.paymentReference && (
-                                                    <span className="bg-white border border-slate-200 px-3 py-1 rounded-lg text-xs font-bold text-slate-600 shadow-sm">
-                                                        Ref: {order.paymentReference}
-                                                    </span>
-                                                )}
-                                                {order.paymentProofUrl && (
-                                                    <a href={order.paymentProofUrl} target="_blank" rel="noopener noreferrer" className="bg-primary/10 text-primary p-2 rounded-lg hover:bg-primary/20 transition-all">
-                                                        <ImageIcon className="w-4 h-4" />
-                                                    </a>
-                                                )}
-                                            </div>
-                                        ) : null}
-                                    </div>
-                                    
-                                    {/* Inline Proof Upload Form */}
-                                    {order.status !== 'rejected' && !order.paymentProofUrl && ['Pago Móvil', 'Transferencia'].includes(order.paymentMethod) && (
-                                        <div className="flex gap-2 items-center mt-3 pt-3 border-t border-slate-200/50">
-                                            <div className="flex-1">
-                                                <input 
-                                                    type="text" 
-                                                    placeholder="Ref (6 dígitos)" 
-                                                    className="w-full bg-white border border-slate-200 px-3 py-2 rounded-xl text-sm outline-none focus:border-primary font-bold text-slate-700"
-                                                    value={referenceInputs[order.id] || ''}
-                                                    onChange={(e) => setReferenceInputs(prev => ({...prev, [order.id]: e.target.value}))}
-                                                />
-                                            </div>
-                                            <label className="bg-white border border-slate-200 p-2 rounded-xl text-slate-500 hover:text-primary hover:border-primary transition-all cursor-pointer">
-                                                <input 
-                                                    type="file" 
-                                                    accept="image/*" 
-                                                    className="hidden" 
-                                                    onChange={(e) => {
-                                                        const file = e.target.files?.[0];
-                                                        if (file) setProofUploadFiles(prev => ({...prev, [order.id]: file}));
-                                                    }}
-                                                />
-                                                <ImageIcon className={`w-5 h-5 ${proofUploadFiles[order.id] ? 'text-primary' : ''}`} />
-                                            </label>
-                                            <button 
-                                                onClick={() => handleSavePaymentProof(order.id)}
-                                                disabled={isUploadingProof[order.id] || (!referenceInputs[order.id] && !proofUploadFiles[order.id])}
-                                                className="bg-primary text-white p-2 rounded-xl hover:bg-primary/90 transition-all disabled:opacity-50"
-                                                title="Guardar Pago"
-                                            >
-                                                {isUploadingProof[order.id] ? <Loader2 className="w-5 h-5 animate-spin" /> : <Upload className="w-5 h-5" />}
-                                            </button>
-                                        </div>
-                                    )}
-                                </div>
-                            )}
-
-                            <div className="flex flex-wrap items-center gap-3">
-                                {(order.status === 'pending' || order.status === 'pendiente_pago') && (
-                                    <>
-                                        <button
-                                            onClick={() => { 
-                                                setSelectedOrderForEdit(order); 
-                                                setEditOrderItems([...order.items]); 
-                                                setEditOrderNote((order as any).orderNote || ''); 
-                                                setEditModalOpen(true); 
-                                            }}
-                                            className="px-6 bg-slate-100 text-slate-500 py-4 rounded-2xl font-black hover:bg-slate-200 transition-all flex items-center justify-center gap-2"
-                                            title="Editar Pedido"
-                                        >
-                                            <ExternalLink className="w-5 h-5" />
-                                        </button>
-                                        <button
-                                            onClick={() => { setSelectedOrderForAccept(order); setAcceptModalOpen(true); }}
-                                            disabled={printingOrderId === order.id}
-                                            className="flex-1 min-w-[140px] bg-primary text-white py-4 rounded-2xl font-black shadow-lg shadow-primary/20 hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-2 disabled:opacity-50"
-                                        >
-                                            {printingOrderId === order.id ? (
-                                                <><Loader2 className="w-5 h-5 animate-spin" /> Imprimiendo...</>
-                                            ) : (
-                                                <>{order.status === 'pendiente_pago' ? 'Verificar y Enviar a Cocina' : 'Aceptar'}</>
-                                            )}
-                                        </button>
-                                        <button
-                                            onClick={() => updateStatus(order.id, 'rejected')}
-                                            className="px-6 bg-slate-100 text-slate-500 py-4 rounded-2xl font-black hover:bg-red-50 hover:text-red-500 transition-all"
-                                        >
-                                            Rechazar
-                                        </button>
-                                    </>
-                                )}
-                                {order.status === 'preparing' && (
-                                    order.source === 'waiter' ? (
-                                        <button
-                                            onClick={() => updateStatus(order.id, 'delivered')}
-                                            className="flex-1 bg-indigo-500 text-white py-4 rounded-2xl font-black shadow-lg shadow-indigo-500/20 hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-2"
-                                        >
-                                            Entregar a Mesa
-                                        </button>
-                                    ) : (
-                                        <button
-                                            onClick={() => { setSelectedOrderForDispatch(order); setDispatchModalOpen(true); }}
-                                            disabled={printingOrderId === order.id}
-                                            className="flex-1 bg-blue-500 text-white py-4 rounded-2xl font-black shadow-lg shadow-blue-500/20 hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-2 disabled:opacity-50"
-                                        >
-                                            {printingOrderId === order.id ? (
-                                                <><Loader2 className="w-5 h-5 animate-spin" /> Imprimiendo...</>
-                                            ) : (
-                                                <>Enviar Pedido</>
-                                            )}
-                                        </button>
-                                    )
-                                )}
-                                {order.status === 'delivering' && (
-                                    <button
-                                        onClick={() => updateStatus(order.id, 'delivered')}
-                                        className="flex-1 bg-green-500 text-white py-4 rounded-2xl font-black shadow-lg shadow-green-500/20 hover:scale-[1.02] active:scale-[0.98] transition-all"
-                                    >
-                                        Confirmar Entrega
-                                    </button>
-                                )}
-                                {order.status === 'delivered' && !order.paymentStatus && (
-                                    <div className="flex w-full gap-2">
-                                        <button
-                                            onClick={() => updateStatus(order.id, 'delivered', 'sold')}
-                                            className="flex-1 bg-green-100 text-green-700 py-3 rounded-xl font-black hover:bg-green-200 transition-all flex items-center justify-center gap-2"
-                                        >
-                                            <CheckCircle className="w-4 h-4" /> Venta Exitosa
-                                        </button>
-                                        <button
-                                            onClick={() => updateStatus(order.id, 'delivered', 'not_sold')}
-                                            className="flex-1 bg-red-50 text-red-600 py-3 rounded-xl font-black hover:bg-red-100 transition-all flex items-center justify-center gap-2"
-                                        >
-                                            <X className="w-4 h-4" /> No Vendido
-                                        </button>
-                                    </div>
-                                )}
-                                {order.status === 'delivered' && order.paymentStatus === 'pending' && order.source === 'waiter' && (
-                                    <button
-                                        onClick={() => { setSelectedOrderForClose(order); setCloseSaleModalOpen(true); }}
-                                        className="w-full bg-emerald-500 text-white py-4 rounded-2xl font-black shadow-lg shadow-emerald-500/20 hover:bg-emerald-600 transition-all flex items-center justify-center gap-2"
-                                    >
-                                        <DollarSign className="w-5 h-5" /> Cerrar Venta y Cobrar
-                                    </button>
-                                )}
-                                <button className="p-4 bg-slate-100 text-slate-400 rounded-2xl hover:bg-slate-200 transition-colors">
-                                    <ExternalLink className="w-5 h-5" />
-                                </button>
+                            <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+                                {filteredOrders.filter(o => o.source === 'waiter').map(order => renderOrderCard(order))}
                             </div>
                         </div>
-                    ))}
+                    )}
+
+                    {/* App / Delivery Orders Section */}
+                    {filteredOrders.filter(o => o.source !== 'waiter').length > 0 && (
+                        <div className="space-y-6">
+                            <div className="flex items-center gap-4 px-2">
+                                <div className="h-px flex-1 bg-emerald-100"></div>
+                                <h2 className="text-xl font-black text-emerald-500 flex items-center gap-2 uppercase tracking-widest bg-emerald-50 px-6 py-2 rounded-full border border-emerald-100">
+                                    <Truck className="w-6 h-6" /> 🚚 App / Delivery Express ({filteredOrders.filter(o => o.source !== 'waiter').length})
+                                </h2>
+                                <div className="h-px flex-1 bg-emerald-100"></div>
+                            </div>
+                            <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+                                {filteredOrders.filter(o => o.source !== 'waiter').map((order) => (
+                                    <OrderCard key={order.id} order={order} />
+                                ))}
+                            </div>
+                        </div>
+                    )}
                 </div>
             )}
 
@@ -967,6 +1068,58 @@ export default function Orders() {
                                 </button>
                             ))}
                         </div>
+
+                        {paymentMethod === 'Pago Móvil' && (
+                            <div className="mb-6 space-y-4 animate-in fade-in slide-in-from-top-4">
+                                <div>
+                                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">Referencia (Últimos 6 dígitos)</label>
+                                    <input 
+                                        type="text"
+                                        maxLength={6}
+                                        placeholder="Ej: 123456"
+                                        value={referenceInputs[selectedOrderForAccept.id] || ''}
+                                        onChange={(e) => setReferenceInputs(prev => ({...prev, [selectedOrderForAccept.id!]: e.target.value.replace(/\D/g, '')}))}
+                                        className="w-full bg-slate-50 border border-slate-200 p-4 rounded-2xl outline-none focus:border-primary font-bold text-slate-700"
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">Capture de Pago</label>
+                                    <div className="flex items-center gap-2">
+                                        <label className={`flex-1 flex items-center justify-center gap-2 py-4 rounded-2xl border-2 border-dashed font-bold cursor-pointer transition-all ${proofUploadFiles[selectedOrderForAccept.id] ? 'border-green-500 bg-green-50 text-green-600' : 'border-slate-200 bg-slate-50 text-slate-500 hover:border-primary hover:text-primary hover:bg-primary/5'}`}>
+                                            <ImageIcon className="w-5 h-5" />
+                                            <span>{proofUploadFiles[selectedOrderForAccept.id] ? 'Capture Seleccionado' : 'Subir Capture (Opcional)'}</span>
+                                            <input 
+                                                type="file" 
+                                                accept="image/*" 
+                                                className="hidden" 
+                                                onChange={(e) => {
+                                                    if (e.target.files && e.target.files[0] && selectedOrderForAccept) {
+                                                        const docId = selectedOrderForAccept.id;
+                                                        const file = e.target.files[0];
+                                                        setProofUploadFiles(prev => ({...prev, [docId]: file}));
+                                                    }
+                                                }}
+                                            />
+                                        </label>
+                                        {proofUploadFiles[selectedOrderForAccept.id] && (
+                                            <button 
+                                                onClick={() => {
+                                                    setProofUploadFiles(prev => {
+                                                        const next = {...prev};
+                                                        delete next[selectedOrderForAccept.id!];
+                                                        return next;
+                                                    });
+                                                }}
+                                                className="p-4 bg-red-50 text-red-500 hover:bg-red-100 rounded-2xl transition-colors"
+                                            >
+                                                <X className="w-5 h-5" />
+                                            </button>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
                         <button
                             onClick={handleConfirmAccept}
                             disabled={isAccepting}
@@ -1005,25 +1158,22 @@ export default function Orders() {
                             </button>
                         </div>
 
-                        {dispatchType === 'platform' && (
-                            <div className="mb-6">
-                                <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">Seleccionar Motorizado</label>
-                                <select 
-                                    className="w-full bg-slate-50 border border-slate-200 p-4 rounded-2xl outline-none focus:border-blue-500 font-bold text-slate-700"
-                                    value={selectedDriver}
-                                    onChange={(e) => setSelectedDriver(e.target.value)}
-                                >
-                                    <option value="">-- Elige un Motorizado --</option>
-                                    {drivers.map(d => (
-                                        <option key={d.id} value={d.id}>{d.displayName || d.name || d.email}</option>
-                                    ))}
-                                </select>
+                        {dispatchType === 'platform' ? (
+                            <div className="mb-6 flex flex-col items-center justify-center p-6 bg-slate-50 rounded-2xl border border-slate-200">
+                                <div className="w-16 h-16 bg-blue-100 text-blue-500 rounded-full flex items-center justify-center mb-4 relative">
+                                    <div className="absolute inset-0 bg-blue-400 rounded-full animate-ping opacity-20"></div>
+                                    <Truck className="w-8 h-8 relative z-10" />
+                                </div>
+                                <h4 className="font-black text-slate-800 text-center mb-2">Asignación por Radar</h4>
+                                <p className="text-xs text-slate-500 text-center leading-relaxed">
+                                    Se buscará automáticamente al motorizado más cercano en un radio de 15km usando el sistema de Radar.
+                                </p>
                             </div>
-                        )}
+                        ) : null}
 
                         <button
                             onClick={handleConfirmDispatch}
-                            disabled={isAccepting || (dispatchType === 'platform' && !selectedDriver)}
+                            disabled={isAccepting}
                             className={`w-full text-white py-4 rounded-2xl font-black shadow-lg hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-2 disabled:opacity-50 ${dispatchType === 'platform' ? 'bg-blue-500 shadow-blue-500/20' : 'bg-primary shadow-primary/20'}`}
                         >
                             {isAccepting ? <Loader2 className="w-5 h-5 animate-spin" /> : <><Truck className="w-5 h-5" /> Enviar en Camino</>}
@@ -1423,6 +1573,77 @@ export default function Orders() {
                 </div>
             )
             }
+
+            {/* Buscando Radar Modal */}
+            {radarOrderId && (
+                <div className="fixed inset-0 z-[110] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm px-4">
+                    <div className="bg-white rounded-3xl p-8 w-full max-w-sm shadow-2xl animate-in zoom-in-95 duration-200 flex flex-col items-center text-center">
+                        {(() => {
+                            const radarOrder = orders.find(o => o.id === radarOrderId);
+                            const isFound = radarOrder && (radarOrder.status === 'delivering' || radarOrder.status as any === 'asignado');
+                            
+                            return (
+                                <>
+                                    <div className="relative w-32 h-32 mb-6 flex items-center justify-center">
+                                        {isFound ? (
+                                            <div className="w-24 h-24 bg-green-100 text-green-500 rounded-full flex items-center justify-center animate-in zoom-in duration-300">
+                                                <CheckCircle className="w-12 h-12" />
+                                            </div>
+                                        ) : (
+                                            <>
+                                                <div className="absolute inset-0 bg-blue-500/20 rounded-full animate-ping" style={{ animationDuration: '2s' }}></div>
+                                                <div className="absolute inset-4 bg-blue-500/20 rounded-full animate-ping" style={{ animationDuration: '2s', animationDelay: '0.5s' }}></div>
+                                                <div className="absolute inset-8 bg-blue-500/20 rounded-full animate-ping" style={{ animationDuration: '2s', animationDelay: '1s' }}></div>
+                                                <div className="w-16 h-16 bg-blue-500 text-white rounded-full flex items-center justify-center relative z-10 shadow-lg shadow-blue-500/30">
+                                                    <Search className="w-8 h-8 animate-pulse" />
+                                                </div>
+                                            </>
+                                        )}
+                                    </div>
+                                    
+                                    <h3 className="text-2xl font-black text-slate-800 mb-2">
+                                        {isFound ? '¡Piloto Encontrado!' : 'Buscando Delivery...'}
+                                    </h3>
+                                    
+                                    <p className="text-sm text-slate-500 mb-8 max-w-[250px] mx-auto leading-relaxed">
+                                        {isFound 
+                                            ? `El motorizado ${radarOrder?.waiterName || ''} ha aceptado el pedido y está en camino.` 
+                                            : 'Notificando a todos los motorizados disponibles en un radio de 15km.'}
+                                    </p>
+
+                                    {isFound ? (
+                                        <button
+                                            onClick={() => setRadarOrderId(null)}
+                                            className="w-full bg-green-500 text-white py-4 rounded-2xl font-black shadow-lg shadow-green-500/20 hover:scale-[1.02] active:scale-[0.98] transition-all"
+                                        >
+                                            Cerrar y Continuar
+                                        </button>
+                                    ) : (
+                                        <button
+                                            onClick={() => setRadarOrderId(null)}
+                                            className="w-full bg-slate-100 text-slate-500 py-4 rounded-2xl font-bold hover:bg-slate-200 transition-all"
+                                        >
+                                            Minimizar Radar
+                                        </button>
+                                    )}
+                                </>
+                            );
+                        })()}
+                    </div>
+                </div>
+            )}
+
+            {/* Comanda Preview Modal */}
+            {selectedOrderForComanda && (
+                <ComandaPreview
+                    order={selectedOrderForComanda}
+                    restaurantName={restaurantConfig?.name || 'Deliexpress'}
+                    onClose={() => setSelectedOrderForComanda(null)}
+                    onPrint={async (orderToPrint) => {
+                        await handlePrintOrder(orderToPrint.id, orderToPrint as Order);
+                    }}
+                />
+            )}
         </div >
     );
 }

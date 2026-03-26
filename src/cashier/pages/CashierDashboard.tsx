@@ -1,13 +1,14 @@
 import React, { useState, useEffect } from 'react';
-import { LogOut, DollarSign, CheckCircle, Clock, X, Loader2, Store, CreditCard, User, Plus, Edit, ClipboardList, MapPin, Instagram, Youtube, Music2, ExternalLink, Star, MessageSquare, Bike } from 'lucide-react';
+import { LogOut, DollarSign, CheckCircle, Clock, X, Loader2, Store, CreditCard, User, Plus, Edit, ClipboardList, MapPin, Instagram, Youtube, Music2, ExternalLink, Star, MessageSquare, Bike, Bell, Package, Truck, Search, Utensils, ShoppingCart, Trash2, Minus } from 'lucide-react';
 import { db } from '../../lib/firebase';
-import { collection, query, where, onSnapshot, orderBy, doc, updateDoc, getDoc, getDocs } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, orderBy, doc, updateDoc, getDoc, getDocs, increment, addDoc, serverTimestamp } from 'firebase/firestore';
 import { useNavigate } from 'react-router-dom';
 import { printToUsbDevice, formatTicket, PrintOrder } from '../../lib/usb-printer';
 import ProductTicker from '../components/ProductTicker';
 import ReviewsModal from '../components/ReviewsModal';
 import { motion, AnimatePresence } from 'framer-motion';
 import toast from 'react-hot-toast';
+import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 
 interface Order {
     id: string;
@@ -24,6 +25,9 @@ interface Order {
     createdAt?: any;
     deliveryFee?: number;
     notified?: boolean;
+    tip?: number;
+    paymentProofURL?: string;
+    reference?: string;
 }
 
 export default function CashierDashboard() {
@@ -46,6 +50,34 @@ export default function CashierDashboard() {
     const [registerReport, setRegisterReport] = useState<any>(null);
     const [isLoadingReport, setIsLoadingReport] = useState(false);
     const [notifiedOrderIds, setNotifiedOrderIds] = useState<Set<string>>(new Set());
+
+    const [activeTab, setActiveTab] = useState<'pending' | 'preparing' | 'delivering' | 'delivered' | 'rejected'>('pending');
+    const [searchTerm, setSearchTerm] = useState('');
+    const [loading, setLoading] = useState(true);
+
+    // Edit Order State
+    const [editModalOpen, setEditModalOpen] = useState(false);
+    const [selectedOrderForEdit, setSelectedOrderForEdit] = useState<any>(null);
+    const [editOrderItems, setEditOrderItems] = useState<any[]>([]);
+    const [editOrderNote, setEditOrderNote] = useState('');
+    const [posProducts, setPosProducts] = useState<any[]>([]);
+    const [editAddProductId, setEditAddProductId] = useState('');
+    const [editAddVariant, setEditAddVariant] = useState('');
+    const [editAddQty, setEditAddQty] = useState(1);
+    const [editAddNote, setEditAddNote] = useState('');
+
+    // Dispatch State
+    const [dispatchModalOpen, setDispatchModalOpen] = useState(false);
+    const [selectedOrderForDispatch, setSelectedOrderForDispatch] = useState<any>(null);
+    const [dispatchType, setDispatchType] = useState<'own' | 'platform'>('own');
+
+    // Printing
+    const [printingOrderId, setPrintingOrderId] = useState<string | null>(null);
+
+    // Payment Proofs
+    const [referenceInputs, setReferenceInputs] = useState<Record<string, string>>({});
+    const [proofUploadFiles, setProofUploadFiles] = useState<Record<string, File>>({});
+    const [isUploadingProof, setIsUploadingProof] = useState<Record<string, boolean>>({});
 
     // Audio object for the notification sound
     const [notificationSound] = useState(() => new Audio('https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/Digital_Cascade_01.mp3?alt=media&token=211ed9a7-2b49-469f-8869-3fc2cd38d2f5'));
@@ -86,20 +118,17 @@ export default function CashierDashboard() {
 
         const unsubscribe2 = onSnapshot(q2, (snapshot) => {
             const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Order));
-            const relevantOrders = data.filter(o => {
-                if (o.status === 'rejected') return false;
-                if (o.paymentStatus === 'sold') return false;
-                
-                // Pedidos de mesero (ya sea en consumo -preparing- o listo para cobrar -delivered-)
-                if (o.source === 'waiter') return true;
-
-                // Pedidos de App / Delivery (para verificacion o en cocina)
-                if (o.source !== 'waiter' && (o.status === 'pendiente_pago' || o.status === 'preparing' || o.status === 'pending')) return true;
-
-                return false;
-            });
-            setOrders(relevantOrders);
+            setOrders(data);
+            setLoading(false);
         });
+
+        // Fetch products for edit modal
+        const fetchProducts = async () => {
+            const productsRef = collection(db, 'restaurants', storedRestaurantId, 'products');
+            const snap = await getDocs(productsRef);
+            setPosProducts(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+        };
+        fetchProducts();
 
         return () => {
             unsubscribe2();
@@ -271,12 +300,24 @@ export default function CashierDashboard() {
         }
         setIsAccepting(true);
         try {
+            let proofURL = '';
+            const file = proofUploadFiles[selectedOrder.id];
+            
+            if (file) {
+                const storage = getStorage();
+                const storageRef = ref(storage, `payments/${selectedOrder.id}_${file.name}`);
+                const uploadResult = await uploadBytes(storageRef, file);
+                proofURL = await getDownloadURL(uploadResult.ref);
+            }
+
             const safeSubtotal = selectedOrder.subtotal ?? selectedOrder.total ?? 0;
             const updates: any = {
                 paymentMethod: paymentMethod,
                 paymentStatus: 'sold',
                 tip: closeTip,
-                total: safeSubtotal + (selectedOrder.deliveryFee || 0) + closeTip
+                total: safeSubtotal + (selectedOrder.deliveryFee || 0) + closeTip,
+                reference: referenceInputs[selectedOrder.id] || '',
+                paymentProofURL: proofURL
             };
 
             let shouldPrint = false;
@@ -330,6 +371,9 @@ export default function CashierDashboard() {
                 }
             }
 
+            // Download Command for manual record/printing
+            downloadOrderTxt(selectedOrder);
+
             setCloseSaleModalOpen(false);
             setSelectedOrder(null);
             setCloseTip(0);
@@ -359,10 +403,52 @@ export default function CashierDashboard() {
         }
     };
 
-    const groupedOrders = {
-        waiter: orders.filter(o => o.source === 'waiter'),
-        app: orders.filter(o => o.source !== 'waiter' && o.status !== 'preparing'),
-        preparingApp: orders.filter(o => o.source !== 'waiter' && o.status === 'preparing')
+    const downloadOrderTxt = (order: Order) => {
+        if (!order) return;
+        const timestamp = order.createdAt?.toDate ? order.createdAt.toDate().toLocaleString() : new Date().toLocaleString();
+        const content = `
+------------------------------------------
+      ${restaurant?.name || 'DELIEXPRESS'}
+------------------------------------------
+FECHA: ${timestamp}
+ORDEN: #${order.id.slice(-5).toUpperCase()}
+CLIENTE: ${order.userName || 'CLIENTE'}
+MESA: ${order.table || 'N/A'}
+------------------------------------------
+PRODUCTOS:
+${order.items.map(item => `- ${item.name} x${item.quantity} ($${(item.price * item.quantity).toFixed(2)})${item.note ? `\n  - Nota: ${item.note}` : ''}`).join('\n')}
+------------------------------------------
+SUBTOTAL: $${(order.subtotal || 0).toFixed(2)}
+DELIVERY: $${(order.deliveryFee || 0).toFixed(2)}
+PROPINA: $${(order.tip || 0).toFixed(2)}
+TOTAL: $${(order.total || 0).toFixed(2)}
+------------------------------------------
+METODO DE PAGO: ${order.paymentMethod || 'PENDIENTE'}
+ESTADO: ${order.status.toUpperCase()}
+------------------------------------------
+¡GRACIAS POR SU COMPRA!
+`;
+        const blob = new Blob([content], { type: 'text/plain' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `comanda_${order.id.slice(-5)}.txt`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+        toast.success("Comanda descargada");
+    };
+
+    const updateStatus = async (orderId: string, newStatus: string) => {
+        try {
+            const orderRef = doc(db, 'orders', orderId);
+            await updateDoc(orderRef, { status: newStatus });
+            toast.success(`Pedido actualizado a ${newStatus}`);
+        } catch (error) {
+            console.error("Error updating status:", error);
+            toast.error("No se pudo actualizar el estado");
+        }
     };
 
     const getSocialIcon = (url: string) => {
@@ -398,6 +484,162 @@ export default function CashierDashboard() {
     };
 
     const statusObj = getRestaurantStatus();
+
+    const stats = React.useMemo(() => {
+        return {
+            pending: orders.filter(o => o.status === 'pending').length,
+            preparing: orders.filter(o => o.status === 'preparing').length,
+            delivering: orders.filter(o => o.status === 'delivering').length,
+            delivered: orders.filter(o => o.status === 'delivered').length,
+            rejected: orders.filter(o => o.status === 'rejected').length,
+        };
+    }, [orders]);
+
+    const filteredOrders = React.useMemo(() => {
+        let result = orders.filter(order => {
+            // Filter by active tab
+            if (activeTab === 'pending') return order.status === 'pending';
+            if (activeTab === 'preparing') return order.status === 'preparing';
+            if (activeTab === 'delivering') return order.status === 'delivering';
+            if (activeTab === 'delivered') return order.status === 'delivered';
+            if (activeTab === 'rejected') return order.status === 'rejected';
+            return true;
+        });
+
+        // Filter by search term
+        if (searchTerm) {
+            const lowSearch = searchTerm.toLowerCase();
+            result = result.filter(o => 
+                o.id.toLowerCase().includes(lowSearch) || 
+                (o.userName || '').toLowerCase().includes(lowSearch) ||
+                (o.table || '').toLowerCase().includes(lowSearch)
+            );
+        }
+
+        return result;
+    }, [orders, activeTab, searchTerm]);
+
+    const renderOrderCard = (order: Order) => {
+        const isWaiter = order.source === 'waiter';
+        const isPreparing = order.status === 'preparing';
+        
+        return (
+            <motion.div
+                layout
+                key={order.id}
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="bg-white rounded-[32px] p-6 shadow-sm border border-slate-100 hover:shadow-xl transition-all group relative overflow-hidden"
+            >
+                {/* Header Info */}
+                <div className="flex justify-between items-start mb-4">
+                    <div>
+                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1">
+                            Orden #{order.id.slice(-5).toUpperCase()}
+                        </span>
+                        <h3 className="text-xl font-black text-slate-900 truncate max-w-[180px]">
+                            {isWaiter ? `Mesa ${order.table || 'N/A'}` : (order.userName || 'Cliente')}
+                        </h3>
+                    </div>
+                    <div className={`px-3 py-1.5 rounded-2xl text-[10px] font-black uppercase tracking-widest ${
+                        order.status === 'pending' ? 'bg-orange-100 text-orange-600' :
+                        order.status === 'preparing' ? 'bg-blue-100 text-blue-600' :
+                        order.status === 'delivering' ? 'bg-purple-100 text-purple-600' :
+                        order.status === 'delivered' ? 'bg-green-100 text-green-600' :
+                        'bg-red-100 text-red-600'
+                    }`}>
+                        {order.status === 'pending' ? 'Pendiente' :
+                         order.status === 'preparing' ? 'Cocina' :
+                         order.status === 'delivering' ? 'En Camino' :
+                         order.status === 'delivered' ? 'Entregado' : 'Rechazado'}
+                    </div>
+                </div>
+
+                {/* Content */}
+                <div className="space-y-3 mb-6">
+                    <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100/50">
+                        <div className="flex justify-between items-center text-sm mb-1">
+                            <span className="text-slate-400 font-bold">Total:</span>
+                            <span className="text-lg font-black text-primary">${(order.total || 0).toFixed(2)}</span>
+                        </div>
+                        <div className="flex justify-between items-center text-[10px] font-black text-slate-400 uppercase tracking-wider">
+                            <span>{order.items?.length || 0} Productos</span>
+                            <span className="flex items-center gap-1">
+                                <Clock className="w-3 h-3" />
+                                {order.createdAt ? order.createdAt.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}
+                            </span>
+                        </div>
+                    </div>
+
+                    {!isWaiter && (
+                        <div className="flex items-center gap-2 px-3 py-2 bg-emerald-50 text-emerald-600 rounded-xl text-[10px] font-black uppercase tracking-widest border border-emerald-100">
+                            <CreditCard className="w-3 h-3" />
+                            {order.paymentMethod || 'Por confirmar'}
+                        </div>
+                    )}
+                </div>
+
+                {/* Actions */}
+                <div className="flex gap-2">
+                    {order.status === 'pending' && (
+                        <>
+                            <button
+                                onClick={() => { setSelectedOrder(order); setCloseSaleModalOpen(true); }}
+                                className="flex-1 bg-emerald-500 text-white py-4 rounded-2xl font-black text-xs flex items-center justify-center gap-2 hover:bg-emerald-600 transition-all shadow-lg shadow-emerald-500/20"
+                            >
+                                <DollarSign className="w-4 h-4" />
+                                Cobrar
+                            </button>
+                            <button
+                                onClick={() => { setSelectedOrderForEdit(order); setEditModalOpen(true); }}
+                                className="px-4 bg-slate-100 text-slate-600 rounded-2xl font-black hover:bg-slate-200 transition-all"
+                                title="Editar Orden"
+                            >
+                                <Edit className="w-4 h-4" />
+                            </button>
+                            <button
+                                onClick={() => downloadOrderTxt(order)}
+                                className="px-4 bg-slate-100 text-slate-600 rounded-2xl font-black hover:bg-slate-200 transition-all"
+                                title="Descargar Comanda (TXT)"
+                            >
+                                <ClipboardList className="w-4 h-4" />
+                            </button>
+                        </>
+                    )}
+
+                    {order.status === 'preparing' && !isWaiter && (
+                        <button
+                            onClick={() => { setSelectedOrderForDispatch(order); setDispatchModalOpen(true); }}
+                            className="flex-1 bg-orange-500 text-white py-4 rounded-2xl font-black text-xs flex items-center justify-center gap-2 hover:bg-orange-600 transition-all shadow-lg shadow-orange-500/20"
+                        >
+                            <Truck className="w-4 h-4" />
+                            Despachar
+                        </button>
+                    )}
+
+                    {order.status === 'preparing' && isWaiter && (
+                        <button
+                            onClick={() => updateStatus(order.id, 'delivering')}
+                            className="flex-1 bg-blue-500 text-white py-4 rounded-2xl font-black text-xs flex items-center justify-center gap-2 hover:bg-blue-600 transition-all shadow-lg shadow-blue-500/20"
+                        >
+                            <CheckCircle className="w-4 h-4" />
+                            Listo para Mesa
+                        </button>
+                    )}
+
+                    {order.status === 'delivering' && (
+                        <button
+                            onClick={() => updateStatus(order.id, 'delivered')}
+                            className="flex-1 bg-green-500 text-white py-4 rounded-2xl font-black text-xs flex items-center justify-center gap-2 hover:bg-green-600 transition-all shadow-lg shadow-green-500/20"
+                        >
+                            <CheckCircle className="w-4 h-4" />
+                            Confirmar Entrega
+                        </button>
+                    )}
+                </div>
+            </motion.div>
+        );
+    };
 
     return (
         <div className="min-h-screen bg-slate-50 flex flex-col">
@@ -444,218 +686,84 @@ export default function CashierDashboard() {
                 </div>
             </header>
 
-            {/* Restaurant Info Bar */}
-            <div className="bg-slate-900 text-white px-6 py-3 flex items-center justify-between gap-4 overflow-x-auto hide-scrollbar shrink-0">
-                <div className="flex items-center gap-6 shrink-0">
-                    {/* Status & Hours */}
-                    <div className="flex items-center gap-3">
-                        <div className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest flex items-center gap-1.5 ${statusObj.isOpen ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 'bg-red-500/20 text-red-400 border border-red-500/30'}`}>
-                            <div className={`w-1.5 h-1.5 rounded-full ${statusObj.isOpen ? 'bg-emerald-400 animate-pulse' : 'bg-red-400'}`}></div>
-                            {statusObj.text}
-                        </div>
-                        <button 
-                            onClick={() => setShowHoursModal(true)}
-                            className="flex items-center gap-1.5 text-slate-400 hover:text-white transition-colors"
+            <main className="flex-1 p-6 max-w-7xl mx-auto w-full space-y-8 pb-20">
+                {/* Status Tabs */}
+                <div className="grid grid-cols-2 lg:grid-cols-5 gap-2 p-2 bg-slate-100 rounded-[30px]">
+                    {[
+                        { id: 'pending', label: 'Pendientes', icon: Bell, color: 'bg-orange-500' },
+                        { id: 'preparing', label: 'Cocina', icon: Package, color: 'bg-blue-500' },
+                        { id: 'delivering', label: 'Camino', icon: Truck, color: 'bg-purple-500' },
+                        { id: 'delivered', label: 'Entregados', icon: CheckCircle, color: 'bg-green-500' },
+                        { id: 'rejected', label: 'Rechazados', icon: X, color: 'bg-red-500' },
+                    ].map((tab) => (
+                        <button
+                            key={tab.id}
+                            onClick={() => setActiveTab(tab.id as any)}
+                            className={`flex items-center justify-center gap-2 p-4 rounded-[25px] font-black transition-all ${activeTab === tab.id
+                                ? 'bg-white shadow-lg text-slate-900'
+                                : 'text-slate-500 hover:bg-white/50'
+                                }`}
                         >
-                            <Clock className="w-3.5 h-3.5" />
-                            <span className="text-xs font-bold whitespace-nowrap">
-                                {statusObj.todaySchedule ? `${statusObj.todaySchedule.open} - ${statusObj.todaySchedule.close}` : 'Ver Horario'}
+                            <tab.icon className={`w-5 h-5 ${activeTab === tab.id ? 'text-primary' : ''}`} />
+                            <span className="hidden xl:inline">{tab.label}</span>
+                            <span className={`ml-1 text-[10px] px-2 py-0.5 rounded-full text-white ${tab.color}`}>
+                                {(stats as any)[tab.id]}
                             </span>
                         </button>
-                    </div>
-
-                    {/* Location */}
-                    {restaurant?.location?.address && (
-                        <div className="flex items-center gap-2 text-slate-400 max-w-xs">
-                            <MapPin className="w-3.5 h-3.5 shrink-0" />
-                            <span className="text-xs font-medium truncate">{restaurant.location.address}</span>
-                        </div>
-                    )}
-
-                    {/* Rating */}
-                    {restaurant?.rating && (
-                        <div className="flex items-center gap-1.5 bg-white/10 px-2.5 py-1 rounded-lg border border-white/5">
-                            <Star className="w-3 h-3 text-amber-400 fill-amber-400" />
-                            <span className="text-xs font-black">{restaurant.rating.toFixed(1)}</span>
-                        </div>
-                    )}
+                    ))}
                 </div>
 
-                <div className="flex items-center gap-4 shrink-0">
-                    {/* Social Media */}
-                    <div className="flex items-center gap-2">
-                        {restaurant?.socialLinks?.map((link: any, i: number) => (
-                            <a 
-                                key={i}
-                                href={link.url}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className={`w-8 h-8 rounded-xl flex items-center justify-center text-white transition-all hover:scale-110 active:scale-95 ${getSocialColor(link.url)}`}
-                            >
-                                {getSocialIcon(link.url)}
-                            </a>
-                        ))}
-                    </div>
-
-                    <div className="h-6 w-px bg-white/10 mx-1"></div>
-
-                    {/* Reviews Button */}
-                    <button 
-                        onClick={() => setShowReviewsModal(true)}
-                        className="flex items-center gap-2 bg-primary/10 hover:bg-primary/20 text-primary px-4 py-1.5 rounded-xl border border-primary/20 transition-all group"
-                    >
-                        <MessageSquare className="w-4 h-4 group-hover:scale-110 transition-transform" />
-                        <span className="text-xs font-black uppercase tracking-wider">Reseñas</span>
-                    </button>
+                <div className="relative">
+                    <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
+                    <input
+                        type="text"
+                        placeholder="Buscar por ID, dirección o cliente..."
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                        className="w-full bg-white border border-slate-200 p-4 pl-12 rounded-2xl outline-none focus:border-primary transition-all font-bold text-slate-700 shadow-sm"
+                    />
                 </div>
-            </div>
 
-            <main className="flex-1 p-6 max-w-7xl mx-auto w-full space-y-8">
-                {/* Waiter Orders to Charge */}
-                <section>
-                    <h2 className="text-xl font-black text-slate-800 mb-4 flex items-center gap-2">
-                        <DollarSign className="w-6 h-6 text-emerald-500" />
-                        Meseros - Cuentas Abiertas ({groupedOrders.waiter.length})
-                    </h2>
-                    
-                    {groupedOrders.waiter.length === 0 ? (
-                        <div className="bg-white rounded-3xl p-10 text-center border border-slate-100 shadow-sm">
-                            <CheckCircle className="w-12 h-12 text-emerald-400 mx-auto mb-3" />
-                            <p className="text-slate-500 font-bold">No hay cuentas de meseros pendientes por cobrar.</p>
-                        </div>
-                    ) : (
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                            {groupedOrders.waiter.map(order => (
-                                <div key={order.id} className="bg-white rounded-3xl p-6 border border-slate-100 shadow-sm hover:shadow-md transition-shadow relative overflow-hidden group">
-                                    <div className="absolute top-0 right-0 p-4">
-                                        <span className={`text-[10px] font-black uppercase tracking-widest px-3 py-1.5 rounded-full ${
-                                            order.status === 'delivered' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'
-                                        }`}>
-                                            {order.status === 'delivered' ? 'Listo en Mesa' : 'En Consumo'}
-                                        </span>
-                                    </div>
-                                    <div className="mb-4">
-                                        <p className="text-sm font-bold text-slate-400">Orden #{order.id.slice(-5).toUpperCase()}</p>
-                                        <h3 className="text-2xl font-black text-slate-900 mt-1">${(order.total || 0).toFixed(2)}</h3>
-                                    </div>
-                                    <div className="space-y-2 mb-6 bg-slate-50 p-3 rounded-2xl">
-                                        <div className="flex justify-between items-center text-sm">
-                                            <span className="text-slate-500 font-bold">Mesa:</span>
-                                            <span className="font-black text-slate-900">{order.table || 'N/A'}</span>
-                                        </div>
-                                        <div className="flex justify-between items-center text-sm">
-                                            <span className="text-slate-500 font-bold">Mesero:</span>
-                                            <span className="font-bold text-slate-700">{order.waiterName || 'Desconocido'}</span>
-                                        </div>
-                                        <div className="flex justify-between items-center text-sm">
-                                            <span className="text-slate-500 font-bold">Tiempo:</span>
-                                            <span className="font-bold text-slate-700 flex items-center gap-1">
-                                                <Clock className="w-3 h-3" />
-                                                {order.createdAt ? order.createdAt.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}
-                                            </span>
-                                        </div>
-                                    </div>
-                                    <div className="flex gap-2 mt-4">
-                                        <button
-                                            onClick={() => navigate(`/pos/${order.id}`)}
-                                            className="flex-1 bg-slate-100 text-slate-600 py-3.5 rounded-2xl font-black flex items-center justify-center gap-2 hover:bg-slate-200 transition-colors"
-                                        >
-                                            <Edit className="w-5 h-5" />
-                                        </button>
-                                        <button
-                                            onClick={() => { setSelectedOrder(order); setCloseSaleModalOpen(true); }}
-                                            className="flex-[3] bg-emerald-500 text-white py-3.5 rounded-2xl font-black flex items-center justify-center gap-2 hover:bg-emerald-600 transition-colors shadow-lg shadow-emerald-500/20"
-                                        >
-                                            <DollarSign className="w-5 h-5" />
-                                            Cobrar Cuenta
-                                        </button>
-                                    </div>
+                {filteredOrders.length === 0 ? (
+                    <div className="p-20 text-center border-2 border-dashed border-slate-100 rounded-[40px] grayscale opacity-50 bg-white/50">
+                        <Clock className="w-16 h-16 text-slate-200 mx-auto mb-4" />
+                        <p className="text-slate-400 font-bold text-xl">Sin pedidos en esta sección</p>
+                        <p className="text-slate-300 font-medium max-w-xs mx-auto mt-2 italic text-sm">Aquí aparecerán los pedidos que coincidan con el estado seleccionado.</p>
+                    </div>
+                ) : (
+                    <div className="space-y-12">
+                        {/* Grouped by Waiter vs App */}
+                        {filteredOrders.some(o => o.source === 'waiter') && (
+                            <div className="space-y-6">
+                                <div className="flex items-center gap-4">
+                                    <h2 className="text-sm font-black text-indigo-400 uppercase tracking-[0.3em] flex items-center gap-2 whitespace-nowrap">
+                                        <Utensils className="w-4 h-4" />
+                                        🍽️ Servicio en Mesa / Local ({filteredOrders.filter(o => o.source === 'waiter').length})
+                                    </h2>
+                                    <div className="h-px flex-1 bg-indigo-100"></div>
                                 </div>
-                            ))}
-                        </div>
-                    )}
-                </section>
-
-                {/* App Orders to Dispatch */}
-                <section>
-                    <h2 className="text-xl font-black text-slate-800 mb-4 flex items-center gap-2 mt-12">
-                        <Bike className="w-6 h-6 text-orange-500" />
-                        Delivery - En Cocina ({groupedOrders.preparingApp.length})
-                    </h2>
-
-                    {groupedOrders.preparingApp.length === 0 ? (
-                        <div className="bg-white rounded-3xl p-10 text-center border border-slate-100 shadow-sm">
-                            <CheckCircle className="w-12 h-12 text-orange-400 mx-auto mb-3" />
-                            <p className="text-slate-500 font-bold">No hay pedidos en preparación para enviar.</p>
-                        </div>
-                    ) : (
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                            {groupedOrders.preparingApp.map(order => (
-                                <div key={order.id} className="bg-orange-50/30 rounded-3xl p-6 border border-orange-100 shadow-sm relative overflow-hidden group">
-                                    <div className="mb-4">
-                                        <p className="text-sm font-bold text-slate-400">Orden #{order.id.slice(-5).toUpperCase()}</p>
-                                        <h3 className="text-xl font-black text-slate-900 mt-1 truncate">{order.userName || 'Cliente'}</h3>
-                                    </div>
-                                    <div className="space-y-2 mb-6 bg-white p-3 rounded-2xl border border-orange-100">
-                                        <div className="flex justify-between items-center text-sm">
-                                            <span className="text-slate-500 font-bold">Estado:</span>
-                                            <span className="font-black text-orange-600">Preparando</span>
-                                        </div>
-                                    </div>
-                                    <button
-                                        onClick={() => handleRequestDelivery(order.id)}
-                                        disabled={isAccepting}
-                                        className="w-full bg-orange-500 text-white py-3.5 rounded-2xl font-black flex items-center justify-center gap-2 hover:bg-orange-600 transition-colors shadow-lg shadow-orange-500/20 disabled:opacity-50"
-                                    >
-                                        {isAccepting ? <Loader2 className="w-5 h-5 animate-spin" /> : <><Bike className="w-5 h-5" /> Solicitar Repartidor</>}
-                                    </button>
+                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                                    {filteredOrders.filter(o => o.source === 'waiter').map(order => renderOrderCard(order))}
                                 </div>
-                            ))}
-                        </div>
-                    )}
-                </section>
+                            </div>
+                        )}
 
-                {/* App Orders to Verify */}
-                <section>
-                    <h2 className="text-xl font-black text-slate-800 mb-4 flex items-center gap-2 mt-12">
-                        <CreditCard className="w-6 h-6 text-indigo-500" />
-                        App / Delivery - Pagos por Verificar ({groupedOrders.app.length})
-                    </h2>
-
-                    {groupedOrders.app.length === 0 ? (
-                        <div className="bg-white rounded-3xl p-10 text-center border border-slate-100 shadow-sm">
-                            <CheckCircle className="w-12 h-12 text-indigo-400 mx-auto mb-3" />
-                            <p className="text-slate-500 font-bold">No hay pagos de App pendientes de verificación.</p>
-                        </div>
-                    ) : (
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                            {groupedOrders.app.map(order => (
-                                <div key={order.id} className="bg-white rounded-3xl p-6 border border-slate-100 shadow-sm relative overflow-hidden group">
-                                    <div className="mb-4">
-                                        <p className="text-sm font-bold text-slate-400">Plataforma</p>
-                                        <h3 className="text-2xl font-black text-slate-900 mt-1">${(order.total || 0).toFixed(2)}</h3>
-                                    </div>
-                                    <div className="space-y-2 mb-6 bg-slate-50 p-3 rounded-2xl">
-                                        <div className="flex justify-between items-center text-sm">
-                                            <span className="text-slate-500 font-bold">Cliente:</span>
-                                            <span className="font-bold text-slate-700 truncate max-w-[120px]">{order.userName || 'N/A'}</span>
-                                        </div>
-                                        <div className="flex justify-between items-center text-sm">
-                                            <span className="text-slate-500 font-bold">Reportado:</span>
-                                            <span className="font-black text-slate-900">{order.paymentMethod || 'No indicado'}</span>
-                                        </div>
-                                    </div>
-                                    <button
-                                        onClick={() => { setSelectedOrder(order); setPaymentMethod(order.paymentMethod || 'Punto de Venta'); setCloseSaleModalOpen(true); }}
-                                        className="w-full bg-indigo-50 text-indigo-700 py-3.5 rounded-2xl font-black flex items-center justify-center gap-2 hover:bg-indigo-100 transition-colors"
-                                    >
-                                        Confirmar Pago
-                                    </button>
+                        {filteredOrders.some(o => o.source !== 'waiter') && (
+                            <div className="space-y-6">
+                                <div className="flex items-center gap-4">
+                                    <h2 className="text-sm font-black text-emerald-400 uppercase tracking-[0.3em] flex items-center gap-2 whitespace-nowrap">
+                                        <Truck className="w-4 h-4" />
+                                        🚚 App / Delivery Express ({filteredOrders.filter(o => o.source !== 'waiter').length})
+                                    </h2>
+                                    <div className="h-px flex-1 bg-emerald-100"></div>
                                 </div>
-                            ))}
-                        </div>
-                    )}
-                </section>
+                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                                    {filteredOrders.filter(o => o.source !== 'waiter').map(order => renderOrderCard(order))}
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                )}
             </main>
 
             {/* Modals Adicionales */}
@@ -763,6 +871,51 @@ export default function CashierDashboard() {
                                 ))}
                             </div>
                         </div>
+
+                        {paymentMethod === 'Pago Móvil' && (
+                            <motion.div 
+                                initial={{ opacity: 0, height: 0 }}
+                                animate={{ opacity: 1, height: 'auto' }}
+                                className="space-y-4 mb-6"
+                            >
+                                <div>
+                                    <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">Ref. (Últimos 6 dígitos)</label>
+                                    <input 
+                                        type="text"
+                                        maxLength={6}
+                                        placeholder="000000"
+                                        value={referenceInputs[selectedOrder.id] || ''}
+                                        onChange={(e) => setReferenceInputs(prev => ({ ...prev, [selectedOrder.id]: e.target.value }))}
+                                        className="w-full bg-slate-50 border border-slate-200 px-4 py-3 rounded-2xl outline-none focus:border-primary font-bold text-slate-700 placeholder:text-slate-300"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">Comprobante de Pago</label>
+                                    <div className="relative group/upload">
+                                        <input
+                                            type="file"
+                                            accept="image/*"
+                                            onChange={(e) => {
+                                                const file = e.target.files?.[0];
+                                                if (file) setProofUploadFiles(prev => ({ ...prev, [selectedOrder.id]: file }));
+                                            }}
+                                            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+                                        />
+                                        <div className="w-full border-2 border-dashed border-slate-200 rounded-2xl p-4 flex items-center justify-center gap-2 bg-slate-50 group-hover/upload:bg-white group-hover/upload:border-primary/30 transition-all">
+                                            {proofUploadFiles[selectedOrder.id] ? (
+                                                <div className="flex items-center gap-2 text-primary font-bold text-xs truncate">
+                                                    <CheckCircle className="w-4 h-4" /> {proofUploadFiles[selectedOrder.id].name}
+                                                </div>
+                                            ) : (
+                                                <div className="flex items-center gap-2 text-slate-400 font-bold text-xs">
+                                                    <Plus className="w-4 h-4" /> Subir captura
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                </div>
+                            </motion.div>
+                        )}
                         
                         <button
                             onClick={handleCloseSale}
@@ -774,69 +927,315 @@ export default function CashierDashboard() {
                     </div>
                 </div>
             )}
-            {/* Modal de Cierre de Caja */}
-            {closeRegisterModalOpen && (
+            {/* Modal de Editar Orden */}
+            {editModalOpen && selectedOrderForEdit && (
                 <div className="fixed inset-0 z-[110] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm px-4">
-                    <div className="bg-white rounded-3xl p-6 w-full max-w-sm shadow-2xl animate-in zoom-in-95 duration-200 flex flex-col max-h-[90vh]">
+                    <div className="bg-white rounded-[2.5rem] p-8 w-full max-w-2xl shadow-2xl animate-in zoom-in-95 duration-200 flex flex-col max-h-[90vh]">
                         <div className="flex justify-between items-center mb-6 shrink-0">
                             <div>
-                                <h3 className="text-xl font-black text-slate-900">Reporte del Día</h3>
-                                <p className="text-xs font-bold text-slate-500">{new Date().toLocaleDateString()}</p>
+                                <h3 className="text-2xl font-black text-slate-900">Editar Detalle del Pedido</h3>
+                                <p className="text-sm font-bold text-slate-400 mt-1 uppercase tracking-widest">Orden #{selectedOrderForEdit.id.slice(-5).toUpperCase()}</p>
                             </div>
-                            <button onClick={() => setCloseRegisterModalOpen(false)} className="text-slate-400 hover:text-slate-600">
+                            <button onClick={() => setEditModalOpen(false)} className="h-12 w-12 rounded-2xl bg-slate-50 flex items-center justify-center text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-all">
                                 <X className="w-6 h-6" />
                             </button>
                         </div>
-                        
-                        <div className="overflow-y-auto flex-1 hide-scrollbar -mx-2 px-2">
-                        {isLoadingReport ? (
-                            <div className="py-20 flex justify-center">
-                                <Loader2 className="w-8 h-8 animate-spin text-primary" />
-                            </div>
-                        ) : registerReport ? (
-                            <div className="space-y-6 pb-4">
-                                <div className="bg-emerald-50 p-5 rounded-2xl border border-emerald-100 flex flex-col items-center justify-center text-center">
-                                    <span className="text-sm font-bold text-emerald-600 mb-1 uppercase tracking-widest">Total Ingresado</span>
-                                    <span className="text-4xl font-black text-emerald-700">${registerReport.totalGeneral.toFixed(2)}</span>
-                                </div>
 
-                                <div>
-                                    <h4 className="text-sm font-black text-slate-800 border-b border-slate-100 pb-2 mb-3">Por Método de Pago</h4>
-                                    <div className="space-y-3">
-                                        {Object.entries(registerReport.paymentMethods).map(([method, amount]) => (
-                                            <div key={method} className="flex justify-between items-center">
-                                                <span className="text-sm font-bold text-slate-600">{method}</span>
-                                                <span className="text-base font-black text-slate-900">${(amount as number).toFixed(2)}</span>
+                        <div className="overflow-y-auto flex-1 pr-2 -mr-2 space-y-6">
+                            {/* Lista de productos actuales */}
+                            <div className="space-y-3">
+                                <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-4">Productos en la Orden</h4>
+                                {editOrderItems.map((item, idx) => (
+                                    <div key={idx} className="bg-slate-50/50 border border-slate-100 p-4 rounded-3xl flex items-center justify-between group hover:bg-white hover:shadow-xl hover:shadow-slate-200/50 transition-all duration-300">
+                                        <div className="flex flex-col flex-1">
+                                            <div className="flex items-center gap-2">
+                                                <span className="text-sm font-black text-slate-900">{item.name}</span>
+                                                <span className="text-[10px] font-black text-primary px-2 py-0.5 bg-primary/10 rounded-full uppercase italic">x{item.quantity}</span>
                                             </div>
-                                        ))}
-                                        {Object.keys(registerReport.paymentMethods).length === 0 && (
-                                            <p className="text-xs text-slate-400 italic">No hay pagos registrados hoy.</p>
-                                        )}
+                                            <div className="flex flex-col gap-1 mt-1">
+                                                <input 
+                                                    type="text" 
+                                                    placeholder="Añadir comentario (opcional)..."
+                                                    value={item.note || ''}
+                                                    onChange={(e) => {
+                                                        const newItems = [...editOrderItems];
+                                                        newItems[idx].note = e.target.value;
+                                                        setEditOrderItems(newItems);
+                                                    }}
+                                                    className="text-xs text-slate-400 bg-transparent border-none focus:ring-0 p-0 placeholder:italic"
+                                                />
+                                            </div>
+                                        </div>
+                                        <div className="flex items-center gap-3">
+                                            <div className="flex bg-white rounded-2xl border border-slate-100 p-1 shadow-sm">
+                                                <button 
+                                                    onClick={() => {
+                                                        const newItems = [...editOrderItems];
+                                                        if (newItems[idx].quantity > 1) {
+                                                            newItems[idx].quantity -= 1;
+                                                            setEditOrderItems(newItems);
+                                                        }
+                                                    }}
+                                                    className="w-8 h-8 rounded-xl hover:bg-slate-50 flex items-center justify-center text-slate-400 hover:text-primary transition-colors"
+                                                >
+                                                    <Minus className="w-4 h-4" />
+                                                </button>
+                                                <div className="w-8 flex items-center justify-center text-sm font-black text-slate-900">
+                                                    {item.quantity}
+                                                </div>
+                                                <button 
+                                                    onClick={() => {
+                                                        const newItems = [...editOrderItems];
+                                                        newItems[idx].quantity += 1;
+                                                        setEditOrderItems(newItems);
+                                                    }}
+                                                    className="w-8 h-8 rounded-xl hover:bg-slate-50 flex items-center justify-center text-slate-400 hover:text-primary transition-colors"
+                                                >
+                                                    <Plus className="w-4 h-4" />
+                                                </button>
+                                            </div>
+                                            <button 
+                                                onClick={() => setEditOrderItems(prev => prev.filter((_, i) => i !== idx))}
+                                                className="w-10 h-10 rounded-2xl bg-red-50 text-red-500 hover:bg-red-500 hover:text-white flex items-center justify-center transition-all shadow-sm"
+                                            >
+                                                <Trash2 className="w-5 h-5" />
+                                            </button>
+                                        </div>
                                     </div>
-                                </div>
+                                ))}
+                            </div>
 
-                                <div>
-                                    <h4 className="text-sm font-black text-slate-800 border-b border-slate-100 pb-2 mb-3">Otros Conceptos</h4>
-                                    <div className="flex justify-between items-center">
-                                        <span className="text-sm font-bold text-slate-600">Propinas Recaudadas (Meseros)</span>
-                                        <span className="text-base font-black text-orange-600">${registerReport.propinasMeseros.toFixed(2)}</span>
+                            {/* Buscador y selector de productos */}
+                            <div className="bg-slate-900 rounded-[2rem] p-6 shadow-xl relative overflow-hidden">
+                                <div className="absolute top-0 right-0 w-32 h-32 bg-primary/10 rounded-full blur-3xl -mr-16 -mt-16" />
+                                <h4 className="text-xs font-black text-primary uppercase tracking-widest mb-4 flex items-center gap-2 relative z-10">
+                                    <Plus className="w-4 h-4" /> Agregar Producto
+                                </h4>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 relative z-10">
+                                    <div className="space-y-1.5">
+                                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Seleccionar Producto</label>
+                                        <select 
+                                            value={editAddProductId}
+                                            onChange={(e) => setEditAddProductId(e.target.value)}
+                                            className="w-full bg-slate-800 border-none text-white text-sm font-bold rounded-2xl px-4 py-4 outline-none focus:ring-2 ring-primary/50 transition-all appearance-none"
+                                        >
+                                            <option value="">Buscar en el menú...</option>
+                                            {posProducts.map(p => (
+                                                <option key={p.id} value={p.id}>{p.name} - ${p.price}</option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                    
+                                    <div className="space-y-1.5">
+                                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Variante / Precio</label>
+                                        <div className="flex gap-2">
+                                            <select 
+                                                value={editAddVariant}
+                                                onChange={(e) => setEditAddVariant(e.target.value)}
+                                                className="flex-1 bg-slate-800 border-none text-white text-sm font-bold rounded-2xl px-4 py-4 outline-none focus:ring-2 ring-primary/50 transition-all"
+                                            >
+                                                <option value="">Normal</option>
+                                                {posProducts.find(p => p.id === editAddProductId)?.variants?.map((v: any) => (
+                                                    <option key={v.name} value={v.name}>{v.name} (+${v.price})</option>
+                                                ))}
+                                            </select>
+                                            <button 
+                                                onClick={() => {
+                                                    const prod = posProducts.find(p => p.id === editAddProductId);
+                                                    if (!prod) return;
+                                                    
+                                                    const variantData = prod.variants?.find((v: any) => v.name === editAddVariant);
+                                                    const finalPrice = prod.price + (variantData?.price || 0);
+
+                                                    setEditOrderItems(prev => [...prev, {
+                                                        id: prod.id,
+                                                        name: editAddVariant ? `${prod.name} (${editAddVariant})` : prod.name,
+                                                        price: finalPrice,
+                                                        quantity: 1,
+                                                        category: prod.category || '',
+                                                        note: editAddNote
+                                                    }]);
+                                                    
+                                                    setEditAddProductId('');
+                                                    setEditAddVariant('');
+                                                    setEditAddNote('');
+                                                }}
+                                                className="px-6 bg-primary text-white font-black rounded-2xl hover:scale-105 active:scale-95 transition-all shadow-lg shadow-primary/20"
+                                            >
+                                                Añadir
+                                            </button>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
-                        ) : null}
                         </div>
 
-                        {!isLoadingReport && (
-                            <div className="pt-4 border-t border-slate-100 mt-2 shrink-0">
+                        <div className="pt-6 border-t border-slate-100 flex gap-4 mt-6">
+                            <button 
+                                onClick={() => setEditModalOpen(false)}
+                                className="flex-1 py-4 bg-slate-100 text-slate-600 font-black rounded-2xl hover:bg-slate-200 transition-all uppercase tracking-widest"
+                            >
+                                Cancelar
+                            </button>
+                            <button 
+                                onClick={async () => {
+                                    if (!selectedOrderForEdit) return;
+                                    setIsAccepting(true);
+                                    try {
+                                        const newSubtotal = editOrderItems.reduce((acc, i) => acc + (i.price * i.quantity), 0);
+                                        const newTotal = newSubtotal + (selectedOrderForEdit.deliveryFee || 0);
+                                        
+                                        await updateDoc(doc(db, 'orders', selectedOrderForEdit.id), {
+                                            items: editOrderItems,
+                                            subtotal: newSubtotal,
+                                            total: newTotal,
+                                            orderNote: editOrderNote
+                                        });
+                                        
+                                        setEditModalOpen(false);
+                                        toast.success("Orden actualizada");
+                                    } catch (err) {
+                                        console.error(err);
+                                        toast.error("Error al actualizar");
+                                    } finally {
+                                        setIsAccepting(false);
+                                    }
+                                }}
+                                disabled={isAccepting}
+                                className="flex-[2] py-4 bg-primary text-white font-black rounded-2xl shadow-xl shadow-primary/30 hover:shadow-primary/40 hover:-translate-y-0.5 active:translate-y-0 transition-all uppercase tracking-widest disabled:opacity-50"
+                            >
+                                {isAccepting ? <Loader2 className="w-5 h-5 animate-spin mx-auto" /> : "Guardar Cambios"}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Modal de Despacho (Radar Animation) */}
+            {dispatchModalOpen && selectedOrderForDispatch && (
+                <div className="fixed inset-0 z-[120] flex items-center justify-center bg-slate-900/40 backdrop-blur-md px-4">
+                    <div className="bg-white rounded-[2.5rem] p-8 w-full max-w-md shadow-2xl animate-in zoom-in-95 duration-300 relative overflow-hidden">
+                        <div className="absolute -top-24 -right-24 w-48 h-48 bg-primary/5 rounded-full blur-3xl pointer-events-none" />
+                        
+                        <div className="flex justify-between items-center mb-8 relative z-10">
+                            <div>
+                                <h3 className="text-2xl font-black text-slate-900">Despachar Pedido</h3>
+                                <p className="text-sm font-bold text-slate-400 mt-1 uppercase tracking-widest italic">#{selectedOrderForDispatch.id.slice(-5).toUpperCase()}</p>
+                            </div>
+                            <button 
+                                onClick={() => setDispatchModalOpen(false)}
+                                className="h-12 w-12 rounded-2xl bg-slate-50 flex items-center justify-center text-slate-400 hover:text-slate-600 transition-all shadow-inner"
+                            >
+                                <X className="w-6 h-6" />
+                            </button>
+                        </div>
+
+                        {dispatchType === 'platform' && isAccepting ? (
+                            <div className="flex flex-col items-center py-10 relative">
+                                {/* Radar Animation */}
+                                <div className="relative w-48 h-48 mb-8">
+                                    <div className="absolute inset-0 bg-primary/20 rounded-full animate-ping" />
+                                    <div className="absolute inset-4 bg-primary/30 rounded-full animate-ping delay-75" />
+                                    <div className="absolute inset-8 bg-primary/40 rounded-full animate-ping delay-150" />
+                                    <div className="absolute inset-0 flex items-center justify-center">
+                                        <div className="w-24 h-24 bg-primary rounded-full flex items-center justify-center shadow-xl shadow-primary/40 relative z-20">
+                                            <Bike className="w-12 h-12 text-white animate-bounce" />
+                                        </div>
+                                    </div>
+                                    {/* Rotating Scanner Line */}
+                                    <div className="absolute inset-0 rounded-full border border-primary/20 overflow-hidden">
+                                        <div className="absolute top-1/2 left-1/2 w-[200%] h-1 bg-gradient-to-r from-transparent via-primary/50 to-primary/80 origin-left -translate-y-1/2 animate-radar-scan" />
+                                    </div>
+                                </div>
+                                <h4 className="text-xl font-black text-slate-900 mb-2">Buscando Delivery</h4>
+                                <p className="text-sm font-bold text-slate-400 animate-pulse uppercase tracking-[0.2em]">Contactando repartidores cercanos...</p>
+                            </div>
+                        ) : (
+                            <div className="space-y-6 relative z-10">
+                                <div className="grid grid-cols-1 gap-4">
+                                    <button
+                                        onClick={() => setDispatchType('own')}
+                                        className={`group relative flex flex-col items-start p-6 rounded-3xl border-2 transition-all duration-500 overflow-hidden ${
+                                            dispatchType === 'own' 
+                                            ? 'border-primary bg-primary/5 shadow-xl shadow-primary/10' 
+                                            : 'border-slate-100 bg-slate-50/50 hover:bg-white hover:border-slate-300'
+                                        }`}
+                                    >
+                                        <div className={`h-12 w-12 rounded-2xl mb-4 flex items-center justify-center transition-all duration-500 ${
+                                            dispatchType === 'own' ? 'bg-primary text-white rotate-6' : 'bg-white text-slate-400 group-hover:bg-slate-100'
+                                        }`}>
+                                            <Truck className="w-6 h-6" />
+                                        </div>
+                                        <span className={`text-lg font-black block transition-colors ${dispatchType === 'own' ? 'text-slate-900' : 'text-slate-600'}`}>
+                                            Delivery Propio
+                                        </span>
+                                        <span className="text-xs font-bold text-slate-400">Entrega interna del local</span>
+                                    </button>
+
+                                    <button
+                                        onClick={() => setDispatchType('platform')}
+                                        className={`group relative flex flex-col items-start p-6 rounded-3xl border-2 transition-all duration-500 overflow-hidden ${
+                                            dispatchType === 'platform' 
+                                            ? 'border-primary bg-primary/5 shadow-xl shadow-primary/10' 
+                                            : 'border-slate-100 bg-slate-50/50 hover:bg-white hover:border-slate-300'
+                                        }`}
+                                    >
+                                        <div className={`h-12 w-12 rounded-2xl mb-4 flex items-center justify-center transition-all duration-500 ${
+                                            dispatchType === 'platform' ? 'bg-primary text-white rotate-6' : 'bg-white text-slate-400 group-hover:bg-slate-100'
+                                        }`}>
+                                            <Bike className="w-6 h-6" />
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                            <span className={`text-lg font-black block transition-colors ${dispatchType === 'platform' ? 'text-slate-900' : 'text-slate-600'}`}>
+                                                Multi-Delivery (2x3)
+                                            </span>
+                                            <span className="bg-emerald-100 text-emerald-600 text-[10px] font-bold px-2 py-0.5 rounded-lg uppercase tracking-wider">Recomendado</span>
+                                        </div>
+                                        <span className="text-xs font-bold text-slate-400">Usar red de motorizados de la App</span>
+                                    </button>
+                                </div>
+
                                 <button
-                                    onClick={() => {
-                                        // Later this can do more actions like sending email or locking session
-                                        alert("Cierre de caja guardado localmente (Simulado).");
-                                        setCloseRegisterModalOpen(false);
+                                    onClick={async () => {
+                                        if (dispatchType === 'own') {
+                                            setIsAccepting(true);
+                                            try {
+                                                await updateDoc(doc(db, 'orders', selectedOrderForDispatch.id), {
+                                                    status: 'delivering',
+                                                    dispatchedAt: serverTimestamp(),
+                                                    deliverySource: 'own'
+                                                });
+                                                toast.success("Pedido enviado con delivery propio");
+                                                setDispatchModalOpen(false);
+                                            } catch (err) {
+                                                toast.error("Error al despachar");
+                                            } finally {
+                                                setIsAccepting(false);
+                                            }
+                                        } else {
+                                            setIsAccepting(true);
+                                            // Show radar for 3 seconds then update
+                                            setTimeout(async () => {
+                                                try {
+                                                    await updateDoc(doc(db, 'orders', selectedOrderForDispatch.id), {
+                                                        status: 'buscando_piloto',
+                                                        deliveryRequestedAt: serverTimestamp(),
+                                                        deliverySource: 'platform'
+                                                    });
+                                                    toast.success("Señal enviada a los repartidores");
+                                                    setDispatchModalOpen(false);
+                                                } catch (err) {
+                                                    toast.error("Error al solicitar delivery");
+                                                } finally {
+                                                    setIsAccepting(false);
+                                                }
+                                            }, 3500);
+                                        }
                                     }}
-                                    className="w-full bg-slate-900 text-white py-4 rounded-2xl font-black shadow-xl hover:bg-black transition-colors"
+                                    disabled={isAccepting}
+                                    className="w-full bg-slate-900 text-white py-5 rounded-3xl font-black text-lg shadow-2xl hover:bg-black hover:scale-[1.01] active:scale-[0.99] transition-all disabled:opacity-50 flex items-center justify-center gap-3"
                                 >
-                                    Confirmar y Terminar Turno
+                                    {isAccepting ? <Loader2 className="w-6 h-6 animate-spin" /> : "Confirmar Despacho"}
                                 </button>
                             </div>
                         )}

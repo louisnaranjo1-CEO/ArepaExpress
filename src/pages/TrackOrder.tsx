@@ -56,6 +56,7 @@ export default function TrackOrder() {
     const getStepIndex = () => {
         switch (order.status) {
             case 'pending': return 1;
+            case 'pendiente_pago': return 1;
             case 'preparing': return 2;
             case 'finding_driver': return 2; // finding driver is while preparing
             case 'driver_assigned': return 2;
@@ -104,8 +105,8 @@ export default function TrackOrder() {
                     <div className="flex justify-between items-start mb-6">
                         <div>
                             <h2 className="text-2xl font-black text-slate-900 leading-tight">
-                                {currentStep === 1 && "Recibido, esperando negocio"}
-                                {currentStep === 2 && order.deliveryMethod === 'app_delivery' ? "Buscando al mejor piloto" : currentStep === 2 && "Preparando tu orden"}
+                                {currentStep === 1 && (order.status === 'pendiente_pago' ? "Esperando confirmación de pago" : "Recibido, esperando negocio")}
+                                {currentStep === 2 && order.deliveryMethod === 'app_delivery' ? "Buscando al mejor piloto" : currentStep === 2 && "Pago aceptado. Preparando tu orden"}
                                 {currentStep === 3 && "¡Tu pedido va en camino!"}
                                 {currentStep === 4 && "Pedido Entregado"}
                             </h2>
