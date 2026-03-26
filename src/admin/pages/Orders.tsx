@@ -66,6 +66,11 @@ export default function Orders() {
     const [editOrderItems, setEditOrderItems] = useState<OrderItem[]>([]);
     const [editOrderNote, setEditOrderNote] = useState('');
 
+    const [editAddProductId, setEditAddProductId] = useState('');
+    const [editAddVariant, setEditAddVariant] = useState('');
+    const [editAddQty, setEditAddQty] = useState(1);
+    const [editAddNote, setEditAddNote] = useState('');
+
     const [closeSaleModalOpen, setCloseSaleModalOpen] = useState(false);
     const [selectedOrderForClose, setSelectedOrderForClose] = useState<Order | null>(null);
     const [closeTip, setCloseTip] = useState(0);
@@ -433,6 +438,43 @@ export default function Orders() {
 
     const removeEditItem = (id: string) => {
         setEditOrderItems(prev => prev.filter(i => i.id !== id));
+    };
+
+    const updateEditItemNotes = (id: string, notes: string) => {
+        setEditOrderItems(prev => prev.map(i => i.id === id ? { ...i, notes } : i));
+    };
+
+    const handleAddEditItem = () => {
+        if (!editAddProductId) return;
+        const prod = posProducts.find(p => p.id === editAddProductId);
+        if (!prod) return;
+
+        let finalPrice = prod.promoPrice > 0 ? prod.promoPrice : prod.price;
+        let finalName = prod.name;
+        
+        if (editAddVariant) {
+            const variantEntry = prod.priceVariants?.find((v:any) => v.name === editAddVariant);
+            if (variantEntry) {
+                finalPrice = variantEntry.price;
+                finalName = `${prod.name} - ${editAddVariant}`;
+            }
+        }
+
+        const newItem = {
+            id: prod.id + '-' + Date.now(),
+            name: finalName,
+            price: finalPrice,
+            quantity: editAddQty,
+            notes: editAddNote
+        };
+
+        setEditOrderItems(prev => [...prev, newItem]);
+        
+        // Reset fields
+        setEditAddProductId('');
+        setEditAddVariant('');
+        setEditAddQty(1);
+        setEditAddNote('');
     };
 
     const updateStatus = async (orderId: string, newStatus: string, paymentStatus?: string) => {
@@ -1003,25 +1045,93 @@ export default function Orders() {
                         
                         <div className="flex-1 overflow-y-auto pr-2 space-y-4">
                             {editOrderItems.map(item => (
-                                <div key={item.id} className="flex items-center justify-between bg-slate-50 p-3 rounded-2xl border border-slate-100">
-                                    <div className="flex-1">
-                                        <p className="font-bold text-slate-800">{item.name}</p>
-                                        <p className="text-xs text-primary font-bold">${item.price.toFixed(2)}</p>
+                                <div key={item.id} className="flex flex-col bg-slate-50 p-3 rounded-2xl border border-slate-100 mb-3">
+                                    <div className="flex items-center justify-between">
+                                        <div className="flex-1">
+                                            <p className="font-bold text-slate-800">{item.name}</p>
+                                            <p className="text-xs text-primary font-bold">${item.price.toFixed(2)}</p>
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                            <button onClick={() => updateEditItemQty(item.id, -1)} className="p-2 bg-white rounded-xl shadow-sm text-slate-500 hover:text-slate-700">
+                                                <Minus className="w-4 h-4" />
+                                            </button>
+                                            <span className="w-6 text-center font-black">{item.quantity}</span>
+                                            <button onClick={() => updateEditItemQty(item.id, 1)} className="p-2 bg-white rounded-xl shadow-sm text-slate-500 hover:text-slate-700">
+                                                <Plus className="w-4 h-4" />
+                                            </button>
+                                            <button onClick={() => removeEditItem(item.id)} className="p-2 bg-red-50 text-red-500 rounded-xl hover:bg-red-100 ml-2">
+                                                <Trash2 className="w-4 h-4" />
+                                            </button>
+                                        </div>
                                     </div>
-                                    <div className="flex items-center gap-2">
-                                        <button onClick={() => updateEditItemQty(item.id, -1)} className="p-2 bg-white rounded-xl shadow-sm text-slate-500 hover:text-slate-700">
-                                            <Minus className="w-4 h-4" />
-                                        </button>
-                                        <span className="w-6 text-center font-black">{item.quantity}</span>
-                                        <button onClick={() => updateEditItemQty(item.id, 1)} className="p-2 bg-white rounded-xl shadow-sm text-slate-500 hover:text-slate-700">
-                                            <Plus className="w-4 h-4" />
-                                        </button>
-                                        <button onClick={() => removeEditItem(item.id)} className="p-2 bg-red-50 text-red-500 rounded-xl hover:bg-red-100 ml-2">
-                                            <Trash2 className="w-4 h-4" />
-                                        </button>
-                                    </div>
+                                    <input 
+                                        type="text"
+                                        placeholder="Comentario sobre el producto (opcional)"
+                                        value={(item as any).notes || ''}
+                                        onChange={(e) => updateEditItemNotes(item.id, e.target.value)}
+                                        className="w-full bg-white border border-slate-200 mt-2 p-2 rounded-xl text-xs outline-none focus:border-primary text-slate-700"
+                                    />
                                 </div>
                             ))}
+
+                            <div className="bg-slate-100 rounded-2xl p-4 mt-6 border border-slate-200 shadow-inner">
+                                <h4 className="text-xs font-black uppercase tracking-widest text-slate-500 mb-3 block">Agregar Producto</h4>
+                                <div className="space-y-3">
+                                    <select 
+                                        value={editAddProductId}
+                                        onChange={(e) => { 
+                                            setEditAddProductId(e.target.value); 
+                                            setEditAddVariant(''); 
+                                        }}
+                                        className="w-full p-3 rounded-xl bg-white border border-slate-200 outline-none text-sm font-bold text-slate-700 focus:border-primary"
+                                    >
+                                        <option value="">Selecciona un producto...</option>
+                                        {posProducts.map(p => (
+                                            <option key={p.id} value={p.id}>{p.name}</option>
+                                        ))}
+                                    </select>
+                                    
+                                    {editAddProductId && posProducts.find(p => p.id === editAddProductId)?.hasVariants && (posProducts.find(p => p.id === editAddProductId)?.priceVariants?.length > 0) && (
+                                        <select 
+                                            value={editAddVariant}
+                                            onChange={(e) => setEditAddVariant(e.target.value)}
+                                            className="w-full p-3 rounded-xl bg-white border border-slate-200 outline-none text-sm font-bold text-slate-700 focus:border-primary"
+                                        >
+                                            <option value="">Variante / Tamaño...</option>
+                                            {posProducts.find(p => p.id === editAddProductId)?.priceVariants?.map((v:any, idx:number) => (
+                                                <option key={idx} value={v.name}>{v.name} - ${v.price.toFixed(2)}</option>
+                                            ))}
+                                        </select>
+                                    )}
+
+                                    {editAddProductId && (
+                                        <div className="flex gap-2">
+                                            <input 
+                                                type="number"
+                                                min="1"
+                                                value={editAddQty}
+                                                onChange={(e) => setEditAddQty(parseInt(e.target.value) || 1)}
+                                                className="w-20 p-3 rounded-xl bg-white border border-slate-200 outline-none text-center font-bold focus:border-primary"
+                                            />
+                                            <input 
+                                                type="text"
+                                                placeholder="Comentario adicional (opcional)"
+                                                value={editAddNote}
+                                                onChange={(e) => setEditAddNote(e.target.value)}
+                                                className="flex-1 p-3 rounded-xl bg-white border border-slate-200 outline-none text-sm font-medium focus:border-primary"
+                                            />
+                                            <button 
+                                                onClick={handleAddEditItem}
+                                                disabled={posProducts.find(p => p.id === editAddProductId)?.hasVariants && !editAddVariant}
+                                                className="bg-primary text-white p-3 rounded-xl font-bold shadow-md hover:scale-105 transition-all disabled:opacity-50"
+                                            >
+                                                <Plus className="w-5 h-5 mx-auto" />
+                                            </button>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+
 
                             <div className="mt-4">
                                 <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">Notas del Pedido</label>

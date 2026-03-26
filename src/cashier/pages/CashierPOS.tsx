@@ -5,7 +5,7 @@ import { db } from '../../lib/firebase';
 import { ArrowLeft, Plus, Minus, Trash2, ShoppingBag, CheckCircle, Loader2, Star, Clock, Store, Truck, X, Tag, MessageSquare, MapPin, Instagram, Youtube, Music2, ExternalLink, Search, LayoutGrid, List } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import ReviewsModal from '../components/ReviewsModal';
-import { printToUsbDevice, formatTicket, downloadTicketImage } from '../../lib/usb-printer';
+import { printToUsbDevice, formatTicket, downloadTicketImage, downloadTicketText, formatTicketText } from '../../lib/usb-printer';
 import AddressPicker from '../../components/AddressPicker';
 import toast from 'react-hot-toast';
 
@@ -355,7 +355,7 @@ export default function CashierPOS() {
                     let success = false;
                     
                     const triggerDownload = () => {
-                        downloadTicketImage(printData);
+                        downloadTicketText(printData);
                         return true;
                     };
 
@@ -383,10 +383,13 @@ export default function CashierPOS() {
                 }
             }
 
-            const updatedItems = cartItems.map(item => ({
-                ...item,
-                printed: true
-            }));
+            const updatedItems = cartItems.map(item => {
+                const cleanedItem: any = { ...item, printed: true };
+                Object.keys(cleanedItem).forEach(key => {
+                    if (cleanedItem[key] === undefined) delete cleanedItem[key];
+                });
+                return cleanedItem;
+            });
             
             await updateDoc(doc(db, 'orders', activeOrder.id), {
                 items: updatedItems
@@ -980,8 +983,25 @@ export default function CashierPOS() {
                         >
                             <div className="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-primary via-amber-500 to-primary"></div>
                             
-                            <h3 className="text-3xl font-black text-slate-900 mb-2 uppercase tracking-tight">Impresión de Comanda</h3>
-                            <p className="text-sm text-slate-400 font-bold mb-6">Artículos nuevos detectados para enviar a cocina/barra</p>
+                            <h3 className="text-2xl font-black text-slate-900 mb-2 uppercase tracking-tight">Impresión de Comandas</h3>
+                            <p className="text-sm text-slate-400 font-bold mb-4">Revisa y selecciona el método de impresión</p>
+
+                            {/* Ticket Preview Component added here inline to show the general invoice structure */}
+                            <div className="mb-4">
+                                <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-2 block mb-2">Vista Previa General (Impresión Final)</span>
+                                <div className="bg-slate-50 border border-slate-200 p-4 rounded-xl text-xs font-mono whitespace-pre-wrap max-h-[160px] overflow-y-auto text-slate-600 shadow-inner">
+                                    {formatTicketText({
+                                        id: activeOrder?.id || 'TEST',
+                                        stationName: 'TICKET GENERAL',
+                                        userName: activeOrder?.userName || 'Cliente',
+                                        userPhone: activeOrder?.userPhone,
+                                        tableNumber: activeOrder?.table,
+                                        orderNote: '(Notas generales del pedido)',
+                                        items: cartItems, // Use all cart items for general preview
+                                        createdAt: new Date()
+                                    })}
+                                </div>
+                            </div>
 
                             <div className="mb-6 bg-slate-50 p-4 rounded-[2rem] border border-slate-100">
                                 <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest pl-2 mb-3">Destino de Impresión</label>
@@ -992,7 +1012,7 @@ export default function CashierPOS() {
                                     style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%239ca3af'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E")`, backgroundPosition: `right 1.25rem center`, backgroundRepeat: `no-repeat`, backgroundSize: `1.2em 1.2em` }}
                                 >
                                     <option value="auto">🌟 Auto-asignar (Según Categoría)</option>
-                                    <option value="virtual">💻 Bypass / Descargar Imagen (Sin Impresora)</option>
+                                    <option value="virtual">💻 Bypass / Descargar Texto (.txt) (Sin Impresora)</option>
                                     {stations.map(st => (
                                         <option key={st.id} value={st.id}>🖨️ {st.name}</option>
                                     ))}

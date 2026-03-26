@@ -224,6 +224,19 @@ export const formatTicketText = (order: PrintOrder): string => {
     return result;
 };
 
+export const downloadTicketText = (order: PrintOrder) => {
+    const textData = formatTicketText(order);
+    const blob = new Blob([textData], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `Comanda-${order.stationName.replace(/\s+/g, '')}-${order.id.slice(-4).toUpperCase()}.txt`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+};
+
 export const downloadTicketImage = (order: PrintOrder) => {
     const canvas = document.createElement('canvas');
     const ctx = canvas.getContext('2d');

@@ -86,12 +86,19 @@ export default function CashierDashboard() {
 
         const unsubscribe2 = onSnapshot(q2, (snapshot) => {
             const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Order));
-            // Filter manually those that need payment and are NOT sold, PLUS the ones in preparing status for delivery
-            const relevantOrders = data.filter(o => 
-                ((o.paymentStatus === 'pending' || !o.paymentStatus) && o.status !== 'rejected' && o.paymentStatus !== 'sold') ||
-                (o.status === 'preparing' && o.source !== 'waiter')
-            );
-            setOrders(relevantOrders); // Overwrites the first query but gets all matching manually
+            const relevantOrders = data.filter(o => {
+                if (o.status === 'rejected') return false;
+                if (o.paymentStatus === 'sold') return false;
+                
+                // Pedidos de mesero (ya sea en consumo -preparing- o listo para cobrar -delivered-)
+                if (o.source === 'waiter') return true;
+
+                // Pedidos de App / Delivery (para verificacion o en cocina)
+                if (o.source !== 'waiter' && (o.status === 'pendiente_pago' || o.status === 'preparing' || o.status === 'pending')) return true;
+
+                return false;
+            });
+            setOrders(relevantOrders);
         });
 
         return () => {
