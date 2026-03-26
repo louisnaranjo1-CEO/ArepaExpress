@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Search, Filter, Clock, MapPin, ChevronRight, Package, Truck, CheckCircle, Loader2, Bell, ExternalLink, X, ShoppingCart, Plus, Minus, Trash2, User, CreditCard, Store, ShoppingBag, Users, Upload, Image as ImageIcon, DollarSign } from 'lucide-react';
+import { Search, Filter, Clock, MapPin, ChevronRight, Package, Truck, CheckCircle, Loader2, Bell, ExternalLink, X, ShoppingCart, Plus, Minus, Trash2, User, CreditCard, Store, ShoppingBag, Users, Upload, Image as ImageIcon, DollarSign, Edit } from 'lucide-react';
 import { db } from '../../lib/firebase';
 import { collection, query, where, onSnapshot, orderBy, doc, updateDoc, getDocs, increment, addDoc, serverTimestamp, getDoc } from 'firebase/firestore';
 import { useAuth } from '../../context/AuthContext';
@@ -748,8 +748,8 @@ export default function Orders() {
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-6 animate-in fade-in slide-in-from-bottom-4">
                 {tables.map((table) => {
                     const activeOrder = orders.find(o => 
-                        (o as any).tableId === table.id && 
-                        ['occupied', 'calling', 'preparing', 'delivered'].includes(o.status) &&
+                        ((o as any).tableId === table.id || (o as any).tableNumber === table.number || (o as any).table === table.number) && 
+                        ['occupied', 'calling', 'preparing', 'delivering', 'delivered'].includes(o.status) &&
                         o.paymentStatus !== 'sold'
                     );
                     
@@ -1151,87 +1151,161 @@ export default function Orders() {
             {/* Table Assignment Modal */}
             {showTableModal && selectedTable && (
                 <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/40 backdrop-blur-sm px-4">
-                    <div className="bg-white rounded-[40px] p-8 w-full max-w-md shadow-2xl animate-in zoom-in-95 duration-200">
-                        <div className="flex justify-between items-center mb-8">
-                            <div>
-                                <h3 className="text-2xl font-black text-slate-900">Mesa #{selectedTable.number}</h3>
-                                <p className="text-slate-500 font-bold uppercase tracking-widest text-[10px]">Gestión de Servicio</p>
-                            </div>
-                            <button onClick={() => setShowTableModal(false)} className="bg-slate-50 p-2 rounded-2xl text-slate-400 hover:text-slate-600 transition-colors">
-                                <X className="w-6 h-6" />
-                            </button>
-                        </div>
+                    <div className="bg-white rounded-[40px] p-8 w-full max-w-lg shadow-2xl animate-in zoom-in-95 duration-200 flex flex-col max-h-[90vh]">
+                        {(() => {
+                            const activeOrder = orders.find(o => 
+                                ((o as any).tableId === selectedTable.id || (o as any).tableNumber === selectedTable.number || o.table === selectedTable.number) && 
+                                ['occupied', 'calling', 'preparing', 'delivering', 'delivered'].includes(o.status) &&
+                                o.paymentStatus !== 'sold'
+                            );
 
-                        <div className="space-y-6">
-                            {/* Waiter Selection */}
-                            <div className="space-y-3">
-                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1 px-1">Asignar Mesero</label>
-                                <div className="grid grid-cols-1 gap-2 max-h-[200px] overflow-y-auto pr-2 custom-scrollbar">
-                                    <button
-                                        onClick={() => handleAssignWaiter(selectedTable.id, null)}
-                                        className={`flex items-center justify-between p-4 rounded-2xl font-bold transition-all border-2 ${
-                                            !selectedTable.waiterId ? 'border-primary bg-primary/5 text-primary' : 'border-slate-100 text-slate-500 hover:border-slate-200'
-                                        }`}
-                                    >
-                                        <div className="flex items-center gap-3">
-                                            <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center">
-                                                <X className="w-4 h-4" />
-                                            </div>
-                                            <span>Sin Mesero (Libre)</span>
-                                        </div>
-                                    </button>
-                                    
-                                    {waiters.map((waiter) => (
-                                        <button
-                                            key={waiter.id}
-                                            onClick={() => handleAssignWaiter(selectedTable.id, waiter)}
-                                            className={`flex items-center justify-between p-4 rounded-2xl font-bold transition-all border-2 ${
-                                                selectedTable.waiterId === waiter.id ? 'border-primary bg-primary/5 text-primary' : 'border-slate-100 text-slate-500 hover:border-slate-200'
-                                            }`}
-                                        >
+                            return (
+                                <>
+                                    <div className="flex justify-between items-start mb-6 shrink-0">
+                                        <div>
                                             <div className="flex items-center gap-3">
-                                                <div className="w-8 h-8 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600">
-                                                    <User className="w-4 h-4" />
-                                                </div>
-                                                <span>{waiter.name}</span>
+                                                <h3 className="text-2xl font-black text-slate-900">Mesa #{selectedTable.number}</h3>
+                                                {activeOrder && (
+                                                    <span className="px-3 py-1 bg-indigo-100 text-indigo-600 rounded-full text-[10px] font-black uppercase tracking-widest">
+                                                        Ocupada
+                                                    </span>
+                                                )}
                                             </div>
-                                            {selectedTable.waiterId === waiter.id && <CheckCircle className="w-5 h-5" />}
+                                            <p className="text-slate-500 font-bold uppercase tracking-widest text-[10px] mt-1">Gestión de Servicio</p>
+                                        </div>
+                                        <button onClick={() => setShowTableModal(false)} className="bg-slate-50 p-2 rounded-2xl text-slate-400 hover:text-slate-600 transition-colors">
+                                            <X className="w-6 h-6" />
                                         </button>
-                                    ))}
-                                </div>
-                            </div>
+                                    </div>
 
-                            {/* Direct Action for Admin */}
-                            <div className="pt-4 border-t border-slate-100">
-                                <button
-                                    onClick={() => {
-                                        // Set current table as selected for POS
-                                        setSelectedTable(selectedTable);
-                                        // Filter orders for this table to see if we should open POS or something else
-                                        const activeOrder = orders.find(o => (o as any).tableId === selectedTable.id && ['occupied', 'calling', 'preparing'].includes(o.status));
-                                        
-                                        if (activeOrder) {
-                                            // Maybe redirect to edit order or just show it
-                                            alert("Esta mesa ya tiene un pedido activo.");
-                                        } else {
-                                            // Open POS for this table
-                                            setPosOrderType('local');
-                                            setShowPOS(true);
-                                            setShowTableModal(false);
-                                        }
-                                    }}
-                                    className="w-full bg-primary text-white py-4 rounded-2xl font-black shadow-lg shadow-primary/20 hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-2"
-                                >
-                                    <ShoppingCart className="w-5 h-5" /> Abrir Nuevo Pedido en esta Mesa
-                                </button>
-                                <button
-                                    onClick={() => handleAssignWaiter(selectedTable.id, { id: user.uid, name: 'Administrador' })}
-                                    className="w-full mt-3 bg-slate-100 text-slate-600 py-4 rounded-2xl font-black hover:bg-slate-200 transition-all flex items-center justify-center gap-2"
-                                >
-                                    Tomar Pedido Yo Mismo
-                                </button>
-                            </div>
-                        </div>
+                                    <div className="space-y-6 overflow-y-auto pr-2 custom-scrollbar flex-1">
+                                        {activeOrder ? (
+                                            <div className="space-y-4">
+                                                {/* Waiter Info */}
+                                                <div className="flex items-center gap-3 p-4 bg-indigo-50 border border-indigo-100 rounded-3xl">
+                                                    <div className="w-10 h-10 rounded-2xl bg-indigo-500 flex items-center justify-center text-white shadow-lg shadow-indigo-500/20">
+                                                        <User className="w-5 h-5" />
+                                                    </div>
+                                                    <div>
+                                                        <p className="text-[10px] font-black text-indigo-400 uppercase tracking-widest">Mesero Responsable</p>
+                                                        <p className="font-black text-indigo-900">{activeOrder.waiterName || 'Sin asignar'}</p>
+                                                    </div>
+                                                </div>
+
+                                                {/* Consumption details */}
+                                                <div className="space-y-3">
+                                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block px-1">Consumo Actual</label>
+                                                    <div className="bg-slate-50 rounded-[32px] p-6 border border-slate-100">
+                                                        <div className="space-y-3 max-h-[300px] overflow-y-auto mb-4 pr-2">
+                                                            {activeOrder.items?.map((item: any, idx: number) => (
+                                                                <div key={idx} className="flex justify-between items-center text-sm">
+                                                                    <div className="flex items-center gap-2">
+                                                                        <span className="font-black text-primary">x{item.quantity}</span>
+                                                                        <span className="font-bold text-slate-700">{item.name}</span>
+                                                                    </div>
+                                                                    <span className="font-black text-slate-900">${(item.price * item.quantity).toFixed(2)}</span>
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                        <div className="pt-4 border-t border-slate-200 flex justify-between items-center">
+                                                            <span className="text-sm font-black text-slate-500 uppercase">Total Acumulado</span>
+                                                            <span className="text-2xl font-black text-primary">${(activeOrder.total || 0).toFixed(2)}</span>
+                                                        </div>
+                                                    </div>
+                                                </div>
+
+                                                <div className="grid grid-cols-2 gap-3 pt-2">
+                                                    <button
+                                                        onClick={() => {
+                                                            setSelectedOrderForEdit(activeOrder);
+                                                            setEditModalOpen(true);
+                                                            setShowTableModal(false);
+                                                        }}
+                                                        className="flex items-center justify-center gap-2 p-4 bg-white border-2 border-slate-100 text-slate-600 rounded-2xl font-black hover:border-primary hover:text-primary transition-all text-sm"
+                                                    >
+                                                        <Edit className="w-4 h-4" /> Editar Orden
+                                                    </button>
+                                                    <button
+                                                        onClick={() => {
+                                                            setSelectedOrderForClose(activeOrder);
+                                                            setCloseSaleModalOpen(true);
+                                                            setShowTableModal(false);
+                                                        }}
+                                                        className="flex items-center justify-center gap-2 p-4 bg-emerald-500 text-white rounded-2xl font-black shadow-lg shadow-emerald-500/20 hover:scale-[1.02] transition-all text-sm"
+                                                    >
+                                                        <DollarSign className="w-4 h-4" /> Cobrar Mesa
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        ) : (
+                                            /* No active order - Show Waiter Selection for New Order */
+                                            <div className="space-y-6">
+                                                {/* Waiter Selection */}
+                                                <div className="space-y-3">
+                                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1 px-1">Asignar Mesero</label>
+                                                    <div className="grid grid-cols-1 gap-2 max-h-[200px] overflow-y-auto pr-2 custom-scrollbar">
+                                                        <button
+                                                            onClick={() => handleAssignWaiter(selectedTable.id, null)}
+                                                            className={`flex items-center justify-between p-4 rounded-2xl font-bold transition-all border-2 ${
+                                                                !selectedTable.waiterId ? 'border-primary bg-primary/5 text-primary' : 'border-slate-100 text-slate-500 hover:border-slate-200'
+                                                            }`}
+                                                        >
+                                                            <div className="flex items-center gap-3">
+                                                                <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center">
+                                                                    <X className="w-4 h-4" />
+                                                                </div>
+                                                                <span>Sin Mesero (Libre)</span>
+                                                            </div>
+                                                        </button>
+                                                        
+                                                        {waiters.map((waiter) => (
+                                                            <button
+                                                                key={waiter.id}
+                                                                onClick={() => handleAssignWaiter(selectedTable.id, waiter)}
+                                                                className={`flex items-center justify-between p-4 rounded-2xl font-bold transition-all border-2 ${
+                                                                    selectedTable.waiterId === waiter.id ? 'border-primary bg-primary/5 text-primary' : 'border-slate-100 text-slate-500 hover:border-slate-200'
+                                                                }`}
+                                                            >
+                                                                <div className="flex items-center gap-3">
+                                                                    <div className="w-8 h-8 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600">
+                                                                        <User className="w-4 h-4" />
+                                                                    </div>
+                                                                    <span>{waiter.name}</span>
+                                                                </div>
+                                                                {selectedTable.waiterId === waiter.id && <CheckCircle className="w-5 h-5" />}
+                                                            </button>
+                                                        ))}
+                                                    </div>
+                                                </div>
+
+                                                {/* Direct Action for Admin */}
+                                                <div className="pt-4 border-t border-slate-100">
+                                                    <button
+                                                        onClick={() => {
+                                                            // Set current table as selected for POS
+                                                            setSelectedTable(selectedTable);
+                                                            // Open POS for this table
+                                                            setPosOrderType('local');
+                                                            setShowPOS(true);
+                                                            setShowTableModal(false);
+                                                        }}
+                                                        className="w-full bg-primary text-white py-4 rounded-2xl font-black shadow-lg shadow-primary/20 hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-2"
+                                                    >
+                                                        <ShoppingCart className="w-5 h-5" /> Abrir Nuevo Pedido en esta Mesa
+                                                    </button>
+                                                    <button
+                                                        onClick={() => handleAssignWaiter(selectedTable.id, { id: user.uid, name: 'Administrador' })}
+                                                        className="w-full mt-3 bg-slate-100 text-slate-600 py-4 rounded-2xl font-black hover:bg-slate-200 transition-all flex items-center justify-center gap-2"
+                                                    >
+                                                        Tomar Pedido Yo Mismo
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+                                </>
+                            );
+                        })()}
                     </div>
                 </div>
             )}

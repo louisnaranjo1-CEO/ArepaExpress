@@ -215,9 +215,9 @@ export default function WaiterDashboard() {
     const tablesWithStatus = tables.map(table => {
         // Find active orders for this table
         const tableOrders = orders.filter(o =>
-            o.table === table.number &&
-            !(o.status === 'delivered' && o.paymentStatus === 'sold') &&
-            o.status !== 'rejected'
+            ((o as any).tableId === table.id || (o as any).tableNumber === table.number || o.table === table.number) &&
+            ['occupied', 'calling', 'preparing', 'delivering', 'delivered'].includes(o.status) &&
+            o.paymentStatus !== 'sold'
         );
 
         let derivedStatus = table.status || 'available';

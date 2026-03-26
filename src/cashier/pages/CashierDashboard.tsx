@@ -554,8 +554,9 @@ ESTADO: ${order.status.toUpperCase()}
     const renderTablesView = () => {
         const tablesWithStatus = tables.map(table => {
             const tableOrders = orders.filter(o => 
-                (o.table === table.number || o.table === table.id) && 
-                !['delivered', 'rejected'].includes(o.status)
+                ((o as any).tableId === table.id || (o as any).tableNumber === table.number || (o.table === table.number || o.table === table.id)) && 
+                ['occupied', 'calling', 'preparing', 'delivering', 'delivered'].includes(o.status) &&
+                o.paymentStatus !== 'sold'
             );
 
             let status = 'free';
@@ -1395,42 +1396,71 @@ ESTADO: ${order.status.toUpperCase()}
                             </button>
                         </div>
 
-                        <div className="space-y-6 relative z-10">
+                        <div className="space-y-6 relative z-10 overflow-y-auto pr-2 custom-scrollbar flex-1">
                             {selectedTable.derivedStatus !== 'free' ? (
-                                <div className="bg-indigo-100/50 border border-indigo-100 rounded-[2rem] p-6 space-y-4">
-                                    <div className="flex items-center justify-between">
-                                        <div className="flex items-center gap-3">
-                                            <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center shadow-sm">
-                                                <User className="w-5 h-5 text-indigo-500" />
-                                            </div>
-                                            <div>
-                                                <p className="text-[10px] font-black text-indigo-300 uppercase tracking-widest">Atendido por</p>
-                                                <p className="font-black text-indigo-900">{selectedTable.activeOrder?.waiterName || 'Sin asignar'}</p>
-                                            </div>
+                                <div className="space-y-4">
+                                    {/* Waiter Info */}
+                                    <div className="flex items-center gap-3 p-4 bg-indigo-50 border border-indigo-100 rounded-3xl">
+                                        <div className="w-10 h-10 rounded-2xl bg-indigo-500 flex items-center justify-center text-white shadow-lg shadow-indigo-500/20">
+                                            <User className="w-5 h-5" />
                                         </div>
-                                        <div className="px-3 py-1 bg-white rounded-full text-[10px] font-black text-indigo-600 uppercase tracking-widest shadow-sm">
-                                            Activa
+                                        <div>
+                                            <p className="text-[10px] font-black text-indigo-400 uppercase tracking-widest">Mesero Responsable</p>
+                                            <p className="font-black text-indigo-900">{selectedTable.activeOrder?.waiterName || 'Sin asignar'}</p>
                                         </div>
                                     </div>
-                                    
-                                    <div className="grid grid-cols-1 gap-3">
+
+                                    {/* Consumption Details */}
+                                    <div className="space-y-3">
+                                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block px-1">Consumo Actual</label>
+                                        <div className="bg-slate-50 rounded-[32px] p-6 border border-slate-100">
+                                            <div className="space-y-3 max-h-[300px] overflow-y-auto mb-4 pr-2 custom-scrollbar">
+                                                {selectedTable.activeOrder?.items?.map((item: any, idx: number) => (
+                                                    <div key={idx} className="flex justify-between items-center text-sm">
+                                                        <div className="flex items-center gap-2">
+                                                            <span className="font-black text-primary">x{item.quantity}</span>
+                                                            <span className="font-bold text-slate-700">{item.name}</span>
+                                                        </div>
+                                                        <span className="font-black text-slate-900">${(item.price * item.quantity).toFixed(2)}</span>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                            <div className="pt-4 border-t border-slate-200 flex justify-between items-center">
+                                                <span className="text-sm font-black text-slate-500 uppercase">Total Acumulado</span>
+                                                <span className="text-2xl font-black text-primary">${(selectedTable.activeOrder?.total || 0).toFixed(2)}</span>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div className="grid grid-cols-2 gap-3 pt-2">
                                         <button
                                             onClick={() => {
-                                                setSearchTerm(`Mesa ${selectedTable.number}`);
-                                                setActiveTab('pending');
+                                                setSelectedOrderForEdit(selectedTable.activeOrder);
+                                                setEditModalOpen(true);
                                                 setShowTableModal(false);
                                             }}
-                                            className="w-full bg-indigo-600 text-white py-4 rounded-2xl font-black shadow-lg shadow-indigo-200 flex items-center justify-center gap-2 hover:bg-indigo-700 transition-all"
+                                            className="flex items-center justify-center gap-2 p-4 bg-white border-2 border-slate-100 text-slate-600 rounded-2xl font-black hover:border-primary hover:text-primary transition-all text-sm"
                                         >
-                                            <Search className="w-5 h-5" /> Ver Pedido Detallado
+                                            <Edit className="w-4 h-4" /> Editar Orden
                                         </button>
                                         <button
-                                            onClick={() => handleAssignWaiter(null)}
-                                            className="w-full bg-white text-indigo-600 border-2 border-indigo-100 py-4 rounded-2xl font-black flex items-center justify-center gap-2 hover:bg-indigo-50 transition-all"
+                                            onClick={() => {
+                                                setSelectedOrder(selectedTable.activeOrder);
+                                                setCloseSaleModalOpen(true);
+                                                setShowTableModal(false);
+                                            }}
+                                            className="flex items-center justify-center gap-2 p-4 bg-emerald-500 text-white rounded-2xl font-black shadow-lg shadow-emerald-500/20 hover:scale-[1.02] transition-all text-sm"
                                         >
-                                            <Plus className="w-5 h-5" /> Reasignar/Atender Yo
+                                            <DollarSign className="w-4 h-4" /> Cobrar Mesa
                                         </button>
                                     </div>
+                                    
+                                    <button
+                                        onClick={() => handleAssignWaiter(null)}
+                                        className="w-full bg-slate-100 text-slate-500 py-4 rounded-2xl font-black flex items-center justify-center gap-2 hover:bg-slate-200 transition-all text-xs"
+                                    >
+                                        <Plus className="w-4 h-4" /> Reasignar / Cambiar Mesero
+                                    </button>
                                 </div>
                             ) : (
                                 <div className="space-y-4">

@@ -183,6 +183,20 @@ export default function Cart() {
         return i;
       });
 
+      let tableId = null;
+      if (isWaiter && tableNumber) {
+        try {
+          const tablesRef = collection(db, 'restaurants', restaurantId, 'tables');
+          const q = query(tablesRef, where('number', '==', tableNumber));
+          const qSnap = await getDocs(q);
+          if (!qSnap.empty) {
+            tableId = qSnap.docs[0].id;
+          }
+        } catch (err) {
+          console.error("Error fetching tableId:", err);
+        }
+      }
+
       const orderData = {
         userId: isWaiter ? (waiterData.id || 'waiter') : (user?.uid || 'guest_' + Date.now()),
         userName: isWaiter ? (customerName || `Cliente Mesa ${tableNumber || 'N/A'}`) : (user?.displayName || guestName || 'Cliente Invitado'),
@@ -195,6 +209,8 @@ export default function Cart() {
         waiterId: isWaiter ? (waiterData.id || null) : null,
         waiterName: isWaiter ? (waiterData.name || null) : null,
         table: isWaiter ? (tableNumber || null) : null,
+        tableId: isWaiter ? (tableId || null) : null,
+        tableNumber: isWaiter ? (tableNumber || null) : null,
         items: sanitizedItems,
         subtotal: cartSubtotalUSD || 0, 
         deliveryFee: deliveryFee || 0, 
