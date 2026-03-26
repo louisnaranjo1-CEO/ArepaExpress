@@ -244,9 +244,17 @@ export default function CashierPOS() {
 
         setIsSubmitting(true);
         try {
-            const orderItems = cartItems.map(item => ({...item}));
+            const orderItems = cartItems.map(item => {
+                const cleanedItem: any = { ...item };
+                Object.keys(cleanedItem).forEach(key => {
+                    if (cleanedItem[key] === undefined) {
+                        delete cleanedItem[key];
+                    }
+                });
+                return cleanedItem;
+            });
             
-            const commonData = {
+            const commonData: any = {
                 items: orderItems,
                 subtotal: subtotal,
                 total: total,
@@ -258,6 +266,12 @@ export default function CashierPOS() {
                 cashierName: cashierData.name || 'Cajera POS',
                 cashierId: cashierData.id || 'local'
             };
+
+            if (isDelivery) {
+                commonData.isDelivery = true;
+                commonData.deliveryAddress = deliveryAddress || '';
+                commonData.deliveryFee = restaurant?.deliveryFee || 0;
+            }
 
             let finalOrderId = activeOrder?.id || orderId;
 
