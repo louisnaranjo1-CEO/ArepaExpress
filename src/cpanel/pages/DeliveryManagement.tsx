@@ -36,7 +36,7 @@ export default function DeliveryManagement() {
         },
         deliveryRadius: 15,
         whatsappMessageTemplate: `👋 ¡Hola *{RestaurantName}*!
-Soy *{UserName}* y vengo desde la app con DeliExpress 🚀. Mi identificación es *{Cedula}* y requiero el siguiente pedido:
+Soy *{UserName}* y vengo desde la app con Un 2x3 🚀. Mi identificación es *{Cedula}* y requiero el siguiente pedido:
 
 🛒 *Detalles del Pedido:*
 {OrderItems}
@@ -51,7 +51,7 @@ Soy *{UserName}* y vengo desde la app con DeliExpress 🚀. Mi identificación e
 
 {OrderNotes}
 
-_Enviado desde DeliExpress App_`
+_Enviado desde Un 2x3 App_`
     });
     const [activeShift, setActiveShift] = useState<'day' | 'night'>('day');
     const [savingSettings, setSavingSettings] = useState(false);

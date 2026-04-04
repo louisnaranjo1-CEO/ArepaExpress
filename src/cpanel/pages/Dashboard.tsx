@@ -131,7 +131,7 @@ export default function Dashboard() {
         <div className="space-y-8 pb-10">
             <div>
                 <h1 className="text-3xl font-black text-slate-900 leading-tight">Control Principal</h1>
-                <p className="text-slate-500 font-medium mt-1">Monitorea el rendimiento de DeliExpress en tiempo real.</p>
+                <p className="text-slate-500 font-medium mt-1">Monitorea el rendimiento de Un 2x3 en tiempo real.</p>
             </div>
 
             {/* Main Stats */}

@@ -379,7 +379,7 @@ export default function WaiterDashboard() {
                                     <div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center shadow-sm p-2">
                                         <img src="https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/otro.png?alt=media" alt="Logo" className="w-full h-full object-contain" />
                                     </div>
-                                    <span className="font-black text-slate-800 text-xl">DeliExpress</span>
+                                    <span className="font-black text-slate-800 text-xl">Un 2x3</span>
                                 </div>
                                 <button onClick={() => setShowSidebar(false)} className="p-2 rounded-xl bg-slate-50 text-slate-400">
                                     <X className="w-6 h-6" />

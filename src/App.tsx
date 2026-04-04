@@ -4,6 +4,7 @@ import CpanelApp from './cpanel/CpanelApp';
 import WaiterApp from './waiter/WaiterApp';
 import DeliveryApp from './delivery/DeliveryApp';
 import CashierApp from './cashier/CashierApp';
+import { OfflineIndicator } from './components/OfflineIndicator';
 
 function App() {
   const isDevAdminPath = window.location.pathname.startsWith('/admin');
@@ -13,27 +14,36 @@ function App() {
   const isDeliveryPath = window.location.pathname.startsWith('/delivery') || window.location.hostname.startsWith('delivery.');
   const isCashierSubdomain = window.location.hostname.startsWith('caja.') || window.location.pathname.startsWith('/caja');
 
-  if (isDeliveryPath) {
-    return <DeliveryApp />;
-  }
+  const renderApp = () => {
+    if (isDeliveryPath) {
+      return <DeliveryApp />;
+    }
 
-  if (isCpanelSubdomain) {
-    return <CpanelApp />;
-  }
+    if (isCpanelSubdomain) {
+      return <CpanelApp />;
+    }
 
-  if (isWaiterSubdomain) {
-    return <WaiterApp />;
-  }
+    if (isWaiterSubdomain) {
+      return <WaiterApp />;
+    }
 
-  if (isCashierSubdomain) {
-    return <CashierApp />;
-  }
+    if (isCashierSubdomain) {
+      return <CashierApp />;
+    }
 
-  if (isDevAdminPath || isAdminSubdomain) {
-    return <AdminApp />;
-  }
+    if (isDevAdminPath || isAdminSubdomain) {
+      return <AdminApp />;
+    }
 
-  return <ClientApp />;
+    return <ClientApp />;
+  };
+
+  return (
+    <>
+      {renderApp()}
+      <OfflineIndicator />
+    </>
+  );
 }
 
 export default App;

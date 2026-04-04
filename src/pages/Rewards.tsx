@@ -20,7 +20,7 @@ export default function Rewards() {
     const userPoints = userData?.points || 0;
     const referralCode = userData?.referralCode || user?.uid?.substring(0, 6).toUpperCase() || 'INVITADELI';
     const [shareConfig, setShareConfig] = useState({
-        message: '¡Usa DeliExpress y obtén recompensas!',
+        message: '¡Usa Un 2x3 y obtén recompensas!',
         url: window.location.origin
     });
 
@@ -85,7 +85,7 @@ export default function Rewards() {
             try {
                 const finalUrl = `${shareConfig.url.replace(/\/$/, '')}/auth?ref=${referralCode}`;
                 await navigator.share({
-                    title: '¡Acompáñame en DeliExpress!',
+                    title: '¡Acompáñame en Un 2x3!',
                     text: `${shareConfig.message}\nMi código es: ${referralCode}`,
                     url: finalUrl
                 });

@@ -73,7 +73,7 @@ export default function ComandaPreview({ order, restaurantName, onClose, onPrint
                     {/* Visual Receipt Element to be captured */}
                     <div ref={comandaRef} className="bg-white p-6 shadow-sm border border-slate-200 w-full font-mono text-sm leading-tight text-black relative">
                         <div className="text-center mb-6">
-                            <h2 className="text-xl font-black uppercase mb-1">{restaurantName || 'DELIEXPRESS'}</h2>
+                            <h2 className="text-xl font-black uppercase mb-1">{restaurantName || 'UN 2X3'}</h2>
                             <p className="text-xs">Comanda General del Pedido</p>
                             <p className="text-xs mt-2 border-b border-dashed border-gray-300 pb-2">Fecha: {dateStr}</p>
                         </div>

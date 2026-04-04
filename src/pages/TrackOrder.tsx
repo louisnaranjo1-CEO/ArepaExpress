@@ -149,7 +149,7 @@ export default function TrackOrder() {
                         </div>
                         <span className="text-[10px] font-black uppercase tracking-[0.2em] text-emerald-400">Track en Vivo</span>
                     </div>
-                    <span className="text-[10px] font-black text-white/40 uppercase tracking-widest">{restaurant?.name || "DeliExpress"}</span>
+                    <span className="text-[10px] font-black text-white/40 uppercase tracking-widest">{restaurant?.name || "Un 2x3"}</span>
                 </div>
             </div>
 

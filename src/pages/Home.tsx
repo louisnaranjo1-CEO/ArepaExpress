@@ -368,7 +368,7 @@ export default function Home() {
             >
               <img
                 src="https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/otro.png?alt=media"
-                alt="DeliExpress Logo"
+                alt="Un 2x3 Logo"
                 className="h-14 w-auto object-contain filter drop-shadow-sm"
               />
             </div>
@@ -420,7 +420,7 @@ export default function Home() {
               <Search className="w-5 h-5 text-slate-400 group-hover:text-primary transition-colors" />
             </div>
             <div className="flex w-full p-4 pl-12 pr-12 text-sm text-slate-500 border border-slate-200 rounded-xl bg-slate-50 shadow-sm cursor-text hover:border-primary/30 transition-colors">
-              Epale! que vamos a pedir en Deliexpress?
+              Epale! que vamos a pedir en Un 2x3?
             </div>
           </Link>
           <div className="absolute inset-y-0 right-0 flex items-center pr-3">
@@ -468,7 +468,7 @@ export default function Home() {
                 <div className="w-28 h-28 bg-white rounded-full p-2.5 shadow-xl shadow-primary/20 border border-primary/10 flex items-center justify-center relative z-10 animate-pulse">
                   <img
                     src="https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/otro.png?alt=media"
-                    alt="Deliexpress Logo"
+                    alt="Un 2x3 Logo"
                     className="w-full h-full object-contain drop-shadow-[0_0_15px_rgba(255,102,0,0.5)]"
                   />
                 </div>
@@ -477,7 +477,7 @@ export default function Home() {
 
               <div className="space-y-6 text-sm">
                 <p className="text-slate-600 font-medium leading-relaxed">
-                  <span className="font-bold text-slate-900">Deliexpress no es solo una aplicación;</span> es el ecosistema digital más robusto de Venezuela diseñado para conectar a usuarios, comercios y trabajadores independientes en una sola interfaz.
+                  <span className="font-bold text-slate-900">Un 2x3 no es solo una aplicación;</span> es el ecosistema digital más robusto de Venezuela diseñado para conectar a usuarios, comercios y trabajadores independientes en una sola interfaz.
                 </p>
                 <p className="text-slate-600 font-medium leading-relaxed">
                   Nuestra misión es eliminar las fricciones del día a día: adiós a las colas, adiós a la incertidumbre de precios y hola a la inmediatez.

@@ -65,11 +65,11 @@ export default function AdminAuth() {
                     >
                         <img 
                             src="https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/otro.png?alt=media" 
-                            alt="DeliExpress Logo" 
+                            alt="Un 2x3 Logo" 
                             className="h-full object-contain"
                         />
                     </div>
-                    <h1 className="text-4xl font-black text-slate-900 tracking-tight">DeliExpress <span className="text-primary">Admin</span></h1>
+                    <h1 className="text-4xl font-black text-slate-900 tracking-tight">Un 2x3 <span className="text-primary">Admin</span></h1>
                     <p className="text-slate-500 mt-2 font-medium">
                         {isLogin ? 'Ingresa para gestionar tu restaurante' : 'Registra tu negocio y empieza a vender'}
                     </p>
@@ -205,7 +205,7 @@ export default function AdminAuth() {
                 </div>
 
                 <p className="text-center text-slate-400 text-xs mt-8 font-medium uppercase tracking-widest leading-relaxed">
-                    Al continuar, aceptas los términos de servicio<br />y políticas de privacidad de DeliExpress.
+                    Al continuar, aceptas los términos de servicio<br />y políticas de privacidad de Un 2x3.
                 </p>
             </div>
         </div>

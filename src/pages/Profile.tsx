@@ -294,15 +294,15 @@ export default function Profile() {
 
     const FAQ_DATA = [
         {
-            q: "¿Qué es DeliExpress?",
+            q: "¿Qué es Un 2x3?",
             a: "Es la aplicación móvil todo-en-uno que conecta a nivel nacional a restaurantes, supermercados, bodegas y emprendimientos con los usuarios. Es una plataforma diseñada para facilitar compras sin colas, ofrecer servicios de delivery y transporte, y potenciar el crecimiento tecnológico de los negocios locales."
         },
         {
-            q: "¿Qué productos o servicios puedo encontrar en DeliExpress?",
+            q: "¿Qué productos o servicios puedo encontrar en Un 2x3?",
             a: "¡Prácticamente todo! Puedes explorar catálogos de comida, artículos de primera necesidad y servicios profesionales. Además, contamos con una red integrada de Delivery y Taxi siempre disponible para llevarte lo que necesites o trasladarte a donde desees."
         },
         {
-            q: "¿Cómo puedo ser aliado a DeliExpress?",
+            q: "¿Cómo puedo ser aliado a Un 2x3?",
             a: "Es muy sencillo transformar tu negocio. Solo debes ingresar a la aplicación y enviar tu solicitud formal a través de la sección \"Ser Aliado\". Al unirte, recibirás acceso a nuestro panel administrativo, sistema de comandas y herramientas de publicidad interna."
         }
     ];
@@ -560,7 +560,7 @@ export default function Profile() {
                 >
                     <img 
                         src="https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/otro.png?alt=media" 
-                        alt="DeliExpress Logo"
+                        alt="Un 2x3 Logo"
                         className="w-auto h-full object-contain filter drop-shadow-xl"
                     />
                 </div>
@@ -658,7 +658,7 @@ export default function Profile() {
 
                     <div className="flex items-center gap-4 my-2 pt-2">
                         <div className="h-px bg-slate-100 flex-1"></div>
-                        <span className="text-[10px] font-black text-slate-300 uppercase tracking-widest">Emprende y se un freelancer en DeliExpress</span>
+                        <span className="text-[10px] font-black text-slate-300 uppercase tracking-widest">Emprende y se un freelancer en Un 2x3</span>
                         <div className="h-px bg-slate-100 flex-1"></div>
                     </div>
                     <button
@@ -679,7 +679,7 @@ export default function Profile() {
                         className="w-full bg-green-500/10 text-green-600 py-4 rounded-2xl font-bold hover:bg-green-500/20 transition-colors flex items-center justify-center gap-2"
                     >
                         <Store className="w-5 h-5 opacity-50" />
-                        Conviértete en aliado y deja que te encuentren en DeliExpress
+                        Conviértete en aliado y deja que te encuentren en Un 2x3
                     </button>
                 </div>
 
@@ -699,7 +699,7 @@ export default function Profile() {
                                             {isLoginMode ? "Iniciar Sesión" : "Crear Cuenta"}
                                         </h3>
                                         <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-0.5">
-                                            DeliExpress Lover 🚀
+                                            Un 2x3 Lover 🚀
                                         </p>
                                     </div>
                                     <button onClick={() => setShowEmailModal(false)} className="p-2 hover:bg-slate-200 rounded-xl transition-all">
@@ -802,7 +802,7 @@ export default function Profile() {
                                     ¡Gana 200 puntos! 🎉
                                 </h3>
                                 <p className="text-slate-500 text-sm text-center mb-6 font-medium">
-                                    ¿Alguien te invitó a DeliExpress? Ingresa su código ahora y ambos recibirán puntos gratis.
+                                    ¿Alguien te invitó a Un 2x3? Ingresa su código ahora y ambos recibirán puntos gratis.
                                 </p>
 
                                 <div className="space-y-4">
@@ -934,7 +934,7 @@ export default function Profile() {
                             )}
                         </div>
                         <div className="flex-1">
-                            <h2 className="text-2xl font-black">{user.displayName || 'DeliExpress Fan'}</h2>
+                            <h2 className="text-2xl font-black">{user.displayName || 'Un 2x3 Fan'}</h2>
                             <div className="flex flex-col gap-1">
                                 <div className="flex items-center gap-1 text-white/80 text-xs">
                                     <Mail className="w-3 h-3" />
@@ -1279,7 +1279,7 @@ export default function Profile() {
                     className="mt-8 text-center p-6 grayscale opacity-50 cursor-pointer active:scale-95 transition-transform"
                     onClick={() => window.location.href = 'https://deliexpress.app'}
                 >
-                    <img src="https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/otro.png?alt=media" alt="DeliExpress" className="h-12 mx-auto mb-2" />
+                    <img src="https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/otro.png?alt=media" alt="Un 2x3" className="h-12 mx-auto mb-2" />
                     <p className="text-[10px] uppercase tracking-widest font-bold text-slate-400">Hecho con ❤️ en Venezuela</p>
                 </div>
             </div>
@@ -1655,7 +1655,7 @@ export default function Profile() {
                             <div className="p-8 border-b border-slate-50 flex items-center justify-between bg-slate-50/50">
                                 <div>
                                     <h3 className="text-xl font-black text-slate-900 flex items-center gap-2">
-                                        <Wallet className="w-6 h-6 text-primary" /> Mi Billetera DeliExpress
+                                        <Wallet className="w-6 h-6 text-primary" /> Mi Billetera Un 2x3
                                     </h3>
                                     <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1">Fondos para Transporte</p>
                                 </div>
@@ -1682,7 +1682,7 @@ export default function Profile() {
                                             >
                                                 <img
                                                     src="https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/otro.png?alt=media"
-                                                    alt="DeliExpress"
+                                                    alt="Un 2x3"
                                                     className="w-full h-full object-contain brightness-0 invert"
                                                 />
                                             </div>
@@ -1692,7 +1692,7 @@ export default function Profile() {
                                         <div>
                                             <p className="text-white/40 text-[9px] font-black uppercase tracking-widest mb-1 italic">Titular de la tarjeta</p>
                                             <p className="text-white text-lg font-black tracking-wider uppercase drop-shadow-md truncate max-w-full">
-                                                {userData?.displayName || user?.displayName || 'Usuario DeliExpress'}
+                                                {userData?.displayName || user?.displayName || 'Usuario Un 2x3'}
                                             </p>
 
                                             <div className="mt-4 flex justify-between items-end">

@@ -84,7 +84,7 @@ export default function CpanelLayout({ children, onLogout }: CpanelLayoutProps) 
                             <div className="w-14 h-14 flex items-center justify-center p-1 overflow-visible">
                                 <img
                                     src="https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/otro.png?alt=media"
-                                    alt="DeliExpress Logo"
+                                    alt="Un 2x3 Logo"
                                     className="w-full h-full object-contain filter drop-shadow-sm"
                                 />
                             </div>

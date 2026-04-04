@@ -208,7 +208,7 @@ export default function Cart({ hideHeader = false }: CartProps) {
         userPhone: isWaiter ? '' : (userData?.phone || guestPhone || ''),
         userEmail: isWaiter ? (waiterData.email || 'N/A') : (user?.email || 'N/A'),
         restaurantId,
-        restaurantName: rData?.name || 'DeliExpress Restaurant',
+        restaurantName: rData?.name || 'Un 2x3 Restaurant',
         restaurantCity: rData?.location?.city || '',
         source: isWaiter ? 'waiter' : 'client',
         waiterId: isWaiter ? (waiterData.id || null) : null,

@@ -869,7 +869,7 @@ export default function Orders() {
                             </span>
                         )}
                     </div>
-                    <h3 className="text-xl font-black text-slate-900">{order.userName || 'Usuario de DeliExpress'}</h3>
+                    <h3 className="text-xl font-black text-slate-900">{order.userName || 'Usuario de Un 2x3'}</h3>
                     <p className="text-sm text-slate-400 font-bold flex items-center gap-1 mt-1">
                         <Clock className="w-4 h-4" />
                         {order.createdAt?.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
@@ -1994,7 +1994,7 @@ export default function Orders() {
             {selectedOrderForComanda && (
                 <ComandaPreview
                     order={selectedOrderForComanda}
-                    restaurantName={restaurantConfig?.name || 'Deliexpress'}
+                    restaurantName={restaurantConfig?.name || 'Un 2x3'}
                     onClose={() => setSelectedOrderForComanda(null)}
                     onPrint={async (orderToPrint) => {
                         await handlePrintOrder(orderToPrint.id, orderToPrint as Order);

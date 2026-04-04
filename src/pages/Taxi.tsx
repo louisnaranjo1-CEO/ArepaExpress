@@ -509,7 +509,7 @@ export default function Taxi() {
         if (selectedPaymentMethod === 'wallet') {
             const currentBalance = userData?.walletBalance || 0;
             if (currentBalance < parseFloat(clientTotal as string)) {
-                toast.error("Saldo insuficiente en tu Billetera DeliExpress. Por favor recarga o selecciona otro método.");
+                toast.error("Saldo insuficiente en tu Billetera Un 2x3. Por favor recarga o selecciona otro método.");
                 return;
             }
         } else if (selectedPaymentMethod !== 'cash' && selectedPaymentMethod !== 'wallet' && !paymentProof && !paymentRef) {
@@ -650,7 +650,7 @@ export default function Taxi() {
                     <div className="relative z-10 animate-scale-in cursor-pointer active:scale-95 transition-transform" onClick={() => window.location.href = 'https://deliexpress.app'}>
                         <img
                             src="https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/otro.png?alt=media"
-                            alt="DeliExpress Logo"
+                            alt="Un 2x3 Logo"
                             className="w-56 h-auto object-contain filter drop-shadow-2xl"
                         />
                     </div>
@@ -670,7 +670,7 @@ export default function Taxi() {
                         <div className="w-2.5 h-2.5 bg-primary rounded-full animate-bounce [animation-delay:-0.15s]"></div>
                         <div className="w-2.5 h-2.5 bg-primary rounded-full animate-bounce"></div>
                     </div>
-                    <span className="text-[10px] font-black uppercase text-slate-400 tracking-[0.2em]">Taxi DeliExpress</span>
+                    <span className="text-[10px] font-black uppercase text-slate-400 tracking-[0.2em]">Taxi Un 2x3</span>
                 </div>
             </div>
         );
@@ -1069,7 +1069,7 @@ export default function Taxi() {
                                 <div className="flex justify-center p-4"><div className="w-6 h-6 border-2 border-orange-500 border-t-transparent rounded-full animate-spin"></div></div>
                             ) : (
                                 <div className="space-y-4 mb-6">
-                                    {/* Billetera DeliExpress */}
+                                    {/* Billetera Un 2x3 */}
                                     <div className={`border-2 rounded-2xl overflow-hidden transition-all ${selectedPaymentMethod === 'wallet' ? 'border-primary bg-primary/5' : 'border-slate-100'}`}>
                                         <button
                                             onClick={() => setSelectedPaymentMethod('wallet')}
@@ -1082,7 +1082,7 @@ export default function Taxi() {
                                                 <div className="flex flex-col items-start gap-1">
                                                     <span className="font-bold text-slate-700 flex items-center gap-2">
                                                         <Wallet className="w-4 h-4 text-primary" />
-                                                        Mi Billetera DeliExpress
+                                                        Mi Billetera Un 2x3
                                                     </span>
                                                     <span className="text-[10px] bg-emerald-100 text-emerald-700 font-bold px-2 py-0.5 rounded-full">
                                                         Saldo: ${(userData?.walletBalance || 0).toFixed(2)}

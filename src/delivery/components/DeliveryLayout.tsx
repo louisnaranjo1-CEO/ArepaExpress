@@ -75,10 +75,10 @@ export default function DeliveryLayout({ children }: DeliveryLayoutProps) {
                 <div className="flex items-center gap-2">
                     <img
                         src="https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/otro.png?alt=media"
-                        alt="DeliExpress"
+                        alt="Un 2x3"
                         className="w-8 h-8 rounded-full bg-white p-1"
                     />
-                    <h1 className="font-black text-lg tracking-tight">DeliExpress Delivery</h1>
+                    <h1 className="font-black text-lg tracking-tight">Un 2x3 Delivery</h1>
                 </div>
 
                 <div className="relative">

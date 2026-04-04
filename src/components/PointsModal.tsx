@@ -119,7 +119,7 @@ export default function PointsModal({ isOpen, onClose }: PointsModalProps) {
                             </div>
                             <div>
                                 <h3 className="text-xl font-black text-slate-900 leading-tight">Centro de Recompensas</h3>
-                                <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-0.5">DeliExpress Rewards</p>
+                                <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-0.5">Un 2x3 Rewards</p>
                             </div>
                         </div>
                         <button onClick={onClose} className="p-2 hover:bg-slate-200 rounded-xl transition-all">
