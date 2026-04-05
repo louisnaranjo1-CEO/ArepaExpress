@@ -199,7 +199,7 @@ export default function Home() {
             );
           }
           let cityMatchScore = 0;
-          if (manualCity && rest.location?.city === manualCity) {
+          if (manualCity && rest.location?.city?.toLowerCase().trim() === manualCity.toLowerCase().trim()) {
             cityMatchScore = -10000;
           }
           return {
@@ -212,7 +212,8 @@ export default function Home() {
 
         // Strict location filtering (omit any business not in the city)
         if (manualCity) {
-            fetchedRestaurants = fetchedRestaurants.filter(rest => rest.location?.city === manualCity);
+            const mCity = manualCity.toLowerCase().trim();
+            fetchedRestaurants = fetchedRestaurants.filter(rest => rest.location?.city?.toLowerCase().trim() === mCity);
         }
         setRestaurants(fetchedRestaurants);
         const cityResIds = new Set(fetchedRestaurants.map(r => r.id));
@@ -649,159 +650,144 @@ export default function Home() {
 
       {/* Main Content: Destacados / Recommendations */}
       <main className="flex-1 px-5 pt-6 pb-24">
-        {(userData || auth.currentUser) ? (
-            /* Logged in UI */
-            <div className="flex flex-col gap-6">
-                <div className="flex items-center justify-between">
-                    <h2 className="text-slate-900 text-xl font-bold">Destacados</h2>
-                    <Link to="/search" className="text-slate-900 text-sm font-semibold hover:underline">Ver todos</Link>
-                </div>
-                <div className="">
-                    {recentlyViewed.length > 0 ? (
-                        <ProductGrid title="Visto recientemente" products={recentlyViewed} />
-                    ) : randomProducts.length > 0 ? (
-                        <ProductGrid title="Descubre algo nuevo" products={randomProducts} />
-                    ) : (
-                        <div className="text-center py-12 text-slate-500">
-                            No hay productos disponibles en tu zona.
-                        </div>
-                    )}
-                </div>
+        {/* Unified UI for both Guests and Logged In Users */}
+        <div className="flex flex-col gap-6">
+            <div className="flex items-center justify-between">
+                <h2 className="text-slate-900 text-xl font-bold">Destacados</h2>
+                <Link to="/search" className="text-slate-900 text-sm font-semibold hover:underline">Ver todos</Link>
             </div>
-        ) : (
-            /* Not Logged In UI */
-            <div className="flex flex-col gap-6">
-                <div className="flex items-center justify-between">
-                    <h2 className="text-slate-900 text-xl font-bold">Destacados</h2>
-                    <Link to="/search" className="text-slate-900 text-sm font-semibold hover:underline">Ver todos</Link>
-                </div>
-                
-                {randomProducts.length > 0 && (
-                    <div className="">
-                        <ProductGrid title="Productos Destacados" products={randomProducts} />
-                    </div>
-                )}
-
-                <h2 className="text-slate-900 text-lg font-bold">Comercios en tu zona</h2>
-                <div className="flex flex-col gap-6">
-                {loading ? (
-                    // Loading Skeleton
-                    Array.from({ length: 3 }).map((_, i) => (
-                    <div key={i} className="flex flex-col gap-3 animate-pulse">
-                        <div className="w-full aspect-[16/10] bg-slate-200 rounded-xl"></div>
-                        <div className="space-y-2 px-1">
-                        <div className="h-5 bg-slate-200 rounded w-3/4"></div>
-                        <div className="h-4 bg-slate-200 rounded w-1/2"></div>
-                        </div>
-                    </div>
-                    ))
-                ) : restaurants.length > 0 ? (
-                    restaurants.map((restaurant) => {
-                    const coverImg = (restaurant as any).coverUrl || restaurant.image;
-                    const logoImg = (restaurant as any).logoUrl || restaurant.image;
-
-                    return (
-                        <Link key={restaurant.id} to={`/restaurant/${restaurant.id}`} onClick={() => vibrate(30)} className="group relative flex flex-col gap-3">
-                        <div className="relative w-full aspect-[16/10] overflow-hidden rounded-xl shadow-sm bg-slate-100">
-                            <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent z-10"></div>
-                            <div className="absolute top-3 left-3 z-20 bg-white/90 backdrop-blur-sm px-2.5 py-1 rounded-full flex items-center gap-1 shadow-sm">
-                            <Star className="w-4 h-4 text-highlight fill-highlight" />
-                            <span className="text-xs font-bold text-slate-900">{restaurant.rating}</span>
-                            <span className="text-[10px] text-slate-500">({restaurant.reviews}+)</span>
-                            </div>
-                            <div className="absolute top-3 right-3 z-20 bg-white p-1.5 rounded-full shadow-sm cursor-pointer hover:scale-110 transition-transform">
-                            <Heart className={`w-5 h-5 transition-colors ${false ? 'text-accent fill-accent' : 'text-slate-400 hover:text-accent hover:fill-accent'}`} />
-                            </div>
-
-                            {restaurant.hasCashea && (
-                            <div className="absolute top-3 right-12 z-20 w-10 h-10 bg-yellow-400 backdrop-blur rounded-xl p-1.5 shadow-xl border border-white/20 flex items-center justify-center animate-in zoom-in duration-500 hover:scale-110 transition-transform">
-                                <img
-                                src={casheaIcon || "https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/logo%20cashea.png?alt=media&token=5b266100-3323-41bb-a5a4-23957ce678a1"}
-                                alt="Cashea"
-                                className="w-full h-full object-contain"
-                                />
-                            </div>
-                            )}
-
-                            {(restaurant as any).activeRaffle?.isActive && (
-                            <div className={`absolute top-3 z-20 w-10 h-10 bg-orange-500 backdrop-blur rounded-xl p-1.5 shadow-xl border border-white/20 flex items-center justify-center animate-bounce duration-1000 hover:scale-110 transition-transform ${restaurant.hasCashea ? 'right-[5.5rem]' : 'right-12'}`}>
-                                <Gift className="w-5 h-5 text-white" />
-                            </div>
-                            )}
-
-                            {coverImg ? (
-                            <div
-                                className="w-full h-full bg-cover bg-center group-hover:scale-105 transition-transform duration-500 ease-out"
-                                style={{ backgroundImage: `url('${coverImg}?q=80&w=800&auto=format&fit=crop')` }}
-                            ></div>
-                            ) : (
-                            <div className="w-full h-full flex flex-col items-center justify-center bg-slate-50 text-slate-300">
-                                <Store className="w-12 h-12 mb-2 opacity-50" />
-                                <span className="text-[10px] font-bold uppercase tracking-widest opacity-50">{restaurant.name}</span>
-                            </div>
-                            )}
-
-                            <div className="absolute bottom-3 left-3 z-20 flex flex-wrap gap-2">
-                            {restaurant.featured && (
-                                <span className="bg-primary text-slate-900 text-[10px] font-bold px-2 py-1 rounded-lg">Destacado</span>
-                            )}
-                            <span className="bg-white/90 backdrop-blur-md text-slate-900 text-[10px] font-bold px-2 py-1 rounded-lg flex items-center gap-1">
-                                <Clock className="w-3.5 h-3.5" /> {restaurant.deliveryTime}
-                            </span>
-                            {(restaurant as any).deliveryRates?.find((r: any) => r.price === 0) && (
-                                <span className="bg-emerald-500 text-white text-[10px] font-bold px-2 py-1 rounded-lg flex items-center gap-1 shadow-lg shadow-emerald-500/20">
-                                <Truck className="w-3.5 h-3.5" /> Gratis
-                                </span>
-                            )}
-                            </div>
-                        </div>
-                        <div className="px-1 flex items-center gap-3">
-                            <div className="w-10 h-10 rounded-full border-2 border-white shadow-sm overflow-hidden shrink-0 bg-slate-50 flex items-center justify-center">
-                            {logoImg ? (
-                                <img src={logoImg} alt="" className="w-full h-full object-cover" />
-                            ) : (
-                                <Store className="w-5 h-5 text-slate-300" />
-                            )}
-                            </div>
-                            <div>
-                            <h3 className="text-lg font-bold text-slate-900 leading-tight">{restaurant.name}</h3>
-                            <div className="flex items-center gap-2 text-[11px] text-slate-500 font-medium">
-                                {restaurant.category}
-                                <span className="w-1 h-1 rounded-full bg-slate-300"></span>
-                                <span>$$</span>
-                                <span className="w-1 h-1 rounded-full bg-slate-300"></span>
-                                <span>{restaurant.distance}</span>
-                            </div>
-                            </div>
-                        </div>
-                        </Link>
-                    );
-                    })
-
-                ) : !manualCity ? (
-                    <div className="flex flex-col items-center justify-center py-20 px-6 text-center animate-in fade-in slide-in-from-bottom-4 relative">
-                    <div className="absolute -top-12 2xl:-top-16 opacity-70 flex flex-col items-center animate-bounce">
-                        <span className="text-slate-900 font-black uppercase text-[10px] tracking-widest mb-1 text-center bg-white px-3 py-1 rounded-full shadow-sm border border-orange-100">¡Presiona Aquí Arriba!</span>
-                        <ArrowUp className="w-8 h-8 text-slate-900" strokeWidth={3} />
-                    </div>
-                    
-                    <div className="w-24 h-24 bg-orange-100 rounded-[2.5rem] flex items-center justify-center mb-6 shadow-md border-4 border-white rotate-3">
-                        <MapPin className="w-12 h-12 text-slate-900" />
-                    </div>
-                    
-                    <h3 className="text-2xl font-black text-slate-800 mb-3">¡Épale! 👋</h3>
-                    <p className="text-slate-500 font-bold max-w-[280px] leading-relaxed">
-                        Selecciona arriba tu <span className="text-slate-900 font-black">Estado y Ciudad</span> en la que vives para presentarte lugares increíbles.
-                    </p>
-                    </div>
+            
+            <div className="">
+                {recentlyViewed.length > 0 ? (
+                    <ProductGrid title="Visto recientemente" products={recentlyViewed} />
+                ) : randomProducts.length > 0 ? (
+                    <ProductGrid title="Descubre algo nuevo" products={randomProducts} />
                 ) : (
                     <div className="text-center py-12 text-slate-500">
-                    No hay restaurantes disponibles en este momento.
+                        No hay productos disponibles en tu zona.
                     </div>
                 )}
-                </div>
             </div>
-        )}
+
+            <h2 className="text-slate-900 text-lg font-bold">Comercios en tu zona</h2>
+            <div className="flex flex-col gap-6">
+            {loading ? (
+                // Loading Skeleton
+                Array.from({ length: 3 }).map((_, i) => (
+                <div key={i} className="flex flex-col gap-3 animate-pulse">
+                    <div className="w-full aspect-[16/10] bg-slate-200 rounded-xl"></div>
+                    <div className="space-y-2 px-1">
+                    <div className="h-5 bg-slate-200 rounded w-3/4"></div>
+                    <div className="h-4 bg-slate-200 rounded w-1/2"></div>
+                    </div>
+                </div>
+                ))
+            ) : restaurants.length > 0 ? (
+                restaurants.map((restaurant) => {
+                const coverImg = (restaurant as any).coverUrl || restaurant.image;
+                const logoImg = (restaurant as any).logoUrl || restaurant.image;
+
+                return (
+                    <Link key={restaurant.id} to={`/restaurant/${restaurant.id}`} onClick={() => vibrate(30)} className="group relative flex flex-col gap-3">
+                    <div className="relative w-full aspect-[16/10] overflow-hidden rounded-xl shadow-sm bg-slate-100">
+                        <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent z-10"></div>
+                        <div className="absolute top-3 left-3 z-20 bg-white/90 backdrop-blur-sm px-2.5 py-1 rounded-full flex items-center gap-1 shadow-sm">
+                        <Star className="w-4 h-4 text-highlight fill-highlight" />
+                        <span className="text-xs font-bold text-slate-900">{restaurant.rating}</span>
+                        <span className="text-[10px] text-slate-500">({restaurant.reviews}+)</span>
+                        </div>
+                        <div className="absolute top-3 right-3 z-20 bg-white p-1.5 rounded-full shadow-sm cursor-pointer hover:scale-110 transition-transform">
+                        <Heart className={`w-5 h-5 transition-colors ${false ? 'text-accent fill-accent' : 'text-slate-400 hover:text-accent hover:fill-accent'}`} />
+                        </div>
+
+                        {restaurant.hasCashea && (
+                        <div className="absolute top-3 right-12 z-20 w-10 h-10 bg-yellow-400 backdrop-blur rounded-xl p-1.5 shadow-xl border border-white/20 flex items-center justify-center animate-in zoom-in duration-500 hover:scale-110 transition-transform">
+                            <img
+                            src={casheaIcon || "https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/logo%20cashea.png?alt=media&token=5b266100-3323-41bb-a5a4-23957ce678a1"}
+                            alt="Cashea"
+                            className="w-full h-full object-contain"
+                            />
+                        </div>
+                        )}
+
+                        {(restaurant as any).activeRaffle?.isActive && (
+                        <div className={`absolute top-3 z-20 w-10 h-10 bg-orange-500 backdrop-blur rounded-xl p-1.5 shadow-xl border border-white/20 flex items-center justify-center animate-bounce duration-1000 hover:scale-110 transition-transform ${restaurant.hasCashea ? 'right-[5.5rem]' : 'right-12'}`}>
+                            <Gift className="w-5 h-5 text-white" />
+                        </div>
+                        )}
+
+                        {coverImg ? (
+                        <div
+                            className="w-full h-full bg-cover bg-center group-hover:scale-105 transition-transform duration-500 ease-out"
+                            style={{ backgroundImage: `url('${coverImg}?q=80&w=800&auto=format&fit=crop')` }}
+                        ></div>
+                        ) : (
+                        <div className="w-full h-full flex flex-col items-center justify-center bg-slate-50 text-slate-300">
+                            <Store className="w-12 h-12 mb-2 opacity-50" />
+                            <span className="text-[10px] font-bold uppercase tracking-widest opacity-50">{restaurant.name}</span>
+                        </div>
+                        )}
+
+                        <div className="absolute bottom-3 left-3 z-20 flex flex-wrap gap-2">
+                        {restaurant.featured && (
+                            <span className="bg-primary text-slate-900 text-[10px] font-bold px-2 py-1 rounded-lg">Destacado</span>
+                        )}
+                        <span className="bg-white/90 backdrop-blur-md text-slate-900 text-[10px] font-bold px-2 py-1 rounded-lg flex items-center gap-1">
+                            <Clock className="w-3.5 h-3.5" /> {restaurant.deliveryTime}
+                        </span>
+                        {(restaurant as any).deliveryRates?.find((r: any) => r.price === 0) && (
+                            <span className="bg-emerald-500 text-white text-[10px] font-bold px-2 py-1 rounded-lg flex items-center gap-1 shadow-lg shadow-emerald-500/20">
+                            <Truck className="w-3.5 h-3.5" /> Gratis
+                            </span>
+                        )}
+                        </div>
+                    </div>
+                    <div className="px-1 flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-full border-2 border-white shadow-sm overflow-hidden shrink-0 bg-slate-50 flex items-center justify-center">
+                        {logoImg ? (
+                            <img src={logoImg} alt="" className="w-full h-full object-cover" />
+                        ) : (
+                            <Store className="w-5 h-5 text-slate-300" />
+                        )}
+                        </div>
+                        <div>
+                        <h3 className="text-lg font-bold text-slate-900 leading-tight">{restaurant.name}</h3>
+                        <div className="flex items-center gap-2 text-[11px] text-slate-500 font-medium">
+                            {restaurant.category}
+                            <span className="w-1 h-1 rounded-full bg-slate-300"></span>
+                            <span>$$</span>
+                            <span className="w-1 h-1 rounded-full bg-slate-300"></span>
+                            <span>{restaurant.distance}</span>
+                        </div>
+                        </div>
+                    </div>
+                    </Link>
+                );
+                })
+
+            ) : !manualCity ? (
+                <div className="flex flex-col items-center justify-center py-20 px-6 text-center animate-in fade-in slide-in-from-bottom-4 relative">
+                <div className="absolute -top-12 2xl:-top-16 opacity-70 flex flex-col items-center animate-bounce">
+                    <span className="text-slate-900 font-black uppercase text-[10px] tracking-widest mb-1 text-center bg-white px-3 py-1 rounded-full shadow-sm border border-orange-100">¡Presiona Aquí Arriba!</span>
+                    <ArrowUp className="w-8 h-8 text-slate-900" strokeWidth={3} />
+                </div>
+                
+                <div className="w-24 h-24 bg-orange-100 rounded-[2.5rem] flex items-center justify-center mb-6 shadow-md border-4 border-white rotate-3">
+                    <MapPin className="w-12 h-12 text-slate-900" />
+                </div>
+                
+                <h3 className="text-2xl font-black text-slate-800 mb-3">¡Épale! 👋</h3>
+                <p className="text-slate-500 font-bold max-w-[280px] leading-relaxed">
+                    Selecciona arriba tu <span className="text-slate-900 font-black">Estado y Ciudad</span> en la que vives para presentarte lugares increíbles.
+                </p>
+                </div>
+            ) : (
+                <div className="text-center py-12 text-slate-500">
+                No hay restaurantes disponibles en este momento.
+                </div>
+            )}
+            </div>
+        </div>
       </main>
       <PointsModal 
         isOpen={isPointsModalOpen} 

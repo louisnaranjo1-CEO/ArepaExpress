@@ -145,7 +145,7 @@ export default function Search() {
             }
 
             // City Filter
-            const matchesCity = !manualCity || res.location?.city === manualCity;
+            const matchesCity = !manualCity || res.location?.city?.toLowerCase().trim() === manualCity.toLowerCase().trim();
 
             return matchesQuery && matchesCategory && matchesSector && matchesPrice && matchesPromotions && matchesCity;
         });
