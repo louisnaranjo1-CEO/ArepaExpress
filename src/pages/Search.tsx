@@ -145,7 +145,14 @@ export default function Search() {
             }
 
             // City Filter
-            const matchesCity = !manualCity || res.location?.city?.toLowerCase().trim() === manualCity.toLowerCase().trim();
+            const normalizeLoc = (str?: string) => str ? str.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim() : '';
+            const normManualCity = normalizeLoc(manualCity);
+            const matchesCity = !manualCity || (() => {
+               const c = normalizeLoc(res.location?.city);
+               const s = normalizeLoc(res.location?.state);
+               const a = normalizeLoc(res.location?.address);
+               return c === normManualCity || c.includes(normManualCity) || a.includes(normManualCity) || s.includes(normManualCity);
+            })();
 
             return matchesQuery && matchesCategory && matchesSector && matchesPrice && matchesPromotions && matchesCity;
         });

@@ -212,8 +212,15 @@ export default function Home() {
 
         // Strict location filtering (omit any business not in the city)
         if (manualCity) {
-            const mCity = manualCity.toLowerCase().trim();
-            fetchedRestaurants = fetchedRestaurants.filter(rest => rest.location?.city?.toLowerCase().trim() === mCity);
+            const normalizeLoc = (str?: string) => str ? str.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim() : '';
+            const mCity = normalizeLoc(manualCity);
+            
+            fetchedRestaurants = fetchedRestaurants.filter(rest => {
+               const c = normalizeLoc(rest.location?.city);
+               const s = normalizeLoc(rest.location?.state);
+               const a = normalizeLoc(rest.location?.address);
+               return c === mCity || c.includes(mCity) || a.includes(mCity) || s.includes(mCity);
+            });
         }
         setRestaurants(fetchedRestaurants);
         const cityResIds = new Set(fetchedRestaurants.map(r => r.id));
@@ -428,7 +435,9 @@ export default function Home() {
           className="flex items-center gap-1.5 text-secondary hover:text-black transition-all active:scale-95 py-1"
         >
           <MapPin className="w-5 h-5 shrink-0" />
-          <span className="text-[15px] font-normal leading-none tracking-tight">Ingresa tu ubicación</span>
+          <span className="text-[15px] font-normal leading-none tracking-tight truncate max-w-[200px]">
+            {locationName !== 'Buscando...' && locationName !== 'Ubicación Desconocida' ? locationName : 'Ingresa tu ubicación'}
+          </span>
           <ChevronRight className="w-5 h-5 transition-colors shrink-0" />
         </button>
       </header>
