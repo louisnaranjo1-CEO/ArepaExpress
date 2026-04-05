@@ -1,4 +1,4 @@
-import { MapPin, ChevronDown, Bell, Search, SlidersHorizontal, Utensils, Star, Heart, Clock, Store, Truck, Zap, Tag, X, Layout, Gift, ArrowUp } from 'lucide-react';
+import { MapPin, ChevronDown, ChevronRight, Bell, Search, SlidersHorizontal, Utensils, Star, Heart, Clock, Store, Truck, Zap, Tag, X, Layout, Gift, ArrowUp } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Link, useNavigate } from 'react-router-dom';
 import { useState, useEffect, useMemo } from 'react';
@@ -356,80 +356,76 @@ export default function Home() {
   return (
     <div className="relative flex h-full w-full flex-col overflow-x-hidden bg-white">
       <WelcomePopup manualState={manualState} manualCity={manualCity} />
+      
       {/* Header */}
-      <header className="sticky top-0 z-40 bg-white/90 backdrop-blur-md px-4 pt-6 pb-2">
+      <header className="sticky top-0 z-40 bg-primary px-4 pt-6 pb-2">
         <div className="flex items-center justify-between mb-4 gap-2">
-          {/* Left group: Logo + Points + Location */}
-          <div className="flex items-center gap-4 overflow-visible">
-            {/* Logo */}
-            <div
-              onClick={() => window.location.href = 'https://deliexpress.app'}
-              className="h-16 w-auto flex items-center justify-start shrink-0 cursor-pointer active:scale-95 transition-transform overflow-visible"
-            >
-              <img
-                src="https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/otro.png?alt=media"
-                alt="Un 2x3 Logo"
-                className="h-14 w-auto object-contain filter drop-shadow-sm"
-              />
-            </div>
+          {/* Logo */}
+          <div
+            onClick={() => window.location.reload()}
+            className="flex-1 flex items-center justify-start cursor-pointer active:scale-95 transition-transform overflow-visible"
+          >
+            <img
+              src="https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/logo.png?alt=media"
+              alt="Un 2x3 Logo"
+              className="h-10 w-auto object-contain"
+            />
+          </div>
 
+          {/* Right group: Points + Actions */}
+          <div className="flex items-center gap-1 shrink-0">
             {/* Points */}
             <div
               onClick={() => { vibrate(30); setIsPointsModalOpen(true); }}
-              className="flex flex-col shrink-0 cursor-pointer active:scale-95 transition-transform"
+              className="flex flex-col items-center justify-center shrink-0 cursor-pointer active:scale-95 transition-transform mr-1"
             >
-              <span className="text-[9px] font-black uppercase text-slate-400 tracking-tighter leading-none mb-0.5">Puntos</span>
-              <div className="flex items-center gap-1 bg-primary/10 px-2 py-0.5 rounded-full border border-primary/10">
-                <Star className="w-2.5 h-2.5 text-primary fill-primary" />
-                <span className="text-[11px] font-black text-primary">{userData?.points || 0}</span>
+              <span className="text-[9px] font-black uppercase text-secondary/60 tracking-tighter leading-none mb-0.5">Puntos</span>
+              <div className="flex items-center gap-1 bg-white/20 px-2 py-0.5 rounded-full">
+                <Star className="w-2.5 h-2.5 text-secondary fill-secondary" />
+                <span className="text-[11px] font-black text-secondary">{userData?.points || 0}</span>
               </div>
             </div>
 
-            {/* Location Selector */}
-            <button
-              onClick={() => setIsCityModalOpen(true)}
-              className="flex items-center gap-1 px-2 py-1.5 rounded-2xl bg-slate-50 border border-slate-100 hover:border-primary/30 transition-all active:scale-95 overflow-hidden group"
-            >
-              <MapPin className="w-3.5 h-3.5 text-primary shrink-0" />
-              <div className="flex flex-col items-start overflow-hidden">
-                <span className="text-[8px] font-bold text-slate-400 uppercase leading-none mb-0.5">Ubicación</span>
-                <div className="flex items-center gap-1">
-                  <span className="text-[11px] font-bold text-slate-700 truncate max-w-[60px] leading-none">{locationName}</span>
-                  <ChevronDown className="w-2.5 h-2.5 text-slate-400 group-hover:text-primary transition-colors shrink-0" />
-                </div>
-              </div>
-            </button>
-          </div>
-
-          {/* Right group: Actions */}
-          <div className="flex items-center gap-0.5 shrink-0">
-            <Link to="/favorites" className="p-2.5 text-slate-900 hover:bg-slate-100 rounded-2xl transition-all active:scale-90">
+            <Link to="/favorites" className="p-2.5 text-secondary hover:bg-white/20 rounded-2xl transition-all active:scale-90">
               <Heart className="w-5.5 h-5.5" />
             </Link>
-            <Link to="/notifications" className="relative p-2.5 text-slate-900 hover:bg-slate-100 rounded-2xl transition-all active:scale-90">
+            <Link to="/notifications" className="relative p-2.5 text-secondary hover:bg-white/20 rounded-2xl transition-all active:scale-90">
               <Bell className="w-5.5 h-5.5" />
-              <span className="absolute top-2.5 right-2.5 h-2 w-2 rounded-full bg-accent border-[1.5px] border-white"></span>
+              <span className="absolute top-2.5 right-2.5 h-2 w-2 rounded-full bg-accent border-[1.5px] border-primary"></span>
             </Link>
           </div>
         </div>
 
         {/* Search Bar */}
-        <div className="relative group block">
+        <div className="relative group block mb-4">
           <Link to="/search" className="block">
             <div className="absolute inset-y-0 left-0 flex items-center pl-4 pointer-events-none">
-              <Search className="w-5 h-5 text-slate-400 group-hover:text-primary transition-colors" />
+              <Search className="w-5 h-5 text-gray-400" />
             </div>
-            <div className="flex w-full p-4 pl-12 pr-12 text-sm text-slate-500 border border-slate-200 rounded-xl bg-slate-50 shadow-sm cursor-text hover:border-primary/30 transition-colors">
-              Epale! que vamos a pedir en Un 2x3?
+            <div className="flex w-full py-3.5 pl-12 pr-12 text-[15px] text-gray-500 rounded-full bg-white shadow-sm cursor-text">
+              Buscar en Un 2x3
             </div>
           </Link>
-          <div className="absolute inset-y-0 right-0 flex items-center pr-3">
-            <Link to="/search" state={{ openFilters: true }} className="p-2 text-slate-400 hover:text-primary transition-colors rounded-full hover:bg-slate-100">
+          <div className="absolute inset-y-0 right-0 flex items-center pr-2">
+            <Link to="/search" state={{ openFilters: true }} className="p-2 text-gray-400 hover:text-secondary transition-colors rounded-full">
               <SlidersHorizontal className="w-5 h-5" />
             </Link>
           </div>
         </div>
+
+        {/* Location Selector */}
+        <button
+          onClick={() => setIsCityModalOpen(true)}
+          className="flex items-center gap-1.5 text-secondary hover:text-black transition-all active:scale-95 py-1"
+        >
+          <MapPin className="w-5 h-5 shrink-0" />
+          <span className="text-[15px] font-normal leading-none tracking-tight">Ingresa tu ubicación</span>
+          <ChevronRight className="w-5 h-5 transition-colors shrink-0" />
+        </button>
       </header>
+
+      {/* Banner Section Background Fade */}
+      <div className="absolute top-[170px] left-0 right-0 h-40 bg-gradient-to-b from-primary to-white z-0 pointer-events-none"></div>
 
       <CitySelectorModal
         isOpen={isCityModalOpen}
