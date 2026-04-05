@@ -210,21 +210,21 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
             )}
 
             {/* Sidebar */}
-            <aside className={`fixed inset-y-0 left-0 w-72 bg-white border-r border-slate-200 z-50 transform transition-transform duration-300 ease-in-out md:relative md:translate-x-0 ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
+            <aside className={`fixed inset-y-0 left-0 w-72 bg-slate-950 border-r border-white/10 z-50 transform transition-transform duration-300 ease-in-out md:relative md:translate-x-0 ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
                 <div className="flex flex-col h-full">
                     {/* Sidebar Header */}
-                    <div className="p-6 border-b border-slate-100 flex items-center justify-between">
+                    <div className="p-6 border-b border-white/5 flex items-center justify-between">
                         <div className="flex items-center gap-3 cursor-pointer active:scale-95 transition-transform" onClick={() => window.location.href = 'https://deliexpress.app'}>
                             <div className="w-14 h-14 flex items-center justify-center p-1 overflow-visible">
                                 <img
                                     src="https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/logo21.png?alt=media&token=52eab323-674a-496d-9bef-f4452af98586"
                                     alt="Encontrado en un 2x3"
-                                    className="w-full h-full object-contain filter drop-shadow-sm"
+                                    className="w-full h-full object-contain filter drop-shadow-sm brightness-110"
                                 />
                             </div>
                             <div className="flex flex-col">
-                                <h1 className="font-black text-slate-900 leading-tight">Encontrado en un 2x3</h1>
-                                <p className="text-[10px] font-bold text-slate-900 uppercase tracking-wider">Business Hub</p>
+                                <h1 className="font-black text-white leading-tight">Encontrado en un 2x3</h1>
+                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Business Hub</p>
                             </div>
                         </div>
                         <button className="md:hidden" onClick={() => setIsSidebarOpen(false)}>
@@ -241,7 +241,7 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
                                 className={({ isActive }) =>
                                     `flex items-center justify-between p-4 rounded-2xl font-bold transition-all group ${isActive
                                         ? 'bg-primary text-slate-900 shadow-lg shadow-primary/20'
-                                        : 'text-slate-500 hover:bg-slate-50 hover:text-slate-900'
+                                        : 'text-slate-400 hover:bg-white/5 hover:text-white'
                                     }`
                                 }
                                 onClick={() => setIsSidebarOpen(false)}
@@ -331,21 +331,21 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
 
                         <button
                             onClick={() => setIsProfileMenuOpen(!isProfileMenuOpen)}
-                            className={`w-full p-4 rounded-2xl flex items-center gap-3 mb-3 transition-all ${isProfileMenuOpen ? 'bg-primary/5 ring-2 ring-primary/20' : 'bg-slate-50 hover:bg-slate-100'}`}
+                            className={`w-full p-4 rounded-2xl flex items-center gap-3 mb-3 transition-all ${isProfileMenuOpen ? 'bg-primary/10 ring-2 ring-primary/20' : 'bg-white/5 hover:bg-white/10'}`}
                         >
-                            <div className="w-10 h-10 bg-white rounded-full flex items-center justify-center border border-slate-200 shadow-sm flex-shrink-0">
-                                <span className="text-slate-900 font-black">{restaurantName[0]}</span>
+                            <div className="w-10 h-10 bg-slate-900 rounded-full flex items-center justify-center border border-white/10 shadow-sm flex-shrink-0">
+                                <span className="text-white font-black">{restaurantName[0]}</span>
                             </div>
                             <div className="min-w-0 flex-1 text-left">
-                                <p className="text-sm font-bold text-slate-900 truncate">{restaurantName}</p>
-                                <p className="text-[10px] text-slate-500 truncate capitalize">Business Manager</p>
+                                <p className="text-sm font-bold text-white truncate">{restaurantName}</p>
+                                <p className="text-[10px] text-slate-400 truncate capitalize">Business Manager</p>
                             </div>
-                            <ChevronUp className={`w-4 h-4 text-slate-400 transition-transform ${isProfileMenuOpen ? 'rotate-180' : ''}`} />
+                            <ChevronUp className={`w-4 h-4 text-slate-500 transition-transform ${isProfileMenuOpen ? 'rotate-180' : ''}`} />
                         </button>
 
                         <button
                             onClick={handleLogout}
-                            className="w-full flex items-center gap-3 px-4 py-3 text-slate-500 font-bold hover:bg-red-50 hover:text-red-500 rounded-xl transition-colors"
+                            className="w-full flex items-center gap-3 px-4 py-3 text-slate-400 font-bold hover:bg-red-500/10 hover:text-red-500 rounded-xl transition-colors"
                         >
                             <LogOut className="w-5 h-5" />
                             <span>Cerrar Sesión</span>
