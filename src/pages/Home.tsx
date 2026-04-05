@@ -51,6 +51,7 @@ export default function Home() {
 
   const [manualState, setManualState] = useState<string>(() => localStorage.getItem('userState') || '');
   const [manualCity, setManualCity] = useState<string>(() => localStorage.getItem('userCity') || '');
+  const [debugLog, setDebugLog] = useState<string>('');
   const [locationName, setLocationName] = useState(() => {
     return localStorage.getItem('userCity') ? `${localStorage.getItem('userCity')}` : 'Buscando...';
   });
@@ -182,6 +183,7 @@ export default function Home() {
         // Fetch All Restaurants for filtering logic and profiles
         const rQuery = query(collection(db, 'restaurants'));
         const rSnap = await getDocs(rQuery);
+        let currentDebug = `Fetched ${rSnap.docs.length} from DB. `;
         let fetchedRestaurants = rSnap.docs.map(doc => ({
            id: doc.id,
            ...doc.data()
@@ -231,6 +233,7 @@ export default function Home() {
 
                return false;
             });
+            currentDebug += `After Filter: ${fetchedRestaurants.length} items. `;
         }
         setRestaurants(fetchedRestaurants);
         const cityResIds = new Set(fetchedRestaurants.map(r => r.id));
@@ -307,7 +310,9 @@ export default function Home() {
           setCasheaIcon("https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/logo%20cashea.png?alt=media&token=5b266100-3323-41bb-a5a4-23957ce678a1");
         }
 
-      } catch (error) {
+        setDebugLog(currentDebug);
+      } catch (error: any) {
+        setDebugLog('ERROR: ' + error.message);
         console.error("Error fetching home data:", error);
       } finally {
         setLoading(false);
@@ -383,6 +388,13 @@ export default function Home() {
     <div className="relative flex h-full w-full flex-col overflow-x-hidden bg-white">
       <WelcomePopup manualState={manualState} manualCity={manualCity} />
       
+      {/* DEBUG BANNER  - temporary */}
+      {debugLog && (
+        <div className="bg-red-900 text-white p-3 text-xs font-mono break-all relative z-[60]">
+            DEBUG: {debugLog}
+        </div>
+      )}
+
       {/* Header */}
       <header className="sticky top-0 z-40 bg-primary px-4 pt-6 pb-2">
         <div className="flex items-center justify-between mb-4 gap-2">
