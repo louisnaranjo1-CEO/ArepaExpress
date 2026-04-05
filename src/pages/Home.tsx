@@ -399,7 +399,7 @@ export default function Home() {
               <Search className="w-5 h-5 text-gray-400" />
             </div>
             <div className="flex w-full py-3.5 pl-12 pr-12 text-[15px] text-gray-500 rounded-full bg-white shadow-sm cursor-text">
-              Buscar en Deliexpress
+              Buscar en un 2x3
             </div>
           </Link>
           <div className="absolute inset-y-0 right-0 flex items-center pr-2">
@@ -469,7 +469,7 @@ export default function Home() {
 
               <div className="space-y-6 text-sm">
                 <p className="text-slate-600 font-medium leading-relaxed">
-                  <span className="font-bold text-slate-900">Deliexpress no es solo una aplicación;</span> es el ecosistema digital más robusto de Venezuela diseñado para conectar a usuarios, comercios y trabajadores independientes en una sola interfaz.
+                  <span className="font-bold text-slate-900">un 2x3 no es solo una aplicación;</span> es el ecosistema digital más robusto de Venezuela diseñado para conectar a usuarios, comercios y trabajadores independientes en una sola interfaz.
                 </p>
                 <p className="text-slate-600 font-medium leading-relaxed">
                   Nuestra misión es eliminar las fricciones del día a día: adiós a las colas, adiós a la incertidumbre de precios y hola a la inmediatez.

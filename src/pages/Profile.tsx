@@ -311,15 +311,15 @@ export default function Profile() {
 
     const FAQ_DATA = [
         {
-            q: "¿Qué es Deliexpress?",
+            q: "¿Qué es un 2x3?",
             a: "Es la aplicación móvil todo-en-uno que conecta a nivel nacional a restaurantes, supermercados, bodegas y emprendimientos con los usuarios. Es una plataforma diseñada para facilitar compras sin colas, ofrecer servicios de delivery y transporte, y potenciar el crecimiento tecnológico de los negocios locales."
         },
         {
-            q: "¿Qué productos o servicios puedo encontrar en Deliexpress?",
+            q: "¿Qué productos o servicios puedo encontrar en un 2x3?",
             a: "¡Prácticamente todo! Puedes explorar catálogos de comida, artículos de primera necesidad y servicios profesionales. Además, contamos con una red integrada de Delivery y Taxi siempre disponible para llevarte lo que necesites o trasladarte a donde desees."
         },
         {
-            q: "¿Cómo puedo ser aliado a Deliexpress?",
+            q: "¿Cómo puedo ser aliado a un 2x3?",
             a: "Es muy sencillo transformar tu negocio. Solo debes ingresar a la aplicación y enviar tu solicitud formal a través de la sección \"Ser Aliado\". Al unirte, recibirás acceso a nuestro panel administrativo, sistema de comandas y herramientas de publicidad interna."
         }
     ];
@@ -687,7 +687,7 @@ export default function Profile() {
 
                             <div className="flex items-center gap-4 my-2 pt-2">
                                 <div className="h-px bg-slate-100 flex-1"></div>
-                                <span className="text-[10px] font-black text-slate-300 uppercase tracking-widest">Emprende y se un freelancer en Deliexpress</span>
+                                <span className="text-[10px] font-black text-slate-300 uppercase tracking-widest">Emprende y se un freelancer en un 2x3</span>
                                 <div className="h-px bg-slate-100 flex-1"></div>
                             </div>
                             <button
@@ -708,7 +708,7 @@ export default function Profile() {
                                 className="w-full bg-green-500/10 text-green-600 py-4 rounded-2xl font-bold hover:bg-green-500/20 transition-colors flex items-center justify-center gap-2"
                             >
                                 <Store className="w-5 h-5 opacity-50" />
-                                Conviértete en aliado y deja que te encuentren en Deliexpress
+                                Conviértete en aliado y deja que te encuentren en un 2x3
                             </button>
                         </>
                     )}
