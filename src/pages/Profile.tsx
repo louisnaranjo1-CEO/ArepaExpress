@@ -4,7 +4,7 @@ import { requestNotificationPermission, disableNotifications } from '../lib/noti
 import { useAuth } from '../context/AuthContext';
 import { auth, db, storage } from '../lib/firebase';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { signInWithGoogle, signInWithEmail, signUpWithEmail, processReferralCode } from '../lib/auth-service';
 import { collection, query, where, orderBy, getDocs, doc, setDoc, serverTimestamp, collectionGroup, getDoc, updateDoc, addDoc } from 'firebase/firestore';
 import { updateProfile } from 'firebase/auth';
@@ -74,6 +74,7 @@ const RestaurantPointCard: React.FC<{ restId: string, points: number }> = ({ res
 export default function Profile() {
     const { user, userData, isProfileComplete } = useAuth();
     const navigate = useNavigate();
+    const [searchParams] = useSearchParams();
     const [isSigningIn, setIsSigningIn] = useState(false);
     const [activities, setActivities] = useState<ActivityItem[]>([]);
     const [loadingActivities, setLoadingActivities] = useState(false);
@@ -115,6 +116,7 @@ export default function Profile() {
     const [showReferralModal, setShowReferralModal] = useState(false);
     const [tempGoogleUser, setTempGoogleUser] = useState<any>(null);
     const [isApplyingReferral, setIsApplyingReferral] = useState(false);
+    const [isForcedRegister, setIsForcedRegister] = useState(false);
 
     // Support Ticket State
     const [supportTickets, setSupportTickets] = useState<SupportTicket[]>([]);
@@ -133,6 +135,15 @@ export default function Profile() {
             });
         }
     }, [userData, user]);
+
+    useEffect(() => {
+        const urlRef = searchParams.get('ref');
+        if (urlRef && !user) {
+            setReferralCodeInput(urlRef.toUpperCase());
+            setIsLoginMode(false);
+            setIsForcedRegister(true);
+        }
+    }, [searchParams, user]);
 
     const scrollToOrders = () => {
         ordersRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -345,8 +356,12 @@ export default function Profile() {
         try {
             const { user, isNewUser } = await signInWithGoogle();
             if (isNewUser) {
-                setTempGoogleUser(user);
-                setShowReferralModal(true);
+                if (isForcedRegister && referralCodeInput) {
+                    await processReferralCode(user.uid, referralCodeInput);
+                } else {
+                    setTempGoogleUser(user);
+                    setShowReferralModal(true);
+                }
             }
         } catch (err: any) {
             console.error("Failed to sign in", err);
@@ -577,14 +592,7 @@ export default function Profile() {
                     <button
                         onClick={async () => {
                             vibrate(50);
-                            setIsSigningIn(true);
-                            try {
-                                await signInWithGoogle();
-                            } catch (err: any) {
-                                toast.error('Error al iniciar sesión con Google');
-                            } finally {
-                                setIsSigningIn(false);
-                            }
+                            await handleGoogleSignIn();
                         }}
                         disabled={isSigningIn}
                         className="w-full bg-primary text-slate-900 py-4 rounded-2xl font-bold shadow-lg shadow-primary/30 hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-70 disabled:hover:scale-100 flex items-center justify-center gap-2"
@@ -615,72 +623,78 @@ export default function Profile() {
                             </>
                         )}
                     </button>
-                    <button
-                        onClick={() => {
-                            vibrate(30);
-                            setIsLoginMode(true);
-                            setShowEmailModal(true);
-                        }}
-                        className="w-full bg-white text-slate-700 border-2 border-slate-100 py-4 rounded-2xl font-bold hover:bg-slate-50 transition-colors flex items-center justify-center gap-2"
-                    >
-                        <Mail className="w-5 h-5 text-slate-400" />
-                        Entrar con Correo
-                    </button>
-                    <button
-                        onClick={() => {
-                            vibrate(30);
-                            setIsLoginMode(false);
-                            setShowEmailModal(true);
-                        }}
-                        className="w-full bg-white text-slate-900 border-2 border-primary py-4 rounded-2xl font-bold hover:bg-primary/5 transition-colors"
-                    >
-                        Crear Cuenta
-                    </button>
-                    <div className="flex items-center gap-4 my-2">
-                        <div className="h-px bg-slate-100 flex-1"></div>
-                        <span className="text-[10px] font-black text-slate-300 uppercase tracking-widest">¿trabajas con nuestros aliados?</span>
-                        <div className="h-px bg-slate-100 flex-1"></div>
-                    </div>
-                    <button
-                        onClick={() => {
-                            const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-                            if (isLocalhost) {
-                                window.location.href = `${window.location.protocol}//meseros.localhost:${window.location.port}`;
-                            } else {
-                                window.location.href = 'https://meseros.deliexpress.app';
-                            }
-                        }}
-                        className="w-full bg-slate-50 text-slate-500 py-4 rounded-2xl font-bold hover:bg-slate-100 transition-colors flex items-center justify-center gap-2"
-                    >
-                        <Shield className="w-5 h-5 opacity-50" />
-                        Acceso Meseros
-                    </button>
+                    {isForcedRegister ? (
+                        <button
+                            onClick={() => {
+                                vibrate(30);
+                                setIsLoginMode(false);
+                                setShowEmailModal(true);
+                            }}
+                            className="w-full bg-white text-slate-900 border-2 border-primary py-4 rounded-2xl font-bold hover:bg-primary/5 transition-colors flex items-center justify-center gap-2"
+                        >
+                            <Mail className="w-5 h-5 opacity-80" />
+                            Crear Cuenta con Correo
+                        </button>
+                    ) : (
+                        <>
+                            <button
+                                onClick={() => {
+                                    vibrate(30);
+                                    setIsLoginMode(true);
+                                    setShowEmailModal(true);
+                                }}
+                                className="w-full bg-white text-slate-700 border-2 border-slate-100 py-4 rounded-2xl font-bold hover:bg-slate-50 transition-colors flex items-center justify-center gap-2"
+                            >
+                                <Mail className="w-5 h-5 text-slate-400" />
+                                Entrar con Correo
+                            </button>
+                            <div className="flex items-center gap-4 my-2">
+                                <div className="h-px bg-slate-100 flex-1"></div>
+                                <span className="text-[10px] font-black text-slate-300 uppercase tracking-widest">¿trabajas con nuestros aliados?</span>
+                                <div className="h-px bg-slate-100 flex-1"></div>
+                            </div>
+                            <button
+                                onClick={() => {
+                                    const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+                                    if (isLocalhost) {
+                                        window.location.href = `${window.location.protocol}//meseros.localhost:${window.location.port}`;
+                                    } else {
+                                        window.location.href = 'https://meseros.deliexpress.app';
+                                    }
+                                }}
+                                className="w-full bg-slate-50 text-slate-500 py-4 rounded-2xl font-bold hover:bg-slate-100 transition-colors flex items-center justify-center gap-2"
+                            >
+                                <Shield className="w-5 h-5 opacity-50" />
+                                Acceso Meseros
+                            </button>
 
-                    <div className="flex items-center gap-4 my-2 pt-2">
-                        <div className="h-px bg-slate-100 flex-1"></div>
-                        <span className="text-[10px] font-black text-slate-300 uppercase tracking-widest">Emprende y se un freelancer en Deliexpress</span>
-                        <div className="h-px bg-slate-100 flex-1"></div>
-                    </div>
-                    <button
-                        onClick={() => window.location.href = 'https://deliexpress.app/delivery/login'}
-                        className="w-full bg-primary/10 text-slate-900 py-4 rounded-2xl font-bold hover:bg-primary/20 transition-colors flex items-center justify-center gap-2"
-                    >
-                        <Navigation className="w-5 h-5 opacity-50" />
-                        Acceso Delivery / Taxi
-                    </button>
+                            <div className="flex items-center gap-4 my-2 pt-2">
+                                <div className="h-px bg-slate-100 flex-1"></div>
+                                <span className="text-[10px] font-black text-slate-300 uppercase tracking-widest">Emprende y se un freelancer en Deliexpress</span>
+                                <div className="h-px bg-slate-100 flex-1"></div>
+                            </div>
+                            <button
+                                onClick={() => window.location.href = 'https://deliexpress.app/delivery/login'}
+                                className="w-full bg-primary/10 text-slate-900 py-4 rounded-2xl font-bold hover:bg-primary/20 transition-colors flex items-center justify-center gap-2"
+                            >
+                                <Navigation className="w-5 h-5 opacity-50" />
+                                Acceso Delivery / Taxi
+                            </button>
 
-                    <div className="flex items-center gap-4 my-2 pt-2">
-                        <div className="h-px bg-slate-100 flex-1"></div>
-                        <span className="text-[10px] font-black text-slate-300 uppercase tracking-widest">¿Quieres que tu negocio crezca?</span>
-                        <div className="h-px bg-slate-100 flex-1"></div>
-                    </div>
-                    <button
-                        onClick={() => window.location.href = 'https://restaurante.deliexpress.app'}
-                        className="w-full bg-green-500/10 text-green-600 py-4 rounded-2xl font-bold hover:bg-green-500/20 transition-colors flex items-center justify-center gap-2"
-                    >
-                        <Store className="w-5 h-5 opacity-50" />
-                        Conviértete en aliado y deja que te encuentren en Deliexpress
-                    </button>
+                            <div className="flex items-center gap-4 my-2 pt-2">
+                                <div className="h-px bg-slate-100 flex-1"></div>
+                                <span className="text-[10px] font-black text-slate-300 uppercase tracking-widest">¿Quieres que tu negocio crezca?</span>
+                                <div className="h-px bg-slate-100 flex-1"></div>
+                            </div>
+                            <button
+                                onClick={() => window.location.href = 'https://restaurante.deliexpress.app'}
+                                className="w-full bg-green-500/10 text-green-600 py-4 rounded-2xl font-bold hover:bg-green-500/20 transition-colors flex items-center justify-center gap-2"
+                            >
+                                <Store className="w-5 h-5 opacity-50" />
+                                Conviértete en aliado y deja que te encuentren en Deliexpress
+                            </button>
+                        </>
+                    )}
                 </div>
 
                 {/* Email Login/Signup Modal */}
@@ -702,9 +716,11 @@ export default function Profile() {
                                             Deliexpress Lover 🚀
                                         </p>
                                     </div>
-                                    <button onClick={() => setShowEmailModal(false)} className="p-2 hover:bg-slate-200 rounded-xl transition-all">
-                                        <X className="w-5 h-5 text-slate-400" />
-                                    </button>
+                                    {!isForcedRegister && (
+                                        <button onClick={() => setShowEmailModal(false)} className="p-2 hover:bg-slate-200 rounded-xl transition-all">
+                                            <X className="w-5 h-5 text-slate-400" />
+                                        </button>
+                                    )}
                                 </div>
 
                                 <form onSubmit={handleEmailAuthSubmit} className="p-8 space-y-4">
@@ -748,14 +764,15 @@ export default function Profile() {
 
                                     {!isLoginMode && (
                                         <div className="space-y-1">
-                                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Código de Referido (Opcional)</label>
+                                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">{isForcedRegister ? "Código de Referido (Aplicado)" : "Código de Referido (Opcional)"}</label>
                                             <input
                                                 type="text"
                                                 value={referralCodeInput}
                                                 onChange={(e) => setReferralCodeInput(e.target.value.toUpperCase())}
                                                 placeholder="Ej: ABCDEF"
-                                                className="w-full bg-slate-50 border-2 border-slate-100 focus:border-primary px-4 py-3 rounded-2xl outline-none font-bold text-slate-700 transition-all uppercase"
+                                                className={`w-full bg-slate-50 border-2 border-slate-100 focus:border-primary px-4 py-3 rounded-2xl outline-none font-bold transition-all uppercase ${isForcedRegister ? "text-primary/80 bg-slate-100" : "text-slate-700"}`}
                                                 maxLength={10}
+                                                readOnly={isForcedRegister}
                                             />
                                         </div>
                                     )}
@@ -772,13 +789,15 @@ export default function Profile() {
                                         )}
                                     </button>
 
-                                    <button
-                                        type="button"
-                                        onClick={() => setIsLoginMode(!isLoginMode)}
-                                        className="w-full text-slate-400 font-bold py-2 mt-2 hover:text-slate-900 transition-colors text-xs"
-                                    >
-                                        {isLoginMode ? "¿No tienes cuenta? Regístrate" : "¿Ya tienes cuenta? Inicia sesión"}
-                                    </button>
+                                    {!isForcedRegister && (
+                                        <button
+                                            type="button"
+                                            onClick={() => setIsLoginMode(!isLoginMode)}
+                                            className="w-full text-slate-400 font-bold py-2 mt-2 hover:text-slate-900 transition-colors text-xs"
+                                        >
+                                            {isLoginMode ? "¿No tienes cuenta? Regístrate" : "¿Ya tienes cuenta? Inicia sesión"}
+                                        </button>
+                                    )}
                                 </form>
                             </motion.div>
                         </div>

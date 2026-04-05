@@ -27,17 +27,28 @@ export const processReferralCode = async (newUserId: string, referralCode: strin
             // Usuario no puede referirse a sí mismo
             if (referrerId === newUserId) return false;
 
+            // Obtener configuración de puntos desde CPanel
+            let pointsForReferrer = 200;
+            try {
+                const fidelizationDoc = await getDoc(doc(db, 'system_configs', 'fidelization'));
+                if (fidelizationDoc.exists() && fidelizationDoc.data().pointsPerReferral) {
+                    pointsForReferrer = fidelizationDoc.data().pointsPerReferral;
+                }
+            } catch (configError) {
+                console.error("Error fetching points config", configError);
+            }
+
             const batch = writeBatch(db);
 
-            // Recompensa al Referidor (+200 puntos)
+            // Recompensa al Referidor (Configurable)
             batch.update(doc(db, 'users', referrerId), {
-                points: increment(200),
+                points: increment(pointsForReferrer),
                 totalReferrals: increment(1)
             });
 
-            // Recompensa al Nuevo Usuario (+200 puntos)
+            // Recompensa al Nuevo Usuario (50 puntos fijos)
             batch.update(doc(db, 'users', newUserId), {
-                points: increment(200),
+                points: increment(50),
                 referredBy: referrerId
             });
 

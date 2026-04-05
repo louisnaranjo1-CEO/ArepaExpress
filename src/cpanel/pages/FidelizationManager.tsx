@@ -33,6 +33,8 @@ export default function FidelizationManager() {
     const [showAddModal, setShowAddModal] = useState(false);
     const [showAddPrizeModal, setShowAddPrizeModal] = useState(false);
     const [uploadingImage, setUploadingImage] = useState(false);
+    const [pointsPerReferral, setPointsPerReferral] = useState<number>(200);
+    const [savingPoints, setSavingPoints] = useState(false);
 
     const [newContest, setNewContest] = useState<Partial<ReferralContest>>({
         title: '',
@@ -58,10 +60,15 @@ export default function FidelizationManager() {
     const fetchData = async () => {
         setLoading(true);
         try {
-            const [contestsSnap, prizesSnap] = await Promise.all([
+            const [contestsSnap, prizesSnap, configSnap] = await Promise.all([
                 getDocs(collection(db, 'referral_contests')),
-                getDocs(collection(db, 'global_prizes'))
+                getDocs(collection(db, 'global_prizes')),
+                getDoc(doc(db, 'system_configs', 'fidelization'))
             ]);
+            
+            if (configSnap.exists() && configSnap.data().pointsPerReferral !== undefined) {
+                setPointsPerReferral(configSnap.data().pointsPerReferral);
+            }
             
             setContests(contestsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as ReferralContest)));
             setPrizes(prizesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as GlobalPrize)));
@@ -70,6 +77,21 @@ export default function FidelizationManager() {
             toast.error("Error al cargar datos");
         } finally {
             setLoading(false);
+        }
+    };
+
+    const handleSavePoints = async () => {
+        setSavingPoints(true);
+        try {
+            await setDoc(doc(db, 'system_configs', 'fidelization'), {
+                pointsPerReferral
+            }, { merge: true });
+            toast.success("Puntos de referido actualizados");
+        } catch (error) {
+            console.error(error);
+            toast.error("Error al actualizar puntos");
+        } finally {
+            setSavingPoints(false);
         }
     };
 
@@ -196,6 +218,28 @@ export default function FidelizationManager() {
             </div>
 
             {/* Quick Stats/Info */}
+            <div className="bg-white rounded-[2.5rem] p-6 shadow-xl shadow-slate-200/50 border border-slate-100 mb-8 flex flex-col md:flex-row items-center justify-between gap-4">
+                <div>
+                    <h3 className="text-slate-900 font-black text-lg">Puntos por Nuevo Referido</h3>
+                    <p className="text-sm text-slate-500">¿Cuántos puntos recibe el usuario que comparte su código?</p>
+                </div>
+                <div className="flex items-center gap-3 w-full md:w-auto">
+                    <input 
+                        type="number" 
+                        value={pointsPerReferral}
+                        onChange={(e) => setPointsPerReferral(parseInt(e.target.value) || 0)}
+                        className="bg-slate-50 border-2 border-slate-100 rounded-2xl px-4 py-3 font-black text-slate-900 w-32 outline-none focus:border-primary transition-all text-center"
+                    />
+                    <button 
+                        onClick={handleSavePoints}
+                        disabled={savingPoints}
+                        className="bg-primary text-slate-900 px-6 py-3 rounded-2xl font-black shadow-lg shadow-primary/20 hover:scale-105 active:scale-95 transition-all disabled:opacity-50"
+                    >
+                        {savingPoints ? "Guardando..." : "Guardar"}
+                    </button>
+                </div>
+            </div>
+
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
                 <div className="bg-white p-6 rounded-[2.5rem] shadow-xl shadow-slate-200/50 border border-slate-100">
                     <div className="w-12 h-12 bg-amber-50 text-amber-500 rounded-2xl flex items-center justify-center mb-4">
