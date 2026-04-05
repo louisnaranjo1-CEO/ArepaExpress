@@ -785,7 +785,7 @@ export default function Taxi() {
                                 <div className="w-3 h-3 rounded-full flex-shrink-0 bg-black animate-pulse" />
                                 <div className="flex-1">
                                     <p className="text-[10px] font-black uppercase text-slate-400 mb-0.5">Punto de Partida</p>
-                                    <p className="font-bold text-slate-800 truncate">
+                                    <p className="font-bold text-slate-800 leading-tight">
                                         {isDragging ? 'Ubicando...' : origin?.address || 'Cargando ubicación...'}
                                     </p>
                                 </div>
@@ -854,11 +854,11 @@ export default function Taxi() {
 
                                 <div className="flex items-center gap-4 bg-white p-3 rounded-2xl border border-slate-100 relative z-10">
                                     <div className="w-3 h-3 bg-black rounded-full flex-shrink-0" />
-                                    <p className="font-bold text-slate-500 truncate text-sm">{origin?.address}</p>
+                                    <p className="font-bold text-slate-500 text-sm leading-tight">{origin?.address}</p>
                                 </div>
                                 <div className="flex items-center gap-4 bg-orange-50 p-4 rounded-2xl border border-orange-100 relative z-10">
                                     <div className="w-3 h-3 bg-orange-500 rounded-full flex-shrink-0" />
-                                    <p className="font-bold text-indigo-900 truncate">
+                                    <p className="font-bold text-indigo-900 leading-tight">
                                         {isDragging ? 'Ubicando...' : destination?.address || 'Seleccionando destino...'}
                                     </p>
                                 </div>
