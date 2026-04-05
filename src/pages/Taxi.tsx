@@ -854,11 +854,11 @@ export default function Taxi() {
 
                                 <div className="flex items-center gap-4 bg-white p-3 rounded-2xl border border-slate-100 relative z-10">
                                     <div className="w-3 h-3 bg-black rounded-full flex-shrink-0" />
-                                    <p className="font-bold text-slate-500 text-sm leading-tight">{origin?.address}</p>
+                                    <p className="flex-1 font-bold text-slate-500 text-sm leading-tight break-words">{origin?.address}</p>
                                 </div>
                                 <div className="flex items-center gap-4 bg-orange-50 p-4 rounded-2xl border border-orange-100 relative z-10">
                                     <div className="w-3 h-3 bg-orange-500 rounded-full flex-shrink-0" />
-                                    <p className="font-bold text-indigo-900 leading-tight">
+                                    <p className="flex-1 font-bold text-indigo-900 leading-tight break-words">
                                         {isDragging ? 'Ubicando...' : destination?.address || 'Seleccionando destino...'}
                                     </p>
                                 </div>

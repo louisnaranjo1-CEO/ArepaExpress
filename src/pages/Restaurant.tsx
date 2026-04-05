@@ -896,7 +896,7 @@ export default function RestaurantPage() {
       {/* Floating Cart Button */}
       {totalItems > 0 && (
         <div className="fixed bottom-24 left-1/2 transform -translate-x-1/2 w-full px-5 max-w-md z-[60] animate-in slide-in-from-bottom-4 fade-in duration-300">
-          <Link to="/cart" className="w-full bg-primary hover:bg-orange-600 text-slate-900 rounded-2xl p-4 shadow-xl shadow-orange-500/40 flex items-center justify-between transition-colors ring-4 ring-white/10 backdrop-blur-sm">
+          <Link to="/cart" className="w-full bg-primary hover:bg-emerald-600 active:bg-emerald-700 text-slate-900 rounded-2xl p-4 shadow-xl shadow-emerald-500/40 flex items-center justify-between transition-colors ring-4 ring-white/10 backdrop-blur-sm">
             <div className="flex items-center gap-3">
               <div className="bg-white/20 px-3 py-1 rounded-lg text-sm font-black flex items-center justify-center min-w-[36px]">{totalItems}</div>
               <span className="font-black text-base uppercase tracking-wider">{isWaiter ? 'Ver Comanda' : 'Ver mi orden'}</span>
@@ -1158,8 +1158,8 @@ export default function RestaurantPage() {
                           onClick={() => setSelectedVariant(v)}
                           className={`border p-4 rounded-3xl flex flex-col gap-1 text-left transition-all ${selectedVariant?.name === v.name ? 'bg-primary border-primary shadow-lg shadow-primary/20 scale-105' : 'bg-slate-50 border-slate-100 hover:border-primary/30'}`}
                         >
-                          <span className={`text-[10px] font-black uppercase ${selectedVariant?.name === v.name ? 'text-white/80' : 'text-slate-400'}`}>{v.name}</span>
-                          <span className={`text-lg font-black ${selectedVariant?.name === v.name ? 'text-white' : 'text-slate-800'}`}>${v.price.toFixed(2)}</span>
+                          <span className={`text-[10px] font-black uppercase ${selectedVariant?.name === v.name ? 'text-slate-900/60' : 'text-slate-400'}`}>{v.name}</span>
+                          <span className={`text-lg font-black ${selectedVariant?.name === v.name ? 'text-slate-900' : 'text-slate-800'}`}>${v.price.toFixed(2)}</span>
                         </button>
                       ))}
                     </div>
@@ -1221,7 +1221,7 @@ export default function RestaurantPage() {
                   className={`w-full py-4 rounded-3xl font-black text-base shadow-2xl flex items-center justify-center gap-3 transition-all ${
                     selectedProduct.variants && selectedProduct.variants.length > 0 && !selectedVariant
                       ? 'bg-slate-200 text-slate-400 cursor-not-allowed shadow-none'
-                      : 'bg-primary text-slate-900 shadow-primary/30 hover:scale-[1.02] active:scale-[0.98]'
+                      : 'bg-primary text-black shadow-primary/30 hover:scale-[1.02] active:scale-[0.98]'
                   }`}
                 >
                   <Plus className="w-5 h-5" />

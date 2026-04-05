@@ -29,7 +29,7 @@ export default function BottomNav() {
           <div className="relative">
             <ShoppingBag className={`w-6 h-6 transition-transform group-hover:scale-110 ${(currentPath === '/orders' || currentPath === '/cart') ? 'text-slate-900' : 'text-slate-400 group-hover:text-slate-900'}`} />
             {totalItems > 0 && (
-              <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-accent text-[8px] font-black text-white ring-2 ring-white shadow-md">
+              <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-primary text-[8px] font-black text-slate-900 ring-2 ring-white shadow-md">
                 {totalItems}
               </span>
             )}

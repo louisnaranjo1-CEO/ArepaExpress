@@ -141,28 +141,28 @@ export default function Dashboard() {
                     value={stats.users.toLocaleString()}
                     trend={`+${stats.newUsersToday} hoy`}
                     icon={Users}
-                    color="bg-blue-600"
+                    color="bg-primary text-slate-900"
                 />
                 <StatCard
                     title="Restaurantes"
                     value={stats.restaurants.toString()}
                     trend="Activos"
                     icon={Store}
-                    color="bg-orange-500"
+                    color="bg-slate-900 text-white"
                 />
                 <StatCard
                     title="Órdenes (Total)"
                     value={stats.orders.toLocaleString()}
                     trend="Plataforma"
                     icon={ShoppingBag}
-                    color="bg-emerald-500"
+                    color="bg-emerald-500 text-slate-900"
                 />
                 <StatCard
                     title="Ingresos"
                     value={`$${stats.revenue.toLocaleString()}`}
                     trend="Histórico"
                     icon={TrendingUp}
-                    color="bg-violet-600"
+                    color="bg-primary text-slate-900"
                 />
             </div>
 
@@ -199,9 +199,9 @@ export default function Dashboard() {
                                         <tr key={res.id} className="group hover:bg-slate-50/80 transition-all cursor-default">
                                             <td className="px-8 py-5">
                                                 <div className="flex items-center gap-3">
-                                                    <span className={`w-8 h-8 rounded-full flex items-center justify-center font-black text-sm ${index === 0 ? 'bg-yellow-400 text-white shadow-lg shadow-yellow-200' :
-                                                        index === 1 ? 'bg-slate-300 text-white shadow-lg shadow-slate-200' :
-                                                            index === 2 ? 'bg-orange-300 text-white shadow-lg shadow-orange-200' : 'bg-slate-100 text-slate-500'
+                                                     <span className={`w-8 h-8 rounded-full flex items-center justify-center font-black text-sm ${index === 0 ? 'bg-primary text-slate-900 shadow-lg shadow-primary/20' :
+                                                        index === 1 ? 'bg-emerald-500 text-slate-900 shadow-lg shadow-emerald-200' :
+                                                            index === 2 ? 'bg-slate-900 text-white shadow-lg shadow-slate-200' : 'bg-slate-100 text-slate-500'
                                                         }`}>
                                                         {index + 1}
                                                     </span>
@@ -286,7 +286,7 @@ function StatCard({ title, value, trend, icon: Icon, color }: { title: string, v
         <div className="bg-white p-7 rounded-[40px] shadow-xl shadow-slate-200/40 border border-slate-50 group hover:-translate-y-1 transition-transform cursor-default">
             <div className="flex flex-col gap-6">
                 <div className="flex items-center justify-between">
-                    <div className={`w-14 h-14 ${color} text-white rounded-[22px] flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform`}>
+                    <div className={`w-14 h-14 ${color} rounded-[22px] flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform`}>
                         <Icon className="w-7 h-7" />
                     </div>
                     <div className="flex items-center gap-1 text-emerald-600 font-bold text-[10px] bg-emerald-50 px-3 py-1.5 rounded-full uppercase tracking-widest">

@@ -220,7 +220,7 @@ export default function OrdersRadar() {
                         toast((t) => (
                             <div className="flex flex-col gap-1 p-1">
                                 <p className="font-black text-slate-900 text-sm flex items-center gap-2">
-                                    <MessageCircle className="w-4 h-4 text-orange-500" />
+                                    <MessageCircle className="w-4 h-4 text-emerald-500" />
                                     Nuevo Mensaje
                                 </p>
                                 <p className="text-slate-500 text-xs font-bold leading-tight line-clamp-2">
@@ -453,11 +453,11 @@ export default function OrdersRadar() {
                         <div className="w-px h-8 bg-dashed bg-slate-200 ml-6"></div>
 
                         <div className="flex gap-4">
-                            <div className="w-12 h-12 bg-indigo-50 text-primary rounded-2xl flex items-center justify-center shrink-0 border border-indigo-100 shadow-inner">
+                            <div className="w-12 h-12 bg-emerald-50 text-emerald-600 rounded-2xl flex items-center justify-center shrink-0 border border-emerald-100 shadow-inner">
                                 <MapPin className="w-6" />
                             </div>
                             <div className="flex-1">
-                                <h3 className="text-xs font-black text-primary uppercase tracking-widest">Destino final:</h3>
+                                <h3 className="text-xs font-black text-emerald-600 uppercase tracking-widest">Destino final:</h3>
                                 <p className="font-bold text-slate-700 leading-tight mt-0.5">{activeTransport.destination?.address}</p>
                             </div>
                         </div>
@@ -500,7 +500,7 @@ export default function OrdersRadar() {
                         </a>
                         <button
                             onClick={() => setShowChat(true)}
-                            className="w-full mt-2 bg-indigo-50 text-primary font-bold py-4 rounded-2xl flex justify-center items-center gap-2 active:scale-95 transition-all relative overflow-hidden"
+                            className="w-full mt-2 bg-emerald-50 text-emerald-700 font-bold py-4 rounded-2xl flex justify-center items-center gap-2 active:scale-95 transition-all relative overflow-hidden"
                         >
                             <MessageSquare className="w-5 h-5" /> 
                             Ver Chat
@@ -508,13 +508,13 @@ export default function OrdersRadar() {
                                 <motion.div 
                                     initial={{ scale: 0 }} 
                                     animate={{ scale: 1 }} 
-                                    className="absolute top-3 right-4 bg-red-500 text-white text-[10px] font-black w-6 h-6 rounded-full flex items-center justify-center border-2 border-indigo-50 shadow-sm"
+                                    className="absolute top-3 right-4 bg-primary text-slate-900 text-[10px] font-black w-6 h-6 rounded-full flex items-center justify-center border-2 border-emerald-50 shadow-sm"
                                 >
                                     {unreadChatCount}
                                 </motion.div>
                             )}
                             {unreadChatCount > 0 && (
-                                <div className="absolute inset-0 bg-red-500/5 animate-pulse pointer-events-none"></div>
+                                <div className="absolute inset-0 bg-primary/5 animate-pulse pointer-events-none"></div>
                             )}
                         </button>
                     </div>
@@ -576,11 +576,11 @@ export default function OrdersRadar() {
                         <div className="w-px h-8 bg-slate-100 ml-6"></div>
 
                         <div className="flex gap-4">
-                            <div className="w-12 h-12 bg-indigo-50 text-primary rounded-2xl flex items-center justify-center shrink-0 border border-indigo-100">
+                            <div className="w-12 h-12 bg-emerald-50 text-emerald-600 rounded-2xl flex items-center justify-center shrink-0 border border-emerald-100">
                                 <MapPin className="w-6 h-6" />
                             </div>
                             <div>
-                                <h3 className="text-xs font-black text-primary uppercase tracking-widest">Cliente</h3>
+                                <h3 className="text-xs font-black text-emerald-600 uppercase tracking-widest">Cliente</h3>
                                 <p className="font-bold text-slate-800 leading-tight mt-0.5">{activeOrder.shippingAddress?.address || 'Dirección de entrega...'}</p>
                             </div>
                         </div>
@@ -679,14 +679,14 @@ export default function OrdersRadar() {
                     {/* Mis Reservas */}
                     {myReservations.length > 0 && (
                         <div className="mb-8">
-                            <h3 className="text-[12px] font-black uppercase text-primary tracking-widest pl-2 mb-3">Mis Próximas Reservas</h3>
+                            <h3 className="text-[12px] font-black uppercase text-emerald-600 tracking-widest pl-2 mb-3">Mis Próximas Reservas</h3>
                             <div className="space-y-4">
                                 {myReservations.map(req => (
                                     <motion.div
                                         key={req.id}
                                         initial={{ opacity: 0, x: -20 }}
                                         animate={{ opacity: 1, x: 0 }}
-                                        className="bg-purple-50 rounded-[2.5rem] p-6 shadow-md border border-purple-100 relative group"
+                                        className="bg-emerald-50 rounded-[2.5rem] p-6 shadow-md border border-emerald-100 relative group"
                                     >
                                         <div className="flex justify-between items-center mb-4">
                                             <div className="flex items-center gap-2 px-3 py-1 bg-primary text-slate-900 rounded-full text-[10px] font-black uppercase tracking-wider">
@@ -695,7 +695,7 @@ export default function OrdersRadar() {
                                             <div className="text-xl font-black text-emerald-600">${(req.price || 0).toFixed(2)}</div>
                                         </div>
 
-                                        <div className="text-sm font-black text-purple-900 mb-4 bg-white/60 p-3 rounded-2xl">
+                                        <div className="text-sm font-black text-emerald-900 mb-4 bg-white/60 p-3 rounded-2xl">
                                             {req.scheduledAt && typeof req.scheduledAt.toDate === 'function' ? (
                                                 <>Para: {req.scheduledAt.toDate().toLocaleString('es-VE', { weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })}</>
                                             ) : 'Fecha Pendiente'}
@@ -703,7 +703,7 @@ export default function OrdersRadar() {
 
                                         <button
                                             onClick={() => setActiveTransport(req)}
-                                            className="w-full bg-white text-purple-700 font-black py-3 rounded-xl shadow-sm border border-purple-200 active:scale-95 transition-all text-sm"
+                                            className="w-full bg-white text-emerald-700 font-black py-3 rounded-xl shadow-sm border border-emerald-200 active:scale-95 transition-all text-sm"
                                         >
                                             VER O INICIAR AHORA
                                         </button>
@@ -734,7 +734,7 @@ export default function OrdersRadar() {
                                 </div>
 
                                 {req.scheduled && (
-                                    <div className="flex items-center gap-2 bg-purple-50 text-primary p-3 rounded-2xl border border-purple-100 mb-4 animate-in fade-in slide-in-from-top-1">
+                                    <div className="flex items-center gap-2 bg-emerald-50 text-emerald-700 p-3 rounded-2xl border border-emerald-100 mb-4 animate-in fade-in slide-in-from-top-1">
                                         <Clock className="w-4 h-4" />
                                         <div className="flex flex-col">
                                             <span className="text-[10px] font-black uppercase tracking-wider leading-none">Para el día:</span>
@@ -758,11 +758,11 @@ export default function OrdersRadar() {
                                         </div>
                                     </div>
                                     <div className="flex items-start gap-4">
-                                        <div className="w-10 h-10 bg-indigo-50 text-primary rounded-2xl flex items-center justify-center shrink-0 border border-indigo-100 shadow-inner">
+                                        <div className="w-10 h-10 bg-emerald-50 text-emerald-600 rounded-2xl flex items-center justify-center shrink-0 border border-emerald-100 shadow-inner">
                                             <MapPin className="w-5 h-5" />
                                         </div>
                                         <div>
-                                            <p className="text-[10px] font-black text-indigo-300 uppercase tracking-widest">Destino (Cliente: {req.userName}):</p>
+                                            <p className="text-[10px] font-black text-emerald-600 uppercase tracking-widest">Destino (Cliente: {req.userName}):</p>
                                             <p className="font-bold text-slate-700 leading-tight mt-0.5 line-clamp-2">{req.destination?.address}</p>
                                         </div>
                                     </div>
@@ -808,11 +808,11 @@ export default function OrdersRadar() {
                                         </div>
                                     </div>
                                     <div className="flex items-start gap-4">
-                                        <div className="w-10 h-10 bg-indigo-50 text-primary rounded-2xl flex items-center justify-center shrink-0 border border-indigo-100 shadow-inner">
+                                        <div className="w-10 h-10 bg-emerald-50 text-emerald-600 rounded-2xl flex items-center justify-center shrink-0 border border-emerald-100 shadow-inner">
                                             <MapPin className="w-5 h-5" />
                                         </div>
                                         <div>
-                                            <p className="text-[10px] font-black text-indigo-300 uppercase tracking-widest">Entrega:</p>
+                                            <p className="text-[10px] font-black text-emerald-600 uppercase tracking-widest">Entrega:</p>
                                             <p className="font-bold text-slate-700 leading-tight mt-0.5 line-clamp-2">{order.shippingAddress?.address}</p>
                                         </div>
                                     </div>

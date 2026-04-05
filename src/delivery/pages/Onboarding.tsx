@@ -316,19 +316,19 @@ export default function Onboarding() {
                                 {!showMap ? (
                                     <button
                                         onClick={() => setShowMap(true)}
-                                        className="w-full py-4 border-2 border-dashed border-indigo-200 rounded-2xl flex flex-col items-center justify-center gap-2 text-primary hover:bg-indigo-50 transition-colors"
+                                        className="w-full py-4 border-2 border-dashed border-indigo-200 rounded-2xl flex flex-col items-center justify-center gap-2 text-slate-900 hover:bg-white transition-colors"
                                     >
                                         {formData.homeCoords ? (
                                             <>
                                                 <div className="w-10 h-10 bg-indigo-100 rounded-full flex items-center justify-center">
-                                                    <CheckCircle2 className="w-5 h-5 text-primary" />
+                                                    <CheckCircle2 className="w-5 h-5 text-indigo-600" />
                                                 </div>
                                                 <span className="font-bold text-sm">Ubicación guardada - Toca para cambiar</span>
                                             </>
                                         ) : (
                                             <>
                                                 <div className="w-10 h-10 bg-indigo-50 rounded-full flex items-center justify-center group-hover:bg-indigo-100 transition-colors">
-                                                    <MapPin className="w-5 h-5 text-primary" />
+                                                    <MapPin className="w-5 h-5 text-indigo-600" />
                                                 </div>
                                                 <span className="font-bold text-sm">Abrir mapa para fijar ubicación</span>
                                             </>

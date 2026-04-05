@@ -282,9 +282,9 @@ export default function WaiterDashboard() {
     const filters = [
         { name: 'Todos', color: 'bg-primary' },
         { name: 'Disponible', color: 'bg-emerald-500' },
-        { name: 'Ocupado', color: 'bg-amber-500' },
+        { name: 'Ocupado', color: 'bg-primary' },
         { name: 'Llamando', color: 'bg-rose-500' },
-        { name: 'Cobrando', color: 'bg-secondary' },
+        { name: 'Cobrando', color: 'bg-emerald-600' },
     ];
 
     const handleCheckout = async () => {
@@ -432,7 +432,7 @@ export default function WaiterDashboard() {
                 <div className="relative" ref={notificationRef}>
                     <button
                         onClick={() => setShowNotifications(!showNotifications)}
-                        className={`p-2.5 rounded-full shadow-sm border relative transition-all active:scale-90 ${notifications.length > 0 ? 'bg-orange-50 text-orange-600 border-orange-100' : 'bg-white text-slate-400 border-slate-100'}`}
+                        className={`p-2.5 rounded-full shadow-sm border relative transition-all active:scale-90 ${notifications.length > 0 ? 'bg-primary text-slate-900 border-primary/20 shadow-lg shadow-primary/20' : 'bg-white text-slate-400 border-slate-100'}`}
                     >
                         <Bell className={`w-6 h-6 ${notifications.length > 0 ? 'animate-[bell_1s_infinite]' : ''}`} />
                         {notifications.length > 0 && (
@@ -576,7 +576,7 @@ export default function WaiterDashboard() {
                                 key={filter.name}
                                 onClick={() => setActiveFilter(filter.name)}
                                 className={`flex items-center gap-2 px-6 py-2.5 rounded-2xl whitespace-nowrap transition-all duration-300 font-black text-sm ${activeFilter === filter.name
-                                    ? `${filter.name === 'Todos' ? 'bg-primary shadow-primary/30' : filter.color + ' shadow-slate-200'} text-white shadow-lg scale-105`
+                                    ? `${filter.color} text-${filter.color === 'bg-primary' ? 'slate-900' : 'white'} shadow-lg scale-105`
                                     : 'bg-white text-slate-500 border border-slate-100'
                                     }`}
                             >
@@ -695,23 +695,23 @@ function TableCard({ table, onAction }: TableCardProps) {
                 };
             case 'occupied':
                 return {
-                    bg: 'bg-white',
-                    border: 'border-slate-100',
-                    text: 'text-amber-600',
-                    badge: 'bg-amber-100',
-                    btn: 'bg-slate-50 text-slate-600 border border-slate-100',
+                    bg: 'bg-primary',
+                    border: 'border-primary/20',
+                    text: 'text-slate-900',
+                    badge: 'bg-white/20',
+                    btn: 'bg-slate-900 text-white shadow-slate-900/20',
                     title: 'Ocupado',
-                    accent: 'ring-amber-500'
+                    accent: 'ring-primary'
                 };
             case 'billing':
                 return {
-                    bg: 'bg-white',
-                    border: 'border-slate-100',
-                    text: 'text-secondary',
-                    badge: 'bg-secondary/10',
-                    btn: 'bg-secondary text-white shadow-secondary/20',
+                    bg: 'bg-emerald-500',
+                    border: 'border-emerald-600/20',
+                    text: 'text-slate-900',
+                    badge: 'bg-white/20',
+                    btn: 'bg-slate-900 text-white shadow-slate-900/20',
                     title: 'Cobrando',
-                    accent: 'ring-secondary'
+                    accent: 'ring-emerald-500'
                 };
             default:
                 return {

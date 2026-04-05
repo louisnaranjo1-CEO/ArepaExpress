@@ -222,9 +222,9 @@ export default function CashierDashboard() {
                         <div className="flex-1 w-0 p-6">
                             <div className="flex items-start">
                                 <div className="shrink-0 pt-0.5">
-                                    <div className="h-14 w-14 rounded-2xl bg-primary/10 flex items-center justify-center text-slate-900 relative overflow-hidden group">
+                                    <div className="h-14 w-14 rounded-2xl bg-primary flex items-center justify-center text-slate-900 relative overflow-hidden group">
                                         <ClipboardList className="w-7 h-7 relative z-10" />
-                                        <div className="absolute inset-0 bg-primary/20 scale-0 group-hover:scale-100 transition-transform duration-500 rounded-full" />
+                                        <div className="absolute inset-0 bg-white/20 scale-0 group-hover:scale-100 transition-transform duration-500 rounded-full" />
                                     </div>
                                 </div>
                                 <div className="ml-5 flex-1 text-left">
@@ -667,7 +667,7 @@ ESTADO: ${order.status.toUpperCase()}
         if (url.includes('instagram.com')) return 'bg-gradient-to-tr from-yellow-400 via-red-500 to-purple-600';
         if (url.includes('tiktok.com')) return 'bg-black';
         if (url.includes('youtube.com') || url.includes('youtu.be')) return 'bg-red-600';
-        return 'bg-primary';
+        return 'bg-emerald-500';
     };
 
     const getRestaurantStatus = () => {
@@ -771,25 +771,30 @@ ESTADO: ${order.status.toUpperCase()}
                             }`}
                         >
                             <div className={`aspect-square rounded-[35px] border-2 flex flex-col items-center justify-center gap-3 transition-all ${
-                                status === 'occupied' ? 'bg-indigo-50 border-indigo-200' :
-                                status === 'calling' ? 'bg-red-50 border-red-200 shadow-lg shadow-red-200/50' :
-                                status === 'billing' ? 'bg-emerald-50 border-emerald-200 shadow-lg shadow-emerald-200/50' :
+                                status === 'occupied' ? 'bg-primary border-primary/20' :
+                                status === 'calling' ? 'bg-red-500 border-red-200 shadow-lg shadow-red-200/50' :
+                                status === 'billing' ? 'bg-emerald-500 border-emerald-600 shadow-lg shadow-emerald-200/50' :
                                 'bg-white border-slate-100 hover:border-primary/30 hover:shadow-xl'
                             }`}>
                                 <Utensils className={`w-8 h-8 ${
-                                    status === 'occupied' ? 'text-primary' :
-                                    status === 'calling' ? 'text-red-500' :
-                                    status === 'billing' ? 'text-emerald-500' :
+                                    status === 'occupied' ? 'text-slate-900' :
+                                    status === 'calling' ? 'text-white' :
+                                    status === 'billing' ? 'text-slate-900' :
                                     'text-slate-300 group-hover:text-slate-900 transition-colors'
                                 }`} />
                                 <div className="text-center">
                                     <p className={`text-2xl font-black ${
-                                        status === 'occupied' ? 'text-indigo-900' :
-                                        status === 'calling' ? 'text-red-900' :
-                                        status === 'billing' ? 'text-emerald-900' :
+                                        status === 'occupied' ? 'text-slate-900' :
+                                        status === 'calling' ? 'text-white' :
+                                        status === 'billing' ? 'text-slate-900' :
                                         'text-slate-600'
                                     }`}>#{table.number}</p>
-                                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">
+                                    <p className={`text-[10px] font-black uppercase tracking-widest ${
+                                        status === 'occupied' ? 'text-slate-700' :
+                                        status === 'calling' ? 'text-white/80' :
+                                        status === 'billing' ? 'text-slate-700' :
+                                        'text-slate-400'
+                                    }`}>
                                         {status === 'free' ? 'Disponible' : status === 'calling' ? 'Llamando' : status === 'billing' ? 'Cobrando' : 'Ocupada'}
                                     </p>
                                 </div>
@@ -864,10 +869,10 @@ ESTADO: ${order.status.toUpperCase()}
                         </h3>
                     </div>
                     <div className={`px-3 py-1.5 rounded-2xl text-[10px] font-black uppercase tracking-widest ${
-                        order.status === 'pending' ? 'bg-orange-100 text-orange-600' :
-                        order.status === 'preparing' ? 'bg-blue-100 text-blue-600' :
-                        order.status === 'delivering' ? 'bg-purple-100 text-primary' :
-                        order.status === 'delivered' ? 'bg-green-100 text-green-600' :
+                        order.status === 'pending' ? 'bg-primary text-slate-900' :
+                        order.status === 'preparing' ? 'bg-emerald-500 text-slate-900' :
+                        order.status === 'delivering' ? 'bg-emerald-600 text-slate-900' :
+                        order.status === 'delivered' ? 'bg-slate-900 text-white' :
                         'bg-red-100 text-red-600'
                     }`}>
                         {order.status === 'pending' ? 'Pendiente' :
@@ -1131,12 +1136,12 @@ ESTADO: ${order.status.toUpperCase()}
                 {/* Status Tabs */}
                 <div className="grid grid-cols-2 lg:grid-cols-5 gap-2 p-2 bg-slate-100 rounded-[30px]">
                     {[
-                        { id: 'pending', label: 'Pendientes', icon: Bell, color: 'bg-orange-500' },
-                        { id: 'preparing', label: 'Cocina', icon: Package, color: 'bg-blue-500' },
-                        { id: 'delivering', label: 'Camino', icon: Truck, color: 'bg-purple-500' },
-                        { id: 'delivered', label: 'Entregados', icon: CheckCircle, color: 'bg-green-500' },
+                        { id: 'pending', label: 'Pendientes', icon: Bell, color: 'bg-primary' },
+                        { id: 'preparing', label: 'Cocina', icon: Package, color: 'bg-emerald-500' },
+                        { id: 'delivering', label: 'Camino', icon: Truck, color: 'bg-emerald-600' },
+                        { id: 'delivered', label: 'Entregados', icon: CheckCircle, color: 'bg-slate-900' },
                         { id: 'rejected', label: 'Rechazados', icon: X, color: 'bg-red-500' },
-                        { id: 'tables', label: 'Mesas', icon: Utensils, color: 'bg-indigo-500' },
+                        { id: 'tables', label: 'Mesas', icon: Utensils, color: 'bg-primary' },
                     ].map((tab) => (
                         <button
                             key={tab.id}
@@ -1148,7 +1153,7 @@ ESTADO: ${order.status.toUpperCase()}
                         >
                             <tab.icon className={`w-5 h-5 ${activeTab === tab.id ? 'text-slate-900' : ''}`} />
                             <span className="hidden xl:inline">{tab.label}</span>
-                            <span className={`ml-1 text-[10px] px-2 py-0.5 rounded-full text-white ${tab.color}`}>
+                             <span className={`ml-1 text-[10px] px-2 py-0.5 rounded-full ${tab.id === 'delivered' ? 'text-white' : 'text-slate-900'} ${tab.color}`}>
                                 {(stats as any)[tab.id]}
                             </span>
                         </button>
@@ -1184,7 +1189,7 @@ ESTADO: ${order.status.toUpperCase()}
                                                 <Utensils className="w-4 h-4" />
                                                 🍽️ Servicio en Mesa / Local ({filteredOrders.filter(o => o.source === 'waiter').length})
                                             </h2>
-                                            <div className="h-px flex-1 bg-indigo-100"></div>
+                                            <div className="h-px flex-1 bg-primary/10"></div>
                                         </div>
                                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                                             {filteredOrders.filter(o => o.source === 'waiter').map(order => renderOrderCard(order))}
@@ -1195,7 +1200,7 @@ ESTADO: ${order.status.toUpperCase()}
                                 {filteredOrders.some(o => o.source !== 'waiter') && (
                                     <div className="space-y-6">
                                         <div className="flex items-center gap-4">
-                                            <h2 className="text-sm font-black text-emerald-400 uppercase tracking-[0.3em] flex items-center gap-2 whitespace-nowrap">
+                                            <h2 className="text-sm font-black text-emerald-500 uppercase tracking-[0.3em] flex items-center gap-2 whitespace-nowrap">
                                                 <Truck className="w-4 h-4" />
                                                 🚚 App / Delivery Express ({filteredOrders.filter(o => o.source !== 'waiter').length})
                                             </h2>
@@ -1704,7 +1709,7 @@ ESTADO: ${order.status.toUpperCase()}
                                 <div className={`w-14 h-14 rounded-2xl flex items-center justify-center shadow-lg ${
                                     selectedTable.derivedStatus === 'free' ? 'bg-emerald-500 text-slate-900 shadow-emerald-200' : 
                                     selectedTable.derivedStatus === 'billing' ? 'bg-emerald-600 text-slate-900 shadow-emerald-200' :
-                                    'bg-primary text-slate-900 shadow-indigo-200'
+                                    'bg-primary text-slate-900 shadow-primary/20'
                                 }`}>
                                     <Utensils className="w-7 h-7" />
                                 </div>
@@ -1726,13 +1731,13 @@ ESTADO: ${order.status.toUpperCase()}
                             {selectedTable.derivedStatus !== 'free' ? (
                                 <div className="space-y-4">
                                     {/* Waiter Info */}
-                                    <div className="flex items-center gap-3 p-4 bg-indigo-50 border border-indigo-100 rounded-3xl">
+                                    <div className="flex items-center gap-3 p-4 bg-primary/5 border border-primary/10 rounded-3xl">
                                         <div className="w-10 h-10 rounded-2xl bg-primary flex items-center justify-center text-slate-900 shadow-lg shadow-primary/20">
                                             <User className="w-5 h-5" />
                                         </div>
                                         <div>
-                                            <p className="text-[10px] font-black text-primary uppercase tracking-widest">Mesero Responsable</p>
-                                            <p className="font-black text-indigo-900">{selectedTable.allActiveOrders?.[0]?.waiterName || selectedTable.activeOrder?.waiterName || 'Sin asignar'}</p>
+                                            <p className="text-[10px] font-black text-slate-900/60 uppercase tracking-widest">Mesero Responsable</p>
+                                            <p className="font-black text-slate-900">{selectedTable.allActiveOrders?.[0]?.waiterName || selectedTable.activeOrder?.waiterName || 'Sin asignar'}</p>
                                         </div>
                                     </div>
 
@@ -1855,10 +1860,10 @@ ESTADO: ${order.status.toUpperCase()}
                                                 key={waiter.id}
                                                 onClick={() => handleAssignWaiter(waiter)}
                                                 disabled={assignWaiterLoading}
-                                                className="group flex items-center justify-between p-4 bg-slate-50 hover:bg-primary hover:text-slate-900 rounded-[1.5rem] border border-slate-100 transition-all duration-300 w-full"
+                                                className="group flex items-center justify-between p-4 bg-slate-50 hover:bg-emerald-500 hover:text-slate-900 rounded-[1.5rem] border border-slate-100 transition-all duration-300 w-full"
                                             >
                                                 <div className="flex items-center gap-3">
-                                                    <div className="w-12 h-12 bg-indigo-100 rounded-xl overflow-hidden shadow-sm">
+                                                    <div className="w-12 h-12 bg-primary/10 rounded-xl overflow-hidden shadow-sm">
                                                         {waiter.photoURL ? (
                                                             <img src={waiter.photoURL} alt={waiter.name} className="w-full h-full object-cover" />
                                                         ) : (

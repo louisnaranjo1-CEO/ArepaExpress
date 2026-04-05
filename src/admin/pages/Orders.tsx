@@ -809,7 +809,7 @@ export default function Orders() {
                             }`}
                         >
                             <div className={`aspect-square rounded-[35px] border-2 flex flex-col items-center justify-center gap-3 transition-all ${
-                                status === 'occupied' ? 'bg-indigo-50 border-indigo-200' :
+                                status === 'occupied' ? 'bg-emerald-50 border-emerald-200' :
                                 status === 'calling' ? 'bg-red-50 border-red-200' :
                                 'bg-white border-slate-100 hover:border-primary/30 hover:shadow-xl'
                             }`}>
@@ -820,7 +820,7 @@ export default function Orders() {
                                 }`} />
                                 <div className="text-center">
                                     <p className={`text-2xl font-black ${
-                                        status === 'occupied' ? 'text-indigo-900' :
+                                        status === 'occupied' ? 'text-emerald-900' :
                                         status === 'calling' ? 'text-red-900' :
                                         'text-slate-600'
                                     }`}>#{table.number}</p>
@@ -830,7 +830,7 @@ export default function Orders() {
                                 </div>
                                 {table.waiterName && (
                                     <div className="absolute -bottom-2 bg-white border border-slate-100 px-3 py-1 rounded-full shadow-sm">
-                                        <p className="text-[10px] font-black text-primary truncate max-w-[80px]">
+                                        <p className="text-[10px] font-black text-slate-900 truncate max-w-[80px]">
                                             {table.waiterName}
                                         </p>
                                     </div>
@@ -860,11 +860,11 @@ export default function Orders() {
                     <div className="flex items-center gap-2 mb-1">
                         <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">PEDIDO #{order.id.slice(-6).toUpperCase()}</span>
                         {order.source === 'waiter' ? (
-                            <span className="bg-indigo-100 text-indigo-700 text-[10px] font-black px-2 py-0.5 rounded-md uppercase tracking-widest flex items-center gap-1">
+                            <span className="bg-yellow-400 text-black text-[10px] font-black px-2 py-0.5 rounded-md uppercase tracking-widest flex items-center gap-1">
                                 Mesero
                             </span>
                         ) : (
-                            <span className="bg-emerald-100 text-emerald-700 text-[10px] font-black px-2 py-0.5 rounded-md uppercase tracking-widest flex items-center gap-1">
+                            <span className="bg-yellow-400 text-black text-[10px] font-black px-2 py-0.5 rounded-md uppercase tracking-widest flex items-center gap-1">
                                 App
                             </span>
                         )}
@@ -898,8 +898,8 @@ export default function Orders() {
             </div>
 
             {(order as any).orderNote && (
-                <div className="bg-yellow-50 border border-yellow-200 text-yellow-800 p-4 rounded-xl mb-6 text-sm">
-                    <span className="font-black uppercase tracking-widest text-[10px] block mb-1">Nota del Cliente:</span>
+                <div className="bg-primary border border-primary/20 text-slate-900 p-4 rounded-xl mb-6 text-sm">
+                    <span className="font-black uppercase tracking-widest text-[10px] block mb-1 opacity-70">Nota del Cliente:</span>
                     <p className="font-bold">{((order as any).orderNote)}</p>
                 </div>
             )}
@@ -1111,12 +1111,12 @@ export default function Orders() {
             {/* Status Tabs */}
             <div className="grid grid-cols-2 lg:grid-cols-5 gap-2 p-2 bg-slate-100 rounded-[30px]">
                 {[
-                    { id: 'pending', label: 'Pendientes', icon: Bell, color: 'bg-orange-500' },
-                    { id: 'preparing', label: 'Cocina', icon: Package, color: 'bg-blue-500' },
-                    { id: 'delivering', label: 'Camino', icon: Truck, color: 'bg-purple-500' },
-                    { id: 'delivered', label: 'Entregados', icon: CheckCircle, color: 'bg-green-500' },
-                    { id: 'tables', label: 'Mesas', icon: Users, color: 'bg-indigo-500' },
-                    { id: 'rejected', label: 'Rechazados', icon: X, color: 'bg-red-500' },
+                    { id: 'pending', label: 'Pendientes', icon: Bell, color: 'bg-emerald-500' },
+                    { id: 'preparing', label: 'Cocina', icon: Package, color: 'bg-emerald-600' },
+                    { id: 'delivering', label: 'Camino', icon: Truck, color: 'bg-emerald-700' },
+                    { id: 'delivered', label: 'Entregados', icon: CheckCircle, color: 'bg-emerald-500' },
+                    { id: 'tables', label: 'Mesas', icon: Users, color: 'bg-primary' },
+                    { id: 'rejected', label: 'Rechazados', icon: X, color: 'bg-slate-500' },
                 ].map((tab) => (
                     <button
                         key={tab.id}
@@ -1128,7 +1128,7 @@ export default function Orders() {
                     >
                         <tab.icon className={`w-5 h-5 ${activeTab === tab.id ? 'text-slate-900' : ''}`} />
                         <span className="hidden xl:inline">{tab.label}</span>
-                        <span className={`ml-1 text-[10px] px-2 py-0.5 rounded-full text-white ${tab.color}`}>
+                        <span className={`ml-1 text-[10px] px-2 py-0.5 rounded-full ${tab.id === 'tables' ? 'bg-slate-900 text-white' : 'text-white ' + tab.color}`}>
                             {(stats as any)[tab.id]}
                         </span>
                     </button>
@@ -1161,7 +1161,7 @@ export default function Orders() {
                         <div className="space-y-6">
                             <div className="flex items-center gap-4 px-2">
                                 <div className="h-px flex-1 bg-indigo-100"></div>
-                                <h2 className="text-xl font-black text-primary flex items-center gap-2 uppercase tracking-widest bg-indigo-50 px-6 py-2 rounded-full border border-indigo-100">
+                                <h2 className="text-xl font-black text-slate-900 flex items-center gap-2 uppercase tracking-widest bg-primary px-6 py-2 rounded-full border border-primary/20">
                                     <Users className="w-6 h-6" /> 🍽️ Servicio en Mesa / Local ({filteredOrders.filter(o => o.source === 'waiter').length})
                                 </h2>
                                 <div className="h-px flex-1 bg-indigo-100"></div>
@@ -1208,7 +1208,7 @@ export default function Orders() {
                                             <div className="flex items-center gap-3">
                                                 <h3 className="text-2xl font-black text-slate-900">Mesa #{selectedTable.number}</h3>
                                                 {activeOrder && (
-                                                    <span className="px-3 py-1 bg-indigo-100 text-primary rounded-full text-[10px] font-black uppercase tracking-widest">
+                                                    <span className="px-3 py-1 bg-emerald-500 text-white rounded-full text-[10px] font-black uppercase tracking-widest">
                                                         Ocupada
                                                     </span>
                                                 )}
@@ -1229,8 +1229,8 @@ export default function Orders() {
                                                         <User className="w-5 h-5" />
                                                     </div>
                                                     <div>
-                                                        <p className="text-[10px] font-black text-primary uppercase tracking-widest">Mesero Responsable</p>
-                                                        <p className="font-black text-indigo-900">{activeOrder.waiterName || 'Sin asignar'}</p>
+                                                        <p className="text-[10px] font-black text-emerald-600 uppercase tracking-widest">Mesero Responsable</p>
+                                                        <p className="font-black text-slate-900">{activeOrder.waiterName || 'Sin asignar'}</p>
                                                     </div>
                                                 </div>
 
@@ -1741,13 +1741,13 @@ export default function Orders() {
                             <div className="w-full lg:w-96 bg-white rounded-3xl shadow-sm border border-slate-100 flex flex-col shrink-0">
                                 {/* Tipos de orden */}
                                 <div className="grid grid-cols-3 gap-1 p-2 bg-slate-100 m-4 rounded-2xl">
-                                    <button onClick={() => setPosOrderType('local')} className={`py-3 flex flex-col items-center justify-center gap-1 rounded-xl font-bold text-[10px] uppercase transition-all ${posOrderType === 'local' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:bg-white/50'}`}>
+                                    <button onClick={() => setPosOrderType('local')} className={`py-3 flex flex-col items-center justify-center gap-1 rounded-xl font-bold text-[10px] uppercase transition-all ${posOrderType === 'local' ? 'bg-primary text-slate-900 shadow-sm' : 'text-slate-500 hover:bg-white/50'}`}>
                                         <Store className="w-5 h-5" /> Local
                                     </button>
-                                    <button onClick={() => setPosOrderType('takeout')} className={`py-3 flex flex-col items-center justify-center gap-1 rounded-xl font-bold text-[10px] uppercase transition-all ${posOrderType === 'takeout' ? 'bg-white text-orange-500 shadow-sm' : 'text-slate-500 hover:bg-white/50'}`}>
+                                    <button onClick={() => setPosOrderType('takeout')} className={`py-3 flex flex-col items-center justify-center gap-1 rounded-xl font-bold text-[10px] uppercase transition-all ${posOrderType === 'takeout' ? 'bg-emerald-500 text-white shadow-sm' : 'text-slate-500 hover:bg-white/50'}`}>
                                         <ShoppingBag className="w-5 h-5" /> P. Llevar
                                     </button>
-                                    <button onClick={() => setPosOrderType('delivery')} className={`py-3 flex flex-col items-center justify-center gap-1 rounded-xl font-bold text-[10px] uppercase transition-all ${posOrderType === 'delivery' ? 'bg-white text-blue-500 shadow-sm' : 'text-slate-500 hover:bg-white/50'}`}>
+                                    <button onClick={() => setPosOrderType('delivery')} className={`py-3 flex flex-col items-center justify-center gap-1 rounded-xl font-bold text-[10px] uppercase transition-all ${posOrderType === 'delivery' ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-500 hover:bg-white/50'}`}>
                                         <Truck className="w-5 h-5" /> Delivery
                                     </button>
                                 </div>
@@ -1849,7 +1849,7 @@ export default function Orders() {
                                                         <button
                                                             key={table.id}
                                                             onClick={() => setSelectedTable(selectedTable?.id === table.id ? null : table)}
-                                                            className={`px-3 py-2 rounded-xl text-xs font-black whitespace-nowrap transition-all border ${selectedTable?.id === table.id ? 'bg-orange-500 text-white border-orange-500' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'}`}
+                                                            className={`px-3 py-2 rounded-xl text-xs font-black whitespace-nowrap transition-all border ${selectedTable?.id === table.id ? 'bg-primary text-slate-900 border-primary' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'}`}
                                                         >
                                                             Mesa {table.number}
                                                         </button>
@@ -1948,10 +1948,10 @@ export default function Orders() {
                                             </div>
                                         ) : (
                                             <>
-                                                <div className="absolute inset-0 bg-primary/20 rounded-full animate-ping" style={{ animationDuration: '2s' }}></div>
-                                                <div className="absolute inset-4 bg-primary/20 rounded-full animate-ping" style={{ animationDuration: '2s', animationDelay: '0.5s' }}></div>
-                                                <div className="absolute inset-8 bg-primary/20 rounded-full animate-ping" style={{ animationDuration: '2s', animationDelay: '1s' }}></div>
-                                                <div className="w-16 h-16 bg-primary text-slate-900 rounded-full flex items-center justify-center relative z-10 shadow-lg shadow-blue-500/30">
+                                                <div className="absolute inset-0 bg-emerald-500/20 rounded-full animate-ping" style={{ animationDuration: '2s' }}></div>
+                                                <div className="absolute inset-4 bg-emerald-500/20 rounded-full animate-ping" style={{ animationDuration: '2s', animationDelay: '0.5s' }}></div>
+                                                <div className="absolute inset-8 bg-emerald-500/20 rounded-full animate-ping" style={{ animationDuration: '2s', animationDelay: '1s' }}></div>
+                                                <div className="w-16 h-16 bg-primary text-slate-900 rounded-full flex items-center justify-center relative z-10 shadow-lg shadow-primary/30">
                                                     <Search className="w-8 h-8 animate-pulse" />
                                                 </div>
                                             </>
@@ -2061,7 +2061,7 @@ export default function Orders() {
                                             >
                                                 <div className="flex items-center gap-3">
                                                     <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${selectionVariant?.name === variant.name ? 'border-primary bg-primary' : 'border-slate-300'}`}>
-                                                        {selectionVariant?.name === variant.name && <div className="w-2 h-2 bg-white rounded-full" />}
+                                                        {selectionVariant?.name === variant.name && <div className="w-2 h-2 bg-slate-900 rounded-full" />}
                                                     </div>
                                                     <span>{variant.name}</span>
                                                 </div>

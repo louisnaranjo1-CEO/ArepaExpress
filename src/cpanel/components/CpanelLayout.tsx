@@ -90,7 +90,7 @@ export default function CpanelLayout({ children, onLogout }: CpanelLayoutProps) 
                             </div>
                             <div className="flex flex-col">
                                 <h1 className="font-black text-white leading-tight">Encontrado en un 2x3</h1>
-                                <p className="text-[10px] font-bold text-slate-900 uppercase tracking-wider">Cpanel Administrativo</p>
+                                <p className="text-[10px] font-bold text-white/50 uppercase tracking-wider">Cpanel Administrativo</p>
                             </div>
                         </div>
                         <button className="md:hidden" onClick={() => setIsSidebarOpen(false)}>
