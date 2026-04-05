@@ -216,10 +216,20 @@ export default function Home() {
             const mCity = normalizeLoc(manualCity);
             
             fetchedRestaurants = fetchedRestaurants.filter(rest => {
-               const c = normalizeLoc(rest.location?.city);
-               const s = normalizeLoc(rest.location?.state);
-               const a = normalizeLoc(rest.location?.address);
-               return c === mCity || c.includes(mCity) || a.includes(mCity) || s.includes(mCity);
+               const c = normalizeLoc(rest.location?.city || (rest as any).city);
+               const s = normalizeLoc(rest.location?.state || (rest as any).state);
+               const a = normalizeLoc(rest.location?.address || (rest as any).address);
+               
+               if (c === mCity || c.includes(mCity) || a.includes(mCity) || s.includes(mCity)) {
+                   return true;
+               }
+
+               // Bulletproof fallback: search the entire object string for the city name
+               // This handles cases where data was stored in an unexpected format or nested structure
+               const jsonStr = normalizeLoc(JSON.stringify(rest));
+               if (jsonStr.includes(mCity)) return true;
+
+               return false;
             });
         }
         setRestaurants(fetchedRestaurants);

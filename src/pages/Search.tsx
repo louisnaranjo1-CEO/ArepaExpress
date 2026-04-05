@@ -148,10 +148,15 @@ export default function Search() {
             const normalizeLoc = (str?: string) => str ? str.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim() : '';
             const normManualCity = normalizeLoc(manualCity);
             const matchesCity = !manualCity || (() => {
-               const c = normalizeLoc(res.location?.city);
-               const s = normalizeLoc(res.location?.state);
-               const a = normalizeLoc(res.location?.address);
-               return c === normManualCity || c.includes(normManualCity) || a.includes(normManualCity) || s.includes(normManualCity);
+               const c = normalizeLoc(res.location?.city || (res as any).city);
+               const s = normalizeLoc(res.location?.state || (res as any).state);
+               const a = normalizeLoc(res.location?.address || (res as any).address);
+               if (c === normManualCity || c.includes(normManualCity) || a.includes(normManualCity) || s.includes(normManualCity)) return true;
+               
+               const jsonStr = normalizeLoc(JSON.stringify(res));
+               if (jsonStr.includes(normManualCity)) return true;
+               
+               return false;
             })();
 
             return matchesQuery && matchesCategory && matchesSector && matchesPrice && matchesPromotions && matchesCity;
