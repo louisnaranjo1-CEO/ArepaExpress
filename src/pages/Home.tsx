@@ -217,14 +217,16 @@ export default function Home() {
         setRestaurants(fetchedRestaurants);
         const cityResIds = new Set(fetchedRestaurants.map(r => r.id));
 
-        // Fetch All Products for Recommendations
-        const productsQuery = query(collectionGroup(db, 'products'), limit(150));
-        const productsSnap = await getDocs(productsQuery);
-        const allProducts = productsSnap.docs.map(d => {
-          const pathSegments = d.ref.path.split('/');
-          const restaurantId = pathSegments[pathSegments.length - 3];
-          return { id: d.id, restaurantId, ...d.data() } as RecommendedProduct;
-        }).filter(p => cityResIds.has(p.restaurantId)); // Omit products not in the city
+        // Fetch All Products for Recommendations from top restaurants in the area
+        // Limit to top 20 restaurants to avoid massive reads, ensuring we only get products from THIS city
+        let allProducts: RecommendedProduct[] = [];
+        const topRestForProducts = fetchedRestaurants.slice(0, 20);
+        await Promise.all(topRestForProducts.map(async (rest) => {
+            const pSnap = await getDocs(query(collection(db, 'restaurants', rest.id, 'products'), limit(15)));
+            pSnap.docs.forEach(d => {
+                allProducts.push({ id: d.id, restaurantId: rest.id, ...d.data() } as RecommendedProduct);
+            });
+        }));
 
         const history = recommendationsService.getViewedProductsHistory();
         const topCategories = recommendationsService.getTopInterestedCategories();
