@@ -719,7 +719,7 @@ export default function Profile() {
                                             {isLoginMode ? "Iniciar Sesión" : "Crear Cuenta"}
                                         </h3>
                                         <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-0.5">
-                                            Deliexpress Lover 🚀
+                                            ¡Nos vemos en un 2x3 mi pana! 🚀
                                         </p>
                                     </div>
                                     {!isForcedRegister && (

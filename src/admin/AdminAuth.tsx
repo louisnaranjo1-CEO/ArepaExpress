@@ -69,7 +69,7 @@ export default function AdminAuth() {
                             className="h-full object-contain"
                         />
                     </div>
-                    <h1 className="text-4xl font-black text-slate-900 tracking-tight">Deliexpress <span className="text-slate-900">Admin</span></h1>
+                    <h1 className="text-3xl font-black text-slate-900 tracking-tight">Administra tu cuenta <span className="text-primary">en un 2x3</span></h1>
                     <p className="text-slate-500 mt-2 font-medium">
                         {isLogin ? 'Ingresa para gestionar tu restaurante' : 'Registra tu negocio y empieza a vender'}
                     </p>
@@ -205,7 +205,7 @@ export default function AdminAuth() {
                 </div>
 
                 <p className="text-center text-slate-400 text-xs mt-8 font-medium uppercase tracking-widest leading-relaxed">
-                    Al continuar, aceptas los términos de servicio<br />y políticas de privacidad de Deliexpress.
+                    Al continuar, aceptas los términos de servicio<br />y políticas de privacidad de Un 2x3.
                 </p>
             </div>
         </div>

@@ -711,7 +711,7 @@ export default function Taxi() {
                     {/* Fixed center marker for selection - Adjusted to be higher (center of visible map) */}
                     {(step === 'origin' || step === 'destination') && (
                         <div 
-                            className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-full z-10 pointer-events-none drop-shadow-[0_10px_15px_rgba(0,0,0,0.3)] transition-all"
+                            className="absolute left-1/2 top-[calc(50%-140px)] -translate-x-1/2 -translate-y-full z-10 pointer-events-none drop-shadow-[0_10px_15px_rgba(0,0,0,0.3)] transition-all"
                         >
                             {step === 'origin' ? (
                                 <div className={`transition-transform duration-200 ${isDragging ? '-translate-y-4' : ''}`}>

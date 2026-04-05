@@ -25,6 +25,7 @@ export default function Search() {
     const [loading, setLoading] = useState(true);
     const [casheaIcon, setCasheaIcon] = useState<string | null>(null);
     const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+    const [manualCity] = useState<string>(() => localStorage.getItem('userCity') || '');
 
     const location = useLocation();
     const [isFilterOpen, setIsFilterOpen] = useState(location.state?.openFilters || false);
@@ -143,13 +144,16 @@ export default function Search() {
                 }
             }
 
-            return matchesQuery && matchesCategory && matchesSector && matchesPrice && matchesPromotions;
+            // City Filter
+            const matchesCity = !manualCity || res.location?.city === manualCity;
+
+            return matchesQuery && matchesCategory && matchesSector && matchesPrice && matchesPromotions && matchesCity;
         });
-    }, [restaurants, query, selectedCategory, filters]);
+    }, [restaurants, query, selectedCategory, filters, manualCity]);
 
     return (
         <div className="pb-24 animate-in fade-in duration-500 min-h-screen bg-slate-50">
-            <div className="sticky top-0 z-40 bg-white/80 backdrop-blur-md px-6 pt-12 pb-6 space-y-4 shadow-sm">
+            <div className="sticky top-0 z-40 bg-primary px-6 pt-12 pb-6 space-y-4 shadow-sm">
                 <h1 className="text-3xl font-black text-slate-900">¿Qué buscamos? 🧐</h1>
                 <div className="flex gap-2">
                     <div className="relative flex-1 group">
