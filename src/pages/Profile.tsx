@@ -662,7 +662,7 @@ export default function Profile() {
                                 }}
                                 className="w-full text-center py-2 group"
                             >
-                                <span className="text-slate-400 font-bold text-xs group-hover:text-primary transition-colors">¿No tienes cuenta? </span>
+                                <span className="text-slate-900 font-bold text-xs group-hover:text-primary transition-colors">¿No tienes cuenta? </span>
                                 <span className="text-primary font-black text-xs group-hover:underline">Regístrate</span>
                             </button>
                             <div className="flex items-center gap-4 my-2">
