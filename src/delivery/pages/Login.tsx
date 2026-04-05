@@ -100,13 +100,13 @@ export default function Login() {
                     />
                     <button
                         onClick={() => setMode('login')}
-                        className={`flex-1 py-3 text-sm font-black z-10 transition-colors ${mode === 'login' ? 'text-white' : 'text-slate-500 hover:text-slate-300'}`}
+                        className={`flex-1 py-3 text-sm font-black z-10 transition-colors ${mode === 'login' ? 'text-slate-900' : 'text-slate-500 hover:text-slate-300'}`}
                     >
                         INICIAR SESIÓN
                     </button>
                     <button
                         onClick={() => setMode('register')}
-                        className={`flex-1 py-3 text-sm font-black z-10 transition-colors ${mode === 'register' ? 'text-white' : 'text-slate-500 hover:text-slate-300'}`}
+                        className={`flex-1 py-3 text-sm font-black z-10 transition-colors ${mode === 'register' ? 'text-slate-900' : 'text-slate-500 hover:text-slate-300'}`}
                     >
                         REGISTRARSE
                     </button>
