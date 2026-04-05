@@ -245,6 +245,16 @@ export default function Home() {
           setIsNewUser(false);
           const recentIds = history.map(h => h.id);
 
+          // Fallback randomProducts
+          const topProducts = [...allProducts].sort((a, b) => {
+            const rA = fetchedRestaurants.find((r: any) => r.id === a.restaurantId);
+            const rB = fetchedRestaurants.find((r: any) => r.id === b.restaurantId);
+            const ratingDiff = (rB?.rating || 0) - (rA?.rating || 0);
+            if (ratingDiff !== 0) return ratingDiff;
+            return (rB?.reviews || 0) - (rA?.reviews || 0);
+          });
+          setRandomProducts(topProducts.slice(0, 12));
+
           setRecentlyViewed(
             history.map(h => allProducts.find(p => p.id === h.id)).filter(Boolean) as RecommendedProduct[]
           );
@@ -644,13 +654,13 @@ export default function Home() {
                     <h2 className="text-slate-900 text-xl font-bold">Destacados</h2>
                     <Link to="/search" className="text-slate-900 text-sm font-semibold hover:underline">Ver todos</Link>
                 </div>
-                <div className="-ml-5">
+                <div className="">
                     {recentlyViewed.length > 0 ? (
-                        <ProductCarousel title="Visto recientemente" products={recentlyViewed} />
+                        <ProductGrid title="Visto recientemente" products={recentlyViewed} />
                     ) : randomProducts.length > 0 ? (
-                        <ProductCarousel title="Descubre algo nuevo" products={randomProducts} />
+                        <ProductGrid title="Descubre algo nuevo" products={randomProducts} />
                     ) : (
-                        <div className="text-center py-12 text-slate-500 pl-5">
+                        <div className="text-center py-12 text-slate-500">
                             No hay productos disponibles en tu zona.
                         </div>
                     )}
@@ -665,8 +675,8 @@ export default function Home() {
                 </div>
                 
                 {randomProducts.length > 0 && (
-                    <div className="-ml-5">
-                        <ProductCarousel title="Productos Destacados" products={randomProducts} />
+                    <div className="">
+                        <ProductGrid title="Productos Destacados" products={randomProducts} />
                     </div>
                 )}
 
@@ -800,9 +810,9 @@ export default function Home() {
 }
 
 // ----------------------------------------------------------------------
-// Reusable Component for Product Carousels
+// Reusable Component for Product Grid
 // ----------------------------------------------------------------------
-function ProductCarousel({ title, products }: { title: string, products: RecommendedProduct[] }) {
+function ProductGrid({ title, products }: { title: string, products: RecommendedProduct[] }) {
   const navigate = useNavigate();
 
   const handleProductClick = (product: RecommendedProduct) => {
@@ -812,46 +822,71 @@ function ProductCarousel({ title, products }: { title: string, products: Recomme
   };
 
   return (
-    <div className="pl-5 overflow-hidden">
-      <h2 className="text-slate-900 text-lg font-bold mb-3">{title}</h2>
-      <div className="flex gap-4 overflow-x-auto hide-scrollbar pr-5 pb-4 snap-x snap-mandatory">
+    <div className="overflow-hidden w-full mb-6">
+      {title && <h2 className="text-slate-900 text-lg font-bold mb-3">{title}</h2>}
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
         {products.map((product) => {
           const finalPrice = product.promoPrice && product.promoPrice > 0 ? product.promoPrice : product.price;
           const displayImg = (product.images && product.images.length > 0) ? product.images[0] : product.image;
+          const discount = product.promoPrice && product.price > product.promoPrice 
+             ? Math.round(((product.price - product.promoPrice) / product.price) * 100) 
+             : 0;
 
           return (
             <div
               key={`${product.restaurantId}-${product.id}`}
               onClick={() => handleProductClick(product)}
-              className="flex-none w-[140px] bg-white rounded-xl shadow-[0_2px_10px_-3px_rgba(0,0,0,0.1)] border border-slate-50 overflow-hidden snap-start cursor-pointer group hover:shadow-md transition-shadow flex flex-col"
+              className="bg-white rounded-xl shadow-[0_2px_10px_-3px_rgba(0,0,0,0.1)] border border-slate-100 overflow-hidden cursor-pointer group hover:shadow-md transition-shadow flex flex-col"
             >
               <div className="w-full aspect-square bg-slate-50 p-2 overflow-hidden flex items-center justify-center relative">
                 <img
                   src={displayImg}
                   alt={product.name}
-                  className="w-full h-full object-contain mix-blend-multiply group-hover:scale-110 transition-transform duration-300"
+                  className="w-full h-full object-contain mix-blend-multiply group-hover:scale-105 transition-transform duration-300"
                 />
-                {(product.consultPrice || !product.price) && (
-                  <div className="absolute top-2 left-2 bg-slate-900 text-white text-[8px] font-black px-1.5 py-0.5 rounded shadow-sm">CONSULTAR</div>
+                {discount > 0 && (
+                  <div className="absolute top-2 left-2 bg-blue-600 text-white text-[8px] font-black px-1.5 py-0.5 rounded shadow-sm">
+                    OFERTA IMPERDIBLE
+                  </div>
+                )}
+                {(product.consultPrice || (!product.price && !product.promoPrice)) && (
+                   <div className="absolute top-2 left-2 bg-slate-900 text-white text-[8px] font-black px-1.5 py-0.5 rounded shadow-sm">
+                     CONSULTAR
+                   </div>
                 )}
               </div>
 
               <div className="p-3 flex-1 flex flex-col">
-                <h3 className="text-xs text-slate-700 font-medium line-clamp-2 leading-tight mb-auto group-hover:text-slate-900 transition-colors">
+                <h3 className="text-xs text-slate-700 font-medium line-clamp-2 leading-tight group-hover:text-primary transition-colors">
                   {product.name}
                 </h3>
+                
+                <div className="flex items-center gap-1 mt-1.5 mb-1.5 text-[10px] text-slate-500">
+                   <Star className="w-3 h-3 text-blue-600 fill-blue-600" />
+                   <span className="text-blue-600">5.0</span>
+                </div>
 
-                <div className="mt-3">
+                <div className="mt-auto pt-1">
                   {!product.consultPrice && product.price > 0 && (
-                    <div className="flex items-center gap-1.5">
-                      <span className="font-black text-slate-900 text-sm leading-none bg-slate-100/50 px-1 py-0.5 rounded">
-                        ${finalPrice.toFixed(2)}
-                      </span>
+                    <div className="flex flex-col">
+                      {discount > 0 && (
+                        <span className="text-[10px] text-slate-400 line-through">
+                          US$ {product.price.toFixed(2)}
+                        </span>
+                      )}
+                      <div className="flex items-center gap-1.5">
+                        <span className="font-medium text-slate-900 text-sm">
+                          US$ {finalPrice.toFixed(2)}
+                        </span>
+                        {discount > 0 && (
+                           <span className="text-[10px] text-emerald-500 font-medium">{discount}% OFF</span>
+                        )}
+                      </div>
                     </div>
                   )}
-                  {/* Faux Free Shipping for premium effect, assuming some have it */}
-                  <div className="mt-1.5">
-                    <span className="text-[10px] font-bold text-emerald-600 tracking-tight flex items-center gap-1">
+                  {/* Free Shipping Highlight */}
+                  <div className="mt-1">
+                    <span className="text-[11px] font-medium text-emerald-500 tracking-tight flex items-center gap-1">
                       Envío gratis
                     </span>
                   </div>
@@ -861,7 +896,6 @@ function ProductCarousel({ title, products }: { title: string, products: Recomme
           );
         })}
       </div>
-      
     </div>
   );
 }
