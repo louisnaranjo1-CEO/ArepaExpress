@@ -654,6 +654,17 @@ export default function Profile() {
                                 <Mail className="w-5 h-5 text-slate-400" />
                                 Entrar con Correo
                             </button>
+                            <button
+                                onClick={() => {
+                                    vibrate(30);
+                                    setIsLoginMode(false);
+                                    setShowEmailModal(true);
+                                }}
+                                className="w-full text-center py-2 group"
+                            >
+                                <span className="text-slate-400 font-bold text-xs group-hover:text-primary transition-colors">¿No tienes cuenta? </span>
+                                <span className="text-primary font-black text-xs group-hover:underline">Regístrate</span>
+                            </button>
                             <div className="flex items-center gap-4 my-2">
                                 <div className="h-px bg-slate-100 flex-1"></div>
                                 <span className="text-[10px] font-black text-slate-300 uppercase tracking-widest">¿trabajas con nuestros aliados?</span>

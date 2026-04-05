@@ -232,7 +232,15 @@ export default function Home() {
 
         if (history.length === 0) {
           setIsNewUser(true);
-          setRandomProducts([...allProducts].sort(() => 0.5 - Math.random()).slice(0, 12));
+          // Sort products by their restaurant's rating and reviews
+          const topProducts = [...allProducts].sort((a, b) => {
+            const rA = fetchedRestaurants.find((r: any) => r.id === a.restaurantId);
+            const rB = fetchedRestaurants.find((r: any) => r.id === b.restaurantId);
+            const ratingDiff = (rB?.rating || 0) - (rA?.rating || 0);
+            if (ratingDiff !== 0) return ratingDiff;
+            return (rB?.reviews || 0) - (rA?.reviews || 0);
+          });
+          setRandomProducts(topProducts.slice(0, 12));
         } else {
           setIsNewUser(false);
           const recentIds = history.map(h => h.id);
