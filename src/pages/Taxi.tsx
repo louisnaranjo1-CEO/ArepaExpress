@@ -867,7 +867,7 @@ export default function Taxi() {
                             <button
                                 onClick={confirmDestination}
                                 disabled={isDragging || !destination}
-                                className="w-full bg-orange-500 text-white py-4 rounded-xl font-black shadow-lg shadow-indigo-600/30 flex justify-center items-center gap-2 active:scale-95 transition-all disabled:opacity-50 mb-6"
+                                className="w-full bg-orange-500 text-white py-4 rounded-xl font-black shadow-lg shadow-primary/30 flex justify-center items-center gap-2 active:scale-95 transition-all disabled:opacity-50 mb-6"
                             >
                                 Confirmar Destino
                             </button>

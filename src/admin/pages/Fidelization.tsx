@@ -437,7 +437,7 @@ export default function Fidelization() {
             {/* Header section */}
             <div className="relative overflow-hidden bg-slate-900 rounded-[3rem] p-8 md:p-12 text-white">
                 <div className="absolute top-0 right-0 w-64 h-64 bg-primary/20 rounded-full blur-3xl -mr-20 -mt-20"></div>
-                <div className="absolute bottom-0 left-0 w-48 h-48 bg-indigo-500/10 rounded-full blur-3xl -ml-10 -mb-10"></div>
+                <div className="absolute bottom-0 left-0 w-48 h-48 bg-primary/10 rounded-full blur-3xl -ml-10 -mb-10"></div>
 
                 <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-8">
                     <div className="space-y-4 max-w-xl">
@@ -461,7 +461,7 @@ export default function Fidelization() {
                         </button>
                         <button
                             onClick={() => setActiveTab('contests')}
-                            className={`px-6 py-4 rounded-[2rem] font-black transition-all shadow-xl flex items-center gap-2 ${activeTab === 'contests' ? 'bg-indigo-500 text-white shadow-indigo-500/20 scale-105' : 'bg-white/5 text-white/50 hover:bg-white/10'}`}
+                            className={`px-6 py-4 rounded-[2rem] font-black transition-all shadow-xl flex items-center gap-2 ${activeTab === 'contests' ? 'bg-primary text-slate-900 shadow-primary/20 scale-105' : 'bg-white/5 text-slate-900/50 hover:bg-white/10'}`}
                         >
                             <Gift className="w-5 h-5" /> Sorteos
                         </button>
@@ -490,7 +490,7 @@ export default function Fidelization() {
                     </div>
 
                     <div className="bg-white p-6 rounded-[2.5rem] shadow-xl shadow-slate-200/50 border border-slate-100 flex items-center gap-5">
-                        <div className="w-14 h-14 bg-indigo-50 text-indigo-500 rounded-2xl flex items-center justify-center shrink-0">
+                        <div className="w-14 h-14 bg-indigo-50 text-primary rounded-2xl flex items-center justify-center shrink-0">
                             <TrendingUp className="w-7 h-7" />
                         </div>
                         <div>
@@ -579,12 +579,12 @@ export default function Fidelization() {
                                             </div>
                                         </td>
                                         <td className="p-6 text-center">
-                                            <div className="text-lg font-black text-indigo-600 drop-shadow-sm">
+                                            <div className="text-lg font-black text-primary drop-shadow-sm">
                                                 {client.points.toLocaleString()} <span className="text-[10px] opacity-40">Pts</span>
                                             </div>
                                         </td>
                                         <td className="p-6 text-center">
-                                            <span className={`text-[10px] font-black uppercase tracking-widest px-3 py-1.5 rounded-full ${client.points > 1000 ? 'bg-purple-100 text-purple-600' :
+                                            <span className={`text-[10px] font-black uppercase tracking-widest px-3 py-1.5 rounded-full ${client.points > 1000 ? 'bg-purple-100 text-primary' :
                                                 client.points > 500 ? 'bg-blue-100 text-blue-600' :
                                                     'bg-slate-100 text-slate-400'
                                                 }`}>
@@ -616,7 +616,7 @@ export default function Fidelization() {
                         </div>
                         <button
                             onClick={() => setIsContestModalOpen(true)}
-                            className="bg-indigo-600 text-white px-6 py-4 rounded-2xl font-black shadow-lg shadow-indigo-600/30 flex items-center gap-2 hover:scale-[1.02] active:scale-[0.98] transition-all"
+                            className="bg-primary text-slate-900 px-6 py-4 rounded-2xl font-black shadow-lg shadow-primary/30 flex items-center gap-2 hover:scale-[1.02] active:scale-[0.98] transition-all"
                         >
                             <Gift className="w-5 h-5" /> Iniciar Sorteo
                         </button>
@@ -671,7 +671,7 @@ export default function Fidelization() {
                                 contests.map(c => (
                                     <div key={c.id} className="bg-white p-6 rounded-[2.5rem] border border-slate-100 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-6 hover:shadow-xl hover:shadow-slate-200/50 transition-all">
                                         <div className="flex items-start gap-4">
-                                            <div className="w-12 h-12 bg-indigo-50 text-indigo-500 rounded-2xl flex items-center justify-center shrink-0">
+                                            <div className="w-12 h-12 bg-indigo-50 text-primary rounded-2xl flex items-center justify-center shrink-0">
                                                 <Award className="w-6 h-6" />
                                             </div>
                                             <div>
@@ -680,7 +680,7 @@ export default function Fidelization() {
                                                     {c.prizes?.map((p, pidx) => (
                                                         <p key={pidx} className="text-[11px] font-bold text-slate-500">
                                                             {c.prizes.length > 1 ? `Premio #${pidx + 1}: ` : 'Premio: '}
-                                                            <span className="text-indigo-600">{p}</span>
+                                                            <span className="text-primary">{p}</span>
                                                         </p>
                                                     ))}
                                                 </div>
@@ -688,7 +688,7 @@ export default function Fidelization() {
                                                     <span className="bg-slate-100 text-slate-500 px-2 py-1 rounded-lg">Filtros:</span>
                                                     {c.filters.productId !== 'all' && <span className="bg-blue-50 text-blue-600 px-2 py-1 rounded-lg">Por Producto</span>}
                                                     {parseFloat(c.filters.minPurchase) > 0 && <span className="bg-emerald-50 text-emerald-600 px-2 py-1 rounded-lg">Min ${c.filters.minPurchase}</span>}
-                                                    {c.filters.gender !== 'all' && <span className="bg-purple-50 text-purple-600 px-2 py-1 rounded-lg">Sexo: {c.filters.gender}</span>}
+                                                    {c.filters.gender !== 'all' && <span className="bg-purple-50 text-primary px-2 py-1 rounded-lg">Sexo: {c.filters.gender}</span>}
                                                 </div>
                                             </div>
                                         </div>
@@ -810,7 +810,7 @@ export default function Fidelization() {
                         {/* Image Upload Area */}
                         <div className="bg-white p-8 rounded-[3rem] shadow-xl shadow-slate-200/50 border border-slate-100">
                             <h3 className="text-xl font-black text-slate-800 mb-6 flex items-center gap-3">
-                                <Camera className="w-5 h-5 text-indigo-500" /> Foto de la Promoción
+                                <Camera className="w-5 h-5 text-primary" /> Foto de la Promoción
                             </h3>
 
                             {publicRaffle.image ? (
@@ -818,7 +818,7 @@ export default function Fidelization() {
                                     <img src={publicRaffle.image} alt="Public Raffle" className="w-full h-full object-cover" />
                                     <div className="absolute inset-0 bg-slate-900/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
                                         <label className="bg-white text-slate-900 px-6 py-3 rounded-2xl font-black cursor-pointer shadow-xl hover:scale-105 transition-transform flex items-center gap-2">
-                                            <Camera className="w-5 h-5 text-indigo-500" /> Cambiar Imagen
+                                            <Camera className="w-5 h-5 text-primary" /> Cambiar Imagen
                                             <input type="file" accept="image/*" className="hidden" onChange={handleRaffleImageUpload} disabled={uploadingImage} />
                                         </label>
                                     </div>
@@ -829,12 +829,12 @@ export default function Fidelization() {
                                     )}
                                 </div>
                             ) : (
-                                <label className="aspect-video rounded-[2rem] bg-slate-50 border-2 border-dashed border-slate-200 flex flex-col items-center justify-center cursor-pointer hover:bg-slate-100 hover:border-indigo-500/20 transition-all group overflow-hidden relative">
+                                <label className="aspect-video rounded-[2rem] bg-slate-50 border-2 border-dashed border-slate-200 flex flex-col items-center justify-center cursor-pointer hover:bg-slate-100 hover:border-primary/20 transition-all group overflow-hidden relative">
                                     <div className="flex flex-col items-center justify-center relative z-10">
                                         <div className="w-16 h-16 bg-white rounded-2xl shadow-sm flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
-                                            <Plus className="w-8 h-8 text-slate-300 group-hover:text-indigo-500 transition-colors" />
+                                            <Plus className="w-8 h-8 text-slate-300 group-hover:text-primary transition-colors" />
                                         </div>
-                                        <p className="text-sm font-black text-slate-400 group-hover:text-indigo-500 transition-colors">Sube una imagen llamativa</p>
+                                        <p className="text-sm font-black text-slate-400 group-hover:text-primary transition-colors">Sube una imagen llamativa</p>
                                         <p className="text-[10px] font-bold text-slate-300 uppercase tracking-widest mt-1">Recomendado: 1280x720px</p>
                                     </div>
                                     <input type="file" accept="image/*" className="hidden" onChange={handleRaffleImageUpload} disabled={uploadingImage} />
@@ -896,9 +896,9 @@ export default function Fidelization() {
                         <div className="p-8 border-b border-slate-100 flex items-center justify-between bg-indigo-50/50">
                             <div>
                                 <h2 className="text-2xl font-black text-indigo-900">Crear Sorteo</h2>
-                                <p className="text-indigo-600/70 text-sm font-bold">Selecciona aleatoriamente entre los clientes que cumplen los filtros.</p>
+                                <p className="text-primary/70 text-sm font-bold">Selecciona aleatoriamente entre los clientes que cumplen los filtros.</p>
                             </div>
-                            <button onClick={() => !runningContest && setIsContestModalOpen(false)} className="p-2 text-indigo-400 hover:bg-white rounded-full transition-colors">
+                            <button onClick={() => !runningContest && setIsContestModalOpen(false)} className="p-2 text-primary hover:bg-white rounded-full transition-colors">
                                 <X className="w-6 h-6" />
                             </button>
                         </div>
@@ -912,7 +912,7 @@ export default function Fidelization() {
                                         type="text" required
                                         placeholder="Ej: Sorteo de San Valentín"
                                         value={contestForm.title} onChange={e => setContestForm({ ...contestForm, title: e.target.value })}
-                                        className="w-full bg-white border border-slate-200 focus:border-indigo-500 p-4 rounded-2xl outline-none font-bold text-slate-700 shadow-sm"
+                                        className="w-full bg-white border border-slate-200 focus:border-primary p-4 rounded-2xl outline-none font-bold text-slate-700 shadow-sm"
                                     />
                                 </div>
 
@@ -931,7 +931,7 @@ export default function Fidelization() {
                                                     newPrizes[idx] = e.target.value;
                                                     setContestForm({ ...contestForm, prizes: newPrizes });
                                                 }}
-                                                className="w-full bg-white border border-slate-200 focus:border-indigo-500 p-4 rounded-2xl outline-none font-bold text-indigo-600 shadow-sm"
+                                                className="w-full bg-white border border-slate-200 focus:border-primary p-4 rounded-2xl outline-none font-bold text-primary shadow-sm"
                                             />
                                         </div>
                                     ))}
@@ -940,7 +940,7 @@ export default function Fidelization() {
 
                             <div className="bg-slate-50 rounded-3xl p-6 border border-slate-100">
                                 <h3 className="text-sm font-black text-slate-800 flex items-center gap-2 mb-4 border-b border-slate-200 pb-2">
-                                    <Filter className="w-4 h-4 text-indigo-500" /> Filtros de Participación
+                                    <Filter className="w-4 h-4 text-primary" /> Filtros de Participación
                                 </h3>
 
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -948,7 +948,7 @@ export default function Fidelization() {
                                         <label className="text-[10px] font-black text-slate-400 uppercase ml-2">Requisito de Producto</label>
                                         <select
                                             value={contestForm.filters.productId} onChange={e => setContestForm({ ...contestForm, filters: { ...contestForm.filters, productId: e.target.value } })}
-                                            className="w-full bg-white border border-slate-200 focus:border-indigo-500 p-3 rounded-xl outline-none font-bold text-slate-700 text-sm"
+                                            className="w-full bg-white border border-slate-200 focus:border-primary p-3 rounded-xl outline-none font-bold text-slate-700 text-sm"
                                         >
                                             <option value="all">Participan compras de CUALQUIER producto</option>
                                             <option disabled>--- Solo si compraron: ---</option>
@@ -959,7 +959,7 @@ export default function Fidelization() {
                                         <label className="text-[10px] font-black text-slate-400 uppercase ml-2">Sexo del Cliente</label>
                                         <select
                                             value={contestForm.filters.gender} onChange={e => setContestForm({ ...contestForm, filters: { ...contestForm.filters, gender: e.target.value } })}
-                                            className="w-full bg-white border border-slate-200 focus:border-indigo-500 p-3 rounded-xl outline-none font-bold text-slate-700 text-sm"
+                                            className="w-full bg-white border border-slate-200 focus:border-primary p-3 rounded-xl outline-none font-bold text-slate-700 text-sm"
                                         >
                                             <option value="all">Todos</option>
                                             <option value="M">Masculino</option>
@@ -971,7 +971,7 @@ export default function Fidelization() {
                                         <input
                                             type="number" step="0.01" min="0" placeholder="0"
                                             value={contestForm.filters.minPurchase} onChange={e => setContestForm({ ...contestForm, filters: { ...contestForm.filters, minPurchase: e.target.value } })}
-                                            className="w-full bg-white border border-slate-200 focus:border-indigo-500 p-3 rounded-xl outline-none font-bold text-slate-700 text-sm"
+                                            className="w-full bg-white border border-slate-200 focus:border-primary p-3 rounded-xl outline-none font-bold text-slate-700 text-sm"
                                         />
                                     </div>
                                     <div className="flex gap-2">
@@ -980,7 +980,7 @@ export default function Fidelization() {
                                             <input
                                                 type="number" min="0" placeholder="0"
                                                 value={contestForm.filters.minAge} onChange={e => setContestForm({ ...contestForm, filters: { ...contestForm.filters, minAge: e.target.value } })}
-                                                className="w-full bg-white border border-slate-200 focus:border-indigo-500 p-3 rounded-xl outline-none font-bold text-slate-700 text-sm"
+                                                className="w-full bg-white border border-slate-200 focus:border-primary p-3 rounded-xl outline-none font-bold text-slate-700 text-sm"
                                             />
                                         </div>
                                         <div className="space-y-1 flex-1">
@@ -988,7 +988,7 @@ export default function Fidelization() {
                                             <input
                                                 type="number" min="0" placeholder="100"
                                                 value={contestForm.filters.maxAge} onChange={e => setContestForm({ ...contestForm, filters: { ...contestForm.filters, maxAge: e.target.value } })}
-                                                className="w-full bg-white border border-slate-200 focus:border-indigo-500 p-3 rounded-xl outline-none font-bold text-slate-700 text-sm"
+                                                className="w-full bg-white border border-slate-200 focus:border-primary p-3 rounded-xl outline-none font-bold text-slate-700 text-sm"
                                             />
                                         </div>
                                     </div>
@@ -1003,7 +1003,7 @@ export default function Fidelization() {
                                     </label>
                                     <select
                                         value={contestForm.winnersCount} onChange={e => setContestForm({ ...contestForm, winnersCount: e.target.value })}
-                                        className="w-full bg-slate-50 border-2 border-transparent focus:border-indigo-500 p-4 rounded-2xl outline-none font-black text-indigo-700 text-lg"
+                                        className="w-full bg-slate-50 border-2 border-transparent focus:border-primary p-4 rounded-2xl outline-none font-black text-indigo-700 text-lg"
                                     >
                                         {[1, 2, 3, 4, 5, 10].map(n => <option key={n} value={n}>{n} {n === 1 ? 'Ganador' : 'Ganadores'}</option>)}
                                     </select>
@@ -1024,9 +1024,9 @@ export default function Fidelization() {
 
                             <button
                                 type="submit" disabled={runningContest}
-                                className="w-full relative overflow-hidden bg-indigo-600 text-white p-5 rounded-2xl font-black shadow-xl shadow-indigo-600/30 group disabled:opacity-70 mt-4 flex items-center justify-center gap-2"
+                                className="w-full relative overflow-hidden bg-primary text-slate-900 p-5 rounded-2xl font-black shadow-xl shadow-primary/30 group disabled:opacity-70 mt-4 flex items-center justify-center gap-2"
                             >
-                                <div className="absolute inset-0 bg-gradient-to-r from-indigo-500 to-purple-500 opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                                <div className="absolute inset-0 bg-gradient-to-r from-primary to-primary opacity-0 group-hover:opacity-100 transition-opacity"></div>
                                 <span className="relative z-10 flex items-center gap-2">
                                     {runningContest ? (
                                         <><Loader2 className="w-6 h-6 animate-spin" /> Buscando Ganadores...</>

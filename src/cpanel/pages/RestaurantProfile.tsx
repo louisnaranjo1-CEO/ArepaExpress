@@ -500,7 +500,7 @@ export default function RestaurantProfile() {
                             <div className="bg-white rounded-[40px] border border-slate-100 overflow-hidden shadow-sm">
                                 <div className="p-8 border-b border-slate-50 flex items-center justify-between">
                                     <h3 className="font-black text-slate-900 uppercase tracking-widest text-sm flex items-center gap-2">
-                                        <Box className="w-5 h-5 text-indigo-500" /> Productos Populares
+                                        <Box className="w-5 h-5 text-primary" /> Productos Populares
                                     </h3>
                                     <button className="text-[10px] font-black text-slate-900 uppercase tracking-widest hover:underline">Ver menú</button>
                                 </div>

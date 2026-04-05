@@ -453,11 +453,11 @@ export default function OrdersRadar() {
                         <div className="w-px h-8 bg-dashed bg-slate-200 ml-6"></div>
 
                         <div className="flex gap-4">
-                            <div className="w-12 h-12 bg-indigo-50 text-indigo-500 rounded-2xl flex items-center justify-center shrink-0 border border-indigo-100 shadow-inner">
+                            <div className="w-12 h-12 bg-indigo-50 text-primary rounded-2xl flex items-center justify-center shrink-0 border border-indigo-100 shadow-inner">
                                 <MapPin className="w-6" />
                             </div>
                             <div className="flex-1">
-                                <h3 className="text-xs font-black text-indigo-400 uppercase tracking-widest">Destino final:</h3>
+                                <h3 className="text-xs font-black text-primary uppercase tracking-widest">Destino final:</h3>
                                 <p className="font-bold text-slate-700 leading-tight mt-0.5">{activeTransport.destination?.address}</p>
                             </div>
                         </div>
@@ -500,7 +500,7 @@ export default function OrdersRadar() {
                         </a>
                         <button
                             onClick={() => setShowChat(true)}
-                            className="w-full mt-2 bg-indigo-50 text-indigo-600 font-bold py-4 rounded-2xl flex justify-center items-center gap-2 active:scale-95 transition-all relative overflow-hidden"
+                            className="w-full mt-2 bg-indigo-50 text-primary font-bold py-4 rounded-2xl flex justify-center items-center gap-2 active:scale-95 transition-all relative overflow-hidden"
                         >
                             <MessageSquare className="w-5 h-5" /> 
                             Ver Chat
@@ -576,11 +576,11 @@ export default function OrdersRadar() {
                         <div className="w-px h-8 bg-slate-100 ml-6"></div>
 
                         <div className="flex gap-4">
-                            <div className="w-12 h-12 bg-indigo-50 text-indigo-600 rounded-2xl flex items-center justify-center shrink-0 border border-indigo-100">
+                            <div className="w-12 h-12 bg-indigo-50 text-primary rounded-2xl flex items-center justify-center shrink-0 border border-indigo-100">
                                 <MapPin className="w-6 h-6" />
                             </div>
                             <div>
-                                <h3 className="text-xs font-black text-indigo-400 uppercase tracking-widest">Cliente</h3>
+                                <h3 className="text-xs font-black text-primary uppercase tracking-widest">Cliente</h3>
                                 <p className="font-bold text-slate-800 leading-tight mt-0.5">{activeOrder.shippingAddress?.address || 'Dirección de entrega...'}</p>
                             </div>
                         </div>
@@ -679,7 +679,7 @@ export default function OrdersRadar() {
                     {/* Mis Reservas */}
                     {myReservations.length > 0 && (
                         <div className="mb-8">
-                            <h3 className="text-[12px] font-black uppercase text-purple-600 tracking-widest pl-2 mb-3">Mis Próximas Reservas</h3>
+                            <h3 className="text-[12px] font-black uppercase text-primary tracking-widest pl-2 mb-3">Mis Próximas Reservas</h3>
                             <div className="space-y-4">
                                 {myReservations.map(req => (
                                     <motion.div
@@ -689,7 +689,7 @@ export default function OrdersRadar() {
                                         className="bg-purple-50 rounded-[2.5rem] p-6 shadow-md border border-purple-100 relative group"
                                     >
                                         <div className="flex justify-between items-center mb-4">
-                                            <div className="flex items-center gap-2 px-3 py-1 bg-purple-600 text-white rounded-full text-[10px] font-black uppercase tracking-wider">
+                                            <div className="flex items-center gap-2 px-3 py-1 bg-primary text-slate-900 rounded-full text-[10px] font-black uppercase tracking-wider">
                                                 <Clock className="w-3.5 h-3.5" /> RESERVA ACEPTADA
                                             </div>
                                             <div className="text-xl font-black text-emerald-600">${(req.price || 0).toFixed(2)}</div>
@@ -734,7 +734,7 @@ export default function OrdersRadar() {
                                 </div>
 
                                 {req.scheduled && (
-                                    <div className="flex items-center gap-2 bg-purple-50 text-purple-600 p-3 rounded-2xl border border-purple-100 mb-4 animate-in fade-in slide-in-from-top-1">
+                                    <div className="flex items-center gap-2 bg-purple-50 text-primary p-3 rounded-2xl border border-purple-100 mb-4 animate-in fade-in slide-in-from-top-1">
                                         <Clock className="w-4 h-4" />
                                         <div className="flex flex-col">
                                             <span className="text-[10px] font-black uppercase tracking-wider leading-none">Para el día:</span>
@@ -758,7 +758,7 @@ export default function OrdersRadar() {
                                         </div>
                                     </div>
                                     <div className="flex items-start gap-4">
-                                        <div className="w-10 h-10 bg-indigo-50 text-indigo-500 rounded-2xl flex items-center justify-center shrink-0 border border-indigo-100 shadow-inner">
+                                        <div className="w-10 h-10 bg-indigo-50 text-primary rounded-2xl flex items-center justify-center shrink-0 border border-indigo-100 shadow-inner">
                                             <MapPin className="w-5 h-5" />
                                         </div>
                                         <div>
@@ -794,7 +794,7 @@ export default function OrdersRadar() {
                                         <Package className="w-3.5 h-3.5" />
                                         REPARTO COMIDA
                                     </div>
-                                    <div className="text-2xl font-black text-indigo-600">${(order.total || 0).toFixed(2)}</div>
+                                    <div className="text-2xl font-black text-primary">${(order.total || 0).toFixed(2)}</div>
                                 </div>
 
                                 <div className="space-y-4 mb-8 relative">
@@ -808,7 +808,7 @@ export default function OrdersRadar() {
                                         </div>
                                     </div>
                                     <div className="flex items-start gap-4">
-                                        <div className="w-10 h-10 bg-indigo-50 text-indigo-500 rounded-2xl flex items-center justify-center shrink-0 border border-indigo-100 shadow-inner">
+                                        <div className="w-10 h-10 bg-indigo-50 text-primary rounded-2xl flex items-center justify-center shrink-0 border border-indigo-100 shadow-inner">
                                             <MapPin className="w-5 h-5" />
                                         </div>
                                         <div>
@@ -821,7 +821,7 @@ export default function OrdersRadar() {
                                 <button
                                     onClick={() => handleAcceptOrder(order.id)}
                                     disabled={processingAction !== null}
-                                    className="w-full bg-indigo-600 text-white font-black py-4 rounded-2xl shadow-lg shadow-indigo-600/30 active:scale-95 transition-all flex items-center justify-center h-16 disabled:opacity-70 group-hover:bg-indigo-700"
+                                    className="w-full bg-primary text-slate-900 font-black py-4 rounded-2xl shadow-lg shadow-primary/30 active:scale-95 transition-all flex items-center justify-center h-16 disabled:opacity-70 group-hover:bg-primary"
                                 >
                                     {processingAction === order.id ? <div className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin"></div> : 'TOMAR REPARTO'}
                                 </button>

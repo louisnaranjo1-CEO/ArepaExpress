@@ -283,7 +283,7 @@ export default function TransportRequests() {
     if (loading) {
         return (
             <div className="flex items-center justify-center h-64">
-                <div className="w-10 h-10 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>
+                <div className="w-10 h-10 border-4 border-primary border-t-transparent rounded-full animate-spin"></div>
             </div>
         );
     }
@@ -298,19 +298,19 @@ export default function TransportRequests() {
                 <div className="flex bg-slate-100 p-1 rounded-xl">
                     <button
                         onClick={() => setView('viajes')}
-                        className={`px-6 py-2 rounded-lg font-bold text-sm transition-all ${view === 'viajes' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                        className={`px-6 py-2 rounded-lg font-bold text-sm transition-all ${view === 'viajes' ? 'bg-primary text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
                     >
                         Viajes
                     </button>
                     <button
                         onClick={() => setView('contabilidad')}
-                        className={`px-6 py-2 rounded-lg font-bold text-sm transition-all ${view === 'contabilidad' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                        className={`px-6 py-2 rounded-lg font-bold text-sm transition-all ${view === 'contabilidad' ? 'bg-primary text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
                     >
                         Contabilidad
                     </button>
                     <button
                         onClick={() => setView('comprobantes')}
-                        className={`px-6 py-2 rounded-lg font-bold text-sm transition-all ${view === 'comprobantes' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                        className={`px-6 py-2 rounded-lg font-bold text-sm transition-all ${view === 'comprobantes' ? 'bg-primary text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
                     >
                         Comprobantes
                     </button>
@@ -328,7 +328,7 @@ export default function TransportRequests() {
                                 placeholder="Buscar por ID, nombre o teléfono..."
                                 value={searchTerm}
                                 onChange={(e) => setSearchTerm(e.target.value)}
-                                className="w-full bg-slate-50 border-none pl-12 pr-4 py-3 rounded-2xl focus:ring-2 focus:ring-indigo-600 font-medium"
+                                className="w-full bg-slate-50 border-none pl-12 pr-4 py-3 rounded-2xl focus:ring-2 focus:ring-primary font-medium"
                             />
                         </div>
                         <div className="flex gap-2 w-full md:w-auto overflow-x-auto pb-2 md:pb-0 hide-scrollbar">
@@ -336,7 +336,7 @@ export default function TransportRequests() {
                                 <button
                                     key={f}
                                     onClick={() => setFilter(f)}
-                                    className={`px-4 py-2 rounded-xl font-bold whitespace-nowrap transition-all ${filter === f ? 'bg-indigo-600 text-white shadow-md' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                                    className={`px-4 py-2 rounded-xl font-bold whitespace-nowrap transition-all ${filter === f ? 'bg-primary text-slate-900 shadow-md' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
                                         }`}
                                 >
                                     {f === 'all' ? 'Todos' :
@@ -363,7 +363,7 @@ export default function TransportRequests() {
                                     <div className="flex flex-col md:flex-row justify-between gap-6 mb-6">
                                         {/* User & Type Info */}
                                         <div className="flex items-start gap-4">
-                                            <div className={`w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 ${req.vehicleType === 'moto' ? 'bg-indigo-50 text-indigo-600' : 'bg-slate-100 text-slate-700'}`}>
+                                            <div className={`w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 ${req.vehicleType === 'moto' ? 'bg-primary/20 text-slate-900' : 'bg-slate-100 text-slate-700'}`}>
                                                 {req.vehicleType === 'moto' ? <Bike className="w-6 h-6" /> : <Car className="w-6 h-6" />}
                                             </div>
                                             <div>
@@ -383,7 +383,7 @@ export default function TransportRequests() {
                                                     <span className="flex items-center gap-1">
                                                         <Calendar className="w-4 h-4" /> 
                                                         {req.scheduled ? (
-                                                            <span className="text-purple-600 font-black">
+                                                            <span className="text-primary font-black">
                                                                 Para: {req.scheduledAt && typeof req.scheduledAt.toDate === 'function' 
                                                                     ? req.scheduledAt.toDate().toLocaleString('es-VE') 
                                                                     : 'Fecha pendiente'}
@@ -412,8 +412,8 @@ export default function TransportRequests() {
                                                     <p className="text-xl font-black text-emerald-600">${parseFloat(req.clientTotal || req.price || 0).toFixed(2)}</p>
                                                 </div>
                                                 <div className="border-l md:border-l-0 md:border-t border-slate-200 pl-4 md:pl-0 md:pt-2">
-                                                    <p className="text-[10px] font-black text-indigo-400 uppercase tracking-widest leading-none mb-1">Pago a Taxi</p>
-                                                    <p className="text-lg font-black text-indigo-600">${parseFloat(req.driverPayout || req.price || 0).toFixed(2)}</p>
+                                                    <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest leading-none mb-1">Pago a Taxi</p>
+                                                    <p className="text-lg font-black text-slate-900">${parseFloat(req.driverPayout || req.price || 0).toFixed(2)}</p>
                                                 </div>
                                                 <div className="border-l md:border-l-0 md:border-t border-slate-200 pl-4 md:pl-0 md:pt-2">
                                                     <p className="text-[10px] font-black text-amber-500 uppercase tracking-widest leading-none mb-1">Ganancia Admin</p>
@@ -423,7 +423,7 @@ export default function TransportRequests() {
                                             <div className="flex items-center gap-2 mt-3 md:justify-end text-[10px] font-bold">
                                                 <button
                                                     onClick={() => setSelectedChatRequest(req.id)}
-                                                    className="bg-white px-2 py-1 rounded shadow-sm text-indigo-600 border border-indigo-200 flex items-center gap-1 hover:bg-indigo-50 transition-colors"
+                                                    className="bg-white px-2 py-1 rounded shadow-sm text-slate-900 border border-primary flex items-center gap-1 hover:bg-primary transition-colors"
                                                 >
                                                     <MessageSquare className="w-3 h-3" /> Ver Chat
                                                 </button>
@@ -444,12 +444,12 @@ export default function TransportRequests() {
                                                 <p className="font-bold text-slate-700 text-sm">{req.origin?.address}</p>
                                             </div>
                                         </div>
-                                        <div className="flex gap-3 bg-indigo-50 p-4 rounded-2xl border border-indigo-100 relative overflow-hidden">
-                                            <div className="absolute left-0 top-0 bottom-0 w-1 bg-indigo-500"></div>
-                                            <MapPin className="w-5 h-5 text-indigo-500 shrink-0 mt-0.5" />
+                                        <div className="flex gap-3 bg-primary/10 p-4 rounded-2xl border border-primary/20 relative overflow-hidden">
+                                            <div className="absolute left-0 top-0 bottom-0 w-1 bg-primary"></div>
+                                            <MapPin className="w-5 h-5 text-primary shrink-0 mt-0.5" />
                                             <div>
-                                                <p className="text-xs font-bold text-indigo-400 uppercase mb-1">Destino</p>
-                                                <p className="font-bold text-indigo-900 text-sm">{req.destination?.address}</p>
+                                                <p className="text-xs font-bold text-slate-600 uppercase mb-1">Destino</p>
+                                                <p className="font-bold text-slate-900 text-sm">{req.destination?.address}</p>
                                             </div>
                                         </div>
                                     </div>
@@ -496,7 +496,7 @@ export default function TransportRequests() {
                                                 </button>
                                                 <button
                                                     onClick={() => handleVerifyPayment(req.id, true)}
-                                                    className="flex-1 md:flex-none px-6 py-2 bg-amber-500 text-white font-black rounded-xl hover:bg-amber-600 transition-colors shadow-lg shadow-amber-500/20"
+                                                    className="flex-1 md:flex-none px-6 py-2 bg-primary text-slate-900 font-black rounded-xl hover:bg-primary/90 transition-colors shadow-lg shadow-primary/20"
                                                 >
                                                     Aprobar Pago
                                                 </button>
@@ -526,7 +526,7 @@ export default function TransportRequests() {
                                                 </button>
                                                 <button
                                                     onClick={() => handleVerifyPayment(req.id, true)}
-                                                    className="flex-1 md:flex-none px-6 py-2 bg-emerald-500 text-white font-black rounded-xl hover:bg-emerald-600 transition-colors shadow-lg shadow-emerald-500/20"
+                                                    className="flex-1 md:flex-none px-6 py-2 bg-primary text-slate-900 font-black rounded-xl hover:bg-primary/90 transition-colors shadow-lg shadow-primary/20"
                                                 >
                                                     Aprobar Vehículo
                                                 </button>
@@ -582,7 +582,7 @@ export default function TransportRequests() {
                             {getDriverStats().map((stat) => (
                                 <div key={stat.driverId} className="bg-white rounded-3xl p-6 border border-slate-200 shadow-sm flex flex-col">
                                     <div className="flex items-center gap-4 mb-6">
-                                        <div className="w-12 h-12 bg-indigo-50 rounded-full flex items-center justify-center text-indigo-600 shrink-0">
+                                        <div className="w-12 h-12 bg-primary/20 rounded-full flex items-center justify-center text-slate-900 shrink-0">
                                             <User className="w-6 h-6" />
                                         </div>
                                         <div>
@@ -687,7 +687,7 @@ export default function TransportRequests() {
                             >
                                 <XCircle className="w-8 h-8" />
                             </button>
-                            <div className="w-20 h-20 bg-indigo-500 rounded-full flex items-center justify-center mx-auto mb-4 border-4 border-slate-800 shadow-xl">
+                            <div className="w-20 h-20 bg-primary rounded-full flex items-center justify-center mx-auto mb-4 border-4 border-slate-800 shadow-xl">
                                 <DollarSign className="w-10 h-10 text-white" />
                             </div>
                             <h2 className="text-2xl font-black text-white">Liquidar Deuda</h2>
@@ -716,8 +716,8 @@ export default function TransportRequests() {
                                             </div>
                                         ) : (
                                             <>
-                                                <div className="w-12 h-12 bg-indigo-100 rounded-full flex items-center justify-center mb-3">
-                                                    <Upload className="w-6 h-6 text-indigo-600" />
+                                                <div className="w-12 h-12 bg-primary/20 rounded-full flex items-center justify-center mb-3">
+                                                    <Upload className="w-6 h-6 text-slate-900" />
                                                 </div>
                                                 <p className="mb-1 text-sm text-slate-500 font-medium">Click para subir foto</p>
                                                 <p className="text-xs text-slate-400 font-bold">PNG, JPG o JPEG</p>
@@ -736,7 +736,7 @@ export default function TransportRequests() {
                             <button
                                 onClick={handleProcessPayout}
                                 disabled={payoutLoading || !payoutReceipt}
-                                className="flex items-center justify-center w-full bg-indigo-600 text-white font-black py-4 rounded-xl hover:bg-indigo-700 transition-colors shadow-xl shadow-indigo-600/20 disabled:opacity-50"
+                                className="flex items-center justify-center w-full bg-primary text-slate-900 font-black py-4 rounded-xl hover:bg-primary transition-colors shadow-xl shadow-primary/20 disabled:opacity-50"
                             >
                                 {payoutLoading ? (
                                     <div className="w-6 h-6 border-4 border-white border-t-transparent rounded-full animate-spin"></div>

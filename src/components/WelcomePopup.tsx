@@ -139,7 +139,7 @@ export default function WelcomePopup({ manualState, manualCity }: WelcomePopupPr
                                                 href={popup.linkUrl}
                                                 target="_blank"
                                                 rel="noopener noreferrer"
-                                                className="relative inline-flex items-center gap-2 bg-indigo-600 text-white px-10 py-5 rounded-[1.5rem] font-black shadow-2xl shadow-indigo-600/40 hover:bg-orange-600 transition-all hover:scale-105 active:scale-95 group overflow-hidden"
+                                                className="relative inline-flex items-center gap-2 bg-primary text-slate-900 px-10 py-5 rounded-[1.5rem] font-black shadow-2xl shadow-primary/40 hover:bg-orange-600 transition-all hover:scale-105 active:scale-95 group overflow-hidden"
                                             >
                                                 {/* Pulsing glow effect */}
                                                 <span className="absolute inset-0 bg-white/20 animate-pulse opacity-0 group-hover:opacity-100 transition-opacity" />
@@ -158,7 +158,7 @@ export default function WelcomePopup({ manualState, manualCity }: WelcomePopupPr
                                                             initial={{ width: "100%" }}
                                                             animate={{ width: "0%" }}
                                                             transition={{ duration: popup.duration, ease: "linear" }}
-                                                            className="absolute inset-y-0 left-0 bg-indigo-600"
+                                                            className="absolute inset-y-0 left-0 bg-primary"
                                                         />
                                                     </div>
                                                 )}

@@ -269,7 +269,7 @@ export default function UsersManager() {
                 {/* Configure Referral Button */}
                 <button
                     onClick={() => setShowShareLinkModal(true)}
-                    className="flex justify-center items-center gap-2 px-6 py-3 bg-indigo-50 text-indigo-600 rounded-xl font-bold text-sm hover:bg-indigo-100 transition-all shadow-sm md:ml-auto"
+                    className="flex justify-center items-center gap-2 px-6 py-3 bg-indigo-50 text-primary rounded-xl font-bold text-sm hover:bg-indigo-100 transition-all shadow-sm md:ml-auto"
                 >
                     <Gift className="w-5 h-5" />
                     Configurar Link Compartir
@@ -394,7 +394,7 @@ export default function UsersManager() {
                                             <td className="px-6 py-5">
                                                 <div className="flex flex-col gap-1">
                                                     <div className="text-sm font-black text-slate-800 flex items-center gap-1.5">
-                                                        <Users className="w-4 h-4 text-indigo-400" /> {user.totalReferrals || 0}
+                                                        <Users className="w-4 h-4 text-primary" /> {user.totalReferrals || 0}
                                                     </div>
                                                     <div className="text-[10px] font-bold text-slate-400 flex items-center gap-1.5">
                                                         <Gift className="w-3 h-3" /> {user.points || 0} pts
@@ -511,7 +511,7 @@ export default function UsersManager() {
                             <div className="flex justify-between items-start mb-6">
                                 <div>
                                     <h3 className="text-2xl font-black text-slate-900 flex items-center gap-2">
-                                        <Gift className="w-6 h-6 text-indigo-500" />
+                                        <Gift className="w-6 h-6 text-primary" />
                                         Compartir Deliexpress
                                     </h3>
                                     <p className="text-slate-500 text-sm mt-1">Configura el mensaje que enviarán los usuarios para invitar a sus amigos.</p>
@@ -527,7 +527,7 @@ export default function UsersManager() {
                                     <textarea
                                         value={shareMessage}
                                         onChange={e => setShareMessage(e.target.value)}
-                                        className="w-full bg-slate-50 border-2 border-slate-100 focus:border-indigo-500 px-4 py-3 rounded-2xl outline-none font-bold text-slate-700 transition-all resize-none h-24 text-sm"
+                                        className="w-full bg-slate-50 border-2 border-slate-100 focus:border-primary px-4 py-3 rounded-2xl outline-none font-bold text-slate-700 transition-all resize-none h-24 text-sm"
                                         placeholder="Ej: ¡Usa Deliexpress y obtén recompensas!"
                                     />
                                     <p className="text-[10px] font-medium text-slate-400 ml-1">Nota: El código del usuario y la URL se agregarán al final automáticamente.</p>
@@ -539,7 +539,7 @@ export default function UsersManager() {
                                         type="text"
                                         value={shareUrl}
                                         onChange={e => setShareUrl(e.target.value)}
-                                        className="w-full bg-slate-50 border-2 border-slate-100 focus:border-indigo-500 px-4 py-3 rounded-2xl outline-none font-bold text-slate-700 transition-all text-sm"
+                                        className="w-full bg-slate-50 border-2 border-slate-100 focus:border-primary px-4 py-3 rounded-2xl outline-none font-bold text-slate-700 transition-all text-sm"
                                         placeholder="https://deliexpress.app"
                                     />
                                 </div>
@@ -547,7 +547,7 @@ export default function UsersManager() {
                                 <button
                                     onClick={handleSaveShareConfig}
                                     disabled={savingConfig}
-                                    className="w-full mt-4 bg-indigo-600 text-white py-4 rounded-2xl font-bold shadow-lg shadow-indigo-600/30 hover:bg-indigo-700 hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-70 flex items-center justify-center gap-2"
+                                    className="w-full mt-4 bg-primary text-slate-900 py-4 rounded-2xl font-bold shadow-lg shadow-primary/30 hover:bg-primary hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-70 flex items-center justify-center gap-2"
                                 >
                                     {savingConfig ? (
                                         <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
@@ -671,12 +671,12 @@ export default function UsersManager() {
                                     <div className="p-5 rounded-[28px] bg-slate-50 border border-slate-100">
                                         <div className="flex items-center justify-between mb-4">
                                             <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Puntos Acumulados</p>
-                                            <Gift className="w-4 h-4 text-indigo-500" />
+                                            <Gift className="w-4 h-4 text-primary" />
                                         </div>
                                         <div className="space-y-2">
                                             <div className="flex justify-between items-center bg-white p-2 rounded-xl border border-slate-100">
                                                 <span className="text-[10px] font-bold text-slate-600">DeliPuntos (Global)</span>
-                                                <span className="text-xs font-black text-indigo-600">{(selectedUser.points || 0).toLocaleString()} pts</span>
+                                                <span className="text-xs font-black text-primary">{(selectedUser.points || 0).toLocaleString()} pts</span>
                                             </div>
                                             {selectedUser.restaurantPoints && Object.entries(selectedUser.restaurantPoints).length > 0 && (
                                                 <div className="pt-2">

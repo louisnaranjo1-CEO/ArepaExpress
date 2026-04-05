@@ -170,7 +170,7 @@ export default function Rewards() {
 
                     <div className="bg-slate-50 rounded-2xl p-4 border border-slate-100 mb-4 text-center">
                         <p className="text-xs text-slate-400 font-black uppercase tracking-widest mb-2">Tu Código de Invitación</p>
-                        <div className="text-2xl font-black text-indigo-600 tracking-widest mb-4">
+                        <div className="text-2xl font-black text-primary tracking-widest mb-4">
                             {referralCode}
                         </div>
                         <div className="flex gap-2">
@@ -230,7 +230,7 @@ export default function Rewards() {
 
                         {/* Raffles */}
                         {raffles.map((raffle) => (
-                            <div key={raffle.id} className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-blue-600 to-indigo-600 p-5 text-white shadow-lg cursor-pointer active:scale-[0.98] transition-all">
+                            <div key={raffle.id} className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-blue-600 to-primary p-5 text-white shadow-lg cursor-pointer active:scale-[0.98] transition-all">
                                 <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full blur-2xl -mr-16 -mt-16"></div>
                                 <div className="flex items-center gap-2 mb-2">
                                     {raffle.scope === 'national' ? <Globe className="w-4 h-4" /> :
@@ -272,7 +272,7 @@ export default function Rewards() {
                         <div className="p-6 overflow-y-auto flex-1 no-scrollbar space-y-6">
                             <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm relative overflow-hidden">
                                 <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-50 rounded-full blur-3xl -mr-16 -mt-16"></div>
-                                <h3 className="text-[10px] font-black text-indigo-400 uppercase tracking-widest mb-3 flex items-center gap-2 relative z-10"><Globe className="w-4 h-4" /> ¿Cómo funciona?</h3>
+                                <h3 className="text-[10px] font-black text-primary uppercase tracking-widest mb-3 flex items-center gap-2 relative z-10"><Globe className="w-4 h-4" /> ¿Cómo funciona?</h3>
                                 <p className="text-slate-600 font-medium text-sm leading-relaxed whitespace-pre-wrap relative z-10">{activeBanner.explanation}</p>
                             </div>
 

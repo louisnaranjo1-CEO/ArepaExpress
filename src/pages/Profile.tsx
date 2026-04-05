@@ -1099,7 +1099,7 @@ export default function Profile() {
                                             {activity.type === 'transport' ? (
                                                 <div className="text-xs text-slate-500 flex flex-col gap-1.5">
                                                     <div className="flex items-start gap-1">
-                                                        <div className="min-w-4 pt-0.5 max-w-4 flex justify-center"><div className="w-2 h-2 rounded-full bg-blue-500 ring-2 ring-blue-200"></div></div>
+                                                        <div className="min-w-4 pt-0.5 max-w-4 flex justify-center"><div className="w-2 h-2 rounded-full bg-primary ring-2 ring-blue-200"></div></div>
                                                         <span className="line-clamp-1">{activity.origin?.address || 'Punto de partida'}</span>
                                                     </div>
                                                     <div className="flex items-start gap-1">
@@ -1762,14 +1762,14 @@ export default function Profile() {
                                             <div className="bg-slate-50 rounded-2xl p-4 border border-slate-100 mt-3">
                                                 <div className="flex items-center gap-3 mb-3">
                                                     <div className="w-8 h-8 bg-indigo-100 rounded-xl flex items-center justify-center">
-                                                        <Star className="w-4 h-4 text-indigo-600 fill-indigo-600" />
+                                                        <Star className="w-4 h-4 text-primary fill-primary" />
                                                     </div>
                                                     <span className="font-black text-slate-800 text-sm italic">Zelle (USD)</span>
                                                 </div>
                                                 <div className="space-y-2 text-[12px] font-medium text-slate-600">
                                                     <div className="flex justify-between items-center bg-white p-2 rounded-xl">
                                                         <span className="truncate">Email: <strong>{paymentMethods.zelle.email}</strong></span>
-                                                        <button onClick={() => handleCopy(paymentMethods.zelle.email, 'zelleEmail')} className="p-1 hover:bg-slate-50 rounded text-indigo-600">
+                                                        <button onClick={() => handleCopy(paymentMethods.zelle.email, 'zelleEmail')} className="p-1 hover:bg-slate-50 rounded text-primary">
                                                             {copiedId === 'zelleEmail' ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
                                                         </button>
                                                     </div>

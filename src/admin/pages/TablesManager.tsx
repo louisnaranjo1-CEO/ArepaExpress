@@ -152,7 +152,7 @@ export default function TablesManager() {
             <div className="bg-white rounded-[32px] shadow-sm border border-slate-100 overflow-hidden">
                 <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
                     <h2 className="text-lg font-black text-slate-800 flex items-center gap-2">
-                        <LayoutGrid className="w-5 h-5 text-indigo-500" />
+                        <LayoutGrid className="w-5 h-5 text-primary" />
                         Mesas Registradas ({tables.length})
                     </h2>
                 </div>
@@ -176,7 +176,7 @@ export default function TablesManager() {
                                         <span className={`w-2 h-2 rounded-full mr-1.5 ${table.status === 'available' ? 'bg-emerald-500' :
                                                 table.status === 'occupied' ? 'bg-amber-500' :
                                                     table.status === 'calling' ? 'bg-rose-500' :
-                                                        table.status === 'billing' ? 'bg-indigo-500' : 'bg-slate-400'
+                                                        table.status === 'billing' ? 'bg-primary' : 'bg-slate-400'
                                             }`}></span>
                                         {table.status === 'available' ? 'Disponible' :
                                             table.status === 'occupied' ? 'Ocupada' :
@@ -188,7 +188,7 @@ export default function TablesManager() {
                                 <div className="pl-3 flex items-center justify-end gap-2 pt-3 border-t border-slate-200/60 mt-auto">
                                     <button
                                         onClick={() => handleOpenForm(table)}
-                                        className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all"
+                                        className="p-2 text-slate-400 hover:text-primary hover:bg-indigo-50 rounded-xl transition-all"
                                     >
                                         <Edit2 className="w-4 h-4" />
                                     </button>

@@ -226,7 +226,7 @@ export default function SplitBillModal({
                             <button
                                 onClick={() => setSplitMode('itemized')}
                                 className={`flex-1 py-3 px-4 rounded-xl font-bold flex items-center justify-center gap-2 transition-all ${
-                                    splitMode === 'itemized' ? 'bg-white text-purple-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'
+                                    splitMode === 'itemized' ? 'bg-white text-primary shadow-sm' : 'text-slate-500 hover:text-slate-700'
                                 }`}
                             >
                                 <ListFilter className="w-5 h-5" />
@@ -291,7 +291,7 @@ export default function SplitBillModal({
                                                         <button
                                                             key={acc.id}
                                                             onClick={() => assignItemToAccount(item, acc.id)}
-                                                            className="px-3 py-1.5 bg-white border border-slate-200 hover:border-purple-500 hover:text-purple-600 rounded-lg text-xs font-bold text-slate-600 whitespace-nowrap"
+                                                            className="px-3 py-1.5 bg-white border border-slate-200 hover:border-primary hover:text-primary rounded-lg text-xs font-bold text-slate-600 whitespace-nowrap"
                                                         >
                                                             C{acc.id}
                                                         </button>

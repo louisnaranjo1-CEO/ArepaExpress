@@ -501,7 +501,7 @@ export default function TransportTracker() {
                         <button
                             onClick={handleRateTrip}
                             disabled={rating === 0 || submittingRating}
-                            className="w-full bg-indigo-600 text-white font-black py-4 rounded-2xl shadow-xl shadow-indigo-600/30 flex justify-center items-center gap-2 active:scale-95 transition-all disabled:opacity-50"
+                            className="w-full bg-primary text-slate-900 font-black py-4 rounded-2xl shadow-xl shadow-primary/30 flex justify-center items-center gap-2 active:scale-95 transition-all disabled:opacity-50"
                         >
                             {submittingRating ? <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div> : 'Enviar Calificación'}
                         </button>

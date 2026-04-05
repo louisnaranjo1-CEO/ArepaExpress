@@ -29,8 +29,8 @@ export default function Login({ onLogin }: LoginProps) {
         <div className="min-h-screen bg-slate-900 flex flex-col justify-center items-center p-4">
             <div className="max-w-md w-full animate-in fade-in slide-in-from-bottom-4 duration-500">
                 <div className="text-center mb-10">
-                    <div className="w-20 h-20 bg-indigo-500/10 rounded-3xl flex items-center justify-center mx-auto mb-6 ring-1 ring-white/10">
-                        <LayoutDashboard className="w-10 h-10 text-indigo-400" />
+                    <div className="w-20 h-20 bg-primary/10 rounded-3xl flex items-center justify-center mx-auto mb-6 ring-1 ring-white/10">
+                        <LayoutDashboard className="w-10 h-10 text-primary" />
                     </div>
                     <h1 className="text-3xl font-black text-white tracking-tight">Super Panel</h1>
                     <p className="text-slate-400 mt-2 font-medium">Acceso Administrativo Global</p>
@@ -44,7 +44,7 @@ export default function Login({ onLogin }: LoginProps) {
                             </label>
                             <div className="relative group">
                                 <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                                    <User className={`w-5 h-5 transition-colors ${error ? 'text-red-400' : 'text-slate-500 group-focus-within:text-indigo-400'}`} />
+                                    <User className={`w-5 h-5 transition-colors ${error ? 'text-red-400' : 'text-slate-500 group-focus-within:text-primary'}`} />
                                 </div>
                                 <input
                                     type="email"
@@ -52,7 +52,7 @@ export default function Login({ onLogin }: LoginProps) {
                                     onChange={(e) => setEmail(e.target.value)}
                                     className={`block w-full pl-11 pr-4 py-4 bg-slate-900/50 border rounded-2xl text-white placeholder-slate-500 focus:ring-2 focus:outline-none transition-all ${error
                                         ? 'border-red-500/50 focus:border-red-500 focus:ring-red-500/20'
-                                        : 'border-white/10 focus:border-indigo-500 focus:ring-indigo-500/20'
+                                        : 'border-white/10 focus:border-primary focus:ring-primary/20'
                                         }`}
                                     placeholder="admin@ejemplo.com"
                                     required
@@ -67,7 +67,7 @@ export default function Login({ onLogin }: LoginProps) {
                             </label>
                             <div className="relative group">
                                 <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                                    <Lock className={`w-5 h-5 transition-colors ${error ? 'text-red-400' : 'text-slate-500 group-focus-within:text-indigo-400'}`} />
+                                    <Lock className={`w-5 h-5 transition-colors ${error ? 'text-red-400' : 'text-slate-500 group-focus-within:text-primary'}`} />
                                 </div>
                                 <input
                                     type="password"
@@ -75,7 +75,7 @@ export default function Login({ onLogin }: LoginProps) {
                                     onChange={(e) => setPassword(e.target.value)}
                                     className={`block w-full pl-11 pr-4 py-4 bg-slate-900/50 border rounded-2xl text-white placeholder-slate-500 focus:ring-2 focus:outline-none transition-all ${error
                                         ? 'border-red-500/50 focus:border-red-500 focus:ring-red-500/20'
-                                        : 'border-white/10 focus:border-indigo-500 focus:ring-indigo-500/20'
+                                        : 'border-white/10 focus:border-primary focus:ring-primary/20'
                                         }`}
                                     placeholder="••••••••••••••"
                                     required
@@ -93,7 +93,7 @@ export default function Login({ onLogin }: LoginProps) {
                         <button
                             type="submit"
                             disabled={loading}
-                            className={`w-full bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-4 px-4 rounded-2xl transition-all flex items-center justify-center gap-2 group hover:shadow-lg hover:shadow-indigo-500/25 active:scale-[0.98] ${loading ? 'opacity-70 cursor-wait' : ''}`}
+                            className={`w-full bg-primary hover:bg-primary text-slate-900 font-bold py-4 px-4 rounded-2xl transition-all flex items-center justify-center gap-2 group hover:shadow-lg hover:shadow-primary/25 active:scale-[0.98] ${loading ? 'opacity-70 cursor-wait' : ''}`}
                         >
                             {loading ? 'Verificando...' : 'Ingresar al Sistema'}
                             {!loading && <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />}

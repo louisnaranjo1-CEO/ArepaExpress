@@ -64,8 +64,8 @@ export default function Login() {
     return (
         <div className="min-h-[100dvh] bg-slate-950 flex flex-col justify-center items-center p-6 relative overflow-hidden">
             {/* Background elements */}
-            <div className="absolute top-[-10%] left-[-10%] w-[60%] h-[60%] bg-indigo-600/20 rounded-full blur-[120px] animate-pulse"></div>
-            <div className="absolute bottom-[-10%] right-[-10%] w-[60%] h-[60%] bg-purple-600/20 rounded-full blur-[120px] animate-pulse delay-700"></div>
+            <div className="absolute top-[-10%] left-[-10%] w-[60%] h-[60%] bg-primary/20 rounded-full blur-[120px] animate-pulse"></div>
+            <div className="absolute bottom-[-10%] right-[-10%] w-[60%] h-[60%] bg-primary/10 rounded-full blur-[120px] animate-pulse delay-700"></div>
 
             <div className="w-full max-w-sm z-10 flex flex-col">
                 <div className="flex flex-col items-center mb-10">
@@ -73,17 +73,17 @@ export default function Login() {
                         initial={{ scale: 0.8, opacity: 0 }}
                         animate={{ scale: 1, opacity: 1 }}
                         onClick={() => window.location.href = 'https://deliexpress.app'}
-                        className="h-24 shadow-2xl flex items-center justify-center mb-6 cursor-pointer active:scale-95 transition-transform"
+                        className="h-40 flex flex-col items-center justify-center mb-4 cursor-pointer active:scale-95 transition-transform"
                     >
                         <img
-                            src="https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/logo.png?alt=media&token=8acf92ec-b853-4f37-bd82-a4f651bbdcd9"
-                            alt="Deliexpress"
-                            className="h-full object-contain"
+                            src="https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/logo21.png?alt=media&token=52eab323-674a-496d-9bef-f4452af98586"
+                            alt="Logo Deliexpress"
+                            className="h-full object-contain drop-shadow-2xl"
                         />
                     </motion.div>
 
-                    <h1 className="text-3xl font-black text-white text-center mb-2 tracking-tighter">
-                        Deli<span className="text-indigo-400">Express</span>
+                    <h1 className="text-2xl font-black text-white text-center mb-2 tracking-tighter leading-tight px-4">
+                        ¿Llegas tan rapido como en un 2x3?
                     </h1>
                     <p className="text-slate-400 text-center text-sm font-medium px-4">
                         Toma el control de tu tiempo y gana dinero entregando con Deliexpress.
@@ -93,7 +93,7 @@ export default function Login() {
                 {/* Mode Toggle */}
                 <div className="bg-slate-900/50 backdrop-blur-xl p-1 rounded-2xl border border-white/5 mb-8 flex relative">
                     <motion.div
-                        className="absolute inset-1 bg-indigo-600 rounded-[0.85rem] shadow-lg shadow-indigo-600/20"
+                        className="absolute inset-1 bg-primary rounded-[0.85rem] shadow-lg shadow-primary/20"
                         animate={{ x: mode === 'login' ? '0%' : '100%' }}
                         transition={{ type: "spring", stiffness: 300, damping: 30 }}
                         style={{ width: 'calc(50% - 4px)' }}
@@ -133,46 +133,46 @@ export default function Login() {
 
                         {mode === 'register' && (
                             <div className="relative group">
-                                <User className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-500 group-focus-within:text-indigo-400 transition-colors" />
+                                <User className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-500 group-focus-within:text-primary transition-colors" />
                                 <input
                                     type="text"
                                     placeholder="Nombre Completo"
                                     required
                                     value={formData.name}
                                     onChange={e => setFormData({ ...formData, name: e.target.value })}
-                                    className="w-full bg-slate-900/80 border border-white/5 focus:border-indigo-500/50 p-4 pl-12 rounded-2xl outline-none text-white font-bold transition-all text-sm block"
+                                    className="w-full bg-slate-900/80 border border-white/5 focus:border-primary/50 p-4 pl-12 rounded-2xl outline-none text-white font-bold transition-all text-sm block"
                                 />
                             </div>
                         )}
 
                         <div className="relative group">
-                            <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-500 group-focus-within:text-indigo-400 transition-colors" />
+                            <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-500 group-focus-within:text-primary transition-colors" />
                             <input
                                 type="email"
                                 placeholder="Correo electrónico"
                                 required
                                 value={formData.email}
                                 onChange={e => setFormData({ ...formData, email: e.target.value })}
-                                className="w-full bg-slate-900/80 border border-white/5 focus:border-indigo-500/50 p-4 pl-12 rounded-2xl outline-none text-white font-bold transition-all text-sm block"
+                                className="w-full bg-slate-900/80 border border-white/5 focus:border-primary/50 p-4 pl-12 rounded-2xl outline-none text-white font-bold transition-all text-sm block"
                             />
                         </div>
 
                         <div className="relative group">
-                            <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-500 group-focus-within:text-indigo-400 transition-colors" />
+                            <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-500 group-focus-within:text-primary transition-colors" />
                             <input
                                 type="password"
                                 placeholder="Contraseña"
                                 required
                                 value={formData.password}
                                 onChange={e => setFormData({ ...formData, password: e.target.value })}
-                                className="w-full bg-slate-900/80 border border-white/5 focus:border-indigo-500/50 p-4 pl-12 rounded-2xl outline-none text-white font-bold transition-all text-sm block"
+                                className="w-full bg-slate-900/80 border border-white/5 focus:border-primary/50 p-4 pl-12 rounded-2xl outline-none text-white font-bold transition-all text-sm block"
                             />
                         </div>
 
                         <button
                             type="submit"
                             disabled={loading}
-                            className="w-full bg-indigo-600 text-white py-4 rounded-2xl font-black shadow-xl shadow-indigo-600/30 hover:bg-indigo-500 hover:-translate-y-0.5 active:scale-[0.98] transition-all flex items-center justify-center gap-2 group disabled:opacity-70"
+                            className="w-full bg-primary text-slate-900 py-4 rounded-2xl font-black shadow-xl shadow-primary/30 hover:bg-yellow-400 hover:-translate-y-0.5 active:scale-[0.98] transition-all flex items-center justify-center gap-2 group disabled:opacity-70"
                         >
                             {loading ? (
                                 <div className="w-5 h-5 border-3 border-white/30 border-t-white rounded-full animate-spin"></div>

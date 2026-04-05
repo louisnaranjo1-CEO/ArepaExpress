@@ -83,8 +83,8 @@ export default function RestaurantsManager() {
                     onClick={handleMockToggle}
                     disabled={isMocking}
                     className={`flex items-center gap-2 px-5 py-3 rounded-2xl font-bold transition-all shadow-lg ${hasMockData
-                        ? 'bg-rose-500 text-white hover:bg-rose-600 hover:shadow-rose-500/25'
-                        : 'bg-indigo-600 text-white hover:bg-indigo-700 hover:shadow-indigo-600/25'
+                        ? 'bg-rose-500 text-slate-900 hover:bg-rose-600 hover:shadow-rose-500/25'
+                        : 'bg-primary text-slate-900 hover:bg-primary hover:shadow-primary/25'
                         } ${isMocking ? 'opacity-70 cursor-not-allowed' : ''}`}
                 >
                     <Database className={`w-5 h-5 ${isMocking ? 'animate-spin' : ''}`} />

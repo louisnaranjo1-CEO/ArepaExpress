@@ -814,7 +814,7 @@ export default function Orders() {
                                 'bg-white border-slate-100 hover:border-primary/30 hover:shadow-xl'
                             }`}>
                                 <Users className={`w-8 h-8 ${
-                                    status === 'occupied' ? 'text-indigo-500' :
+                                    status === 'occupied' ? 'text-primary' :
                                     status === 'calling' ? 'text-red-500' :
                                     'text-slate-300 group-hover:text-slate-900 transition-colors'
                                 }`} />
@@ -830,7 +830,7 @@ export default function Orders() {
                                 </div>
                                 {table.waiterName && (
                                     <div className="absolute -bottom-2 bg-white border border-slate-100 px-3 py-1 rounded-full shadow-sm">
-                                        <p className="text-[10px] font-black text-indigo-600 truncate max-w-[80px]">
+                                        <p className="text-[10px] font-black text-primary truncate max-w-[80px]">
                                             {table.waiterName}
                                         </p>
                                     </div>
@@ -1010,7 +1010,7 @@ export default function Orders() {
                     order.source === 'waiter' ? (
                         <button
                             onClick={() => updateStatus(order.id, 'delivered')}
-                            className="flex-1 bg-indigo-500 text-white py-4 rounded-2xl font-black shadow-lg shadow-indigo-500/20 hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-2"
+                            className="flex-1 bg-primary text-slate-900 py-4 rounded-2xl font-black shadow-lg shadow-primary/20 hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-2"
                         >
                             Entregar a Mesa
                         </button>
@@ -1018,7 +1018,7 @@ export default function Orders() {
                         <button
                             onClick={() => { setSelectedOrderForDispatch(order); setDispatchModalOpen(true); }}
                             disabled={printingOrderId === order.id}
-                            className="flex-1 bg-blue-500 text-white py-4 rounded-2xl font-black shadow-lg shadow-blue-500/20 hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+                            className="flex-1 bg-primary text-slate-900 py-4 rounded-2xl font-black shadow-lg shadow-blue-500/20 hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-2 disabled:opacity-50"
                         >
                             {printingOrderId === order.id ? (
                                 <><Loader2 className="w-5 h-5 animate-spin" /> Imprimiendo...</>
@@ -1161,7 +1161,7 @@ export default function Orders() {
                         <div className="space-y-6">
                             <div className="flex items-center gap-4 px-2">
                                 <div className="h-px flex-1 bg-indigo-100"></div>
-                                <h2 className="text-xl font-black text-indigo-500 flex items-center gap-2 uppercase tracking-widest bg-indigo-50 px-6 py-2 rounded-full border border-indigo-100">
+                                <h2 className="text-xl font-black text-primary flex items-center gap-2 uppercase tracking-widest bg-indigo-50 px-6 py-2 rounded-full border border-indigo-100">
                                     <Users className="w-6 h-6" /> 🍽️ Servicio en Mesa / Local ({filteredOrders.filter(o => o.source === 'waiter').length})
                                 </h2>
                                 <div className="h-px flex-1 bg-indigo-100"></div>
@@ -1208,7 +1208,7 @@ export default function Orders() {
                                             <div className="flex items-center gap-3">
                                                 <h3 className="text-2xl font-black text-slate-900">Mesa #{selectedTable.number}</h3>
                                                 {activeOrder && (
-                                                    <span className="px-3 py-1 bg-indigo-100 text-indigo-600 rounded-full text-[10px] font-black uppercase tracking-widest">
+                                                    <span className="px-3 py-1 bg-indigo-100 text-primary rounded-full text-[10px] font-black uppercase tracking-widest">
                                                         Ocupada
                                                     </span>
                                                 )}
@@ -1225,11 +1225,11 @@ export default function Orders() {
                                             <div className="space-y-4">
                                                 {/* Waiter Info */}
                                                 <div className="flex items-center gap-3 p-4 bg-indigo-50 border border-indigo-100 rounded-3xl">
-                                                    <div className="w-10 h-10 rounded-2xl bg-indigo-500 flex items-center justify-center text-white shadow-lg shadow-indigo-500/20">
+                                                    <div className="w-10 h-10 rounded-2xl bg-primary flex items-center justify-center text-slate-900 shadow-lg shadow-primary/20">
                                                         <User className="w-5 h-5" />
                                                     </div>
                                                     <div>
-                                                        <p className="text-[10px] font-black text-indigo-400 uppercase tracking-widest">Mesero Responsable</p>
+                                                        <p className="text-[10px] font-black text-primary uppercase tracking-widest">Mesero Responsable</p>
                                                         <p className="font-black text-indigo-900">{activeOrder.waiterName || 'Sin asignar'}</p>
                                                     </div>
                                                 </div>
@@ -1268,7 +1268,7 @@ export default function Orders() {
                                                             setShowPOS(true);
                                                             setShowTableModal(false);
                                                         }}
-                                                        className="flex items-center justify-center gap-2 p-4 bg-indigo-500 text-white rounded-2xl font-black shadow-lg shadow-indigo-500/20 hover:scale-[1.02] transition-all text-sm"
+                                                        className="flex items-center justify-center gap-2 p-4 bg-primary text-slate-900 rounded-2xl font-black shadow-lg shadow-primary/20 hover:scale-[1.02] transition-all text-sm"
                                                     >
                                                         <ShoppingCart className="w-4 h-4" /> Editar POS
                                                     </button>
@@ -1314,7 +1314,7 @@ export default function Orders() {
                                                                 }`}
                                                             >
                                                                 <div className="flex items-center gap-3">
-                                                                    <div className="w-8 h-8 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600">
+                                                                    <div className="w-8 h-8 rounded-full bg-indigo-100 flex items-center justify-center text-primary">
                                                                         <User className="w-4 h-4" />
                                                                     </div>
                                                                     <span>{waiter.name}</span>
@@ -1525,7 +1525,7 @@ export default function Orders() {
                         <button
                             onClick={handleConfirmDispatch}
                             disabled={isAccepting}
-                            className={`w-full text-slate-900 py-4 rounded-2xl font-black shadow-lg hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-2 disabled:opacity-50 ${dispatchType === 'platform' ? 'bg-blue-500 shadow-blue-500/20' : 'bg-primary shadow-primary/20'}`}
+                            className={`w-full text-slate-900 py-4 rounded-2xl font-black shadow-lg hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-2 disabled:opacity-50 ${dispatchType === 'platform' ? 'bg-primary shadow-blue-500/20' : 'bg-primary shadow-primary/20'}`}
                         >
                             {isAccepting ? <Loader2 className="w-5 h-5 animate-spin" /> : <><Truck className="w-5 h-5" /> Enviar en Camino</>}
                         </button>
@@ -1948,10 +1948,10 @@ export default function Orders() {
                                             </div>
                                         ) : (
                                             <>
-                                                <div className="absolute inset-0 bg-blue-500/20 rounded-full animate-ping" style={{ animationDuration: '2s' }}></div>
-                                                <div className="absolute inset-4 bg-blue-500/20 rounded-full animate-ping" style={{ animationDuration: '2s', animationDelay: '0.5s' }}></div>
-                                                <div className="absolute inset-8 bg-blue-500/20 rounded-full animate-ping" style={{ animationDuration: '2s', animationDelay: '1s' }}></div>
-                                                <div className="w-16 h-16 bg-blue-500 text-white rounded-full flex items-center justify-center relative z-10 shadow-lg shadow-blue-500/30">
+                                                <div className="absolute inset-0 bg-primary/20 rounded-full animate-ping" style={{ animationDuration: '2s' }}></div>
+                                                <div className="absolute inset-4 bg-primary/20 rounded-full animate-ping" style={{ animationDuration: '2s', animationDelay: '0.5s' }}></div>
+                                                <div className="absolute inset-8 bg-primary/20 rounded-full animate-ping" style={{ animationDuration: '2s', animationDelay: '1s' }}></div>
+                                                <div className="w-16 h-16 bg-primary text-slate-900 rounded-full flex items-center justify-center relative z-10 shadow-lg shadow-blue-500/30">
                                                     <Search className="w-8 h-8 animate-pulse" />
                                                 </div>
                                             </>

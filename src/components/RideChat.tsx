@@ -99,7 +99,7 @@ export default function RideChat({ requestId, onClose, readOnly = false }: ChatP
                         return (
                             <div key={msg.id} className={`flex ${isMine ? 'justify-end' : 'justify-start'}`}>
                                 <div className={`max-w-[80%] rounded-2xl px-4 py-2 ${isMine
-                                        ? 'bg-indigo-600 text-white rounded-tr-sm shadow-md shadow-indigo-600/20'
+                                        ? 'bg-primary text-slate-900 rounded-tr-sm shadow-md shadow-primary/20'
                                         : 'bg-white border border-slate-200 text-slate-800 rounded-tl-sm shadow-sm'
                                     }`}>
                                     <p className="text-sm font-medium">{msg.text}</p>
@@ -123,12 +123,12 @@ export default function RideChat({ requestId, onClose, readOnly = false }: ChatP
                             value={newMessage}
                             onChange={(e) => setNewMessage(e.target.value)}
                             placeholder="Escribe un mensaje..."
-                            className="flex-1 bg-slate-50 border border-slate-200 rounded-full px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-600/50 pr-12 font-medium"
+                            className="flex-1 bg-slate-50 border border-slate-200 rounded-full px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 pr-12 font-medium"
                         />
                         <button
                             type="submit"
                             disabled={!newMessage.trim()}
-                            className="absolute right-1 top-1 w-10 h-10 bg-indigo-600 text-white rounded-full flex items-center justify-center disabled:opacity-50 disabled:bg-slate-300 hover:bg-indigo-700 transition-colors shadow-sm"
+                            className="absolute right-1 top-1 w-10 h-10 bg-primary text-slate-900 rounded-full flex items-center justify-center disabled:opacity-50 disabled:bg-slate-300 hover:bg-primary transition-colors shadow-sm"
                         >
                             <Send className="w-4 h-4 ml-0.5" />
                         </button>

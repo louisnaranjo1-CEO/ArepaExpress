@@ -245,7 +245,7 @@ export default function DriverProfile() {
                         >
                             <div className="flex items-center gap-3">
                                 <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center shadow-sm">
-                                    <Bell className="w-5 h-5 text-indigo-500" />
+                                    <Bell className="w-5 h-5 text-primary" />
                                 </div>
                                 <div className="flex flex-col">
                                     <span className="font-bold text-slate-700">Recibir Alertas</span>
@@ -253,7 +253,7 @@ export default function DriverProfile() {
                                 </div>
                             </div>
                             <div
-                                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${userData?.notificationsEnabled || (userData?.fcmTokens && userData.fcmTokens.length > 0) ? 'bg-indigo-600' : 'bg-slate-300'
+                                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${userData?.notificationsEnabled || (userData?.fcmTokens && userData.fcmTokens.length > 0) ? 'bg-primary' : 'bg-slate-300'
                                     }`}
                             >
                                 {updatingNotifications ? (
@@ -290,7 +290,7 @@ export default function DriverProfile() {
                         >
                             <div className="flex items-center gap-3">
                                 <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center shadow-sm">
-                                    <Smartphone className="w-5 h-5 text-indigo-500" />
+                                    <Smartphone className="w-5 h-5 text-primary" />
                                 </div>
                                 <div className="flex flex-col">
                                     <span className="font-bold text-slate-700">Sonido de Notificación</span>
@@ -298,7 +298,7 @@ export default function DriverProfile() {
                                 </div>
                             </div>
                             <div
-                                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${(driverProfile?.audioAlertsEnabled ?? true) ? 'bg-indigo-600' : 'bg-slate-300'
+                                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${(driverProfile?.audioAlertsEnabled ?? true) ? 'bg-primary' : 'bg-slate-300'
                                     }`}
                             >
                                 {updatingNotifications ? (
@@ -321,9 +321,9 @@ export default function DriverProfile() {
                                 value={newEmail}
                                 onChange={(e) => setNewEmail(e.target.value)}
                                 placeholder="Nuevo correo"
-                                className="w-full bg-slate-50 border-2 border-transparent focus:border-indigo-500 px-4 py-3 rounded-2xl outline-none font-bold text-slate-700"
+                                className="w-full bg-slate-50 border-2 border-transparent focus:border-primary px-4 py-3 rounded-2xl outline-none font-bold text-slate-700"
                             />
-                            <button disabled={loading} className="bg-indigo-600 text-white p-3 rounded-2xl font-bold flex-shrink-0">
+                            <button disabled={loading} className="bg-primary text-slate-900 p-3 rounded-2xl font-bold flex-shrink-0">
                                 <Mail className="w-5 h-5" />
                             </button>
                         </div>
@@ -337,9 +337,9 @@ export default function DriverProfile() {
                                 value={newPassword}
                                 onChange={(e) => setNewPassword(e.target.value)}
                                 placeholder="Nueva contraseña"
-                                className="w-full bg-slate-50 border-2 border-transparent focus:border-indigo-500 px-4 py-3 rounded-2xl outline-none font-bold text-slate-700"
+                                className="w-full bg-slate-50 border-2 border-transparent focus:border-primary px-4 py-3 rounded-2xl outline-none font-bold text-slate-700"
                             />
-                            <button disabled={loading} className="bg-indigo-600 text-white p-3 rounded-2xl font-bold flex-shrink-0">
+                            <button disabled={loading} className="bg-primary text-slate-900 p-3 rounded-2xl font-bold flex-shrink-0">
                                 <Key className="w-5 h-5" />
                             </button>
                         </div>
@@ -384,7 +384,7 @@ export default function DriverProfile() {
                                 <input
                                     type="text"
                                     defaultValue={driverProfile?.fullName}
-                                    className="w-full bg-slate-50 border border-slate-100 rounded-2xl p-4 font-bold text-slate-700 focus:bg-white focus:border-indigo-500 transition-all outline-none"
+                                    className="w-full bg-slate-50 border border-slate-100 rounded-2xl p-4 font-bold text-slate-700 focus:bg-white focus:border-primary transition-all outline-none"
                                     disabled
                                 />
                                 <p className="text-[9px] text-slate-400 font-medium italic ml-4">El nombre no es editable directamente por seguridad.</p>
@@ -395,7 +395,7 @@ export default function DriverProfile() {
                                 <select
                                     value={updateForm.vehicleType}
                                     onChange={e => setUpdateForm({ ...updateForm, vehicleType: e.target.value })}
-                                    className="w-full bg-slate-50 border border-slate-100 rounded-2xl p-4 font-bold text-slate-700 focus:bg-white focus:border-indigo-500 transition-all outline-none appearance-none"
+                                    className="w-full bg-slate-50 border border-slate-100 rounded-2xl p-4 font-bold text-slate-700 focus:bg-white focus:border-primary transition-all outline-none appearance-none"
                                 >
                                     <option value="moto">Motocicleta / MotoTaxi</option>
                                     <option value="carro">Automóvil / Taxi</option>
@@ -413,7 +413,7 @@ export default function DriverProfile() {
                                         placeholder="Ej: AB123CD"
                                         value={updateForm.vehiclePlate}
                                         onChange={e => setUpdateForm({ ...updateForm, vehiclePlate: e.target.value })}
-                                        className="w-full bg-slate-50 border border-slate-100 rounded-2xl p-4 pl-12 font-bold text-slate-700 focus:bg-white focus:border-indigo-500 transition-all outline-none uppercase"
+                                        className="w-full bg-slate-50 border border-slate-100 rounded-2xl p-4 pl-12 font-bold text-slate-700 focus:bg-white focus:border-primary transition-all outline-none uppercase"
                                     />
                                     <Truck className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-300" />
                                 </div>
@@ -432,9 +432,9 @@ export default function DriverProfile() {
                             <div className="space-y-3">
                                 <div className="flex items-center justify-between">
                                     <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Foto Personal (Selfie)</p>
-                                    <UploadCloud className="w-4 h-4 text-indigo-500" />
+                                    <UploadCloud className="w-4 h-4 text-primary" />
                                 </div>
-                                <div className="relative group/selfie h-32 rounded-2xl bg-slate-50 border-2 border-dashed border-slate-200 flex flex-col items-center justify-center overflow-hidden transition-all group-hover/selfie:border-indigo-500/50">
+                                <div className="relative group/selfie h-32 rounded-2xl bg-slate-50 border-2 border-dashed border-slate-200 flex flex-col items-center justify-center overflow-hidden transition-all group-hover/selfie:border-primary/50">
                                     {(selfiePreview || driverProfile?.documents?.selfieUrl) ? (
                                         <img src={selfiePreview || driverProfile.documents.selfieUrl} alt="Selfie" className="w-full h-full object-cover" />
                                     ) : (
@@ -457,9 +457,9 @@ export default function DriverProfile() {
                             <div className="space-y-3 pt-4 border-t border-slate-50">
                                 <div className="flex items-center justify-between">
                                     <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Licencia de Conducir</p>
-                                    <CreditCard className="w-4 h-4 text-indigo-500" />
+                                    <CreditCard className="w-4 h-4 text-primary" />
                                 </div>
-                                <div className="relative group/license h-32 rounded-2xl bg-slate-50 border-2 border-dashed border-slate-200 flex flex-col items-center justify-center overflow-hidden transition-all group-hover/license:border-indigo-500/50">
+                                <div className="relative group/license h-32 rounded-2xl bg-slate-50 border-2 border-dashed border-slate-200 flex flex-col items-center justify-center overflow-hidden transition-all group-hover/license:border-primary/50">
                                     {(licensePreview || driverProfile?.documents?.licenseUrl) ? (
                                         <img src={licensePreview || driverProfile.documents.licenseUrl} alt="License" className="w-full h-full object-cover" />
                                     ) : (
@@ -479,9 +479,9 @@ export default function DriverProfile() {
                             <div className="space-y-3 pt-4 border-t border-slate-50">
                                 <div className="flex items-center justify-between">
                                     <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Foto del Vehículo</p>
-                                    <Truck className="w-4 h-4 text-indigo-500" />
+                                    <Truck className="w-4 h-4 text-primary" />
                                 </div>
-                                <div className="relative group/vehicle h-32 rounded-2xl bg-slate-50 border-2 border-dashed border-slate-200 flex flex-col items-center justify-center overflow-hidden transition-all group-hover/vehicle:border-indigo-500/50">
+                                <div className="relative group/vehicle h-32 rounded-2xl bg-slate-50 border-2 border-dashed border-slate-200 flex flex-col items-center justify-center overflow-hidden transition-all group-hover/vehicle:border-primary/50">
                                     {(vehiclePreview || driverProfile?.documents?.vehicleUrl) ? (
                                         <img src={vehiclePreview || driverProfile.documents.vehicleUrl} alt="Vehicle" className="w-full h-full object-cover" />
                                     ) : (
@@ -500,7 +500,7 @@ export default function DriverProfile() {
                     </div>
 
                     <div className="md:col-span-2 pt-4">
-                        <button disabled={loading} type="submit" className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-black py-4 rounded-2xl shadow-lg shadow-indigo-600/30 flex items-center justify-center gap-3 active:scale-[0.98] transition-all">
+                        <button disabled={loading} type="submit" className="w-full bg-primary hover:bg-primary text-slate-900 font-black py-4 rounded-2xl shadow-lg shadow-primary/30 flex items-center justify-center gap-3 active:scale-[0.98] transition-all">
                             {loading ? (
                                 <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
                             ) : (
@@ -538,7 +538,7 @@ export default function DriverProfile() {
                                 const firstCity = VENEZUELA_DATA[newState]?.[0] || '';
                                 setLocationForm({ ...locationForm, state: newState, city: firstCity });
                             }}
-                            className="w-full bg-slate-50 border-2 border-transparent focus:border-indigo-500 px-4 py-3 rounded-2xl outline-none transition-all font-bold text-slate-700"
+                            className="w-full bg-slate-50 border-2 border-transparent focus:border-primary px-4 py-3 rounded-2xl outline-none transition-all font-bold text-slate-700"
                         >
                             <option value="">Selecciona...</option>
                             {VENEZUELA_STATES.map(s => <option key={s} value={s}>{s}</option>)}
@@ -551,7 +551,7 @@ export default function DriverProfile() {
                             value={locationForm.city}
                             onChange={e => setLocationForm({ ...locationForm, city: e.target.value })}
                             disabled={!locationForm.state}
-                            className="w-full bg-slate-50 border-2 border-transparent focus:border-indigo-500 px-4 py-3 rounded-2xl outline-none transition-all font-bold text-slate-700 disabled:opacity-50"
+                            className="w-full bg-slate-50 border-2 border-transparent focus:border-primary px-4 py-3 rounded-2xl outline-none transition-all font-bold text-slate-700 disabled:opacity-50"
                         >
                             <option value="">Selecciona...</option>
                             {locationForm.state && VENEZUELA_DATA[locationForm.state]?.map(c => <option key={c} value={c}>{c}</option>)}
@@ -564,19 +564,19 @@ export default function DriverProfile() {
                             <button
                                 type="button"
                                 onClick={() => setShowMap(true)}
-                                className="w-full py-4 border-2 border-dashed border-indigo-200 rounded-2xl flex flex-col items-center justify-center gap-2 text-indigo-600 hover:bg-indigo-50 transition-colors"
+                                className="w-full py-4 border-2 border-dashed border-indigo-200 rounded-2xl flex flex-col items-center justify-center gap-2 text-primary hover:bg-indigo-50 transition-colors"
                             >
                                 {locationForm.coords ? (
                                     <>
                                         <div className="w-10 h-10 bg-indigo-100 rounded-full flex items-center justify-center">
-                                            <CheckCircle2 className="w-5 h-5 text-indigo-600" />
+                                            <CheckCircle2 className="w-5 h-5 text-primary" />
                                         </div>
                                         <span className="font-bold text-sm">Ubicación guardada - Toca para cambiar</span>
                                     </>
                                 ) : (
                                     <>
                                         <div className="w-10 h-10 bg-indigo-50 rounded-full flex items-center justify-center group-hover:bg-indigo-100 transition-colors">
-                                            <MapPin className="w-5 h-5 text-indigo-500" />
+                                            <MapPin className="w-5 h-5 text-primary" />
                                         </div>
                                         <span className="font-bold text-sm">Fijar ubicación en el mapa</span>
                                     </>
@@ -596,7 +596,7 @@ export default function DriverProfile() {
                         )}
                     </div>
 
-                    <button disabled={loading} type="submit" className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-black py-4 rounded-2xl shadow-lg shadow-indigo-600/30 active:scale-95 transition-all mt-4">
+                    <button disabled={loading} type="submit" className="w-full bg-primary hover:bg-primary text-slate-900 font-black py-4 rounded-2xl shadow-lg shadow-primary/30 active:scale-95 transition-all mt-4">
                         {loading ? 'Guardando...' : 'Guardar Ubicación'}
                     </button>
                 </form>
@@ -610,8 +610,8 @@ export default function DriverProfile() {
             <h2 className="text-2xl font-black text-slate-800 tracking-tight">Mi Perfil</h2>
 
             <div className="bg-white rounded-[32px] p-6 border border-slate-100 shadow-sm text-center relative overflow-hidden">
-                <div className="absolute top-0 left-0 w-full h-24 bg-indigo-600/10 backdrop-blur-3xl -z-10"></div>
-                <div className="w-24 h-24 bg-white p-1 rounded-full mx-auto mb-4 relative shadow-xl shadow-indigo-600/20">
+                <div className="absolute top-0 left-0 w-full h-24 bg-primary/10 backdrop-blur-3xl -z-10"></div>
+                <div className="w-24 h-24 bg-white p-1 rounded-full mx-auto mb-4 relative shadow-xl shadow-primary/20">
                     <img
                         src={driverProfile?.documents?.selfieUrl || user?.photoURL || `https://ui-avatars.com/api/?name=${user?.email}&background=e0e7ff&color=4f46e5`}
                         alt="Profile"
@@ -633,7 +633,7 @@ export default function DriverProfile() {
             <div className="space-y-3">
                 <button onClick={() => setActiveView('update_data')} className="w-full bg-white p-4 rounded-2xl flex items-center justify-between border border-slate-100 shadow-sm active:bg-slate-50 transition-colors group">
                     <div className="flex items-center gap-4">
-                        <div className="w-10 h-10 bg-indigo-50 text-indigo-600 rounded-xl flex items-center justify-center shrink-0">
+                        <div className="w-10 h-10 bg-indigo-50 text-primary rounded-xl flex items-center justify-center shrink-0">
                             <User className="w-5 h-5" />
                         </div>
                         <div className="text-left">
@@ -641,7 +641,7 @@ export default function DriverProfile() {
                             <p className="text-xs font-medium text-slate-500">Solicitar cambio de Vehículo</p>
                         </div>
                     </div>
-                    <ChevronRight className="w-5 h-5 text-slate-300 group-hover:text-indigo-600 transition-colors" />
+                    <ChevronRight className="w-5 h-5 text-slate-300 group-hover:text-primary transition-colors" />
                 </button>
 
                 <button onClick={() => setActiveView('location')} className="w-full bg-white p-4 rounded-2xl flex items-center justify-between border border-slate-100 shadow-sm active:bg-slate-50 transition-colors group">

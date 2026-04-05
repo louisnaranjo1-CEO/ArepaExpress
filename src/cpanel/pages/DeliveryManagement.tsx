@@ -281,7 +281,7 @@ _Enviado desde Deliexpress App_`
     if (loading) {
         return (
             <div className="flex items-center justify-center min-h-[400px]">
-                <div className="w-10 h-10 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>
+                <div className="w-10 h-10 border-4 border-primary border-t-transparent rounded-full animate-spin"></div>
             </div>
         );
     }
@@ -296,7 +296,7 @@ _Enviado desde Deliexpress App_`
                 <div className="flex gap-3">
                     <button
                         onClick={() => setShowFleetMap(true)}
-                        className="bg-indigo-600 text-white px-6 py-3 rounded-2xl font-black text-sm flex items-center gap-2 shadow-lg shadow-indigo-600/20 hover:scale-[1.02] active:scale-[0.98] transition-all"
+                        className="bg-primary text-slate-900 px-6 py-3 rounded-2xl font-black text-sm flex items-center gap-2 shadow-lg shadow-primary/20 hover:scale-[1.02] active:scale-[0.98] transition-all"
                     >
                         <MapIcon className="w-5 h-5" />
                         Ver Mapa de Flota
@@ -310,7 +310,7 @@ _Enviado desde Deliexpress App_`
                     <button
                         key={tab}
                         onClick={() => setActiveTab(tab)}
-                        className={`relative px-6 py-2.5 rounded-xl font-bold text-sm transition-all z-10 ${activeTab === tab ? 'text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'
+                        className={`relative px-6 py-2.5 rounded-xl font-bold text-sm transition-all z-10 ${activeTab === tab ? 'text-primary shadow-sm' : 'text-slate-500 hover:text-slate-700'
                             }`}
                     >
                         {activeTab === tab && (
@@ -550,7 +550,7 @@ _Enviado desde Deliexpress App_`
                                             )}
                                             <button
                                                 onClick={() => handleOpenFinanceModal(driver)}
-                                                className="text-indigo-600 text-xs font-bold hover:underline opacity-0 group-hover:opacity-100 transition-opacity"
+                                                className="text-primary text-xs font-bold hover:underline opacity-0 group-hover:opacity-100 transition-opacity"
                                             >
                                                 Finanzas
                                             </button>
@@ -605,7 +605,7 @@ _Enviado desde Deliexpress App_`
                                             const key = activeShift === 'day' ? 'dayShift' : 'nightShift';
                                             setSettings({ ...settings, [key]: { ...settings[key], start: e.target.value } });
                                         }}
-                                        className="w-full bg-white border border-slate-200 px-4 py-2.5 rounded-xl font-bold text-slate-700 outline-none focus:ring-2 focus:ring-indigo-500/20"
+                                        className="w-full bg-white border border-slate-200 px-4 py-2.5 rounded-xl font-bold text-slate-700 outline-none focus:ring-2 focus:ring-primary/20"
                                     />
                                 </div>
                                 <div className="flex-1">
@@ -617,7 +617,7 @@ _Enviado desde Deliexpress App_`
                                             const key = activeShift === 'day' ? 'dayShift' : 'nightShift';
                                             setSettings({ ...settings, [key]: { ...settings[key], end: e.target.value } });
                                         }}
-                                        className="w-full bg-white border border-slate-200 px-4 py-2.5 rounded-xl font-bold text-slate-700 outline-none focus:ring-2 focus:ring-indigo-500/20"
+                                        className="w-full bg-white border border-slate-200 px-4 py-2.5 rounded-xl font-bold text-slate-700 outline-none focus:ring-2 focus:ring-primary/20"
                                     />
                                 </div>
                             </div>
@@ -640,7 +640,7 @@ _Enviado desde Deliexpress App_`
                                         onChange={(e) => {
                                             setSettings({ ...settings, deliveryRadius: parseInt(e.target.value) || 15 });
                                         }}
-                                        className="w-full bg-white border border-slate-200 px-4 py-2.5 rounded-xl font-bold text-slate-700 outline-none focus:ring-2 focus:ring-indigo-500/20"
+                                        className="w-full bg-white border border-slate-200 px-4 py-2.5 rounded-xl font-bold text-slate-700 outline-none focus:ring-2 focus:ring-primary/20"
                                     />
                                 </div>
                             </div>
@@ -650,7 +650,7 @@ _Enviado desde Deliexpress App_`
                         <div className="bg-white p-8 rounded-[32px] border border-slate-200 shadow-sm space-y-6">
                             <div className="flex items-center justify-between">
                                 <div className="flex items-center gap-4">
-                                    <div className="w-12 h-12 bg-indigo-50 text-indigo-600 rounded-2xl flex items-center justify-center">
+                                    <div className="w-12 h-12 bg-indigo-50 text-primary rounded-2xl flex items-center justify-center">
                                         <Truck className="w-6 h-6" />
                                     </div>
                                     <div>
@@ -664,7 +664,7 @@ _Enviado desde Deliexpress App_`
                                         const newRates = [...settings[key].driverRates, { from: 0, to: 0, price: 0 }];
                                         setSettings({ ...settings, [key]: { ...settings[key], driverRates: newRates } });
                                     }}
-                                    className="bg-indigo-50 text-indigo-600 p-2.5 rounded-xl hover:bg-indigo-100 transition-colors"
+                                    className="bg-indigo-50 text-primary p-2.5 rounded-xl hover:bg-indigo-100 transition-colors"
                                 >
                                     <Plus className="w-5 h-5" />
                                 </button>
@@ -714,7 +714,7 @@ _Enviado desde Deliexpress App_`
                                                     newRates[idx].price = parseFloat(e.target.value) || 0;
                                                     setSettings({ ...settings, [key]: { ...settings[key], driverRates: newRates } });
                                                 }}
-                                                className="w-full bg-slate-50 border border-slate-100 px-3 py-2.5 rounded-xl font-bold text-indigo-600"
+                                                className="w-full bg-slate-50 border border-slate-100 px-3 py-2.5 rounded-xl font-bold text-primary"
                                             />
                                         </div>
                                         <div className="col-span-1">
@@ -825,7 +825,7 @@ _Enviado desde Deliexpress App_`
                         {/* Transport Rates Editor (Moto, Car, Exec) */}
                         <div className="lg:col-span-2 bg-white p-8 rounded-[32px] border border-slate-200 shadow-sm space-y-8">
                             <div className="flex items-center gap-4 border-b border-slate-100 pb-6">
-                                <div className="w-12 h-12 bg-indigo-50 text-indigo-600 rounded-2xl flex items-center justify-center">
+                                <div className="w-12 h-12 bg-indigo-50 text-primary rounded-2xl flex items-center justify-center">
                                     <Activity className="w-6 h-6" />
                                 </div>
                                 <div>
@@ -849,7 +849,7 @@ _Enviado desde Deliexpress App_`
                                                         transportRates: { ...settings.transportRates, [type]: newRates }
                                                     });
                                                 }}
-                                                className="text-indigo-600 hover:bg-slate-50 p-1 rounded-lg transition-colors"
+                                                className="text-primary hover:bg-slate-50 p-1 rounded-lg transition-colors"
                                             >
                                                 <Plus className="w-4 h-4" />
                                             </button>
@@ -911,7 +911,7 @@ _Enviado desde Deliexpress App_`
                                                                 setSettings({ ...settings, transportRates: { ...settings.transportRates, [type]: newRates } });
                                                             }}
                                                             placeholder="C. Taxi"
-                                                            className="w-full bg-indigo-50 border-none rounded-lg px-2 py-1 text-[10px] font-black text-indigo-600 text-center"
+                                                            className="w-full bg-indigo-50 border-none rounded-lg px-2 py-1 text-[10px] font-black text-primary text-center"
                                                         />
                                                     </div>
                                                     <div className="col-span-1">
@@ -968,7 +968,7 @@ _Enviado desde Deliexpress App_`
                                         value={settings.whatsappMessageTemplate}
                                         onChange={(e) => setSettings({ ...settings, whatsappMessageTemplate: e.target.value })}
                                         rows={10}
-                                        className="w-full bg-slate-50 border border-slate-200 px-4 py-3 rounded-2xl text-sm font-medium text-slate-700 outline-none focus:ring-2 focus:ring-indigo-500/20 whitespace-pre-wrap"
+                                        className="w-full bg-slate-50 border border-slate-200 px-4 py-3 rounded-2xl text-sm font-medium text-slate-700 outline-none focus:ring-2 focus:ring-primary/20 whitespace-pre-wrap"
                                         placeholder="Escribe la plantilla del mensaje de WhatsApp aquí..."
                                     />
                                 </div>
@@ -979,7 +979,7 @@ _Enviado desde Deliexpress App_`
                             <button
                                 onClick={handleSaveSettings}
                                 disabled={savingSettings}
-                                className="w-full bg-indigo-600 text-white font-black py-4 rounded-2xl shadow-lg shadow-indigo-600/20 active:scale-[0.98] transition-all disabled:opacity-50"
+                                className="w-full bg-primary text-slate-900 font-black py-4 rounded-2xl shadow-lg shadow-primary/20 active:scale-[0.98] transition-all disabled:opacity-50"
                             >
                                 {savingSettings ? 'Guardando...' : 'Guardar Todas las Configuraciones'}
                             </button>
@@ -1086,7 +1086,7 @@ _Enviado desde Deliexpress App_`
                             </div>
 
                             <div className="p-8 text-center space-y-4">
-                                <div className="w-20 h-20 bg-indigo-50 rounded-full flex items-center justify-center mx-auto text-indigo-600">
+                                <div className="w-20 h-20 bg-indigo-50 rounded-full flex items-center justify-center mx-auto text-primary">
                                     <DollarSign className="w-10 h-10" />
                                 </div>
                                 <div>
@@ -1131,7 +1131,7 @@ _Enviado desde Deliexpress App_`
                             <div className="p-6 flex items-center justify-between border-b border-slate-100">
                                 <div>
                                     <h2 className="text-2xl font-black text-slate-900 flex items-center gap-3">
-                                        <MapIcon className="w-6 h-6 text-indigo-600" />
+                                        <MapIcon className="w-6 h-6 text-primary" />
                                         Mapa de Flota de Pilotos
                                     </h2>
                                     <p className="text-sm font-bold text-slate-500 uppercase tracking-widest mt-1">
@@ -1203,7 +1203,7 @@ _Enviado desde Deliexpress App_`
                                                                     href={`https://www.google.com/maps/dir/?api=1&destination=${driver.homeLocation?.coords?.lat},${driver.homeLocation?.coords?.lng}`}
                                                                     target="_blank"
                                                                     rel="noreferrer"
-                                                                    className="flex-1 bg-indigo-600 text-white text-[10px] font-black uppercase py-2 px-3 rounded-lg text-center shadow-lg shadow-indigo-600/20"
+                                                                    className="flex-1 bg-primary text-slate-900 text-[10px] font-black uppercase py-2 px-3 rounded-lg text-center shadow-lg shadow-primary/20"
                                                                 >
                                                                     Cómo llegar
                                                                 </a>
@@ -1216,7 +1216,7 @@ _Enviado desde Deliexpress App_`
                                     </GoogleMap>
                                 ) : (
                                     <div className="w-full h-full flex flex-col items-center justify-center gap-3">
-                                        <div className="w-10 h-10 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>
+                                        <div className="w-10 h-10 border-4 border-primary border-t-transparent rounded-full animate-spin"></div>
                                         <p className="text-sm font-bold text-slate-400 uppercase tracking-widest">Cargando Mapa...</p>
                                     </div>
                                 )}

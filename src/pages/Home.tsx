@@ -485,7 +485,7 @@ export default function Home() {
                   <div className="space-y-5">
                     <div className="flex gap-4">
                       <div className="w-10 h-10 rounded-2xl bg-indigo-50 flex items-center justify-center shrink-0 border border-indigo-100 shadow-sm">
-                        <MapPin className="w-5 h-5 text-indigo-500" />
+                        <MapPin className="w-5 h-5 text-primary" />
                       </div>
                       <div>
                         <h4 className="font-bold text-slate-900 text-sm mb-1">Geolocalización Inteligente</h4>

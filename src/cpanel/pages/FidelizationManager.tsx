@@ -296,7 +296,7 @@ export default function FidelizationManager() {
                     </h3>
                     <button
                         onClick={() => setShowAddModal(true)}
-                        className="bg-blue-500 text-white px-4 py-2 rounded-xl text-sm font-black shadow-lg shadow-blue-500/20 hover:scale-105 active:scale-95 transition-all flex items-center gap-2"
+                        className="bg-primary text-slate-900 px-4 py-2 rounded-xl text-sm font-black shadow-lg shadow-blue-500/20 hover:scale-105 active:scale-95 transition-all flex items-center gap-2"
                     >
                         <Plus className="w-4 h-4" /> Nuevo Concurso
                     </button>
@@ -315,7 +315,7 @@ export default function FidelizationManager() {
                         {contests.map((contest) => (
                             <div key={contest.id} className="p-6 flex flex-col md:flex-row md:items-center justify-between gap-4 hover:bg-slate-50/50 transition-colors">
                                 <div className="flex items-start gap-4">
-                                    <div className={`w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 ${contest.type === 'referral_count' ? 'bg-blue-50 text-blue-500' : 'bg-purple-50 text-purple-500'}`}>
+                                    <div className={`w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 ${contest.type === 'referral_count' ? 'bg-blue-50 text-blue-500' : 'bg-purple-50 text-primary'}`}>
                                         {contest.type === 'referral_count' ? <Users className="w-6 h-6" /> : <Share2 className="w-6 h-6" />}
                                     </div>
                                     <div>
@@ -324,7 +324,7 @@ export default function FidelizationManager() {
                                         <div className="flex items-center gap-2">
                                             <span className="text-[10px] bg-slate-100 px-2 py-0.5 rounded-full font-black text-slate-500 uppercase">{contest.type === 'referral_count' ? 'Por cantidad' : 'Por compartir'}</span>
                                             <span className="text-[10px] bg-amber-100 text-amber-600 px-2 py-0.5 rounded-full font-black uppercase">Premio: {contest.prize}</span>
-                                            <span className="text-[10px] bg-indigo-100 text-indigo-600 px-2 py-0.5 rounded-full font-black uppercase">Meta: {contest.targetCount}</span>
+                                            <span className="text-[10px] bg-indigo-100 text-primary px-2 py-0.5 rounded-full font-black uppercase">Meta: {contest.targetCount}</span>
                                         </div>
                                     </div>
                                 </div>
@@ -507,7 +507,7 @@ export default function FidelizationManager() {
 
                             <button
                                 onClick={handleAddContest}
-                                className="w-full bg-blue-500 text-white py-4 rounded-2xl font-black shadow-lg shadow-blue-500/20 hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-2 mt-4"
+                                className="w-full bg-primary text-slate-900 py-4 rounded-2xl font-black shadow-lg shadow-blue-500/20 hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-2 mt-4"
                             >
                                 <Save className="w-5 h-5" /> Guardar Concurso
                             </button>

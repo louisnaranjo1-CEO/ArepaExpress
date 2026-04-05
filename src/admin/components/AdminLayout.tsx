@@ -217,13 +217,13 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
                         <div className="flex items-center gap-3 cursor-pointer active:scale-95 transition-transform" onClick={() => window.location.href = 'https://deliexpress.app'}>
                             <div className="w-14 h-14 flex items-center justify-center p-1 overflow-visible">
                                 <img
-                                    src="https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/logo.png?alt=media&token=8acf92ec-b853-4f37-bd82-a4f651bbdcd9"
-                                    alt="Deliexpress Logo"
+                                    src="https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/logo21.png?alt=media&token=52eab323-674a-496d-9bef-f4452af98586"
+                                    alt="Encontrado en un 2x3"
                                     className="w-full h-full object-contain filter drop-shadow-sm"
                                 />
                             </div>
                             <div className="flex flex-col">
-                                <h1 className="font-black text-slate-900 leading-tight">Delipanel</h1>
+                                <h1 className="font-black text-slate-900 leading-tight">Encontrado en un 2x3</h1>
                                 <p className="text-[10px] font-bold text-slate-900 uppercase tracking-wider">Business Hub</p>
                             </div>
                         </div>
@@ -240,7 +240,7 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
                                 to={item.path}
                                 className={({ isActive }) =>
                                     `flex items-center justify-between p-4 rounded-2xl font-bold transition-all group ${isActive
-                                        ? 'bg-primary text-white shadow-lg shadow-primary/20'
+                                        ? 'bg-primary text-slate-900 shadow-lg shadow-primary/20'
                                         : 'text-slate-500 hover:bg-slate-50 hover:text-slate-900'
                                     }`
                                 }

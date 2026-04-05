@@ -71,7 +71,7 @@ export default function MergeTransferModal({
                     {/* Header */}
                     <div className="flex justify-between items-center mb-6 shrink-0 border-b border-slate-100 pb-4">
                         <div className="flex items-center gap-4">
-                            <div className={`w-12 h-12 rounded-2xl flex items-center justify-center ${isMerge ? 'bg-purple-100 text-purple-600' : 'bg-amber-100 text-amber-600'}`}>
+                            <div className={`w-12 h-12 rounded-2xl flex items-center justify-center ${isMerge ? 'bg-purple-100 text-primary' : 'bg-amber-100 text-amber-600'}`}>
                                 {isMerge ? <GitMerge className="w-6 h-6 transform -rotate-90" /> : <ArrowRightLeft className="w-6 h-6" />}
                             </div>
                             <div>
@@ -108,7 +108,7 @@ export default function MergeTransferModal({
                                         onClick={() => setSelectedTarget(table.number)}
                                         className={`w-full aspect-square rounded-2xl flex flex-col items-center justify-center transition-all border-2
                                             ${selectedTarget === table.number 
-                                                ? (isMerge ? 'bg-purple-50 border-purple-500 text-purple-700' : 'bg-amber-50 border-amber-500 text-amber-700') 
+                                                ? (isMerge ? 'bg-purple-50 border-primary text-purple-700' : 'bg-amber-50 border-amber-500 text-amber-700') 
                                                 : 'bg-white border-slate-100 text-slate-600 hover:border-slate-300'
                                             }`}
                                     >
@@ -123,10 +123,10 @@ export default function MergeTransferModal({
                     <button
                         onClick={handleConfirm}
                         disabled={!selectedTarget || isProcessing}
-                        className={`mt-auto w-full flex items-center justify-center gap-3 p-5 text-white rounded-[2rem] font-black transition-all
+                        className={`mt-auto w-full flex items-center justify-center gap-3 p-5 text-slate-900 rounded-[2rem] font-black transition-all
                             ${!selectedTarget || isProcessing 
                                 ? 'bg-slate-300 cursor-not-allowed' 
-                                : isMerge ? 'bg-purple-600 hover:bg-purple-700 hover:scale-[1.02] active:scale-[0.98]' : 'bg-amber-500 hover:bg-amber-600 hover:scale-[1.02] active:scale-[0.98]'
+                                : isMerge ? 'bg-primary hover:bg-primary hover:scale-[1.02] active:scale-[0.98]' : 'bg-amber-500 hover:bg-amber-600 hover:scale-[1.02] active:scale-[0.98]'
                             }`}
                     >
                         {isProcessing ? (

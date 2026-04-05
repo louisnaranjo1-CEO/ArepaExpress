@@ -132,19 +132,19 @@ export default function TableOptionsModal({
 
                         <button
                             onClick={onJoinTable}
-                            className="flex flex-col items-center justify-center p-5 bg-white border-2 border-slate-100 rounded-3xl hover:border-purple-500 hover:shadow-lg hover:shadow-purple-500/10 transition-all group"
+                            className="flex flex-col items-center justify-center p-5 bg-white border-2 border-slate-100 rounded-3xl hover:border-primary hover:shadow-lg hover:shadow-primary/10 transition-all group"
                         >
-                            <div className="w-12 h-12 bg-slate-50 text-slate-400 rounded-2xl flex items-center justify-center mb-3 group-hover:bg-purple-500 group-hover:text-white transition-colors">
+                            <div className="w-12 h-12 bg-slate-50 text-slate-400 rounded-2xl flex items-center justify-center mb-3 group-hover:bg-primary group-hover:text-slate-900 transition-colors">
                                 <GitMerge className="w-6 h-6 transform -rotate-90" />
                             </div>
-                            <span className="text-sm font-black text-slate-700 group-hover:text-purple-500 transition-colors text-center leading-tight">Unir Mesas</span>
+                            <span className="text-sm font-black text-slate-700 group-hover:text-primary transition-colors text-center leading-tight">Unir Mesas</span>
                         </button>
 
                         <button
                             onClick={onSplitBill}
                             className="flex flex-col items-center justify-center p-5 bg-white border-2 border-slate-100 rounded-3xl hover:border-blue-500 hover:shadow-lg hover:shadow-blue-500/10 transition-all group"
                         >
-                            <div className="w-12 h-12 bg-slate-50 text-slate-400 rounded-2xl flex items-center justify-center mb-3 group-hover:bg-blue-500 group-hover:text-white transition-colors">
+                            <div className="w-12 h-12 bg-slate-50 text-slate-400 rounded-2xl flex items-center justify-center mb-3 group-hover:bg-primary group-hover:text-slate-900 transition-colors">
                                 <SplitSquareHorizontal className="w-6 h-6 transform rotate-90" />
                             </div>
                             <span className="text-sm font-black text-slate-700 group-hover:text-blue-500 transition-colors text-center leading-tight">Dividir Cuenta</span>

@@ -265,7 +265,7 @@ export default function Banners() {
                         }}
                         className={`flex items-center gap-2 px-5 py-2.5 rounded-xl font-black transition-all active:scale-95 ${isAdding
                             ? 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                            : 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/20 hover:bg-indigo-700'
+                            : 'bg-primary text-slate-900 shadow-lg shadow-primary/20 hover:bg-primary'
                             }`}
                     >
                         {isAdding ? 'Cancelar' : <><Plus className="w-5 h-5" /> Nuevo Banner</>}
@@ -305,7 +305,7 @@ export default function Banners() {
                                         required
                                         value={newBanner.title}
                                         onChange={e => setNewBanner({ ...newBanner, title: e.target.value })}
-                                        className="w-full bg-slate-50 border-2 border-transparent focus:border-indigo-500 focus:bg-white p-4 rounded-2xl outline-none transition-all font-bold text-slate-700"
+                                        className="w-full bg-slate-50 border-2 border-transparent focus:border-primary focus:bg-white p-4 rounded-2xl outline-none transition-all font-bold text-slate-700"
                                         placeholder="Ej: Promo Especial de Almuerzos"
                                     />
                                 </div>
@@ -318,7 +318,7 @@ export default function Banners() {
                                             type="url"
                                             value={newBanner.linkUrl}
                                             onChange={e => setNewBanner({ ...newBanner, linkUrl: e.target.value })}
-                                            className="w-full bg-slate-50 border-2 border-transparent focus:border-indigo-500 focus:bg-white p-4 pl-12 rounded-2xl outline-none transition-all font-bold text-slate-700"
+                                            className="w-full bg-slate-50 border-2 border-transparent focus:border-primary focus:bg-white p-4 pl-12 rounded-2xl outline-none transition-all font-bold text-slate-700"
                                             placeholder="https://wa.me/..."
                                         />
                                     </div>
@@ -334,7 +334,7 @@ export default function Banners() {
                                             max="15"
                                             value={newBanner.duration}
                                             onChange={e => setNewBanner({ ...newBanner, duration: parseInt(e.target.value) })}
-                                            className="w-full bg-slate-50 border-2 border-transparent focus:border-indigo-500 focus:bg-white p-4 pl-12 rounded-2xl outline-none transition-all font-bold text-slate-700"
+                                            className="w-full bg-slate-50 border-2 border-transparent focus:border-primary focus:bg-white p-4 pl-12 rounded-2xl outline-none transition-all font-bold text-slate-700"
                                         />
                                     </div>
                                 </div>
@@ -353,7 +353,7 @@ export default function Banners() {
                                             </>
                                         ) : (
                                             <>
-                                                <div className="w-16 h-16 bg-white rounded-2xl shadow-sm flex items-center justify-center text-slate-300 group-hover:text-indigo-500 group-hover:scale-110 transition-all">
+                                                <div className="w-16 h-16 bg-white rounded-2xl shadow-sm flex items-center justify-center text-slate-300 group-hover:text-primary group-hover:scale-110 transition-all">
                                                     <Upload className="w-8 h-8" />
                                                 </div>
                                                 <div className="text-center">
@@ -405,14 +405,14 @@ export default function Banners() {
                             <img src={banner.imageUrl} alt={banner.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" />
                             <div className="absolute top-4 left-4 flex gap-2">
                                 <div className="bg-white/95 backdrop-blur px-3 py-1.5 rounded-xl flex items-center gap-1.5 border border-slate-100 shadow-sm">
-                                    <Timer className="w-3.5 h-3.5 text-indigo-600" />
+                                    <Timer className="w-3.5 h-3.5 text-primary" />
                                     <span className="text-xs font-black text-slate-900">{banner.duration}s</span>
                                 </div>
                             </div>
                             <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity gap-4">
                                 <button
                                     onClick={() => handleEdit(banner)}
-                                    className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center text-indigo-600 hover:scale-110 transition-transform shadow-lg"
+                                    className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center text-primary hover:scale-110 transition-transform shadow-lg"
                                 >
                                     <Pencil className="w-5 h-5" />
                                 </button>

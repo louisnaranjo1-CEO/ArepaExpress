@@ -145,7 +145,7 @@ export default function Earnings() {
     if (loading) {
         return (
             <div className="flex justify-center items-center py-20">
-                <div className="w-8 h-8 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>
+                <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin"></div>
             </div>
         );
     }
@@ -159,7 +159,7 @@ export default function Earnings() {
 
             {/* Main Stats Grid */}
             <div className="px-4 grid grid-cols-2 gap-4">
-                <div className="bg-indigo-600 rounded-[32px] p-5 text-white shadow-lg shadow-indigo-600/20 relative overflow-hidden col-span-2">
+                <div className="bg-primary rounded-[32px] p-5 text-slate-900 shadow-lg shadow-primary/20 relative overflow-hidden col-span-2">
                     <div className="absolute top-0 right-0 w-24 h-24 bg-white/10 rounded-full blur-2xl -mr-8 -mt-8"></div>
                     <p className="text-indigo-100 font-black uppercase tracking-widest text-[10px] opacity-80">Disponible para Cobro</p>
                     <h3 className="text-4xl font-black mb-1">${stats.available.toFixed(2)}</h3>
@@ -185,7 +185,7 @@ export default function Earnings() {
             <div className="px-4 flex gap-2">
                 <button
                     onClick={() => setActiveTab('pending')}
-                    className={`flex-1 py-3 px-4 rounded-2xl font-bold text-sm transition-all ${activeTab === 'pending' ? 'bg-indigo-600 text-white shadow-md shadow-indigo-200' : 'bg-slate-200 text-slate-500 hover:bg-slate-300'}`}
+                    className={`flex-1 py-3 px-4 rounded-2xl font-bold text-sm transition-all ${activeTab === 'pending' ? 'bg-primary text-slate-900 shadow-md shadow-indigo-200' : 'bg-slate-200 text-slate-500 hover:bg-slate-300'}`}
                 >
                     Pendientes
                 </button>
@@ -222,7 +222,7 @@ export default function Earnings() {
                                     </h3>
                                 </div>
                                 <div className="text-right">
-                                    <span className="font-black text-indigo-600 text-xl">+${item.amount.toFixed(2)}</span>
+                                    <span className="font-black text-primary text-xl">+${item.amount.toFixed(2)}</span>
                                 </div>
                             </div>
 
@@ -237,9 +237,9 @@ export default function Earnings() {
                                     </div>
                                 </div>
                                 <div className="flex items-start gap-3 relative">
-                                    <div className="w-4 h-4 rounded-full bg-indigo-500 border-2 border-white relative z-10 shrink-0 mt-1"></div>
+                                    <div className="w-4 h-4 rounded-full bg-primary border-2 border-white relative z-10 shrink-0 mt-1"></div>
                                     <div className="flex-1">
-                                        <p className="font-bold text-indigo-500 text-xs uppercase tracking-tighter opacity-60">Destino</p>
+                                        <p className="font-bold text-primary text-xs uppercase tracking-tighter opacity-60">Destino</p>
                                         <p className="font-bold text-slate-700">{item.destinationName}</p>
                                     </div>
                                     {item.distance && (

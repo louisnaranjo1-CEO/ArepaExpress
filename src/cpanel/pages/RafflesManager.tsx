@@ -141,7 +141,7 @@ export default function RafflesManager() {
                                         </div>
                                     </div>
                                     <div className="bg-slate-50 p-3 rounded-2xl flex items-center gap-3">
-                                        <Calendar className="w-5 h-5 text-indigo-500" />
+                                        <Calendar className="w-5 h-5 text-primary" />
                                         <div>
                                             <p className="text-[10px] text-slate-400 font-black uppercase leading-none mb-1">Fecha del Sorteo</p>
                                             <p className="text-sm font-black text-slate-700">{raffle.drawDate}</p>

@@ -142,7 +142,7 @@ export default function Subscriptions() {
                                         <h2 className="text-4xl font-black text-slate-900 mb-2">
                                             {currentPlan?.name || 'Plan Activo'}
                                         </h2>
-                                        <div className="flex items-center gap-2 text-indigo-600">
+                                        <div className="flex items-center gap-2 text-primary">
                                             <CheckCircle2 className="w-5 h-5" />
                                             <span className="font-bold">Tu negocio es visible {currentPlan?.scope === 'national' ? 'en todo el país' : currentPlan?.scope === 'state' ? 'en tu estado' : 'en tu ciudad'}.</span>
                                         </div>
@@ -184,7 +184,7 @@ export default function Subscriptions() {
                     <div className="bg-white rounded-[2.5rem] border-2 border-slate-100 p-8 shadow-xl shadow-slate-200/40">
                         <div className="flex items-center justify-between mb-8">
                             <div className="flex items-center gap-4">
-                                <div className="w-12 h-12 bg-indigo-50 rounded-2xl flex items-center justify-center text-indigo-600">
+                                <div className="w-12 h-12 bg-indigo-50 rounded-2xl flex items-center justify-center text-primary">
                                     <Layout className="w-6 h-6" />
                                 </div>
                                 <div>
@@ -201,7 +201,7 @@ export default function Subscriptions() {
                         <div className="space-y-4">
                             <div className="w-full h-4 bg-slate-100 rounded-full overflow-hidden">
                                 <div
-                                    className={`h-full transition-all duration-1000 ${bannerStats.remaining === 0 ? 'bg-red-500' : 'bg-indigo-600'}`}
+                                    className={`h-full transition-all duration-1000 ${bannerStats.remaining === 0 ? 'bg-red-500' : 'bg-primary'}`}
                                     style={{ width: `${(bannerStats.used / bannerStats.total) * 100}%` }}
                                 />
                             </div>

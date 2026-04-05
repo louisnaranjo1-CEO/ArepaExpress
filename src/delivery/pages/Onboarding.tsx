@@ -158,7 +158,7 @@ export default function Onboarding() {
                 {/* Progress bar */}
                 <div className="w-full bg-slate-100 h-1.5 rounded-full mt-4 overflow-hidden">
                     <div
-                        className="bg-indigo-600 h-full transition-all duration-300 rounded-full"
+                        className="bg-primary h-full transition-all duration-300 rounded-full"
                         style={{ width: `${(step / 5) * 100}%` }}
                     />
                 </div>
@@ -182,7 +182,7 @@ export default function Onboarding() {
                                     type="text"
                                     value={formData.fullName}
                                     onChange={e => setFormData({ ...formData, fullName: e.target.value })}
-                                    className="w-full bg-white border-2 border-slate-200 focus:border-indigo-500 rounded-2xl px-4 py-3 outline-none transition-all font-bold text-slate-700"
+                                    className="w-full bg-white border-2 border-slate-200 focus:border-primary rounded-2xl px-4 py-3 outline-none transition-all font-bold text-slate-700"
                                     placeholder="Ej: Juan Pérez"
                                 />
                             </div>
@@ -193,7 +193,7 @@ export default function Onboarding() {
                                         type="number"
                                         value={formData.age}
                                         onChange={e => setFormData({ ...formData, age: e.target.value })}
-                                        className="w-full bg-white border-2 border-slate-200 focus:border-indigo-500 rounded-2xl px-4 py-3 outline-none transition-all font-bold text-slate-700"
+                                        className="w-full bg-white border-2 border-slate-200 focus:border-primary rounded-2xl px-4 py-3 outline-none transition-all font-bold text-slate-700"
                                         placeholder="Ej: 25"
                                     />
                                 </div>
@@ -203,7 +203,7 @@ export default function Onboarding() {
                                         type="text"
                                         value={formData.cedula}
                                         onChange={e => setFormData({ ...formData, cedula: e.target.value })}
-                                        className="w-full bg-white border-2 border-slate-200 focus:border-indigo-500 rounded-2xl px-4 py-3 outline-none transition-all font-bold text-slate-700"
+                                        className="w-full bg-white border-2 border-slate-200 focus:border-primary rounded-2xl px-4 py-3 outline-none transition-all font-bold text-slate-700"
                                         placeholder="V-12345678"
                                     />
                                 </div>
@@ -214,7 +214,7 @@ export default function Onboarding() {
                                     type="tel"
                                     value={formData.phone}
                                     onChange={e => setFormData({ ...formData, phone: e.target.value })}
-                                    className="w-full bg-white border-2 border-slate-200 focus:border-indigo-500 rounded-2xl px-4 py-3 outline-none transition-all font-bold text-slate-700"
+                                    className="w-full bg-white border-2 border-slate-200 focus:border-primary rounded-2xl px-4 py-3 outline-none transition-all font-bold text-slate-700"
                                     placeholder="0414-1234567"
                                 />
                             </div>
@@ -232,7 +232,7 @@ export default function Onboarding() {
                                     type="text"
                                     value={formData.rif}
                                     onChange={e => setFormData({ ...formData, rif: e.target.value })}
-                                    className="w-full bg-white border-2 border-slate-200 focus:border-indigo-500 rounded-2xl px-4 py-3 outline-none transition-all font-bold text-slate-700"
+                                    className="w-full bg-white border-2 border-slate-200 focus:border-primary rounded-2xl px-4 py-3 outline-none transition-all font-bold text-slate-700"
                                     placeholder="J-12345678-9"
                                 />
                             </div>
@@ -244,7 +244,7 @@ export default function Onboarding() {
                                             key={type}
                                             onClick={() => setFormData({ ...formData, vehicleType: type })}
                                             className={`py-3 px-2 rounded-2xl border-2 font-black text-xs uppercase tracking-wider transition-all ${formData.vehicleType === type
-                                                ? 'bg-indigo-50 border-indigo-600 text-indigo-700'
+                                                ? 'bg-indigo-50 border-primary text-indigo-700'
                                                 : 'bg-white border-slate-200 text-slate-400 hover:border-slate-300'
                                                 }`}
                                         >
@@ -260,7 +260,7 @@ export default function Onboarding() {
                                         type="text"
                                         value={formData.vehiclePlate}
                                         onChange={e => setFormData({ ...formData, vehiclePlate: e.target.value })}
-                                        className="w-full bg-white border-2 border-slate-200 focus:border-indigo-500 rounded-2xl px-4 py-3 outline-none transition-all font-bold text-slate-700"
+                                        className="w-full bg-white border-2 border-slate-200 focus:border-primary rounded-2xl px-4 py-3 outline-none transition-all font-bold text-slate-700"
                                         placeholder="AB123CD"
                                     />
                                 </div>
@@ -291,7 +291,7 @@ export default function Onboarding() {
                                             const firstCity = VENEZUELA_DATA[newState]?.[0] || '';
                                             setFormData({ ...formData, homeState: newState, homeCity: firstCity });
                                         }}
-                                        className="w-full bg-white border-2 border-slate-200 focus:border-indigo-500 text-sm font-bold text-slate-700 rounded-xl px-3 py-3 outline-none"
+                                        className="w-full bg-white border-2 border-slate-200 focus:border-primary text-sm font-bold text-slate-700 rounded-xl px-3 py-3 outline-none"
                                     >
                                         <option value="">Selecciona...</option>
                                         {VENEZUELA_STATES.map(s => <option key={s} value={s}>{s}</option>)}
@@ -303,7 +303,7 @@ export default function Onboarding() {
                                         value={formData.homeCity}
                                         onChange={e => setFormData({ ...formData, homeCity: e.target.value })}
                                         disabled={!formData.homeState}
-                                        className="w-full bg-white border-2 border-slate-200 focus:border-indigo-500 text-sm font-bold text-slate-700 rounded-xl px-3 py-3 outline-none disabled:bg-slate-50"
+                                        className="w-full bg-white border-2 border-slate-200 focus:border-primary text-sm font-bold text-slate-700 rounded-xl px-3 py-3 outline-none disabled:bg-slate-50"
                                     >
                                         <option value="">Selecciona...</option>
                                         {formData.homeState && VENEZUELA_DATA[formData.homeState]?.map(c => <option key={c} value={c}>{c}</option>)}
@@ -316,19 +316,19 @@ export default function Onboarding() {
                                 {!showMap ? (
                                     <button
                                         onClick={() => setShowMap(true)}
-                                        className="w-full py-4 border-2 border-dashed border-indigo-200 rounded-2xl flex flex-col items-center justify-center gap-2 text-indigo-600 hover:bg-indigo-50 transition-colors"
+                                        className="w-full py-4 border-2 border-dashed border-indigo-200 rounded-2xl flex flex-col items-center justify-center gap-2 text-primary hover:bg-indigo-50 transition-colors"
                                     >
                                         {formData.homeCoords ? (
                                             <>
                                                 <div className="w-10 h-10 bg-indigo-100 rounded-full flex items-center justify-center">
-                                                    <CheckCircle2 className="w-5 h-5 text-indigo-600" />
+                                                    <CheckCircle2 className="w-5 h-5 text-primary" />
                                                 </div>
                                                 <span className="font-bold text-sm">Ubicación guardada - Toca para cambiar</span>
                                             </>
                                         ) : (
                                             <>
                                                 <div className="w-10 h-10 bg-indigo-50 rounded-full flex items-center justify-center group-hover:bg-indigo-100 transition-colors">
-                                                    <MapPin className="w-5 h-5 text-indigo-500" />
+                                                    <MapPin className="w-5 h-5 text-primary" />
                                                 </div>
                                                 <span className="font-bold text-sm">Abrir mapa para fijar ubicación</span>
                                             </>
@@ -369,7 +369,7 @@ export default function Onboarding() {
                                         onChange={e => handleFileChange(e, doc.id as any)}
                                         className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
                                     />
-                                    <div className={`border-2 border-dashed rounded-2xl p-4 flex items-center justify-between transition-all ${doc.state ? 'border-emerald-500 bg-emerald-50' : 'border-slate-300 bg-white hover:border-indigo-400'}`}>
+                                    <div className={`border-2 border-dashed rounded-2xl p-4 flex items-center justify-between transition-all ${doc.state ? 'border-emerald-500 bg-emerald-50' : 'border-slate-300 bg-white hover:border-primary'}`}>
                                         <div className="flex items-center gap-3">
                                             <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${doc.state ? 'bg-emerald-100 text-emerald-600' : 'bg-slate-100 text-slate-400'}`}>
                                                 {doc.state ? <CheckCircle2 className="w-5 h-5" /> : <Upload className="w-5 h-5" />}
@@ -388,7 +388,7 @@ export default function Onboarding() {
 
                 {step === 5 && (
                     <div className="space-y-6 flex-1 animate-fade-in">
-                        <div className="w-20 h-20 bg-indigo-100 text-indigo-600 rounded-full flex items-center justify-center mx-auto mb-6">
+                        <div className="w-20 h-20 bg-indigo-100 text-primary rounded-full flex items-center justify-center mx-auto mb-6">
                             <CheckCircle2 className="w-10 h-10" />
                         </div>
                         <h2 className="text-center text-3xl font-black text-slate-800">Todo Listo</h2>
@@ -417,7 +417,7 @@ export default function Onboarding() {
                     {step < 5 ? (
                         <button
                             onClick={nextStep}
-                            className="flex-1 bg-indigo-600 text-white py-4 rounded-2xl font-black flex items-center justify-center gap-2 shadow-lg shadow-indigo-600/20 active:scale-95 transition-transform"
+                            className="flex-1 bg-primary text-slate-900 py-4 rounded-2xl font-black flex items-center justify-center gap-2 shadow-lg shadow-primary/20 active:scale-95 transition-transform"
                         >
                             Siguiente <ChevronRight className="w-5 h-5" />
                         </button>
@@ -425,7 +425,7 @@ export default function Onboarding() {
                         <button
                             onClick={handleSubmit}
                             disabled={loading}
-                            className="flex-1 bg-indigo-600 text-white py-4 rounded-2xl font-black flex items-center justify-center gap-2 shadow-lg shadow-indigo-600/20 active:scale-95 transition-transform disabled:opacity-70 disabled:active:scale-100"
+                            className="flex-1 bg-primary text-slate-900 py-4 rounded-2xl font-black flex items-center justify-center gap-2 shadow-lg shadow-primary/20 active:scale-95 transition-transform disabled:opacity-70 disabled:active:scale-100"
                         >
                             {loading ? (
                                 <div className="w-6 h-6 border-4 border-white border-t-transparent rounded-full animate-spin"></div>

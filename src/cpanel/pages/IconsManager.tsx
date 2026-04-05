@@ -130,7 +130,7 @@ export default function IconsManager() {
     if (loading) {
         return (
             <div className="flex items-center justify-center min-h-[400px]">
-                <div className="w-10 h-10 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>
+                <div className="w-10 h-10 border-4 border-primary border-t-transparent rounded-full animate-spin"></div>
             </div>
         );
     }
@@ -144,7 +144,7 @@ export default function IconsManager() {
                 </div>
                 <button
                     onClick={() => { setIsAdding(!isAdding); setPhotoPreview(null); setPhotoFile(null); }}
-                    className="flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-3 rounded-2xl transition-all font-black shadow-lg"
+                    className="flex items-center justify-center gap-2 bg-primary hover:bg-primary text-slate-900 px-6 py-3 rounded-2xl transition-all font-black shadow-lg"
                 >
                     <Plus className="w-5 h-5" />
                     Nuevo Icono
@@ -159,7 +159,7 @@ export default function IconsManager() {
                         className="bg-white p-8 rounded-[32px] border border-slate-100 shadow-xl space-y-6"
                     >
                         <div className="flex items-center gap-3">
-                            <Share2 className="w-5 h-5 text-indigo-600" />
+                            <Share2 className="w-5 h-5 text-primary" />
                             <h2 className="font-black text-slate-900 text-xl tracking-tight">Agregar Nuevo Icono Social</h2>
                         </div>
 
@@ -173,7 +173,7 @@ export default function IconsManager() {
                                         <img src={photoPreview} alt="Preview" className="w-full h-full object-contain p-2" />
                                     ) : (
                                         <div className="flex flex-col items-center gap-2">
-                                            <Camera className="w-8 h-8 text-slate-300 group-hover:text-indigo-600 transition-colors" />
+                                            <Camera className="w-8 h-8 text-slate-300 group-hover:text-primary transition-colors" />
                                             <span className="text-[10px] font-black text-slate-300 uppercase">Subir Logo</span>
                                         </div>
                                     )}
@@ -188,7 +188,7 @@ export default function IconsManager() {
                                     required
                                     value={formData.name}
                                     onChange={e => setFormData({ ...formData, name: e.target.value })}
-                                    className="w-full bg-slate-50 border-2 border-transparent focus:border-indigo-500 focus:bg-white px-5 py-4 rounded-2xl outline-none transition-all font-bold text-slate-700"
+                                    className="w-full bg-slate-50 border-2 border-transparent focus:border-primary focus:bg-white px-5 py-4 rounded-2xl outline-none transition-all font-bold text-slate-700"
                                     placeholder="Ej: Instagram, TikTok, Facebook..."
                                 />
                             </div>
@@ -199,7 +199,7 @@ export default function IconsManager() {
                             <button
                                 type="submit"
                                 disabled={isSaving}
-                                className="bg-indigo-600 text-white px-8 py-3 rounded-2xl font-black shadow-lg flex items-center gap-2"
+                                className="bg-primary text-slate-900 px-8 py-3 rounded-2xl font-black shadow-lg flex items-center gap-2"
                             >
                                 {isSaving ? <Loader2 className="w-5 h-5 animate-spin" /> : <Save className="w-5 h-5" />}
                                 Guardar Icono
@@ -229,7 +229,7 @@ export default function IconsManager() {
                                     className="w-full bg-slate-50 p-2 rounded-xl font-bold text-center text-sm"
                                 />
                                 <div className="flex gap-1">
-                                    <button onClick={() => handleUpdate(icon.id)} className="flex-1 bg-indigo-600 text-white p-2 rounded-lg"><Save className="w-4 h-4 mx-auto" /></button>
+                                    <button onClick={() => handleUpdate(icon.id)} className="flex-1 bg-primary text-slate-900 p-2 rounded-lg"><Save className="w-4 h-4 mx-auto" /></button>
                                     <button onClick={() => setEditingId(null)} className="p-2 bg-slate-100 rounded-lg text-slate-400"><X className="w-4 h-4" /></button>
                                 </div>
                             </div>
@@ -237,7 +237,7 @@ export default function IconsManager() {
                             <>
                                 <h3 className="text-lg font-black text-slate-900 leading-tight">{icon.name}</h3>
                                 <div className="absolute top-4 right-4 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                    <button onClick={() => startEditing(icon)} className="p-2 bg-white shadow-md rounded-full text-slate-400 hover:text-indigo-600 transition-colors"><Edit3 className="w-4 h-4" /></button>
+                                    <button onClick={() => startEditing(icon)} className="p-2 bg-white shadow-md rounded-full text-slate-400 hover:text-primary transition-colors"><Edit3 className="w-4 h-4" /></button>
                                     <button onClick={() => handleDelete(icon.id)} className="p-2 bg-white shadow-md rounded-full text-slate-400 hover:text-rose-600 transition-colors"><Trash2 className="w-4 h-4" /></button>
                                 </div>
                             </>
@@ -250,7 +250,7 @@ export default function IconsManager() {
                 <div className="text-center py-20 bg-slate-50 rounded-[40px] border-2 border-dashed border-slate-200">
                     <ImageIcon className="w-16 h-16 text-slate-200 mx-auto mb-4" />
                     <p className="text-slate-400 font-bold">No hay iconos configurados aún.</p>
-                    <button onClick={() => setIsAdding(true)} className="text-indigo-600 font-black mt-2 hover:underline underline-offset-4">Haz clic para agregar el primero</button>
+                    <button onClick={() => setIsAdding(true)} className="text-primary font-black mt-2 hover:underline underline-offset-4">Haz clic para agregar el primero</button>
                 </div>
             )}
         </div>

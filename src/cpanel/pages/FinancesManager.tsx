@@ -258,7 +258,7 @@ export default function FinancesManager() {
     if (isLoading) {
         return (
             <div className="flex-1 flex items-center justify-center min-h-[400px]">
-                <div className="w-8 h-8 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>
+                <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin"></div>
             </div>
         );
     }
@@ -275,7 +275,7 @@ export default function FinancesManager() {
                 </div>
                 {uploadingLogo === methodId && (
                     <div className="absolute inset-0 bg-white/80 flex items-center justify-center rounded-xl">
-                        <div className="w-4 h-4 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>
+                        <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin"></div>
                     </div>
                 )}
             </div>
@@ -331,7 +331,7 @@ export default function FinancesManager() {
         <div className="max-w-4xl mx-auto space-y-6">
             <header className="flex items-center justify-between mb-8 pb-6 border-b border-slate-100">
                 <div className="flex items-center gap-4">
-                    <div className="w-12 h-12 bg-indigo-600 rounded-2xl flex items-center justify-center shadow-lg shadow-indigo-600/20">
+                    <div className="w-12 h-12 bg-primary rounded-2xl flex items-center justify-center shadow-lg shadow-primary/20">
                         {activeTab === 'payments' ? <Wallet className="w-6 h-6 text-white" /> : <Layout className="w-6 h-6 text-white" />}
                     </div>
                     <div>
@@ -353,7 +353,7 @@ export default function FinancesManager() {
                 <button
                     onClick={handleSave}
                     disabled={isSaving}
-                    className="flex items-center gap-2 bg-indigo-600 text-white px-6 py-3.5 rounded-2xl font-black hover:bg-indigo-700 active:scale-95 transition-all shadow-xl shadow-indigo-600/20 disabled:opacity-50"
+                    className="flex items-center gap-2 bg-primary text-slate-900 px-6 py-3.5 rounded-2xl font-black hover:bg-primary active:scale-95 transition-all shadow-xl shadow-primary/20 disabled:opacity-50"
                 >
                     <Save className="w-5 h-5" />
                     {isSaving ? 'Guardando...' : 'Guardar Cambios'}
@@ -365,7 +365,7 @@ export default function FinancesManager() {
                 <button
                     onClick={() => setActiveTab('payments')}
                     className={`flex items-center gap-2 px-6 py-2.5 rounded-xl text-sm font-black transition-all ${activeTab === 'payments'
-                        ? 'bg-white text-indigo-600 shadow-sm'
+                        ? 'bg-white text-primary shadow-sm'
                         : 'text-slate-500 hover:text-slate-700'
                         }`}
                 >
@@ -375,7 +375,7 @@ export default function FinancesManager() {
                 <button
                     onClick={() => setActiveTab('subscriptions')}
                     className={`flex items-center gap-2 px-6 py-2.5 rounded-xl text-sm font-black transition-all ${activeTab === 'subscriptions'
-                        ? 'bg-white text-indigo-600 shadow-sm'
+                        ? 'bg-white text-primary shadow-sm'
                         : 'text-slate-500 hover:text-slate-700'
                         }`}
                 >
@@ -385,7 +385,7 @@ export default function FinancesManager() {
                 <button
                     onClick={() => setActiveTab('banners')}
                     className={`flex items-center gap-2 px-6 py-2.5 rounded-xl text-sm font-black transition-all ${activeTab === 'banners'
-                        ? 'bg-white text-indigo-600 shadow-sm'
+                        ? 'bg-white text-primary shadow-sm'
                         : 'text-slate-500 hover:text-slate-700'
                         }`}
                 >
@@ -395,7 +395,7 @@ export default function FinancesManager() {
                 <button
                     onClick={() => setActiveTab('delivery')}
                     className={`flex items-center gap-2 px-6 py-2.5 rounded-xl text-sm font-black transition-all ${activeTab === 'delivery'
-                        ? 'bg-white text-indigo-600 shadow-sm'
+                        ? 'bg-white text-primary shadow-sm'
                         : 'text-slate-500 hover:text-slate-700'
                         }`}
                 >
@@ -458,10 +458,10 @@ export default function FinancesManager() {
                     </div>
 
                     {/* Zelle */}
-                    <div className={`p-6 bg-white rounded-[32px] border-2 transition-all flex flex-col ${config.paymentMethods.zelle.active ? 'border-indigo-600 shadow-lg shadow-indigo-600/5' : 'border-slate-100'}`}>
+                    <div className={`p-6 bg-white rounded-[32px] border-2 transition-all flex flex-col ${config.paymentMethods.zelle.active ? 'border-primary shadow-lg shadow-primary/5' : 'border-slate-100'}`}>
                         <div className="flex items-center justify-between mb-6">
                             <div className="flex items-center gap-3">
-                                <div className="w-10 h-10 bg-indigo-50 rounded-xl flex items-center justify-center text-indigo-600">
+                                <div className="w-10 h-10 bg-indigo-50 rounded-xl flex items-center justify-center text-primary">
                                     <Globe className="w-5 h-5" />
                                 </div>
                                 <h3 className="font-black text-slate-800 tracking-tight text-lg">Zelle</h3>
@@ -476,7 +476,7 @@ export default function FinancesManager() {
                                         paymentMethods: { ...prev.paymentMethods, zelle: { ...prev.paymentMethods.zelle, active: e.target.checked } }
                                     }))}
                                 />
-                                <div className="w-11 h-6 bg-slate-200 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
+                                <div className="w-11 h-6 bg-slate-200 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
                             </label>
                         </div>
 
@@ -608,7 +608,7 @@ export default function FinancesManager() {
                 <div className="space-y-6 pb-20">
                     <div className="bg-white rounded-[32px] border-2 border-slate-100 p-8">
                         <div className="flex items-center gap-3 mb-8">
-                            <div className="w-10 h-10 bg-indigo-50 rounded-xl flex items-center justify-center text-indigo-600">
+                            <div className="w-10 h-10 bg-indigo-50 rounded-xl flex items-center justify-center text-primary">
                                 <Activity className="w-5 h-5" />
                             </div>
                             <div>
@@ -622,7 +622,7 @@ export default function FinancesManager() {
                                 <div key={plan.id} className="p-6 bg-slate-50 rounded-3xl border border-slate-100 space-y-6">
                                     <div className="flex items-center justify-between">
                                         <h4 className="font-black text-slate-900 capitalize">{plan.name}</h4>
-                                        <div className="px-3 py-1 bg-indigo-100 text-indigo-600 rounded-full text-[10px] font-black uppercase">
+                                        <div className="px-3 py-1 bg-indigo-100 text-primary rounded-full text-[10px] font-black uppercase">
                                             {plan.scope === 'national' ? 'Todo el País' : plan.scope === 'state' ? 'Por Estado' : 'Por Ciudad'}
                                         </div>
                                     </div>
@@ -638,7 +638,7 @@ export default function FinancesManager() {
                                                     newPlans[plan.id] = { ...plan, price: Number(e.target.value) };
                                                     setSubscriptionConfig({ ...subscriptionConfig, plans: newPlans });
                                                 }}
-                                                className="w-full bg-white border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-600/20"
+                                                className="w-full bg-white border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold outline-none focus:ring-2 focus:ring-primary/20"
                                             />
                                         </div>
                                         <div className="space-y-1">
@@ -651,7 +651,7 @@ export default function FinancesManager() {
                                                     newPlans[plan.id] = { ...plan, updateLimit: Number(e.target.value) };
                                                     setSubscriptionConfig({ ...subscriptionConfig, plans: newPlans });
                                                 }}
-                                                className="w-full bg-white border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-600/20"
+                                                className="w-full bg-white border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold outline-none focus:ring-2 focus:ring-primary/20"
                                             />
                                             <p className="text-[10px] text-slate-500 mt-1 px-1">Cambios de banners permitidos al mes</p>
                                         </div>
@@ -664,7 +664,7 @@ export default function FinancesManager() {
                                                     newPlans[plan.id] = { ...plan, availability: e.target.value };
                                                     setSubscriptionConfig({ ...subscriptionConfig, plans: newPlans });
                                                 }}
-                                                className="w-full bg-white border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-600/20"
+                                                className="w-full bg-white border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold outline-none focus:ring-2 focus:ring-primary/20"
                                             >
                                                 <option value="available">Disponible</option>
                                                 <option value="not_available">No disponible</option>
@@ -780,7 +780,7 @@ export default function FinancesManager() {
                                                 <td className="px-6 py-4 text-right">
                                                     <button
                                                         onClick={() => handleRenewSubscription(restaurant.id)}
-                                                        className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-[10px] font-black uppercase tracking-widest rounded-xl transition-all shadow-lg shadow-indigo-600/20 active:scale-95"
+                                                        className="px-4 py-2 bg-primary hover:bg-primary text-slate-900 text-[10px] font-black uppercase tracking-widest rounded-xl transition-all shadow-lg shadow-primary/20 active:scale-95"
                                                     >
                                                         Aprobar Pago (+30 días)
                                                     </button>
@@ -844,7 +844,7 @@ export default function FinancesManager() {
                                                     <button
                                                         onClick={() => handleClearDeliveryDebt(restaurant.id, debt)}
                                                         disabled={debt <= 0}
-                                                        className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-300 disabled:cursor-not-allowed text-white text-[10px] font-black uppercase tracking-widest rounded-xl transition-all shadow-lg shadow-indigo-600/20 active:scale-95"
+                                                        className="px-4 py-2 bg-primary hover:bg-primary disabled:bg-slate-300 disabled:cursor-not-allowed text-slate-900 text-[10px] font-black uppercase tracking-widest rounded-xl transition-all shadow-lg shadow-primary/20 active:scale-95"
                                                     >
                                                         Marcar como Pagada
                                                     </button>
@@ -861,7 +861,7 @@ export default function FinancesManager() {
                 <div className="space-y-6 pb-20">
                     <div className="bg-white rounded-[32px] border-2 border-slate-100 p-8">
                         <div className="flex items-center gap-3 mb-8">
-                            <div className="w-10 h-10 bg-indigo-50 rounded-xl flex items-center justify-center text-indigo-600">
+                            <div className="w-10 h-10 bg-indigo-50 rounded-xl flex items-center justify-center text-primary">
                                 <ImageIcon className="w-5 h-5" />
                             </div>
                             <div>
@@ -879,7 +879,7 @@ export default function FinancesManager() {
                             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                                 {bannerRequests.map(req => (
                                     <div key={req.id} className="bg-white border rounded-2xl overflow-hidden shadow-sm flex flex-col group transition-all hover:shadow-md">
-                                        <div className="h-32 bg-slate-100 relative group cursor-pointer focus:outline-none focus:ring-2 focus:ring-indigo-500" tabIndex={0} onClick={() => window.open(req.imageUrl, '_blank')}>
+                                        <div className="h-32 bg-slate-100 relative group cursor-pointer focus:outline-none focus:ring-2 focus:ring-primary" tabIndex={0} onClick={() => window.open(req.imageUrl, '_blank')}>
                                             <img src={req.imageUrl} alt="Banner request" className="w-full h-full object-cover" />
                                             <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
                                                 <span className="text-white text-xs font-bold uppercase tracking-widest bg-black/50 px-3 py-1.5 rounded-full backdrop-blur-sm">Ampliar Imagen</span>

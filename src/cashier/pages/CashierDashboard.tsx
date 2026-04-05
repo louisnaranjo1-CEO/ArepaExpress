@@ -777,7 +777,7 @@ ESTADO: ${order.status.toUpperCase()}
                                 'bg-white border-slate-100 hover:border-primary/30 hover:shadow-xl'
                             }`}>
                                 <Utensils className={`w-8 h-8 ${
-                                    status === 'occupied' ? 'text-indigo-500' :
+                                    status === 'occupied' ? 'text-primary' :
                                     status === 'calling' ? 'text-red-500' :
                                     status === 'billing' ? 'text-emerald-500' :
                                     'text-slate-300 group-hover:text-slate-900 transition-colors'
@@ -795,7 +795,7 @@ ESTADO: ${order.status.toUpperCase()}
                                 </div>
                                 {table.activeOrder?.waiterName && (
                                     <div className="absolute -bottom-2 bg-white border border-slate-100 px-3 py-1 rounded-full shadow-sm">
-                                        <p className="text-[10px] font-black text-indigo-600 truncate max-w-[80px]">
+                                        <p className="text-[10px] font-black text-primary truncate max-w-[80px]">
                                             {table.activeOrder.waiterName}
                                         </p>
                                     </div>
@@ -866,7 +866,7 @@ ESTADO: ${order.status.toUpperCase()}
                     <div className={`px-3 py-1.5 rounded-2xl text-[10px] font-black uppercase tracking-widest ${
                         order.status === 'pending' ? 'bg-orange-100 text-orange-600' :
                         order.status === 'preparing' ? 'bg-blue-100 text-blue-600' :
-                        order.status === 'delivering' ? 'bg-purple-100 text-purple-600' :
+                        order.status === 'delivering' ? 'bg-purple-100 text-primary' :
                         order.status === 'delivered' ? 'bg-green-100 text-green-600' :
                         'bg-red-100 text-red-600'
                     }`}>
@@ -946,7 +946,7 @@ ESTADO: ${order.status.toUpperCase()}
                     {order.status === 'preparing' && isWaiter && (
                         <button
                             onClick={() => updateStatus(order.id, 'delivering')}
-                            className="flex-1 bg-blue-500 text-white py-4 rounded-2xl font-black text-xs flex items-center justify-center gap-2 hover:bg-blue-600 transition-all shadow-lg shadow-blue-500/20"
+                            className="flex-1 bg-primary text-slate-900 py-4 rounded-2xl font-black text-xs flex items-center justify-center gap-2 hover:bg-primary transition-all shadow-lg shadow-blue-500/20"
                         >
                             <CheckCircle className="w-4 h-4" />
                             Listo para Mesa
@@ -1180,7 +1180,7 @@ ESTADO: ${order.status.toUpperCase()}
                                 {filteredOrders.some(o => o.source === 'waiter') && (
                                     <div className="space-y-6">
                                         <div className="flex items-center gap-4">
-                                            <h2 className="text-sm font-black text-indigo-400 uppercase tracking-[0.3em] flex items-center gap-2 whitespace-nowrap">
+                                            <h2 className="text-sm font-black text-primary uppercase tracking-[0.3em] flex items-center gap-2 whitespace-nowrap">
                                                 <Utensils className="w-4 h-4" />
                                                 🍽️ Servicio en Mesa / Local ({filteredOrders.filter(o => o.source === 'waiter').length})
                                             </h2>
@@ -1702,9 +1702,9 @@ ESTADO: ${order.status.toUpperCase()}
                         <div className="flex justify-between items-center mb-8 relative z-10">
                             <div className="flex items-center gap-4">
                                 <div className={`w-14 h-14 rounded-2xl flex items-center justify-center shadow-lg ${
-                                    selectedTable.derivedStatus === 'free' ? 'bg-emerald-500 text-white shadow-emerald-200' : 
-                                    selectedTable.derivedStatus === 'billing' ? 'bg-emerald-600 text-white shadow-emerald-200' :
-                                    'bg-indigo-500 text-white shadow-indigo-200'
+                                    selectedTable.derivedStatus === 'free' ? 'bg-emerald-500 text-slate-900 shadow-emerald-200' : 
+                                    selectedTable.derivedStatus === 'billing' ? 'bg-emerald-600 text-slate-900 shadow-emerald-200' :
+                                    'bg-primary text-slate-900 shadow-indigo-200'
                                 }`}>
                                     <Utensils className="w-7 h-7" />
                                 </div>
@@ -1727,11 +1727,11 @@ ESTADO: ${order.status.toUpperCase()}
                                 <div className="space-y-4">
                                     {/* Waiter Info */}
                                     <div className="flex items-center gap-3 p-4 bg-indigo-50 border border-indigo-100 rounded-3xl">
-                                        <div className="w-10 h-10 rounded-2xl bg-indigo-500 flex items-center justify-center text-white shadow-lg shadow-indigo-500/20">
+                                        <div className="w-10 h-10 rounded-2xl bg-primary flex items-center justify-center text-slate-900 shadow-lg shadow-primary/20">
                                             <User className="w-5 h-5" />
                                         </div>
                                         <div>
-                                            <p className="text-[10px] font-black text-indigo-400 uppercase tracking-widest">Mesero Responsable</p>
+                                            <p className="text-[10px] font-black text-primary uppercase tracking-widest">Mesero Responsable</p>
                                             <p className="font-black text-indigo-900">{selectedTable.allActiveOrders?.[0]?.waiterName || selectedTable.activeOrder?.waiterName || 'Sin asignar'}</p>
                                         </div>
                                     </div>
@@ -1855,14 +1855,14 @@ ESTADO: ${order.status.toUpperCase()}
                                                 key={waiter.id}
                                                 onClick={() => handleAssignWaiter(waiter)}
                                                 disabled={assignWaiterLoading}
-                                                className="group flex items-center justify-between p-4 bg-slate-50 hover:bg-indigo-600 hover:text-white rounded-[1.5rem] border border-slate-100 transition-all duration-300 w-full"
+                                                className="group flex items-center justify-between p-4 bg-slate-50 hover:bg-primary hover:text-slate-900 rounded-[1.5rem] border border-slate-100 transition-all duration-300 w-full"
                                             >
                                                 <div className="flex items-center gap-3">
                                                     <div className="w-12 h-12 bg-indigo-100 rounded-xl overflow-hidden shadow-sm">
                                                         {waiter.photoURL ? (
                                                             <img src={waiter.photoURL} alt={waiter.name} className="w-full h-full object-cover" />
                                                         ) : (
-                                                            <div className="w-full h-full flex items-center justify-center text-indigo-400">
+                                                            <div className="w-full h-full flex items-center justify-center text-primary">
                                                                 <User className="w-6 h-6" />
                                                             </div>
                                                         )}

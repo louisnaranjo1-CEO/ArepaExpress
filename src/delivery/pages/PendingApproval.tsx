@@ -67,7 +67,7 @@ export default function PendingApproval({ status = 'pending' }: PendingApprovalP
                     <button
                         onClick={handleResetApplication}
                         disabled={resetting}
-                        className="w-full max-w-sm bg-indigo-600 text-white font-black py-4 rounded-2xl shadow-lg shadow-indigo-600/20 active:scale-95 transition-transform disabled:opacity-50"
+                        className="w-full max-w-sm bg-primary text-slate-900 font-black py-4 rounded-2xl shadow-lg shadow-primary/20 active:scale-95 transition-transform disabled:opacity-50"
                     >
                         {resetting ? 'Reiniciando...' : 'Intentar de Nuevo'}
                     </button>
@@ -79,7 +79,7 @@ export default function PendingApproval({ status = 'pending' }: PendingApprovalP
                                 <span className="w-5 h-5 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center font-bold shrink-0">1</span>
                                 Completaste tu perfil
                             </li>
-                            <li className="flex gap-3 text-indigo-600 text-sm font-bold">
+                            <li className="flex gap-3 text-primary text-sm font-bold">
                                 <span className="w-5 h-5 bg-indigo-100 rounded-full flex items-center justify-center shrink-0">2</span>
                                 Revisión de seguridad activa
                             </li>
@@ -94,7 +94,7 @@ export default function PendingApproval({ status = 'pending' }: PendingApprovalP
                 {!isRejected && (
                     <button
                         onClick={() => window.location.reload()}
-                        className="mt-8 text-indigo-600 font-bold hover:underline"
+                        className="mt-8 text-primary font-bold hover:underline"
                     >
                         Actualizar Estado
                     </button>
