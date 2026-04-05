@@ -208,7 +208,7 @@ export default function Cart({ hideHeader = false }: CartProps) {
         userPhone: isWaiter ? '' : (userData?.phone || guestPhone || ''),
         userEmail: isWaiter ? (waiterData.email || 'N/A') : (user?.email || 'N/A'),
         restaurantId,
-        restaurantName: rData?.name || 'Un 2x3 Restaurant',
+        restaurantName: rData?.name || 'Deliexpress Restaurant',
         restaurantCity: rData?.location?.city || '',
         source: isWaiter ? 'waiter' : 'client',
         waiterId: isWaiter ? (waiterData.id || null) : null,
@@ -299,7 +299,7 @@ export default function Cart({ hideHeader = false }: CartProps) {
         </div>
         <h1 className="text-2xl font-black mb-2">{purchaseConfirmed ? '¡Pedido Confirmado! 🎉' : 'Pedido Cancelado'}</h1>
         <p className="text-slate-500 mb-8">{purchaseConfirmed ? 'Tu orden está siendo enviada a cocina.' : 'Hubo un problema con la confirmación.'}</p>
-        <button onClick={() => isWaiter ? navigate('/menu') : navigate('/')} className="w-full max-w-xs bg-primary text-white py-4 rounded-2xl font-bold shadow-lg">
+        <button onClick={() => isWaiter ? navigate('/menu') : navigate('/')} className="w-full max-w-xs bg-primary text-slate-900 py-4 rounded-2xl font-bold shadow-lg">
           {isWaiter ? 'Volver al Menú' : 'Ir al inicio'}
         </button>
       </div>
@@ -332,7 +332,7 @@ export default function Cart({ hideHeader = false }: CartProps) {
                       <div className="flex-1">
                          <div className="flex justify-between items-start mb-1">
                            <p className="font-black text-slate-800 text-sm leading-tight">{item.name}</p>
-                           <p className="text-primary font-black text-sm">${(item.price || 0).toFixed(2)}</p>
+                           <p className="text-slate-900 font-black text-sm">${(item.price || 0).toFixed(2)}</p>
                          </div>
                          {(item as any).variant && (
                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Variante: {(item as any).variant}</p>
@@ -341,7 +341,7 @@ export default function Cart({ hideHeader = false }: CartProps) {
                            <div className="flex items-center bg-slate-50 rounded-full border border-slate-100 p-0.5">
                              <button onClick={() => updateQuantity(item.id, item.quantity - 1)} className="size-8 bg-white shadow-sm rounded-full flex items-center justify-center text-slate-400 hover:text-slate-600 active:scale-90 transition-all">-</button>
                              <span className="w-8 text-center font-black text-sm text-slate-700">{item.quantity}</span>
-                             <button onClick={() => updateQuantity(item.id, item.quantity + 1)} className="size-8 bg-primary text-white shadow-md rounded-full flex items-center justify-center active:scale-90 transition-all">+</button>
+                             <button onClick={() => updateQuantity(item.id, item.quantity + 1)} className="size-8 bg-primary text-slate-900 shadow-md rounded-full flex items-center justify-center active:scale-90 transition-all">+</button>
                            </div>
                            <button onClick={() => removeItem(item.id)} className="ml-auto w-10 h-10 flex items-center justify-center bg-red-50 text-red-500 rounded-2xl hover:bg-red-100 active:scale-90 transition-all">
                              <Trash2 className="w-4 h-4" />
@@ -369,7 +369,7 @@ export default function Cart({ hideHeader = false }: CartProps) {
                   onChange={e => setOrderNote(e.target.value)}
                   className="w-full bg-white border border-slate-100 rounded-[28px] p-5 text-sm min-h-[120px] outline-none focus:border-primary/30 shadow-sm transition-all"
                 />
-                <button onClick={() => setCurrentStep(2)} className="w-full bg-primary text-white py-5 rounded-[22px] font-black uppercase tracking-widest shadow-xl shadow-primary/10 hover:scale-[1.01] active:scale-95 transition-all">Siguiente</button>
+                <button onClick={() => setCurrentStep(2)} className="w-full bg-primary text-slate-900 py-5 rounded-[22px] font-black uppercase tracking-widest shadow-xl shadow-primary/10 hover:scale-[1.01] active:scale-95 transition-all">Siguiente</button>
               </div>
             )}
             {currentStep === 2 && (
@@ -386,7 +386,7 @@ export default function Cart({ hideHeader = false }: CartProps) {
                           <button
                             onClick={() => setDeliveryMethod('delivery')}
                             className={`flex-1 py-3 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all ${
-                              deliveryMethod === 'delivery' ? 'bg-primary text-white shadow-lg' : 'text-slate-400 hover:text-slate-600'
+                              deliveryMethod === 'delivery' ? 'bg-primary text-slate-900 shadow-lg' : 'text-slate-400 hover:text-slate-600'
                             }`}
                           >
                             Delivery
@@ -396,7 +396,7 @@ export default function Cart({ hideHeader = false }: CartProps) {
                           <button
                             onClick={() => setDeliveryMethod('pickup')}
                             className={`flex-1 py-3 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all ${
-                              deliveryMethod === 'pickup' ? 'bg-primary text-white shadow-lg' : 'text-slate-400 hover:text-slate-600'
+                              deliveryMethod === 'pickup' ? 'bg-primary text-slate-900 shadow-lg' : 'text-slate-400 hover:text-slate-600'
                             }`}
                           >
                             Retiro en Tienda
@@ -412,17 +412,17 @@ export default function Cart({ hideHeader = false }: CartProps) {
                                  <div className="bg-slate-50 p-4 border border-slate-200 rounded-2xl flex justify-between items-center group">
                                      <div className="flex-1">
                                         <div className="flex items-center gap-2 mb-1">
-                                            <MapPin className="w-4 h-4 text-primary" />
+                                            <MapPin className="w-4 h-4 text-slate-900" />
                                             <p className="font-bold text-slate-900 leading-none">{selectedAddress.name}</p>
                                         </div>
                                         <p className="text-xs text-slate-500 font-medium pl-6 leading-tight">
                                             <span className="font-bold text-slate-400">Ref:</span> {selectedAddress.reference || "Sin referencia adicional"}
                                         </p>
                                      </div>
-                                     <button onClick={() => setShowMapPicker(true)} className="text-primary text-xs font-bold uppercase tracking-widest pl-4 hover:underline">Cambiar</button>
+                                     <button onClick={() => setShowMapPicker(true)} className="text-slate-900 text-xs font-bold uppercase tracking-widest pl-4 hover:underline">Cambiar</button>
                                  </div>
                              ) : (
-                                 <button onClick={() => setShowMapPicker(true)} className="w-full flex items-center justify-center gap-2 py-5 bg-primary/10 text-primary rounded-2xl font-black border border-primary/20 hover:bg-primary/20 transition-all">
+                                 <button onClick={() => setShowMapPicker(true)} className="w-full flex items-center justify-center gap-2 py-5 bg-primary/10 text-slate-900 rounded-2xl font-black border border-primary/20 hover:bg-primary/20 transition-all">
                                      <MapPin className="w-5 h-5" />
                                      Ubicar en Mapa
                                  </button>
@@ -456,7 +456,7 @@ export default function Cart({ hideHeader = false }: CartProps) {
                       }
                       setCurrentStep(3);
                   }} 
-                  className="w-full bg-primary text-white py-4 rounded-2xl font-bold mt-2"
+                  className="w-full bg-primary text-slate-900 py-4 rounded-2xl font-bold mt-2"
                 >
                   Confirmar Datos
                 </button>
@@ -472,11 +472,11 @@ export default function Cart({ hideHeader = false }: CartProps) {
                         <div key={idx} className="flex justify-between items-start gap-4">
                           <div className="flex-1">
                             <p className="font-bold text-slate-700 text-sm leading-tight">
-                              <span className="text-primary font-black mr-2">{item.quantity}x</span>
+                              <span className="text-slate-900 font-black mr-2">{item.quantity}x</span>
                               {item.name}
                             </p>
                             {(item as any).variant && (
-                              <p className="text-[10px] text-primary font-bold uppercase tracking-wider mt-0.5">{(item as any).variant}</p>
+                              <p className="text-[10px] text-slate-900 font-bold uppercase tracking-wider mt-0.5">{(item as any).variant}</p>
                             )}
                             {(item as any).notes && (
                               <p className="text-[10px] text-slate-400 font-medium italic mt-0.5">Nota: "{ (item as any).notes }"</p>
@@ -491,7 +491,7 @@ export default function Cart({ hideHeader = false }: CartProps) {
                   <div className="p-6 space-y-4">
                     <div className="flex items-start gap-3">
                       <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
-                        <MapPin className="w-4 h-4 text-primary" />
+                        <MapPin className="w-4 h-4 text-slate-900" />
                       </div>
                       <div className="flex-1">
                         <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Entrega en</p>
@@ -503,7 +503,7 @@ export default function Cart({ hideHeader = false }: CartProps) {
                         )}
                       </div>
                       {!isWaiter && (
-                        <button onClick={() => setCurrentStep(2)} className="text-[10px] font-black text-primary uppercase tracking-widest bg-primary/5 px-3 py-1.5 rounded-lg hover:bg-primary/10 transition-all">Editar</button>
+                        <button onClick={() => setCurrentStep(2)} className="text-[10px] font-black text-slate-900 uppercase tracking-widest bg-primary/5 px-3 py-1.5 rounded-lg hover:bg-primary/10 transition-all">Editar</button>
                       )}
                     </div>
 
@@ -528,7 +528,7 @@ export default function Cart({ hideHeader = false }: CartProps) {
                       )}
                     </div>
                     <div className="flex justify-between items-center">
-                      <span className="text-lg font-black uppercase tracking-widest text-primary">Total Final</span>
+                      <span className="text-lg font-black uppercase tracking-widest text-slate-900">Total Final</span>
                       <span className="text-3xl font-black text-white">${finalTotal.toFixed(2)}</span>
                     </div>
                   </div>
@@ -559,7 +559,7 @@ export default function Cart({ hideHeader = false }: CartProps) {
                   <button 
                     onClick={handleCheckout} 
                     disabled={isCheckingOut || isSyncingTable} 
-                    className="w-full bg-primary text-white py-5 rounded-[22px] font-black uppercase tracking-widest shadow-xl shadow-primary/20 hover:scale-[1.02] active:scale-95 transition-all flex items-center justify-center gap-3 disabled:opacity-50"
+                    className="w-full bg-primary text-slate-900 py-5 rounded-[22px] font-black uppercase tracking-widest shadow-xl shadow-primary/20 hover:scale-[1.02] active:scale-95 transition-all flex items-center justify-center gap-3 disabled:opacity-50"
                   >
                     {isCheckingOut || isSyncingTable ? (
                       <span className="flex items-center gap-2">
@@ -588,7 +588,7 @@ export default function Cart({ hideHeader = false }: CartProps) {
             <input placeholder="Nombre" value={guestName} onChange={e=>setGuestName(e.target.value)} className="w-full p-3 bg-slate-100 rounded-xl mb-3" />
             <input placeholder="Cédula" value={guestCedula} onChange={e=>setGuestCedula(e.target.value)} className="w-full p-3 bg-slate-100 rounded-xl mb-3" />
             <input placeholder="Teléfono" value={guestPhone} onChange={e=>setGuestPhone(e.target.value)} className="w-full p-3 bg-slate-100 rounded-xl mb-4" />
-            <button onClick={() => { setShowGuestModal(false); handleCheckout(); }} className="w-full bg-primary text-white py-3 rounded-xl font-bold">Continuar</button>
+            <button onClick={() => { setShowGuestModal(false); handleCheckout(); }} className="w-full bg-primary text-slate-900 py-3 rounded-xl font-bold">Continuar</button>
           </div>
         </div>
       )}

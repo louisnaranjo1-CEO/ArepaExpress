@@ -74,10 +74,10 @@ export default function CashierLogin() {
             <div className="w-full max-w-sm mx-auto z-10">
                 <div className="text-center mb-10 mt-safe">
                     <div className="w-20 h-20 bg-white rounded-3xl mx-auto flex items-center justify-center shadow-xl shadow-slate-200/50 rotate-3 mb-6 border-2 border-primary/20">
-                        <Shield className="w-10 h-10 text-primary" />
+                        <Shield className="w-10 h-10 text-slate-900" />
                     </div>
                     <h1 className="text-3xl font-black text-slate-900 tracking-tight">Caja y Cobros</h1>
-                    <p className="font-bold text-slate-500 mt-2">Un 2x3 Cashier Portal</p>
+                    <p className="font-bold text-slate-500 mt-2">Deliexpress Cashier Portal</p>
                 </div>
 
                 <motion.div
@@ -87,7 +87,7 @@ export default function CashierLogin() {
                 >
                     <div className="p-8 border-b border-slate-50 flex items-center justify-center bg-slate-50/50">
                         <div className="flex items-center gap-2">
-                            <Shield className="w-5 h-5 text-primary" />
+                            <Shield className="w-5 h-5 text-slate-900" />
                             <h3 className="text-sm font-black text-slate-700 uppercase tracking-widest">Acceso de Cajera</h3>
                         </div>
                     </div>
@@ -133,7 +133,7 @@ export default function CashierLogin() {
                         <button
                             type="submit"
                             disabled={isSigningIn}
-                            className="w-full bg-primary text-white py-4 rounded-2xl font-black shadow-lg shadow-primary/30 hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-70 mt-6 flex items-center justify-center gap-2"
+                            className="w-full bg-primary text-slate-900 py-4 rounded-2xl font-black shadow-lg shadow-primary/30 hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-70 mt-6 flex items-center justify-center gap-2"
                         >
                             {isSigningIn ? (
                                 <div className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin"></div>

@@ -417,11 +417,11 @@ export default function OrdersRadar() {
             <>
             <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="space-y-4">
                 <div className="bg-primary/5 border border-primary/10 p-5 rounded-[2.5rem] mb-4 flex items-center gap-4">
-                    <div className="w-12 h-12 bg-primary/10 rounded-2xl flex items-center justify-center text-primary">
+                    <div className="w-12 h-12 bg-primary/10 rounded-2xl flex items-center justify-center text-slate-900">
                         <Navigation className="w-6 h-6 animate-pulse" />
                     </div>
                     <div>
-                        <div className="text-primary font-black text-sm uppercase tracking-wider">Viaje en Curso</div>
+                        <div className="text-slate-900 font-black text-sm uppercase tracking-wider">Viaje en Curso</div>
                         <p className="text-slate-500 text-[10px] font-bold">Lleva al pasajero de forma segura.</p>
                     </div>
                 </div>
@@ -468,7 +468,7 @@ export default function OrdersRadar() {
                             <button
                                 onClick={handleTransportArriving}
                                 disabled={processingAction !== null}
-                                className="w-full bg-primary text-white font-black py-4 rounded-2xl shadow-lg shadow-primary/30 active:scale-95 transition-all flex items-center justify-center gap-2 h-16 disabled:opacity-70"
+                                className="w-full bg-primary text-slate-900 font-black py-4 rounded-2xl shadow-lg shadow-primary/30 active:scale-95 transition-all flex items-center justify-center gap-2 h-16 disabled:opacity-70"
                             >
                                 {processingAction === 'arriving' ? <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div> : 'Llegué al punto'}
                             </button>
@@ -477,7 +477,7 @@ export default function OrdersRadar() {
                             <button
                                 onClick={handleTransportStart}
                                 disabled={processingAction !== null}
-                                className="w-full bg-primary text-white font-black py-4 rounded-2xl shadow-lg shadow-primary/30 active:scale-95 transition-all flex items-center justify-center gap-2 h-16 disabled:opacity-70"
+                                className="w-full bg-primary text-slate-900 font-black py-4 rounded-2xl shadow-lg shadow-primary/30 active:scale-95 transition-all flex items-center justify-center gap-2 h-16 disabled:opacity-70"
                             >
                                 {processingAction === 'start' ? <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div> : 'Iniciar Viaje'}
                             </button>
@@ -591,7 +591,7 @@ export default function OrdersRadar() {
                             <button
                                 onClick={handleMarkInTransit}
                                 disabled={processingAction !== null}
-                                className="w-full bg-primary text-white font-black py-4 rounded-2xl shadow-lg shadow-primary/30 active:scale-95 transition-all flex items-center justify-center h-16 disabled:opacity-70"
+                                className="w-full bg-primary text-slate-900 font-black py-4 rounded-2xl shadow-lg shadow-primary/30 active:scale-95 transition-all flex items-center justify-center h-16 disabled:opacity-70"
                             >
                                 {processingAction === 'in_transit' ? <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div> : 'Ya tengo el Pedido'}
                             </button>
@@ -666,7 +666,7 @@ export default function OrdersRadar() {
                 >
                     <div className="relative mb-8">
                         <div className="w-32 h-32 bg-primary/5 rounded-full flex items-center justify-center border-4 border-white shadow-inner">
-                            <Compass className="w-14 h-14 text-primary/30" />
+                            <Compass className="w-14 h-14 text-slate-900/30" />
                         </div>
                         <div className="absolute inset-0 bg-primary/20 rounded-full animate-ping opacity-10"></div>
                         <div className="absolute inset-0 bg-primary/20 rounded-full animate-ping opacity-10 delay-300"></div>
@@ -726,7 +726,7 @@ export default function OrdersRadar() {
                                 <div className="absolute top-0 right-0 w-24 h-24 bg-primary/5 rounded-full -mr-12 -mt-12 group-hover:scale-150 transition-transform duration-500"></div>
 
                                 <div className="flex justify-between items-center mb-6 relative">
-                                    <div className="flex items-center gap-2 px-3 py-1 bg-primary text-white rounded-full text-[10px] font-black uppercase tracking-wider shadow-lg shadow-primary/20">
+                                    <div className="flex items-center gap-2 px-3 py-1 bg-primary text-slate-900 rounded-full text-[10px] font-black uppercase tracking-wider shadow-lg shadow-primary/20">
                                         {req.vehicleType === 'moto' ? <Bike className="w-3.5 h-3.5" /> : <Car className="w-3.5 h-3.5" />}
                                         {req.scheduled ? 'VIAJE PROGRAMADO' : 'SOLICITUD TAXI'}
                                     </div>
@@ -771,7 +771,7 @@ export default function OrdersRadar() {
                                 <button
                                     onClick={() => handleAcceptTransport(req.id)}
                                     disabled={processingAction !== null}
-                                    className="w-full bg-primary text-white font-black py-4 rounded-2xl shadow-lg shadow-primary/30 active:scale-95 transition-all flex items-center justify-center h-16 disabled:opacity-70 group-hover:shadow-primary/40"
+                                    className="w-full bg-primary text-slate-900 font-black py-4 rounded-2xl shadow-lg shadow-primary/30 active:scale-95 transition-all flex items-center justify-center h-16 disabled:opacity-70 group-hover:shadow-primary/40"
                                 >
                                     {processingAction === req.id ? <div className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin"></div> : 'ACEPTAR VIAJE'}
                                 </button>

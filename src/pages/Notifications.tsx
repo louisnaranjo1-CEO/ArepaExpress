@@ -76,7 +76,7 @@ export default function Notifications() {
                 </div>
                 <h2 className="text-xl font-bold text-slate-900">Inicia sesión</h2>
                 <p className="text-slate-500">Debes estar registrado para recibir notificaciones de tus restaurantes favoritos.</p>
-                <Link to="/profile" className="px-6 py-3 bg-primary text-white font-black rounded-xl shadow-lg">Ir a mi perfil</Link>
+                <Link to="/profile" className="px-6 py-3 bg-primary text-slate-900 font-black rounded-xl shadow-lg">Ir a mi perfil</Link>
             </div>
         );
     }
@@ -116,13 +116,13 @@ export default function Notifications() {
                                         : 'bg-white border-primary/20 shadow-md shadow-primary/5 ring-1 ring-primary/5'
                                     }`}
                             >
-                                <div className={`p-3 rounded-2xl flex-shrink-0 ${notif.read ? 'bg-slate-100 text-slate-400' : 'bg-primary/10 text-primary'
+                                <div className={`p-3 rounded-2xl flex-shrink-0 ${notif.read ? 'bg-slate-100 text-slate-400' : 'bg-primary/10 text-slate-900'
                                     }`}>
                                     <Utensils className="w-5 h-5" />
                                 </div>
                                 <div className="flex-1 text-left min-w-0">
                                     <div className="flex items-center justify-between gap-2 mb-1">
-                                        <p className={`text-xs font-black uppercase tracking-wider truncate transition-colors ${notif.read ? 'text-slate-400' : 'text-primary'}`}>
+                                        <p className={`text-xs font-black uppercase tracking-wider truncate transition-colors ${notif.read ? 'text-slate-400' : 'text-slate-900'}`}>
                                             {notif.restaurantName}
                                         </p>
                                         <div className="flex items-center gap-1 text-[10px] text-slate-400 font-medium flex-shrink-0">

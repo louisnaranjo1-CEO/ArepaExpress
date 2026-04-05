@@ -90,19 +90,19 @@ export default function Orders() {
                     <div className="flex gap-2 p-1 bg-slate-100 rounded-2xl">
                         <button
                             onClick={() => handleTabChange('cart')}
-                            className={`flex-1 py-2.5 rounded-xl font-black text-xs uppercase tracking-widest transition-all flex items-center justify-center gap-2 ${activeTab === 'cart' ? 'bg-white text-primary shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                            className={`flex-1 py-2.5 rounded-xl font-black text-xs uppercase tracking-widest transition-all flex items-center justify-center gap-2 ${activeTab === 'cart' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
                         >
                             <ShoppingBag className="w-4 h-4" />
                             Nuevo Pedido
                         </button>
                         <button
                             onClick={() => handleTabChange('active')}
-                            className={`flex-1 py-2.5 rounded-xl font-black text-xs uppercase tracking-widest transition-all flex items-center justify-center gap-2 relative ${activeTab === 'active' ? 'bg-white text-primary shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                            className={`flex-1 py-2.5 rounded-xl font-black text-xs uppercase tracking-widest transition-all flex items-center justify-center gap-2 relative ${activeTab === 'active' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
                         >
                             <Clock className="w-4 h-4" />
                             Mis Pedidos
                             {activeOrders.length > 0 && (
-                                <span className="absolute -top-1 -right-1 w-5 h-5 bg-primary text-white text-[10px] font-black rounded-full flex items-center justify-center border-2 border-slate-100 animate-bounce">
+                                <span className="absolute -top-1 -right-1 w-5 h-5 bg-primary text-slate-900 text-[10px] font-black rounded-full flex items-center justify-center border-2 border-slate-100 animate-bounce">
                                     {activeOrders.length}
                                 </span>
                             )}
@@ -123,19 +123,19 @@ export default function Orders() {
                 <div className="flex gap-2 p-1 bg-slate-100 rounded-2xl">
                     <button
                         onClick={() => handleTabChange('cart')}
-                        className={`flex-1 py-2.5 rounded-xl font-black text-xs uppercase tracking-widest transition-all flex items-center justify-center gap-2 ${activeTab === 'cart' ? 'bg-white text-primary shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                        className={`flex-1 py-2.5 rounded-xl font-black text-xs uppercase tracking-widest transition-all flex items-center justify-center gap-2 ${activeTab === 'cart' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
                     >
                         <ShoppingBag className="w-4 h-4" />
                         Nuevo Pedido
                     </button>
                     <button
                         onClick={() => handleTabChange('active')}
-                        className={`flex-1 py-2.5 rounded-xl font-black text-xs uppercase tracking-widest transition-all flex items-center justify-center gap-2 relative ${activeTab === 'active' ? 'bg-white text-primary shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                        className={`flex-1 py-2.5 rounded-xl font-black text-xs uppercase tracking-widest transition-all flex items-center justify-center gap-2 relative ${activeTab === 'active' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
                     >
                         <Clock className="w-4 h-4" />
                         Mis Pedidos
                         {activeOrders.length > 0 && (
-                            <span className="absolute -top-1 -right-1 w-5 h-5 bg-primary text-white text-[10px] font-black rounded-full flex items-center justify-center border-2 border-slate-100 animate-bounce">
+                            <span className="absolute -top-1 -right-1 w-5 h-5 bg-primary text-slate-900 text-[10px] font-black rounded-full flex items-center justify-center border-2 border-slate-100 animate-bounce">
                                 {activeOrders.length}
                             </span>
                         )}
@@ -161,7 +161,7 @@ export default function Orders() {
                         </div>
                         <button
                             onClick={() => navigate('/')}
-                            className="bg-primary text-white px-8 py-4 rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl shadow-primary/30 active:scale-95 transition-all w-full"
+                            className="bg-primary text-slate-900 px-8 py-4 rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl shadow-primary/30 active:scale-95 transition-all w-full"
                         >
                             Ir a Restaurantes
                         </button>
@@ -170,7 +170,7 @@ export default function Orders() {
                     <div className="space-y-4 pb-10">
                         <div className="flex items-center justify-between px-2">
                             <h2 className="text-xs font-black text-slate-400 uppercase tracking-[0.2em]">Rastreo en Tiempo Real</h2>
-                            <span className="text-[10px] font-bold text-primary bg-primary/10 px-2 py-0.5 rounded-full">{activeOrders.length} {activeOrders.length === 1 ? 'Activo' : 'Activos'}</span>
+                            <span className="text-[10px] font-bold text-slate-900 bg-primary/10 px-2 py-0.5 rounded-full">{activeOrders.length} {activeOrders.length === 1 ? 'Activo' : 'Activos'}</span>
                         </div>
                         {activeOrders.map((order) => (
                             <div
@@ -190,7 +190,7 @@ export default function Orders() {
                                             )}
                                         </div>
                                         <div>
-                                            <p className="font-black text-slate-900 group-hover:text-primary transition-colors text-lg">#{order.id.slice(-6).toUpperCase()}</p>
+                                            <p className="font-black text-slate-900 group-hover:text-slate-900 transition-colors text-lg">#{order.id.slice(-6).toUpperCase()}</p>
                                             <p className="text-sm font-bold text-slate-900 truncate max-w-[150px]">{order.restaurantName || 'Restaurante'}</p>
                                             <p className="text-[10px] text-slate-400 font-bold uppercase tracking-tight mt-0.5">
                                                 {order.createdAt?.toDate().toLocaleDateString()} • {order.createdAt?.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
@@ -233,7 +233,7 @@ export default function Orders() {
                                 </div>
 
                                 <div className="flex items-center gap-3 pt-4 border-t border-slate-50 relative z-10">
-                                    <button className="flex-1 bg-primary text-white py-3 rounded-2xl font-black text-[10px] uppercase tracking-widest flex items-center justify-center gap-2 shadow-lg shadow-primary/20 group-hover:bg-orange-600 transition-all">
+                                    <button className="flex-1 bg-primary text-slate-900 py-3 rounded-2xl font-black text-[10px] uppercase tracking-widest flex items-center justify-center gap-2 shadow-lg shadow-primary/20 group-hover:bg-orange-600 transition-all">
                                         Ver Seguimiento
                                         <ChevronRight className="w-4 h-4" />
                                     </button>

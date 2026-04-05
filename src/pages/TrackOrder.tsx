@@ -56,7 +56,7 @@ export default function TrackOrder() {
             <div className="flex flex-col items-center justify-center min-h-[60vh] px-6 text-center">
                 <Package className="w-16 h-16 text-slate-300 mb-4" />
                 <h2 className="text-xl font-black text-slate-900 mb-2">Pedido no encontrado</h2>
-                <button onClick={() => navigate('/')} className="text-primary font-bold">Volver al inicio</button>
+                <button onClick={() => navigate('/')} className="text-slate-900 font-bold">Volver al inicio</button>
             </div>
         );
     }
@@ -124,13 +124,13 @@ export default function TrackOrder() {
                         {restaurant?.logoUrl ? (
                             <img src={restaurant.logoUrl} alt="Logo" className="w-full h-full object-cover p-2" />
                         ) : (
-                            <Store className="w-10 h-10 text-primary" />
+                            <Store className="w-10 h-10 text-slate-900" />
                         )}
                         <div className="absolute inset-0 bg-primary/10 animate-pulse group-hover:opacity-0 transition-opacity"></div>
                     </div>
                     
                     <div className="text-center">
-                        <p className="font-black text-xs uppercase tracking-[0.4em] text-primary mb-3">Rastreo Activo</p>
+                        <p className="font-black text-xs uppercase tracking-[0.4em] text-slate-900 mb-3">Rastreo Activo</p>
                         <h2 className="text-xl font-black text-white mb-1 uppercase tracking-tight">#{orderId?.slice(-5).toUpperCase()}</h2>
                         <p className="text-white/40 text-[10px] font-bold uppercase tracking-[0.2em] max-w-[250px] mx-auto leading-relaxed">
                             {currentStep === 1 && "Confirmando tu pedido con el restaurante..."}
@@ -149,7 +149,7 @@ export default function TrackOrder() {
                         </div>
                         <span className="text-[10px] font-black uppercase tracking-[0.2em] text-emerald-400">Track en Vivo</span>
                     </div>
-                    <span className="text-[10px] font-black text-white/40 uppercase tracking-widest">{restaurant?.name || "Un 2x3"}</span>
+                    <span className="text-[10px] font-black text-white/40 uppercase tracking-widest">{restaurant?.name || "Deliexpress"}</span>
                 </div>
             </div>
 
@@ -208,11 +208,11 @@ export default function TrackOrder() {
                                     <div className="flex items-center gap-2 mt-0.5">
                                         <span className="text-xs font-bold text-slate-500 uppercase">{driver.vehicleType}</span>
                                         <span className="w-1 h-1 bg-slate-200 rounded-full"></span>
-                                        <span className="text-xs font-black text-primary uppercase">{driver.vehiclePlate}</span>
+                                        <span className="text-xs font-black text-slate-900 uppercase">{driver.vehiclePlate}</span>
                                     </div>
                                 </div>
                             </div>
-                            <a href={`tel:${driver.phone}`} className="w-14 h-14 bg-primary text-white rounded-2xl flex flex-col items-center justify-center active:scale-95 transition-all shadow-lg shadow-primary/30">
+                            <a href={`tel:${driver.phone}`} className="w-14 h-14 bg-primary text-slate-900 rounded-2xl flex flex-col items-center justify-center active:scale-95 transition-all shadow-lg shadow-primary/30">
                                 <Phone className="w-5 h-5 mb-0.5" />
                                 <span className="text-[8px] font-black uppercase">Llamar</span>
                             </a>
@@ -227,7 +227,7 @@ export default function TrackOrder() {
                         {order.items?.map((item: any, index: number) => (
                             <div key={index} className="flex justify-between items-center bg-slate-50/50 p-3 rounded-2xl">
                                 <div className="flex items-center gap-3">
-                                    <div className="w-8 h-8 bg-white rounded-xl flex items-center justify-center text-xs font-black text-primary shadow-sm">
+                                    <div className="w-8 h-8 bg-white rounded-xl flex items-center justify-center text-xs font-black text-slate-900 shadow-sm">
                                         {item.quantity}x
                                     </div>
                                     <div>
@@ -259,7 +259,7 @@ export default function TrackOrder() {
                         )}
                         <div className="flex justify-between items-center pt-2">
                             <span className="text-sm font-black text-slate-900 uppercase tracking-widest">Total</span>
-                            <span className="text-xl font-black text-primary">
+                            <span className="text-xl font-black text-slate-900">
                                 {order.total?.toLocaleString('es-VE', { style: 'currency', currency: 'USD' })}
                             </span>
                         </div>
@@ -270,7 +270,7 @@ export default function TrackOrder() {
                 <div className="bg-white rounded-3xl p-6 shadow-xl shadow-slate-200/40 border border-slate-100">
                     <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">Detalles de Entrega</h3>
                     <div className="flex gap-4">
-                        <div className="w-12 h-12 bg-primary/10 text-primary rounded-2xl flex items-center justify-center shrink-0">
+                        <div className="w-12 h-12 bg-primary/10 text-slate-900 rounded-2xl flex items-center justify-center shrink-0">
                             <MapPin className="w-6 h-6" />
                         </div>
                         <div>

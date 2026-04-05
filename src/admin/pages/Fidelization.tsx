@@ -426,7 +426,7 @@ export default function Fidelization() {
     if (loading) {
         return (
             <div className="flex flex-col items-center justify-center min-h-[400px]">
-                <Loader2 className="w-10 h-10 text-primary animate-spin" />
+                <Loader2 className="w-10 h-10 text-slate-900 animate-spin" />
                 <p className="mt-4 text-slate-500 font-bold italic">Cargando datos de clientes...</p>
             </div>
         );
@@ -441,11 +441,11 @@ export default function Fidelization() {
 
                 <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-8">
                     <div className="space-y-4 max-w-xl">
-                        <div className="inline-flex items-center gap-2 bg-primary/20 text-primary-light px-4 py-2 rounded-full text-xs font-black uppercase tracking-widest border border-primary/20 backdrop-blur-md">
+                        <div className="inline-flex items-center gap-2 bg-primary/20 text-slate-900-light px-4 py-2 rounded-full text-xs font-black uppercase tracking-widest border border-primary/20 backdrop-blur-md">
                             <Sparkles className="w-4 h-4" /> Lealtad y Premios
                         </div>
                         <h1 className="text-4xl md:text-5xl font-black leading-tight italic">
-                            Haz que tus clientes <span className="text-primary italic">vuelvan siempre.</span>
+                            Haz que tus clientes <span className="text-slate-900 italic">vuelvan siempre.</span>
                         </h1>
                         <p className="text-slate-400 font-medium">
                             Premiar a tu comunidad aumenta las ventas. Ganan <span className="text-white font-bold">{pointRatio} puntos por cada $1</span> o prémialos directamente.
@@ -455,7 +455,7 @@ export default function Fidelization() {
                     <div className="flex gap-4">
                         <button
                             onClick={() => setActiveTab('ranking')}
-                            className={`px-6 py-4 rounded-[2rem] font-black transition-all shadow-xl flex items-center gap-2 ${activeTab === 'ranking' ? 'bg-primary text-white shadow-primary/20 scale-105' : 'bg-white/5 text-white/50 hover:bg-white/10'}`}
+                            className={`px-6 py-4 rounded-[2rem] font-black transition-all shadow-xl flex items-center gap-2 ${activeTab === 'ranking' ? 'bg-primary text-slate-900 shadow-primary/20 scale-105' : 'bg-white/5 text-slate-900/50 hover:bg-white/10'}`}
                         >
                             <UserIcon className="w-5 h-5" /> Ranking
                         </button>
@@ -575,7 +575,7 @@ export default function Fidelization() {
                                         </td>
                                         <td className="p-6 text-center">
                                             <div className="inline-flex items-center gap-2 bg-slate-100 px-3 py-1 rounded-full text-xs font-black text-slate-600">
-                                                <ShoppingBag className="w-3 h-3 text-primary" /> {client.totalOrdersAtRestaurant}
+                                                <ShoppingBag className="w-3 h-3 text-slate-900" /> {client.totalOrdersAtRestaurant}
                                             </div>
                                         </td>
                                         <td className="p-6 text-center">
@@ -824,7 +824,7 @@ export default function Fidelization() {
                                     </div>
                                     {uploadingImage && (
                                         <div className="absolute inset-0 bg-white/60 backdrop-blur-sm flex items-center justify-center">
-                                            <Loader2 className="w-10 h-10 text-primary animate-spin" />
+                                            <Loader2 className="w-10 h-10 text-slate-900 animate-spin" />
                                         </div>
                                     )}
                                 </div>
@@ -840,7 +840,7 @@ export default function Fidelization() {
                                     <input type="file" accept="image/*" className="hidden" onChange={handleRaffleImageUpload} disabled={uploadingImage} />
                                     {uploadingImage && (
                                         <div className="absolute inset-0 bg-white/60 backdrop-blur-sm flex items-center justify-center z-20">
-                                            <Loader2 className="w-10 h-10 text-primary animate-spin" />
+                                            <Loader2 className="w-10 h-10 text-slate-900 animate-spin" />
                                         </div>
                                     )}
                                 </label>

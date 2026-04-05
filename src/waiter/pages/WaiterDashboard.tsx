@@ -377,9 +377,9 @@ export default function WaiterDashboard() {
                             <div className="flex items-center justify-between mb-10">
                                 <div className="flex items-center gap-3">
                                     <div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center shadow-sm p-2">
-                                        <img src="https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/otro.png?alt=media" alt="Logo" className="w-full h-full object-contain" />
+                                        <img src="https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/logo.png?alt=media&token=8acf92ec-b853-4f37-bd82-a4f651bbdcd9" alt="Logo" className="w-full h-full object-contain" />
                                     </div>
-                                    <span className="font-black text-slate-800 text-xl">Un 2x3</span>
+                                    <span className="font-black text-slate-800 text-xl">Deliexpress</span>
                                 </div>
                                 <button onClick={() => setShowSidebar(false)} className="p-2 rounded-xl bg-slate-50 text-slate-400">
                                     <X className="w-6 h-6" />
@@ -490,7 +490,7 @@ export default function WaiterDashboard() {
                         <div className="flex items-center gap-4">
                             <div className="relative">
                                 <img
-                                    src={waiterInfo.photo || "https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/otro.png?alt=media"}
+                                    src={waiterInfo.photo || "https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/logo.png?alt=media&token=8acf92ec-b853-4f37-bd82-a4f651bbdcd9"}
                                     alt={waiterInfo.name}
                                     className="w-16 h-16 rounded-full object-cover border-4 border-slate-50 bg-white"
                                 />
@@ -533,7 +533,7 @@ export default function WaiterDashboard() {
                                                 <s.icon className={`w-5 h-5 ${s.color}`} />
                                                 <span className="font-bold text-slate-700">{s.label}</span>
                                             </div>
-                                            {waiterInfo.availability === s.id && <Check className="w-4 h-4 text-primary" />}
+                                            {waiterInfo.availability === s.id && <Check className="w-4 h-4 text-slate-900" />}
                                         </button>
                                     ))}
                                     <div className="h-px bg-slate-50 my-1 mx-4"></div>
@@ -618,7 +618,7 @@ export default function WaiterDashboard() {
                     const restaurantId = localStorage.getItem('waiterRestaurantId');
                     if (restaurantId) navigate(`/restaurant/${restaurantId}`);
                 }}
-                className="fixed bottom-24 right-5 w-16 h-16 bg-primary rounded-full shadow-2xl shadow-primary/40 flex items-center justify-center text-white active:scale-95 transition-transform z-40 border-4 border-white hover:rotate-90 group"
+                className="fixed bottom-24 right-5 w-16 h-16 bg-primary rounded-full shadow-2xl shadow-primary/40 flex items-center justify-center text-slate-900 active:scale-95 transition-transform z-40 border-4 border-white hover:rotate-90 group"
             >
                 <Plus className="w-8 h-8 group-hover:scale-110" />
             </button>

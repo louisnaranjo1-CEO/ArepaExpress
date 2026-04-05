@@ -83,7 +83,7 @@ export default function AddressPicker({ onClose, onSave, initialData }: AddressP
                 <div className="p-6 pb-2 flex items-center justify-between">
                     <div>
                         <h2 className="text-xl font-black text-slate-900 flex items-center gap-2">
-                            <MapPin className="w-5 h-5 text-primary" />
+                            <MapPin className="w-5 h-5 text-slate-900" />
                             Tu Ubicación
                         </h2>
                         <p className="text-xs text-slate-500 font-bold mt-1 uppercase tracking-widest">Toca el mapa para marcar</p>
@@ -136,7 +136,7 @@ export default function AddressPicker({ onClose, onSave, initialData }: AddressP
                                 });
                             }
                         }}
-                        className="absolute bottom-6 right-6 bg-white rounded-2xl shadow-xl flex items-center gap-2 text-primary border border-slate-100 active:scale-95 transition-all p-3 group"
+                        className="absolute bottom-6 right-6 bg-white rounded-2xl shadow-xl flex items-center gap-2 text-slate-900 border border-slate-100 active:scale-95 transition-all p-3 group"
                     >
                         <Navigation className="w-5 h-5 fill-primary/20 group-hover:animate-pulse" />
                         <span className="text-[10px] font-black uppercase tracking-widest pr-1">Ubicación en tiempo real</span>
@@ -173,7 +173,7 @@ export default function AddressPicker({ onClose, onSave, initialData }: AddressP
                     <button
                         onClick={handleSave}
                         disabled={!position}
-                        className="w-full bg-primary text-white py-4 rounded-2xl font-black shadow-xl shadow-primary/30 hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-2"
+                        className="w-full bg-primary text-slate-900 py-4 rounded-2xl font-black shadow-xl shadow-primary/30 hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-2"
                     >
                         <Check className="w-5 h-5" />
                         Guardar Dirección

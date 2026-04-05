@@ -135,14 +135,14 @@ export default function TablesManager() {
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <div>
                     <h1 className="text-2xl font-black text-slate-900 tracking-tight flex items-center gap-2">
-                        <LayoutGrid className="w-6 h-6 text-primary" />
+                        <LayoutGrid className="w-6 h-6 text-slate-900" />
                         Gestión de Mesas
                     </h1>
                     <p className="text-slate-500 font-medium">Administra las mesas físicas de tu restaurante</p>
                 </div>
                 <button
                     onClick={() => handleOpenForm()}
-                    className="bg-primary text-white px-5 py-3 rounded-2xl font-bold inline-flex items-center gap-2 hover:bg-primary/90 transition-colors shadow-lg shadow-primary/20"
+                    className="bg-primary text-slate-900 px-5 py-3 rounded-2xl font-bold inline-flex items-center gap-2 hover:bg-primary/90 transition-colors shadow-lg shadow-primary/20"
                 >
                     <Plus className="w-5 h-5" />
                     Nueva Mesa
@@ -263,7 +263,7 @@ export default function TablesManager() {
                                     <button
                                         type="submit"
                                         disabled={saving}
-                                        className="w-full bg-primary text-white py-4 rounded-xl font-bold hover:bg-primary/90 transition-colors disabled:opacity-70 shadow-lg shadow-primary/20"
+                                        className="w-full bg-primary text-slate-900 py-4 rounded-xl font-bold hover:bg-primary/90 transition-colors disabled:opacity-70 shadow-lg shadow-primary/20"
                                     >
                                         {saving ? 'Guardando...' : 'Guardar Mesa'}
                                     </button>

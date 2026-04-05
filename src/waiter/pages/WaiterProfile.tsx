@@ -85,7 +85,7 @@ export default function WaiterProfile() {
                                 <User className="w-12 h-12 text-white" />
                             )}
                         </div>
-                        <button className="absolute bottom-0 right-0 bg-white text-primary p-2.5 rounded-full shadow-lg border-2 border-primary/10 active:scale-90 transition-transform">
+                        <button className="absolute bottom-0 right-0 bg-white text-slate-900 p-2.5 rounded-full shadow-lg border-2 border-primary/10 active:scale-90 transition-transform">
                             <Camera className="w-4 h-4" />
                         </button>
                     </div>
@@ -102,7 +102,7 @@ export default function WaiterProfile() {
                 {/* Stats Cards */}
                 <section className="bg-white rounded-[2.5rem] p-6 shadow-xl shadow-slate-200/50 border border-slate-100 flex flex-col gap-6">
                     <div className="flex items-center gap-2 px-2">
-                        <TrendingUp className="w-5 h-5 text-primary" />
+                        <TrendingUp className="w-5 h-5 text-slate-900" />
                         <h3 className="text-lg font-black text-slate-800 tracking-tight">Mis Estadísticas</h3>
                     </div>
 
@@ -160,7 +160,7 @@ export default function WaiterProfile() {
                 </div>
 
                 <p className="text-center text-[10px] font-black text-slate-300 uppercase tracking-[0.3em] pt-4">
-                    Un 2x3 v1.0.4
+                    Deliexpress v1.0.4
                 </p>
             </main>
         </WaiterLayout>

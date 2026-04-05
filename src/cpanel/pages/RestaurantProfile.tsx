@@ -280,7 +280,7 @@ export default function RestaurantProfile() {
         return (
             <div className="text-center py-20">
                 <h2 className="text-2xl font-black text-slate-900">Restaurante no encontrado</h2>
-                <button onClick={() => navigate('/restaurants')} className="mt-4 text-primary font-bold hover:underline">Volver a la lista</button>
+                <button onClick={() => navigate('/restaurants')} className="mt-4 text-slate-900 font-bold hover:underline">Volver a la lista</button>
             </div>
         );
     }
@@ -381,7 +381,7 @@ export default function RestaurantProfile() {
 
                     <div className="flex flex-col gap-3 min-w-[200px]">
                         <div className="p-4 bg-slate-50 rounded-2xl flex items-center gap-3">
-                            <Phone className="w-5 h-5 text-primary" />
+                            <Phone className="w-5 h-5 text-slate-900" />
                             <div>
                                 <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">WhatsApp</p>
                                 <p className="font-bold text-slate-700">{restaurant.whatsapp || 'No registrado'}</p>
@@ -444,7 +444,7 @@ export default function RestaurantProfile() {
                         <button
                             key={tab.id}
                             onClick={() => setActiveTab(tab.id as any)}
-                            className={`flex items-center gap-2 px-6 py-4 font-black text-xs uppercase tracking-widest transition-all relative ${activeTab === tab.id ? 'text-primary' : 'text-slate-400 hover:text-slate-600'
+                            className={`flex items-center gap-2 px-6 py-4 font-black text-xs uppercase tracking-widest transition-all relative ${activeTab === tab.id ? 'text-slate-900' : 'text-slate-400 hover:text-slate-600'
                                 }`}
                         >
                             <tab.icon className="w-4 h-4" />
@@ -466,9 +466,9 @@ export default function RestaurantProfile() {
                             <div className="bg-white rounded-[40px] border border-slate-100 overflow-hidden shadow-sm">
                                 <div className="p-8 border-b border-slate-50 flex items-center justify-between">
                                     <h3 className="font-black text-slate-900 uppercase tracking-widest text-sm flex items-center gap-2">
-                                        <ShoppingBag className="w-5 h-5 text-primary" /> Pedidos Recientes
+                                        <ShoppingBag className="w-5 h-5 text-slate-900" /> Pedidos Recientes
                                     </h3>
-                                    <button className="text-[10px] font-black text-primary uppercase tracking-widest hover:underline">Ver todos</button>
+                                    <button className="text-[10px] font-black text-slate-900 uppercase tracking-widest hover:underline">Ver todos</button>
                                 </div>
                                 <div className="divide-y divide-slate-50">
                                     {recentOrders.length > 0 ? recentOrders.map((order) => (
@@ -502,7 +502,7 @@ export default function RestaurantProfile() {
                                     <h3 className="font-black text-slate-900 uppercase tracking-widest text-sm flex items-center gap-2">
                                         <Box className="w-5 h-5 text-indigo-500" /> Productos Populares
                                     </h3>
-                                    <button className="text-[10px] font-black text-primary uppercase tracking-widest hover:underline">Ver menú</button>
+                                    <button className="text-[10px] font-black text-slate-900 uppercase tracking-widest hover:underline">Ver menú</button>
                                 </div>
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-6">
                                     {popularProducts.map((p) => (
@@ -512,7 +512,7 @@ export default function RestaurantProfile() {
                                             </div>
                                             <p className="font-black text-slate-900 line-clamp-1">{p.name}</p>
                                             <div className="flex items-center justify-between mt-1">
-                                                <p className="text-primary font-black text-sm">${p.price?.toFixed(2)}</p>
+                                                <p className="text-slate-900 font-black text-sm">${p.price?.toFixed(2)}</p>
                                                 <div className="flex items-center gap-1 text-[10px] text-orange-500 font-bold bg-orange-50 px-2 py-0.5 rounded-lg">
                                                     <Star className="w-3 h-3 fill-orange-500" />
                                                     4.8
@@ -582,7 +582,7 @@ export default function RestaurantProfile() {
                                         <div className="flex flex-wrap items-center justify-center md:justify-start gap-3 mb-3">
                                             <span className="bg-white px-3 py-1 rounded-full text-secondary text-[10px] font-black uppercase tracking-widest">Panel de Control</span>
                                             {editData.featured && (
-                                                <span className="bg-primary text-white px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest shadow-lg shadow-primary/30">Destacado</span>
+                                                <span className="bg-primary text-slate-900 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest shadow-lg shadow-primary/30">Destacado</span>
                                             )}
                                             {editData.hasCashea && (
                                                 <span className="bg-green-500 text-white px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest shadow-lg shadow-green-500/30">Cashea</span>
@@ -790,7 +790,7 @@ export default function RestaurantProfile() {
                                         <div className="space-y-4 pt-4 border-t border-slate-100">
                                             <div className="flex items-center justify-between">
                                                 <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Logo del Restaurante</p>
-                                                <Upload className="w-4 h-4 text-primary" />
+                                                <Upload className="w-4 h-4 text-slate-900" />
                                             </div>
 
                                             <div className="relative group/logo">
@@ -832,7 +832,7 @@ export default function RestaurantProfile() {
                                         </div>
                                         <div className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl border border-slate-100">
                                             <div className="flex items-center gap-3">
-                                                <div className={`p-2 rounded-xl ${editData.featured ? 'bg-primary/10 text-primary' : 'bg-slate-200 text-slate-400'}`}>
+                                                <div className={`p-2 rounded-xl ${editData.featured ? 'bg-primary/10 text-slate-900' : 'bg-slate-200 text-slate-400'}`}>
                                                     <Zap className="w-5 h-5" />
                                                 </div>
                                                 <div>
@@ -860,7 +860,7 @@ export default function RestaurantProfile() {
                                                 </div>
                                                 <div>
                                                     <p className="text-sm font-black text-slate-800">Servicio Cashea</p>
-                                                    <p className="text-[10px] font-bold text-yellow-600 uppercase">Habilitar icono de pago con Cashea</p>
+                                                    <p className="text-[10px] font-bold text-amber-700 uppercase">Habilitar icono de pago con Cashea</p>
                                                 </div>
                                             </div>
                                             <button
@@ -886,7 +886,7 @@ export default function RestaurantProfile() {
                                     <button
                                         type="submit"
                                         disabled={isUpdating}
-                                        className="flex-[2] py-4 bg-primary text-white rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-orange-600 transition-all shadow-xl shadow-orange-500/30 flex items-center justify-center gap-2 active:scale-[0.98] disabled:opacity-50"
+                                        className="flex-[2] py-4 bg-primary text-slate-900 rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-orange-600 transition-all shadow-xl shadow-orange-500/30 flex items-center justify-center gap-2 active:scale-[0.98] disabled:opacity-50"
                                     >
                                         {isUpdating ? (
                                             <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>

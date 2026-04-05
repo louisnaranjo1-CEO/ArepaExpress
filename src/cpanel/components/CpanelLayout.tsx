@@ -83,14 +83,14 @@ export default function CpanelLayout({ children, onLogout }: CpanelLayoutProps) 
                         <div className="flex items-center gap-3 cursor-pointer active:scale-95 transition-transform" onClick={() => window.location.href = 'https://deliexpress.app'}>
                             <div className="w-14 h-14 flex items-center justify-center p-1 overflow-visible">
                                 <img
-                                    src="https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/otro.png?alt=media"
-                                    alt="Un 2x3 Logo"
+                                    src="https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/logo.png?alt=media&token=8acf92ec-b853-4f37-bd82-a4f651bbdcd9"
+                                    alt="Deliexpress Logo"
                                     className="w-full h-full object-contain filter drop-shadow-sm"
                                 />
                             </div>
                             <div className="flex flex-col">
                                 <h1 className="font-black text-white leading-tight">Delipanel</h1>
-                                <p className="text-[10px] font-bold text-primary uppercase tracking-wider">Cpanel Administrativo</p>
+                                <p className="text-[10px] font-bold text-slate-900 uppercase tracking-wider">Cpanel Administrativo</p>
                             </div>
                         </div>
                         <button className="md:hidden" onClick={() => setIsSidebarOpen(false)}>

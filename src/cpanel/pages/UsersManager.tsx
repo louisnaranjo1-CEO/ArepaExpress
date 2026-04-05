@@ -40,7 +40,7 @@ export default function UsersManager() {
     const [filterRole, setFilterRole] = useState('all');
     const [sortBy, setSortBy] = useState<'recent' | 'referrals'>('recent');
     const [showShareLinkModal, setShowShareLinkModal] = useState(false);
-    const [shareMessage, setShareMessage] = useState('¡Hola! Únete a la nueva era del delivery con Un 2x3 y obtén premios increíbles.');
+    const [shareMessage, setShareMessage] = useState('¡Hola! Únete a la nueva era del delivery con Deliexpress y obtén premios increíbles.');
     const [shareUrl, setShareUrl] = useState('https://deliexpress.app');
     const [savingConfig, setSavingConfig] = useState(false);
     const [restaurantNames, setRestaurantNames] = useState<Record<string, string>>({});
@@ -350,7 +350,7 @@ export default function UsersManager() {
                                                         )}
                                                     </div>
                                                     <div>
-                                                        <div className="font-bold text-slate-900 group-hover:text-primary transition-colors">{user.displayName || user.name || 'Sin Nombre'}</div>
+                                                        <div className="font-bold text-slate-900 group-hover:text-slate-900 transition-colors">{user.displayName || user.name || 'Sin Nombre'}</div>
                                                         <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">{user.id.slice(0, 8)}...</div>
                                                     </div>
                                                 </div>
@@ -414,7 +414,7 @@ export default function UsersManager() {
             ) : (
                 <div className="bg-white rounded-[40px] border border-slate-100 shadow-xl shadow-slate-200/40 p-6 md:p-8">
                     <h2 className="text-xl font-black text-slate-900 mb-6 flex items-center gap-3">
-                        <Wallet className="w-6 h-6 text-primary" />
+                        <Wallet className="w-6 h-6 text-slate-900" />
                         Solicitudes de Recarga
                     </h2>
 
@@ -465,7 +465,7 @@ export default function UsersManager() {
                                                 <p className="font-medium text-slate-600 bg-white px-2 py-1 rounded border border-slate-200 font-mono text-sm">{recharge.reference}</p>
                                             </div>
                                             {recharge.proofUrl && (
-                                                <a href={recharge.proofUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 text-primary text-xs font-bold hover:underline bg-primary/5 px-3 py-1.5 rounded-lg mt-2 transition-colors">
+                                                <a href={recharge.proofUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 text-slate-900 text-xs font-bold hover:underline bg-primary/5 px-3 py-1.5 rounded-lg mt-2 transition-colors">
                                                     <ImageIcon className="w-3.5 h-3.5" />
                                                     Ver Comprobante
                                                 </a>
@@ -512,7 +512,7 @@ export default function UsersManager() {
                                 <div>
                                     <h3 className="text-2xl font-black text-slate-900 flex items-center gap-2">
                                         <Gift className="w-6 h-6 text-indigo-500" />
-                                        Compartir Un 2x3
+                                        Compartir Deliexpress
                                     </h3>
                                     <p className="text-slate-500 text-sm mt-1">Configura el mensaje que enviarán los usuarios para invitar a sus amigos.</p>
                                 </div>
@@ -528,7 +528,7 @@ export default function UsersManager() {
                                         value={shareMessage}
                                         onChange={e => setShareMessage(e.target.value)}
                                         className="w-full bg-slate-50 border-2 border-slate-100 focus:border-indigo-500 px-4 py-3 rounded-2xl outline-none font-bold text-slate-700 transition-all resize-none h-24 text-sm"
-                                        placeholder="Ej: ¡Usa Un 2x3 y obtén recompensas!"
+                                        placeholder="Ej: ¡Usa Deliexpress y obtén recompensas!"
                                     />
                                     <p className="text-[10px] font-medium text-slate-400 ml-1">Nota: El código del usuario y la URL se agregarán al final automáticamente.</p>
                                 </div>
@@ -628,7 +628,7 @@ export default function UsersManager() {
                                 <div className="bg-slate-50 rounded-[32px] p-6 border border-slate-100">
                                     <div className="flex items-center gap-3 mb-4">
                                         <div className="w-10 h-10 bg-primary/10 rounded-xl flex items-center justify-center">
-                                            <Clock className="w-5 h-5 text-primary" />
+                                            <Clock className="w-5 h-5 text-slate-900" />
                                         </div>
                                         <div>
                                             <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Uso de la App</p>

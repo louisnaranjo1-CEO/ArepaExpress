@@ -155,7 +155,7 @@ export default function AdsManager() {
         <div className="p-6 md:p-10 max-w-7xl mx-auto space-y-10 mb-20">
             <div>
                 <h1 className="text-3xl font-black text-slate-900 tracking-tight flex items-center gap-3">
-                    <Megaphone className="w-8 h-8 text-primary" />
+                    <Megaphone className="w-8 h-8 text-slate-900" />
                     Anuncios y Promociones
                 </h1>
                 <p className="text-slate-500 font-medium mt-2">Gestiona oportunidades de empleo y solicita banners publicitarios para destacar tu negocio.</p>
@@ -167,7 +167,7 @@ export default function AdsManager() {
                     <div className="flex justify-between items-start">
                         <div>
                             <h2 className="text-2xl font-black text-slate-900 flex items-center gap-2">
-                                <Briefcase className="w-6 h-6 text-primary" />
+                                <Briefcase className="w-6 h-6 text-slate-900" />
                                 Empleos (Gratis)
                             </h2>
                             <p className="text-sm text-slate-500 mt-1">Atrae talento publicando vacantes en tu perfil público.</p>
@@ -188,7 +188,7 @@ export default function AdsManager() {
                             {jobsActive && (
                                 <button
                                     onClick={() => setIsAddingJob(!isAddingJob)}
-                                    className="text-xs font-bold text-primary flex items-center gap-1 hover:underline underline-offset-4"
+                                    className="text-xs font-bold text-slate-900 flex items-center gap-1 hover:underline underline-offset-4"
                                 >
                                     <Plus className="w-4 h-4" /> Añadir Vacante
                                 </button>
@@ -223,7 +223,7 @@ export default function AdsManager() {
                                             />
                                             <div className="flex justify-end gap-2">
                                                 <button onClick={() => setIsAddingJob(false)} className="px-4 py-2 text-xs font-bold text-slate-500">Cancelar</button>
-                                                <button onClick={handleAddJob} disabled={saving} className="px-4 py-2 bg-primary text-white text-xs font-black rounded-xl">Guardar</button>
+                                                <button onClick={handleAddJob} disabled={saving} className="px-4 py-2 bg-primary text-slate-900 text-xs font-black rounded-xl">Guardar</button>
                                             </div>
                                         </motion.div>
                                     )}
@@ -253,7 +253,7 @@ export default function AdsManager() {
                 <section className="bg-white rounded-[40px] shadow-sm border border-slate-100 p-8 space-y-8 flex flex-col">
                     <div>
                         <h2 className="text-2xl font-black text-slate-900 flex items-center gap-2">
-                            <Target className="w-6 h-6 text-primary" />
+                            <Target className="w-6 h-6 text-slate-900" />
                             Banners Publicitarios
                         </h2>
                         <p className="text-sm text-slate-500 mt-1">Destaca tu negocio en la pantalla de inicio principal de la app.</p>
@@ -267,7 +267,7 @@ export default function AdsManager() {
                                         <h3 className="text-xl font-black text-slate-800">{plan.name}</h3>
                                         <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">{plan.duration}</p>
                                     </div>
-                                    <div className="bg-primary/10 text-primary px-3 py-1.5 rounded-xl font-black">
+                                    <div className="bg-primary/10 text-slate-900 px-3 py-1.5 rounded-xl font-black">
                                         ${plan.price}
                                     </div>
                                 </div>
@@ -305,7 +305,7 @@ export default function AdsManager() {
                                             >Cancelar</button>
                                             <button
                                                 onClick={() => handleRequestBanner(plan)}
-                                                className="flex-1 py-2 text-xs font-black text-white bg-primary rounded-xl flex items-center justify-center gap-2 shadow-md"
+                                                className="flex-1 py-2 text-xs font-black text-slate-900 bg-primary rounded-xl flex items-center justify-center gap-2 shadow-md"
                                                 disabled={saving}
                                             >
                                                 {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Solicitar'}
@@ -315,7 +315,7 @@ export default function AdsManager() {
                                 ) : (
                                     <button
                                         onClick={() => setBannerRequesting(plan.id)}
-                                        className="w-full py-3 bg-slate-50 group-hover:bg-primary group-hover:text-white text-slate-700 font-black rounded-2xl transition-all"
+                                        className="w-full py-3 bg-slate-50 group-hover:bg-primary group-hover:text-slate-900 text-slate-700 font-black rounded-2xl transition-all"
                                     >
                                         Adquirir Plan
                                     </button>

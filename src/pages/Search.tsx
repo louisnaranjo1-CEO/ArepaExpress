@@ -153,7 +153,7 @@ export default function Search() {
                 <h1 className="text-3xl font-black text-slate-900">¿Qué buscamos? 🧐</h1>
                 <div className="flex gap-2">
                     <div className="relative flex-1 group">
-                        <SearchIcon className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 group-focus-within:text-primary transition-colors" />
+                        <SearchIcon className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 group-focus-within:text-slate-900 transition-colors" />
                         <input
                             type="text"
                             placeholder="Restaurant, plato o categoría..."
@@ -166,7 +166,7 @@ export default function Search() {
                     <button
                         onClick={() => setIsFilterOpen(true)}
                         className={`p-4 rounded-2xl flex items-center justify-center transition-all ${(filters.category || filters.sector || filters.minPrice !== '' || filters.maxPrice !== '' || filters.onlyPromotions)
-                            ? 'bg-primary text-white shadow-md shadow-primary/30'
+                            ? 'bg-primary text-slate-900 shadow-md shadow-primary/30'
                             : 'bg-white text-slate-500 shadow-sm border border-slate-100 hover:bg-slate-50'
                             }`}
                     >
@@ -184,7 +184,7 @@ export default function Search() {
                         </h2>
                         <div className="flex items-center gap-2">
                             {filteredRestaurants.length > 0 && (
-                                <span className="text-primary text-sm font-bold bg-primary/10 px-3 py-1 rounded-full">
+                                <span className="text-slate-900 text-sm font-bold bg-primary/10 px-3 py-1 rounded-full">
                                     {filteredRestaurants.length} local{filteredRestaurants.length !== 1 ? 'es' : ''}
                                 </span>
                             )}
@@ -226,7 +226,7 @@ export default function Search() {
                                                 </div>
                                             )}
                                             <div className="absolute top-4 left-4 bg-white/90 backdrop-blur px-3 py-1.5 rounded-full flex items-center gap-1 shadow-sm border border-white/50">
-                                                <Star className="w-4 h-4 text-yellow-500 fill-yellow-500" />
+                                                <Star className="w-4 h-4 text-amber-700 fill-yellow-500" />
                                                 <span className="text-xs font-black text-slate-800">{res.rating}</span>
                                                 <span className="text-[10px] text-slate-400 font-bold">({res.reviews}+)</span>
                                             </div>
@@ -250,11 +250,11 @@ export default function Search() {
                                                 )}
                                             </div>
                                             <div className="space-y-0.5">
-                                                <h3 className="text-lg font-black text-slate-900 group-hover:text-primary transition-colors leading-tight">{res.name}</h3>
+                                                <h3 className="text-lg font-black text-slate-900 group-hover:text-slate-900 transition-colors leading-tight">{res.name}</h3>
                                                 <div className="flex items-center gap-2 text-[10px] font-bold text-slate-400 uppercase tracking-tighter">
                                                     <span>{res.category}</span>
                                                     <span>•</span>
-                                                    <div className="flex items-center gap-1 text-primary">
+                                                    <div className="flex items-center gap-1 text-slate-900">
                                                         <Clock className="w-3 h-3" />
                                                         <span>{res.deliveryTime}</span>
                                                     </div>

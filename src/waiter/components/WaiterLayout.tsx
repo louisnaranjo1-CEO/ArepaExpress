@@ -28,7 +28,7 @@ export default function WaiterLayout({ children }: WaiterLayoutProps) {
                         key={item.path}
                         to={item.path}
                         className={({ isActive }) =>
-                            `flex flex-col items-center gap-1 transition-all ${isActive ? 'text-primary scale-110' : 'text-slate-400 opacity-60'
+                            `flex flex-col items-center gap-1 transition-all ${isActive ? 'text-slate-900 scale-110' : 'text-slate-400 opacity-60'
                             }`
                         }
                     >

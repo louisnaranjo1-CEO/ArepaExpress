@@ -188,7 +188,7 @@ export default function FidelizationManager() {
             <div className="flex justify-between items-center mb-8">
                 <div>
                     <h1 className="text-3xl font-black text-slate-800 flex items-center gap-3">
-                        <Gift className="w-8 h-8 text-primary" />
+                        <Gift className="w-8 h-8 text-slate-900" />
                         Gestión de Fidelización
                     </h1>
                     <p className="text-slate-500 font-medium">Configura DeliPuntos Globales y concursos de referidos</p>
@@ -227,12 +227,12 @@ export default function FidelizationManager() {
             <div className="bg-white rounded-[2.5rem] shadow-xl shadow-slate-200/50 border border-slate-100 overflow-hidden mb-8">
                 <div className="p-6 border-b border-slate-50 bg-slate-50/50 flex justify-between items-center">
                     <h3 className="font-black text-slate-800 uppercase tracking-widest text-sm flex items-center gap-2">
-                        <Gift className="w-5 h-5 text-primary" />
+                        <Gift className="w-5 h-5 text-slate-900" />
                         Premios Globales (DeliPuntos)
                     </h3>
                     <button
                         onClick={() => setShowAddPrizeModal(true)}
-                        className="bg-primary text-white px-4 py-2 rounded-xl text-sm font-black shadow-lg shadow-primary/20 hover:scale-105 active:scale-95 transition-all flex items-center gap-2"
+                        className="bg-primary text-slate-900 px-4 py-2 rounded-xl text-sm font-black shadow-lg shadow-primary/20 hover:scale-105 active:scale-95 transition-all flex items-center gap-2"
                     >
                         <Plus className="w-4 h-4" /> Nuevo Premio
                     </button>
@@ -351,7 +351,7 @@ export default function FidelizationManager() {
                     <div className="bg-white rounded-[2.5rem] w-full max-w-lg shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-300 max-h-[90vh] overflow-y-auto">
                         <div className="p-8 border-b border-slate-50 flex items-center justify-between sticky top-0 bg-white z-10">
                             <h3 className="text-xl font-black text-slate-800 uppercase tracking-tight flex items-center gap-2">
-                                <Gift className="w-6 h-6 text-primary" />
+                                <Gift className="w-6 h-6 text-slate-900" />
                                 Nuevo Premio Global
                             </h3>
                             <button onClick={() => setShowAddPrizeModal(false)} className="p-2 hover:bg-slate-100 rounded-xl transition-all">
@@ -403,7 +403,7 @@ export default function FidelizationManager() {
                                             </>
                                         ) : (
                                             <div className="text-center p-6">
-                                                <div className="w-16 h-16 bg-white rounded-full shadow-sm flex items-center justify-center mx-auto mb-4 text-primary">
+                                                <div className="w-16 h-16 bg-white rounded-full shadow-sm flex items-center justify-center mx-auto mb-4 text-slate-900">
                                                     {uploadingImage ? (
                                                         <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin"></div>
                                                     ) : (
@@ -428,7 +428,7 @@ export default function FidelizationManager() {
                             <button
                                 onClick={handleAddPrize}
                                 disabled={uploadingImage}
-                                className="w-full bg-primary text-white py-4 rounded-2xl font-black shadow-lg shadow-primary/20 hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-2 mt-4 disabled:opacity-50"
+                                className="w-full bg-primary text-slate-900 py-4 rounded-2xl font-black shadow-lg shadow-primary/20 hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-2 mt-4 disabled:opacity-50"
                             >
                                 <Save className="w-5 h-5" /> Guardar Premio Global
                             </button>

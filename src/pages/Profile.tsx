@@ -294,15 +294,15 @@ export default function Profile() {
 
     const FAQ_DATA = [
         {
-            q: "¿Qué es Un 2x3?",
+            q: "¿Qué es Deliexpress?",
             a: "Es la aplicación móvil todo-en-uno que conecta a nivel nacional a restaurantes, supermercados, bodegas y emprendimientos con los usuarios. Es una plataforma diseñada para facilitar compras sin colas, ofrecer servicios de delivery y transporte, y potenciar el crecimiento tecnológico de los negocios locales."
         },
         {
-            q: "¿Qué productos o servicios puedo encontrar en Un 2x3?",
+            q: "¿Qué productos o servicios puedo encontrar en Deliexpress?",
             a: "¡Prácticamente todo! Puedes explorar catálogos de comida, artículos de primera necesidad y servicios profesionales. Además, contamos con una red integrada de Delivery y Taxi siempre disponible para llevarte lo que necesites o trasladarte a donde desees."
         },
         {
-            q: "¿Cómo puedo ser aliado a Un 2x3?",
+            q: "¿Cómo puedo ser aliado a Deliexpress?",
             a: "Es muy sencillo transformar tu negocio. Solo debes ingresar a la aplicación y enviar tu solicitud formal a través de la sección \"Ser Aliado\". Al unirte, recibirás acceso a nuestro panel administrativo, sistema de comandas y herramientas de publicidad interna."
         }
     ];
@@ -559,8 +559,8 @@ export default function Profile() {
                     className="w-80 h-32 flex items-center justify-center mb-8 cursor-pointer active:scale-95 transition-transform p-2 overflow-visible"
                 >
                     <img 
-                        src="https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/otro.png?alt=media" 
-                        alt="Un 2x3 Logo"
+                        src="https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/logo.png?alt=media&token=8acf92ec-b853-4f37-bd82-a4f651bbdcd9" 
+                        alt="Deliexpress Logo"
                         className="w-auto h-full object-contain filter drop-shadow-xl"
                     />
                 </div>
@@ -587,7 +587,7 @@ export default function Profile() {
                             }
                         }}
                         disabled={isSigningIn}
-                        className="w-full bg-primary text-white py-4 rounded-2xl font-bold shadow-lg shadow-primary/30 hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-70 disabled:hover:scale-100 flex items-center justify-center gap-2"
+                        className="w-full bg-primary text-slate-900 py-4 rounded-2xl font-bold shadow-lg shadow-primary/30 hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-70 disabled:hover:scale-100 flex items-center justify-center gap-2"
                     >
                         {isSigningIn ? (
                             <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
@@ -632,7 +632,7 @@ export default function Profile() {
                             setIsLoginMode(false);
                             setShowEmailModal(true);
                         }}
-                        className="w-full bg-white text-primary border-2 border-primary py-4 rounded-2xl font-bold hover:bg-primary/5 transition-colors"
+                        className="w-full bg-white text-slate-900 border-2 border-primary py-4 rounded-2xl font-bold hover:bg-primary/5 transition-colors"
                     >
                         Crear Cuenta
                     </button>
@@ -658,12 +658,12 @@ export default function Profile() {
 
                     <div className="flex items-center gap-4 my-2 pt-2">
                         <div className="h-px bg-slate-100 flex-1"></div>
-                        <span className="text-[10px] font-black text-slate-300 uppercase tracking-widest">Emprende y se un freelancer en Un 2x3</span>
+                        <span className="text-[10px] font-black text-slate-300 uppercase tracking-widest">Emprende y se un freelancer en Deliexpress</span>
                         <div className="h-px bg-slate-100 flex-1"></div>
                     </div>
                     <button
                         onClick={() => window.location.href = 'https://deliexpress.app/delivery/login'}
-                        className="w-full bg-primary/10 text-primary py-4 rounded-2xl font-bold hover:bg-primary/20 transition-colors flex items-center justify-center gap-2"
+                        className="w-full bg-primary/10 text-slate-900 py-4 rounded-2xl font-bold hover:bg-primary/20 transition-colors flex items-center justify-center gap-2"
                     >
                         <Navigation className="w-5 h-5 opacity-50" />
                         Acceso Delivery / Taxi
@@ -679,7 +679,7 @@ export default function Profile() {
                         className="w-full bg-green-500/10 text-green-600 py-4 rounded-2xl font-bold hover:bg-green-500/20 transition-colors flex items-center justify-center gap-2"
                     >
                         <Store className="w-5 h-5 opacity-50" />
-                        Conviértete en aliado y deja que te encuentren en Un 2x3
+                        Conviértete en aliado y deja que te encuentren en Deliexpress
                     </button>
                 </div>
 
@@ -699,7 +699,7 @@ export default function Profile() {
                                             {isLoginMode ? "Iniciar Sesión" : "Crear Cuenta"}
                                         </h3>
                                         <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-0.5">
-                                            Un 2x3 Lover 🚀
+                                            Deliexpress Lover 🚀
                                         </p>
                                     </div>
                                     <button onClick={() => setShowEmailModal(false)} className="p-2 hover:bg-slate-200 rounded-xl transition-all">
@@ -763,7 +763,7 @@ export default function Profile() {
                                     <button
                                         type="submit"
                                         disabled={isEmailAuthLoading}
-                                        className="w-full bg-primary text-white py-4 rounded-2xl font-bold shadow-lg shadow-primary/30 hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-70 mt-4 flex items-center justify-center gap-2"
+                                        className="w-full bg-primary text-slate-900 py-4 rounded-2xl font-bold shadow-lg shadow-primary/30 hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-70 mt-4 flex items-center justify-center gap-2"
                                     >
                                         {isEmailAuthLoading ? (
                                             <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
@@ -775,7 +775,7 @@ export default function Profile() {
                                     <button
                                         type="button"
                                         onClick={() => setIsLoginMode(!isLoginMode)}
-                                        className="w-full text-slate-400 font-bold py-2 mt-2 hover:text-primary transition-colors text-xs"
+                                        className="w-full text-slate-400 font-bold py-2 mt-2 hover:text-slate-900 transition-colors text-xs"
                                     >
                                         {isLoginMode ? "¿No tienes cuenta? Regístrate" : "¿Ya tienes cuenta? Inicia sesión"}
                                     </button>
@@ -796,13 +796,13 @@ export default function Profile() {
                                 className="bg-white rounded-[32px] w-full max-w-sm shadow-2xl overflow-hidden p-8"
                             >
                                 <div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-4">
-                                    <Gift className="w-8 h-8 text-primary" />
+                                    <Gift className="w-8 h-8 text-slate-900" />
                                 </div>
                                 <h3 className="text-xl font-black text-slate-900 text-center mb-2">
                                     ¡Gana 200 puntos! 🎉
                                 </h3>
                                 <p className="text-slate-500 text-sm text-center mb-6 font-medium">
-                                    ¿Alguien te invitó a Un 2x3? Ingresa su código ahora y ambos recibirán puntos gratis.
+                                    ¿Alguien te invitó a Deliexpress? Ingresa su código ahora y ambos recibirán puntos gratis.
                                 </p>
 
                                 <div className="space-y-4">
@@ -822,7 +822,7 @@ export default function Profile() {
                                         <button
                                             onClick={handleGoogleReferralSubmit}
                                             disabled={isApplyingReferral}
-                                            className="w-full bg-primary text-white py-4 rounded-2xl font-bold shadow-lg shadow-primary/30 hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-70 flex items-center justify-center gap-2"
+                                            className="w-full bg-primary text-slate-900 py-4 rounded-2xl font-bold shadow-lg shadow-primary/30 hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-70 flex items-center justify-center gap-2"
                                         >
                                             {isApplyingReferral ? (
                                                 <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
@@ -854,7 +854,7 @@ export default function Profile() {
         return (
             <div className="flex flex-col items-center justify-center min-h-[80vh] px-6 py-12 animate-in fade-in slide-in-from-bottom-4 duration-500">
                 <div className="w-24 h-24 bg-primary/10 rounded-full flex items-center justify-center mb-6">
-                    <User className="w-12 h-12 text-primary" />
+                    <User className="w-12 h-12 text-slate-900" />
                 </div>
                 <h1 className="text-2xl font-black text-slate-900 mb-2 text-center">¡Un paso más! 🚀</h1>
                 <p className="text-slate-500 mb-8 max-w-[280px] text-center">
@@ -901,7 +901,7 @@ export default function Profile() {
                     <button
                         type="submit"
                         disabled={completingProfile}
-                        className="w-full bg-primary text-white py-4 rounded-2xl font-bold shadow-lg shadow-primary/30 hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-70 mt-4 flex items-center justify-center gap-2"
+                        className="w-full bg-primary text-slate-900 py-4 rounded-2xl font-bold shadow-lg shadow-primary/30 hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-70 mt-4 flex items-center justify-center gap-2"
                     >
                         {completingProfile ? (
                             <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
@@ -934,7 +934,7 @@ export default function Profile() {
                             )}
                         </div>
                         <div className="flex-1">
-                            <h2 className="text-2xl font-black">{user.displayName || 'Un 2x3 Fan'}</h2>
+                            <h2 className="text-2xl font-black">{user.displayName || 'Deliexpress Fan'}</h2>
                             <div className="flex flex-col gap-1">
                                 <div className="flex items-center gap-1 text-white/80 text-xs">
                                     <Mail className="w-3 h-3" />
@@ -963,7 +963,7 @@ export default function Profile() {
                                 onClick={() => setShowWalletModal(true)}
                                 className="bg-yellow-50 p-3 rounded-2xl flex flex-col items-center justify-center gap-1.5 group cursor-pointer hover:bg-yellow-100 transition-colors"
                             >
-                                <Wallet className="w-6 h-6 text-yellow-600 group-hover:scale-110 transition-transform" />
+                                <Wallet className="w-6 h-6 text-amber-700 group-hover:scale-110 transition-transform" />
                                 <span className="text-[10px] font-bold text-slate-700 text-center leading-tight">Mi Billetera</span>
                             </div>
                             <div
@@ -984,8 +984,8 @@ export default function Profile() {
                                 onClick={() => navigate('/rewards')}
                                 className="bg-primary/5 p-3 rounded-2xl flex flex-col items-center justify-center gap-1.5 group cursor-pointer hover:bg-primary/10 transition-colors border border-primary/10"
                             >
-                                <Gift className="w-6 h-6 text-primary group-hover:scale-110 transition-transform" />
-                                <span className="text-[10px] font-bold text-primary text-center leading-tight">Regalos</span>
+                                <Gift className="w-6 h-6 text-slate-900 group-hover:scale-110 transition-transform" />
+                                <span className="text-[10px] font-bold text-slate-900 text-center leading-tight">Regalos</span>
                             </div>
                         </div>
 
@@ -1009,7 +1009,7 @@ export default function Profile() {
                             <div className="space-y-3 mt-4">
                                 <div className="flex items-center justify-between">
                                     <h3 className="text-lg font-black text-slate-900 px-2 flex items-center gap-2">
-                                        <MapPin className="w-5 h-5 text-primary" />
+                                        <MapPin className="w-5 h-5 text-slate-900" />
                                         Mis Direcciones
                                     </h3>
                                 </div>
@@ -1047,7 +1047,7 @@ export default function Profile() {
                         {/* Activity History */}
                         <div ref={ordersRef} className="space-y-4 pt-2">
                             <h3 className="text-lg font-black text-slate-900 px-2 flex items-center gap-2">
-                                <FileText className="w-5 h-5 text-primary" />
+                                <FileText className="w-5 h-5 text-slate-900" />
                                 Historial de Actividad
                             </h3>
 
@@ -1117,7 +1117,7 @@ export default function Profile() {
                                             )}
 
                                             <div className="flex justify-end items-end mt-1">
-                                                <span className="font-black text-primary text-base">
+                                                <span className="font-black text-slate-900 text-base">
                                                     ${(activity.type === 'transport' ? (activity.fare || 0) : (activity.total || 0)).toFixed(2)}
                                                 </span>
                                             </div>
@@ -1218,7 +1218,7 @@ export default function Profile() {
 
                             <div className="space-y-3 pt-6 border-t border-slate-100">
                                 <h3 className="text-lg font-black text-slate-900 px-2 flex items-center gap-2">
-                                    <FileText className="w-5 h-5 text-primary" />
+                                    <FileText className="w-5 h-5 text-slate-900" />
                                     📋 Sección de Soporte: Preguntas Frecuentes (FAQ)
                                 </h3>
                                 <div className="space-y-2">
@@ -1236,7 +1236,7 @@ export default function Profile() {
                                                     animate={{ rotate: activeFaq === index ? 180 : 0 }}
                                                     transition={{ duration: 0.2 }}
                                                 >
-                                                    <ChevronRight className={`w-4 h-4 ${activeFaq === index ? 'text-primary' : 'text-slate-300'}`} />
+                                                    <ChevronRight className={`w-4 h-4 ${activeFaq === index ? 'text-slate-900' : 'text-slate-300'}`} />
                                                 </motion.div>
                                             </button>
                                             <AnimatePresence>
@@ -1279,7 +1279,7 @@ export default function Profile() {
                     className="mt-8 text-center p-6 grayscale opacity-50 cursor-pointer active:scale-95 transition-transform"
                     onClick={() => window.location.href = 'https://deliexpress.app'}
                 >
-                    <img src="https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/otro.png?alt=media" alt="Un 2x3" className="h-12 mx-auto mb-2" />
+                    <img src="https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/logo.png?alt=media&token=8acf92ec-b853-4f37-bd82-a4f651bbdcd9" alt="Deliexpress" className="h-12 mx-auto mb-2" />
                     <p className="text-[10px] uppercase tracking-widest font-bold text-slate-400">Hecho con ❤️ en Venezuela</p>
                 </div>
             </div>
@@ -1385,7 +1385,7 @@ export default function Profile() {
 
                                                 {ticket.adminResponse && (
                                                     <div className="mt-3 bg-slate-50 p-4 rounded-xl border border-slate-100 relative">
-                                                        <div className="absolute -top-3 left-4 bg-primary text-white text-[10px] font-bold px-2 py-0.5 rounded-md uppercase tracking-widest">Respuesta del Admin</div>
+                                                        <div className="absolute -top-3 left-4 bg-primary text-slate-900 text-[10px] font-bold px-2 py-0.5 rounded-md uppercase tracking-widest">Respuesta del Admin</div>
                                                         <p className="text-sm font-medium text-slate-700 mt-1">{ticket.adminResponse}</p>
                                                     </div>
                                                 )}
@@ -1500,7 +1500,7 @@ export default function Profile() {
                         >
                             <div className="p-8 border-b border-slate-50 flex items-center justify-between bg-slate-50/50">
                                 <div className="flex items-center gap-4">
-                                    <div className="p-3 bg-primary/10 rounded-2xl text-primary">
+                                    <div className="p-3 bg-primary/10 rounded-2xl text-slate-900">
                                         <Settings className="w-6 h-6" />
                                     </div>
                                     <div>
@@ -1573,7 +1573,7 @@ export default function Profile() {
                                         <div className="space-y-4">
                                             <div className="flex items-center justify-between">
                                                 <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Foto de Perfil</p>
-                                                <UploadCloud className="w-4 h-4 text-primary" />
+                                                <UploadCloud className="w-4 h-4 text-slate-900" />
                                             </div>
 
                                             <div className="relative group/photo">
@@ -1625,7 +1625,7 @@ export default function Profile() {
                                     <button
                                         type="submit"
                                         disabled={completingProfile}
-                                        className="flex-[2] py-4 bg-primary text-white rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-orange-600 transition-all shadow-xl shadow-orange-500/30 flex items-center justify-center gap-2 active:scale-[0.98] disabled:opacity-50"
+                                        className="flex-[2] py-4 bg-primary text-slate-900 rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-orange-600 transition-all shadow-xl shadow-orange-500/30 flex items-center justify-center gap-2 active:scale-[0.98] disabled:opacity-50"
                                     >
                                         {completingProfile ? (
                                             <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
@@ -1655,7 +1655,7 @@ export default function Profile() {
                             <div className="p-8 border-b border-slate-50 flex items-center justify-between bg-slate-50/50">
                                 <div>
                                     <h3 className="text-xl font-black text-slate-900 flex items-center gap-2">
-                                        <Wallet className="w-6 h-6 text-primary" /> Mi Billetera Un 2x3
+                                        <Wallet className="w-6 h-6 text-slate-900" /> Mi Billetera Deliexpress
                                     </h3>
                                     <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1">Fondos para Transporte</p>
                                 </div>
@@ -1681,8 +1681,8 @@ export default function Profile() {
                                                 }}
                                             >
                                                 <img
-                                                    src="https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/otro.png?alt=media"
-                                                    alt="Un 2x3"
+                                                    src="https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/logo.png?alt=media&token=8acf92ec-b853-4f37-bd82-a4f651bbdcd9"
+                                                    alt="Deliexpress"
                                                     className="w-full h-full object-contain brightness-0 invert"
                                                 />
                                             </div>
@@ -1692,14 +1692,14 @@ export default function Profile() {
                                         <div>
                                             <p className="text-white/40 text-[9px] font-black uppercase tracking-widest mb-1 italic">Titular de la tarjeta</p>
                                             <p className="text-white text-lg font-black tracking-wider uppercase drop-shadow-md truncate max-w-full">
-                                                {userData?.displayName || user?.displayName || 'Usuario Un 2x3'}
+                                                {userData?.displayName || user?.displayName || 'Usuario Deliexpress'}
                                             </p>
 
                                             <div className="mt-4 flex justify-between items-end">
                                                 <div>
                                                     <p className="text-white/40 text-[9px] font-black uppercase tracking-widest mb-1 italic">Saldo Disponible</p>
                                                     <div className="flex items-baseline gap-1">
-                                                        <span className="text-primary text-3xl font-black drop-shadow-[0_2px_4px_rgba(255,102,0,0.3)]">${(userData?.walletBalance || 0).toFixed(2)}</span>
+                                                        <span className="text-slate-900 text-3xl font-black drop-shadow-[0_2px_4px_rgba(255,102,0,0.3)]">${(userData?.walletBalance || 0).toFixed(2)}</span>
                                                         <span className="text-white/20 text-xs font-black">USD</span>
                                                     </div>
                                                 </div>
@@ -1715,8 +1715,8 @@ export default function Profile() {
                                     <div className="absolute inset-0 bg-gradient-to-tr from-transparent via-white/5 to-white/10 pointer-events-none" />
                                 </div>
 
-                                <div className="bg-primary/5 p-4 rounded-2xl flex gap-3 text-primary border border-primary/10">
-                                    <Shield className="w-5 h-5 shrink-0 text-primary mt-0.5" />
+                                <div className="bg-primary/5 p-4 rounded-2xl flex gap-3 text-slate-900 border border-primary/10">
+                                    <Shield className="w-5 h-5 shrink-0 text-slate-900 mt-0.5" />
                                     <p className="text-xs font-bold leading-relaxed">Estos fondos son exclusivos para pagar tus viajes de <strong>Taxi</strong> y Moto. No aplican para compras de comida o tienda.</p>
                                 </div>
 
@@ -1730,26 +1730,26 @@ export default function Profile() {
                                             <div className="bg-slate-50 rounded-2xl p-4 border border-slate-100 relative group">
                                                 <div className="flex items-center gap-3 mb-3">
                                                     <div className="w-8 h-8 bg-primary/10 rounded-xl flex items-center justify-center">
-                                                        <Smartphone className="w-4 h-4 text-primary" />
+                                                        <Smartphone className="w-4 h-4 text-slate-900" />
                                                     </div>
                                                     <span className="font-black text-slate-800 text-sm italic">Pago Móvil (Bs)</span>
                                                 </div>
                                                 <div className="space-y-2 text-[12px] font-medium text-slate-600">
                                                     <div className="flex justify-between items-center bg-white p-2 rounded-xl">
                                                         <span>Banco: <strong>{paymentMethods.pagoMovil.bank}</strong></span>
-                                                        <button onClick={() => handleCopy(paymentMethods.pagoMovil.bank, 'bank')} className="p-1 hover:bg-slate-50 rounded text-primary">
+                                                        <button onClick={() => handleCopy(paymentMethods.pagoMovil.bank, 'bank')} className="p-1 hover:bg-slate-50 rounded text-slate-900">
                                                             {copiedId === 'bank' ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
                                                         </button>
                                                     </div>
                                                     <div className="flex justify-between items-center bg-white p-2 rounded-xl">
                                                         <span>Teléfono: <strong>{paymentMethods.pagoMovil.phone}</strong></span>
-                                                        <button onClick={() => handleCopy(paymentMethods.pagoMovil.phone, 'phone')} className="p-1 hover:bg-slate-50 rounded text-primary">
+                                                        <button onClick={() => handleCopy(paymentMethods.pagoMovil.phone, 'phone')} className="p-1 hover:bg-slate-50 rounded text-slate-900">
                                                             {copiedId === 'phone' ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
                                                         </button>
                                                     </div>
                                                     <div className="flex justify-between items-center bg-white p-2 rounded-xl">
                                                         <span>Cédula: <strong>{paymentMethods.pagoMovil.idf}</strong></span>
-                                                        <button onClick={() => handleCopy(paymentMethods.pagoMovil.idf, 'idf')} className="p-1 hover:bg-slate-50 rounded text-primary">
+                                                        <button onClick={() => handleCopy(paymentMethods.pagoMovil.idf, 'idf')} className="p-1 hover:bg-slate-50 rounded text-slate-900">
                                                             {copiedId === 'idf' ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
                                                         </button>
                                                     </div>
@@ -1828,7 +1828,7 @@ export default function Profile() {
                                     <button
                                         type="submit"
                                         disabled={isRecharging}
-                                        className="w-full bg-primary text-white py-5 rounded-[24px] font-black shadow-xl shadow-primary/30 hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-70 mt-2 flex items-center justify-center gap-2 uppercase tracking-[0.2em] text-sm"
+                                        className="w-full bg-primary text-slate-900 py-5 rounded-[24px] font-black shadow-xl shadow-primary/30 hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-70 mt-2 flex items-center justify-center gap-2 uppercase tracking-[0.2em] text-sm"
                                     >
                                         {isRecharging ? (
                                             <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>

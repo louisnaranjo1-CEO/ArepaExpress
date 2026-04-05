@@ -75,7 +75,7 @@ export default function Dashboard() {
     if (loading) {
         return (
             <div className="flex flex-col items-center justify-center min-h-[400px]">
-                <Loader2 className="w-10 h-10 text-primary animate-spin" />
+                <Loader2 className="w-10 h-10 text-slate-900 animate-spin" />
                 <p className="mt-4 text-slate-500 font-bold">Analizando rendimiento...</p>
             </div>
         );
@@ -106,10 +106,10 @@ export default function Dashboard() {
                 <div className="lg:col-span-2 bg-white rounded-[40px] p-8 border border-slate-100 shadow-sm">
                     <div className="flex justify-between items-center mb-8">
                         <h2 className="text-xl font-black text-slate-900 flex items-center gap-2">
-                            <Clock className="w-6 h-6 text-primary" />
+                            <Clock className="w-6 h-6 text-slate-900" />
                             Pedidos Recientes
                         </h2>
-                        <Link to="/orders" className="text-primary font-bold text-sm flex items-center gap-1 hover:underline">
+                        <Link to="/orders" className="text-slate-900 font-bold text-sm flex items-center gap-1 hover:underline">
                             Ver todos <ChevronRight className="w-4 h-4" />
                         </Link>
                     </div>
@@ -145,7 +145,7 @@ export default function Dashboard() {
                 {/* Popular Products Placeholder */}
                 <div className="bg-white rounded-[40px] p-8 border border-slate-100 shadow-sm">
                     <h2 className="text-xl font-black text-slate-900 mb-8 items-center gap-2 flex">
-                        <TrendingUp className="w-6 h-6 text-primary" />
+                        <TrendingUp className="w-6 h-6 text-slate-900" />
                         Populares
                     </h2>
                     <div className="space-y-6">

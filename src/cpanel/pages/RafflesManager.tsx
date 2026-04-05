@@ -91,14 +91,14 @@ export default function RafflesManager() {
             <div className="flex justify-between items-center mb-8">
                 <div>
                     <h1 className="text-3xl font-black text-slate-800 flex items-center gap-3">
-                        <Ticket className="w-8 h-8 text-primary" />
+                        <Ticket className="w-8 h-8 text-slate-900" />
                         Sorteos y Rifas
                     </h1>
                     <p className="text-slate-500 font-medium">Gestiona sorteos nacionales, regionales y locales</p>
                 </div>
                 <button
                     onClick={() => setShowAddModal(true)}
-                    className="bg-primary text-white px-6 py-3 rounded-2xl font-black shadow-lg shadow-primary/20 hover:scale-105 active:scale-95 transition-all flex items-center gap-2"
+                    className="bg-primary text-slate-900 px-6 py-3 rounded-2xl font-black shadow-lg shadow-primary/20 hover:scale-105 active:scale-95 transition-all flex items-center gap-2"
                 >
                     <Plus className="w-5 h-5" /> Nuevo Sorteo
                 </button>
@@ -228,7 +228,7 @@ export default function RafflesManager() {
 
                             <button
                                 onClick={handleAddRaffle}
-                                className="w-full bg-primary text-white py-4 rounded-2xl font-black shadow-lg shadow-primary/20 hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-2 mt-4"
+                                className="w-full bg-primary text-slate-900 py-4 rounded-2xl font-black shadow-lg shadow-primary/20 hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-2 mt-4"
                             >
                                 <Save className="w-5 h-5" /> Guardar Sorteo
                             </button>

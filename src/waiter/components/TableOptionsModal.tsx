@@ -86,7 +86,7 @@ export default function TableOptionsModal({
                         <div className="mb-6 bg-slate-50/80 rounded-3xl border border-slate-100 p-4 max-h-48 overflow-y-auto hide-scrollbar shrink-0">
                             <div className="flex items-center justify-between mb-3 px-1">
                                 <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Resumen de Consumo</span>
-                                <span className="text-[10px] font-black text-primary bg-primary/10 px-2 py-0.5 rounded-full">{consolidatedItems.length} items</span>
+                                <span className="text-[10px] font-black text-slate-900 bg-primary/10 px-2 py-0.5 rounded-full">{consolidatedItems.length} items</span>
                             </div>
                             <div className="space-y-2">
                                 {consolidatedItems.map((item, idx) => (
@@ -103,7 +103,7 @@ export default function TableOptionsModal({
                             </div>
                             <div className="mt-4 pt-3 border-t border-slate-200 flex justify-between items-center px-1">
                                 <span className="text-sm font-black text-slate-800">Total Acumulado</span>
-                                <span className="text-lg font-black text-primary">${subtotal.toFixed(2)}</span>
+                                <span className="text-lg font-black text-slate-900">${subtotal.toFixed(2)}</span>
                             </div>
                         </div>
                     )}
@@ -114,10 +114,10 @@ export default function TableOptionsModal({
                             onClick={onAddOrder}
                             className="flex flex-col items-center justify-center p-5 bg-white border-2 border-slate-100 rounded-3xl hover:border-primary hover:shadow-lg hover:shadow-primary/10 transition-all group"
                         >
-                            <div className="w-12 h-12 bg-slate-50 text-slate-400 rounded-2xl flex items-center justify-center mb-3 group-hover:bg-primary group-hover:text-white transition-colors">
+                            <div className="w-12 h-12 bg-slate-50 text-slate-400 rounded-2xl flex items-center justify-center mb-3 group-hover:bg-primary group-hover:text-slate-900 transition-colors">
                                 <Plus className="w-6 h-6" />
                             </div>
-                            <span className="text-sm font-black text-slate-700 group-hover:text-primary transition-colors text-center leading-tight">Agregar Pedido</span>
+                            <span className="text-sm font-black text-slate-700 group-hover:text-slate-900 transition-colors text-center leading-tight">Agregar Pedido</span>
                         </button>
 
                         <button

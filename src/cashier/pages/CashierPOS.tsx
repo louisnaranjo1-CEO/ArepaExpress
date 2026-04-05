@@ -457,7 +457,7 @@ export default function CashierPOS() {
     };
 
     if (loading) {
-        return <div className="min-h-screen bg-slate-50 flex items-center justify-center"><Loader2 className="w-8 h-8 animate-spin text-primary" /></div>;
+        return <div className="min-h-screen bg-slate-50 flex items-center justify-center"><Loader2 className="w-8 h-8 animate-spin text-slate-900" /></div>;
     }
 
     return (
@@ -554,7 +554,7 @@ export default function CashierPOS() {
 
                     <button 
                         onClick={() => setShowReviewsModal(true)}
-                        className="flex items-center gap-2 bg-primary/10 hover:bg-primary/20 text-primary px-4 py-1.5 rounded-xl border border-primary/20 transition-all group"
+                        className="flex items-center gap-2 bg-primary/10 hover:bg-primary/20 text-slate-900 px-4 py-1.5 rounded-xl border border-primary/20 transition-all group"
                     >
                         <MessageSquare className="w-4 h-4 group-hover:scale-110 transition-transform" />
                         <span className="text-xs font-black uppercase tracking-wider">Reseñas</span>
@@ -609,7 +609,7 @@ export default function CashierPOS() {
                                 key={cat}
                                 onClick={() => setActiveCategory(cat)}
                                 className={`px-5 py-2.5 rounded-2xl text-[10px] font-black whitespace-nowrap transition-all uppercase tracking-wider border ${
-                                    activeCategory === cat ? 'bg-primary text-white border-primary shadow-lg shadow-primary/20 scale-105' : 'bg-white text-slate-500 border-slate-200 hover:border-primary/30'
+                                    activeCategory === cat ? 'bg-primary text-slate-900 border-primary shadow-lg shadow-primary/20 scale-105' : 'bg-white text-slate-500 border-slate-200 hover:border-primary/30'
                                 }`}
                             >
                                 {cat}
@@ -635,7 +635,7 @@ export default function CashierPOS() {
                                     >
                                         <div className="w-full aspect-square bg-slate-50 rounded-2xl mb-4 overflow-hidden relative">
                                             {product.image && <img src={product.image} alt="" className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" />}
-                                            <div className="absolute top-3 right-3 w-10 h-10 bg-white/90 backdrop-blur-sm text-primary rounded-2xl flex items-center justify-center shadow-lg transform translate-y-2 opacity-0 group-hover:translate-y-0 group-hover:opacity-100 transition-all">
+                                            <div className="absolute top-3 right-3 w-10 h-10 bg-white/90 backdrop-blur-sm text-slate-900 rounded-2xl flex items-center justify-center shadow-lg transform translate-y-2 opacity-0 group-hover:translate-y-0 group-hover:opacity-100 transition-all">
                                                 <Plus className="w-6 h-6" />
                                             </div>
                                             {product.isAvailable === false && (
@@ -650,10 +650,10 @@ export default function CashierPOS() {
                                         </div>
                                         <div className="flex items-center justify-between pt-2 border-t border-slate-50">
                                             <div className="flex flex-col">
-                                                {hasVariants && <span className="text-[8px] font-black text-primary uppercase tracking-widest leading-none mb-1">Desde</span>}
+                                                {hasVariants && <span className="text-[8px] font-black text-slate-900 uppercase tracking-widest leading-none mb-1">Desde</span>}
                                                 <span className="text-xl font-black text-slate-900 leading-none">${displayPrice.toFixed(2)}</span>
                                             </div>
-                                            <div className="w-8 h-8 rounded-xl bg-slate-50 flex items-center justify-center text-slate-400 group-hover:bg-primary group-hover:text-white transition-all">
+                                            <div className="w-8 h-8 rounded-xl bg-slate-50 flex items-center justify-center text-slate-400 group-hover:bg-primary group-hover:text-slate-900 transition-all">
                                                 <Plus className="w-4 h-4" />
                                             </div>
                                         </div>
@@ -688,10 +688,10 @@ export default function CashierPOS() {
                                             {product.description && <p className="text-xs text-slate-400 line-clamp-1 mt-1 font-medium">{product.description}</p>}
                                         </div>
                                         <div className="text-right shrink-0 px-4 border-l border-slate-50">
-                                            {hasVariants && <div className="text-[8px] font-black text-primary uppercase tracking-widest mb-1 text-right">Desde</div>}
+                                            {hasVariants && <div className="text-[8px] font-black text-slate-900 uppercase tracking-widest mb-1 text-right">Desde</div>}
                                             <div className="text-2xl font-black text-slate-900 leading-none">${displayPrice.toFixed(2)}</div>
                                         </div>
-                                        <div className="w-12 h-12 rounded-2xl bg-slate-50 flex items-center justify-center text-slate-400 group-hover:bg-primary group-hover:text-white transition-all shrink-0">
+                                        <div className="w-12 h-12 rounded-2xl bg-slate-50 flex items-center justify-center text-slate-400 group-hover:bg-primary group-hover:text-slate-900 transition-all shrink-0">
                                             <Plus className="w-6 h-6" />
                                         </div>
                                     </motion.div>
@@ -709,7 +709,7 @@ export default function CashierPOS() {
                             <p className="text-sm font-bold text-slate-400 mt-1">Intenta con otro nombre o categoría</p>
                             <button 
                                 onClick={() => { setSearchTerm(''); setActiveCategory('Todos'); }}
-                                className="mt-8 px-8 py-3 bg-primary text-white font-black rounded-2xl hover:scale-105 active:scale-95 transition-all shadow-xl shadow-primary/20 uppercase text-xs tracking-widest"
+                                className="mt-8 px-8 py-3 bg-primary text-slate-900 font-black rounded-2xl hover:scale-105 active:scale-95 transition-all shadow-xl shadow-primary/20 uppercase text-xs tracking-widest"
                             >
                                 Ver todos los productos
                             </button>
@@ -721,7 +721,7 @@ export default function CashierPOS() {
             {/* Cart Panel */}
             <div className="w-full md:w-[400px] h-full bg-slate-50 flex flex-col shadow-[-10px_0_30px_-5px_rgba(0,0,0,0.05)] shrink-0 z-10">
                 <div className="p-6 bg-white border-b border-slate-200 flex items-center gap-4 shrink-0">
-                    <div className="w-12 h-12 bg-primary text-white rounded-[1.25rem] flex items-center justify-center shadow-lg shadow-primary/20">
+                    <div className="w-12 h-12 bg-primary text-slate-900 rounded-[1.25rem] flex items-center justify-center shadow-lg shadow-primary/20">
                         <ShoppingBag className="w-6 h-6" />
                     </div>
                     <div>
@@ -746,7 +746,7 @@ export default function CashierPOS() {
                                 <div className="flex-1 min-w-0 pr-2">
                                     <h4 className="text-[13px] font-black text-slate-900 leading-tight mb-0.5">{item.name}</h4>
                                     <div className="flex items-center gap-2">
-                                        <span className="text-sm font-black text-primary">${item.price.toFixed(2)}</span>
+                                        <span className="text-sm font-black text-slate-900">${item.price.toFixed(2)}</span>
                                         {item.notes && <div className="flex items-center gap-1 text-[9px] font-bold text-amber-500 bg-amber-50 px-1.5 py-0.5 rounded-md"><MessageSquare className="w-2.5 h-2.5" /> Nota</div>}
                                         {item.printed && <div className="text-[8px] font-black uppercase text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded-md">Impreso</div>}
                                     </div>
@@ -756,7 +756,7 @@ export default function CashierPOS() {
                                         {item.quantity === 1 ? <Trash2 className="w-4.5 h-4.5" /> : <Minus className="w-4.5 h-4.5" />}
                                     </button>
                                     <span className="w-6 text-center font-black text-slate-900 text-sm">{item.quantity}</span>
-                                    <button onClick={() => updateQuantity(item.id, 1)} className="w-8 h-8 flex items-center justify-center text-slate-400 hover:text-primary hover:bg-primary/5 rounded-xl transition-all">
+                                    <button onClick={() => updateQuantity(item.id, 1)} className="w-8 h-8 flex items-center justify-center text-slate-400 hover:text-slate-900 hover:bg-primary/5 rounded-xl transition-all">
                                         <Plus className="w-4.5 h-4.5" />
                                     </button>
                                 </div>
@@ -783,7 +783,7 @@ export default function CashierPOS() {
                     <button
                         onClick={handleSaveOrderPlan}
                         disabled={cartItems.length === 0 || isSubmitting}
-                        className="w-full bg-primary text-white py-5 rounded-[2rem] font-black text-lg shadow-2xl shadow-primary/30 hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-50 flex items-center justify-center gap-3 group"
+                        className="w-full bg-primary text-slate-900 py-5 rounded-[2rem] font-black text-lg shadow-2xl shadow-primary/30 hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-50 flex items-center justify-center gap-3 group"
                     >
                         {isSubmitting ? <Loader2 className="w-6 h-6 animate-spin" /> : 
                         (activeOrder || orderId) ? "Actualizar y Procesar" : <><Plus className="w-6 h-6 group-hover:rotate-90 transition-transform" /> Procesar Pedido</>}
@@ -811,7 +811,7 @@ export default function CashierPOS() {
                                     <X className="w-6 h-6" />
                                 </button>
                                 <div className="absolute top-4 left-4">
-                                    <div className="bg-primary px-4 py-1.5 rounded-2xl text-[10px] font-black text-white uppercase tracking-widest shadow-lg">Detalles de Orden</div>
+                                    <div className="bg-primary px-4 py-1.5 rounded-2xl text-[10px] font-black text-slate-900 uppercase tracking-widest shadow-lg">Detalles de Orden</div>
                                 </div>
                             </div>
 
@@ -823,7 +823,7 @@ export default function CashierPOS() {
                                 {selectedProduct.variants && selectedProduct.variants.length > 0 && (
                                     <div className="mb-8 p-6 bg-slate-50 rounded-[2rem] border border-slate-100">
                                         <div className="flex items-center gap-2 mb-4">
-                                            <Tag className="w-4 h-4 text-primary" />
+                                            <Tag className="w-4 h-4 text-slate-900" />
                                             <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest">Selecciona Presentación</h4>
                                         </div>
                                         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -835,7 +835,7 @@ export default function CashierPOS() {
                                                         selectedVariant === v ? 'border-primary bg-white shadow-xl shadow-primary/10' : 'border-white bg-white/50 hover:bg-white text-slate-500'
                                                     }`}
                                                 >
-                                                    <span className={`text-[10px] font-black uppercase tracking-widest mb-1 ${selectedVariant === v ? 'text-primary' : 'text-slate-400'}`}>{v.name}</span>
+                                                    <span className={`text-[10px] font-black uppercase tracking-widest mb-1 ${selectedVariant === v ? 'text-slate-900' : 'text-slate-400'}`}>{v.name}</span>
                                                     <span className={`text-lg font-black ${selectedVariant === v ? 'text-slate-900' : 'text-slate-700'}`}>${v.price.toFixed(2)}</span>
                                                 </button>
                                             ))}
@@ -863,7 +863,7 @@ export default function CashierPOS() {
                                 <button onClick={() => setSelectedProduct(null)} className="flex-1 py-5 rounded-[2rem] font-black text-slate-500 hover:bg-slate-100 transition-colors">Cerrar</button>
                                 <button
                                     onClick={confirmAddToCart}
-                                    className="flex-[2] bg-primary text-white py-5 rounded-[2rem] font-black shadow-xl shadow-primary/20 hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-2"
+                                    className="flex-[2] bg-primary text-slate-900 py-5 rounded-[2rem] font-black shadow-xl shadow-primary/20 hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-2"
                                 >
                                     <Plus className="w-6 h-6" /> Agregar al Pedido
                                 </button>
@@ -887,7 +887,7 @@ export default function CashierPOS() {
                         <div className="bg-slate-50 p-6 rounded-[2rem] mb-8 flex flex-col border border-slate-100">
                             <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Total Neto</span>
                             <div className="flex items-baseline gap-2">
-                                <span className="text-4xl font-black text-primary leading-none">${total.toFixed(2)}</span>
+                                <span className="text-4xl font-black text-slate-900 leading-none">${total.toFixed(2)}</span>
                                 {paymentStatus === 'pending' && <span className="text-[10px] font-black text-amber-500 uppercase">Pendiente</span>}
                             </div>
                         </div>
@@ -898,7 +898,7 @@ export default function CashierPOS() {
                                 <button 
                                     onClick={() => setPaymentStatus('sold')}
                                     className={`flex-1 py-3 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all ${
-                                        paymentStatus === 'sold' ? 'bg-primary text-white shadow-lg shadow-primary/20' : 'text-slate-400'
+                                        paymentStatus === 'sold' ? 'bg-primary text-slate-900 shadow-lg shadow-primary/20' : 'text-slate-400'
                                     }`}
                                 >
                                     Ya Pagó
@@ -923,7 +923,7 @@ export default function CashierPOS() {
                                             key={method}
                                             onClick={() => setPaymentMethod(method)}
                                             className={`w-full px-4 py-4 rounded-2xl text-xs font-black transition-all border-2 flex items-center justify-center uppercase tracking-wider ${
-                                                paymentMethod === method ? 'border-primary bg-primary/5 text-primary shadow-lg shadow-primary/5' : 'border-slate-50 bg-slate-50 text-slate-500 hover:border-slate-200'
+                                                paymentMethod === method ? 'border-primary bg-primary/5 text-slate-900 shadow-lg shadow-primary/5' : 'border-slate-50 bg-slate-50 text-slate-500 hover:border-slate-200'
                                             }`}
                                         >
                                             {method}
@@ -939,9 +939,9 @@ export default function CashierPOS() {
                                     type="checkbox"
                                     checked={isDelivery}
                                     onChange={(e) => setIsDelivery(e.target.checked)}
-                                    className="w-5 h-5 text-primary bg-slate-100 border-slate-200 rounded-lg focus:ring-primary focus:ring-2"
+                                    className="w-5 h-5 text-slate-900 bg-slate-100 border-slate-200 rounded-lg focus:ring-primary focus:ring-2"
                                 />
-                                <span className="text-sm font-black text-slate-700 uppercase tracking-tight group-hover:text-primary transition-colors">Enviar por Delivery</span>
+                                <span className="text-sm font-black text-slate-700 uppercase tracking-tight group-hover:text-slate-900 transition-colors">Enviar por Delivery</span>
                             </label>
 
                             {isDelivery && (
@@ -951,17 +951,17 @@ export default function CashierPOS() {
                                          <div className="bg-slate-50 p-4 border border-slate-200 rounded-2xl flex justify-between items-center group mb-4">
                                              <div className="flex-1">
                                                 <div className="flex items-center gap-2 mb-1">
-                                                    <MapPin className="w-4 h-4 text-primary" />
+                                                    <MapPin className="w-4 h-4 text-slate-900" />
                                                     <p className="font-bold text-slate-900 leading-none">{selectedAddress.name}</p>
                                                 </div>
                                                 <p className="text-xs text-slate-500 font-medium pl-6 leading-tight">
                                                     <span className="font-bold text-slate-400">Ref:</span> {selectedAddress.reference || "Sin referencia adicional"}
                                                 </p>
                                              </div>
-                                             <button onClick={() => setShowMapPicker(true)} className="text-primary text-[10px] font-black uppercase tracking-widest pl-4 hover:underline">Cambiar</button>
+                                             <button onClick={() => setShowMapPicker(true)} className="text-slate-900 text-[10px] font-black uppercase tracking-widest pl-4 hover:underline">Cambiar</button>
                                          </div>
                                      ) : (
-                                         <button onClick={() => setShowMapPicker(true)} className="w-full flex items-center justify-center gap-2 py-4 bg-primary/10 text-primary rounded-2xl font-black border border-primary/20 hover:bg-primary/20 transition-all mb-4">
+                                         <button onClick={() => setShowMapPicker(true)} className="w-full flex items-center justify-center gap-2 py-4 bg-primary/10 text-slate-900 rounded-2xl font-black border border-primary/20 hover:bg-primary/20 transition-all mb-4">
                                              <MapPin className="w-4 h-4" />
                                              Ubicar en el Mapa
                                          </button>
@@ -1069,7 +1069,7 @@ export default function CashierPOS() {
                                 </button>
                                 <button
                                     onClick={handlePrintedCommand}
-                                    className="flex-[2] bg-primary text-white py-6 rounded-3xl font-black shadow-2xl shadow-primary/30 hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-3 uppercase text-xs tracking-widest"
+                                    className="flex-[2] bg-primary text-slate-900 py-6 rounded-3xl font-black shadow-2xl shadow-primary/30 hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-3 uppercase text-xs tracking-widest"
                                 >
                                     {isSubmitting ? <Loader2 className="w-6 h-6 animate-spin" /> : <><Truck className="w-6 h-6" /> Mandar a Producción</>}
                                 </button>
@@ -1105,8 +1105,8 @@ export default function CashierPOS() {
                                         !selectedTable ? 'border-primary bg-primary/5 shadow-lg shadow-primary/5' : 'border-slate-50 bg-slate-50 hover:border-slate-200'
                                     }`}
                                 >
-                                    <ShoppingBag className={`w-8 h-8 ${!selectedTable ? 'text-primary' : 'text-slate-300'}`} />
-                                    <span className={`text-[10px] font-black uppercase tracking-widest ${!selectedTable ? 'text-primary' : 'text-slate-500'}`}>Para Llevar</span>
+                                    <ShoppingBag className={`w-8 h-8 ${!selectedTable ? 'text-slate-900' : 'text-slate-300'}`} />
+                                    <span className={`text-[10px] font-black uppercase tracking-widest ${!selectedTable ? 'text-slate-900' : 'text-slate-500'}`}>Para Llevar</span>
                                 </button>
                                 
                                 {tables.map((table) => (
@@ -1118,11 +1118,11 @@ export default function CashierPOS() {
                                         }`}
                                     >
                                         <div className={`w-8 h-8 rounded-xl flex items-center justify-center font-black text-xl transition-all ${
-                                            selectedTable?.id === table.id ? 'bg-primary text-white' : 'bg-slate-200 text-slate-400'
+                                            selectedTable?.id === table.id ? 'bg-primary text-slate-900' : 'bg-slate-200 text-slate-400'
                                         }`}>
                                             {table.number.slice(0, 2)}
                                         </div>
-                                        <span className={`text-[10px] font-black uppercase tracking-widest ${selectedTable?.id === table.id ? 'text-primary' : 'text-slate-500'}`}>
+                                        <span className={`text-[10px] font-black uppercase tracking-widest ${selectedTable?.id === table.id ? 'text-slate-900' : 'text-slate-500'}`}>
                                             Mesa {table.number}
                                         </span>
                                     </button>
@@ -1146,7 +1146,7 @@ export default function CashierPOS() {
                         <div className="flex justify-between items-center mb-6">
                             <div className="flex items-center gap-3">
                                 <div className="w-10 h-10 bg-primary/10 rounded-xl flex items-center justify-center">
-                                    <Clock className="w-6 h-6 text-primary" />
+                                    <Clock className="w-6 h-6 text-slate-900" />
                                 </div>
                                 <h3 className="text-xl font-black text-slate-900">Horario de Trabajo</h3>
                             </div>
@@ -1158,7 +1158,7 @@ export default function CashierPOS() {
                         <div className="space-y-3">
                             {restaurant?.workingHours?.map((day: any, i: number) => (
                                 <div key={i} className={`flex justify-between items-center p-3 rounded-2xl ${day.day === (['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'][new Date().getDay()]) ? 'bg-primary/5 border border-primary/10 ring-1 ring-primary/20' : 'bg-slate-50'}`}>
-                                    <span className={`font-bold ${day.day === (['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'][new Date().getDay()]) ? 'text-primary' : 'text-slate-600'}`}>{day.day}</span>
+                                    <span className={`font-bold ${day.day === (['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'][new Date().getDay()]) ? 'text-slate-900' : 'text-slate-600'}`}>{day.day}</span>
                                     {day.closed ? (
                                         <span className="text-xs font-black text-red-400 uppercase tracking-widest">Cerrado</span>
                                     ) : (

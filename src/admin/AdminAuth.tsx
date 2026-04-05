@@ -64,12 +64,12 @@ export default function AdminAuth() {
                         className="flex items-center justify-center h-24 mb-6 hover:rotate-2 transition-transform duration-500 cursor-pointer active:scale-95"
                     >
                         <img 
-                            src="https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/otro.png?alt=media" 
-                            alt="Un 2x3 Logo" 
+                            src="https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/logo.png?alt=media&token=8acf92ec-b853-4f37-bd82-a4f651bbdcd9" 
+                            alt="Deliexpress Logo" 
                             className="h-full object-contain"
                         />
                     </div>
-                    <h1 className="text-4xl font-black text-slate-900 tracking-tight">Un 2x3 <span className="text-primary">Admin</span></h1>
+                    <h1 className="text-4xl font-black text-slate-900 tracking-tight">Deliexpress <span className="text-slate-900">Admin</span></h1>
                     <p className="text-slate-500 mt-2 font-medium">
                         {isLogin ? 'Ingresa para gestionar tu restaurante' : 'Registra tu negocio y empieza a vender'}
                     </p>
@@ -137,7 +137,7 @@ export default function AdminAuth() {
                         <button
                             type="submit"
                             disabled={loading}
-                            className="w-full bg-primary text-white py-4 rounded-2xl font-black shadow-xl shadow-primary/30 hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-70 disabled:hover:scale-100 flex items-center justify-center gap-2 group mt-6"
+                            className="w-full bg-primary text-slate-900 py-4 rounded-2xl font-black shadow-xl shadow-primary/30 hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-70 disabled:hover:scale-100 flex items-center justify-center gap-2 group mt-6"
                         >
                             {loading ? (
                                 <div className="w-6 h-6 border-3 border-white border-t-transparent rounded-full animate-spin"></div>
@@ -187,7 +187,7 @@ export default function AdminAuth() {
                         <div className="w-full h-px bg-slate-100 hidden"></div>
                         <button
                             onClick={() => setIsLogin(!isLogin)}
-                            className="text-slate-500 font-bold hover:text-primary transition-colors flex items-center gap-2"
+                            className="text-slate-500 font-bold hover:text-slate-900 transition-colors flex items-center gap-2"
                         >
                             {isLogin ? (
                                 <>
@@ -205,7 +205,7 @@ export default function AdminAuth() {
                 </div>
 
                 <p className="text-center text-slate-400 text-xs mt-8 font-medium uppercase tracking-widest leading-relaxed">
-                    Al continuar, aceptas los términos de servicio<br />y políticas de privacidad de Un 2x3.
+                    Al continuar, aceptas los términos de servicio<br />y políticas de privacidad de Deliexpress.
                 </p>
             </div>
         </div>

@@ -102,7 +102,7 @@ export default function Clients() {
     if (loading) {
         return (
             <div className="flex flex-col items-center justify-center min-h-[400px]">
-                <Loader2 className="w-10 h-10 text-primary animate-spin" />
+                <Loader2 className="w-10 h-10 text-slate-900 animate-spin" />
                 <p className="mt-4 text-slate-500 font-bold">Cargando clientes...</p>
             </div>
         );
@@ -155,11 +155,11 @@ export default function Clients() {
                                             <h3 className="font-black text-slate-900 truncate">{client.name}</h3>
                                             <div className="flex items-center gap-2">
                                                 <p className="text-xs text-slate-400 font-bold uppercase tracking-wider">{client.totalOrders} pedidos</p>
-                                                <span className="text-[10px] text-primary font-black">•</span>
+                                                <span className="text-[10px] text-slate-900 font-black">•</span>
                                                 <p className="text-xs text-indigo-500 font-black tracking-tight">{client.points} Pts</p>
                                             </div>
                                         </div>
-                                        <ChevronRight className={`w-5 h-5 text-slate-300 transition-transform ${selectedClient?.id === client.id ? 'translate-x-1 text-primary' : ''}`} />
+                                        <ChevronRight className={`w-5 h-5 text-slate-300 transition-transform ${selectedClient?.id === client.id ? 'translate-x-1 text-slate-900' : ''}`} />
                                     </button>
                                 ))}
                             </div>
@@ -239,7 +239,7 @@ export default function Clients() {
                                 {/* Last Order */}
                                 <div className="space-y-4">
                                     <h3 className="text-sm font-black text-slate-900 uppercase tracking-widest flex items-center gap-2">
-                                        <Calendar className="w-4 h-4 text-primary" /> Último Pedido
+                                        <Calendar className="w-4 h-4 text-slate-900" /> Último Pedido
                                     </h3>
                                     <div className="bg-slate-50 p-4 rounded-2xl flex items-center justify-between">
                                         <div>

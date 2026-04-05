@@ -82,7 +82,7 @@ export default function ProductTicker({ restaurantId }: ProductTickerProps) {
                                 </div>
                             )}
                             <div className="flex flex-col">
-                                <span className="text-[11px] font-black text-white/90 uppercase tracking-tight leading-none mb-1 group-hover:text-primary transition-colors">
+                                <span className="text-[11px] font-black text-white/90 uppercase tracking-tight leading-none mb-1 group-hover:text-slate-900 transition-colors">
                                     {product.name}
                                 </span>
                                 <div className="flex items-center gap-2">

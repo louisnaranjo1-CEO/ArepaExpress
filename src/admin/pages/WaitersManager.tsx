@@ -210,7 +210,7 @@ export default function WaitersManager() {
     if (loading) {
         return (
             <div className="flex flex-col items-center justify-center min-h-[400px]">
-                <Loader2 className="w-10 h-10 text-primary animate-spin" />
+                <Loader2 className="w-10 h-10 text-slate-900 animate-spin" />
                 <p className="mt-4 text-slate-500 font-bold">Cargando meseros...</p>
             </div>
         );
@@ -229,7 +229,7 @@ export default function WaitersManager() {
                         setPhotoPreview(null);
                         setPhotoFile(null);
                     }}
-                    className="bg-primary text-white px-6 py-3 rounded-2xl font-black shadow-lg shadow-primary/20 flex items-center gap-2 hover:scale-[1.02] active:scale-[0.98] transition-all"
+                    className="bg-primary text-slate-900 px-6 py-3 rounded-2xl font-black shadow-lg shadow-primary/20 flex items-center gap-2 hover:scale-[1.02] active:scale-[0.98] transition-all"
                 >
                     <Plus className="w-5 h-5" />
                     Nuevo Mesero
@@ -257,7 +257,7 @@ export default function WaitersManager() {
                                     {photoPreview ? (
                                         <img src={photoPreview} alt="Preview" className="w-full h-full object-cover" />
                                     ) : (
-                                        <Camera className="w-8 h-8 text-slate-300 group-hover:text-primary transition-colors" />
+                                        <Camera className="w-8 h-8 text-slate-300 group-hover:text-slate-900 transition-colors" />
                                     )}
                                     <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
                                         <span className="text-white text-[10px] font-bold uppercase">Subir Foto</span>
@@ -332,7 +332,7 @@ export default function WaitersManager() {
                             <button
                                 type="submit"
                                 disabled={isSaving}
-                                className="w-full bg-primary text-white py-4 rounded-2xl font-black shadow-xl shadow-primary/20 flex items-center justify-center gap-2 disabled:opacity-50 mt-4"
+                                className="w-full bg-primary text-slate-900 py-4 rounded-2xl font-black shadow-xl shadow-primary/20 flex items-center justify-center gap-2 disabled:opacity-50 mt-4"
                             >
                                 {isSaving ? <Loader2 className="w-5 h-5 animate-spin" /> : <Save className="w-5 h-5" />}
                                 Guardar Mesero
@@ -363,7 +363,7 @@ export default function WaitersManager() {
                                     {photoPreview ? (
                                         <img src={photoPreview} alt="Preview" className="w-full h-full object-cover" />
                                     ) : (
-                                        <Camera className="w-8 h-8 text-slate-300 group-hover:text-primary transition-colors" />
+                                        <Camera className="w-8 h-8 text-slate-300 group-hover:text-slate-900 transition-colors" />
                                     )}
                                     <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
                                         <span className="text-white text-[10px] font-bold uppercase">Cambiar Foto</span>
@@ -420,7 +420,7 @@ export default function WaitersManager() {
                                         <button
                                             type="button"
                                             onClick={() => setShowPassword(!showPassword)}
-                                            className="absolute right-4 top-1/2 -translate-y-1/2 text-[10px] font-black uppercase text-primary"
+                                            className="absolute right-4 top-1/2 -translate-y-1/2 text-[10px] font-black uppercase text-slate-900"
                                         >
                                             {showPassword ? "Ocultar" : "Ver"}
                                         </button>
@@ -442,7 +442,7 @@ export default function WaitersManager() {
                             <button
                                 type="submit"
                                 disabled={isSaving}
-                                className="w-full bg-primary text-white py-4 rounded-2xl font-black shadow-xl shadow-primary/20 flex items-center justify-center gap-2 disabled:opacity-50 mt-4"
+                                className="w-full bg-primary text-slate-900 py-4 rounded-2xl font-black shadow-xl shadow-primary/20 flex items-center justify-center gap-2 disabled:opacity-50 mt-4"
                             >
                                 {isSaving ? <Loader2 className="w-5 h-5 animate-spin" /> : <Save className="w-5 h-5" />}
                                 Guardar Cambios
@@ -479,7 +479,7 @@ export default function WaitersManager() {
                                             {waiter.photoUrl ? (
                                                 <img src={waiter.photoUrl} alt={waiter.name} className="w-10 h-10 rounded-full object-cover" />
                                             ) : (
-                                                <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center text-primary">
+                                                <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center text-slate-900">
                                                     <User className="w-6 h-6" />
                                                 </div>
                                             )}
@@ -507,7 +507,7 @@ export default function WaitersManager() {
                                         <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
                                             <button
                                                 onClick={() => startEditing(waiter)}
-                                                className="p-2 text-slate-400 hover:text-primary hover:bg-primary/5 rounded-lg transition-colors"
+                                                className="p-2 text-slate-400 hover:text-slate-900 hover:bg-primary/5 rounded-lg transition-colors"
                                             >
                                                 <Edit2 className="w-5 h-5" />
                                             </button>

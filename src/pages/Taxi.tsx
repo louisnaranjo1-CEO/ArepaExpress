@@ -509,7 +509,7 @@ export default function Taxi() {
         if (selectedPaymentMethod === 'wallet') {
             const currentBalance = userData?.walletBalance || 0;
             if (currentBalance < parseFloat(clientTotal as string)) {
-                toast.error("Saldo insuficiente en tu Billetera Un 2x3. Por favor recarga o selecciona otro método.");
+                toast.error("Saldo insuficiente en tu Billetera Deliexpress. Por favor recarga o selecciona otro método.");
                 return;
             }
         } else if (selectedPaymentMethod !== 'cash' && selectedPaymentMethod !== 'wallet' && !paymentProof && !paymentRef) {
@@ -625,7 +625,7 @@ export default function Taxi() {
     const CopyButton = ({ text, id }: { text: string, id: string }) => (
         <button 
             onClick={() => handleCopy(text, id)}
-            className="p-1.5 hover:bg-slate-200 rounded-lg transition-colors text-slate-400 hover:text-primary active:scale-95"
+            className="p-1.5 hover:bg-slate-200 rounded-lg transition-colors text-slate-400 hover:text-slate-900 active:scale-95"
             title="Copiar"
         >
             {copiedField === id ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}
@@ -649,8 +649,8 @@ export default function Taxi() {
                     <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-64 h-64 bg-primary/20 rounded-full blur-3xl animate-pulse"></div>
                     <div className="relative z-10 animate-scale-in cursor-pointer active:scale-95 transition-transform" onClick={() => window.location.href = 'https://deliexpress.app'}>
                         <img
-                            src="https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/otro.png?alt=media"
-                            alt="Un 2x3 Logo"
+                            src="https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/logo.png?alt=media&token=8acf92ec-b853-4f37-bd82-a4f651bbdcd9"
+                            alt="Deliexpress Logo"
                             className="w-56 h-auto object-contain filter drop-shadow-2xl"
                         />
                     </div>
@@ -670,7 +670,7 @@ export default function Taxi() {
                         <div className="w-2.5 h-2.5 bg-primary rounded-full animate-bounce [animation-delay:-0.15s]"></div>
                         <div className="w-2.5 h-2.5 bg-primary rounded-full animate-bounce"></div>
                     </div>
-                    <span className="text-[10px] font-black uppercase text-slate-400 tracking-[0.2em]">Taxi Un 2x3</span>
+                    <span className="text-[10px] font-black uppercase text-slate-400 tracking-[0.2em]">Taxi Deliexpress</span>
                 </div>
             </div>
         );
@@ -926,9 +926,9 @@ export default function Taxi() {
 
                                 {isScheduled && (
                                     <div className="bg-primary/5 border border-primary/20 rounded-2xl p-4 mb-4 animate-in zoom-in-95">
-                                        <label className="block text-[10px] font-black uppercase text-primary mb-2 tracking-widest">Fecha y Hora de Reserva</label>
+                                        <label className="block text-[10px] font-black uppercase text-slate-900 mb-2 tracking-widest">Fecha y Hora de Reserva</label>
                                         <div className="relative">
-                                            <Calendar className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-primary pointer-events-none" />
+                                            <Calendar className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-900 pointer-events-none" />
                                             <input 
                                                 type="datetime-local" 
                                                 value={scheduledDateTime}
@@ -981,7 +981,7 @@ export default function Taxi() {
                                         onClick={() => setVehicleType('moto')}
                                         className={`w-full p-4 rounded-2xl border-2 transition-all flex items-center gap-4 text-left ${vehicleType === 'moto' ? 'border-primary bg-primary/5' : 'border-slate-100 bg-white'}`}
                                     >
-                                        <div className="w-12 h-12 bg-primary/10 rounded-full flex items-center justify-center text-primary flex-shrink-0">
+                                        <div className="w-12 h-12 bg-primary/10 rounded-full flex items-center justify-center text-slate-900 flex-shrink-0">
                                             <Bike className="w-6 h-6" />
                                         </div>
                                         <div className="flex-1">
@@ -1069,7 +1069,7 @@ export default function Taxi() {
                                 <div className="flex justify-center p-4"><div className="w-6 h-6 border-2 border-orange-500 border-t-transparent rounded-full animate-spin"></div></div>
                             ) : (
                                 <div className="space-y-4 mb-6">
-                                    {/* Billetera Un 2x3 */}
+                                    {/* Billetera Deliexpress */}
                                     <div className={`border-2 rounded-2xl overflow-hidden transition-all ${selectedPaymentMethod === 'wallet' ? 'border-primary bg-primary/5' : 'border-slate-100'}`}>
                                         <button
                                             onClick={() => setSelectedPaymentMethod('wallet')}
@@ -1081,8 +1081,8 @@ export default function Taxi() {
                                                 </div>
                                                 <div className="flex flex-col items-start gap-1">
                                                     <span className="font-bold text-slate-700 flex items-center gap-2">
-                                                        <Wallet className="w-4 h-4 text-primary" />
-                                                        Mi Billetera Un 2x3
+                                                        <Wallet className="w-4 h-4 text-slate-900" />
+                                                        Mi Billetera Deliexpress
                                                     </span>
                                                     <span className="text-[10px] bg-emerald-100 text-emerald-700 font-bold px-2 py-0.5 rounded-full">
                                                         Saldo: ${(userData?.walletBalance || 0).toFixed(2)}
@@ -1148,7 +1148,7 @@ export default function Taxi() {
                                                             />
                                                             <label
                                                                 htmlFor="pagoMovilProof"
-                                                                className={`w-full flex items-center justify-center gap-3 p-4 rounded-2xl border-2 border-dashed transition-all cursor-pointer ${paymentProof ? 'bg-emerald-50 border-emerald-500 text-emerald-700' : 'bg-slate-50 border-slate-200 text-slate-500 hover:border-primary hover:bg-primary/5 hover:text-primary'}`}
+                                                                className={`w-full flex items-center justify-center gap-3 p-4 rounded-2xl border-2 border-dashed transition-all cursor-pointer ${paymentProof ? 'bg-emerald-50 border-emerald-500 text-emerald-700' : 'bg-slate-50 border-slate-200 text-slate-500 hover:border-primary hover:bg-primary/5 hover:text-slate-900'}`}
                                                             >
                                                                 <Upload className={`w-5 h-5 ${paymentProof ? 'text-emerald-500' : ''}`} />
                                                                 <span className="text-xs font-black uppercase tracking-widest text-center">

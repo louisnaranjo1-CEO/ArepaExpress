@@ -134,7 +134,7 @@ export default function PrintersManager() {
     if (loading) {
         return (
             <div className="flex flex-col items-center justify-center min-h-[400px]">
-                <Loader2 className="w-10 h-10 text-primary animate-spin" />
+                <Loader2 className="w-10 h-10 text-slate-900 animate-spin" />
                 <p className="mt-4 text-slate-500 font-bold">Cargando estaciones...</p>
             </div>
         );
@@ -150,7 +150,7 @@ export default function PrintersManager() {
                 </div>
                 <button
                     onClick={() => handleOpenModal()}
-                    className="flex items-center justify-center gap-2 bg-primary text-white px-6 py-3 rounded-2xl font-bold shadow-lg shadow-primary/30 hover:scale-105 transition-transform active:scale-95"
+                    className="flex items-center justify-center gap-2 bg-primary text-slate-900 px-6 py-3 rounded-2xl font-bold shadow-lg shadow-primary/30 hover:scale-105 transition-transform active:scale-95"
                 >
                     <Plus className="w-5 h-5" />
                     Nueva Estación
@@ -180,12 +180,12 @@ export default function PrintersManager() {
                     >
                         <div className="flex items-start justify-between mb-4">
                             <div className="p-3 bg-slate-50 rounded-2xl group-hover:bg-primary/10 transition-colors">
-                                <Printer className="w-6 h-6 text-slate-400 group-hover:text-primary transition-colors" />
+                                <Printer className="w-6 h-6 text-slate-400 group-hover:text-slate-900 transition-colors" />
                             </div>
                             <div className="flex items-center gap-1">
                                 <button
                                     onClick={() => handleOpenModal(station)}
-                                    className="p-2 text-slate-400 hover:text-primary hover:bg-primary/5 rounded-xl transition-all"
+                                    className="p-2 text-slate-400 hover:text-slate-900 hover:bg-primary/5 rounded-xl transition-all"
                                 >
                                     <Edit2 className="w-5 h-5" />
                                 </button>
@@ -274,7 +274,7 @@ export default function PrintersManager() {
                                                     });
                                                 }}
                                                 className={`flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-bold transition-all ${formData.categories.includes(cat)
-                                                        ? 'bg-primary text-white shadow-lg shadow-primary/20'
+                                                        ? 'bg-primary text-slate-900 shadow-lg shadow-primary/20'
                                                         : 'bg-white text-slate-500 border border-slate-100'
                                                     }`}
                                             >
@@ -326,7 +326,7 @@ export default function PrintersManager() {
                                                     });
                                                 }
                                             }}
-                                            className="w-full mt-2 bg-white border-2 border-primary/20 text-primary hover:bg-primary hover:text-white transition-colors py-3 rounded-xl font-bold flex items-center justify-center gap-2"
+                                            className="w-full mt-2 bg-white border-2 border-primary/20 text-slate-900 hover:bg-primary hover:text-slate-900 transition-colors py-3 rounded-xl font-bold flex items-center justify-center gap-2"
                                         >
                                             <AlertCircle className="w-4 h-4" />
                                             {formData.vendorId ? 'Cambiar Impresora USB' : 'Vincular Impresora USB'}
@@ -343,7 +343,7 @@ export default function PrintersManager() {
                                         id="isActive"
                                         checked={formData.isActive}
                                         onChange={(e) => setFormData({ ...formData, isActive: e.target.checked })}
-                                        className="w-5 h-5 rounded-lg border-slate-300 text-primary focus:ring-primary/20"
+                                        className="w-5 h-5 rounded-lg border-slate-300 text-slate-900 focus:ring-primary/20"
                                     />
                                     <label htmlFor="isActive" className="text-sm font-bold text-slate-700">La estación está operativa</label>
                                 </div>
@@ -351,7 +351,7 @@ export default function PrintersManager() {
                                 <button
                                     type="submit"
                                     disabled={submitting}
-                                    className="w-full bg-primary text-white py-4 rounded-[1.5rem] font-black text-lg shadow-xl shadow-primary/20 hover:scale-[1.02] active:scale-95 transition-all disabled:opacity-50 disabled:hover:scale-100 flex items-center justify-center gap-2"
+                                    className="w-full bg-primary text-slate-900 py-4 rounded-[1.5rem] font-black text-lg shadow-xl shadow-primary/20 hover:scale-[1.02] active:scale-95 transition-all disabled:opacity-50 disabled:hover:scale-100 flex items-center justify-center gap-2"
                                 >
                                     {submitting ? (
                                         <Loader2 className="w-5 h-5 animate-spin" />

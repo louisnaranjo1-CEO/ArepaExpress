@@ -49,7 +49,7 @@ export default function RestaurantPage() {
 
     if (navigator.share) {
       navigator.share({
-        title: `Mira este sitio en Un 2x3`,
+        title: `Mira este sitio en Deliexpress`,
         text: `Te recomiendo ${restaurant?.name}. Regístrate con mi código y participa en sorteos.`,
         url: shareUrl,
       }).catch(console.error);
@@ -165,7 +165,7 @@ export default function RestaurantPage() {
         <AlertCircle className="w-16 h-16 text-red-400" />
         <h2 className="text-xl font-bold text-slate-900">¡Ups!</h2>
         <p className="text-slate-500">{error || "No pudimos encontrar este restaurante."}</p>
-        <Link to="/" className="mt-4 px-6 py-3 bg-primary text-white font-bold rounded-xl shadow-lg">Volver al inicio</Link>
+        <Link to="/" className="mt-4 px-6 py-3 bg-primary text-slate-900 font-bold rounded-xl shadow-lg">Volver al inicio</Link>
       </div>
     );
   }
@@ -345,7 +345,7 @@ export default function RestaurantPage() {
             </div>
             {restaurant.rating && (
               <div className="absolute -bottom-1 -right-1 bg-white px-2 py-0.5 rounded-full shadow-md flex items-center gap-1 border border-slate-100">
-                <Star className="w-3 h-3 text-primary fill-primary" />
+                <Star className="w-3 h-3 text-slate-900 fill-primary" />
                 <span className="text-[10px] font-black text-slate-700">{restaurant.rating}</span>
               </div>
             )}
@@ -375,7 +375,7 @@ export default function RestaurantPage() {
       <div className="px-5 py-4 bg-white -mt-4 rounded-t-3xl relative z-20 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)]">
         <div className="flex flex-col gap-3">
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-1.5 text-primary text-sm font-bold">
+            <div className="flex items-center gap-1.5 text-slate-900 text-sm font-bold">
               <Star className="w-5 h-5 fill-primary" />
               <span>{restaurant.rating || "Nuevo"}</span>
               <span className="text-slate-500 font-normal">({restaurant.reviews || 0}+ reseñas)</span>
@@ -424,17 +424,17 @@ export default function RestaurantPage() {
               </div>
               <div className="flex-1">
                 <div className="flex items-center gap-2">
-                  <p className="text-[10px] font-black uppercase tracking-[0.25em] leading-none mb-1 text-yellow-600">Servicio Activo</p>
+                  <p className="text-[10px] font-black uppercase tracking-[0.25em] leading-none mb-1 text-amber-700">Servicio Activo</p>
                   <span className="flex items-center gap-1 bg-yellow-400 text-[8px] font-black text-white px-2 py-0.5 rounded-full uppercase tracking-widest leading-none mb-1 shadow-sm">
                     Oficial
                   </span>
                 </div>
                 <h4 className="font-black text-slate-800 flex items-center gap-1.5 text-base leading-none">
-                  Compra con Cashea <Zap className="w-4 h-4 text-primary fill-primary" />
+                  Compra con Cashea <Zap className="w-4 h-4 text-slate-900 fill-primary" />
                 </h4>
                 <p className="text-[11px] text-slate-500 font-bold mt-1 leading-none">Paga en cuotas sin interés</p>
               </div>
-              <div className="w-8 h-8 rounded-full bg-yellow-50 flex items-center justify-center text-yellow-600 opacity-50 group-hover:opacity-100 group-hover:bg-yellow-400 group-hover:text-white transition-all">
+              <div className="w-8 h-8 rounded-full bg-yellow-50 flex items-center justify-center text-amber-700 opacity-50 group-hover:opacity-100 group-hover:bg-yellow-400 group-hover:text-white transition-all">
                 <ChevronRight className="w-5 h-5" />
               </div>
             </motion.div>
@@ -444,10 +444,10 @@ export default function RestaurantPage() {
           {restaurant.jobOpportunities?.active && (
             <button
               onClick={() => setShowJobsModal(true)}
-              className="flex items-center justify-between bg-primary/10 text-primary px-4 py-3 rounded-2xl border border-primary/20 shadow-sm transition-transform active:scale-95 group text-left w-full mt-2"
+              className="flex items-center justify-between bg-primary/10 text-slate-900 px-4 py-3 rounded-2xl border border-primary/20 shadow-sm transition-transform active:scale-95 group text-left w-full mt-2"
             >
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-primary text-white flex items-center justify-center shrink-0 shadow-sm shadow-primary/30">
+                <div className="w-10 h-10 rounded-xl bg-primary text-slate-900 flex items-center justify-center shrink-0 shadow-sm shadow-primary/30">
                   <Briefcase className="w-5 h-5" />
                 </div>
                 <div>
@@ -468,7 +468,7 @@ export default function RestaurantPage() {
                 onClick={toggleFollow}
                 className={`flex items-center gap-2 px-4 py-2 rounded-full text-xs font-black transition-all ${isFollowing
                   ? 'bg-slate-100 text-slate-500 border border-slate-200'
-                  : 'bg-primary text-white shadow-lg shadow-primary/20 scale-105 hover:scale-110'
+                  : 'bg-primary text-slate-900 shadow-lg shadow-primary/20 scale-105 hover:scale-110'
                   }`}
               >
                 {isFollowing ? <UserCheck className="w-4 h-4" /> : <UserPlus className="w-4 h-4" />}
@@ -519,7 +519,7 @@ export default function RestaurantPage() {
           {restaurant.location && (restaurant.location.address || restaurant.location.city) && (
             <div className="mt-1 border-t border-slate-50 pt-3 flex flex-col gap-4">
               <div className="flex items-start gap-2">
-                <MapPin className="w-4 h-4 text-primary mt-1 shrink-0" />
+                <MapPin className="w-4 h-4 text-slate-900 mt-1 shrink-0" />
                 <div className="flex-1">
                   <p className="font-bold text-slate-700 text-sm">
                     {restaurant.location.city && restaurant.location.state
@@ -541,7 +541,7 @@ export default function RestaurantPage() {
                 >
                   <div className="flex items-center gap-2.5">
                     <div className="w-8 h-8 rounded-xl bg-primary/10 flex items-center justify-center">
-                      <Clock className="w-4 h-4 text-primary" />
+                      <Clock className="w-4 h-4 text-slate-900" />
                     </div>
                     <div className="text-left">
                       <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 leading-none mb-1">Horario Hoy</p>
@@ -552,7 +552,7 @@ export default function RestaurantPage() {
                       </p>
                     </div>
                   </div>
-                  <div className="flex items-center gap-1.5 text-[10px] font-black text-primary uppercase tracking-tighter opacity-0 group-hover:opacity-100 transition-opacity">
+                  <div className="flex items-center gap-1.5 text-[10px] font-black text-slate-900 uppercase tracking-tighter opacity-0 group-hover:opacity-100 transition-opacity">
                     Ver todos
                     <ChevronRight className="w-3.5 h-3.5" />
                   </div>
@@ -564,7 +564,7 @@ export default function RestaurantPage() {
                   href={`https://www.google.com/maps/search/?api=1&query=${restaurant.location.coords.lat},${restaurant.location.coords.lng}`}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1.5 text-primary text-xs font-bold hover:underline bg-primary/5 w-fit px-3 py-1.5 rounded-lg"
+                  className="inline-flex items-center gap-1.5 text-slate-900 text-xs font-bold hover:underline bg-primary/5 w-fit px-3 py-1.5 rounded-lg"
                 >
                   <ChevronRight className="w-3.5 h-3.5" />
                   Ver en el mapa
@@ -579,13 +579,13 @@ export default function RestaurantPage() {
       <div className="bg-white px-5 pt-3 flex gap-6 border-b border-slate-100">
         <button
           onClick={() => setActiveTab('Menú')}
-          className={`pb-3 font-bold transition-all border-b-2 flex items-center gap-2 ${activeTab === 'Menú' ? 'text-primary border-primary' : 'text-slate-400 border-transparent hover:text-slate-600'}`}
+          className={`pb-3 font-bold transition-all border-b-2 flex items-center gap-2 ${activeTab === 'Menú' ? 'text-slate-900 border-primary' : 'text-slate-400 border-transparent hover:text-slate-600'}`}
         >
           <Store className="w-4 h-4" /> Menú
         </button>
         <button
           onClick={() => setActiveTab('Reseñas')}
-          className={`pb-3 font-bold transition-all border-b-2 flex items-center gap-2 ${activeTab === 'Reseñas' ? 'text-primary border-primary' : 'text-slate-400 border-transparent hover:text-slate-600'}`}
+          className={`pb-3 font-bold transition-all border-b-2 flex items-center gap-2 ${activeTab === 'Reseñas' ? 'text-slate-900 border-primary' : 'text-slate-400 border-transparent hover:text-slate-600'}`}
         >
           <Star className="w-4 h-4" /> Reseñas
         </button>
@@ -630,8 +630,8 @@ export default function RestaurantPage() {
                   </p>
 
                   <div className="flex flex-col sm:flex-row gap-4 w-full sm:w-auto">
-                    <button className="bg-white text-slate-900 px-10 py-5 rounded-2xl font-black text-xs uppercase tracking-widest shadow-2xl hover:bg-primary hover:text-white active:scale-95 transition-all flex items-center justify-center gap-3 group/btn min-w-[200px]">
-                      <Gift className="w-5 h-5 text-primary group-hover/btn:text-white transition-colors" /> ¡Participar Ahora!
+                    <button className="bg-white text-slate-900 px-10 py-5 rounded-2xl font-black text-xs uppercase tracking-widest shadow-2xl hover:bg-primary hover:text-slate-900 active:scale-95 transition-all flex items-center justify-center gap-3 group/btn min-w-[200px]">
+                      <Gift className="w-5 h-5 text-slate-900 group-hover/btn:text-white transition-colors" /> ¡Participar Ahora!
                     </button>
                     {restaurant.activeRaffle.videoLink && (
                       <button className="h-[60px] px-6 bg-white/5 backdrop-blur-xl rounded-2xl flex items-center justify-center text-white border border-white/10 hover:bg-white/10 transition-all active:scale-95 gap-3">
@@ -653,7 +653,7 @@ export default function RestaurantPage() {
                   key={cat}
                   onClick={() => setActiveCategory(cat)}
                   className={`px-5 py-2.5 rounded-full text-sm font-bold whitespace-nowrap transition-colors ${activeCategory === cat
-                    ? "bg-primary text-white shadow-md shadow-primary/20"
+                    ? "bg-primary text-slate-900 shadow-md shadow-primary/20"
                     : "bg-slate-50 text-slate-600 hover:bg-slate-100 border border-slate-200"
                     }`}
                 >
@@ -818,7 +818,7 @@ export default function RestaurantPage() {
                           // Adding to cart also counts as a strong view
                           recommendationsService.recordProductView(product.id!, product.category, restaurant.id!);
                         }}
-                        className="absolute -bottom-2 -right-2 w-10 h-10 bg-white border border-slate-100 rounded-full flex items-center justify-center text-primary shadow-lg hover:scale-110 active:scale-95 transition-all z-10"
+                        className="absolute -bottom-2 -right-2 w-10 h-10 bg-white border border-slate-100 rounded-full flex items-center justify-center text-slate-900 shadow-lg hover:scale-110 active:scale-95 transition-all z-10"
                       >
                         <Plus className="w-5 h-5 font-bold" />
                       </button>
@@ -896,7 +896,7 @@ export default function RestaurantPage() {
       {/* Floating Cart Button */}
       {totalItems > 0 && (
         <div className="fixed bottom-24 left-1/2 transform -translate-x-1/2 w-full px-5 max-w-md z-[60] animate-in slide-in-from-bottom-4 fade-in duration-300">
-          <Link to="/cart" className="w-full bg-primary hover:bg-orange-600 text-white rounded-2xl p-4 shadow-xl shadow-orange-500/40 flex items-center justify-between transition-colors ring-4 ring-white/10 backdrop-blur-sm">
+          <Link to="/cart" className="w-full bg-primary hover:bg-orange-600 text-slate-900 rounded-2xl p-4 shadow-xl shadow-orange-500/40 flex items-center justify-between transition-colors ring-4 ring-white/10 backdrop-blur-sm">
             <div className="flex items-center gap-3">
               <div className="bg-white/20 px-3 py-1 rounded-lg text-sm font-black flex items-center justify-center min-w-[36px]">{totalItems}</div>
               <span className="font-black text-base uppercase tracking-wider">{isWaiter ? 'Ver Comanda' : 'Ver mi orden'}</span>
@@ -930,7 +930,7 @@ export default function RestaurantPage() {
                 <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-primary to-orange-400"></div>
                 <div className="flex items-center gap-3">
                   <div className="w-10 h-10 bg-primary/10 rounded-xl flex items-center justify-center">
-                    <Briefcase className="w-5 h-5 text-primary" />
+                    <Briefcase className="w-5 h-5 text-slate-900" />
                   </div>
                   <div>
                     <h3 className="text-xl font-black text-slate-800">Vacantes Disponibles</h3>
@@ -949,7 +949,7 @@ export default function RestaurantPage() {
                 {restaurant.jobOpportunities.positions?.length > 0 ? (
                   restaurant.jobOpportunities.positions.map((pos: any) => (
                     <div key={pos.id} className="bg-slate-50 border border-slate-100 rounded-2xl p-5 hover:border-primary/30 transition-colors group">
-                      <h4 className="font-black text-slate-800 text-lg group-hover:text-primary transition-colors">{pos.title}</h4>
+                      <h4 className="font-black text-slate-800 text-lg group-hover:text-slate-900 transition-colors">{pos.title}</h4>
                       <p className="text-sm text-slate-600 mt-2 whitespace-pre-wrap leading-relaxed">{pos.description}</p>
                     </div>
                   ))
@@ -1001,7 +1001,7 @@ export default function RestaurantPage() {
                 <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-primary to-orange-400"></div>
                 <div className="flex items-center gap-3">
                   <div className="w-10 h-10 bg-primary/10 rounded-xl flex items-center justify-center">
-                    <Clock className="w-5 h-5 text-primary" />
+                    <Clock className="w-5 h-5 text-slate-900" />
                   </div>
                   <div>
                     <h3 className="text-xl font-black text-slate-800">Horario de Trabajo</h3>
@@ -1029,7 +1029,7 @@ export default function RestaurantPage() {
                     >
                       <div className="flex items-center gap-3">
                         <div className={`w-2 h-2 rounded-full ${wh.closed ? 'bg-red-400' : 'bg-emerald-400'}`}></div>
-                        <span className={`text-sm font-black uppercase tracking-tight ${isToday ? 'text-primary' : 'text-slate-600'}`}>{wh.day}</span>
+                        <span className={`text-sm font-black uppercase tracking-tight ${isToday ? 'text-slate-900' : 'text-slate-600'}`}>{wh.day}</span>
                       </div>
                       <div className="text-right">
                         {wh.closed ? (
@@ -1132,7 +1132,7 @@ export default function RestaurantPage() {
                       <div className="flex flex-col items-end">
                         {selectedProduct.promoPrice && selectedProduct.promoPrice > 0 ? (
                           <>
-                            <span className="text-3xl font-black text-primary">${selectedProduct.promoPrice.toFixed(2)}</span>
+                            <span className="text-3xl font-black text-slate-900">${selectedProduct.promoPrice.toFixed(2)}</span>
                             <span className="text-sm text-slate-400 line-through font-bold">${selectedProduct.price.toFixed(2)}</span>
                           </>
                         ) : (
@@ -1221,7 +1221,7 @@ export default function RestaurantPage() {
                   className={`w-full py-4 rounded-3xl font-black text-base shadow-2xl flex items-center justify-center gap-3 transition-all ${
                     selectedProduct.variants && selectedProduct.variants.length > 0 && !selectedVariant
                       ? 'bg-slate-200 text-slate-400 cursor-not-allowed shadow-none'
-                      : 'bg-primary text-white shadow-primary/30 hover:scale-[1.02] active:scale-[0.98]'
+                      : 'bg-primary text-slate-900 shadow-primary/30 hover:scale-[1.02] active:scale-[0.98]'
                   }`}
                 >
                   <Plus className="w-5 h-5" />

@@ -172,7 +172,7 @@ export default function Subscriptions() {
                                             </p>
                                         </div>
                                     </div>
-                                    <button className="w-full bg-primary text-white py-4 rounded-2xl font-black shadow-lg shadow-primary/20 hover:scale-[1.02] active:scale-[0.98] transition-all">
+                                    <button className="w-full bg-primary text-slate-900 py-4 rounded-2xl font-black shadow-lg shadow-primary/20 hover:scale-[1.02] active:scale-[0.98] transition-all">
                                         Ver Planes Disponibles
                                     </button>
                                 </div>
@@ -232,7 +232,7 @@ export default function Subscriptions() {
                                 }`}
                         >
                             <div className="flex items-center justify-between mb-4">
-                                <div className="p-3 bg-slate-50 rounded-xl text-slate-600 group-hover:bg-primary/10 group-hover:text-primary transition-colors">
+                                <div className="p-3 bg-slate-50 rounded-xl text-slate-600 group-hover:bg-primary/10 group-hover:text-slate-900 transition-colors">
                                     {plan.scope === 'national' ? <Globe className="w-5 h-5" /> : plan.scope === 'state' ? <MapIcon className="w-5 h-5" /> : <PinIcon className="w-5 h-5" />}
                                 </div>
                                 <div className="text-right">

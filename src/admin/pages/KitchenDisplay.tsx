@@ -180,7 +180,7 @@ export default function KitchenDisplay() {
     if (loading) {
         return (
             <div className="flex flex-col items-center justify-center min-h-[400px]">
-                <Loader2 className="w-10 h-10 text-primary animate-spin" />
+                <Loader2 className="w-10 h-10 text-slate-900 animate-spin" />
                 <p className="mt-4 text-slate-500 font-bold">Iniciando Monitor de Cocina...</p>
             </div>
         );

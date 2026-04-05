@@ -143,14 +143,14 @@ export default function RestaurantRewardsManager({ restaurantId }: RestaurantRew
             <div className="p-6 border-b border-slate-50 bg-slate-50/50 flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <div>
                     <h3 className="font-black text-slate-800 uppercase tracking-widest text-sm flex items-center gap-2">
-                        <Gift className="w-5 h-5 text-primary" />
+                        <Gift className="w-5 h-5 text-slate-900" />
                         Catálogo de Canje del Restaurante
                     </h3>
                     <p className="text-xs font-medium text-slate-500 mt-1">Los clientes podrán canjear sus puntos acumulados en este restaurante.</p>
                 </div>
                 <button
                     onClick={() => { resetForm(); setShowAddModal(true); }}
-                    className="bg-primary text-white px-4 py-2 rounded-xl font-black shadow-lg shadow-primary/20 hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center gap-2 text-xs"
+                    className="bg-primary text-slate-900 px-4 py-2 rounded-xl font-black shadow-lg shadow-primary/20 hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center gap-2 text-xs"
                 >
                     <Plus className="w-4 h-4" /> Nueva Recompensa
                 </button>
@@ -198,7 +198,7 @@ export default function RestaurantRewardsManager({ restaurantId }: RestaurantRew
                                     <h4 className="font-black text-slate-800">{reward.title}</h4>
                                     <p className="text-xs text-slate-500 font-medium mb-2 max-w-sm line-clamp-2">{reward.description}</p>
                                     <div className="flex items-center gap-2">
-                                        <span className="text-[10px] bg-primary/10 text-primary px-2 py-0.5 rounded-full font-black uppercase">
+                                        <span className="text-[10px] bg-primary/10 text-slate-900 px-2 py-0.5 rounded-full font-black uppercase">
                                             {reward.pointsCost} Puntos
                                         </span>
                                     </div>
@@ -225,7 +225,7 @@ export default function RestaurantRewardsManager({ restaurantId }: RestaurantRew
                     <div className="bg-white rounded-[2.5rem] w-full max-w-lg shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-300">
                         <div className="p-6 border-b border-slate-50 flex items-center justify-between bg-slate-50/30">
                             <h3 className="text-xl font-black text-slate-800 tracking-tight flex items-center gap-2">
-                                <Gift className="w-6 h-6 text-primary" />
+                                <Gift className="w-6 h-6 text-slate-900" />
                                 Nueva Recompensa
                             </h3>
                             <button onClick={() => setShowAddModal(false)} className="p-2 hover:bg-slate-100 rounded-xl transition-all">
@@ -295,7 +295,7 @@ export default function RestaurantRewardsManager({ restaurantId }: RestaurantRew
                             <button
                                 onClick={handleAddReward}
                                 disabled={isUploading}
-                                className="w-full bg-primary text-white py-4 rounded-2xl font-black shadow-lg shadow-primary/20 hover:bg-orange-600 transition-all flex items-center justify-center gap-2 mt-6 disabled:opacity-50"
+                                className="w-full bg-primary text-slate-900 py-4 rounded-2xl font-black shadow-lg shadow-primary/20 hover:bg-orange-600 transition-all flex items-center justify-center gap-2 mt-6 disabled:opacity-50"
                             >
                                 {isUploading ? (
                                     <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>

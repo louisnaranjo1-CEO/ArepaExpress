@@ -323,7 +323,7 @@ export default function RestaurantProfile() {
     if (loading) {
         return (
             <div className="flex flex-col items-center justify-center min-h-[400px]">
-                <Loader2 className="w-10 h-10 text-primary animate-spin" />
+                <Loader2 className="w-10 h-10 text-slate-900 animate-spin" />
                 <p className="mt-4 text-slate-500 font-bold">Cargando configuración...</p>
             </div>
         );
@@ -339,7 +339,7 @@ export default function RestaurantProfile() {
                 <button
                     onClick={handleSave}
                     disabled={isSaving || uploadingLogo || uploadingCover}
-                    className={`px-6 py-3 rounded-2xl font-black shadow-lg flex items-center gap-2 transition-all hover:scale-[1.02] active:scale-[0.98] disabled:opacity-70 ${saved ? 'bg-green-500 text-white shadow-green-500/20' : 'bg-primary text-white shadow-primary/20'
+                    className={`px-6 py-3 rounded-2xl font-black shadow-lg flex items-center gap-2 transition-all hover:scale-[1.02] active:scale-[0.98] disabled:opacity-70 ${saved ? 'bg-green-500 text-slate-900 shadow-green-500/20' : 'bg-primary text-slate-900 shadow-primary/20'
                         }`}
                 >
                     {(isSaving || uploadingLogo || uploadingCover) ? <Loader2 className="w-5 h-5 animate-spin" /> : saved ? <Check className="w-5 h-5" /> : <Save className="w-5 h-5" />}
@@ -352,7 +352,7 @@ export default function RestaurantProfile() {
                 <div className="md:col-span-2 space-y-6">
                     <section className="bg-white p-8 rounded-[40px] shadow-sm border border-slate-100 space-y-6">
                         <h2 className="text-xl font-black text-slate-900 flex items-center gap-2">
-                            <Store className="w-6 h-6 text-primary" />
+                            <Store className="w-6 h-6 text-slate-900" />
                             Información Principal
                         </h2>
 
@@ -360,7 +360,7 @@ export default function RestaurantProfile() {
                             {/* Brand Assets */}
                             <div className="bg-slate-50 p-6 rounded-3xl border border-slate-100 space-y-6">
                                 <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
-                                    <ImageIcon className="w-5 h-5 text-primary" />
+                                    <ImageIcon className="w-5 h-5 text-slate-900" />
                                     Imagen de Marca
                                 </h3>
 
@@ -390,7 +390,7 @@ export default function RestaurantProfile() {
                                                 />
                                                 {uploadingLogo && (
                                                     <div className="absolute inset-0 bg-white/80 backdrop-blur-sm flex items-center justify-center rounded-2xl z-10 pointer-events-none">
-                                                        <Loader2 className="w-6 h-6 text-primary animate-spin" />
+                                                        <Loader2 className="w-6 h-6 text-slate-900 animate-spin" />
                                                     </div>
                                                 )}
                                                 <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
@@ -426,7 +426,7 @@ export default function RestaurantProfile() {
                                                 />
                                                 {uploadingCover && (
                                                     <div className="absolute inset-0 bg-white/80 backdrop-blur-sm flex items-center justify-center rounded-2xl z-10 pointer-events-none">
-                                                        <Loader2 className="w-6 h-6 text-primary animate-spin" />
+                                                        <Loader2 className="w-6 h-6 text-slate-900 animate-spin" />
                                                     </div>
                                                 )}
                                                 <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
@@ -447,7 +447,7 @@ export default function RestaurantProfile() {
                                         value={name}
                                         onChange={(e) => setName(e.target.value)}
                                         className="w-full bg-slate-50 border-2 border-transparent focus:border-primary focus:bg-white p-4 rounded-2xl outline-none transition-all font-bold text-slate-700"
-                                        placeholder="Ej: Un 2x3"
+                                        placeholder="Ej: Deliexpress"
                                     />
                                 </div>
                                 <div className="space-y-2">
@@ -513,7 +513,7 @@ export default function RestaurantProfile() {
 
                     <section className="bg-white p-8 rounded-[40px] shadow-sm border border-slate-100 space-y-6">
                         <h2 className="text-xl font-black text-slate-900 flex items-center gap-2">
-                            <MapPin className="w-6 h-6 text-primary" />
+                            <MapPin className="w-6 h-6 text-slate-900" />
                             Ubicación de la Sede
                         </h2>
 
@@ -563,7 +563,7 @@ export default function RestaurantProfile() {
                                 <label className="text-[10px] font-black text-slate-400 uppercase ml-1">Ubicación GPS</label>
                                 <button
                                     onClick={() => setShowPicker(0)}
-                                    className={`w-full p-4 rounded-xl border font-bold text-sm flex items-center gap-2 justify-center transition-all ${location?.coords ? 'border-primary bg-primary/5 text-primary' : 'border-slate-200 bg-white text-slate-500 hover:border-primary hover:text-primary'}`}
+                                    className={`w-full p-4 rounded-xl border font-bold text-sm flex items-center gap-2 justify-center transition-all ${location?.coords ? 'border-primary bg-primary/5 text-slate-900' : 'border-slate-200 bg-white text-slate-500 hover:border-primary hover:text-slate-900'}`}
                                 >
                                     <MapIcon className="w-4 h-4" />
                                     {location?.coords ? 'Ubicación Marcada (Haz clic para reubicar)' : 'Marcar Ubicación en el Mapa'}
@@ -606,7 +606,7 @@ export default function RestaurantProfile() {
                 <div className="space-y-6">
                     <section className="bg-white p-8 rounded-[40px] shadow-sm border border-slate-100 space-y-6">
                         <h2 className="text-xl font-black text-slate-900 flex items-center gap-2">
-                            <Truck className="w-6 h-6 text-primary" />
+                            <Truck className="w-6 h-6 text-slate-900" />
                             Logística
                         </h2>
 
@@ -663,7 +663,7 @@ export default function RestaurantProfile() {
                                     <h3 className="text-sm font-black text-slate-400 uppercase tracking-wider">Tarifas por Distancia</h3>
                                     <button
                                         onClick={addDeliveryRate}
-                                        className="text-primary text-xs font-bold flex items-center gap-1 hover:underline"
+                                        className="text-slate-900 text-xs font-bold flex items-center gap-1 hover:underline"
                                     >
                                         <Plus className="w-3 h-3" />
                                         Añadir Rango
@@ -748,7 +748,7 @@ export default function RestaurantProfile() {
                                 </div>
                                 <div>
                                     <p className={`font-black tracking-tight leading-none mb-1 ${hasCashea ? 'text-yellow-900' : 'text-slate-700'}`}>Servicio Cashea</p>
-                                    <p className={`text-[10px] font-bold ${hasCashea ? 'text-yellow-600' : 'text-slate-400'}`}>
+                                    <p className={`text-[10px] font-bold ${hasCashea ? 'text-amber-700' : 'text-slate-400'}`}>
                                         {hasCashea ? 'Insignia habilitada en el perfil' : 'Habilitar distintivo de pago por cuotas'}
                                     </p>
                                 </div>
@@ -769,8 +769,8 @@ export default function RestaurantProfile() {
                                         <span className={`font-black text-xl italic ${hasTwoByThree ? 'text-white' : 'text-slate-400'}`}>2x3</span>
                                     </div>
                                     <div>
-                                        <p className={`font-black tracking-tight leading-none mb-1 ${hasTwoByThree ? 'text-primary' : 'text-slate-700'}`}>Sistema "2x3 Resuelve"</p>
-                                        <p className={`text-[10px] font-bold ${hasTwoByThree ? 'text-primary/70' : 'text-slate-400'}`}>
+                                        <p className={`font-black tracking-tight leading-none mb-1 ${hasTwoByThree ? 'text-slate-900' : 'text-slate-700'}`}>Sistema "2x3 Resuelve"</p>
+                                        <p className={`text-[10px] font-bold ${hasTwoByThree ? 'text-slate-900/70' : 'text-slate-400'}`}>
                                             Permitir pagos financiados en cuotas
                                         </p>
                                     </div>
@@ -815,7 +815,7 @@ export default function RestaurantProfile() {
                     <section className="bg-white p-8 rounded-[40px] shadow-sm border border-slate-100 space-y-6">
                         <div className="flex justify-between items-center bg-slate-50/50 p-4 rounded-3xl mb-2">
                             <h2 className="text-xl font-black text-slate-900 flex items-center gap-2">
-                                <Clock className="w-6 h-6 text-primary" />
+                                <Clock className="w-6 h-6 text-slate-900" />
                                 Horario de Trabajo
                             </h2>
                             <div className="flex gap-2">
@@ -828,7 +828,7 @@ export default function RestaurantProfile() {
                                 </button>
                                 <button
                                     onClick={() => applyBulkHours(0, 6)}
-                                    className="px-3 py-1.5 bg-primary/10 text-[10px] font-black text-primary rounded-xl hover:bg-primary/20 transition-colors shadow-sm"
+                                    className="px-3 py-1.5 bg-primary/10 text-[10px] font-black text-slate-900 rounded-xl hover:bg-primary/20 transition-colors shadow-sm"
                                     title="Aplica el horario de Lunes a toda la semana"
                                 >
                                     Toda la Semana
@@ -900,12 +900,12 @@ export default function RestaurantProfile() {
                     <section className="bg-white p-8 rounded-[40px] shadow-sm border border-slate-100 space-y-6">
                         <div className="flex justify-between items-center">
                             <h2 className="text-xl font-black text-slate-900 flex items-center gap-2">
-                                <Share2 className="w-6 h-6 text-primary" />
+                                <Share2 className="w-6 h-6 text-slate-900" />
                                 Redes Sociales
                             </h2>
                             <button
                                 onClick={() => setIsSocialAdding(!isSocialAdding)}
-                                className="flex items-center gap-1.5 text-primary text-xs font-bold hover:underline"
+                                className="flex items-center gap-1.5 text-slate-900 text-xs font-bold hover:underline"
                             >
                                 <Plus className="w-4 h-4" />
                                 Añadir Red

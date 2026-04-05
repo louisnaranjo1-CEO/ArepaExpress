@@ -131,7 +131,7 @@ export default function Dashboard() {
         <div className="space-y-8 pb-10">
             <div>
                 <h1 className="text-3xl font-black text-slate-900 leading-tight">Control Principal</h1>
-                <p className="text-slate-500 font-medium mt-1">Monitorea el rendimiento de Un 2x3 en tiempo real.</p>
+                <p className="text-slate-500 font-medium mt-1">Monitorea el rendimiento de Deliexpress en tiempo real.</p>
             </div>
 
             {/* Main Stats */}
@@ -171,7 +171,7 @@ export default function Dashboard() {
                 <div className="lg:col-span-2 bg-white rounded-[40px] border border-slate-100 shadow-xl shadow-slate-200/50 overflow-hidden">
                     <div className="p-8 border-b border-slate-50 flex items-center justify-between">
                         <div className="flex items-center gap-3">
-                            <div className="w-12 h-12 bg-primary/10 text-primary rounded-2xl flex items-center justify-center">
+                            <div className="w-12 h-12 bg-primary/10 text-slate-900 rounded-2xl flex items-center justify-center">
                                 <Award className="w-6 h-6" />
                             </div>
                             <div>
@@ -218,7 +218,7 @@ export default function Dashboard() {
                                                             </div>
                                                         )}
                                                     </div>
-                                                    <span className="font-bold text-slate-800 group-hover:text-primary transition-colors">{res.name}</span>
+                                                    <span className="font-bold text-slate-800 group-hover:text-slate-900 transition-colors">{res.name}</span>
                                                 </div>
                                             </td>
 

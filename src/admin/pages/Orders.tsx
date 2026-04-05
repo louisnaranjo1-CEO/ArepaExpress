@@ -816,7 +816,7 @@ export default function Orders() {
                                 <Users className={`w-8 h-8 ${
                                     status === 'occupied' ? 'text-indigo-500' :
                                     status === 'calling' ? 'text-red-500' :
-                                    'text-slate-300 group-hover:text-primary transition-colors'
+                                    'text-slate-300 group-hover:text-slate-900 transition-colors'
                                 }`} />
                                 <div className="text-center">
                                     <p className={`text-2xl font-black ${
@@ -869,14 +869,14 @@ export default function Orders() {
                             </span>
                         )}
                     </div>
-                    <h3 className="text-xl font-black text-slate-900">{order.userName || 'Usuario de Un 2x3'}</h3>
+                    <h3 className="text-xl font-black text-slate-900">{order.userName || 'Usuario de Deliexpress'}</h3>
                     <p className="text-sm text-slate-400 font-bold flex items-center gap-1 mt-1">
                         <Clock className="w-4 h-4" />
                         {order.createdAt?.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                     </p>
                 </div>
                 <div className="text-right">
-                    <p className="text-2xl font-black text-primary">${order.total.toFixed(2)}</p>
+                    <p className="text-2xl font-black text-slate-900">${order.total.toFixed(2)}</p>
                     <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Total Cobrado</p>
                 </div>
             </div>
@@ -884,7 +884,7 @@ export default function Orders() {
             <div className="space-y-3 mb-6">
                 {order.items.map((item: any, idx: number) => (
                     <div key={idx} className="flex items-center gap-3 bg-slate-50 p-3 rounded-2xl">
-                        <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center font-black text-primary border border-slate-100 shadow-sm">
+                        <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center font-black text-slate-900 border border-slate-100 shadow-sm">
                             {item.quantity}x
                         </div>
                         <div className="flex-1">
@@ -905,7 +905,7 @@ export default function Orders() {
             )}
 
             <div className="flex items-start gap-3 p-4 bg-slate-50 rounded-2xl mb-8">
-                <MapPin className="w-5 h-5 text-primary shrink-0" />
+                <MapPin className="w-5 h-5 text-slate-900 shrink-0" />
                 <p className="text-sm font-bold text-slate-600 leading-relaxed italic">{order.deliveryAddress}</p>
             </div>
 
@@ -916,7 +916,7 @@ export default function Orders() {
                         <div>
                             <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Método de Pago</p>
                             <p className="font-black text-slate-800 flex items-center gap-2">
-                                <CreditCard className="w-4 h-4 text-primary" /> {order.paymentMethod}
+                                <CreditCard className="w-4 h-4 text-slate-900" /> {order.paymentMethod}
                             </p>
                         </div>
                         {(order.paymentReference || order.paymentProofUrl) ? (
@@ -927,7 +927,7 @@ export default function Orders() {
                                     </span>
                                 )}
                                 {order.paymentProofUrl && (
-                                    <a href={order.paymentProofUrl} target="_blank" rel="noopener noreferrer" className="bg-primary/10 text-primary p-2 rounded-lg hover:bg-primary/20 transition-all">
+                                    <a href={order.paymentProofUrl} target="_blank" rel="noopener noreferrer" className="bg-primary/10 text-slate-900 p-2 rounded-lg hover:bg-primary/20 transition-all">
                                         <ImageIcon className="w-4 h-4" />
                                     </a>
                                 )}
@@ -947,7 +947,7 @@ export default function Orders() {
                                     onChange={(e) => setReferenceInputs(prev => ({...prev, [order.id]: e.target.value}))}
                                 />
                             </div>
-                            <label className="bg-white border border-slate-200 p-2 rounded-xl text-slate-500 hover:text-primary hover:border-primary transition-all cursor-pointer">
+                            <label className="bg-white border border-slate-200 p-2 rounded-xl text-slate-500 hover:text-slate-900 hover:border-primary transition-all cursor-pointer">
                                 <input 
                                     type="file" 
                                     accept="image/*" 
@@ -957,12 +957,12 @@ export default function Orders() {
                                         if (file) setProofUploadFiles(prev => ({...prev, [order.id]: file}));
                                     }}
                                 />
-                                <ImageIcon className={`w-5 h-5 ${proofUploadFiles[order.id] ? 'text-primary' : ''}`} />
+                                <ImageIcon className={`w-5 h-5 ${proofUploadFiles[order.id] ? 'text-slate-900' : ''}`} />
                             </label>
                             <button 
                                 onClick={() => handleSavePaymentProof(order.id)}
                                 disabled={isUploadingProof[order.id] || (!referenceInputs[order.id] && !proofUploadFiles[order.id])}
-                                className="bg-primary text-white p-2 rounded-xl hover:bg-primary/90 transition-all disabled:opacity-50"
+                                className="bg-primary text-slate-900 p-2 rounded-xl hover:bg-primary/90 transition-all disabled:opacity-50"
                                 title="Guardar Pago"
                             >
                                 {isUploadingProof[order.id] ? <Loader2 className="w-5 h-5 animate-spin" /> : <Upload className="w-5 h-5" />}
@@ -990,7 +990,7 @@ export default function Orders() {
                         <button
                             onClick={() => { setSelectedOrderForAccept(order); setAcceptModalOpen(true); }}
                             disabled={printingOrderId === order.id}
-                            className="flex-1 min-w-[140px] bg-primary text-white py-4 rounded-2xl font-black shadow-lg shadow-primary/20 hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+                            className="flex-1 min-w-[140px] bg-primary text-slate-900 py-4 rounded-2xl font-black shadow-lg shadow-primary/20 hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-2 disabled:opacity-50"
                         >
                             {printingOrderId === order.id ? (
                                 <><Loader2 className="w-5 h-5 animate-spin" /> Imprimiendo...</>
@@ -1073,7 +1073,7 @@ export default function Orders() {
     if (loading) {
         return (
             <div className="flex flex-col items-center justify-center min-h-[400px]">
-                <Loader2 className="w-10 h-10 text-primary animate-spin" />
+                <Loader2 className="w-10 h-10 text-slate-900 animate-spin" />
                 <p className="mt-4 text-slate-500 font-bold">Cargando pedidos en tiempo real...</p>
             </div>
         );
@@ -1096,7 +1096,7 @@ export default function Orders() {
                 <div className="flex items-center gap-4">
                     <button
                         onClick={() => setShowPOS(true)}
-                        className="bg-primary text-white px-6 py-3 rounded-2xl font-black hover:scale-105 transition-all shadow-lg shadow-primary/30 flex items-center gap-2"
+                        className="bg-primary text-slate-900 px-6 py-3 rounded-2xl font-black hover:scale-105 transition-all shadow-lg shadow-primary/30 flex items-center gap-2"
                     >
                         <ShoppingCart className="w-5 h-5" />
                         <span className="hidden sm:inline">Nueva Venta (POS)</span>
@@ -1126,7 +1126,7 @@ export default function Orders() {
                             : 'text-slate-500 hover:bg-white/50'
                             }`}
                     >
-                        <tab.icon className={`w-5 h-5 ${activeTab === tab.id ? 'text-primary' : ''}`} />
+                        <tab.icon className={`w-5 h-5 ${activeTab === tab.id ? 'text-slate-900' : ''}`} />
                         <span className="hidden xl:inline">{tab.label}</span>
                         <span className={`ml-1 text-[10px] px-2 py-0.5 rounded-full text-white ${tab.color}`}>
                             {(stats as any)[tab.id]}
@@ -1242,7 +1242,7 @@ export default function Orders() {
                                                             {activeOrder.items?.map((item: any, idx: number) => (
                                                                 <div key={idx} className="flex justify-between items-center text-sm">
                                                                     <div className="flex items-center gap-2">
-                                                                        <span className="font-black text-primary">x{item.quantity}</span>
+                                                                        <span className="font-black text-slate-900">x{item.quantity}</span>
                                                                         <span className="font-bold text-slate-700">{item.name}</span>
                                                                     </div>
                                                                     <span className="font-black text-slate-900">${(item.price * item.quantity).toFixed(2)}</span>
@@ -1251,7 +1251,7 @@ export default function Orders() {
                                                         </div>
                                                         <div className="pt-4 border-t border-slate-200 flex justify-between items-center">
                                                             <span className="text-sm font-black text-slate-500 uppercase">Total Acumulado</span>
-                                                            <span className="text-2xl font-black text-primary">${(activeOrder.total || 0).toFixed(2)}</span>
+                                                            <span className="text-2xl font-black text-slate-900">${(activeOrder.total || 0).toFixed(2)}</span>
                                                         </div>
                                                     </div>
                                                 </div>
@@ -1294,7 +1294,7 @@ export default function Orders() {
                                                         <button
                                                             onClick={() => handleAssignWaiter(selectedTable.id, null)}
                                                             className={`flex items-center justify-between p-4 rounded-2xl font-bold transition-all border-2 ${
-                                                                !selectedTable.waiterId ? 'border-primary bg-primary/5 text-primary' : 'border-slate-100 text-slate-500 hover:border-slate-200'
+                                                                !selectedTable.waiterId ? 'border-primary bg-primary/5 text-slate-900' : 'border-slate-100 text-slate-500 hover:border-slate-200'
                                                             }`}
                                                         >
                                                             <div className="flex items-center gap-3">
@@ -1310,7 +1310,7 @@ export default function Orders() {
                                                                 key={waiter.id}
                                                                 onClick={() => handleAssignWaiter(selectedTable.id, waiter)}
                                                                 className={`flex items-center justify-between p-4 rounded-2xl font-bold transition-all border-2 ${
-                                                                    selectedTable.waiterId === waiter.id ? 'border-primary bg-primary/5 text-primary' : 'border-slate-100 text-slate-500 hover:border-slate-200'
+                                                                    selectedTable.waiterId === waiter.id ? 'border-primary bg-primary/5 text-slate-900' : 'border-slate-100 text-slate-500 hover:border-slate-200'
                                                                 }`}
                                                             >
                                                                 <div className="flex items-center gap-3">
@@ -1340,7 +1340,7 @@ export default function Orders() {
                                                             setShowPOS(true);
                                                             setShowTableModal(false);
                                                         }}
-                                                        className="w-full bg-primary text-white py-4 rounded-2xl font-black shadow-lg shadow-primary/20 hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-2"
+                                                        className="w-full bg-primary text-slate-900 py-4 rounded-2xl font-black shadow-lg shadow-primary/20 hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-2"
                                                     >
                                                         <ShoppingCart className="w-5 h-5" /> Abrir Nuevo Pedido en esta Mesa
                                                     </button>
@@ -1400,7 +1400,7 @@ export default function Orders() {
                                 </div>
                                 <div className="mt-4 pt-4 border-t border-slate-200 flex justify-between items-center">
                                     <span className="font-black text-slate-500 uppercase text-xs">Total a Liquidar</span>
-                                    <span className="text-xl font-black text-primary">${selectedOrderForAccept.total.toFixed(2)}</span>
+                                    <span className="text-xl font-black text-slate-900">${selectedOrderForAccept.total.toFixed(2)}</span>
                                 </div>
                             </div>
 
@@ -1412,7 +1412,7 @@ export default function Orders() {
                                         <button
                                             key={method}
                                             onClick={() => setPaymentMethod(method)}
-                                            className={`p-3 rounded-xl text-[10px] font-black border-2 transition-all ${paymentMethod === method ? 'border-primary bg-primary/5 text-primary' : 'border-slate-100 text-slate-500 hover:border-slate-200'}`}
+                                            className={`p-3 rounded-xl text-[10px] font-black border-2 transition-all ${paymentMethod === method ? 'border-primary bg-primary/5 text-slate-900' : 'border-slate-100 text-slate-500 hover:border-slate-200'}`}
                                         >
                                             {method}
                                         </button>
@@ -1446,7 +1446,7 @@ export default function Orders() {
                                                 }}
                                             />
                                             {proofUploadFiles[selectedOrderForAccept.id] ? (
-                                                <div className="flex items-center gap-2 text-primary">
+                                                <div className="flex items-center gap-2 text-slate-900">
                                                     <CheckCircle className="w-5 h-5" />
                                                     <span className="font-bold text-xs truncate max-w-[200px]">{proofUploadFiles[selectedOrderForAccept.id].name}</span>
                                                 </div>
@@ -1473,7 +1473,7 @@ export default function Orders() {
                             <button
                                 onClick={handleConfirmAccept}
                                 disabled={isAccepting}
-                                className="w-full bg-primary text-white py-4 rounded-2xl font-black shadow-xl shadow-primary/30 hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+                                className="w-full bg-primary text-slate-900 py-4 rounded-2xl font-black shadow-xl shadow-primary/30 hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-2 disabled:opacity-50"
                             >
                                 {isAccepting ? <Loader2 className="w-5 h-5 animate-spin" /> : <><CheckCircle className="w-5 h-5" /> Confirmar y Enviar a Cocina</>}
                             </button>
@@ -1495,7 +1495,7 @@ export default function Orders() {
                         <div className="grid grid-cols-2 gap-3 mb-6">
                             <button
                                 onClick={() => setDispatchType('own')}
-                                className={`flex flex-col items-center gap-2 p-4 rounded-2xl border-2 font-bold transition-all ${dispatchType === 'own' ? 'border-primary bg-primary/5 text-primary' : 'border-slate-100 text-slate-500 hover:bg-slate-50'}`}
+                                className={`flex flex-col items-center gap-2 p-4 rounded-2xl border-2 font-bold transition-all ${dispatchType === 'own' ? 'border-primary bg-primary/5 text-slate-900' : 'border-slate-100 text-slate-500 hover:bg-slate-50'}`}
                             >
                                 <Store className="w-6 h-6" />
                                 <span className="text-xs text-center">Propio / Cliente recoge</span>
@@ -1525,7 +1525,7 @@ export default function Orders() {
                         <button
                             onClick={handleConfirmDispatch}
                             disabled={isAccepting}
-                            className={`w-full text-white py-4 rounded-2xl font-black shadow-lg hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-2 disabled:opacity-50 ${dispatchType === 'platform' ? 'bg-blue-500 shadow-blue-500/20' : 'bg-primary shadow-primary/20'}`}
+                            className={`w-full text-slate-900 py-4 rounded-2xl font-black shadow-lg hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-2 disabled:opacity-50 ${dispatchType === 'platform' ? 'bg-blue-500 shadow-blue-500/20' : 'bg-primary shadow-primary/20'}`}
                         >
                             {isAccepting ? <Loader2 className="w-5 h-5 animate-spin" /> : <><Truck className="w-5 h-5" /> Enviar en Camino</>}
                         </button>
@@ -1550,7 +1550,7 @@ export default function Orders() {
                                     <div className="flex items-center justify-between">
                                         <div className="flex-1">
                                             <p className="font-bold text-slate-800">{item.name}</p>
-                                            <p className="text-xs text-primary font-bold">${item.price.toFixed(2)}</p>
+                                            <p className="text-xs text-slate-900 font-bold">${item.price.toFixed(2)}</p>
                                         </div>
                                         <div className="flex items-center gap-2">
                                             <button onClick={() => updateEditItemQty(item.id, -1)} className="p-2 bg-white rounded-xl shadow-sm text-slate-500 hover:text-slate-700">
@@ -1624,7 +1624,7 @@ export default function Orders() {
                                             <button 
                                                 onClick={handleAddEditItem}
                                                 disabled={posProducts.find(p => p.id === editAddProductId)?.hasVariants && !editAddVariant}
-                                                className="bg-primary text-white p-3 rounded-xl font-bold shadow-md hover:scale-105 transition-all disabled:opacity-50"
+                                                className="bg-primary text-slate-900 p-3 rounded-xl font-bold shadow-md hover:scale-105 transition-all disabled:opacity-50"
                                             >
                                                 <Plus className="w-5 h-5 mx-auto" />
                                             </button>
@@ -1648,14 +1648,14 @@ export default function Orders() {
                         <div className="shrink-0 pt-4 mt-4 border-t border-slate-100">
                             <div className="flex justify-between items-center mb-4 text-lg">
                                 <span className="font-bold text-slate-500">Nuevo Total:</span>
-                                <span className="font-black text-primary">
+                                <span className="font-black text-slate-900">
                                     ${(editOrderItems.reduce((acc, item) => acc + (item.price * item.quantity), 0) + ((selectedOrderForEdit as any).deliveryFee || 0)).toFixed(2)}
                                 </span>
                             </div>
                             <button
                                 onClick={handleUpdateOrderItems}
                                 disabled={isAccepting}
-                                className="w-full bg-primary text-white py-4 rounded-2xl font-black shadow-lg shadow-primary/20 hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+                                className="w-full bg-primary text-slate-900 py-4 rounded-2xl font-black shadow-lg shadow-primary/20 hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-2 disabled:opacity-50"
                             >
                                 {isAccepting ? <Loader2 className="w-5 h-5 animate-spin" /> : <><CheckCircle className="w-5 h-5" /> Guardar Cambios</>}
                             </button>
@@ -1671,7 +1671,7 @@ export default function Orders() {
                         {/* POS Header */}
                         <div className="bg-white p-4 rounded-3xl shadow-sm border border-slate-100 mb-4 flex items-center justify-between">
                             <h2 className="text-2xl font-black text-slate-900 flex items-center gap-2 mb-2 md:mb-0">
-                                <ShoppingCart className="w-6 h-6 text-primary" />
+                                <ShoppingCart className="w-6 h-6 text-slate-900" />
                                 Punto de Venta (POS)
                             </h2>
                             <button onClick={() => setShowPOS(false)} className="p-2 text-slate-400 hover:bg-slate-100 rounded-full">
@@ -1687,7 +1687,7 @@ export default function Orders() {
                                         <button
                                             key={cat}
                                             onClick={() => setPosActiveCategory(cat)}
-                                            className={`px-4 py-2 rounded-xl font-bold whitespace-nowrap border ${posActiveCategory === cat ? 'bg-primary text-white border-primary shadow-sm' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'}`}
+                                            className={`px-4 py-2 rounded-xl font-bold whitespace-nowrap border ${posActiveCategory === cat ? 'bg-primary text-slate-900 border-primary shadow-sm' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'}`}
                                         >
                                             {cat}
                                         </button>
@@ -1730,7 +1730,7 @@ export default function Orders() {
                                                 </div>
                                                 <div className="p-3 flex-1 flex flex-col justify-between">
                                                     <p className="font-bold text-slate-800 text-sm line-clamp-2 leading-tight">{product.name}</p>
-                                                    <p className="font-black text-primary text-lg mt-2">${(product.promoPrice > 0 ? product.promoPrice : product.price).toFixed(2)}</p>
+                                                    <p className="font-black text-slate-900 text-lg mt-2">${(product.promoPrice > 0 ? product.promoPrice : product.price).toFixed(2)}</p>
                                                 </div>
                                             </div>
                                         ))}
@@ -1741,7 +1741,7 @@ export default function Orders() {
                             <div className="w-full lg:w-96 bg-white rounded-3xl shadow-sm border border-slate-100 flex flex-col shrink-0">
                                 {/* Tipos de orden */}
                                 <div className="grid grid-cols-3 gap-1 p-2 bg-slate-100 m-4 rounded-2xl">
-                                    <button onClick={() => setPosOrderType('local')} className={`py-3 flex flex-col items-center justify-center gap-1 rounded-xl font-bold text-[10px] uppercase transition-all ${posOrderType === 'local' ? 'bg-white text-primary shadow-sm' : 'text-slate-500 hover:bg-white/50'}`}>
+                                    <button onClick={() => setPosOrderType('local')} className={`py-3 flex flex-col items-center justify-center gap-1 rounded-xl font-bold text-[10px] uppercase transition-all ${posOrderType === 'local' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:bg-white/50'}`}>
                                         <Store className="w-5 h-5" /> Local
                                     </button>
                                     <button onClick={() => setPosOrderType('takeout')} className={`py-3 flex flex-col items-center justify-center gap-1 rounded-xl font-bold text-[10px] uppercase transition-all ${posOrderType === 'takeout' ? 'bg-white text-orange-500 shadow-sm' : 'text-slate-500 hover:bg-white/50'}`}>
@@ -1818,7 +1818,7 @@ export default function Orders() {
                                                     <button
                                                         key={waiter.id}
                                                         onClick={() => setSelectedWaiter(selectedWaiter?.id === waiter.id ? null : waiter)}
-                                                        className={`px-3 py-2 rounded-xl text-xs font-black whitespace-nowrap transition-all border ${selectedWaiter?.id === waiter.id ? 'bg-primary text-white border-primary' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'}`}
+                                                        className={`px-3 py-2 rounded-xl text-xs font-black whitespace-nowrap transition-all border ${selectedWaiter?.id === waiter.id ? 'bg-primary text-slate-900 border-primary' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'}`}
                                                     >
                                                         {waiter.name}
                                                     </button>
@@ -1866,7 +1866,7 @@ export default function Orders() {
                                             <div className="flex justify-between items-start">
                                                 <div>
                                                     <p className="font-bold text-slate-800 text-sm leading-tight">{item.name}</p>
-                                                    <p className="font-black text-primary text-sm">${item.price.toFixed(2)}</p>
+                                                    <p className="font-black text-slate-900 text-sm">${item.price.toFixed(2)}</p>
                                                 </div>
                                                 <button onClick={() => removePosCartItem(item.id)} className="text-slate-400 hover:text-red-500 transition-colors p-1">
                                                     <Trash2 className="w-4 h-4" />
@@ -1878,7 +1878,7 @@ export default function Orders() {
                                                         <Minus className="w-4 h-4" />
                                                     </button>
                                                     <span className="w-8 text-center font-black text-sm">{item.quantity}</span>
-                                                    <button onClick={() => updatePosCartItem(item.id, 1)} className="w-8 h-8 flex items-center justify-center text-primary hover:bg-primary/10 rounded-md">
+                                                    <button onClick={() => updatePosCartItem(item.id, 1)} className="w-8 h-8 flex items-center justify-center text-slate-900 hover:bg-primary/10 rounded-md">
                                                         <Plus className="w-4 h-4" />
                                                     </button>
                                                 </div>
@@ -1915,7 +1915,7 @@ export default function Orders() {
                                     <button
                                         onClick={handleCreatePOSOrder}
                                         disabled={isSubmittingPOS || posCart.length === 0}
-                                        className="w-full bg-primary text-white py-4 rounded-2xl font-black shadow-lg hover:shadow-primary/50 hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                                        className="w-full bg-primary text-slate-900 py-4 rounded-2xl font-black shadow-lg hover:shadow-primary/50 hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                                     >
                                         {isSubmittingPOS ? (
                                             <><Loader2 className="w-5 h-5 animate-spin" /> Procesando...</>
@@ -1994,7 +1994,7 @@ export default function Orders() {
             {selectedOrderForComanda && (
                 <ComandaPreview
                     order={selectedOrderForComanda}
-                    restaurantName={restaurantConfig?.name || 'Un 2x3'}
+                    restaurantName={restaurantConfig?.name || 'Deliexpress'}
                     onClose={() => setSelectedOrderForComanda(null)}
                     onPrint={async (orderToPrint) => {
                         await handlePrintOrder(orderToPrint.id, orderToPrint as Order);
@@ -2055,7 +2055,7 @@ export default function Orders() {
                                                 onClick={() => setSelectionVariant(variant)}
                                                 className={`flex items-center justify-between p-4 rounded-2xl border-2 transition-all font-bold ${
                                                     selectionVariant?.name === variant.name 
-                                                    ? 'border-primary bg-primary/5 text-primary' 
+                                                    ? 'border-primary bg-primary/5 text-slate-900' 
                                                     : 'border-slate-100 text-slate-600 hover:border-slate-200'
                                                 }`}
                                             >
@@ -2086,7 +2086,7 @@ export default function Orders() {
                                         <span className="w-16 text-center font-black text-xl">{selectionQty}</span>
                                         <button 
                                             onClick={() => setSelectionQty(selectionQty + 1)}
-                                            className="w-12 h-12 flex items-center justify-center bg-white rounded-xl shadow-sm text-primary hover:text-primary-dark"
+                                            className="w-12 h-12 flex items-center justify-center bg-white rounded-xl shadow-sm text-slate-900 hover:text-slate-900-dark"
                                         >
                                             <Plus className="w-5 h-5" />
                                         </button>
@@ -2132,7 +2132,7 @@ export default function Orders() {
                                     setSelectionModalOpen(false);
                                     toast.success("Producto agregado al carrito");
                                 }}
-                                className="w-full bg-primary text-white py-5 rounded-2xl font-black text-lg shadow-xl shadow-primary/30 hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-3"
+                                className="w-full bg-primary text-slate-900 py-5 rounded-2xl font-black text-lg shadow-xl shadow-primary/30 hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-3"
                             >
                                 <ShoppingCart className="w-6 h-6" />
                                 Agregar al Pedido • ${( (selectionVariant ? selectionVariant.price : (selectedProductForSelection.promoPrice > 0 ? selectedProductForSelection.promoPrice : selectedProductForSelection.price)) * selectionQty ).toFixed(2)}

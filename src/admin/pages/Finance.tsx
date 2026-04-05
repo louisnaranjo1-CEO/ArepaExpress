@@ -182,7 +182,7 @@ export default function Finance() {
             <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
                 <div>
                     <h1 className="text-3xl font-black text-slate-900 flex items-center gap-3">
-                        <DollarSign className="w-8 h-8 text-primary" />
+                        <DollarSign className="w-8 h-8 text-slate-900" />
                         Finanzas y Caja
                     </h1>
                     <p className="text-slate-500 font-medium">Gestiona tus ingresos, gastos y el cierre de caja diario.</p>
@@ -225,7 +225,7 @@ export default function Finance() {
                     <h2 className="text-4xl font-black text-slate-900">${totalExpenses.toFixed(2)}</h2>
                 </div>
 
-                <div className="bg-primary text-white rounded-[35px] p-8 shadow-xl shadow-primary/20 relative overflow-hidden">
+                <div className="bg-primary text-slate-900 rounded-[35px] p-8 shadow-xl shadow-primary/20 relative overflow-hidden">
                     <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-bl-[100px] -z-10"></div>
                     <div className="w-14 h-14 bg-white/20 text-white rounded-2xl flex items-center justify-center mb-6 backdrop-blur-sm">
                         <DollarSign className="w-7 h-7" />
@@ -240,19 +240,19 @@ export default function Finance() {
                 <div className="flex border-b border-slate-100">
                     <button
                         onClick={() => setActiveTab('sales')}
-                        className={`flex-1 py-5 font-black text-sm uppercase tracking-wider transition-colors ${activeTab === 'sales' ? 'text-primary border-b-2 border-primary' : 'text-slate-400 hover:text-slate-600 hover:bg-slate-50'}`}
+                        className={`flex-1 py-5 font-black text-sm uppercase tracking-wider transition-colors ${activeTab === 'sales' ? 'text-slate-900 border-b-2 border-primary' : 'text-slate-400 hover:text-slate-600 hover:bg-slate-50'}`}
                     >
                         Ventas Hoy
                     </button>
                     <button
                         onClick={() => setActiveTab('expenses')}
-                        className={`flex-1 py-5 font-black text-sm uppercase tracking-wider transition-colors ${activeTab === 'expenses' ? 'text-primary border-b-2 border-primary' : 'text-slate-400 hover:text-slate-600 hover:bg-slate-50'}`}
+                        className={`flex-1 py-5 font-black text-sm uppercase tracking-wider transition-colors ${activeTab === 'expenses' ? 'text-slate-900 border-b-2 border-primary' : 'text-slate-400 hover:text-slate-600 hover:bg-slate-50'}`}
                     >
                         Historial de Gastos
                     </button>
                     <button
                         onClick={() => setActiveTab('closures')}
-                        className={`flex-1 py-5 font-black text-sm uppercase tracking-wider transition-colors ${activeTab === 'closures' ? 'text-primary border-b-2 border-primary' : 'text-slate-400 hover:text-slate-600 hover:bg-slate-50'}`}
+                        className={`flex-1 py-5 font-black text-sm uppercase tracking-wider transition-colors ${activeTab === 'closures' ? 'text-slate-900 border-b-2 border-primary' : 'text-slate-400 hover:text-slate-600 hover:bg-slate-50'}`}
                     >
                         Cierres de Caja
                     </button>
@@ -293,7 +293,7 @@ export default function Finance() {
                                             <p className="font-black text-xl text-green-600">${sale.total.toFixed(2)}</p>
                                             {sale.tip > 0 && (
                                                 <p className="text-xs text-slate-500 font-bold uppercase tracking-widest mt-1">
-                                                    Propina: <span className="text-primary">${sale.tip.toFixed(2)}</span>
+                                                    Propina: <span className="text-slate-900">${sale.tip.toFixed(2)}</span>
                                                 </p>
                                             )}
                                         </div>
@@ -349,7 +349,7 @@ export default function Finance() {
                                     <div key={closure.id} className="bg-white border-2 border-slate-100 rounded-[25px] p-6 shadow-sm">
                                         <div className="flex justify-between items-start mb-6">
                                             <div className="flex items-center gap-3">
-                                                <div className="w-10 h-10 bg-primary/10 text-primary rounded-xl flex items-center justify-center">
+                                                <div className="w-10 h-10 bg-primary/10 text-slate-900 rounded-xl flex items-center justify-center">
                                                     <Calendar className="w-5 h-5" />
                                                 </div>
                                                 <div>
@@ -374,8 +374,8 @@ export default function Finance() {
                                                 <span className="font-black text-red-500">-${closure.totalExpenses.toFixed(2)}</span>
                                             </div>
                                             <div className="pt-3 mt-3 border-t border-slate-200 flex justify-between items-center">
-                                                <span className="font-black text-primary">Saldo Neto</span>
-                                                <span className="font-black text-primary text-xl">${closure.netProfit.toFixed(2)}</span>
+                                                <span className="font-black text-slate-900">Saldo Neto</span>
+                                                <span className="font-black text-slate-900 text-xl">${closure.netProfit.toFixed(2)}</span>
                                             </div>
                                         </div>
                                     </div>

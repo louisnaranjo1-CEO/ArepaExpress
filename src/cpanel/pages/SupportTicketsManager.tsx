@@ -95,7 +95,7 @@ export default function SupportTicketsManager() {
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <div>
                     <h2 className="text-2xl font-black text-slate-900 flex items-center gap-3">
-                        <MessageSquareWarning className="w-8 h-8 text-primary" />
+                        <MessageSquareWarning className="w-8 h-8 text-slate-900" />
                         Reportes de Fallas
                     </h2>
                     <p className="text-slate-500 font-medium mt-1">
@@ -196,7 +196,7 @@ export default function SupportTicketsManager() {
                                     <span>{ticket.createdAt?.toDate ? ticket.createdAt.toDate().toLocaleString() : 'Reciente'}</span>
                                 </div>
                                 {ticket.status === 'closed' && (
-                                    <span className="text-primary font-bold">Ver respuesta &rarr;</span>
+                                    <span className="text-slate-900 font-bold">Ver respuesta &rarr;</span>
                                 )}
                             </div>
                         </div>
@@ -291,7 +291,7 @@ export default function SupportTicketsManager() {
                                             <button
                                                 onClick={() => handleRespondAndClose(selectedTicket.id)}
                                                 disabled={isSubmitting || !adminResponse.trim()}
-                                                className="w-full bg-primary hover:bg-primary-dark text-white font-black py-4 rounded-2xl flex items-center justify-center gap-2 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                                                className="w-full bg-primary hover:bg-primary-dark text-slate-900 font-black py-4 rounded-2xl flex items-center justify-center gap-2 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                                             >
                                                 {isSubmitting ? (
                                                     <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>

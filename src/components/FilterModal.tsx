@@ -80,7 +80,7 @@ export default function FilterModal({ isOpen, onClose, onApply, initialFilters, 
                             </button>
                         )}
                         <h2 className="text-xl font-black text-slate-900 flex items-center gap-2">
-                            <SlidersHorizontal className="w-5 h-5 text-primary" />
+                            <SlidersHorizontal className="w-5 h-5 text-slate-900" />
                             Filtros
                         </h2>
                     </div>
@@ -104,7 +104,7 @@ export default function FilterModal({ isOpen, onClose, onApply, initialFilters, 
                             {filters.sector && view === 'sectors' && (
                                 <button
                                     onClick={() => setView('subcategories')}
-                                    className="text-[10px] font-black text-primary uppercase tracking-widest"
+                                    className="text-[10px] font-black text-slate-900 uppercase tracking-widest"
                                 >
                                     Ver Subcategorías
                                 </button>
@@ -118,7 +118,7 @@ export default function FilterModal({ isOpen, onClose, onApply, initialFilters, 
                                         key={cat.id}
                                         onClick={() => handleSectorClick(cat.id)}
                                         className={`px-4 py-2.5 rounded-2xl text-sm font-bold transition-all border ${filters.sector === cat.id
-                                            ? 'bg-primary border-primary text-white shadow-md shadow-primary/20'
+                                            ? 'bg-primary border-primary text-slate-900 shadow-md shadow-primary/20'
                                             : 'bg-white border-slate-200 text-slate-600 hover:border-primary/50'
                                             }`}
                                     >
@@ -134,7 +134,7 @@ export default function FilterModal({ isOpen, onClose, onApply, initialFilters, 
                                             key={cat.id}
                                             onClick={() => setFilters(prev => ({ ...prev, category: prev.category === cat.name ? null : cat.name }))}
                                             className={`px-4 py-2.5 rounded-2xl text-sm font-bold transition-all border ${filters.category === cat.name
-                                                ? 'bg-primary border-primary text-white shadow-md shadow-primary/20'
+                                                ? 'bg-primary border-primary text-slate-900 shadow-md shadow-primary/20'
                                                 : 'bg-white border-slate-200 text-slate-600 hover:border-primary/50'
                                                 }`}
                                         >
@@ -205,7 +205,7 @@ export default function FilterModal({ isOpen, onClose, onApply, initialFilters, 
                     </button>
                     <button
                         onClick={handleApply}
-                        className="flex-[2] py-4 rounded-2xl font-black text-white bg-primary hover:bg-orange-600 transition-colors shadow-lg shadow-orange-500/30"
+                        className="flex-[2] py-4 rounded-2xl font-black text-slate-900 bg-primary hover:bg-orange-600 transition-colors shadow-lg shadow-orange-500/30"
                     >
                         Aplicar Filtros
                     </button>

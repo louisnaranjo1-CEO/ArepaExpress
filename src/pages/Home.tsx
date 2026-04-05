@@ -367,7 +367,7 @@ export default function Home() {
           >
             <img
               src="https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/logo.png?alt=media"
-              alt="Un 2x3 Logo"
+              alt="Deliexpress Logo"
               className="h-10 w-auto object-contain"
             />
           </div>
@@ -403,7 +403,7 @@ export default function Home() {
               <Search className="w-5 h-5 text-gray-400" />
             </div>
             <div className="flex w-full py-3.5 pl-12 pr-12 text-[15px] text-gray-500 rounded-full bg-white shadow-sm cursor-text">
-              Buscar en Un 2x3
+              Buscar en Deliexpress
             </div>
           </Link>
           <div className="absolute inset-y-0 right-0 flex items-center pr-2">
@@ -463,8 +463,8 @@ export default function Home() {
                 <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-32 h-32 bg-primary/20 rounded-full blur-2xl animate-pulse"></div>
                 <div className="w-28 h-28 bg-white rounded-full p-2.5 shadow-xl shadow-primary/20 border border-primary/10 flex items-center justify-center relative z-10 animate-pulse">
                   <img
-                    src="https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/otro.png?alt=media"
-                    alt="Un 2x3 Logo"
+                    src="https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/logo.png?alt=media&token=8acf92ec-b853-4f37-bd82-a4f651bbdcd9"
+                    alt="Deliexpress Logo"
                     className="w-full h-full object-contain drop-shadow-[0_0_15px_rgba(255,102,0,0.5)]"
                   />
                 </div>
@@ -473,7 +473,7 @@ export default function Home() {
 
               <div className="space-y-6 text-sm">
                 <p className="text-slate-600 font-medium leading-relaxed">
-                  <span className="font-bold text-slate-900">Un 2x3 no es solo una aplicación;</span> es el ecosistema digital más robusto de Venezuela diseñado para conectar a usuarios, comercios y trabajadores independientes en una sola interfaz.
+                  <span className="font-bold text-slate-900">Deliexpress no es solo una aplicación;</span> es el ecosistema digital más robusto de Venezuela diseñado para conectar a usuarios, comercios y trabajadores independientes en una sola interfaz.
                 </p>
                 <p className="text-slate-600 font-medium leading-relaxed">
                   Nuestra misión es eliminar las fricciones del día a día: adiós a las colas, adiós a la incertidumbre de precios y hola a la inmediatez.
@@ -622,7 +622,7 @@ export default function Home() {
                   <span className="text-2xl">{category.icon || '🏷️'}</span>
                 )}
               </div>
-              <span className="text-[10px] font-black text-slate-700 uppercase tracking-wider group-hover:text-primary transition-colors text-center truncate w-full px-1">
+              <span className="text-[10px] font-black text-slate-700 uppercase tracking-wider group-hover:text-slate-900 transition-colors text-center truncate w-full px-1">
                 {category.name}
               </span>
             </button>
@@ -634,7 +634,7 @@ export default function Home() {
                 <Utensils className="w-6 h-6" />
               </div>
             </div>
-            <span className="text-[10px] font-black text-slate-700 uppercase tracking-wider group-hover:text-primary transition-colors text-center w-full px-1">Ver todo</span>
+            <span className="text-[10px] font-black text-slate-700 uppercase tracking-wider group-hover:text-slate-900 transition-colors text-center w-full px-1">Ver todo</span>
           </Link>
         </div>
       </section> */}
@@ -667,7 +667,7 @@ export default function Home() {
       <main className="flex-1 px-5 pt-6 pb-24">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-slate-900 text-xl font-bold">Destacados</h2>
-          <Link to="/search" className="text-primary text-sm font-semibold hover:underline">Ver todos</Link>
+          <Link to="/search" className="text-slate-900 text-sm font-semibold hover:underline">Ver todos</Link>
         </div>
 
         <div className="flex flex-col gap-6">
@@ -730,7 +730,7 @@ export default function Home() {
 
                     <div className="absolute bottom-3 left-3 z-20 flex flex-wrap gap-2">
                       {restaurant.featured && (
-                        <span className="bg-primary text-white text-[10px] font-bold px-2 py-1 rounded-lg">Destacado</span>
+                        <span className="bg-primary text-slate-900 text-[10px] font-bold px-2 py-1 rounded-lg">Destacado</span>
                       )}
                       <span className="bg-white/90 backdrop-blur-md text-slate-900 text-[10px] font-bold px-2 py-1 rounded-lg flex items-center gap-1">
                         <Clock className="w-3.5 h-3.5" /> {restaurant.deliveryTime}
@@ -768,17 +768,17 @@ export default function Home() {
           ) : !manualCity ? (
             <div className="flex flex-col items-center justify-center py-20 px-6 text-center animate-in fade-in slide-in-from-bottom-4 relative">
               <div className="absolute -top-12 2xl:-top-16 opacity-70 flex flex-col items-center animate-bounce">
-                <span className="text-primary font-black uppercase text-[10px] tracking-widest mb-1 text-center bg-white px-3 py-1 rounded-full shadow-sm border border-orange-100">¡Presiona Aquí Arriba!</span>
-                <ArrowUp className="w-8 h-8 text-primary" strokeWidth={3} />
+                <span className="text-slate-900 font-black uppercase text-[10px] tracking-widest mb-1 text-center bg-white px-3 py-1 rounded-full shadow-sm border border-orange-100">¡Presiona Aquí Arriba!</span>
+                <ArrowUp className="w-8 h-8 text-slate-900" strokeWidth={3} />
               </div>
               
               <div className="w-24 h-24 bg-orange-100 rounded-[2.5rem] flex items-center justify-center mb-6 shadow-md border-4 border-white rotate-3">
-                <MapPin className="w-12 h-12 text-primary" />
+                <MapPin className="w-12 h-12 text-slate-900" />
               </div>
               
               <h3 className="text-2xl font-black text-slate-800 mb-3">¡Épale! 👋</h3>
               <p className="text-slate-500 font-bold max-w-[280px] leading-relaxed">
-                Selecciona arriba tu <span className="text-primary font-black">Estado y Ciudad</span> en la que vives para presentarte lugares increíbles.
+                Selecciona arriba tu <span className="text-slate-900 font-black">Estado y Ciudad</span> en la que vives para presentarte lugares increíbles.
               </p>
             </div>
           ) : (
@@ -834,7 +834,7 @@ function ProductCarousel({ title, products }: { title: string, products: Recomme
               </div>
 
               <div className="p-3 flex-1 flex flex-col">
-                <h3 className="text-xs text-slate-700 font-medium line-clamp-2 leading-tight mb-auto group-hover:text-primary transition-colors">
+                <h3 className="text-xs text-slate-700 font-medium line-clamp-2 leading-tight mb-auto group-hover:text-slate-900 transition-colors">
                   {product.name}
                 </h3>
 

@@ -132,14 +132,14 @@ export default function CashiersManager() {
             <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
                 <div>
                     <h1 className="text-3xl font-black text-slate-900 flex items-center gap-3">
-                        <Shield className="w-8 h-8 text-primary" />
+                        <Shield className="w-8 h-8 text-slate-900" />
                         Cajeras / Cobranza
                     </h1>
                     <p className="text-slate-500 font-medium">Gestiona los accesos de tus cajeras para el sistema de cobro.</p>
                 </div>
                 <button
                     onClick={() => setIsAddModalOpen(true)}
-                    className="bg-primary text-white px-6 py-3 rounded-2xl font-black hover:bg-primary/90 transition-all shadow-lg flex items-center justify-center gap-2"
+                    className="bg-primary text-slate-900 px-6 py-3 rounded-2xl font-black hover:bg-primary/90 transition-all shadow-lg flex items-center justify-center gap-2"
                 >
                     <Plus className="w-5 h-5" /> Nueva Cajera
                 </button>
@@ -181,7 +181,7 @@ export default function CashiersManager() {
                             
                             <h3 className="text-xl font-black text-slate-900">{cashier.name}</h3>
                             <p className="text-slate-500 font-bold text-sm bg-slate-50 px-3 py-1 rounded-full mt-2 inline-flex items-center gap-1">
-                                <Shield className="w-3 h-3 text-primary" /> Cajera
+                                <Shield className="w-3 h-3 text-slate-900" /> Cajera
                             </p>
 
                             <div className="w-full mt-6 space-y-3 bg-slate-50 p-4 rounded-2xl text-left">
@@ -235,7 +235,7 @@ export default function CashiersManager() {
                                             <img src={photoPreview} alt="Preview" className="w-full h-full object-cover" />
                                         ) : (
                                             <>
-                                                <Upload className="w-6 h-6 text-slate-400 mb-1 group-hover:text-primary transition-colors" />
+                                                <Upload className="w-6 h-6 text-slate-400 mb-1 group-hover:text-slate-900 transition-colors" />
                                                 <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Foto</span>
                                             </>
                                         )}
@@ -270,7 +270,7 @@ export default function CashiersManager() {
                             <button
                                 type="submit"
                                 disabled={isSubmitting}
-                                className="w-full bg-primary text-white py-4 rounded-2xl font-black flex items-center justify-center gap-2 mt-6 hover:opacity-90 transition-opacity disabled:opacity-50"
+                                className="w-full bg-primary text-slate-900 py-4 rounded-2xl font-black flex items-center justify-center gap-2 mt-6 hover:opacity-90 transition-opacity disabled:opacity-50"
                             >
                                 {isSubmitting ? <Loader2 className="w-5 h-5 animate-spin" /> : "Guardar Cajera"}
                             </button>

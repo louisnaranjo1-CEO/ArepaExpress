@@ -74,11 +74,11 @@ export default function DeliveryLayout({ children }: DeliveryLayoutProps) {
             <header className="bg-secondary text-white px-4 py-4 flex items-center justify-between shadow-md z-[60] shrink-0">
                 <div className="flex items-center gap-2">
                     <img
-                        src="https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/otro.png?alt=media"
-                        alt="Un 2x3"
+                        src="https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/logo.png?alt=media&token=8acf92ec-b853-4f37-bd82-a4f651bbdcd9"
+                        alt="Deliexpress"
                         className="w-8 h-8 rounded-full bg-white p-1"
                     />
-                    <h1 className="font-black text-lg tracking-tight">Un 2x3 Delivery</h1>
+                    <h1 className="font-black text-lg tracking-tight">Deliexpress Delivery</h1>
                 </div>
 
                 <div className="relative">
@@ -142,7 +142,7 @@ export default function DeliveryLayout({ children }: DeliveryLayoutProps) {
                         to={item.path}
                         className={({ isActive }) =>
                             `flex flex-col items-center gap-1 min-w-[64px] transition-all ${isActive
-                                ? 'text-primary'
+                                ? 'text-slate-900'
                                 : 'text-slate-400 hover:text-slate-600'
                             }`
                         }

@@ -410,7 +410,7 @@ export default function FinancesManager() {
                     <div className={`p-6 bg-white rounded-[32px] border-2 transition-all flex flex-col ${config.paymentMethods.pagoMovil.active ? 'border-primary shadow-lg shadow-primary/5' : 'border-slate-100'}`}>
                         <div className="flex items-center justify-between mb-6">
                             <div className="flex items-center gap-3">
-                                <div className="w-10 h-10 bg-primary/10 rounded-xl flex items-center justify-center text-primary">
+                                <div className="w-10 h-10 bg-primary/10 rounded-xl flex items-center justify-center text-slate-900">
                                     <CreditCard className="w-5 h-5" />
                                 </div>
                                 <h3 className="font-black text-slate-800 tracking-tight text-lg">Pago Móvil</h3>
@@ -543,7 +543,7 @@ export default function FinancesManager() {
                     <div className={`p-6 bg-white rounded-[32px] border-2 transition-all flex flex-col ${config.paymentMethods.usdt.active ? 'border-yellow-500 shadow-lg shadow-yellow-500/5' : 'border-slate-100'}`}>
                         <div className="flex items-center justify-between mb-6">
                             <div className="flex items-center gap-3">
-                                <div className="w-10 h-10 bg-yellow-50 rounded-xl flex items-center justify-center text-yellow-600">
+                                <div className="w-10 h-10 bg-yellow-50 rounded-xl flex items-center justify-center text-amber-700">
                                     <ImageIcon className="w-5 h-5" />
                                 </div>
                                 <h3 className="font-black text-slate-800 tracking-tight text-lg">USDT</h3>

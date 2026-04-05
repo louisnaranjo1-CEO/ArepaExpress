@@ -216,8 +216,8 @@ export default function ReviewModal({ isOpen, onClose, restaurantId, orderId, on
 
                                 {photos.length < MAX_PHOTOS && (
                                     <div className="relative w-24 h-24 rounded-2xl bg-slate-50 border-2 border-dashed border-slate-200 flex flex-col items-center justify-center hover:bg-slate-100 transition-colors cursor-pointer group">
-                                        <UploadCloud className="w-6 h-6 text-slate-400 mb-1 group-hover:text-primary transition-colors" />
-                                        <span className="text-[8px] font-black uppercase tracking-widest text-slate-400 group-hover:text-primary transition-colors">Subir</span>
+                                        <UploadCloud className="w-6 h-6 text-slate-400 mb-1 group-hover:text-slate-900 transition-colors" />
+                                        <span className="text-[8px] font-black uppercase tracking-widest text-slate-400 group-hover:text-slate-900 transition-colors">Subir</span>
                                         <input
                                             type="file"
                                             accept="image/*"
@@ -235,7 +235,7 @@ export default function ReviewModal({ isOpen, onClose, restaurantId, orderId, on
                         <button
                             type="submit"
                             disabled={isSubmitting}
-                            className="w-full bg-primary text-white py-4 rounded-2xl font-bold shadow-lg shadow-primary/30 hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-70 mt-4 flex items-center justify-center gap-2"
+                            className="w-full bg-primary text-slate-900 py-4 rounded-2xl font-bold shadow-lg shadow-primary/30 hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-70 mt-4 flex items-center justify-center gap-2"
                         >
                             {isSubmitting ? (
                                 <>

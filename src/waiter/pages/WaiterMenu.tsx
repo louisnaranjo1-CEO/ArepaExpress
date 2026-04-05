@@ -103,7 +103,7 @@ export default function WaiterMenu() {
         <WaiterLayout>
             <div className="relative w-full min-h-screen bg-white overflow-x-hidden flex flex-col">
                 {/* Header Badge */}
-                <div className="bg-primary text-white text-center py-2 text-[10px] font-black uppercase tracking-widest z-50 sticky top-0 flex justify-center items-center gap-2">
+                <div className="bg-primary text-slate-900 text-center py-2 text-[10px] font-black uppercase tracking-widest z-50 sticky top-0 flex justify-center items-center gap-2">
                     <Smartphone className="w-3.5 h-3.5" />
                     COMANDERO: {waiterData.name} {tableNumber && `• MESA ${tableNumber}`}
                 </div>
@@ -144,7 +144,7 @@ export default function WaiterMenu() {
                 {/* Search Bar */}
                 <div className="px-5 mt-4">
                     <div className="relative group">
-                        <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 group-focus-within:text-primary transition-colors" />
+                        <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 group-focus-within:text-slate-900 transition-colors" />
                         <input 
                             type="text"
                             placeholder="Buscar en el menú..."
@@ -163,7 +163,7 @@ export default function WaiterMenu() {
                                 key={cat}
                                 onClick={() => setActiveCategory(cat)}
                                 className={`px-5 py-2 rounded-full text-xs font-bold whitespace-nowrap transition-all ${activeCategory === cat
-                                    ? "bg-primary text-white shadow-md shadow-primary/20"
+                                    ? "bg-primary text-slate-900 shadow-md shadow-primary/20"
                                     : "bg-slate-50 text-slate-500 border border-slate-100"
                                     }`}
                             >
@@ -208,7 +208,7 @@ export default function WaiterMenu() {
                                     <div className="flex items-center gap-2">
                                         {product.promoPrice && product.promoPrice > 0 ? (
                                             <>
-                                                <span className="font-black text-primary text-base">${product.promoPrice.toFixed(2)}</span>
+                                                <span className="font-black text-slate-900 text-base">${product.promoPrice.toFixed(2)}</span>
                                                 <span className="text-[10px] text-slate-400 line-through font-bold">${product.price.toFixed(2)}</span>
                                             </>
                                         ) : (
@@ -231,7 +231,7 @@ export default function WaiterMenu() {
                                         setSelectionQty(1);
                                         setSelectionNote('');
                                     }}
-                                    className="absolute -bottom-2 -right-2 w-8 h-8 bg-primary text-white rounded-full flex items-center justify-center shadow-lg active:scale-90 transition-transform z-10"
+                                    className="absolute -bottom-2 -right-2 w-8 h-8 bg-primary text-slate-900 rounded-full flex items-center justify-center shadow-lg active:scale-90 transition-transform z-10"
                                 >
                                     <Plus className="w-5 h-5 font-bold" />
                                 </button>
@@ -302,7 +302,7 @@ export default function WaiterMenu() {
                                                         onClick={() => setSelectedVariant(variant)}
                                                         className={`flex items-center justify-between p-4 rounded-2xl border-2 transition-all font-bold ${
                                                             selectedVariant?.name === variant.name 
-                                                            ? 'border-primary bg-primary/5 text-primary' 
+                                                            ? 'border-primary bg-primary/5 text-slate-900' 
                                                             : 'border-slate-100 text-slate-600 hover:border-slate-200 bg-slate-50/50'
                                                         }`}
                                                     >
@@ -333,7 +333,7 @@ export default function WaiterMenu() {
                                                 <span className="w-12 text-center font-black text-lg">{selectionQty}</span>
                                                 <button 
                                                     onClick={() => setSelectionQty(selectionQty + 1)}
-                                                    className="w-10 h-10 flex items-center justify-center bg-white rounded-xl shadow-sm text-primary hover:text-primary-dark active:scale-95 transition-transform"
+                                                    className="w-10 h-10 flex items-center justify-center bg-white rounded-xl shadow-sm text-slate-900 hover:text-slate-900-dark active:scale-95 transition-transform"
                                                 >
                                                     <Plus className="w-4 h-4" />
                                                 </button>
@@ -365,7 +365,7 @@ export default function WaiterMenu() {
                                         className={`w-full py-5 rounded-3xl font-black text-lg shadow-xl flex items-center justify-center gap-3 transition-all active:scale-[0.98] ${
                                             selectedProduct.variants && selectedProduct.variants.length > 0 && !selectedVariant
                                             ? 'bg-slate-200 text-slate-400 cursor-not-allowed shadow-none'
-                                            : 'bg-primary text-white shadow-primary/30 hover:scale-[1.02]'
+                                            : 'bg-primary text-slate-900 shadow-primary/30 hover:scale-[1.02]'
                                         }`}
                                     >
                                         <Plus className="w-6 h-6" />
@@ -382,7 +382,7 @@ export default function WaiterMenu() {
                     <div className="fixed bottom-24 left-1/2 -translate-x-1/2 w-full px-5 max-w-lg z-50">
                         <button
                             onClick={() => navigate('/cart')}
-                            className="w-full bg-primary text-white rounded-2xl p-4 shadow-xl shadow-primary/40 flex items-center justify-between active:scale-95 transition-transform"
+                            className="w-full bg-primary text-slate-900 rounded-2xl p-4 shadow-xl shadow-primary/40 flex items-center justify-between active:scale-95 transition-transform"
                         >
                             <div className="flex items-center gap-3">
                                 <div className="bg-white/20 px-3 py-1 rounded-lg text-sm font-black">{totalItems}</div>

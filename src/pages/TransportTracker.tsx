@@ -376,8 +376,8 @@ export default function TransportTracker() {
                     <div className="flex flex-col items-center justify-center gap-6 animate-fade-in px-8">
                         <div className="w-48 h-48 bg-white rounded-[40px] shadow-2xl shadow-primary/20 p-8 flex items-center justify-center">
                             <img
-                                src="https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/otro.png?alt=media&token=8e68e4c5-9c88-4c27-9c9c-0c3a88c3e8a5"
-                                alt="Un 2x3 Logo"
+                                src="https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/logo.png?alt=media&token=8acf92ec-b853-4f37-bd82-a4f651bbdcd9"
+                                alt="Deliexpress Logo"
                                 className="w-full h-full object-contain animate-bounce-subtle"
                             />
                         </div>
@@ -388,7 +388,7 @@ export default function TransportTracker() {
                                  'Buscando Conductor'}
                             </h3>
                             <p className="text-slate-500 font-bold max-w-[250px]">
-                                {request.status === 'completed' ? 'Gracias por confiar en el transporte express de Un 2x3' : 
+                                {request.status === 'completed' ? 'Gracias por confiar en el transporte express de Deliexpress' : 
                                  request.status === 'verifying_payment' ? 'Estamos procesando tu comprobante...' :
                                  'Conectando con vehículos en tu zona...'}
                             </p>
@@ -443,7 +443,7 @@ export default function TransportTracker() {
                 {request.scheduled && ['searching', 'accepted'].includes(request.status) && (
                     <div className="mb-6 p-4 bg-red-50 border border-red-100 rounded-2xl flex flex-col items-center">
                         <p className="text-xs text-red-600 font-bold text-center mb-3">
-                            Puedes cancelar esta reserva. El pago será reembolsado como saldo a tu billetera virtual de Un 2x3.
+                            Puedes cancelar esta reserva. El pago será reembolsado como saldo a tu billetera virtual de Deliexpress.
                         </p>
                         <button
                             onClick={handleCancelReservation}
@@ -460,7 +460,7 @@ export default function TransportTracker() {
                         <div className="absolute -top-4 -right-4 w-20 h-20 bg-white/20 rounded-full blur-xl animate-pulse"></div>
                         <h3 className="text-white font-black text-xl mb-2 relative z-10">🎁 ¡Gana viajes gratis!</h3>
                         <p className="text-white/90 text-xs font-medium mb-3 relative z-10">
-                            Regístrate en Un 2x3 y obtén increíbles premios, descuentos y acumula puntos en todos los viajes.
+                            Regístrate en Deliexpress y obtén increíbles premios, descuentos y acumula puntos en todos los viajes.
                         </p>
                         <button onClick={() => navigate('/profile')} className="inline-block bg-white text-orange-600 text-sm font-bold px-5 py-2 rounded-xl shadow-md hover:scale-105 active:scale-95 transition-transform relative z-10">
                             Registrarme ahora

@@ -36,7 +36,7 @@ export default function CitySelectorModal({ isOpen, onClose, onSelect, initialSt
                 {/* Header */}
                 <div className="flex items-center justify-between px-6 pl-8 py-5 border-b border-slate-100">
                     <h2 className="text-xl font-black text-slate-900 flex items-center gap-2">
-                        <MapPin className="w-5 h-5 text-primary" />
+                        <MapPin className="w-5 h-5 text-slate-900" />
                         Selecciona tu ciudad
                     </h2>
                     <button
@@ -94,7 +94,7 @@ export default function CitySelectorModal({ isOpen, onClose, onSelect, initialSt
                     <button
                         onClick={handleApply}
                         disabled={!selectedState || !selectedCity}
-                        className="w-full py-4 rounded-2xl font-black text-white bg-primary hover:bg-orange-600 transition-colors shadow-lg shadow-orange-500/30 disabled:opacity-50 disabled:cursor-not-allowed"
+                        className="w-full py-4 rounded-2xl font-black text-slate-900 bg-primary hover:bg-orange-600 transition-colors shadow-lg shadow-orange-500/30 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                         Confirmar Ubicación
                     </button>

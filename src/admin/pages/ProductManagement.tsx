@@ -415,7 +415,7 @@ export default function ProductManagement() {
     if (loading) {
         return (
             <div className="flex flex-col items-center justify-center min-h-[400px]">
-                <Loader2 className="w-10 h-10 text-primary animate-spin" />
+                <Loader2 className="w-10 h-10 text-slate-900 animate-spin" />
                 <p className="mt-4 text-slate-500 font-bold">Cargando productos...</p>
             </div>
         );
@@ -430,7 +430,7 @@ export default function ProductManagement() {
                 </div>
                 <button
                     onClick={() => handleOpenModal()}
-                    className="bg-primary text-white px-6 py-4 rounded-2xl font-black shadow-lg shadow-primary/20 flex items-center justify-center gap-2 hover:scale-[1.02] active:scale-[0.98] transition-all group"
+                    className="bg-primary text-slate-900 px-6 py-4 rounded-2xl font-black shadow-lg shadow-primary/20 flex items-center justify-center gap-2 hover:scale-[1.02] active:scale-[0.98] transition-all group"
                 >
                     <Plus className="w-5 h-5 transition-transform group-hover:rotate-90" />
                     <span>Añadir Producto</span>
@@ -452,14 +452,14 @@ export default function ProductManagement() {
                 <div className="flex items-center gap-2 bg-white p-1 rounded-2xl border border-slate-200 shrink-0 w-max self-start md:self-auto order-first md:order-none">
                      <button
                         onClick={() => setViewMode('grid')}
-                        className={`px-4 py-3 rounded-xl transition-all focus:outline-none flex items-center gap-2 ${viewMode === 'grid' ? 'bg-primary text-white shadow-md' : 'text-slate-400 hover:text-slate-600 hover:bg-slate-50'}`}
+                        className={`px-4 py-3 rounded-xl transition-all focus:outline-none flex items-center gap-2 ${viewMode === 'grid' ? 'bg-primary text-slate-900 shadow-md' : 'text-slate-400 hover:text-slate-600 hover:bg-slate-50'}`}
                         title="Cuadrícula Grande"
                      >
                         <LayoutGrid className="w-5 h-5" />
                      </button>
                      <button
                         onClick={() => setViewMode('list')}
-                        className={`px-4 py-3 rounded-xl transition-all focus:outline-none flex items-center gap-2 ${viewMode === 'list' ? 'bg-primary text-white shadow-md' : 'text-slate-400 hover:text-slate-600 hover:bg-slate-50'}`}
+                        className={`px-4 py-3 rounded-xl transition-all focus:outline-none flex items-center gap-2 ${viewMode === 'list' ? 'bg-primary text-slate-900 shadow-md' : 'text-slate-400 hover:text-slate-600 hover:bg-slate-50'}`}
                         title="Lista Compacta"
                      >
                         <List className="w-5 h-5" />
@@ -473,7 +473,7 @@ export default function ProductManagement() {
                             key={cat}
                             onClick={() => setActiveCategory(cat)}
                             className={`px-5 py-3 md:px-6 md:py-4 rounded-2xl font-bold whitespace-nowrap transition-all border ${activeCategory === cat
-                                ? 'bg-primary text-white border-primary shadow-lg shadow-primary/20'
+                                ? 'bg-primary text-slate-900 border-primary shadow-lg shadow-primary/20'
                                 : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50'
                                 }`}
                         >
@@ -580,7 +580,7 @@ export default function ProductManagement() {
                                         <ImageIcon className="w-12 h-12" />
                                     </div>
                                 )}
-                                <div className="absolute top-4 right-4 bg-white/90 backdrop-blur-md px-3 py-1 rounded-full text-sm font-black text-primary shadow-sm flex items-center gap-2">
+                                <div className="absolute top-4 right-4 bg-white/90 backdrop-blur-md px-3 py-1 rounded-full text-sm font-black text-slate-900 shadow-sm flex items-center gap-2">
                                     {p.pointsPrice && p.pointsPrice > 0 ? (
                                         <span className="text-amber-500 font-bold flex items-center gap-1 border-r border-slate-200 pr-2">
                                             <Tag className="w-3 h-3" /> {p.pointsPrice} pts
@@ -608,7 +608,7 @@ export default function ProductManagement() {
                                         <div className="flex flex-wrap gap-1">
                                             <span className="bg-slate-50 text-slate-500 text-[10px] font-black px-2 py-1 rounded-lg uppercase tracking-wider">{p.category}</span>
                                             {p.subcategory && (
-                                                <span className="bg-primary/5 text-primary text-[10px] font-black px-2 py-1 rounded-lg uppercase tracking-wider border border-primary/10">{p.subcategory}</span>
+                                                <span className="bg-primary/5 text-slate-900 text-[10px] font-black px-2 py-1 rounded-lg uppercase tracking-wider border border-primary/10">{p.subcategory}</span>
                                             )}
                                         </div>
                                         <button
@@ -717,7 +717,7 @@ export default function ProductManagement() {
                                     className="flex items-center justify-between cursor-pointer"
                                 >
                                     <div className="flex items-center gap-3">
-                                        <div className={`p-2 rounded-xl ${formData.consultPrice ? 'bg-primary text-white' : 'bg-white text-slate-400 border border-slate-100'}`}>
+                                        <div className={`p-2 rounded-xl ${formData.consultPrice ? 'bg-primary text-slate-900' : 'bg-white text-slate-400 border border-slate-100'}`}>
                                             <Tag className="w-5 h-5" />
                                         </div>
                                         <div>
@@ -791,7 +791,7 @@ export default function ProductManagement() {
                                         <button
                                             type="button"
                                             onClick={addVariant}
-                                            className="text-[10px] font-black uppercase text-primary hover:scale-105 transition-transform flex items-center gap-1"
+                                            className="text-[10px] font-black uppercase text-slate-900 hover:scale-105 transition-transform flex items-center gap-1"
                                         >
                                             <Plus className="w-3 h-3" /> Añadir variante
                                         </button>
@@ -870,7 +870,7 @@ export default function ProductManagement() {
                                         </div>
                                     ))}
                                     {(existingImages.length + newImageFiles.length) < 6 && (
-                                        <label className="aspect-square rounded-2xl bg-slate-50 border-2 border-dashed border-slate-200 flex flex-col items-center justify-center cursor-pointer hover:bg-slate-100 hover:border-primary/30 transition-all text-slate-400 hover:text-primary">
+                                        <label className="aspect-square rounded-2xl bg-slate-50 border-2 border-dashed border-slate-200 flex flex-col items-center justify-center cursor-pointer hover:bg-slate-100 hover:border-primary/30 transition-all text-slate-400 hover:text-slate-900">
                                             <Plus className="w-6 h-6 mb-1" />
                                             <span className="text-[10px] font-black uppercase">Subir</span>
                                             <input
@@ -932,7 +932,7 @@ export default function ProductManagement() {
                                             href={`https://wa.me/${DEVELOPER_WHATSAPP}?text=Hola, me gustaría solicitar una nueva categoría para mi menú: `}
                                             target="_blank"
                                             rel="noopener noreferrer"
-                                            className="text-[9px] text-primary hover:underline lowercase"
+                                            className="text-[9px] text-slate-900 hover:underline lowercase"
                                         >
                                             ¿Falta una?
                                         </a>
@@ -986,7 +986,7 @@ export default function ProductManagement() {
                             <button
                                 type="submit"
                                 disabled={submitting}
-                                className="w-full bg-primary text-white py-4 rounded-2xl font-black shadow-xl shadow-primary/30 flex items-center justify-center gap-2 hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-70 mt-4"
+                                className="w-full bg-primary text-slate-900 py-4 rounded-2xl font-black shadow-xl shadow-primary/30 flex items-center justify-center gap-2 hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-70 mt-4"
                             >
                                 {submitting ? <Loader2 className="w-6 h-6 animate-spin" /> : <span>{editingProduct ? 'Actualizar Producto' : 'Crear Producto'}</span>}
                             </button>

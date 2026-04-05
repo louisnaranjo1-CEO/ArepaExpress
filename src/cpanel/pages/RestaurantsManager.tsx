@@ -131,7 +131,7 @@ export default function RestaurantsManager() {
                                                     )}
                                                 </div>
                                                 <div>
-                                                    <div className="font-bold text-slate-900 group-hover:text-primary transition-colors flex items-center gap-2">
+                                                    <div className="font-bold text-slate-900 group-hover:text-slate-900 transition-colors flex items-center gap-2">
                                                         {restaurant.name}
                                                         {restaurant.isMock && (
                                                             <span className="px-2 py-0.5 bg-indigo-100 text-indigo-700 text-[9px] uppercase tracking-wider rounded-full font-black">

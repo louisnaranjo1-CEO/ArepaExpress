@@ -97,7 +97,7 @@ export default function Favorites() {
                             <h2 className="text-xl font-black text-slate-800">Inicia Sesión</h2>
                             <p className="text-slate-400 text-sm max-w-[200px] leading-relaxed">Debes iniciar sesión para ver y guardar tus restaurantes favoritos.</p>
                         </div>
-                        <Link to="/profile" className="bg-primary text-white px-8 py-4 rounded-2xl font-black shadow-xl shadow-primary/30 hover:scale-[1.05] active:scale-[0.95] transition-all">
+                        <Link to="/profile" className="bg-primary text-slate-900 px-8 py-4 rounded-2xl font-black shadow-xl shadow-primary/30 hover:scale-[1.05] active:scale-[0.95] transition-all">
                             IR A PERFIL
                         </Link>
                     </div>
@@ -120,15 +120,15 @@ export default function Favorites() {
                                     </div>
                                 </div>
                                 <div className="flex-1 min-w-0 py-1">
-                                    <h3 className="font-black text-slate-900 group-hover:text-primary transition-colors truncate">{res.name}</h3>
+                                    <h3 className="font-black text-slate-900 group-hover:text-slate-900 transition-colors truncate">{res.name}</h3>
                                     <p className="text-xs text-slate-500 truncate">{res.category}</p>
                                     <div className="flex items-center gap-1 mt-1">
-                                        <div className="flex items-center text-primary text-xs font-bold gap-1">
+                                        <div className="flex items-center text-slate-900 text-xs font-bold gap-1">
                                             <Star className="w-3 h-3 fill-primary" />
                                             <span>{res.rating}</span>
                                         </div>
                                     </div>
-                                    <button className="mt-3 flex w-full justify-center items-center gap-1 text-xs font-black text-primary bg-primary/10 px-4 py-2 rounded-xl group-hover:bg-primary group-hover:text-white transition-all">
+                                    <button className="mt-3 flex w-full justify-center items-center gap-1 text-xs font-black text-slate-900 bg-primary/10 px-4 py-2 rounded-xl group-hover:bg-primary group-hover:text-slate-900 transition-all">
                                         PEDIR YA <ArrowRight className="w-3 h-3" />
                                     </button>
                                 </div>
@@ -144,7 +144,7 @@ export default function Favorites() {
                             <h2 className="text-xl font-black text-slate-800">¿Nada por aquí?</h2>
                             <p className="text-slate-400 text-sm max-w-[200px] leading-relaxed">Explora restaurantes y guarda los que más te gusten con el corazón.</p>
                         </div>
-                        <Link to="/search" className="bg-primary text-white px-8 py-4 rounded-2xl font-black shadow-xl shadow-primary/30 hover:scale-[1.05] active:scale-[0.95] transition-all">
+                        <Link to="/search" className="bg-primary text-slate-900 px-8 py-4 rounded-2xl font-black shadow-xl shadow-primary/30 hover:scale-[1.05] active:scale-[0.95] transition-all">
                             EXPLORAR AHORA
                         </Link>
                     </div>
@@ -159,7 +159,7 @@ export default function Favorites() {
                         <button
                             onClick={handleActivateNotifications}
                             disabled={activatingNotifications}
-                            className="bg-white text-primary font-black px-6 py-3 rounded-xl shadow-lg hover:scale-[1.02] transition-transform active:scale-[0.98] uppercase text-xs tracking-widest w-full flex items-center justify-center gap-2 disabled:opacity-70"
+                            className="bg-white text-slate-900 font-black px-6 py-3 rounded-xl shadow-lg hover:scale-[1.02] transition-transform active:scale-[0.98] uppercase text-xs tracking-widest w-full flex items-center justify-center gap-2 disabled:opacity-70"
                         >
                             {activatingNotifications ? (
                                 <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin"></div>

@@ -86,7 +86,7 @@ export default function ReviewsModal({ isOpen, onClose, restaurantId }: ReviewsM
                     <div className="flex-1 overflow-y-auto p-6 space-y-6">
                         {loading ? (
                             <div className="flex flex-col items-center justify-center py-20">
-                                <Loader2 className="w-10 h-10 text-primary animate-spin" />
+                                <Loader2 className="w-10 h-10 text-slate-900 animate-spin" />
                                 <p className="mt-4 font-bold text-slate-400">Cargando experiencias...</p>
                             </div>
                         ) : reviews.length === 0 ? (

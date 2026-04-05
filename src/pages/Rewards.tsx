@@ -20,7 +20,7 @@ export default function Rewards() {
     const userPoints = userData?.points || 0;
     const referralCode = userData?.referralCode || user?.uid?.substring(0, 6).toUpperCase() || 'INVITADELI';
     const [shareConfig, setShareConfig] = useState({
-        message: '¡Usa Un 2x3 y obtén recompensas!',
+        message: '¡Usa Deliexpress y obtén recompensas!',
         url: window.location.origin
     });
 
@@ -85,7 +85,7 @@ export default function Rewards() {
             try {
                 const finalUrl = `${shareConfig.url.replace(/\/$/, '')}/auth?ref=${referralCode}`;
                 await navigator.share({
-                    title: '¡Acompáñame en Un 2x3!',
+                    title: '¡Acompáñame en Deliexpress!',
                     text: `${shareConfig.message}\nMi código es: ${referralCode}`,
                     url: finalUrl
                 });
@@ -190,7 +190,7 @@ export default function Rewards() {
                 <div className="bg-white rounded-[2rem] p-6 shadow-xl shadow-slate-200/50 border border-slate-100">
                     <div className="flex items-center justify-between mb-6">
                         <div className="flex items-center gap-3">
-                            <div className="w-12 h-12 bg-primary/10 text-primary rounded-2xl flex items-center justify-center shrink-0">
+                            <div className="w-12 h-12 bg-primary/10 text-slate-900 rounded-2xl flex items-center justify-center shrink-0">
                                 <Ticket className="w-6 h-6" />
                             </div>
                             <div>

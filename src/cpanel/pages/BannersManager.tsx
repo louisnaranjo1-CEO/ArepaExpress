@@ -470,7 +470,7 @@ export default function BannersManager() {
                                 <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Imagen del Banner Principal (Para el inicio)</label>
                                 <div className="mt-1 flex items-center gap-4">
                                     <label className="flex-1 cursor-pointer">
-                                        <div className={`w-full h-14 bg-slate-50 border-2 border-dashed border-slate-200 rounded-2xl flex items-center justify-center gap-2 transition-all ${uploadingBannerImage ? 'opacity-50 cursor-not-allowed' : 'hover:border-primary hover:bg-primary/5 text-slate-400 hover:text-primary'}`}>
+                                        <div className={`w-full h-14 bg-slate-50 border-2 border-dashed border-slate-200 rounded-2xl flex items-center justify-center gap-2 transition-all ${uploadingBannerImage ? 'opacity-50 cursor-not-allowed' : 'hover:border-primary hover:bg-primary/5 text-slate-400 hover:text-slate-900'}`}>
                                             {uploadingBannerImage ? (
                                                 <div className="w-5 h-5 border-2 border-primary border-t-transparent rounded-full animate-spin"></div>
                                             ) : (
