@@ -170,7 +170,7 @@ export default function Rewards() {
 
                     <div className="bg-slate-50 rounded-2xl p-4 border border-slate-100 mb-4 text-center">
                         <p className="text-xs text-slate-400 font-black uppercase tracking-widest mb-2">Tu Código de Invitación</p>
-                        <div className="text-2xl font-black text-primary tracking-widest mb-4">
+                        <div className="text-2xl font-black text-slate-900 tracking-widest mb-4">
                             {referralCode}
                         </div>
                         <div className="flex gap-2">
