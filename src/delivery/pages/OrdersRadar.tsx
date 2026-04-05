@@ -762,7 +762,18 @@ export default function OrdersRadar() {
                                             <MapPin className="w-5 h-5" />
                                         </div>
                                         <div>
-                                            <p className="text-[10px] font-black text-emerald-600 uppercase tracking-widest">Destino (Cliente: {req.userName}):</p>
+                                            <p className="text-[10px] font-black text-emerald-600 uppercase tracking-widest mb-1">Cliente:</p>
+                                            <p className="font-bold text-slate-900 leading-tight flex flex-col gap-0.5">
+                                                <span>{req.userName}</span>
+                                                {(req.userCedula || req.userPhone) && (
+                                                    <span className="text-xs text-slate-500 font-medium">
+                                                        {req.userCedula && `C.I: ${req.userCedula}`}
+                                                        {req.userCedula && req.userPhone && ' • '}
+                                                        {req.userPhone && `Telf: ${req.userPhone}`}
+                                                    </span>
+                                                )}
+                                            </p>
+                                            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-2">Destino:</p>
                                             <p className="font-bold text-slate-700 leading-tight mt-0.5 line-clamp-2">{req.destination?.address}</p>
                                         </div>
                                     </div>

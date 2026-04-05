@@ -1200,19 +1200,6 @@ export default function Taxi() {
                                         </div>
                                     )}
 
-                                    {paymentMethods.cash?.active && (
-                                        <div className={`border-2 rounded-2xl overflow-hidden transition-all ${selectedPaymentMethod === 'cash' ? 'border-emerald-500 bg-emerald-50/50' : 'border-slate-100'}`}>
-                                            <button
-                                                onClick={() => setSelectedPaymentMethod('cash')}
-                                                className="w-full p-4 flex items-center gap-3 text-left bg-transparent"
-                                            >
-                                                <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${selectedPaymentMethod === 'cash' ? 'border-emerald-500' : 'border-slate-300'}`}>
-                                                    {selectedPaymentMethod === 'cash' && <div className="w-2.5 h-2.5 bg-emerald-500 rounded-full"></div>}
-                                                </div>
-                                                <span className="font-bold text-slate-700">Pago en Efectivo (Al chofer)</span>
-                                            </button>
-                                        </div>
-                                    )}
                                 </div>
                             )}
 

@@ -138,10 +138,16 @@ export default function Profile() {
 
     useEffect(() => {
         const urlRef = searchParams.get('ref');
+        const action = searchParams.get('action');
+        
         if (urlRef && !user) {
             setReferralCodeInput(urlRef.toUpperCase());
             setIsLoginMode(false);
             setIsForcedRegister(true);
+        } else if (action === 'register' && !user) {
+            setIsLoginMode(false);
+            setIsForcedRegister(true);
+            setShowEmailModal(true); // Abre el modal de registro directamente
         }
     }, [searchParams, user]);
 

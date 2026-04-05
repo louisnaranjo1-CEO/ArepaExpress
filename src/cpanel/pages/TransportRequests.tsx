@@ -379,7 +379,17 @@ export default function TransportRequests() {
                                                     )}
                                                 </div>
                                                 <div className="flex items-center gap-3 text-sm font-medium text-slate-500 flex-wrap mt-1">
-                                                    <span className="flex items-center gap-1"><User className="w-4 h-4" /> {req.userName}</span>
+                                                    <span className="flex items-center gap-1 bg-slate-100/80 px-2 py-0.5 rounded text-slate-700">
+                                                        <User className="w-4 h-4" /> 
+                                                        <span className="font-bold">{req.userName}</span>
+                                                        {(req.userCedula || req.userPhone) && (
+                                                            <span className="text-xs font-normal border-l border-slate-300 ml-1.5 pl-1.5 text-slate-500">
+                                                                {req.userCedula && `C.I: ${req.userCedula}`}
+                                                                {req.userCedula && req.userPhone && ' | '}
+                                                                {req.userPhone && `Telf: ${req.userPhone}`}
+                                                            </span>
+                                                        )}
+                                                    </span>
                                                     <span className="flex items-center gap-1">
                                                         <Calendar className="w-4 h-4" /> 
                                                         {req.scheduled ? (

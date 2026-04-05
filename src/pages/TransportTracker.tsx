@@ -460,9 +460,9 @@ export default function TransportTracker() {
                         <div className="absolute -top-4 -right-4 w-20 h-20 bg-white/20 rounded-full blur-xl animate-pulse"></div>
                         <h3 className="text-white font-black text-xl mb-2 relative z-10">🎁 ¡Gana viajes gratis!</h3>
                         <p className="text-white/90 text-xs font-medium mb-3 relative z-10">
-                            Regístrate en Deliexpress y obtén increíbles premios, descuentos y acumula puntos en todos los viajes.
+                            Regístrate Un 2x3 y obtén increíbles premios, descuentos y acumula puntos en todos los viajes.
                         </p>
-                        <button onClick={() => navigate('/profile')} className="inline-block bg-white text-orange-600 text-sm font-bold px-5 py-2 rounded-xl shadow-md hover:scale-105 active:scale-95 transition-transform relative z-10">
+                        <button onClick={() => navigate('/profile?action=register')} className="inline-block bg-white text-orange-600 text-sm font-bold px-5 py-2 rounded-xl shadow-md hover:scale-105 active:scale-95 transition-transform relative z-10">
                             Registrarme ahora
                         </button>
                     </div>
