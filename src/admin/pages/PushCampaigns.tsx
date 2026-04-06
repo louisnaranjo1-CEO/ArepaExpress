@@ -2,8 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { collection, query, where, onSnapshot, doc, getDoc, addDoc, serverTimestamp } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { db, storage } from '../../lib/firebase';
-import { Megaphone, Plus, ImageIcon, Upload, X } from 'lucide-react';
+import { Megaphone, Plus, ImageIcon, Upload, X, MapPin } from 'lucide-react';
 import { toast } from 'react-hot-toast';
+import { VENEZUELA_DATA, VENEZUELA_STATES } from '../../lib/venezuelaData';
 
 export default function PushCampaigns({ restaurantId }: { restaurantId: string }) {
     const [campaigns, setCampaigns] = useState<any[]>([]);
@@ -17,6 +18,8 @@ export default function PushCampaigns({ restaurantId }: { restaurantId: string }
     const [title, setTitle] = useState('');
     const [subtitle, setSubtitle] = useState('');
     const [locationLevel, setLocationLevel] = useState<'city' | 'state' | 'national'>('city');
+    const [selectedState, setSelectedState] = useState('');
+    const [selectedCity, setSelectedCity] = useState('');
     const [minAge, setMinAge] = useState(18);
     const [maxAge, setMaxAge] = useState(60);
     const [sex, setSex] = useState<'all' | 'male' | 'female'>('all');
@@ -53,7 +56,22 @@ export default function PushCampaigns({ restaurantId }: { restaurantId: string }
         // Cargar nombre del rest
         const loadRest = async () => {
              const rDoc = await getDoc(doc(db, 'restaurants', restaurantId));
-             if (rDoc.exists()) setRestaurantData(rDoc.data());
+             if (rDoc.exists()) {
+                 const data = rDoc.data();
+                 setRestaurantData(data);
+                 // Default to restaurant location
+                 if (data.location?.state) {
+                     setSelectedState(data.location.state);
+                 } else if (data.address?.state) {
+                     setSelectedState(data.address.state);
+                 }
+                 
+                 if (data.location?.city) {
+                    setSelectedCity(data.location.city);
+                 } else if (data.address?.city) {
+                    setSelectedCity(data.address.city);
+                 }
+             }
         };
         loadRest();
 
@@ -115,8 +133,8 @@ export default function PushCampaigns({ restaurantId }: { restaurantId: string }
                 pImage = await getDownloadURL(snap.ref);
             }
 
-            const city = restaurantData?.address?.city || 'Desconocida';
-            const state = restaurantData?.address?.state || 'Desconocido';
+            const finalCity = locationLevel === 'city' ? selectedCity : null;
+            const finalState = (locationLevel === 'state' || locationLevel === 'city') ? selectedState : null;
 
             // Combinar fecha y hora para el scheduledAt
             const scheduledDatetime = new Date(`${scheduledDate}T${scheduledTime}`);
@@ -128,8 +146,8 @@ export default function PushCampaigns({ restaurantId }: { restaurantId: string }
                 title,
                 subtitle,
                 location: locationLevel,
-                city: locationLevel === 'city' ? city : null,
-                state: (locationLevel === 'state' || locationLevel === 'city') ? state : null,
+                city: finalCity,
+                state: finalState,
                 minAge,
                 maxAge,
                 sex,
@@ -226,11 +244,49 @@ export default function PushCampaigns({ restaurantId }: { restaurantId: string }
                                 <div>
                                     <label className="block text-sm font-bold text-slate-700 mb-2">Alcance Geográfico</label>
                                     <select value={locationLevel} onChange={(e: any) => setLocationLevel(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 font-bold text-slate-700">
-                                        <option value="city">Solo mi Ciudad (${prices.pushPriceCity})</option>
-                                        <option value="state">Cualquiera en mi Estado (${prices.pushPriceState})</option>
+                                        <option value="city">Ciudad Específica (${prices.pushPriceCity})</option>
+                                        <option value="state">Cualquiera en un Estado (${prices.pushPriceState})</option>
                                         <option value="national">Alcance Nacional (${prices.pushPriceNational})</option>
                                     </select>
                                 </div>
+
+                                {locationLevel !== 'national' && (
+                                    <>
+                                        <div>
+                                            <label className="block text-sm font-bold text-slate-700 mb-2">Seleccionar Estado</label>
+                                            <select 
+                                                value={selectedState} 
+                                                onChange={(e) => {
+                                                    setSelectedState(e.target.value);
+                                                    setSelectedCity(VENEZUELA_DATA[e.target.value]?.[0] || '');
+                                                }}
+                                                className="w-full bg-white border border-slate-200 rounded-xl px-4 py-3 font-bold text-slate-700"
+                                            >
+                                                <option value="">Cualquier Estado</option>
+                                                {VENEZUELA_STATES.map(s => (
+                                                    <option key={s} value={s}>{s}</option>
+                                                ))}
+                                            </select>
+                                        </div>
+
+                                        {locationLevel === 'city' && (
+                                            <div>
+                                                <label className="block text-sm font-bold text-slate-700 mb-2">Seleccionar Ciudad</label>
+                                                <select 
+                                                    value={selectedCity} 
+                                                    onChange={(e) => setSelectedCity(e.target.value)}
+                                                    className="w-full bg-white border border-slate-200 rounded-xl px-4 py-3 font-bold text-slate-700"
+                                                    disabled={!selectedState}
+                                                >
+                                                    <option value="">Todas las Ciudades</option>
+                                                    {selectedState && VENEZUELA_DATA[selectedState]?.map(c => (
+                                                        <option key={c} value={c}>{c}</option>
+                                                    ))}
+                                                </select>
+                                            </div>
+                                        )}
+                                    </>
+                                )}
                                 <div>
                                     <label className="block text-sm font-bold text-slate-700 mb-2">Género</label>
                                     <select value={sex} onChange={(e: any) => setSex(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3">
