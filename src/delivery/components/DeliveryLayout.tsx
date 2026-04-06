@@ -79,7 +79,7 @@ export default function DeliveryLayout({ children }: DeliveryLayoutProps) {
                         className="w-10 h-10 object-contain"
                     />
                     <div>
-                        <h1 className="font-black text-lg tracking-tighter leading-none">Deliexpress Delivery</h1>
+                        <h1 className="font-black text-lg tracking-tighter leading-none">Centro de comandas</h1>
                         <p className="text-[10px] font-bold text-white/70 italic leading-none mt-1">Llega en un 2x3 a tu destino.</p>
                     </div>
                 </div>

@@ -159,11 +159,11 @@ export default function Earnings() {
 
             {/* Main Stats Grid */}
             <div className="px-4 grid grid-cols-2 gap-4">
-                <div className="bg-primary rounded-[32px] p-5 text-slate-900 shadow-lg shadow-primary/20 relative overflow-hidden col-span-2">
+                <div className="bg-primary rounded-[32px] p-5 text-black shadow-lg shadow-primary/20 relative overflow-hidden col-span-2">
                     <div className="absolute top-0 right-0 w-24 h-24 bg-white/10 rounded-full blur-2xl -mr-8 -mt-8"></div>
-                    <p className="text-indigo-100 font-black uppercase tracking-widest text-[10px] opacity-80">Disponible para Cobro</p>
+                    <p className="text-black font-black uppercase tracking-widest text-[10px] opacity-80">Disponible para Cobro</p>
                     <h3 className="text-4xl font-black mb-1">${stats.available.toFixed(2)}</h3>
-                    <div className="flex items-center gap-1.5 text-indigo-100/70 text-[10px] font-bold">
+                    <div className="flex items-center gap-1.5 text-black/70 text-[10px] font-bold">
                         <PackageCheck className="w-3 h-3" /> {earnings.filter(o => !o.isPaid).length} servicios pendientes
                     </div>
                 </div>

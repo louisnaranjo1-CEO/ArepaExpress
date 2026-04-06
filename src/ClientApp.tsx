@@ -18,8 +18,6 @@ import { Toaster } from 'react-hot-toast';
 import { CartProvider } from './context/CartContext';
 import { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { doc, getDoc } from 'firebase/firestore';
-import { db } from './lib/firebase';
 import { useGlobalAudioAlerts } from './hooks/useGlobalAudioAlerts';
 
 function RedirectHandler({ children }: { children: React.ReactNode }) {
@@ -29,44 +27,8 @@ function RedirectHandler({ children }: { children: React.ReactNode }) {
     useGlobalAudioAlerts('user', user?.uid);
 
     useEffect(() => {
-        if (user && userData) {
-            const checkRoleAndRedirect = async () => {
-                // If it's a delivery driver or taxi
-                if (userData.role === 'delivery' || userData.role === 'driver') {
-                    const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-                    if (isLocalhost) {
-                        window.location.href = `${window.location.protocol}//delivery.localhost:${window.location.port}`;
-                    } else {
-                        window.location.href = 'https://delivery.deliexpress.app';
-                    }
-                    return;
-                }
-
-                // Double check delivery_drivers collection
-                const driverDoc = await getDoc(doc(db, 'delivery_drivers', user.uid));
-                if (driverDoc.exists()) {
-                    const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-                    if (isLocalhost) {
-                        window.location.href = `${window.location.protocol}//delivery.localhost:${window.location.port}`;
-                    } else {
-                        window.location.href = 'https://delivery.deliexpress.app';
-                    }
-                    return;
-                }
-
-                // If it's a waiter
-                if (userData.role === 'waiter') {
-                    const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-                    if (isLocalhost) {
-                        window.location.href = `${window.location.protocol}//meseros.localhost:${window.location.port}`;
-                    } else {
-                        window.location.href = 'https://meseros.deliexpress.app';
-                    }
-                    return;
-                }
-            };
-            checkRoleAndRedirect();
-        }
+        // Redirection logic removed to allow users with multiple roles (e.g., driver and customer)
+        // to use the client app without being forced to the delivery subdomain.
     }, [user, userData, navigate]);
 
     return <>{children}</>;
