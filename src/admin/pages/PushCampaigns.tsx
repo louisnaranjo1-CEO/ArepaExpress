@@ -26,6 +26,10 @@ export default function PushCampaigns({ restaurantId }: { restaurantId: string }
     const [paymentImage, setPaymentImage] = useState<File | null>(null);
     const [paymentImagePreview, setPaymentImagePreview] = useState<string>('');
     
+    // Scheduled time
+    const [scheduledDate, setScheduledDate] = useState(new Date().toISOString().split('T')[0]);
+    const [scheduledTime, setScheduledTime] = useState('12:00');
+    
     const [isSubmitting, setIsSubmitting] = useState(false);
 
     useEffect(() => {
@@ -96,6 +100,7 @@ export default function PushCampaigns({ restaurantId }: { restaurantId: string }
 
         setIsSubmitting(true);
         try {
+            console.log("Iniciando subida de campaña push...");
             let bannerUrl = '';
             if (bannerImage) {
                 const bannerRef = ref(storage, `push_campaigns/${restaurantId}_${Date.now()}_banner`);
@@ -110,11 +115,13 @@ export default function PushCampaigns({ restaurantId }: { restaurantId: string }
                 pImage = await getDownloadURL(snap.ref);
             }
 
-            // Aquí podemos extraer the city y state real del restaurante local, pero dejémoslo que tome la ubicación del restaurante.
             const city = restaurantData?.address?.city || 'Desconocida';
             const state = restaurantData?.address?.state || 'Desconocido';
 
-            await addDoc(collection(db, 'push_campaigns'), {
+            // Combinar fecha y hora para el scheduledAt
+            const scheduledDatetime = new Date(`${scheduledDate}T${scheduledTime}`);
+
+            const campaignData = {
                 restaurantId,
                 restaurantName: restaurantData?.name || 'Restaurante',
                 restaurantLogo: restaurantData?.logoUrl || '',
@@ -132,19 +139,25 @@ export default function PushCampaigns({ restaurantId }: { restaurantId: string }
                 price: getCurrentPrice(),
                 status: 'verifying_payment',
                 clicks: 0,
-                createdAt: serverTimestamp()
-            });
+                createdAt: serverTimestamp(),
+                scheduledAt: scheduledDatetime
+            };
 
-            toast.success("Campaña subida." + " " + "Esperando verificación.");
+            console.log("Guardando en Firestore:", campaignData);
+            await addDoc(collection(db, 'push_campaigns'), campaignData);
+
+            toast.success("Campaña subida. Esperando verificación.");
             setIsCreating(false);
             
             // Clean up
             setTitle(''); setSubtitle(''); setBannerImage(null); setBannerImagePreview('');
             setPaymentImage(null); setPaymentImagePreview(''); setPaymentRef('');
         } catch (error) {
-            toast.error("Error al publicar la campaña");
+            console.error("Error al publicar la campaña:", error);
+            toast.error("Error al publicar la campaña. Verifica tu conexión.");
+        } finally {
+            setIsSubmitting(false);
         }
-        setIsSubmitting(false);
     };
 
     return (
@@ -237,11 +250,29 @@ export default function PushCampaigns({ restaurantId }: { restaurantId: string }
                                     </div>
                                 </div>
                             </div>
+
+                            <div className="mt-8 border-t border-slate-100 pt-6">
+                                <h4 className="font-bold text-slate-700 mb-3 flex items-center gap-2">
+                                    <span className="w-6 h-6 bg-primary/20 text-primary rounded-full flex items-center justify-center text-xs">3</span>
+                                    Programación de la Alerta
+                                </h4>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div>
+                                        <label className="block text-sm font-bold text-slate-700 mb-2">Fecha de Lanzamiento</label>
+                                        <input type="date" value={scheduledDate} onChange={e => setScheduledDate(e.target.value)} required className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3" />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-bold text-slate-700 mb-2">Hora de Lanzamiento</label>
+                                        <input type="time" value={scheduledTime} onChange={e => setScheduledTime(e.target.value)} required className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3" />
+                                    </div>
+                                </div>
+                                <p className="text-xs text-slate-400 mt-2 italic">* La validación del pago puede tardar de 5 minutos a 24 horas. Programe con antelación.</p>
+                            </div>
                         </div>
 
                         {/* Presupuesto y Pago */}
                         <div>
-                            <h3 className="font-bold text-lg text-slate-800 mb-4 bg-slate-50 p-2 rounded-lg">3. Confirmación de Inversión</h3>
+                            <h3 className="font-bold text-lg text-slate-800 mb-4 bg-slate-50 p-2 rounded-lg">4. Confirmación de Inversión</h3>
                             <div className="bg-blue-50 border border-blue-100 rounded-xl p-6 flex flex-col md:flex-row items-center justify-between gap-6">
                                 <div className="flex-1 mb-6 md:mb-0">
                                     <p className="text-2xl font-black text-slate-800 mb-2">Total a Cancelar: <span className="text-green-600">${getCurrentPrice()}</span></p>

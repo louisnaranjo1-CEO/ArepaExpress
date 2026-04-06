@@ -99,15 +99,15 @@ export default function MarketingManager() {
                 Marketing & Push Notifications
             </h1>
 
-            <div className="flex gap-4 mb-6 border-b border-slate-200">
+            <div className="flex gap-2 mb-8 border-b border-slate-200 pb-4">
                 <button 
-                    className={`pb-3 px-4 font-bold ${activeTab === 'campaigns' ? 'border-b-4 border-primary text-primary' : 'text-slate-500'}`}
+                    className={`px-6 py-3 rounded-2xl font-black transition-all duration-300 ${activeTab === 'campaigns' ? 'bg-slate-900 text-primary shadow-2xl shadow-slate-900/20 scale-105' : 'text-slate-500 hover:bg-slate-100'}`}
                     onClick={() => setActiveTab('campaigns')}
                 >
                     Auditar Campañas
                 </button>
                 <button 
-                    className={`pb-3 px-4 font-bold ${activeTab === 'settings' ? 'border-b-4 border-primary text-primary' : 'text-slate-500'}`}
+                    className={`px-6 py-3 rounded-2xl font-black transition-all duration-300 ${activeTab === 'settings' ? 'bg-slate-900 text-primary shadow-2xl shadow-slate-900/20 scale-105' : 'text-slate-500 hover:bg-slate-100'}`}
                     onClick={() => setActiveTab('settings')}
                 >
                     Tarifas & Configuración
@@ -171,13 +171,20 @@ export default function MarketingManager() {
                                 <p className="font-bold text-slate-800">Restaurante: <span className="font-normal">{camp.restaurantName}</span></p>
                                 <p className="font-bold text-slate-800">Alcance: <span className="font-normal capitalize">{camp.location} {camp.city ? `(${camp.city})` : camp.state ? `(${camp.state})` : ''}</span></p>
                                 <p className="font-bold text-slate-800">Inversión: <span className="font-normal text-green-600">${camp.price}</span></p>
-                                <p className="font-bold text-slate-800">Clics logrados: <span className="font-normal px-2 bg-slate-100 rounded-md">{camp.clicks || 0}</span></p>
+                                
+                                {camp.scheduledAt && (
+                                    <p className="font-bold text-slate-800 flex items-center gap-1 bg-blue-50 text-blue-700 px-2 py-1 rounded-md self-start text-xs mt-1">
+                                        Programado: <span className="font-normal">{camp.scheduledAt.toDate().toLocaleString('es-VE')}</span>
+                                    </p>
+                                )}
+
+                                <p className="font-bold text-slate-800">Clics: <span className="font-normal px-2 bg-slate-100 rounded-md">{camp.clicks || 0}</span></p>
                                 
                                 {camp.status === 'verifying_payment' && (
                                     <span className="bg-yellow-100 text-yellow-800 px-3 py-1 rounded-full text-xs font-bold self-start mt-2">Revisión de Pago Requerida</span>
                                 )}
                                 {camp.status === 'active' && (
-                                    <span className="bg-green-100 text-green-800 px-3 py-1 rounded-full text-xs font-bold self-start mt-2">Campaña Activa en Global</span>
+                                    <span className="bg-green-100 text-green-800 px-3 py-1 rounded-full text-xs font-bold self-start mt-2">Campaña Activa</span>
                                 )}
                                 {camp.status === 'rejected_payment' && (
                                     <span className="bg-red-100 text-red-800 px-3 py-1 rounded-full text-xs font-bold self-start mt-2">Pago Rechazado</span>
@@ -186,27 +193,34 @@ export default function MarketingManager() {
 
                             {/* Acciones de Pago */}
                             <div className="md:w-1/3 flex flex-col justify-center border-l pl-6 border-slate-100">
-                                <h4 className="font-bold text-slate-700 text-sm mb-3">Evidencia de Pago</h4>
+                                <h4 className="font-bold text-slate-700 text-sm mb-3">Auditoría de Pago</h4>
                                 {camp.paymentRef ? (
-                                    <>
-                                        <p className="text-sm font-mono bg-slate-100 px-2 py-1 rounded mb-2 text-center text-slate-600">Ref: {camp.paymentRef}</p>
-                                        {camp.paymentImage && (
-                                            <a href={camp.paymentImage} target="_blank" rel="noopener noreferrer" className="text-sm text-blue-600 underline text-center block mb-4">Ver Screenshot del Pago</a>
+                                    <div className="space-y-3">
+                                        <div className="bg-slate-900 text-primary text-center py-2 px-4 rounded-xl font-mono text-sm shadow-md">
+                                            REF: {camp.paymentRef}
+                                        </div>
+                                        
+                                        {camp.paymentImage ? (
+                                            <a href={camp.paymentImage} target="_blank" rel="noopener noreferrer" className="flex items-center justify-center gap-2 text-sm bg-slate-100 hover:bg-slate-200 text-slate-700 py-3 rounded-xl transition-colors">
+                                                <ImageIcon className="w-4 h-4"/> Ver Comprobante
+                                            </a>
+                                        ) : (
+                                            <p className="text-xs text-slate-400 text-center">Sin imagen adjunta</p>
                                         )}
                                         
                                         {camp.status === 'verifying_payment' && (
-                                            <div className="flex gap-2">
-                                                <button onClick={() => handleApproveCampaign(camp.id)} className="flex-1 bg-green-500 hover:bg-green-600 text-white py-2 rounded-xl flex items-center justify-center gap-2 font-bold text-sm">
-                                                    <CheckCircle className="w-4 h-4" /> Aprobar y Lanzar
+                                            <div className="flex gap-2 pt-2">
+                                                <button onClick={() => handleApproveCampaign(camp.id)} className="flex-1 bg-green-500 hover:bg-green-600 text-white py-3 rounded-xl flex items-center justify-center gap-2 font-bold text-xs uppercase tracking-wider shadow-lg shadow-green-500/20 active:scale-95 transition-all">
+                                                    <CheckCircle className="w-4 h-4" /> Aprobar
                                                 </button>
-                                                <button onClick={() => handleRejectCampaign(camp.id)} className="flex-1 bg-red-500 hover:bg-red-600 text-white py-2 rounded-xl flex items-center justify-center gap-2 font-bold text-sm">
+                                                <button onClick={() => handleRejectCampaign(camp.id)} className="flex-1 bg-red-500 hover:bg-red-600 text-white py-3 rounded-xl flex items-center justify-center gap-2 font-bold text-xs uppercase tracking-wider shadow-lg shadow-red-500/20 active:scale-95 transition-all">
                                                     <XCircle className="w-4 h-4" /> Rechazar
                                                 </button>
                                             </div>
                                         )}
-                                    </>
+                                    </div>
                                 ) : (
-                                    <p className="text-slate-400 text-sm">Sin detalles de pago provistos para validación manual.</p>
+                                    <p className="text-slate-400 text-sm italic">Sin detalles de pago provistos.</p>
                                 )}
                             </div>
                         </div>
