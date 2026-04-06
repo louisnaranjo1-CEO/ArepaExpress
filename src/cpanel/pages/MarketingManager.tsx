@@ -176,6 +176,21 @@ export default function MarketingManager() {
                                         {camp.location === 'state' && ` (${camp.states?.length || 0} estados)`}
                                     </span>
                                 </p>
+                                
+                                {(camp.cities?.length > 0 || camp.states?.length > 0) && (
+                                    <div className="flex flex-wrap gap-1 mt-1 max-h-20 overflow-y-auto pr-2 custom-scrollbar">
+                                        {(camp.cities || []).map((c: string, idx: number) => (
+                                            <span key={idx} className="text-[10px] bg-slate-100 text-slate-600 px-2 py-0.5 rounded-md border border-slate-200">
+                                                {c}
+                                            </span>
+                                        ))}
+                                        {(camp.states || []).map((s: string, idx: number) => (
+                                            <span key={idx} className="text-[10px] bg-primary/10 text-primary px-2 py-0.5 rounded-md border border-primary/20">
+                                                {s}
+                                            </span>
+                                        ))}
+                                    </div>
+                                )}
                                 <p className="font-bold text-slate-800">Inversión: <span className="font-normal text-green-600">${camp.price}</span></p>
                                 
                                 {camp.scheduledAt && (

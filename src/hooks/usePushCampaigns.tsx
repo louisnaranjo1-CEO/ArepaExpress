@@ -48,36 +48,89 @@ export function usePushCampaigns(userData: any, userId: string | undefined) {
                     const actTime = data.activatedAt?.toMillis() || 0;
                     if (now - actTime > 172800000) return; // Más de 48 horas de activada
 
+                    // 0. Programación (Programado para el futuro)
+                    if (data.scheduledAt) {
+                        const schedTime = data.scheduledAt.toMillis();
+                        if (now < schedTime) return; // Aún no es hora
+                    }
+
+                    // Forzar mostrar si es MUY reciente (menos de 5 minutos de activada), saltando el seen check
+                    // Esto ayuda a que si el admin la activa justo ahora, el usuario la vea si o si.
+                    const isVeryRecent = (now - actTime) < 300000; // 5 minutos
+
+                    if (seenCampaigns.current.has(cid) && !isVeryRecent) return;
+
                     // == Filtrado de Segmentación ==
                     
                     // 1. Género
                     if (data.sex !== 'all') {
-                        if (data.sex === 'male' && userData.sex !== 'male') return;
-                        if (data.sex === 'female' && userData.sex !== 'female') return;
+                        const userSex = (userData.sex || '').toLowerCase().trim();
+                        if (data.sex === 'male' && userSex !== 'male') return;
+                        if (data.sex === 'female' && userSex !== 'female') return;
                     }
 
                     // 2. Edad
                     if (data.minAge || data.maxAge) {
                         try {
-                            const birthDate = new Date(userData.fechaNacimiento || userData.birthDate);
-                            const ageDf = new Date(Date.now() - birthDate.getTime());
-                            const age = Math.abs(ageDf.getUTCFullYear() - 1970);
-                            
-                            if (data.minAge && age < data.minAge) return;
-                            if (data.maxAge && age > data.maxAge) return;
-                        } catch(e) { /* Fallback, maybe ignore age if not set correctly */ }
+                            const birthDateStr = userData.fechaNacimiento || userData.birthDate;
+                            if (birthDateStr) {
+                                const birthDate = new Date(birthDateStr);
+                                const ageDf = new Date(Date.now() - birthDate.getTime());
+                                const age = Math.abs(ageDf.getUTCFullYear() - 1970);
+                                
+                                if (data.minAge && age < data.minAge) return;
+                                if (data.maxAge && age > data.maxAge) return;
+                            }
+                        } catch(e) { }
                     }
 
                     // 3. Alcance (Geolocalización)
                     if (data.location !== 'national') {
-                         const userCity = (userData.address?.city || userData.city || '').toLowerCase();
-                         const userState = (userData.address?.state || userData.state || '').toLowerCase();
-                         
-                         const campCity = (data.city || '').toLowerCase();
-                         const campState = (data.state || '').toLowerCase();
+                        // Gather all possible user locations (lastCity, addresses, legacy fields)
+                        const userCitiesArr: string[] = [];
+                        const userStatesArr: string[] = [];
+                        
+                        const addLoc = (c?: string, s?: string) => {
+                            if (c) userCitiesArr.push(c.toLowerCase().trim());
+                            if (s) userStatesArr.push(s.toLowerCase().trim());
+                        };
 
-                         if (data.location === 'city' && userCity !== campCity) return;
-                         if (data.location === 'state' && userState !== campState) return;
+                        addLoc(userData.lastCity, userData.lastState);
+                        addLoc(userData.city, userData.state);
+                        addLoc(userData.address?.city, userData.address?.state);
+                        addLoc(userData.location?.city, userData.location?.state);
+                        
+                        // Fallback to localStorage (what the user sees in the header)
+                        addLoc(localStorage.getItem('userCity') || undefined, localStorage.getItem('userState') || undefined);
+                        
+                        if (userData.addresses && Array.isArray(userData.addresses)) {
+                            userData.addresses.forEach((a: any) => addLoc(a.city, a.state));
+                        }
+
+                        if (data.location === 'city') {
+                            const targetedCities = (data.cities || []).map((c: string) => c.toLowerCase().trim());
+                            const legacyCity = (data.city || '').toLowerCase().trim();
+                            
+                            const cityMatches = targetedCities.some((tc: string) => {
+                                let cityToMatch = tc;
+                                if (tc.includes(': ')) {
+                                    cityToMatch = tc.split(': ')[1].toLowerCase().trim();
+                                } else {
+                                    cityToMatch = tc.toLowerCase().trim();
+                                }
+                                return userCitiesArr.includes(cityToMatch);
+                            });
+
+                            if (!cityMatches && !userCitiesArr.includes(legacyCity)) return;
+                        }
+
+                        if (data.location === 'state') {
+                            const targetedStates = (data.states || []).map((s: string) => s.toLowerCase().trim());
+                            const legacyState = (data.state || '').toLowerCase().trim();
+
+                            const stateMatches = targetedStates.some(ts => userStatesArr.includes(ts));
+                            if (!stateMatches && !userStatesArr.includes(legacyState)) return;
+                        }
                     }
 
                     // == Sí cumple con los filtros: Disparar Publicidad ==
@@ -105,42 +158,59 @@ export function usePushCampaigns(userData: any, userId: string | undefined) {
                         } catch(e){}
                     };
 
-                    // Toast Visual Rico en Diseño
+                    // Toast Visual Rico en Diseño (Black & Yellow High Contrast)
                     toast.custom((t) => (
                         <div
                           className={`${
-                            t.visible ? 'animate-enter' : 'animate-leave'
-                          } max-w-sm w-full bg-white shadow-2xl rounded-2xl pointer-events-auto flex flex-col border border-primary/20 overflow-hidden relative cursor-pointer`}
+                            t.visible ? 'animate-in fade-in zoom-in duration-300' : 'animate-out fade-out zoom-out duration-300'
+                          } max-w-sm w-full bg-black/95 backdrop-blur-xl shadow-[0_20px_50px_rgba(0,0,0,0.5)] rounded-2xl pointer-events-auto flex flex-col border border-primary/30 overflow-hidden relative cursor-pointer group`}
                           onClick={() => handleClick(t.id)}
                         >
-                          {/* Botón cerrar manual (evita click general) */}
-                          <button onClick={(e) => { e.stopPropagation(); toast.dismiss(t.id); }} className="absolute top-2 right-2 bg-black/50 text-white rounded-full p-1 z-10 hover:bg-black">
-                              <X className="w-4 h-4"/>
+                          {/* Glow effect on hover */}
+                          <div className="absolute inset-0 bg-primary/5 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none" />
+                          
+                          {/* Close button with high contrast */}
+                          <button 
+                            onClick={(e) => { e.stopPropagation(); toast.dismiss(t.id); }} 
+                            className="absolute top-3 right-3 bg-white/10 hover:bg-primary text-white hover:text-black rounded-full p-1.5 z-20 transition-all duration-300 backdrop-blur-md"
+                          >
+                            <X className="w-3.5 h-3.5"/>
                           </button>
                           
                           {data.imageUrl ? (
-                              <img src={data.imageUrl} alt="Promoción" className="w-full h-40 object-cover" />
+                              <div className="relative h-44 overflow-hidden">
+                                  <img src={data.imageUrl} alt="Promoción" className="w-full h-full object-cover transform group-hover:scale-105 transition-transform duration-700" />
+                                  <div className="absolute inset-0 bg-gradient-to-t from-black via-transparent to-transparent opacity-60" />
+                              </div>
                           ) : (
-                              <div className="w-full h-3 bg-primary"></div>
+                              <div className="w-full h-2 bg-primary shadow-[0_0_15px_rgba(251,191,36,0.5)]"></div>
                           )}
                           
-                          <div className="p-4 flex gap-4">
-                             <div className="w-12 h-12 bg-slate-100 rounded-xl flex-shrink-0 border border-slate-200 overflow-hidden shadow-sm flex items-center justify-center">
-                                 {data.restaurantLogo ? <img src={data.restaurantLogo} className="w-full h-full object-cover"/> : <span className="font-bold text-slate-400">R</span>}
+                          <div className="p-5 flex gap-4 items-start bg-black">
+                             <div className="w-14 h-14 bg-slate-900 rounded-2xl flex-shrink-0 border border-primary/20 overflow-hidden shadow-2xl flex items-center justify-center p-0.5 group-hover:border-primary transition-colors">
+                                 {data.restaurantLogo ? (
+                                    <img src={data.restaurantLogo} className="w-full h-full object-cover rounded-xl"/>
+                                 ) : (
+                                    <span className="font-bold text-primary">DP</span>
+                                 )}
                              </div>
-                             <div className="flex-1">
-                                 <h3 className="font-black text-slate-800 leading-tight">{data.title}</h3>
-                                 <p className="text-sm font-medium text-slate-500 mt-1 line-clamp-2">{data.subtitle}</p>
-                                 <div className="flex justify-start mt-3">
-                                     <span className="text-xs bg-primary/10 text-primary font-bold px-2 py-1 rounded-md flex items-center gap-1">
-                                         Ver Promoción <ExternalLink className="w-3 h-3"/>
+                             <div className="flex-1 min-w-0">
+                                 <h3 className="font-black text-primary text-lg leading-tight tracking-tight uppercase italic">{data.title}</h3>
+                                 <p className="text-sm font-medium text-slate-300 mt-1 line-clamp-2 leading-relaxed">{data.subtitle}</p>
+                                 <div className="flex justify-between items-center mt-4">
+                                     <div className="flex items-center gap-1.5">
+                                        <div className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse shadow-[0_0_8px_rgba(34,197,94,0.6)]" />
+                                        <span className="text-[10px] text-slate-500 font-bold tracking-widest uppercase">Oferta Activa</span>
+                                     </div>
+                                     <span className="text-[11px] bg-primary text-black font-black px-3 py-1.5 rounded-lg flex items-center gap-1.5 shadow-lg transform group-hover:translate-x-1 transition-transform">
+                                         IR AHORA <ExternalLink className="w-3 h-3 stroke-[3px]"/>
                                      </span>
                                  </div>
                              </div>
                           </div>
                         </div>
                     ), {
-                        duration: 12000, // 12 seconds before auto dismiss
+                        duration: 15000, // 15 seconds
                         position: 'top-center'
                     });
 
