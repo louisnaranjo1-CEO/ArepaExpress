@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, Store, Users, Image as ImageIcon, LogOut, ChevronRight, Menu, X, Tag, Truck, Wallet, Car, Share2, Gift, Ticket, MessageSquareWarning } from 'lucide-react';
+import { LayoutDashboard, Store, Users, Image as ImageIcon, LogOut, ChevronRight, Menu, X, Tag, Truck, Wallet, Car, Share2, Gift, Ticket, MessageSquareWarning, Megaphone } from 'lucide-react';
 import { collection, query, where, onSnapshot } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import { useGlobalAudioAlerts } from '../../hooks/useGlobalAudioAlerts';
@@ -61,6 +61,7 @@ export default function CpanelLayout({ children, onLogout }: CpanelLayoutProps) 
         { path: '/finances', icon: Wallet, label: 'Finanzas' },
         { path: '/fidelization', icon: Gift, label: 'Fidelización' },
         { path: '/raffles', icon: Ticket, label: 'Sorteos y Rifas' },
+        { path: '/marketing', icon: Megaphone, label: 'Marketing & Push' },
         { path: '/icons', icon: Share2, label: 'Iconos' },
         { path: '/support', icon: MessageSquareWarning, label: 'Reportes de Falla', badge: pendingTickets },
     ];

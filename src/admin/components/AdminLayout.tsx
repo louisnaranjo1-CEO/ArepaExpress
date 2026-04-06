@@ -194,7 +194,7 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
         { path: '/stations', icon: Printer, label: 'Estaciones' },
         { path: '/profile', icon: Store, label: 'Mi Negocio' },
         { path: '/banners', icon: Layout, label: 'Publicidad' },
-        { path: '/ads', icon: Megaphone, label: 'Anuncios' },
+        { path: '/push-campaigns', icon: Megaphone, label: 'Campañas Push' },
         { path: '/reviews', icon: MessageSquare, label: 'Reseñas' },
         { path: '/subscriptions', icon: CreditCard, label: 'Suscripción' },
     ];

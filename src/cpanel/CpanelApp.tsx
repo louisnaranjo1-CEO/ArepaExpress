@@ -18,6 +18,7 @@ import IconsManager from './pages/IconsManager';
 import FidelizationManager from './pages/FidelizationManager';
 import RafflesManager from './pages/RafflesManager';
 import SupportTicketsManager from './pages/SupportTicketsManager';
+import MarketingManager from './pages/MarketingManager';
 
 export default function CpanelApp() {
     const isDevAdminPath = window.location.pathname.startsWith('/cpanel');
@@ -120,6 +121,7 @@ export default function CpanelApp() {
                     <Route path="/icons" element={<IconsManager />} />
                     <Route path="/fidelization" element={<FidelizationManager />} />
                     <Route path="/raffles" element={<RafflesManager />} />
+                    <Route path="/marketing" element={<MarketingManager />} />
                     <Route path="/support" element={<SupportTicketsManager />} />
                     <Route path="*" element={<Navigate to="/" replace />} />
                 </Routes>

@@ -223,6 +223,7 @@ export default function Cart({ hideHeader = false }: CartProps) {
         userId: isWaiter ? (waiterData.id || 'waiter') : (user?.uid || 'guest_' + Date.now()),
         userName: isWaiter ? (customerName || `Cliente Mesa ${tableNumber || 'N/A'}`) : (user?.displayName || guestName || 'Cliente Invitado'),
         userPhone: isWaiter ? '' : (userData?.phone || guestPhone || ''),
+        userCedula: isWaiter ? '' : (userData?.cedula || guestCedula || ''),
         userEmail: isWaiter ? (waiterData.email || 'N/A') : (user?.email || 'N/A'),
         restaurantId,
         restaurantName: rData?.name || 'Deliexpress Restaurant',

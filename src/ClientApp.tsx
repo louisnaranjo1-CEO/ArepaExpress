@@ -19,12 +19,14 @@ import { CartProvider } from './context/CartContext';
 import { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useGlobalAudioAlerts } from './hooks/useGlobalAudioAlerts';
+import { usePushCampaigns } from './hooks/usePushCampaigns';
 
 function RedirectHandler({ children }: { children: React.ReactNode }) {
     const { user, userData } = useAuth();
     const navigate = useNavigate();
     
     useGlobalAudioAlerts('user', user?.uid);
+    usePushCampaigns(userData, user?.uid);
 
     useEffect(() => {
         // Redirection logic removed to allow users with multiple roles (e.g., driver and customer)

@@ -3,12 +3,13 @@ import { collection, query, where, onSnapshot, updateDoc, doc, serverTimestamp, 
 import { ref, getDownloadURL } from 'firebase/storage';
 import { storage, db } from '../../lib/firebase';
 import { useAuth } from '../../context/AuthContext';
-import { MapPin, Navigation, Package, Clock, ShieldCheck, Car, Bike, Compass as CompassIcon, MessageSquare, Star, BellRing, MessageCircle } from 'lucide-react';
+import { MapPin, Navigation, Package, Clock, ShieldCheck, Car, Bike, Compass as CompassIcon, MessageSquare, Star, BellRing, MessageCircle, Phone, User as UserIcon } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { updateDriverLocation } from '../../lib/delivery-service';
 import { calculateDistance } from '../../lib/geo';
 import { motion, AnimatePresence } from 'framer-motion';
 import RideChat from '../../components/RideChat';
+import { getCachedAudioUrl, NOTIFICATION_SOUND_URL } from '../../hooks/useGlobalAudioAlerts';
 
 export default function OrdersRadar() {
     const { user } = useAuth();
@@ -174,8 +175,7 @@ export default function OrdersRadar() {
     useEffect(() => {
         const fetchSound = async () => {
             try {
-                const soundRef = ref(storage, 'Digital_Cascade_01.mp3');
-                const url = await getDownloadURL(soundRef);
+                const url = await getCachedAudioUrl(NOTIFICATION_SOUND_URL, 'delivery-sound');
                 notificationSoundUrl.current = url;
             } catch (err) {
                 console.error("No se pudo cargar el sonido de notificación:", err);
@@ -440,6 +440,35 @@ export default function OrdersRadar() {
                     </div>
 
                     <div className="space-y-4 relative">
+                        {/* Passenger Details */}
+                        <div className="flex gap-4">
+                            <div className="w-12 h-12 bg-blue-50 text-blue-500 rounded-2xl flex items-center justify-center shrink-0 border border-blue-100 shadow-inner">
+                                <UserIcon className="w-6" />
+                            </div>
+                            <div className="flex-1 flex justify-between items-center gap-2">
+                                <div>
+                                    <h3 className="text-xs font-black text-blue-500 uppercase tracking-widest">Pasajero:</h3>
+                                    <p className="font-bold text-slate-700 leading-tight mt-0.5">{activeTransport.userName || 'Usuario'}</p>
+                                    {(activeTransport.userCedula || activeTransport.userPhone) && (
+                                        <div className="text-xs text-slate-500 font-medium mt-0.5 space-y-0.5 pb-2">
+                                            {activeTransport.userCedula && <p>C.I: {activeTransport.userCedula}</p>}
+                                            {activeTransport.userPhone && <p>Telf: {activeTransport.userPhone}</p>}
+                                        </div>
+                                    )}
+                                </div>
+                                {activeTransport.userPhone && (
+                                    <a
+                                        href={`tel:${activeTransport.userPhone}`}
+                                        className="w-12 h-12 bg-emerald-50 text-emerald-600 rounded-2xl flex items-center justify-center shrink-0 border border-emerald-100 shadow-sm active:scale-95 transition-all hover:bg-emerald-100"
+                                    >
+                                        <Phone className="w-5 h-5 fill-emerald-600/20" />
+                                    </a>
+                                )}
+                            </div>
+                        </div>
+
+                        <div className="w-px h-8 bg-dashed bg-slate-200 ml-6"></div>
+
                         <div className="flex gap-4">
                             <div className="w-12 h-12 bg-slate-50 text-slate-400 rounded-2xl flex items-center justify-center shrink-0 border border-slate-100 shadow-inner">
                                 {activeTransport.vehicleType === 'moto' ? <Bike className="w-6" /> : <Car className="w-6" />}
@@ -575,13 +604,42 @@ export default function OrdersRadar() {
 
                         <div className="w-px h-8 bg-slate-100 ml-6"></div>
 
+                        {/* Detalles del Cliente */}
+                        <div className="flex gap-4">
+                            <div className="w-12 h-12 bg-blue-50 text-blue-500 rounded-2xl flex items-center justify-center shrink-0 border border-blue-100 shadow-inner">
+                                <UserIcon className="w-6" />
+                            </div>
+                            <div className="flex-1 flex justify-between items-center gap-2">
+                                <div>
+                                    <h3 className="text-xs font-black text-blue-500 uppercase tracking-widest">Cliente:</h3>
+                                    <p className="font-bold text-slate-700 leading-tight mt-0.5">{activeOrder.userName || 'Cliente Invitado'}</p>
+                                    {(activeOrder.userCedula || activeOrder.userPhone) && (
+                                        <div className="text-xs text-slate-500 font-medium mt-0.5 space-y-0.5 pb-2">
+                                            {activeOrder.userCedula && <p>C.I: {activeOrder.userCedula}</p>}
+                                            {activeOrder.userPhone && <p>Telf: {activeOrder.userPhone}</p>}
+                                        </div>
+                                    )}
+                                </div>
+                                {activeOrder.userPhone && (
+                                    <a
+                                        href={`tel:${activeOrder.userPhone}`}
+                                        className="w-12 h-12 bg-emerald-50 text-emerald-600 rounded-2xl flex items-center justify-center shrink-0 border border-emerald-100 shadow-sm active:scale-95 transition-all hover:bg-emerald-100"
+                                    >
+                                        <Phone className="w-5 h-5 fill-emerald-600/20" />
+                                    </a>
+                                )}
+                            </div>
+                        </div>
+
+                        <div className="w-px h-8 bg-slate-100 ml-6"></div>
+
                         <div className="flex gap-4">
                             <div className="w-12 h-12 bg-emerald-50 text-emerald-600 rounded-2xl flex items-center justify-center shrink-0 border border-emerald-100">
                                 <MapPin className="w-6 h-6" />
                             </div>
                             <div>
-                                <h3 className="text-xs font-black text-emerald-600 uppercase tracking-widest">Cliente</h3>
-                                <p className="font-bold text-slate-800 leading-tight mt-0.5">{activeOrder.shippingAddress?.address || 'Dirección de entrega...'}</p>
+                                <h3 className="text-xs font-black text-emerald-600 uppercase tracking-widest">Dirección de Entrega</h3>
+                                <p className="font-bold text-slate-800 leading-tight mt-0.5">{activeOrder.shippingAddress?.address || activeOrder.deliveryAddress || 'Dirección de entrega...'}</p>
                             </div>
                         </div>
                     </div>
