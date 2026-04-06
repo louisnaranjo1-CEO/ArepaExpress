@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useNavigate } from 'react-router-dom';
 import {
     Save,
     Check,
@@ -70,6 +71,7 @@ const DEFAULT_WORKING_HOURS: WorkingHour[] = [
 
 export default function RestaurantProfile() {
     const { user } = useAuth();
+    const navigate = useNavigate();
     const [loading, setLoading] = useState(true);
     const [isSaving, setIsSaving] = useState(false);
     const [saved, setSaved] = useState(false);

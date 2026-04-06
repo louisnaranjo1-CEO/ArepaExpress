@@ -68,6 +68,9 @@ export interface Restaurant {
     }[];
     isMock?: boolean;
     hasCashea?: boolean;
+    hasTwoByThree?: boolean;
+    twoByThreeInitial?: number;
+    twoByThreeInstallments?: number;
 }
 
 const MOCK_RESTAURANTS: Restaurant[] = [

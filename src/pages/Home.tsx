@@ -16,6 +16,9 @@ import PointsModal from '../components/PointsModal';
 
 interface RecommendedProduct extends Product {
   restaurantId: string;
+  restaurantLogo?: string;
+  restaurantHasCashea?: boolean;
+  restaurantHasTwoByThree?: boolean;
 }
 
 interface Category {
@@ -248,7 +251,15 @@ export default function Home() {
         await Promise.all(topRestForProducts.map(async (rest) => {
             const pSnap = await getDocs(query(collection(db, 'restaurants', rest.id, 'products'), limit(15)));
             pSnap.docs.forEach(d => {
-                allProducts.push({ id: d.id, restaurantId: rest.id, ...d.data() } as RecommendedProduct);
+                const data = d.data();
+                allProducts.push({ 
+                  id: d.id, 
+                  restaurantId: rest.id, 
+                  restaurantLogo: (rest as any).logoUrl || rest.image,
+                  restaurantHasCashea: rest.hasCashea,
+                  restaurantHasTwoByThree: rest.hasTwoByThree,
+                  ...data 
+                } as RecommendedProduct);
             });
         }));
 
@@ -859,13 +870,39 @@ function ProductGrid({ title, products }: { title: string, products: Recommended
                   alt={product.name}
                   className="w-full h-full object-contain mix-blend-multiply group-hover:scale-105 transition-transform duration-300"
                 />
+                
+                {/* Visual Indicators */}
+                <div className="absolute top-2 right-2 flex flex-col gap-1 items-end">
+                  {/* Restaurant Logo Circle */}
+                  {product.restaurantLogo && (
+                    <div className="w-6 h-6 rounded-full bg-white shadow-sm border border-slate-100 overflow-hidden" title="Comercio">
+                      <img src={product.restaurantLogo} alt="Logo" className="w-full h-full object-cover" />
+                    </div>
+                  )}
+                  {/* Cashea Badge */}
+                  {product.restaurantHasCashea && (
+                    <div className="w-6 h-6 bg-yellow-400 rounded-full flex items-center justify-center shadow-sm" title="Cashea">
+                      <img src="https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/logo%20cashea.png?alt=media&token=5b266100-3323-41bb-a5a4-23957ce678a1" alt="Cashea" className="w-4 h-4 object-contain" />
+                    </div>
+                  )}
+                  {/* 2x3 Resuelve Badge */}
+                  {product.restaurantHasTwoByThree && (
+                    <div className="w-6 h-6 bg-primary rounded-full flex items-center justify-center shadow-sm text-slate-900 border border-white/50" title="2x3 Resuelve">
+                      <div className="flex flex-col items-center justify-center leading-none">
+                         <span className="text-[6px] font-black">2x3</span>
+                         <span className="text-[4px] font-black uppercase">Resuelve</span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
                 {discount > 0 && (
-                  <div className="absolute top-2 left-2 bg-blue-600 text-white text-[8px] font-black px-1.5 py-0.5 rounded shadow-sm">
-                    OFERTA IMPERDIBLE
+                  <div className="absolute bottom-2 left-2 bg-blue-600 text-white text-[8px] font-black px-1.5 py-0.5 rounded shadow-sm">
+                    {discount}% OFF
                   </div>
                 )}
                 {(product.consultPrice || (!product.price && !product.promoPrice)) && (
-                   <div className="absolute top-2 left-2 bg-slate-900 text-white text-[8px] font-black px-1.5 py-0.5 rounded shadow-sm">
+                   <div className="absolute bottom-2 left-2 bg-slate-900 text-white text-[8px] font-black px-1.5 py-0.5 rounded shadow-sm">
                      CONSULTAR
                    </div>
                 )}

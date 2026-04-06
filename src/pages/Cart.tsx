@@ -1,9 +1,9 @@
-import { ArrowLeft, ShoppingCart, MapPin, CreditCard, Trash2, Minus, Plus, ArrowRight, CheckCircle2, Gift } from 'lucide-react';
+import { ArrowLeft, ShoppingCart, MapPin, CreditCard, Trash2, Minus, Plus, ArrowRight, CheckCircle2, Gift, AlertCircle } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useCart } from '../context/CartContext';
 import { useAuth } from '../context/AuthContext';
 import { useState, useEffect } from 'react';
-import { collection, addDoc, serverTimestamp, doc, getDoc, updateDoc, getDocs, query, where, increment } from 'firebase/firestore';
+import { collection, addDoc, serverTimestamp, doc, getDoc, updateDoc, getDocs, query, where, increment, collectionGroup } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { calculateDistance, formatDistance } from '../lib/geo';
 import AddressPicker from '../components/AddressPicker';
@@ -51,6 +51,23 @@ export default function Cart({ hideHeader = false }: CartProps) {
   const [selectedReward, setSelectedReward] = useState<any>(null);
   const [pointsPaymentConfig, setPointsPaymentConfig] = useState<Record<string, boolean>>({});
   const [systemSettings, setSystemSettings] = useState<any>(null);
+
+  const [hasDefaultedCredit, setHasDefaultedCredit] = useState(false);
+
+  useEffect(() => {
+    const checkCredits = async () => {
+      if (!user?.email) return;
+      try {
+        const creditsQuery = query(collectionGroup(db, 'credits'), where('userEmail', '==', user.email));
+        const snap = await getDocs(creditsQuery);
+        const isDefaulted = snap.docs.some(d => d.data().status === 'defaulted');
+        setHasDefaultedCredit(isDefaulted);
+      } catch (err) {
+        console.error(err);
+      }
+    };
+    checkCredits();
+  }, [user]);
 
   const userRestaurantPoints = userData?.restaurantPoints?.[items[0]?.restaurantId] || 0;
 
@@ -316,6 +333,18 @@ export default function Cart({ hideHeader = false }: CartProps) {
       )}
 
       <div className="flex-1 overflow-y-auto px-4 pb-24 space-y-6 pt-4">
+        {hasDefaultedCredit && (
+          <div className="bg-red-50 border border-red-200 rounded-2xl p-4 flex gap-3 animate-pulse">
+            <AlertCircle className="w-6 h-6 text-red-500 shrink-0" />
+            <div>
+              <p className="font-bold text-red-800 text-sm">Tienes cuotas vencidas</p>
+              <p className="text-xs text-red-600 mt-1 leading-snug">
+                Puedes continuar con tu compra, pero recuerda ponerte al día con tus compromisos en "Mis Cuotas 2x3" para evitar que el establecimiento suspenda tus beneficios de crédito.
+              </p>
+            </div>
+          </div>
+        )}
+
         {items.length === 0 ? (
           <div className="text-center py-20">
             <ShoppingCart className="w-16 h-16 mx-auto text-slate-200 mb-4" />

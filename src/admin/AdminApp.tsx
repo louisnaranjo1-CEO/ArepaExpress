@@ -19,6 +19,7 @@ import ReviewsManager from './pages/ReviewsManager';
 import AdsManager from './pages/AdsManager';
 import Finance from './pages/Finance';
 import Fidelization from './pages/Fidelization';
+import ResuelveManager from './pages/ResuelveManager';
 
 function AdminRoutes() {
     const { user, loading } = useAuth();
@@ -54,6 +55,7 @@ function AdminRoutes() {
                 <Route path="/ads" element={<AdsManager />} />
                 <Route path="/finance" element={<Finance />} />
                 <Route path="/fidelization" element={<Fidelization />} />
+                <Route path="/resuelve" element={<ResuelveManager />} />
                 <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
         </AdminLayout>

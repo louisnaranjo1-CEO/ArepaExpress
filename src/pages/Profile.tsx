@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { User, Mail, MapPin, CreditCard, LogOut, ShoppingBag, Settings, ChevronRight, Clock, FileText, Bell, Navigation, X, Shield, UploadCloud, Star, Wallet, Gift, Award, MessageSquareWarning, Plus, Send, AlertCircle, CheckCircle, Store } from 'lucide-react';
+import { User, Mail, MapPin, CreditCard, LogOut, ShoppingBag, Settings, ChevronRight, Clock, FileText, Bell, Navigation, X, Shield, UploadCloud, Star, Wallet, Gift, Award, MessageSquareWarning, Plus, Send, AlertCircle, CheckCircle, Store, Handshake } from 'lucide-react';
 import { requestNotificationPermission, disableNotifications } from '../lib/notifications';
 import { useAuth } from '../context/AuthContext';
 import { auth, db, storage } from '../lib/firebase';
@@ -125,6 +125,11 @@ export default function Profile() {
     const [showNewTicketModal, setShowNewTicketModal] = useState(false);
     const [ticketForm, setTicketForm] = useState({ title: '', description: '' });
     const [isSubmittingTicket, setIsSubmittingTicket] = useState(false);
+
+    // Credits State
+    const [myCredits, setMyCredits] = useState<any[]>([]);
+    const [loadingCredits, setLoadingCredits] = useState(false);
+    const [showCreditsModal, setShowCreditsModal] = useState(false);
 
     useEffect(() => {
         if (userData) {
@@ -253,7 +258,39 @@ export default function Profile() {
                 setLoadingTickets(false);
             }
         };
+
+        const fetchCredits = async () => {
+            if (!user) return;
+            setLoadingCredits(true);
+            try {
+                const qCredits = query(
+                    collectionGroup(db, 'credits'),
+                    where('userEmail', '==', user.email)
+                );
+                const snapshot = await getDocs(qCredits);
+                const fetchedCredits = await Promise.all(snapshot.docs.map(async (doc) => {
+                    const data = doc.data();
+                    // Obtener nombre del restaurante
+                    const restRef = doc.ref.parent.parent;
+                    let restName = 'Restaurante';
+                    if (restRef) {
+                        const restSnap = await getDoc(restRef);
+                        if (restSnap.exists()) restName = restSnap.data().name;
+                    }
+                    return { id: doc.id, restaurantName: restName, ...data };
+                }));
+                // Sort by date created desc
+                setMyCredits(fetchedCredits.sort((a:any, b:any) => b.createdAt - a.createdAt));
+            } catch (error) {
+                console.error("Error fetching credits:", error);
+            } finally {
+                setLoadingCredits(false);
+            }
+        };
+
+        // Call the additional fetches
         fetchTickets();
+        fetchCredits();
     }, [user]);
 
     const handleCopy = (text: string, id: string) => {
@@ -1024,6 +1061,72 @@ export default function Profile() {
                                 <span className="text-[10px] font-bold text-slate-900 text-center leading-tight">Regalos</span>
                             </div>
                         </div>
+
+                        {myCredits.length > 0 && (
+                            <div className="space-y-3 mt-4">
+                                <div className="flex items-center justify-between">
+                                    <h3 className="text-lg font-black text-slate-900 px-2 flex items-center gap-2">
+                                        <Handshake className="w-5 h-5 text-indigo-500" />
+                                        Mis Cuotas 2x3
+                                    </h3>
+                                    {myCredits.some(c => c.status === 'defaulted') && (
+                                        <span className="bg-red-100 text-red-600 text-[10px] font-black uppercase px-2 py-1 rounded-full animate-pulse flex items-center gap-1">
+                                            <AlertCircle className="w-3 h-3" />
+                                            Atrasado
+                                        </span>
+                                    )}
+                                </div>
+                                <div className="grid gap-3">
+                                    {myCredits.map(credit => {
+                                        const pendingInstallments = credit.installments.filter((i:any) => i.status !== 'paid');
+                                        const nextInstallment = pendingInstallments.sort((a:any, b:any) => a.dueDate - b.dueDate)[0];
+                                        
+                                        return (
+                                            <div 
+                                                key={credit.id} 
+                                                onClick={() => {
+                                                    // Aquí podrías abrir un modal específico para ver detalles del crédito,
+                                                    // por ahora usaremos showCreditsModal que crearemos luego
+                                                    setShowCreditsModal(true);
+                                                }}
+                                                className={`p-4 rounded-2xl border transition-all cursor-pointer hover:scale-[1.01] ${
+                                                    credit.status === 'defaulted' ? 'bg-red-50 border-red-200' :
+                                                    credit.status === 'completed' ? 'bg-emerald-50 border-emerald-100' :
+                                                    'bg-indigo-50 border-indigo-100'
+                                                }`}
+                                            >
+                                                <div className="flex justify-between items-start mb-2">
+                                                    <div>
+                                                        <h4 className="font-black text-slate-900 leading-tight">{credit.restaurantName}</h4>
+                                                        <p className="text-[10px] tracking-wider uppercase font-bold text-slate-500 uppercase mt-0.5">
+                                                            {credit.status === 'completed' ? 'Pagado' : credit.status === 'defaulted' ? 'Cuotas Vencidas' : 'Activo'}
+                                                        </p>
+                                                    </div>
+                                                    <div className="text-right">
+                                                        <p className="text-sm font-black text-slate-900">${credit.totalAmount.toFixed(2)}</p>
+                                                        <p className="flex items-center gap-1 text-[10px] font-bold text-slate-500 justify-end">
+                                                            <span>{credit.installments.length - pendingInstallments.length}/{credit.installments.length}</span>
+                                                            Cuotas
+                                                        </p>
+                                                    </div>
+                                                </div>
+                                                {credit.status !== 'completed' && nextInstallment && (
+                                                    <div className={`mt-3 pt-3 border-t flex items-center justify-between ${credit.status === 'defaulted' ? 'border-red-200' : 'border-indigo-100'}`}>
+                                                        <div className="flex items-center gap-2">
+                                                            <Clock className={`w-4 h-4 ${credit.status === 'defaulted' ? 'text-red-500' : 'text-indigo-500'}`} />
+                                                            <span className="text-xs font-bold text-slate-600">Próximo pago: {new Date(nextInstallment.dueDate).toLocaleDateString()}</span>
+                                                        </div>
+                                                        <span className={`text-sm font-black ${credit.status === 'defaulted' ? 'text-red-600' : 'text-indigo-600'}`}>
+                                                            ${nextInstallment.amount.toFixed(2)}
+                                                        </span>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+                        )}
 
                         {userData?.restaurantPoints && Object.keys(userData.restaurantPoints).length > 0 && (
                             <div className="space-y-3 mt-4">
