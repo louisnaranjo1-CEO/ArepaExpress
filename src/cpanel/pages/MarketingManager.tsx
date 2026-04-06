@@ -169,7 +169,13 @@ export default function MarketingManager() {
                             {/* Info */}
                             <div className="md:w-1/3 flex flex-col justify-center gap-2">
                                 <p className="font-bold text-slate-800">Restaurante: <span className="font-normal">{camp.restaurantName}</span></p>
-                                <p className="font-bold text-slate-800">Alcance: <span className="font-normal capitalize">{camp.location} {camp.city ? `(${camp.city})` : camp.state ? `(${camp.state})` : ''}</span></p>
+                                 <p className="font-bold text-slate-800">
+                                    Alcance: <span className="font-normal capitalize">
+                                        {camp.location} 
+                                        {camp.location === 'city' && ` (${camp.cities?.length || 0} ciudades)`}
+                                        {camp.location === 'state' && ` (${camp.states?.length || 0} estados)`}
+                                    </span>
+                                </p>
                                 <p className="font-bold text-slate-800">Inversión: <span className="font-normal text-green-600">${camp.price}</span></p>
                                 
                                 {camp.scheduledAt && (

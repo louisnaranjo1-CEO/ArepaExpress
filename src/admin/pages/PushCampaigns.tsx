@@ -18,8 +18,13 @@ export default function PushCampaigns({ restaurantId }: { restaurantId: string }
     const [title, setTitle] = useState('');
     const [subtitle, setSubtitle] = useState('');
     const [locationLevel, setLocationLevel] = useState<'city' | 'state' | 'national'>('city');
-    const [selectedState, setSelectedState] = useState('');
-    const [selectedCity, setSelectedCity] = useState('');
+    const [selectedStates, setSelectedStates] = useState<string[]>([]);
+    const [selectedCities, setSelectedCities] = useState<string[]>([]);
+    
+    // UI Helpers for adding
+    const [tempState, setTempState] = useState('');
+    const [tempCity, setTempCity] = useState('');
+
     const [minAge, setMinAge] = useState(18);
     const [maxAge, setMaxAge] = useState(60);
     const [sex, setSex] = useState<'all' | 'male' | 'female'>('all');
@@ -60,16 +65,16 @@ export default function PushCampaigns({ restaurantId }: { restaurantId: string }
                  const data = rDoc.data();
                  setRestaurantData(data);
                  // Default to restaurant location
-                 if (data.location?.state) {
-                     setSelectedState(data.location.state);
-                 } else if (data.address?.state) {
-                     setSelectedState(data.address.state);
-                 }
-                 
-                 if (data.location?.city) {
-                    setSelectedCity(data.location.city);
-                 } else if (data.address?.city) {
-                    setSelectedCity(data.address.city);
+                 if (data.location?.state || data.address?.state) {
+                     const st = data.location?.state || data.address?.state;
+                     setTempState(st);
+                     addState(st);
+
+                     if (data.location?.city || data.address?.city) {
+                        const ct = data.location?.city || data.address?.city;
+                        setTempCity(ct);
+                        addCity(`${st}: ${ct}`);
+                     }
                  }
              }
         };
@@ -88,9 +93,29 @@ export default function PushCampaigns({ restaurantId }: { restaurantId: string }
     }, [restaurantId]);
 
     const getCurrentPrice = () => {
-        if (locationLevel === 'city') return prices.pushPriceCity;
-        if (locationLevel === 'state') return prices.pushPriceState;
+        if (locationLevel === 'city') return selectedCities.length * prices.pushPriceCity;
+        if (locationLevel === 'state') return selectedStates.length * prices.pushPriceState;
         return prices.pushPriceNational;
+    };
+
+    const addState = (st: string) => {
+        if (!st || selectedStates.includes(st)) return;
+        setSelectedStates([...selectedStates, st]);
+        setTempState('');
+    };
+
+    const removeState = (st: string) => {
+        setSelectedStates(selectedStates.filter(s => s !== st));
+    };
+
+    const addCity = (ct: string) => {
+        if (!ct || selectedCities.includes(ct)) return;
+        setSelectedCities([...selectedCities, ct]);
+        setTempCity('');
+    };
+
+    const removeCity = (ct: string) => {
+        setSelectedCities(selectedCities.filter(c => c !== ct));
     };
 
     const handleBannerImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -116,6 +141,15 @@ export default function PushCampaigns({ restaurantId }: { restaurantId: string }
             return;
         }
 
+        if (locationLevel === 'city' && selectedCities.length === 0) {
+            toast.error("Debes añadir al menos una ciudad");
+            return;
+        }
+        if (locationLevel === 'state' && selectedStates.length === 0) {
+            toast.error("Debes añadir al menos un estado");
+            return;
+        }
+
         setIsSubmitting(true);
         try {
             console.log("Iniciando subida de campaña push...");
@@ -133,8 +167,8 @@ export default function PushCampaigns({ restaurantId }: { restaurantId: string }
                 pImage = await getDownloadURL(snap.ref);
             }
 
-            const finalCity = locationLevel === 'city' ? selectedCity : null;
-            const finalState = (locationLevel === 'state' || locationLevel === 'city') ? selectedState : null;
+            const finalCities = locationLevel === 'city' ? selectedCities : [];
+            const finalStates = (locationLevel === 'state' || locationLevel === 'city') ? selectedStates : [];
 
             // Combinar fecha y hora para el scheduledAt
             const scheduledDatetime = new Date(`${scheduledDate}T${scheduledTime}`);
@@ -146,8 +180,11 @@ export default function PushCampaigns({ restaurantId }: { restaurantId: string }
                 title,
                 subtitle,
                 location: locationLevel,
-                city: finalCity,
-                state: finalState,
+                cities: finalCities,
+                states: finalStates,
+                // Fallbacks for backward compatibility
+                city: finalCities.length > 0 ? finalCities[0] : null,
+                state: finalStates.length > 0 ? finalStates[0] : null,
                 minAge,
                 maxAge,
                 sex,
@@ -250,42 +287,111 @@ export default function PushCampaigns({ restaurantId }: { restaurantId: string }
                                     </select>
                                 </div>
 
-                                {locationLevel !== 'national' && (
-                                    <>
-                                        <div>
-                                            <label className="block text-sm font-bold text-slate-700 mb-2">Seleccionar Estado</label>
-                                            <select 
-                                                value={selectedState} 
-                                                onChange={(e) => {
-                                                    setSelectedState(e.target.value);
-                                                    setSelectedCity(VENEZUELA_DATA[e.target.value]?.[0] || '');
-                                                }}
-                                                className="w-full bg-white border border-slate-200 rounded-xl px-4 py-3 font-bold text-slate-700"
-                                            >
-                                                <option value="">Cualquier Estado</option>
-                                                {VENEZUELA_STATES.map(s => (
-                                                    <option key={s} value={s}>{s}</option>
-                                                ))}
-                                            </select>
-                                        </div>
-
-                                        {locationLevel === 'city' && (
-                                            <div>
-                                                <label className="block text-sm font-bold text-slate-700 mb-2">Seleccionar Ciudad</label>
+                                {locationLevel === 'state' && (
+                                    <div className="col-span-full space-y-4">
+                                        <div className="flex gap-4 items-end">
+                                            <div className="flex-1">
+                                                <label className="block text-sm font-bold text-slate-700 mb-2">Añadir Estado</label>
                                                 <select 
-                                                    value={selectedCity} 
-                                                    onChange={(e) => setSelectedCity(e.target.value)}
+                                                    value={tempState} 
+                                                    onChange={(e) => setTempState(e.target.value)}
                                                     className="w-full bg-white border border-slate-200 rounded-xl px-4 py-3 font-bold text-slate-700"
-                                                    disabled={!selectedState}
                                                 >
-                                                    <option value="">Todas las Ciudades</option>
-                                                    {selectedState && VENEZUELA_DATA[selectedState]?.map(c => (
-                                                        <option key={c} value={c}>{c}</option>
+                                                    <option value="">Buscar Estado...</option>
+                                                    {VENEZUELA_STATES.map(s => (
+                                                        <option key={s} value={s}>{s}</option>
                                                     ))}
                                                 </select>
                                             </div>
-                                        )}
-                                    </>
+                                            <button 
+                                                type="button"
+                                                onClick={() => addState(tempState)}
+                                                className="bg-slate-900 text-white rounded-xl px-6 py-3 font-bold h-[50px] hover:bg-slate-800"
+                                            >
+                                                Agregar
+                                            </button>
+                                        </div>
+                                        <div className="flex flex-wrap gap-2">
+                                            {selectedStates.length === 0 && <p className="text-xs text-slate-400 italic">No has seleccionado estados.</p>}
+                                            {selectedStates.map(st => (
+                                                <span key={st} className="bg-primary/20 text-slate-900 px-3 py-1.5 rounded-lg text-sm font-bold flex items-center gap-2 border border-primary/30">
+                                                    {st}
+                                                    <button type="button" onClick={() => removeState(st)}><X className="w-3 h-3 hover:text-red-500"/></button>
+                                                </span>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+
+                                {locationLevel === 'city' && (
+                                    <div className="col-span-full space-y-4">
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                            <div className="space-y-2">
+                                                <label className="block text-sm font-bold text-slate-700 mb-1">Estado</label>
+                                                <select 
+                                                    value={tempState} 
+                                                    onChange={(e) => {
+                                                        setTempState(e.target.value);
+                                                        setTempCity('');
+                                                    }}
+                                                    className="w-full bg-white border border-slate-200 rounded-xl px-4 py-3 font-bold text-slate-700 text-sm"
+                                                >
+                                                    <option value="">Seleccionar Estado...</option>
+                                                    {VENEZUELA_STATES.map(s => (
+                                                        <option key={s} value={s}>{s}</option>
+                                                    ))}
+                                                </select>
+                                            </div>
+                                            <div className="space-y-2">
+                                                <label className="block text-sm font-bold text-slate-700 mb-1">Ciudad</label>
+                                                <div className="flex gap-2">
+                                                    <select 
+                                                        value={tempCity} 
+                                                        onChange={(e) => setTempCity(e.target.value)}
+                                                        className="flex-1 bg-white border border-slate-200 rounded-xl px-4 py-3 font-bold text-slate-700 text-sm"
+                                                        disabled={!tempState}
+                                                    >
+                                                        <option value="">Seleccionar Ciudad...</option>
+                                                        {tempState && VENEZUELA_DATA[tempState]?.map(c => (
+                                                            <option key={c} value={c}>{c}</option>
+                                                        ))}
+                                                    </select>
+                                                    <button 
+                                                        type="button"
+                                                        onClick={() => {
+                                                            if (!selectedStates.includes(tempState)) {
+                                                                setSelectedStates([...selectedStates, tempState]);
+                                                            }
+                                                            addCity(`${tempState}: ${tempCity}`);
+                                                        }}
+                                                        disabled={!tempCity}
+                                                        className="bg-slate-900 text-white rounded-xl px-4 py-3 font-bold hover:bg-slate-800 disabled:opacity-50"
+                                                    >
+                                                        Añadir
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div className="flex flex-wrap gap-2">
+                                            {selectedCities.length === 0 && <p className="text-xs text-slate-400 italic">No has seleccionado ciudades.</p>}
+                                            {selectedCities.map(ct => {
+                                                const [st, city] = ct.split(': ');
+                                                return (
+                                                    <span key={ct} className="bg-primary/20 text-slate-900 px-3 py-1.5 rounded-lg text-sm font-bold flex flex-col border border-primary/30 relative pr-8 group">
+                                                        <span className="text-[10px] text-slate-500 uppercase leading-none">{st}</span>
+                                                        <span className="leading-tight">{city}</span>
+                                                        <button 
+                                                            type="button" 
+                                                            onClick={() => removeCity(ct)}
+                                                            className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-red-500"
+                                                        >
+                                                            <X className="w-4 h-4"/>
+                                                        </button>
+                                                    </span>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
                                 )}
                                 <div>
                                     <label className="block text-sm font-bold text-slate-700 mb-2">Género</label>
