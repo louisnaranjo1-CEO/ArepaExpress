@@ -202,6 +202,18 @@ service cloud.firestore {
       allow delete: if isCPanelAdmin();
     }
 
+    // Marketing and Push Campaigns
+    match /push_campaigns/{campaignId} {
+      allow read: if true;
+      allow create: if request.auth != null;
+      allow update, delete: if isCPanelAdmin() || (request.auth != null && resource.data.restaurantId == request.auth.uid);
+    }
+
+    match /system_settings/{docId} {
+      allow read: if true;
+      allow write: if isCPanelAdmin();
+    }
+
     // Default deny
     match /{document=**} {
       allow read, write: if false;

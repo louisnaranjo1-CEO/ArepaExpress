@@ -304,7 +304,7 @@ export default function PushCampaigns({ restaurantId }: { restaurantId: string }
                             disabled={isSubmitting}
                             className="bg-primary text-slate-900 w-full rounded-2xl py-4 font-black flex items-center justify-center gap-2 active:scale-95 transition-transform"
                         >
-                            {isSubmitting ? 'Enviando Solicitud...' : 'Publicar Alerta Push Global'}
+                            {isSubmitting ? 'Enviando Solicitud...' : 'Enviar solicitud de alerta push'}
                         </button>
                     </form>
                 </div>
