@@ -361,37 +361,8 @@ export default function Profile() {
         }
     ];
 
-    // Role-based automatic redirection
-    useEffect(() => {
-        if (user && userData) {
-            const checkRoleAndRedirect = async () => {
-                // If it's a delivery driver or taxi
-                if (userData.role === 'delivery' || userData.role === 'driver') {
-                    navigate('/delivery');
-                    return;
-                }
-
-                // Double check delivery_drivers collection if role isn't explicitly set in users
-                const driverDoc = await getDoc(doc(db, 'delivery_drivers', user.uid));
-                if (driverDoc.exists()) {
-                    navigate('/delivery');
-                    return;
-                }
-
-                // If it's a waiter
-                if (userData.role === 'waiter') {
-                    const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-                    if (isLocalhost) {
-                        window.location.href = `${window.location.protocol}//meseros.localhost:${window.location.port}`;
-                    } else {
-                        window.location.href = 'https://meseros.deliexpress.app';
-                    }
-                    return;
-                }
-            };
-            checkRoleAndRedirect();
-        }
-    }, [user, userData, navigate]);
+    // Role-based automatic redirection removed to allow multi-role user access.
+    // Users can still manually access the delivery panel via the footer buttons if needed.
 
     const handleGoogleSignIn = async () => {
         setIsSigningIn(true);
