@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { collection, query, where, onSnapshot, doc, getDoc, addDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, doc, getDoc, addDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { db, storage } from '../../lib/firebase';
 import { Megaphone, Plus, ImageIcon, Upload, X, MapPin } from 'lucide-react';
-import { toast } from 'react-hot-toast';
+import toast from 'react-hot-toast';
 import { VENEZUELA_DATA, VENEZUELA_STATES } from '../../lib/venezuelaData';
 
 export default function PushCampaigns({ restaurantId }: { restaurantId: string }) {
@@ -491,8 +491,29 @@ export default function PushCampaigns({ restaurantId }: { restaurantId: string }
                            
                            {/* State badge */}
                            {camp.status === 'verifying_payment' && <span className="bg-yellow-100 text-yellow-800 py-1.5 px-3 rounded-xl text-xs font-black text-center w-full block">Verificando Pago ($ {camp.price})</span>}
-                           {camp.status === 'active' && <span className="bg-green-100 text-green-800 py-1.5 px-3 rounded-xl text-xs font-black text-center w-full block">Campaña Envida Mágicamente</span>}
+                           {camp.status === 'active' && <span className="bg-green-100 text-green-800 py-1.5 px-3 rounded-xl text-xs font-black text-center w-full block">Campaña Enviada / Activa</span>}
+                           {camp.status === 'inactive' && <span className="bg-slate-100 text-slate-500 py-1.5 px-3 rounded-xl text-xs font-black text-center w-full block">Campaña Pausada / Desactivada</span>}
                            {camp.status === 'rejected_payment' && <span className="bg-red-100 text-red-800 py-1.5 px-3 rounded-xl text-xs font-black text-center w-full block">Pago Rechazado</span>}
+ 
+                           {(camp.status === 'active' || camp.status === 'inactive') && (
+                               <button 
+                                   type="button"
+                                   onClick={async () => {
+                                       const newS = camp.status === 'active' ? 'inactive' : 'active';
+                                       if (!confirm(`¿Estás seguro de ${newS === 'active' ? 'VOLVER A ACTIVAR' : 'PAUSAR'} esta campaña?`)) return;
+                                       try {
+                                           await updateDoc(doc(db, 'push_campaigns', camp.id), {
+                                                status: newS,
+                                                ...(newS === 'active' ? { activatedAt: new Date() } : {})
+                                           });
+                                           toast.success("Estado cambiado correctamente");
+                                       } catch(e){ toast.error("Error al pausar/activar"); }
+                                   }}
+                                   className={`w-full mt-3 py-2 px-4 rounded-xl font-bold text-[10px] uppercase tracking-widest transition-all ${camp.status === 'active' ? 'bg-slate-100 text-slate-600 hover:bg-slate-200' : 'bg-primary text-black hover:bg-primary/90 shadow-lg shadow-primary/20'}`}
+                               >
+                                   {camp.status === 'active' ? 'Pausar Publicidad' : 'Reactivar Publicidad'}
+                               </button>
+                           )}
                         </div>
                     ))}
                 </div>

@@ -80,6 +80,23 @@ export default function MarketingManager() {
         }
     };
 
+    const handleToggleCampaignStatus = async (campaignId: string, currentStatus: string) => {
+        const newStatus = currentStatus === 'active' ? 'inactive' : 'active';
+        const actionText = newStatus === 'active' ? 'ACTIVAR' : 'DESACTIVAR';
+        
+        if (!confirm(`¿Deseas ${actionText} esta campaña individualmente ahora mismo?`)) return;
+        
+        try {
+            await updateDoc(doc(db, 'push_campaigns', campaignId), {
+                status: newStatus,
+                ...(newStatus === 'active' ? { activatedAt: new Date() } : {})
+            });
+            toast.success(`Campaña ${newStatus === 'active' ? 'activada' : 'desactivada'} correctamente`);
+        } catch(error) {
+            toast.error("Error al cambiar estado");
+        }
+    };
+
     const handleRejectCampaign = async (campaignId: string) => {
         if (!confirm("¿Rechazar esta campaña por pago inválido?")) return;
         try {
@@ -207,6 +224,9 @@ export default function MarketingManager() {
                                 {camp.status === 'active' && (
                                     <span className="bg-green-100 text-green-800 px-3 py-1 rounded-full text-xs font-bold self-start mt-2">Campaña Activa</span>
                                 )}
+                                {camp.status === 'inactive' && (
+                                    <span className="bg-slate-100 text-slate-800 px-3 py-1 rounded-full text-xs font-bold self-start mt-2">Campaña Desactivada / Pausada</span>
+                                )}
                                 {camp.status === 'rejected_payment' && (
                                     <span className="bg-red-100 text-red-800 px-3 py-1 rounded-full text-xs font-bold self-start mt-2">Pago Rechazado</span>
                                 )}
@@ -214,7 +234,7 @@ export default function MarketingManager() {
 
                             {/* Acciones de Pago */}
                             <div className="md:w-1/3 flex flex-col justify-center border-l pl-6 border-slate-100">
-                                <h4 className="font-bold text-slate-700 text-sm mb-3">Auditoría de Pago</h4>
+                                <h4 className="font-bold text-slate-700 text-sm mb-3">Auditoría / Gestión Individual</h4>
                                 {camp.paymentRef ? (
                                     <div className="space-y-3">
                                         <div className="bg-slate-900 text-primary text-center py-2 px-4 rounded-xl font-mono text-sm shadow-md">
@@ -238,6 +258,23 @@ export default function MarketingManager() {
                                                     <XCircle className="w-4 h-4" /> Rechazar
                                                 </button>
                                             </div>
+                                        )}
+
+                                        {(camp.status === 'active' || camp.status === 'inactive') && (
+                                            <button 
+                                                onClick={() => handleToggleCampaignStatus(camp.id, camp.status)} 
+                                                className={`w-full py-3 rounded-xl flex items-center justify-center gap-2 font-black text-xs uppercase tracking-widest transition-all shadow-md active:scale-95 ${camp.status === 'active' ? 'bg-slate-100 text-red-600 border border-red-100 hover:bg-red-50' : 'bg-green-100 text-green-700 border border-green-200 hover:bg-green-200'}`}
+                                            >
+                                                {camp.status === 'active' ? (
+                                                    <>
+                                                        <XCircle className="w-4 h-4" /> Desactivar Alerta Pop-up
+                                                    </>
+                                                ) : (
+                                                    <>
+                                                        <CheckCircle className="w-4 h-4" /> Reactivar Alerta Pop-up
+                                                    </>
+                                                )}
+                                            </button>
                                         )}
                                     </div>
                                 ) : (
