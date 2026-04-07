@@ -319,7 +319,7 @@ export default function Home() {
         const cashea = icons.find(icon => icon.name?.toLowerCase() === 'cashea');
 
         if (cashea) {
-          setCasheaIcon(cashea.url || cashea.imageUrl);
+          setCasheaIcon(cashea.imageUrl || cashea.url);
         } else {
           setCasheaIcon("https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/logo%20cashea.png?alt=media&token=5b266100-3323-41bb-a5a4-23957ce678a1");
         }
@@ -697,9 +697,9 @@ export default function Home() {
             
             <div className="">
                 {recentlyViewed.length > 0 ? (
-                    <ProductGrid title="Visto recientemente" products={recentlyViewed} />
+                    <ProductGrid title="Visto recientemente" products={recentlyViewed} casheaIcon={casheaIcon} />
                 ) : randomProducts.length > 0 ? (
-                    <ProductGrid title="Descubre algo nuevo" products={randomProducts} />
+                    <ProductGrid title="Descubre algo nuevo" products={randomProducts} casheaIcon={casheaIcon} />
                 ) : (
                     <div className="text-center py-12 text-slate-500">
                         No hay productos disponibles en tu zona.
@@ -838,7 +838,7 @@ export default function Home() {
 // ----------------------------------------------------------------------
 // Reusable Component for Product Grid
 // ----------------------------------------------------------------------
-function ProductGrid({ title, products }: { title: string, products: RecommendedProduct[] }) {
+function ProductGrid({ title, products, casheaIcon }: { title: string, products: RecommendedProduct[], casheaIcon: string | null }) {
   const navigate = useNavigate();
 
   const handleProductClick = (product: RecommendedProduct) => {
@@ -882,7 +882,7 @@ function ProductGrid({ title, products }: { title: string, products: Recommended
                   {/* Cashea Badge */}
                   {product.restaurantHasCashea && (
                     <div className="w-6 h-6 bg-yellow-400 rounded-full flex items-center justify-center shadow-sm" title="Cashea">
-                      <img src="https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/logo%20cashea.png?alt=media&token=5b266100-3323-41bb-a5a4-23957ce678a1" alt="Cashea" className="w-4 h-4 object-contain" />
+                      <img src={casheaIcon || "https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/logo%20cashea.png?alt=media&token=5b266100-3323-41bb-a5a4-23957ce678a1"} alt="Cashea" className="w-4 h-4 object-contain" />
                     </div>
                   )}
                   {/* 2x3 Resuelve Badge */}

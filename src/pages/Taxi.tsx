@@ -747,29 +747,29 @@ export default function Taxi() {
                 </button>
             )}
 
-            {/* Locate Me Button Overlay */}
-            {(step === 'origin' || step === 'destination') && (
-                <button
-                    onClick={toggleFollowUser}
-                    className={`absolute bottom-[35%] right-6 z-40 w-14 h-14 rounded-full shadow-2xl flex items-center justify-center transition-all duration-300 active:scale-90 ${
-                        isFollowingUser 
-                        ? 'bg-orange-500 text-white animate-pulse ring-4 ring-orange-500/30' 
-                        : 'bg-white text-orange-500'
-                    }`}
-                    title={isFollowingUser ? "Detener seguimiento" : "Ubicación en tiempo real"}
-                >
-                    <Navigation className={`w-6 h-6 ${isFollowingUser ? 'fill-white' : 'fill-orange-500/20'}`} />
-                    {isFollowingUser && (
-                        <div className="absolute -top-1 -right-1 w-4 h-4 bg-emerald-500 rounded-full border-2 border-white shadow-sm animate-bounce" />
-                    )}
-                </button>
-            )}
-
             {/* 2. Bottom Sheet UI */}
-            <div className="absolute bottom-0 left-0 right-0 z-30 bg-white rounded-t-[2rem] shadow-[0_-10px_40px_rgba(0,0,0,0.1)] transition-all duration-300">
+            <div className="absolute bottom-0 left-0 right-0 z-30 bg-white/80 backdrop-blur-xl border-t border-white/50 rounded-t-[2.5rem] shadow-[0_-10px_40px_rgba(0,0,0,0.15)] transition-all duration-300">
+
+                {/* Locate Me Button Overlay */}
+                {(step === 'origin' || step === 'destination') && (
+                    <button
+                        onClick={toggleFollowUser}
+                        className={`absolute -top-16 right-6 z-40 w-14 h-14 rounded-full shadow-lg border-2 border-white/60 flex items-center justify-center transition-all duration-300 active:scale-90 ${
+                            isFollowingUser 
+                            ? 'bg-orange-500 text-white animate-pulse ring-4 ring-orange-500/30' 
+                            : 'bg-orange-500 text-white hover:bg-orange-600'
+                        }`}
+                        title={isFollowingUser ? "Detener seguimiento" : "Ubicación en tiempo real"}
+                    >
+                        <Navigation className={`w-6 h-6 fill-white`} />
+                        {isFollowingUser && (
+                            <div className="absolute -top-1 -right-1 w-4 h-4 bg-emerald-500 rounded-full border-2 border-white shadow-sm animate-bounce" />
+                        )}
+                    </button>
+                )}
 
                 {/* Drag handle decoration */}
-                <div className="w-12 h-1.5 bg-slate-200 rounded-full mx-auto mt-4 mb-2"></div>
+                <div className="w-12 h-1.5 bg-slate-300/50 rounded-full mx-auto mt-4 mb-2"></div>
 
                 <div className="p-6 pt-2 max-h-[50vh] overflow-y-auto">
 
@@ -780,11 +780,11 @@ export default function Taxi() {
                             <p className="text-sm font-medium text-slate-500 mb-6">Mueve el mapa para ajustar tu partida</p>
 
                             <div
-                                className="flex items-center gap-4 p-4 rounded-2xl border transition-all mb-6 cursor-pointer bg-white border-black ring-2 ring-black/5"
+                                className="flex items-center gap-4 p-4 rounded-3xl border transition-all mb-6 cursor-pointer bg-white/70 backdrop-blur-sm border-white/50 shadow-sm"
                             >
-                                <div className="w-3 h-3 rounded-full flex-shrink-0 bg-black animate-pulse" />
+                                <div className="w-3 h-3 rounded-full flex-shrink-0 bg-black animate-pulse shadow-[0_0_8px_rgba(0,0,0,0.5)]" />
                                 <div className="flex-1">
-                                    <p className="text-[10px] font-black uppercase text-slate-400 mb-0.5">Punto de Partida</p>
+                                    <p className="text-[10px] font-black uppercase text-slate-500 mb-0.5">Punto de Partida</p>
                                     <p className="font-bold text-slate-800 leading-tight">
                                         {isDragging ? 'Ubicando...' : origin?.address || 'Cargando ubicación...'}
                                     </p>
@@ -797,24 +797,9 @@ export default function Taxi() {
                                     confirmOrigin();
                                 }}
                                 disabled={isDragging || !origin}
-                                className="w-full bg-black text-white py-4 rounded-xl font-black shadow-lg shadow-black/20 flex justify-center items-center gap-2 active:scale-95 transition-all disabled:opacity-50 mb-4"
+                                className="w-full bg-black text-white py-4 rounded-xl font-black shadow-xl shadow-black/20 flex justify-center items-center gap-2 active:scale-95 transition-all disabled:opacity-50 mb-6"
                             >
                                 Confirmar Partida
-                            </button>
-
-                            <button
-                                onClick={() => {
-                                    vibrate(50);
-                                    toggleFollowUser();
-                                }}
-                                className={`w-full py-3 rounded-xl font-bold flex justify-center items-center gap-2 transition-all border-2 mb-6 ${
-                                    isFollowingUser 
-                                    ? 'bg-emerald-50 text-emerald-600 border-emerald-200' 
-                                    : 'bg-slate-50 text-slate-600 border-slate-100'
-                                }`}
-                            >
-                                <Navigation className={`w-4 h-4 ${isFollowingUser ? 'fill-emerald-600' : ''}`} />
-                                {isFollowingUser ? 'Siguiendo ubicación en vivo' : 'Usar mi ubicación actual'}
                             </button>
 
                             {userData?.addresses && userData.addresses.length > 0 && (
@@ -830,10 +815,10 @@ export default function Taxi() {
                                                     setCurrentCenter({ lat: addr.lat, lng: addr.lng });
                                                     if (map) map.panTo({ lat: addr.lat, lng: addr.lng });
                                                 }}
-                                                className="flex-shrink-0 flex items-center gap-2 bg-slate-50 hover:bg-slate-100 px-4 py-2.5 rounded-xl border border-slate-100 transition-colors"
+                                                className="flex-shrink-0 flex items-center gap-2 bg-white/60 backdrop-blur-sm hover:bg-white/80 px-4 py-2.5 rounded-xl border border-white/50 shadow-sm transition-colors"
                                             >
                                                 <Heart className="w-3.5 h-3.5 text-red-500 fill-red-500" />
-                                                <span className="text-xs font-bold text-slate-700 whitespace-nowrap">{addr.name}</span>
+                                                <span className="text-xs font-bold text-slate-700 whitespace-nowrap drop-shadow-sm">{addr.name}</span>
                                             </button>
                                         ))}
                                     </div>
@@ -852,13 +837,13 @@ export default function Taxi() {
                                 {/* Connecting line */}
                                 <div className="absolute left-[19px] top-[24px] bottom-[24px] w-0.5 bg-slate-200 z-0"></div>
 
-                                <div className="flex items-center gap-4 bg-white p-3 rounded-2xl border border-slate-100 relative z-10">
-                                    <div className="w-3 h-3 bg-black rounded-full flex-shrink-0" />
-                                    <p className="flex-1 font-bold text-slate-500 text-sm leading-tight break-words">{origin?.address}</p>
+                                <div className="flex items-center gap-4 bg-white/70 backdrop-blur-sm p-3 rounded-2xl border border-white/50 shadow-sm relative z-10">
+                                    <div className="w-3 h-3 bg-black rounded-full flex-shrink-0 shadow-[0_0_8px_rgba(0,0,0,0.5)]" />
+                                    <p className="flex-1 font-bold text-slate-600 text-sm leading-tight break-words">{origin?.address}</p>
                                 </div>
-                                <div className="flex items-center gap-4 bg-orange-50 p-4 rounded-2xl border border-orange-100 relative z-10">
-                                    <div className="w-3 h-3 bg-orange-500 rounded-full flex-shrink-0" />
-                                    <p className="flex-1 font-bold text-indigo-900 leading-tight break-words">
+                                <div className="flex items-center gap-4 bg-orange-50/80 backdrop-blur-sm p-4 rounded-3xl border border-orange-200 shadow-sm relative z-10">
+                                    <div className="w-3 h-3 bg-orange-500 rounded-full flex-shrink-0 shadow-[0_0_8px_rgba(249,115,22,0.5)] animate-pulse" />
+                                    <p className="flex-1 font-black text-slate-900 leading-tight break-words">
                                         {isDragging ? 'Ubicando...' : destination?.address || 'Seleccionando destino...'}
                                     </p>
                                 </div>
@@ -885,7 +870,8 @@ export default function Taxi() {
                                                     setCurrentCenter({ lat: addr.lat, lng: addr.lng });
                                                     if (map) map.panTo({ lat: addr.lat, lng: addr.lng });
                                                 }}
-                                                className="flex-shrink-0 flex items-center gap-2 bg-slate-50 hover:bg-slate-100 px-4 py-2.5 rounded-xl border border-slate-100 transition-colors"
+                                                className="flex-shrink-0 flex items-center gap-2 bg-white/60 backdrop-blur-sm hover:bg-white/80 px-4 py-2.5 rounded-xl border border-white/50 shadow-sm transition-colors"
+
                                             >
                                                 <Star className="w-3.5 h-3.5 text-amber-500 fill-amber-500" />
                                                 <span className="text-xs font-bold text-slate-700 whitespace-nowrap">{addr.name}</span>

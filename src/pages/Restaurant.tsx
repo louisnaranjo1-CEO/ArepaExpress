@@ -118,7 +118,7 @@ export default function RestaurantPage() {
         const cashea = icons.find(icon => icon.name?.toLowerCase() === 'cashea');
 
         if (cashea) {
-          setCasheaIcon(cashea.url || cashea.imageUrl);
+          setCasheaIcon(cashea.imageUrl || cashea.url);
         } else {
           // Fallback to official Cashea icon if not found in global_icons
           setCasheaIcon("https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/logo%20cashea.png?alt=media&token=5b266100-3323-41bb-a5a4-23957ce678a1");

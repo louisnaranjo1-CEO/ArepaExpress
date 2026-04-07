@@ -85,7 +85,7 @@ export default function Search() {
                 const cashea = icons.find(icon => icon.name?.toLowerCase() === 'cashea');
 
                 if (cashea) {
-                    setCasheaIcon(cashea.url || cashea.imageUrl);
+                    setCasheaIcon(cashea.imageUrl || cashea.url);
                 } else {
                     setCasheaIcon("https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/logo%20cashea.png?alt=media&token=5b266100-3323-41bb-a5a4-23957ce678a1");
                 }
@@ -107,12 +107,40 @@ export default function Search() {
         }
     }, [location.state]);
 
+    const matchingProducts = useMemo(() => {
+        if (!query || query.length < 2) return [];
+        const allProducts: (Product & { restaurantId: string, restaurantName: string })[] = [];
+        restaurants.forEach(res => {
+            if (res.products) {
+                res.products.forEach(p => {
+                    const matchesName = p.name.toLowerCase().includes(query.toLowerCase());
+                    const matchesDesc = p.description?.toLowerCase().includes(query.toLowerCase());
+                    const matchesCat = p.category?.toLowerCase().includes(query.toLowerCase());
+                    
+                    if (matchesName || matchesDesc || matchesCat) {
+                        allProducts.push({
+                            ...p,
+                            restaurantId: res.id || '',
+                            restaurantName: res.name
+                        });
+                    }
+                });
+            }
+        });
+        return allProducts;
+    }, [restaurants, query]);
+
     const filteredRestaurants = useMemo(() => {
         return restaurants.filter(res => {
             // Search query
-            const matchesQuery = query === '' ||
-                res.name.toLowerCase().includes(query.toLowerCase()) ||
-                res.category.toLowerCase().includes(query.toLowerCase());
+            const matchesResName = res.name.toLowerCase().includes(query.toLowerCase());
+            const matchesResCat = res.category.toLowerCase().includes(query.toLowerCase());
+            const matchesProducts = res.products?.some(p => 
+                p.name.toLowerCase().includes(query.toLowerCase()) || 
+                p.description?.toLowerCase().includes(query.toLowerCase())
+            );
+
+            const matchesQuery = query === '' || matchesResName || matchesResCat || matchesProducts;
 
             // Category filter
             const activeCategory = filters.category || selectedCategory;
@@ -148,15 +176,15 @@ export default function Search() {
             const normalizeLoc = (str?: string) => str ? str.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim() : '';
             const normManualCity = normalizeLoc(manualCity);
             const matchesCity = !manualCity || (() => {
-               const c = normalizeLoc(res.location?.city || (res as any).city);
-               const s = normalizeLoc(res.location?.state || (res as any).state);
-               const a = normalizeLoc(res.location?.address || (res as any).address);
-               if (c === normManualCity || c.includes(normManualCity) || a.includes(normManualCity) || s.includes(normManualCity)) return true;
-               
-               const jsonStr = normalizeLoc(JSON.stringify(res));
-               if (jsonStr.includes(normManualCity)) return true;
-               
-               return false;
+                const c = normalizeLoc(res.location?.city || (res as any).city);
+                const s = normalizeLoc(res.location?.state || (res as any).state);
+                const a = normalizeLoc(res.location?.address || (res as any).address);
+                if (c === normManualCity || c.includes(normManualCity) || a.includes(normManualCity) || s.includes(normManualCity)) return true;
+
+                const jsonStr = normalizeLoc(JSON.stringify(res));
+                if (jsonStr.includes(normManualCity)) return true;
+
+                return false;
             })();
 
             return matchesQuery && matchesCategory && matchesSector && matchesPrice && matchesPromotions && matchesCity;
@@ -193,10 +221,62 @@ export default function Search() {
 
             <div className="px-6 py-6 space-y-8">
 
+                {/* Products Results */}
+                {matchingProducts.length > 0 && (
+                    <section className="space-y-4">
+                        <div className="flex items-center justify-between">
+                            <h2 className="text-xl font-black text-slate-800 flex items-center gap-2">
+                                <Zap className="w-5 h-5 text-amber-500" />
+                                Productos recomendados
+                            </h2>
+                            <span className="text-slate-900 text-xs font-bold bg-amber-100 px-3 py-1 rounded-full">
+                                {matchingProducts.length} coincidencia{matchingProducts.length !== 1 ? 's' : ''}
+                            </span>
+                        </div>
+                        <div className="flex gap-4 overflow-x-auto pb-4 hide-scrollbar -mx-6 px-6">
+                            {matchingProducts.map((product, idx) => (
+                                <Link 
+                                    to={`/restaurant/${product.restaurantId}`} 
+                                    key={`${product.restaurantId}-${idx}`}
+                                    onClick={() => vibrate(30)}
+                                    className="min-w-[200px] w-[200px] bg-white rounded-3xl overflow-hidden shadow-md border border-slate-100 flex flex-col hover:scale-105 transition-transform"
+                                >
+                                    <div className="h-32 bg-slate-100 relative">
+                                        {product.image ? (
+                                            <img src={product.image} alt={product.name} className="w-full h-full object-cover" />
+                                        ) : (
+                                            <div className="w-full h-full flex items-center justify-center opacity-30">
+                                                <Store className="w-8 h-8" />
+                                            </div>
+                                        )}
+                                        {product.promoPrice && product.promoPrice > 0 && (
+                                            <div className="absolute top-2 left-2 bg-rose-500 text-white text-[10px] font-black px-2 py-1 rounded-lg uppercase">
+                                                Oferta
+                                            </div>
+                                        )}
+                                    </div>
+                                    <div className="p-3 space-y-1">
+                                        <h4 className="text-sm font-black text-slate-900 line-clamp-1">{product.name}</h4>
+                                        <p className="text-[10px] font-bold text-slate-400 line-clamp-2 leading-tight">
+                                            {product.description}
+                                        </p>
+                                        <div className="flex items-center justify-between pt-1">
+                                            <span className="text-sm font-black text-slate-900">${product.promoPrice || product.price}</span>
+                                            <span className="text-[9px] font-bold text-blue-500 bg-blue-50 px-2 py-1 rounded-full line-clamp-1 max-w-[80px]">
+                                                {product.restaurantName}
+                                            </span>
+                                        </div>
+                                    </div>
+                                </Link>
+                            ))}
+                        </div>
+                    </section>
+                )}
+
                 <section className="space-y-4">
                     <div className="flex items-center justify-between">
                         <h2 className="text-xl font-black text-slate-800">
-                            {query || selectedCategory || filters.sector ? 'Resultados' : 'Explorar'}
+                            {query || selectedCategory || filters.sector ? 'Locales encontrados' : 'Explorar locales'}
                         </h2>
                         <div className="flex items-center gap-2">
                             {filteredRestaurants.length > 0 && (
