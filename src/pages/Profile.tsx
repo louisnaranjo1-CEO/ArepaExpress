@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { User, Mail, MapPin, CreditCard, LogOut, ShoppingBag, Settings, ChevronRight, Clock, FileText, Bell, Navigation, X, Shield, UploadCloud, Star, Wallet, Gift, Award, MessageSquareWarning, Plus, Send, AlertCircle, CheckCircle, Store, Handshake } from 'lucide-react';
+import { User, Mail, MapPin, CreditCard, LogOut, ShoppingBag, Settings, ChevronRight, Clock, FileText, Bell, Navigation, X, Shield, UploadCloud, Star, Wallet, Gift, Award, MessageSquareWarning, Plus, Send, AlertCircle, CheckCircle, Store, Handshake, LifeBuoy } from 'lucide-react';
 import { requestNotificationPermission, disableNotifications } from '../lib/notifications';
 import { useAuth } from '../context/AuthContext';
 import { auth, db, storage } from '../lib/firebase';
@@ -969,7 +969,23 @@ export default function Profile() {
         <>
             <div className="pb-24 animate-in fade-in duration-500">
                 <div className="bg-gradient-to-br from-secondary to-[#003B85] p-8 pt-12 pb-16 text-white rounded-b-[40px] shadow-xl">
-                    <div className="flex items-center gap-4">
+                    <div className="relative flex items-center gap-4">
+                        {/* Settings & Support Buttons - Positioned top right to avoid overflow */}
+                        <div className="absolute -top-6 -right-4 flex items-center gap-2">
+                            <button
+                                onClick={() => navigate('/support')}
+                                className="bg-white/10 backdrop-blur-md p-2.5 rounded-xl hover:bg-white/20 transition-all active:scale-90 border border-white/10"
+                            >
+                                <LifeBuoy className="w-5 h-5 text-white/80" />
+                            </button>
+                            <button
+                                onClick={() => setShowEditProfileModal(true)}
+                                className="bg-white/10 backdrop-blur-md p-2.5 rounded-xl hover:bg-white/20 transition-all active:scale-90 border border-white/10"
+                            >
+                                <Settings className="w-5 h-5 text-white/80" />
+                            </button>
+                        </div>
+
                         <div className="w-20 h-20 bg-white/20 backdrop-blur-md rounded-full border-4 border-white/30 flex items-center justify-center overflow-hidden shadow-inner shrink-0">
                             {user.photoURL ? (
                                 <img src={user.photoURL} alt="Profile" className="w-full h-full object-cover rounded-full" />
@@ -991,12 +1007,6 @@ export default function Profile() {
                                 </div>
                             </div>
                         </div>
-                        <button
-                            onClick={() => setShowEditProfileModal(true)}
-                            className="bg-white/20 backdrop-blur-md p-3 rounded-2xl hover:bg-white/30 transition-all active:scale-95"
-                        >
-                            <Settings className="w-5 h-5 text-white" />
-                        </button>
                     </div>
                 </div>
 
