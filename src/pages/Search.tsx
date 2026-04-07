@@ -110,8 +110,24 @@ export default function Search() {
     const matchingProducts = useMemo(() => {
         if (!query || query.length < 2) return [];
         const allProducts: (Product & { restaurantId: string, restaurantName: string })[] = [];
+        const normalizeLoc = (str?: string) => str ? str.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim() : '';
+        const normManualCity = normalizeLoc(manualCity);
+
         restaurants.forEach(res => {
-            if (res.products) {
+            // Check if restaurant is in user's zone
+            const c = normalizeLoc(res.location?.city || (res as any).city);
+            const s = normalizeLoc(res.location?.state || (res as any).state);
+            const a = normalizeLoc(res.location?.address || (res as any).address);
+            const jsonStr = normalizeLoc(JSON.stringify(res));
+
+            const isRestaurantInZone = !manualCity || 
+                c === normManualCity || 
+                c.includes(normManualCity) || 
+                a.includes(normManualCity) || 
+                s.includes(normManualCity) || 
+                jsonStr.includes(normManualCity);
+
+            if (isRestaurantInZone && res.products) {
                 res.products.forEach(p => {
                     const matchesName = p.name.toLowerCase().includes(query.toLowerCase());
                     const matchesDesc = p.description?.toLowerCase().includes(query.toLowerCase());

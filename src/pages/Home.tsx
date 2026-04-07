@@ -245,9 +245,8 @@ export default function Home() {
         const cityResIds = new Set(fetchedRestaurants.map(r => r.id));
 
         // Fetch All Products for Recommendations from top restaurants in the area
-        // Limit to top 20 restaurants to avoid massive reads, ensuring we only get products from THIS city
         let allProducts: RecommendedProduct[] = [];
-        const topRestForProducts = fetchedRestaurants.slice(0, 20);
+        const topRestForProducts = fetchedRestaurants.slice(0, 30); // Use filtered restaurants from this zone
         await Promise.all(topRestForProducts.map(async (rest) => {
             const pSnap = await getDocs(query(collection(db, 'restaurants', rest.id, 'products'), limit(15)));
             pSnap.docs.forEach(d => {
