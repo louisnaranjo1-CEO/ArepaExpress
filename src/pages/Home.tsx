@@ -782,7 +782,7 @@ export default function Home() {
                     <div className="px-1 flex items-center gap-3">
                         <div className="w-10 h-10 rounded-full border-2 border-white shadow-sm overflow-hidden shrink-0 bg-slate-50 flex items-center justify-center">
                         {logoImg ? (
-                            <img src={logoImg} alt="" className="w-full h-full object-cover" />
+                            <img src={logoImg} alt="" className="w-full h-full object-cover rounded-full" />
                         ) : (
                             <Store className="w-5 h-5 text-slate-300" />
                         )}
@@ -874,8 +874,8 @@ function ProductGrid({ title, products, casheaIcon }: { title: string, products:
                 <div className="absolute top-2 right-2 flex flex-col gap-1 items-end">
                   {/* Restaurant Logo Circle */}
                   {product.restaurantLogo && (
-                    <div className="w-6 h-6 rounded-full bg-white shadow-sm border border-slate-100 overflow-hidden" title="Comercio">
-                      <img src={product.restaurantLogo} alt="Logo" className="w-full h-full object-cover" />
+                    <div className="w-6 h-6 rounded-full bg-white shadow-sm border border-slate-100 overflow-hidden flex items-center justify-center" title="Comercio">
+                      <img src={product.restaurantLogo} alt="Logo" className="w-full h-full object-cover rounded-full" />
                     </div>
                   )}
                   {/* Cashea Badge */}

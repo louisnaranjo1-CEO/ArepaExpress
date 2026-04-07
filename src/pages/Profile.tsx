@@ -897,7 +897,7 @@ export default function Profile() {
     if (user && !isProfileComplete) {
         return (
             <div className="flex flex-col items-center justify-center min-h-[80vh] px-6 py-12 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                <div className="w-24 h-24 bg-primary/10 rounded-full flex items-center justify-center mb-6">
+                <div className="w-24 h-24 bg-primary/10 rounded-full flex items-center justify-center mb-6 overflow-hidden">
                     <User className="w-12 h-12 text-slate-900" />
                 </div>
                 <h1 className="text-2xl font-black text-slate-900 mb-2 text-center">¡Un paso más! 🚀</h1>
@@ -970,9 +970,9 @@ export default function Profile() {
             <div className="pb-24 animate-in fade-in duration-500">
                 <div className="bg-gradient-to-br from-secondary to-[#003B85] p-8 pt-12 pb-16 text-white rounded-b-[40px] shadow-xl">
                     <div className="flex items-center gap-4">
-                        <div className="w-20 h-20 bg-white/20 backdrop-blur-md rounded-full border-4 border-white/30 flex items-center justify-center overflow-hidden shadow-inner">
+                        <div className="w-20 h-20 bg-white/20 backdrop-blur-md rounded-full border-4 border-white/30 flex items-center justify-center overflow-hidden shadow-inner shrink-0">
                             {user.photoURL ? (
-                                <img src={user.photoURL} alt="Profile" className="w-full h-full object-cover" />
+                                <img src={user.photoURL} alt="Profile" className="w-full h-full object-cover rounded-full" />
                             ) : (
                                 <User className="w-10 h-10 text-white" />
                             )}
@@ -1765,7 +1765,7 @@ export default function Profile() {
                             <div className="p-8 border-b border-slate-50 flex items-center justify-between bg-slate-50/50">
                                 <div>
                                     <h3 className="text-xl font-black text-slate-900 flex items-center gap-2">
-                                        <Wallet className="w-6 h-6 text-slate-900" /> Mi Billetera Deliexpress
+                                        <Wallet className="w-6 h-6 text-slate-900" /> Mi Billetera de Transporte
                                     </h3>
                                     <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1">Fondos para Transporte</p>
                                 </div>
@@ -1809,7 +1809,7 @@ export default function Profile() {
                                                 <div>
                                                     <p className="text-white/40 text-[9px] font-black uppercase tracking-widest mb-1 italic">Saldo Disponible</p>
                                                     <div className="flex items-baseline gap-1">
-                                                        <span className="text-slate-900 text-3xl font-black drop-shadow-[0_2px_4px_rgba(255,102,0,0.3)]">${(userData?.walletBalance || 0).toFixed(2)}</span>
+                                                        <span className={`${(userData?.walletBalance || 0) > 0 ? 'text-emerald-400' : 'text-red-500'} text-3xl font-black drop-shadow-[0_2px_4px_rgba(0,0,0,0.3)]`}>${(userData?.walletBalance || 0).toFixed(2)}</span>
                                                         <span className="text-white/20 text-xs font-black">USD</span>
                                                     </div>
                                                 </div>

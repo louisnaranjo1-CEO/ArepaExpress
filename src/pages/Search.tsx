@@ -356,7 +356,7 @@ export default function Search() {
                                         <div className="p-6 flex items-center gap-4">
                                             <div className="w-12 h-12 rounded-full border-2 border-white shadow-sm overflow-hidden shrink-0 bg-slate-50 flex items-center justify-center">
                                                 {logoImg ? (
-                                                    <img src={logoImg} alt="" className="w-full h-full object-cover" />
+                                                    <img src={logoImg} alt="" className="w-full h-full object-cover rounded-full" />
                                                 ) : (
                                                     <Store className="w-6 h-6 text-slate-300" />
                                                 )}
