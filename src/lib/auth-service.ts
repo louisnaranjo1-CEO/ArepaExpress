@@ -63,6 +63,9 @@ export const processReferralCode = async (newUserId: string, referralCode: strin
 }
 
 const googleProvider = new GoogleAuthProvider();
+googleProvider.setCustomParameters({
+    prompt: 'select_account'
+});
 // Ensure we get the display name and email
 googleProvider.addScope('profile');
 googleProvider.addScope('email');
