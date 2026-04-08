@@ -13,7 +13,7 @@ import { recommendationsService } from '../lib/recommendations';
 import { toast } from 'react-hot-toast';
 import { vibrate } from '../utils/haptics';
 import PointsModal from '../components/PointsModal';
-import { isDemoMode } from '../lib/env';
+import { isDemoMode, UN2X3_LOGO } from '../lib/env';
 import { DEMO_RESTAURANTS } from '../lib/demoData';
 
 interface RecommendedProduct extends Product {
@@ -453,7 +453,7 @@ export default function Home() {
             className="flex-1 flex items-center justify-start cursor-pointer active:scale-95 transition-transform overflow-visible"
           >
             <img
-              src="https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/logo.png?alt=media"
+              src={UN2X3_LOGO}
               alt="Deliexpress Logo"
               className="h-10 w-auto object-contain"
             />
@@ -593,7 +593,7 @@ export default function Home() {
                 <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-32 h-32 bg-primary/20 rounded-full blur-2xl animate-pulse"></div>
                 <div className="w-28 h-28 bg-white rounded-full p-2.5 shadow-xl shadow-primary/20 border border-primary/10 flex items-center justify-center relative z-10 animate-pulse">
                   <img
-                    src="https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/logo.png?alt=media"
+                    src={UN2X3_LOGO}
                     alt="Deliexpress Logo"
                     className="w-full h-full object-contain drop-shadow-[0_0_15px_rgba(255,102,0,0.5)]"
                   />

@@ -65,7 +65,7 @@ export default function AdminAuth() {
                         className="flex items-center justify-center h-24 mb-6 hover:rotate-2 transition-transform duration-500 cursor-pointer active:scale-95"
                     >
                         <img 
-                            src="https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/logo.png?alt=media" 
+                            src="https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/logo.png?alt=media&v=1.1" 
                             alt="Deliexpress Logo" 
                             className="h-full object-contain"
                         />

@@ -4,6 +4,7 @@ import { LogIn, UserPlus, Mail, Lock, User, ArrowRight, ChevronRight, Gavel } fr
 import { signInWithGoogle, signInWithEmail, signUpWithEmail } from '../../lib/auth-service';
 import { getDriverProfile } from '../../lib/delivery-service';
 import { motion, AnimatePresence } from 'framer-motion';
+import { UN2X3_LOGO } from '../../lib/env';
 
 export default function Login() {
     const [mode, setMode] = useState<'login' | 'register'>('login');
@@ -76,7 +77,7 @@ export default function Login() {
                         className="h-40 flex flex-col items-center justify-center mb-4 cursor-pointer active:scale-95 transition-transform"
                     >
                         <img
-                            src="https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/logo.png?alt=media"
+                            src={UN2X3_LOGO}
                             alt="Logo Deliexpress"
                             className="h-full object-contain drop-shadow-2xl"
                         />

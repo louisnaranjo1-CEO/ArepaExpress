@@ -133,7 +133,7 @@ export default function Onboarding() {
                 <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
                         <img
-                            src="https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/logo.png?alt=media"
+                            src="https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/logo.png?alt=media&v=1.1"
                             alt="Logo"
                             className="w-10 h-10 object-contain rounded-xl shadow-sm"
                         />
