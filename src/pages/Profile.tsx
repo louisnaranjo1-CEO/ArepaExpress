@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { User, Mail, MapPin, CreditCard, LogOut, ShoppingBag, Settings, ChevronRight, Clock, FileText, Bell, Navigation, X, Shield, UploadCloud, Star, Wallet, Gift, Award, MessageSquareWarning, Plus, Send, AlertCircle, CheckCircle, Store, Handshake, LifeBuoy } from 'lucide-react';
+import { isDemoMode } from '../lib/env';
+import DemoAlertModal from '../components/DemoAlertModal';
 import { requestNotificationPermission, disableNotifications } from '../lib/notifications';
 import { useAuth } from '../context/AuthContext';
 import { auth, db, storage } from '../lib/firebase';
@@ -116,6 +118,7 @@ export default function Profile() {
     const [showReferralModal, setShowReferralModal] = useState(false);
     const [tempGoogleUser, setTempGoogleUser] = useState<any>(null);
     const [isApplyingReferral, setIsApplyingReferral] = useState(false);
+    const [showDemoAlert, setShowDemoAlert] = useState(false);
     const [isForcedRegister, setIsForcedRegister] = useState(false);
 
     // Support Ticket State
@@ -605,6 +608,10 @@ export default function Profile() {
                 <div className="space-y-4 w-full max-w-xs relative">
                     <button
                         onClick={async () => {
+                            if (isDemoMode()) {
+                                setShowDemoAlert(true);
+                                return;
+                            }
                             vibrate(50);
                             await handleGoogleSignIn();
                         }}
@@ -640,6 +647,10 @@ export default function Profile() {
                     {isForcedRegister ? (
                         <button
                             onClick={() => {
+                                if (isDemoMode()) {
+                                    setShowDemoAlert(true);
+                                    return;
+                                }
                                 vibrate(30);
                                 setIsLoginMode(false);
                                 setShowEmailModal(true);
@@ -653,6 +664,10 @@ export default function Profile() {
                         <>
                             <button
                                 onClick={() => {
+                                    if (isDemoMode()) {
+                                        setShowDemoAlert(true);
+                                        return;
+                                    }
                                     vibrate(30);
                                     setIsLoginMode(true);
                                     setShowEmailModal(true);
@@ -664,6 +679,10 @@ export default function Profile() {
                             </button>
                             <button
                                 onClick={() => {
+                                    if (isDemoMode()) {
+                                        setShowDemoAlert(true);
+                                        return;
+                                    }
                                     vibrate(30);
                                     setIsLoginMode(false);
                                     setShowEmailModal(true);
@@ -680,6 +699,10 @@ export default function Profile() {
                             </div>
                             <button
                                 onClick={() => {
+                                    if (isDemoMode()) {
+                                        setShowDemoAlert(true);
+                                        return;
+                                    }
                                     const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
                                     if (isLocalhost) {
                                         window.location.href = `${window.location.protocol}//meseros.localhost:${window.location.port}`;
@@ -699,7 +722,13 @@ export default function Profile() {
                                 <div className="h-px bg-slate-100 flex-1"></div>
                             </div>
                             <button
-                                onClick={() => window.location.href = 'https://deliexpress.app/delivery/login'}
+                                onClick={() => {
+                                    if (isDemoMode()) {
+                                        setShowDemoAlert(true);
+                                        return;
+                                    }
+                                    window.location.href = 'https://deliexpress.app/delivery/login';
+                                }}
                                 className="w-full bg-primary/10 text-slate-900 py-4 rounded-2xl font-bold hover:bg-primary/20 transition-colors flex items-center justify-center gap-2"
                             >
                                 <Navigation className="w-5 h-5 opacity-50" />
@@ -712,7 +741,13 @@ export default function Profile() {
                                 <div className="h-px bg-slate-100 flex-1"></div>
                             </div>
                             <button
-                                onClick={() => window.location.href = 'https://restaurante.deliexpress.app'}
+                                onClick={() => {
+                                    if (isDemoMode()) {
+                                        setShowDemoAlert(true);
+                                        return;
+                                    }
+                                    window.location.href = 'https://restaurante.deliexpress.app';
+                                }}
                                 className="w-full bg-green-500/10 text-green-600 py-4 rounded-2xl font-bold hover:bg-green-500/20 transition-colors flex items-center justify-center gap-2"
                             >
                                 <Store className="w-5 h-5 opacity-50" />
@@ -889,6 +924,11 @@ export default function Profile() {
                 </AnimatePresence>
 
                 {/* Waiter Login Modal removed, now redirects to subdomain */}
+
+                <DemoAlertModal 
+                    isOpen={showDemoAlert} 
+                    onClose={() => setShowDemoAlert(false)} 
+                />
             </div>
         );
     }

@@ -8,6 +8,8 @@ import { db } from '../lib/firebase';
 import { calculateDistance, formatDistance } from '../lib/geo';
 import AddressPicker from '../components/AddressPicker';
 import WaiterLayout from '../waiter/components/WaiterLayout';
+import { isDemoMode } from '../lib/env';
+import DemoAlertModal from '../components/DemoAlertModal';
 
 interface CartProps {
   hideHeader?: boolean;
@@ -53,6 +55,7 @@ export default function Cart({ hideHeader = false }: CartProps) {
   const [systemSettings, setSystemSettings] = useState<any>(null);
 
   const [hasDefaultedCredit, setHasDefaultedCredit] = useState(false);
+  const [showDemoAlert, setShowDemoAlert] = useState(false);
 
   useEffect(() => {
     const checkCredits = async () => {
@@ -185,6 +188,10 @@ export default function Cart({ hideHeader = false }: CartProps) {
 
   const handleCheckout = async () => {
     if (items.length === 0) return;
+    if (!isWaiter && isDemoMode()) {
+      setShowDemoAlert(true);
+      return;
+    }
     if (!isWaiter && !user && (!guestName || !guestPhone || !guestCedula)) { setShowGuestModal(true); return; }
     if (!isWaiter && user && (!userData?.phone || !userData?.cedula)) { alert("Completa tu perfil primero."); navigate('/profile'); return; }
 
@@ -650,6 +657,10 @@ export default function Cart({ hideHeader = false }: CartProps) {
               initialData={selectedAddress}
           />
       )}
+      <DemoAlertModal 
+          isOpen={showDemoAlert} 
+          onClose={() => setShowDemoAlert(false)} 
+      />
     </div>
   );
 

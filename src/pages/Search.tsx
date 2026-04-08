@@ -6,6 +6,8 @@ import { Restaurant, Product } from '../lib/seed';
 import { Link, useLocation } from 'react-router-dom';
 import FilterModal, { FilterState } from '../components/FilterModal';
 import { vibrate } from '../utils/haptics';
+import { isDemoMode } from '../lib/env';
+import { DEMO_RESTAURANTS } from '../lib/demoData';
 
 export interface Category {
     id: string;
@@ -53,6 +55,11 @@ export default function Search() {
 
         const fetchRestaurants = async () => {
             try {
+                if (isDemoMode()) {
+                    setRestaurants([...DEMO_RESTAURANTS]);
+                    setLoading(false);
+                    return;
+                }
                 const querySnapshot = await getDocs(collection(db, 'restaurants'));
                 const fetched = await Promise.all(querySnapshot.docs.map(async (docSnap) => {
                     const data = docSnap.data();
@@ -191,7 +198,7 @@ export default function Search() {
             // City Filter
             const normalizeLoc = (str?: string) => str ? str.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim() : '';
             const normManualCity = normalizeLoc(manualCity);
-            const matchesCity = !manualCity || (() => {
+            const matchesCity = isDemoMode() || !manualCity || (() => {
                 const c = normalizeLoc(res.location?.city || (res as any).city);
                 const s = normalizeLoc(res.location?.state || (res as any).state);
                 const a = normalizeLoc(res.location?.address || (res as any).address);

@@ -9,6 +9,8 @@ import { useCart } from '../context/CartContext';
 import { useAuth } from '../context/AuthContext';
 import { recommendationsService } from '../lib/recommendations';
 import toast from 'react-hot-toast';
+import { DEMO_RESTAURANTS } from '../lib/demoData';
+import { isDemoMode } from '../lib/env';
 
 export default function RestaurantPage() {
   const { id } = useParams<{ id: string }>();
@@ -71,6 +73,16 @@ export default function RestaurantPage() {
       setLoading(true);
       setError(null);
       try {
+        // Check for Demo Restaurant
+        const demoRes = DEMO_RESTAURANTS.find(r => r.id === id);
+        if (demoRes) {
+          setRestaurant(demoRes);
+          setFollowerCount(demoRes.followerCount || 0);
+          setProducts(demoRes.products || []);
+          setLoading(false);
+          return;
+        }
+
         // Fetch restaurant details
         const docRef = doc(db, 'restaurants', id);
         const docSnap = await getDoc(docRef);

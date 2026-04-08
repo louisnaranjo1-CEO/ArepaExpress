@@ -13,6 +13,8 @@ import { recommendationsService } from '../lib/recommendations';
 import { toast } from 'react-hot-toast';
 import { vibrate } from '../utils/haptics';
 import PointsModal from '../components/PointsModal';
+import { isDemoMode } from '../lib/env';
+import { DEMO_RESTAURANTS } from '../lib/demoData';
 
 interface RecommendedProduct extends Product {
   restaurantId: string;
@@ -142,6 +144,10 @@ export default function Home() {
 
         // Location filtering
         const filteredBanners = activeBanners.filter(banner => {
+          if (isDemoMode()) {
+            return banner.visibilityScope === 'national';
+          }
+
           const scope = banner.visibilityScope || 'national';
 
           if (scope === 'national') return true;
@@ -189,57 +195,80 @@ export default function Home() {
         setCategories(fetchedCategories.filter(c => c.isActive));
 
         // Fetch All Restaurants for filtering logic and profiles
-        const rQuery = query(collection(db, 'restaurants'));
-        const rSnap = await getDocs(rQuery);
-        let fetchedRestaurants = rSnap.docs.map(doc => ({
-           id: doc.id,
-           ...doc.data()
-        })) as Restaurant[];
-
-        // Update distance strings and compute sorting weights
-        fetchedRestaurants = fetchedRestaurants.map(rest => {
-          let dist = 999;
-          if (userLocation && rest.location?.coords) {
-            dist = calculateDistance(
-              userLocation.lat,
-              userLocation.lng,
-              rest.location.coords.lat,
-              rest.location.coords.lng
-            );
-          }
-          let cityMatchScore = 0;
-          if (manualCity && rest.location?.city?.toLowerCase().trim() === manualCity.toLowerCase().trim()) {
-            cityMatchScore = -10000;
-          }
-          return {
-            ...rest,
-            distance: dist !== 999 ? formatDistance(dist) : 'Distancia desconocida',
-            _rawDistance: dist,
-            _sortScore: cityMatchScore + dist // Combine city score and real distance 
-          };
-        }).sort((a, b) => (a._sortScore as number) - (b._sortScore as number));
-
-        // Strict location filtering (omit any business not in the city)
-        if (manualCity) {
-            const normalizeLoc = (str?: string) => str ? str.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim() : '';
-            const mCity = normalizeLoc(manualCity);
-            
-            fetchedRestaurants = fetchedRestaurants.filter(rest => {
-               const c = normalizeLoc(rest.location?.city || (rest as any).city);
-               const s = normalizeLoc(rest.location?.state || (rest as any).state);
-               const a = normalizeLoc(rest.location?.address || (rest as any).address);
-               
-               if (c === mCity || c.includes(mCity) || a.includes(mCity) || s.includes(mCity)) {
-                   return true;
-               }
-
-               // Bulletproof fallback: search the entire object string for the city name
-               // This handles cases where data was stored in an unexpected format or nested structure
-               const jsonStr = normalizeLoc(JSON.stringify(rest));
-               if (jsonStr.includes(mCity)) return true;
-
-               return false;
+        let fetchedRestaurants: Restaurant[] = [];
+        
+        if (isDemoMode()) {
+            fetchedRestaurants = [...DEMO_RESTAURANTS];
+            // Compute distances for demo restaurants if location is available
+            fetchedRestaurants = fetchedRestaurants.map(rest => {
+                let dist = 999;
+                if (userLocation && rest.location?.coords) {
+                    dist = calculateDistance(
+                        userLocation.lat,
+                        userLocation.lng,
+                        rest.location.coords.lat,
+                        rest.location.coords.lng
+                    );
+                }
+                return {
+                    ...rest,
+                    distance: dist !== 999 ? formatDistance(dist) : rest.distance,
+                    _rawDistance: dist,
+                    _sortScore: dist
+                };
             });
+        } else {
+            const rQuery = query(collection(db, 'restaurants'));
+            const rSnap = await getDocs(rQuery);
+            fetchedRestaurants = rSnap.docs.map(doc => ({
+               id: doc.id,
+               ...doc.data()
+            })) as Restaurant[];
+
+            // Update distance strings and compute sorting weights
+            fetchedRestaurants = fetchedRestaurants.map(rest => {
+              let dist = 999;
+              if (userLocation && rest.location?.coords) {
+                dist = calculateDistance(
+                  userLocation.lat,
+                  userLocation.lng,
+                  rest.location.coords.lat,
+                  rest.location.coords.lng
+                );
+              }
+              let cityMatchScore = 0;
+              if (manualCity && rest.location?.city?.toLowerCase().trim() === manualCity.toLowerCase().trim()) {
+                cityMatchScore = -10000;
+              }
+              return {
+                ...rest,
+                distance: dist !== 999 ? formatDistance(dist) : 'Distancia desconocida',
+                _rawDistance: dist,
+                _sortScore: cityMatchScore + dist // Combine city score and real distance 
+              };
+            }).sort((a, b) => (a._sortScore as number) - (b._sortScore as number));
+
+            // Strict location filtering (omit any business not in the city)
+            if (manualCity) {
+                const normalizeLoc = (str?: string) => str ? str.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim() : '';
+                const mCity = normalizeLoc(manualCity);
+                
+                fetchedRestaurants = fetchedRestaurants.filter(rest => {
+                   const c = normalizeLoc(rest.location?.city || (rest as any).city);
+                   const s = normalizeLoc(rest.location?.state || (rest as any).state);
+                   const a = normalizeLoc(rest.location?.address || (rest as any).address);
+                   
+                   if (c === mCity || c.includes(mCity) || a.includes(mCity) || s.includes(mCity)) {
+                       return true;
+                   }
+
+                   // Bulletproof fallback: search the entire object string for the city name
+                   const jsonStr = normalizeLoc(JSON.stringify(rest));
+                   if (jsonStr.includes(mCity)) return true;
+
+                   return false;
+                });
+            }
         }
         setRestaurants(fetchedRestaurants);
         const cityResIds = new Set(fetchedRestaurants.map(r => r.id));
@@ -247,20 +276,33 @@ export default function Home() {
         // Fetch All Products for Recommendations from top restaurants in the area
         let allProducts: RecommendedProduct[] = [];
         const topRestForProducts = fetchedRestaurants.slice(0, 30); // Use filtered restaurants from this zone
-        await Promise.all(topRestForProducts.map(async (rest) => {
-            const pSnap = await getDocs(query(collection(db, 'restaurants', rest.id, 'products'), limit(15)));
-            pSnap.docs.forEach(d => {
-                const data = d.data();
-                allProducts.push({ 
-                  id: d.id, 
-                  restaurantId: rest.id, 
-                  restaurantLogo: (rest as any).logoUrl || rest.image,
-                  restaurantHasCashea: rest.hasCashea,
-                  restaurantHasTwoByThree: rest.hasTwoByThree,
-                  ...data 
-                } as RecommendedProduct);
-            });
-        }));
+        
+        if (isDemoMode()) {
+            allProducts = topRestForProducts.flatMap(rest => 
+                (rest.products || []).map(p => ({
+                    ...p,
+                    restaurantId: rest.id!,
+                    restaurantLogo: (rest as any).logoUrl || rest.image,
+                    restaurantHasCashea: rest.hasCashea,
+                    restaurantHasTwoByThree: rest.hasTwoByThree,
+                }))
+            );
+        } else {
+            await Promise.all(topRestForProducts.map(async (rest) => {
+                const pSnap = await getDocs(query(collection(db, 'restaurants', rest.id, 'products'), limit(15)));
+                pSnap.docs.forEach(d => {
+                    const data = d.data();
+                    allProducts.push({ 
+                      id: d.id, 
+                      restaurantId: rest.id, 
+                      restaurantLogo: (rest as any).logoUrl || rest.image,
+                      restaurantHasCashea: rest.hasCashea,
+                      restaurantHasTwoByThree: rest.hasTwoByThree,
+                      ...data 
+                    } as RecommendedProduct);
+                });
+            }));
+        }
 
         const history = recommendationsService.getViewedProductsHistory();
         const topCategories = recommendationsService.getTopInterestedCategories();

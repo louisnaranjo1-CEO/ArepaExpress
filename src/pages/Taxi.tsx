@@ -9,6 +9,8 @@ import { GoogleMap, useJsApiLoader, Marker, DirectionsRenderer } from '@react-go
 import toast from 'react-hot-toast';
 import { calculateDistance } from '../lib/geo';
 import { vibrate } from '../utils/haptics';
+import { isDemoMode } from '../lib/env';
+import DemoAlertModal from '../components/DemoAlertModal';
 
 interface Location {
     lat: number;
@@ -79,6 +81,8 @@ export default function Taxi() {
     const [guestName, setGuestName] = useState('');
     const [guestPhone, setGuestPhone] = useState('');
     const [guestCedula, setGuestCedula] = useState('');
+
+    const [showDemoAlert, setShowDemoAlert] = useState(false);
 
 
     const [isFollowingUser, setIsFollowingUser] = useState(false);
@@ -470,6 +474,10 @@ export default function Taxi() {
     };
 
     const handleContinueToPayment = () => {
+        if (isDemoMode()) {
+            setShowDemoAlert(true);
+            return;
+        }
         if (!vehicleType || !routeInfo) return;
         setStep('payment');
     };
