@@ -1,5 +1,11 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 
+export interface CartModifierItem {
+    id: string; // The option id or just generic if it's text
+    name: string; // The selected option name or textarea content
+    price: number; 
+}
+
 export interface CartItem {
     id: string; // product id + customizations
     productId: string;
@@ -13,7 +19,7 @@ export interface CartItem {
     printerId?: string;
     table?: string;
     consultPrice?: boolean;
-    // future: customizations
+    modifiersConfig?: { [modifierName: string]: CartModifierItem[] };
 }
 
 interface CartContextType {

@@ -5,6 +5,7 @@ import { collection, query, getDocs, doc, deleteDoc, updateDoc, addDoc, getDoc, 
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { useAuth } from '../../context/AuthContext';
 import { GLOBAL_CATEGORIES, CATEGORY_SECTORS, DEVELOPER_WHATSAPP } from '../../lib/constants';
+import { ProductModifier, ModifierType } from '../../lib/seed';
 
 interface ProductVariant {
     name: string;
@@ -29,6 +30,7 @@ interface Product {
     investment?: number;
     promoPrice?: number;
     variants?: ProductVariant[];
+    modifiers?: ProductModifier[];
     printerId?: string;
     consultPrice?: boolean;
     pointsPrice?: number;
@@ -61,6 +63,7 @@ export default function ProductManagement() {
         tiktokLink: '',
         youtubeLink: '',
         variants: [] as ProductVariant[],
+        modifiers: [] as ProductModifier[],
         printerId: '',
         consultPrice: false,
         pointsPrice: ''
@@ -133,6 +136,7 @@ export default function ProductManagement() {
                 tiktokLink: product.tiktokLink || '',
                 youtubeLink: product.youtubeLink || '',
                 variants: product.variants || [],
+                modifiers: product.modifiers || [],
                 printerId: product.printerId || '',
                 consultPrice: product.consultPrice || false,
                 pointsPrice: product.pointsPrice?.toString() || ''
@@ -155,6 +159,7 @@ export default function ProductManagement() {
                 tiktokLink: '',
                 youtubeLink: '',
                 variants: [],
+                modifiers: [],
                 printerId: '',
                 consultPrice: false,
                 pointsPrice: ''
@@ -341,6 +346,48 @@ export default function ProductManagement() {
             ...prev,
             variants: newVariants
         }));
+    };
+
+    const addModifier = (type: ModifierType) => {
+        setFormData(prev => ({
+            ...prev,
+            modifiers: [
+                ...prev.modifiers,
+                { id: Date.now().toString(), name: '', type, options: [] }
+            ]
+        }));
+    };
+
+    const updateModifier = (index: number, key: string, value: any) => {
+        const newModifiers = [...formData.modifiers];
+        newModifiers[index] = { ...newModifiers[index], [key]: value };
+        setFormData({ ...formData, modifiers: newModifiers });
+    };
+
+    const removeModifier = (index: number) => {
+        setFormData(prev => ({
+            ...prev,
+            modifiers: prev.modifiers.filter((_, i) => i !== index)
+        }));
+    };
+
+    const addModifierOption = (modIndex: number) => {
+        const newModifiers = [...formData.modifiers];
+        if (!newModifiers[modIndex].options) newModifiers[modIndex].options = [];
+        newModifiers[modIndex].options.push({ id: Date.now().toString(), name: '', price: 0 });
+        setFormData({ ...formData, modifiers: newModifiers });
+    };
+
+    const updateModifierOption = (modIndex: number, optIndex: number, key: string, value: any) => {
+        const newModifiers = [...formData.modifiers];
+        newModifiers[modIndex].options![optIndex] = { ...newModifiers[modIndex].options![optIndex], [key]: value };
+        setFormData({ ...formData, modifiers: newModifiers });
+    };
+
+    const removeModifierOption = (modIndex: number, optIndex: number) => {
+        const newModifiers = [...formData.modifiers];
+        newModifiers[modIndex].options = newModifiers[modIndex].options?.filter((_, i) => i !== optIndex);
+        setFormData({ ...formData, modifiers: newModifiers });
     };
 
     const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -838,6 +885,120 @@ export default function ProductManagement() {
                                     )}
                                 </div>
                             )}
+
+                            {/* Modificadores de Producto */}
+                            <div className="space-y-3 p-4 bg-slate-50 rounded-3xl border-2 border-slate-100 animate-in fade-in duration-300">
+                                <div className="flex items-center justify-between px-2">
+                                    <label className="text-xs font-black text-slate-500 uppercase flex items-center gap-2">
+                                        <Filter className="w-3.5 h-3.5" /> Modificadores (Bebidas, Extras...)
+                                    </label>
+                                    <div className="flex items-center gap-2">
+                                        <select
+                                            className="text-[10px] p-1 bg-white border border-slate-200 rounded font-black uppercase text-slate-900 outline-none"
+                                            onChange={(e) => {
+                                                if (e.target.value) {
+                                                    addModifier(e.target.value as ModifierType);
+                                                    e.target.value = '';
+                                                }
+                                            }}
+                                            defaultValue=""
+                                        >
+                                            <option value="" disabled>+ Añadir...</option>
+                                            <option value="beverage">Bebida</option>
+                                            <option value="extra">Extra</option>
+                                            <option value="preference">Preferencia</option>
+                                            <option value="instruction">Instrucción</option>
+                                        </select>
+                                    </div>
+                                </div>
+
+                                {formData.modifiers.length > 0 ? (
+                                    <div className="space-y-4">
+                                        {formData.modifiers.map((modifier, modIndex) => (
+                                            <div key={modifier.id} className="bg-white border text-sm border-slate-200 rounded-xl p-3 space-y-3">
+                                                <div className="flex items-center gap-2">
+                                                    <span className="text-[10px] px-2 py-1 bg-primary/10 text-primary font-black uppercase rounded-lg">
+                                                        {modifier.type === 'beverage' ? 'Bebidas' : modifier.type === 'extra' ? 'Extras' : modifier.type === 'preference' ? 'Preferencias' : 'Instrucciones'}
+                                                    </span>
+                                                    <input
+                                                        type="text"
+                                                        placeholder="Nombre (Ej: Elige tu salsa)"
+                                                        required
+                                                        value={modifier.name}
+                                                        onChange={(e) => updateModifier(modIndex, 'name', e.target.value)}
+                                                        className="flex-1 bg-slate-50 border border-transparent focus:border-slate-300 p-1.5 rounded-lg outline-none font-bold text-slate-700"
+                                                    />
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => removeModifier(modIndex)}
+                                                        className="p-1.5 text-red-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all"
+                                                    >
+                                                        <Trash2 className="w-4 h-4" />
+                                                    </button>
+                                                </div>
+
+                                                <label className="flex items-center gap-2 text-xs font-bold text-slate-500">
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={modifier.required || false}
+                                                        onChange={(e) => updateModifier(modIndex, 'required', e.target.checked)}
+                                                        className="rounded text-primary focus:ring-primary h-4 w-4"
+                                                    />
+                                                    ¿Es obligatorio?
+                                                </label>
+
+                                                {modifier.type !== 'instruction' && (
+                                                    <div className="space-y-2 pl-2 border-l-2 border-slate-100">
+                                                        {modifier.options && modifier.options.map((option, optIndex) => (
+                                                            <div key={option.id} className="flex gap-2 items-center">
+                                                                <input
+                                                                    type="text"
+                                                                    placeholder="Opción..."
+                                                                    required
+                                                                    value={option.name}
+                                                                    onChange={(e) => updateModifierOption(modIndex, optIndex, 'name', e.target.value)}
+                                                                    className="flex-1 bg-slate-50 border border-transparent focus:border-slate-300 p-1.5 rounded-lg outline-none font-bold text-slate-700"
+                                                                />
+                                                                {(modifier.type === 'beverage' || modifier.type === 'extra') && (
+                                                                    <div className="relative w-24">
+                                                                        <DollarSign className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-slate-400" />
+                                                                        <input
+                                                                            type="number"
+                                                                            step="0.01"
+                                                                            placeholder="0.00"
+                                                                            value={option.price || ''}
+                                                                            onChange={(e) => updateModifierOption(modIndex, optIndex, 'price', parseFloat(e.target.value) || 0)}
+                                                                            className="w-full bg-slate-50 border border-transparent focus:border-slate-300 p-1.5 pl-6 rounded-lg outline-none font-bold text-slate-700"
+                                                                        />
+                                                                    </div>
+                                                                )}
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => removeModifierOption(modIndex, optIndex)}
+                                                                    className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-slate-100 rounded-lg transition-all"
+                                                                >
+                                                                    <X className="w-3.5 h-3.5" />
+                                                                </button>
+                                                            </div>
+                                                        ))}
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => addModifierOption(modIndex)}
+                                                            className="text-[10px] font-black uppercase text-primary hover:text-primary-dark transition-colors flex items-center gap-1"
+                                                        >
+                                                            <Plus className="w-3 h-3" /> Añadir Opción
+                                                        </button>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        ))}
+                                    </div>
+                                ) : (
+                                    <p className="text-[10px] text-slate-400 text-center py-2 font-medium italic">
+                                        Personaliza con bebidas, extras o instrucciones especiales.
+                                    </p>
+                                )}
+                            </div>
 
                             <div className="space-y-2">
                                 <label className="text-xs font-black text-slate-400 uppercase ml-2 flex items-center gap-1">

@@ -6,6 +6,24 @@ export interface ProductVariant {
     price: number;
 }
 
+export type ModifierType = 'beverage' | 'extra' | 'preference' | 'instruction';
+
+export interface ProductModifierOption {
+    id: string;
+    name: string;
+    price: number;
+    isAvailable: boolean;
+}
+
+export interface ProductModifier {
+    id: string;
+    type: ModifierType;
+    name: string;
+    required: boolean;
+    maxSelections?: number;
+    options: ProductModifierOption[];
+}
+
 export interface Product {
     id?: string;
     name: string;
@@ -23,6 +41,7 @@ export interface Product {
     promoPrice?: number;
     isAvailable?: boolean;
     variants?: ProductVariant[];
+    modifiers?: ProductModifier[];
     consultPrice?: boolean;
 }
 

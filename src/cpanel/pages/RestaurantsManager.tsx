@@ -78,18 +78,6 @@ export default function RestaurantsManager() {
                     <h1 className="text-3xl font-black text-slate-900 leading-tight">Gestión de Restaurantes</h1>
                     <p className="text-slate-500 font-medium">Activa o desactiva restaurantes en la plataforma.</p>
                 </div>
-
-                <button
-                    onClick={handleMockToggle}
-                    disabled={isMocking}
-                    className={`flex items-center gap-2 px-5 py-3 rounded-2xl font-bold transition-all shadow-lg ${hasMockData
-                        ? 'bg-rose-500 text-slate-900 hover:bg-rose-600 hover:shadow-rose-500/25'
-                        : 'bg-primary text-slate-900 hover:bg-primary hover:shadow-primary/25'
-                        } ${isMocking ? 'opacity-70 cursor-not-allowed' : ''}`}
-                >
-                    <Database className={`w-5 h-5 ${isMocking ? 'animate-spin' : ''}`} />
-                    {isMocking ? 'Procesando...' : hasMockData ? 'Apagar Datos de Prueba' : 'Encender Datos de Prueba'}
-                </button>
             </div>
 
             <div className="bg-white rounded-[40px] border border-slate-100 overflow-hidden shadow-xl shadow-slate-200/40">

@@ -277,7 +277,15 @@ export default function Cart({ hideHeader = false }: CartProps) {
 
       let itemsList = items.map(item => {
         const itemNote = (item as any).notes ? ` - 📝 *Nota:* ${(item as any).notes}` : '';
-        return `• ${item.quantity}x ${item.name}${itemNote} ($${((item.price || 0) * item.quantity).toFixed(2)})`;
+        const variantText = (item as any).variant ? ` [${(item as any).variant}]` : '';
+        
+        let modifiersText = '';
+        if (item.modifiersConfig) {
+           const mods = Object.entries(item.modifiersConfig).map(([k, v]: [string, any]) => `*${k}:* ${v.map((o:any) => o.name).join(', ')}`).join(' | ');
+           if (mods) modifiersText = `\n    👉 ${mods}`;
+        }
+
+        return `• ${item.quantity}x ${item.name}${variantText}${itemNote}${modifiersText} ($${((item.price || 0) * item.quantity).toFixed(2)})`;
       }).join('\n');
       
       const mapsLink = (deliveryMethod === 'delivery' && selectedAddress && selectedAddress.lat) ? `\n🗺️ Ubicación GPS: https://www.google.com/maps?q=${selectedAddress.lat},${selectedAddress.lng}` : '';
@@ -367,6 +375,11 @@ export default function Cart({ hideHeader = false }: CartProps) {
                          {(item as any).variant && (
                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Variante: {(item as any).variant}</p>
                          )}
+                         {item.modifiersConfig && Object.entries(item.modifiersConfig).map(([modName, selectedMods]: [string, any]) => (
+                            <div key={modName} className="text-[10px] font-medium text-slate-400 mb-1 leading-tight">
+                                <span className="font-bold text-slate-500">{modName}:</span> {selectedMods.map((o: any) => o.name).join(', ')}
+                            </div>
+                         ))}
                          <div className="flex items-center gap-3 mt-1">
                            <div className="flex items-center bg-slate-50 rounded-full border border-slate-100 p-0.5">
                              <button onClick={() => updateQuantity(item.id, item.quantity - 1)} className="size-8 bg-white shadow-sm rounded-full flex items-center justify-center text-slate-400 hover:text-slate-600 active:scale-90 transition-all">-</button>
@@ -508,6 +521,11 @@ export default function Cart({ hideHeader = false }: CartProps) {
                             {(item as any).variant && (
                               <p className="text-[10px] text-slate-900 font-bold uppercase tracking-wider mt-0.5">{(item as any).variant}</p>
                             )}
+                            {item.modifiersConfig && Object.entries(item.modifiersConfig).map(([modName, selectedMods]: [string, any]) => (
+                                <p key={modName} className="text-[10px] text-slate-500 font-medium leading-tight mt-0.5">
+                                    <span className="font-bold text-slate-600">{modName}:</span> {selectedMods.map((o: any) => o.name).join(', ')}
+                                </p>
+                            ))}
                             {(item as any).notes && (
                               <p className="text-[10px] text-slate-400 font-medium italic mt-0.5">Nota: "{ (item as any).notes }"</p>
                             )}

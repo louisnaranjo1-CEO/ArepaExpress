@@ -25,6 +25,7 @@ export default function RestaurantPage() {
   const [followerCount, setFollowerCount] = useState(0);
   const [selectedProduct, setSelectedProduct] = useState<any | null>(null);
   const [selectedVariant, setSelectedVariant] = useState<any | null>(null);
+  const [selectedModifiers, setSelectedModifiers] = useState<{[key: string]: any[]}>({});
   const getSocialIcon = (url: string) => {
     if (url.includes('instagram.com')) return <Instagram className="w-4 h-4" />;
     if (url.includes('tiktok.com')) return <Music2 className="w-4 h-4" />;
@@ -180,7 +181,7 @@ export default function RestaurantPage() {
     return matchesCategory && isAvailable;
   });
 
-  const handleAddToCart = (product: Product, variant?: any) => {
+  const handleAddToCart = (product: Product, variant?: any, modifiers?: any) => {
     let finalPrice = product.promoPrice && product.promoPrice > 0 ? product.promoPrice : (product.price || 0);
     let finalName = product.name;
 
@@ -189,8 +190,19 @@ export default function RestaurantPage() {
       finalName = `${product.name} - ${variant.name}`;
     }
 
+    let modifierIdString = '';
+    
+    if (modifiers) {
+        Object.keys(modifiers).forEach(modName => {
+            modifiers[modName].forEach((o: any) => {
+                if (o.price) finalPrice += o.price;
+                modifierIdString += `-${o.id || o.name.substring(0,3)}`;
+            });
+        });
+    }
+
     addItem({
-      id: `${product.id}${variant ? `-${variant.name}` : ''}`,
+      id: `${product.id}${variant ? `-${variant.name}` : ''}${modifierIdString}`,
       productId: product.id!,
       restaurantId: restaurant.id!,
       name: finalName,
@@ -200,8 +212,51 @@ export default function RestaurantPage() {
       image: product.image,
       category: product.category,
       printerId: (product as any).printerId,
-      consultPrice: product.consultPrice
+      consultPrice: product.consultPrice,
+      modifiersConfig: modifiers
     });
+  };
+
+  const handleModifierToggle = (modifier: any, option: any) => {
+    setSelectedModifiers(prev => {
+      const current = prev[modifier.name] || [];
+      const optionIndex = current.findIndex(o => o.id === option.id);
+      
+      let nextOptions = [...current];
+      
+      if (optionIndex !== -1) {
+        nextOptions.splice(optionIndex, 1);
+      } else {
+        if (modifier.maxSelections && current.length >= modifier.maxSelections) {
+          toast.error(`Solo puedes seleccionar hasta ${modifier.maxSelections} opciones.`);
+          return prev;
+        }
+        nextOptions.push(option);
+      }
+      
+      return { ...prev, [modifier.name]: nextOptions };
+    });
+  };
+
+  const handleModifierText = (modifier: any, text: string) => {
+      setSelectedModifiers(prev => ({
+          ...prev,
+          [modifier.name]: [{ id: 'text', name: text, price: 0 }]
+      }));
+  }
+
+  const isFormValid = () => {
+    if (!selectedProduct) return false;
+    if (selectedProduct.variants && selectedProduct.variants.length > 0 && !selectedVariant) return false;
+    
+    if (selectedProduct.modifiers) {
+        for (const mod of selectedProduct.modifiers) {
+            if (mod.required && (!selectedModifiers[mod.name] || selectedModifiers[mod.name].length === 0)) {
+                return false;
+            }
+        }
+    }
+    return true;
   };
 
   const toggleFavorite = async () => {
@@ -678,6 +733,7 @@ export default function RestaurantPage() {
                     onClick={() => {
                       setSelectedProduct(product);
                       setSelectedVariant(null);
+                      setSelectedModifiers({});
                       recommendationsService.recordProductView(product.id!, product.category, restaurant.id!);
                     }}
                   >
@@ -809,9 +865,10 @@ export default function RestaurantPage() {
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
-                          if (product.variants && product.variants.length > 0) {
+                          if ((product.variants && product.variants.length > 0) || (product.modifiers && product.modifiers.length > 0)) {
                             setSelectedProduct(product);
                             setSelectedVariant(null);
+                            setSelectedModifiers({});
                           } else {
                             handleAddToCart(product);
                           }
@@ -1166,6 +1223,56 @@ export default function RestaurantPage() {
                   </div>
                 )}
 
+                {/* Modifiers if any */}
+                {selectedProduct.modifiers && selectedProduct.modifiers.length > 0 && (
+                  <div className="mb-8 space-y-6">
+                    {selectedProduct.modifiers.map((modifier: any) => (
+                      <div key={modifier.id}>
+                        <div className="flex items-center justify-between mb-3 ml-1">
+                          <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest">
+                            {modifier.name} {modifier.required && <span className="text-red-500">*</span>}
+                          </h4>
+                          {modifier.type !== 'instruction' && modifier.maxSelections && (
+                            <span className="text-[10px] font-bold text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">Máx {modifier.maxSelections}</span>
+                          )}
+                        </div>
+
+                        {modifier.type === 'instruction' ? (
+                          <textarea
+                            placeholder="Ej: Sin cebolla, extra salsa..."
+                            className="w-full bg-slate-50 border-2 border-slate-100 focus:border-primary p-4 rounded-3xl outline-none text-sm font-medium text-slate-700 min-h-[100px] resize-none transition-colors"
+                            value={selectedModifiers[modifier.name]?.[0]?.name || ''}
+                            onChange={(e) => handleModifierText(modifier, e.target.value)}
+                          />
+                        ) : (
+                          <div className="flex flex-col gap-2">
+                            {modifier.options?.map((option: any) => {
+                              const isSelected = selectedModifiers[modifier.name]?.some(o => o.id === option.id);
+                              return (
+                                <button
+                                  key={option.id}
+                                  onClick={() => handleModifierToggle(modifier, option)}
+                                  className={`flex items-center justify-between p-4 rounded-2xl border-2 transition-all ${isSelected ? 'bg-primary/10 border-primary shadow-sm' : 'bg-slate-50 border-transparent hover:border-slate-200'}`}
+                                >
+                                  <div className="flex items-center gap-3">
+                                    <div className={`w-5 h-5 rounded-md flex items-center justify-center border-2 transition-colors ${isSelected ? 'bg-primary border-primary text-black' : 'border-slate-300 bg-white'}`}>
+                                      {isSelected && <CheckCircle className="w-3.5 h-3.5" />}
+                                    </div>
+                                    <span className={`text-sm font-bold ${isSelected ? 'text-slate-900' : 'text-slate-600'}`}>{option.name}</span>
+                                  </div>
+                                  {option.price > 0 && (
+                                    <span className={`text-sm font-black ${isSelected ? 'text-primary-dark' : 'text-slate-400'}`}>+${option.price.toFixed(2)}</span>
+                                  )}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+
                 {/* Social Media Links */}
                 {(selectedProduct.socialMediaLink || selectedProduct.tiktokLink || selectedProduct.youtubeLink) && (
                   <div className="mb-8">
@@ -1212,21 +1319,22 @@ export default function RestaurantPage() {
               {/* Footer / Add to Cart */}
               <div className="absolute bottom-0 left-0 w-full p-8 bg-white/80 backdrop-blur-md border-t border-slate-100">
                 <button
-                  disabled={selectedProduct.variants && selectedProduct.variants.length > 0 && !selectedVariant}
+                  disabled={!isFormValid()}
                   onClick={() => {
-                    handleAddToCart(selectedProduct, selectedVariant);
+                    handleAddToCart(selectedProduct, selectedVariant, selectedModifiers);
                     setSelectedProduct(null);
                     setSelectedVariant(null);
+                    setSelectedModifiers({});
                   }}
                   className={`w-full py-4 rounded-3xl font-black text-base shadow-2xl flex items-center justify-center gap-3 transition-all ${
-                    selectedProduct.variants && selectedProduct.variants.length > 0 && !selectedVariant
+                    !isFormValid()
                       ? 'bg-slate-200 text-slate-400 cursor-not-allowed shadow-none'
                       : 'bg-primary text-black shadow-primary/30 hover:scale-[1.02] active:scale-[0.98]'
                   }`}
                 >
                   <Plus className="w-5 h-5" />
-                  {selectedProduct.variants && selectedProduct.variants.length > 0 && !selectedVariant 
-                    ? 'Selecciona una presentación' 
+                  {!isFormValid() 
+                    ? 'Completa los datos requeridos' 
                     : 'Añadir al Pedido'}
                 </button>
               </div>
