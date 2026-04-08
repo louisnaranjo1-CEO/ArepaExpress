@@ -10,7 +10,8 @@ import { useAuth } from '../context/AuthContext';
 import { recommendationsService } from '../lib/recommendations';
 import toast from 'react-hot-toast';
 import { DEMO_RESTAURANTS } from '../lib/demoData';
-import { isDemoMode } from '../lib/env';
+import { isDemoMode, UN2X3_LOGO } from '../lib/env';
+import DemoAlertModal from '../components/DemoAlertModal';
 
 export default function RestaurantPage() {
   const { id } = useParams<{ id: string }>();
@@ -28,6 +29,7 @@ export default function RestaurantPage() {
   const [selectedProduct, setSelectedProduct] = useState<any | null>(null);
   const [selectedVariant, setSelectedVariant] = useState<any | null>(null);
   const [selectedModifiers, setSelectedModifiers] = useState<{[key: string]: any[]}>({});
+  const [showDemoAlert, setShowDemoAlert] = useState(false);
   const getSocialIcon = (url: string) => {
     if (url.includes('instagram.com')) return <Instagram className="w-4 h-4" />;
     if (url.includes('tiktok.com')) return <Music2 className="w-4 h-4" />;
@@ -327,6 +329,10 @@ export default function RestaurantPage() {
   };
 
   const openWhatsApp = () => {
+    if (isDemoMode()) {
+        setShowDemoAlert(true);
+        return;
+    }
     if (restaurant.whatsapp) {
       const number = restaurant.whatsapp.replace(/\D/g, '');
       window.open(`https://wa.me/${number}?text=Hola, vengo de Deli Express y me gustaría hacer un pedido.`, '_blank');
@@ -463,7 +469,7 @@ export default function RestaurantPage() {
           </div>
 
           {/* Free Delivery Badge */}
-          {restaurant.deliveryRates?.find((r: any) => r.price === 0) && (
+          {restaurant.businessType !== 'hotel' && restaurant.deliveryRates?.find((r: any) => r.price === 0) && (
             <div className="flex items-center gap-2 bg-emerald-50 text-emerald-600 px-4 py-3 rounded-2xl border border-emerald-100 shadow-sm animate-in fade-in slide-in-from-left-4 duration-1000">
               <div className="w-10 h-10 rounded-xl bg-emerald-100 flex items-center justify-center shrink-0">
                 <Truck className="w-6 h-6" />
@@ -965,10 +971,21 @@ export default function RestaurantPage() {
       {/* Floating Cart Button */}
       {totalItems > 0 && (
         <div className="fixed bottom-24 left-1/2 transform -translate-x-1/2 w-full px-5 max-w-md z-[60] animate-in slide-in-from-bottom-4 fade-in duration-300">
-          <Link to="/cart" className="w-full bg-primary hover:bg-emerald-600 active:bg-emerald-700 text-slate-900 rounded-2xl p-4 shadow-xl shadow-emerald-500/40 flex items-center justify-between transition-colors ring-4 ring-white/10 backdrop-blur-sm">
+          <Link 
+            to={isDemoMode() ? '#' : '/cart'} 
+            onClick={(e) => {
+                if (isDemoMode()) {
+                    e.preventDefault();
+                    setShowDemoAlert(true);
+                }
+            }}
+            className="w-full bg-primary hover:bg-emerald-600 active:bg-emerald-700 text-slate-900 rounded-2xl p-4 shadow-xl shadow-emerald-500/40 flex items-center justify-between transition-colors ring-4 ring-white/10 backdrop-blur-sm"
+          >
             <div className="flex items-center gap-3">
               <div className="bg-white/20 px-3 py-1 rounded-lg text-sm font-black flex items-center justify-center min-w-[36px]">{totalItems}</div>
-              <span className="font-black text-base uppercase tracking-wider">{isWaiter ? 'Ver Comanda' : 'Ver mi orden'}</span>
+              <span className="font-black text-base uppercase tracking-wider">
+                {isWaiter ? 'Ver Comanda' : (restaurant.businessType === 'hotel' ? 'Ver Reservación' : 'Ver mi orden')}
+              </span>
             </div>
             <div className="flex items-center gap-2">
               <span className="text-[10px] font-bold opacity-80 uppercase tracking-widest">Total</span>
@@ -1328,7 +1345,7 @@ export default function RestaurantPage() {
                 )}
               </div>
 
-              {/* Footer / Add to Cart */}
+              {/* Footer / Add to Cart / Reserve */}
               <div className="absolute bottom-0 left-0 w-full p-8 bg-white/80 backdrop-blur-md border-t border-slate-100">
                 <button
                   disabled={!isFormValid()}
@@ -1344,16 +1361,21 @@ export default function RestaurantPage() {
                       : 'bg-primary text-black shadow-primary/30 hover:scale-[1.02] active:scale-[0.98]'
                   }`}
                 >
-                  <Plus className="w-5 h-5" />
+                  {restaurant.businessType === 'hotel' ? <CheckCircle className="w-5 h-5" /> : <Plus className="w-5 h-5" />}
                   {!isFormValid() 
-                    ? 'Completa los datos requeridos' 
-                    : 'Añadir al Pedido'}
+                    ? 'Completa los campos' 
+                    : (selectedProduct.consultPrice ? 'Consultar Disponibilidad' : (restaurant.businessType === 'hotel' ? 'Reservar' : 'Añadir'))}
                 </button>
               </div>
             </motion.div>
           </div>
         )}
       </AnimatePresence>
+
+      <DemoAlertModal 
+        isOpen={showDemoAlert} 
+        onClose={() => setShowDemoAlert(false)} 
+      />
     </div>
   );
 }

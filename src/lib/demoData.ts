@@ -5,6 +5,7 @@ export const DEMO_RESTAURANTS: Restaurant[] = [
     id: 'demo-cashea-active',
     name: "Burger Master (Cashea)",
     category: "Hamburguesas",
+    businessType: 'restaurant',
     rating: 4.8,
     reviews: 1250,
     deliveryTime: "20-35 min",
@@ -21,7 +22,58 @@ export const DEMO_RESTAURANTS: Restaurant[] = [
       type: "principal"
     },
     products: [
-      { id: 'p1', name: "Doble Bacon Burger", description: "Doble carne, doble queso y extra bacon crujiente", price: 8.99, image: "https://images.unsplash.com/photo-1594212699903-ec8a3eca50f5?w=500", category: "Hamburguesas", popular: true },
+      { 
+        id: 'p1', 
+        name: "Combo Double Bacon", 
+        description: "Doble carne premium, doble queso cheddar y bacon crujiente. Incluye papas.", 
+        price: 12.99, 
+        image: "https://images.unsplash.com/photo-1594212699903-ec8a3eca50f5?w=500", 
+        category: "Hamburguesas", 
+        popular: true,
+        modifiers: [
+          {
+            id: 'mod-bev',
+            type: 'beverage',
+            name: 'Bebida con tu Combo',
+            required: true,
+            maxSelections: 1,
+            options: [
+              { id: 'b1', name: 'Pepsi 1.5L', price: 0, isAvailable: true },
+              { id: 'b2', name: 'Pepsi 600ml', price: 0, isAvailable: true },
+              { id: 'b3', name: 'Té Frío', price: 0.50, isAvailable: true }
+            ]
+          },
+          {
+            id: 'mod-ext',
+            type: 'extra',
+            name: 'Añade Extras',
+            required: false,
+            options: [
+              { id: 'e1', name: 'Extra Queso', price: 1.50, isAvailable: true },
+              { id: 'e2', name: 'Ración de papas fritas', price: 3.00, isAvailable: true },
+              { id: 'e3', name: 'Huevo a la plancha', price: 1.00, isAvailable: true }
+            ]
+          },
+          {
+            id: 'mod-pref',
+            type: 'preference',
+            name: 'Preferencias',
+            required: false,
+            options: [
+              { id: 'pr1', name: 'Sin lechuga', price: 0, isAvailable: true },
+              { id: 'pr2', name: 'Sin tomate', price: 0, isAvailable: true },
+              { id: 'pr3', name: 'Sin queso', price: 0, isAvailable: true }
+            ]
+          },
+          {
+            id: 'mod-inst',
+            type: 'instruction',
+            name: 'Instrucciones especiales',
+            required: false,
+            options: []
+          }
+        ]
+      },
       { id: 'p2', name: "Papas Rústicas", description: "Papas con hierbas y parmesano", price: 3.50, image: "https://images.unsplash.com/photo-1573080496219-bb080dd4f877?w=500", category: "Acompañantes" }
     ]
   },
@@ -29,6 +81,7 @@ export const DEMO_RESTAURANTS: Restaurant[] = [
     id: 'demo-cashea-inactive',
     name: "Pizzería Italiana",
     category: "Pizza",
+    businessType: 'restaurant',
     rating: 4.6,
     reviews: 840,
     deliveryTime: "30-45 min",
@@ -52,6 +105,7 @@ export const DEMO_RESTAURANTS: Restaurant[] = [
     id: 'demo-delivery-free',
     name: "Sushi Hana (Envío Gratis)",
     category: "Sushi",
+    businessType: 'restaurant',
     rating: 4.9,
     reviews: 2100,
     deliveryTime: "40-55 min",
@@ -76,6 +130,7 @@ export const DEMO_RESTAURANTS: Restaurant[] = [
     id: 'demo-delivery-paid',
     name: "Tacos El Guero",
     category: "Mexicana",
+    businessType: 'restaurant',
     rating: 4.4,
     reviews: 320,
     deliveryTime: "15-25 min",
@@ -98,6 +153,7 @@ export const DEMO_RESTAURANTS: Restaurant[] = [
     id: 'demo-closed',
     name: "The Coffee House (Cerrado)",
     category: "Cafetería",
+    businessType: 'restaurant',
     rating: 4.7,
     reviews: 560,
     deliveryTime: "Consultar",
@@ -126,8 +182,9 @@ export const DEMO_RESTAURANTS: Restaurant[] = [
   },
   {
     id: 'demo-hotel',
-    name: "Hotel Eurobuilding (Hospedajes)",
-    category: "Hoteles",
+    name: "Hotel Altamira Suites",
+    category: "Hospedajes",
+    businessType: 'hotel',
     rating: 4.9,
     reviews: 4500,
     deliveryTime: "24h",
@@ -137,18 +194,47 @@ export const DEMO_RESTAURANTS: Restaurant[] = [
     location: {
       city: "Caracas",
       state: "DC",
-      address: "Chuao",
+      address: "Altamira",
       type: "principal"
     },
     products: [
-      { id: 'p11', name: "Habitación Standard", description: "Cama Queen, WiFi y Desayuno", price: 120.00, image: "https://images.unsplash.com/photo-1631049307264-da0ec9d70304?w=500", category: "Habitaciones" },
-      { id: 'p12', name: "Suite Presidencial", description: "Jacuzzi, Vista al Avila y Mini Bar", price: 350.00, image: "https://images.unsplash.com/photo-1582719471384-894fbb16e024?w=500", category: "Suites", popular: true }
+      { 
+        id: 'p11', 
+        name: "Habitación Matrimonial", 
+        description: "Lujosa habitación con cama King, vista a la ciudad y WiFi de alta velocidad.", 
+        price: 150.00, 
+        image: "https://images.unsplash.com/photo-1631049307264-da0ec9d70304?w=500", 
+        category: "Habitaciones",
+        modifiers: [
+            {
+                id: 'mod-hotel-ext',
+                type: 'extra',
+                name: 'Servicios Adicionales',
+                required: false,
+                options: [
+                    { id: 'he1', name: 'Desayuno a la habitación', price: 15.00, isAvailable: true },
+                    { id: 'he2', name: 'Cama adicional', price: 40.00, isAvailable: true },
+                    { id: 'he3', name: 'Entrada al Spa/Sauna', price: 25.00, isAvailable: true },
+                    { id: 'he4', name: 'Pase VIP Piscina', price: 20.00, isAvailable: true }
+                ]
+            },
+            {
+                id: 'mod-hotel-inst',
+                type: 'instruction',
+                name: 'Notas para la reservación',
+                required: false,
+                options: []
+            }
+        ]
+      },
+      { id: 'p12', name: "Suite Ejecutiva", description: "Jacuzzi, Área de trabajo y Mini Bar surtido", price: 280.00, image: "https://images.unsplash.com/photo-1582719471384-894fbb16e024?w=500", category: "Suites", popular: true }
     ]
   },
   {
     id: 'demo-2x3-active',
     name: "Tecno Store (Resuelve 2x3)",
     category: "Electrónica",
+    businessType: 'restaurant',
     rating: 4.5,
     reviews: 120,
     deliveryTime: "Same Day",

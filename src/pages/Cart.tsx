@@ -298,19 +298,35 @@ export default function Cart({ hideHeader = false }: CartProps) {
       const mapsLink = (deliveryMethod === 'delivery' && selectedAddress && selectedAddress.lat) ? `\n🗺️ Ubicación GPS: https://www.google.com/maps?q=${selectedAddress.lat},${selectedAddress.lng}` : '';
       const notesString = orderNote.trim() ? `\n📝 Notas: ${orderNote.trim()}` : '';
       
-      const formattedMessage = `👋 ¡Hola ${rData?.name}!\nSoy ${orderData.userName}. Mi identificación es ${userData?.cedula || guestCedula}\n\n🛒 Pedido:\n${itemsList}${notesString}\n\n💰 Total: $${finalTotal.toFixed(2)}\n📍 Dirección: ${addressStr}${mapsLink}`;
+      const message = encodeURIComponent(
+        `Hola, me gustaría realizar una ${restaurantData?.businessType === 'hotel' ? 'RESERVACIÓN' : 'ORDEN'} a través de *Deli Express* 🚀\n\n` +
+        `━━━━━━━━━━━━━━\n` +
+        `👤 *Cliente:* ${user?.displayName || guestName}\n` +
+        `📞 *Teléfono:* ${userData?.phone || guestPhone}\n` +
+        `🆔 *Cédula:* ${userData?.cedula || guestCedula}\n` +
+        `━━━━━━━━━━━━━━\n\n` +
+        `${restaurantData?.businessType === 'hotel' ? '🏨 *DETALLES DEL HOSPEDAJE:*' : '🛒 *DETALLES DEL PEDIDO:*'}\n${itemsList}\n` +
+        `${notesString}\n\n` +
+        `📦 *Método:* ${isWaiter ? 'Servicio a Mesa' : (deliveryMethod === 'pickup' ? 'Recoger en local' : 'Delivery')}\n` +
+        `${deliveryMethod === 'delivery' && !isWaiter ? `📍 *Dirección:* ${addressStr}${mapsLink}` : ''}\n\n` +
+        `💰 *SUBTOTAL:* $${cartSubtotalUSD.toFixed(2)}\n` +
+        `${deliveryFee > 0 ? `🚚 *DELIVERY:* $${deliveryFee.toFixed(2)}\n` : ''}` +
+        `⭐ *TOTAL A PAGAR:* $${finalTotal.toFixed(2)}\n\n` +
+        `🔢 *Orden ID:* #${docRef.id.slice(-6).toUpperCase()}\n` +
+        `━━━━━━━━━━━━━━\n\n` +
+        `Esperando confirmación...`
+      );
+      
       const whatsappNumber = rData.whatsapp.replace(/\D/g, '');
-      const link = `https://wa.me/${whatsappNumber}?text=${encodeURIComponent(formattedMessage)}`;
+      const link = `https://wa.me/${whatsappNumber}?text=${message}`;
       setWhatsappLink(link);
       
-      // Abre en nueva pestaña para que no mate la recarga si era mobil y vuelve
       window.open(link, '_blank', 'noopener,noreferrer');
       
       clearCart();
       setPurchaseConfirmed(true);
       setCheckoutSuccess(true);
       
-      // Navegamos al track de pedido de una vez 
       if (!isWaiter) {
           navigate(`/track/${docRef.id}`);
           return;
@@ -431,28 +447,30 @@ export default function Cart({ hideHeader = false }: CartProps) {
                   </div>
                 ) : (
                   <div className="space-y-4">
-                     <div className="flex gap-2 p-1 bg-slate-50 rounded-2xl border border-slate-200">
-                        {(restaurantData?.ownDelivery || restaurantData?.appDelivery) && (
-                          <button
-                            onClick={() => setDeliveryMethod('delivery')}
-                            className={`flex-1 py-3 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all ${
-                              deliveryMethod === 'delivery' ? 'bg-primary text-slate-900 shadow-lg' : 'text-slate-400 hover:text-slate-600'
-                            }`}
-                          >
-                            Delivery
-                          </button>
-                        )}
-                        {restaurantData?.pickupOnly && (
-                          <button
-                            onClick={() => setDeliveryMethod('pickup')}
-                            className={`flex-1 py-3 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all ${
-                              deliveryMethod === 'pickup' ? 'bg-primary text-slate-900 shadow-lg' : 'text-slate-400 hover:text-slate-600'
-                            }`}
-                          >
-                            Retiro en Tienda
-                          </button>
-                        )}
-                     </div>
+                     {restaurantData?.businessType !== 'hotel' && (
+                       <div className="flex gap-2 p-1 bg-slate-50 rounded-2xl border border-slate-200">
+                          {(restaurantData?.ownDelivery || restaurantData?.appDelivery) && (
+                            <button
+                              onClick={() => setDeliveryMethod('delivery')}
+                              className={`flex-1 py-3 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all ${
+                                deliveryMethod === 'delivery' ? 'bg-primary text-slate-900 shadow-lg' : 'text-slate-400 hover:text-slate-600'
+                              }`}
+                            >
+                              Delivery
+                            </button>
+                          )}
+                          {restaurantData?.pickupOnly && (
+                            <button
+                              onClick={() => setDeliveryMethod('pickup')}
+                              className={`flex-1 py-3 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all ${
+                                deliveryMethod === 'pickup' ? 'bg-primary text-slate-900 shadow-lg' : 'text-slate-400 hover:text-slate-600'
+                              }`}
+                            >
+                              Retiro en Tienda
+                            </button>
+                          )}
+                       </div>
+                     )}
 
                      {deliveryMethod === 'delivery' && (
                          <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2">
@@ -500,7 +518,7 @@ export default function Cart({ hideHeader = false }: CartProps) {
                 
                 <button 
                   onClick={() => {
-                      if (!isWaiter && deliveryMethod === 'delivery' && !selectedAddress) {
+                      if (!isWaiter && deliveryMethod === 'delivery' && !selectedAddress && restaurantData?.businessType !== 'hotel') {
                           alert("Por favor selecciona una dirección de entrega válida.");
                           return;
                       }
@@ -514,6 +532,16 @@ export default function Cart({ hideHeader = false }: CartProps) {
             )}
             {currentStep === 3 && (
               <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                <div className="flex items-center justify-between mb-8">
+                  <h1 className="text-3xl font-black text-slate-900 flex items-center gap-3">
+                    {restaurantData?.businessType === 'hotel' ? 'Tu Reservación' : 'Tu Pedido'}
+                    <span className="text-primary text-sm bg-primary/10 px-3 py-1 rounded-full uppercase tracking-widest">{items.length} {restaurantData?.businessType === 'hotel' ? 'servicios' : 'items'}</span>
+                  </h1>
+                  <Link to={`/restaurant/${items[0].restaurantId}`} className="text-sm font-bold text-slate-400 hover:text-slate-600 underline underline-offset-4">
+                    {restaurantData?.businessType === 'hotel' ? '+ Añadir servicios' : '+ Seguir pidiendo'}
+                  </Link>
+                </div>
+
                 <div className="bg-white rounded-[32px] shadow-xl shadow-slate-200/50 border border-slate-100 overflow-hidden">
                   <div className="p-6 border-b border-slate-50 bg-slate-50/30">
                     <h3 className="font-black text-slate-800 uppercase tracking-widest text-xs mb-4">Resumen del Pedido</h3>
@@ -576,9 +604,12 @@ export default function Cart({ hideHeader = false }: CartProps) {
                   </div>
 
                   <div className="p-6 bg-slate-900 text-white">
-                    <div className="space-y-2 mb-4 opacity-80 text-sm font-bold">
-                      <div className="flex justify-between"><span>Subtotal Productos</span><span>${cartSubtotalUSD.toFixed(2)}</span></div>
-                      {!isWaiter && deliveryMethod === 'delivery' && (
+                    <div className="space-y-2 mb-4 opacity-80 text-sm font-bold text-white/70">
+                      <div className="flex justify-between">
+                        <span>{restaurantData?.businessType === 'hotel' ? 'Subtotal Servicios' : 'Subtotal Productos'}</span>
+                        <span>${cartSubtotalUSD.toFixed(2)}</span>
+                      </div>
+                      {!isWaiter && deliveryMethod === 'delivery' && restaurantData?.businessType !== 'hotel' && (
                         <div className="flex justify-between"><span>Costo Delivery</span><span>${deliveryFee.toFixed(2)}</span></div>
                       )}
                     </div>
@@ -618,13 +649,13 @@ export default function Cart({ hideHeader = false }: CartProps) {
                   >
                     {isCheckingOut || isSyncingTable ? (
                       <span className="flex items-center gap-2">
-                        <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                        <div className="w-4 h-4 border-2 border-slate-900/30 border-t-slate-900 rounded-full animate-spin" />
                         {isSyncingTable ? 'Actualizando Mesa...' : 'Procesando...'}
                       </span>
                     ) : (
                       <>
-                        <ArrowRight className="w-5 h-5" />
-                        {isWaiter ? 'Enviar Comanda' : 'Pedir por WhatsApp'}
+                        {restaurantData?.businessType === 'hotel' ? <CheckCircle2 className="w-5 h-5" /> : <ArrowRight className="w-5 h-5" />}
+                        {isWaiter ? 'Enviar Comanda' : (restaurantData?.businessType === 'hotel' ? 'Confirmar Reservación' : 'Pedir por WhatsApp')}
                       </>
                     )}
                   </button>
@@ -634,6 +665,11 @@ export default function Cart({ hideHeader = false }: CartProps) {
           </>
         )}
       </div>
+
+      <DemoAlertModal 
+        isOpen={showDemoAlert} 
+        onClose={() => setShowDemoAlert(false)} 
+      />
 
       {showGuestModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">

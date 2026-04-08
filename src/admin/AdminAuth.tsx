@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Mail, Lock, Building2, FileText, ArrowRight, Store, LogIn, UserPlus } from 'lucide-react';
+import { Mail, Lock, Building2, FileText, ArrowRight, Store, LogIn, UserPlus, Hotel } from 'lucide-react';
 import { registerRestaurant, signInAdmin, signInAdminWithGoogle } from '../lib/auth-service';
 import { useNavigate } from 'react-router-dom';
 
@@ -14,6 +14,7 @@ export default function AdminAuth() {
     const [password, setPassword] = useState('');
     const [restaurantName, setRestaurantName] = useState('');
     const [rif, setRif] = useState('');
+    const [businessType, setBusinessType] = useState<'restaurant' | 'hotel'>('restaurant');
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -24,7 +25,7 @@ export default function AdminAuth() {
             if (isLogin) {
                 await signInAdmin(email, password);
             } else {
-                await registerRestaurant(email, password, restaurantName, rif);
+                await registerRestaurant(email, password, restaurantName, rif, businessType);
             }
             navigate('/stations');
         } catch (err: any) {
@@ -71,7 +72,7 @@ export default function AdminAuth() {
                     </div>
                     <h1 className="text-3xl font-black text-slate-900 tracking-tight">Administra tu cuenta <span className="text-primary">en un 2x3</span></h1>
                     <p className="text-slate-500 mt-2 font-medium">
-                        {isLogin ? 'Ingresa para gestionar tu restaurante' : 'Registra tu negocio y empieza a vender'}
+                        {isLogin ? 'Ingresa para gestionar tu negocio' : 'Registra tu negocio y empieza a vender'}
                     </p>
                 </div>
 
@@ -83,7 +84,7 @@ export default function AdminAuth() {
                                     <Building2 className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
                                     <input
                                         type="text"
-                                        placeholder="Nombre del Restaurante"
+                                        placeholder={businessType === 'restaurant' ? "Nombre del Restaurante" : "Nombre del Hotel / Posada"}
                                         value={restaurantName}
                                         onChange={(e) => setRestaurantName(e.target.value)}
                                         required
@@ -100,6 +101,32 @@ export default function AdminAuth() {
                                         required
                                         className="w-full bg-slate-50 border-2 border-transparent focus:border-primary focus:bg-white p-4 pl-12 rounded-2xl outline-none transition-all font-bold text-slate-700"
                                     />
+                                </div>
+                                <div className="grid grid-cols-2 gap-3 p-1.5 bg-slate-50 rounded-2xl border border-slate-100/50">
+                                    <button
+                                        type="button"
+                                        onClick={() => setBusinessType('restaurant')}
+                                        className={`flex items-center justify-center gap-2 py-3 rounded-xl font-bold transition-all ${
+                                            businessType === 'restaurant' 
+                                            ? 'bg-white text-primary shadow-sm ring-1 ring-slate-200' 
+                                            : 'text-slate-400 hover:text-slate-600'
+                                        }`}
+                                    >
+                                        <Store className="w-4 h-4" />
+                                        <span>Restaurante</span>
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setBusinessType('hotel')}
+                                        className={`flex items-center justify-center gap-2 py-3 rounded-xl font-bold transition-all ${
+                                            businessType === 'hotel' 
+                                            ? 'bg-white text-primary shadow-sm ring-1 ring-slate-200' 
+                                            : 'text-slate-400 hover:text-slate-600'
+                                        }`}
+                                    >
+                                        <Hotel className="w-4 h-4" />
+                                        <span>Hotel/Posada</span>
+                                    </button>
                                 </div>
                             </div>
                         )}
@@ -143,7 +170,7 @@ export default function AdminAuth() {
                                 <div className="w-6 h-6 border-3 border-white border-t-transparent rounded-full animate-spin"></div>
                             ) : (
                                 <>
-                                    <span>{isLogin ? 'Entrar al Panel' : 'Registrar Restaurante'}</span>
+                                    <span>{isLogin ? 'Entrar al Panel' : (businessType === 'restaurant' ? 'Registrar Restaurante' : 'Registrar Hotel')}</span>
                                     <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
                                 </>
                             )}

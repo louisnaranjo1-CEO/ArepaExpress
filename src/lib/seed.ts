@@ -64,6 +64,7 @@ export interface Restaurant {
     id?: string;
     name: string;
     category: string;
+    businessType: 'restaurant' | 'hotel';
     rating: number;
     reviews: number;
     deliveryTime: string;
@@ -96,6 +97,7 @@ const MOCK_RESTAURANTS: Restaurant[] = [
     {
         name: "Burger King (Mock)",
         category: "Comida Rápida",
+        businessType: 'restaurant',
         rating: 4.5,
         reviews: 120,
         deliveryTime: "20-30 min",
@@ -112,6 +114,7 @@ const MOCK_RESTAURANTS: Restaurant[] = [
     {
         name: "Ferretería El Tornillo (Mock)",
         category: "Ferretería",
+        businessType: 'restaurant',
         rating: 4.8,
         reviews: 45,
         deliveryTime: "40-60 min",
@@ -127,6 +130,7 @@ const MOCK_RESTAURANTS: Restaurant[] = [
     {
         name: "Moda Fashion (Mock)",
         category: "Tienda de Ropa",
+        businessType: 'restaurant',
         rating: 4.2,
         reviews: 80,
         deliveryTime: "1-2 days",
@@ -143,6 +147,7 @@ const MOCK_RESTAURANTS: Restaurant[] = [
     {
         name: "Supermercado Central (Mock)",
         category: "Supermercado",
+        businessType: 'restaurant',
         rating: 4.6,
         reviews: 300,
         deliveryTime: "45-60 min",
@@ -158,6 +163,7 @@ const MOCK_RESTAURANTS: Restaurant[] = [
     {
         name: "Postres Delicias (Mock)",
         category: "Emprendimiento",
+        businessType: 'restaurant',
         rating: 4.9,
         reviews: 20,
         deliveryTime: "30-45 min",

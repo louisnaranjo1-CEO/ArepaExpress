@@ -178,7 +178,7 @@ export const signUpWithEmail = async (email: string, pass: string, name: string,
     }
 };
 
-export const registerRestaurant = async (email: string, pass: string, restaurantName: string, rif: string): Promise<User> => {
+export const registerRestaurant = async (email: string, pass: string, restaurantName: string, rif: string, businessType: 'restaurant' | 'hotel' = 'restaurant'): Promise<User> => {
     try {
         const result = await createUserWithEmailAndPassword(auth, email, pass);
         const user = result.user;
@@ -193,6 +193,7 @@ export const registerRestaurant = async (email: string, pass: string, restaurant
             rif: rif,
             ownerUid: user.uid,
             email: email,
+            businessType: businessType,
             createdAt: serverTimestamp(),
             locations: [], // Will be filled in RestaurantProfile
             whatsapp: '',
@@ -233,10 +234,11 @@ export const signInAdminWithGoogle = async (): Promise<User | null> => {
         if (!restaurantSnap.exists()) {
             // Create a placeholder restaurant document
             await setDoc(restaurantRef, {
-                name: user.displayName || 'Mi Restaurante',
+                name: user.displayName || 'Mi Negocio',
                 rif: 'PROVISIONAL',
                 ownerUid: user.uid,
                 email: user.email,
+                businessType: 'restaurant',
                 createdAt: serverTimestamp(),
                 locations: [],
                 whatsapp: '',

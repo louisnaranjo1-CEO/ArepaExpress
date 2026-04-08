@@ -21,7 +21,12 @@ import {
     Share2,
     ExternalLink,
     Globe,
-    Zap
+    Zap,
+    Hotel,
+    Building2,
+    ChevronRight,
+    Search,
+    ChevronUp
 } from 'lucide-react';
 import { db, storage } from '../../lib/firebase';
 import { doc, getDoc, updateDoc, collection, getDocs, orderBy, query } from 'firebase/firestore';
@@ -112,6 +117,7 @@ export default function RestaurantProfile() {
     const [globalCategories, setGlobalCategories] = useState<any[]>([]);
     const [hasCashea, setHasCashea] = useState(false);
     const [casheaIcon, setCasheaIcon] = useState<string | null>(null);
+    const [businessType, setBusinessType] = useState<'restaurant' | 'hotel'>('restaurant');
 
     // 2x3 Config
     const [hasTwoByThree, setHasTwoByThree] = useState(false);
@@ -148,6 +154,7 @@ export default function RestaurantProfile() {
                     setHasTwoByThree(data.hasTwoByThree || false);
                     setTwoByThreeInitial(data.twoByThreeInitial || 50);
                     setTwoByThreeInstallments(data.twoByThreeInstallments || 2);
+                    setBusinessType(data.businessType || 'restaurant');
 
                     // Fetch followers list
                     const followersRef = collection(db, 'restaurants', user.uid, 'followers');
@@ -244,6 +251,7 @@ export default function RestaurantProfile() {
                 hasTwoByThree,
                 twoByThreeInitial,
                 twoByThreeInstallments,
+                businessType,
                 updatedAt: new Date()
             });
 
@@ -336,7 +344,7 @@ export default function RestaurantProfile() {
             <div className="flex justify-between items-end flex-wrap gap-4">
                 <div>
                     <h1 className="text-3xl font-black text-slate-900">Configuración del Negocio</h1>
-                    <p className="text-slate-500 font-medium">Gestiona la información pública de tu restaurante.</p>
+                    <p className="text-slate-500 font-medium">Gestiona la información pública de tu {businessType === 'restaurant' ? 'restaurante' : 'hotel/posada'}.</p>
                 </div>
                 <button
                     onClick={handleSave}
@@ -476,6 +484,37 @@ export default function RestaurantProfile() {
                                         placeholder="Ej: +58 412 1234567"
                                     />
                                 </div>
+                            </div>
+
+                            <div className="bg-slate-50 p-6 rounded-3xl border border-slate-100 space-y-4">
+                                <h3 className="text-sm font-black text-slate-400 uppercase ml-1">Tipo de Negocio</h3>
+                                <div className="grid grid-cols-2 gap-3 p-1 bg-white rounded-2xl border border-slate-200">
+                                    <button
+                                        onClick={() => setBusinessType('restaurant')}
+                                        className={`flex items-center justify-center gap-2 py-3 rounded-xl font-black text-xs uppercase tracking-widest transition-all ${
+                                            businessType === 'restaurant' 
+                                            ? 'bg-primary text-slate-900 shadow-lg shadow-primary/20 scale-100' 
+                                            : 'text-slate-400 hover:text-slate-600'
+                                        }`}
+                                    >
+                                        <Store className="w-5 h-5" />
+                                        <span>Restaurante</span>
+                                    </button>
+                                    <button
+                                        onClick={() => setBusinessType('hotel')}
+                                        className={`flex items-center justify-center gap-2 py-3 rounded-xl font-black text-xs uppercase tracking-widest transition-all ${
+                                            businessType === 'hotel' 
+                                            ? 'bg-primary text-slate-900 shadow-lg shadow-primary/20 scale-100' 
+                                            : 'text-slate-400 hover:text-slate-600'
+                                        }`}
+                                    >
+                                        <Building2 className="w-5 h-5" />
+                                        <span>Hotel / Posada</span>
+                                    </button>
+                                </div>
+                                <p className="text-[10px] text-slate-400 italic px-2">
+                                    * Cambiar el tipo de negocio adaptará la interfaz para tus clientes (ej: "Reservar" en lugar de "Añadir").
+                                </p>
                             </div>
 
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
