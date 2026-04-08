@@ -684,9 +684,9 @@ export default function Taxi() {
     }
 
     return (
-        <div className="relative h-[100dvh] bg-slate-100 overflow-hidden flex flex-col">
-            {/* 1. Google Map Area - Increased height for A/B steps, reduced for vehicle step (60/40 split) */}
-            <div className={`relative transition-all duration-500 overflow-hidden ${step === 'vehicle' ? 'h-[60dvh]' : 'h-[85vh]'} w-full z-0`}>
+        <div className="relative h-[100dvh] bg-slate-100 overflow-hidden">
+            {/* 1. Google Map Area - Fixed Full Background */}
+            <div className="absolute inset-0 w-full h-[100dvh] z-0">
                 <GoogleMap
                     mapContainerStyle={mapContainerStyle}
                     center={currentCenter}
@@ -751,30 +751,34 @@ export default function Taxi() {
                     </div>
                 )}
 
-                {/* Locate Me Button Overlay - Floating over map, just above the bottom sheet */}
-                {(step === 'origin' || step === 'destination') && (
-                    <button
-                        onClick={toggleFollowUser}
-                        className={`absolute bottom-6 right-6 z-40 w-14 h-14 rounded-full shadow-lg border-2 border-white/60 flex items-center justify-center transition-all duration-300 active:scale-90 ${
-                            isFollowingUser 
-                            ? 'bg-orange-500 text-white animate-pulse ring-4 ring-orange-500/30' 
-                            : 'bg-orange-500 text-white hover:bg-orange-600'
-                        }`}
-                        title={isFollowingUser ? "Detener seguimiento" : "Ubicación en tiempo real"}
-                    >
-                        <Navigation className={`w-6 h-6 fill-white`} />
-                        {isFollowingUser && (
-                            <div className="absolute -top-1 -right-1 w-4 h-4 bg-emerald-500 rounded-full border-2 border-white shadow-sm animate-bounce" />
-                        )}
-                    </button>
-                )}
             </div>
 
-            {/* 2. Bottom Sheet Panel - 15% to 40% height based on step */}
-            <div className={`flex-1 bg-white rounded-t-[40px] shadow-[0_-20px_50px_rgba(0,0,0,0.1)] z-10 px-6 pt-8 pb-10 overflow-y-auto transition-all duration-500 ${step === 'vehicle' ? 'min-h-[40dvh]' : ''}`}>
-                <div className="max-w-md mx-auto relative">
+            {/* 2. Floating Bottom Panel (Game UI) */}
+            <div className="absolute top-[80px] bottom-[90px] left-0 right-0 z-30 pointer-events-none transition-all duration-500 flex flex-col justify-end items-center px-4">
+                
+                {/* Floating "Locate Me" Button outside the card */}
+                {(step === 'origin' || step === 'destination') && (
+                    <div className="max-w-md w-full flex justify-end px-2 mb-3 pointer-events-none">
+                        <button
+                            onClick={toggleFollowUser}
+                            className={`pointer-events-auto z-40 w-14 h-14 rounded-full shadow-[0_5px_0_#ea580c] active:shadow-[0_0px_0_#ea580c] active:translate-y-[5px] border-2 border-white/60 flex items-center justify-center transition-all duration-300 ${
+                                isFollowingUser 
+                                ? 'bg-orange-500 text-white animate-pulse' 
+                                : 'bg-orange-500 text-white'
+                            }`}
+                            title={isFollowingUser ? "Detener seguimiento" : "Ubicación en tiempo real"}
+                        >
+                            <Navigation className={`w-6 h-6 fill-white`} />
+                            {isFollowingUser && (
+                                <div className="absolute -top-1 -right-1 w-4 h-4 bg-emerald-500 rounded-full border-2 border-white shadow-sm animate-bounce" />
+                            )}
+                        </button>
+                    </div>
+                )}
+
+                <div className="max-w-md w-full pointer-events-auto bg-white/95 backdrop-blur-xl rounded-[32px] shadow-[0_20px_50px_rgba(0,0,0,0.25)] border border-white/50 p-6 overflow-y-auto max-h-full scrollbar-hide pb-6">
                     {/* Progress Indicator */}
-                    <div className="w-12 h-1.5 bg-slate-200 rounded-full mx-auto mb-6"></div>
+                    <div className="w-12 h-1.5 bg-slate-200/60 rounded-full mx-auto mb-5 drop-shadow-sm"></div>
 
                     {/* STEP 1: ORIGIN */}
                     {step === 'origin' && (
@@ -800,9 +804,9 @@ export default function Taxi() {
                                     confirmOrigin();
                                 }}
                                 disabled={isDragging || !origin}
-                                className="w-full bg-black text-white py-4 rounded-xl font-black shadow-xl shadow-black/20 flex justify-center items-center gap-2 active:scale-95 transition-all disabled:opacity-50 mb-6"
+                                className="w-full bg-slate-900 text-white py-4 rounded-2xl font-black text-lg shadow-[0_6px_0_#1e293b] active:shadow-[0_0px_0_#1e293b] active:translate-y-[6px] transition-all disabled:opacity-50 disabled:translate-y-[6px] disabled:shadow-none uppercase tracking-wide flex justify-center items-center gap-2 mb-6 border border-slate-700"
                             >
-                                Confirmar Partida
+                                Fijar Origen
                             </button>
 
                             {userData?.addresses && userData.addresses.length > 0 && (
@@ -855,9 +859,9 @@ export default function Taxi() {
                             <button
                                 onClick={confirmDestination}
                                 disabled={isDragging || !destination}
-                                className="w-full bg-orange-500 text-white py-4 rounded-xl font-black shadow-lg shadow-primary/30 flex justify-center items-center gap-2 active:scale-95 transition-all disabled:opacity-50 mb-6"
+                                className="w-full bg-primary text-secondary py-4 rounded-2xl font-black text-lg shadow-[0_6px_0_#059669] active:shadow-[0_0px_0_#059669] active:translate-y-[6px] transition-all disabled:opacity-50 disabled:translate-y-[6px] disabled:shadow-none uppercase tracking-wide flex justify-center items-center gap-2 mb-6 border border-emerald-400"
                             >
-                                Confirmar Destino
+                                Fijar Destino
                             </button>
 
                             {userData?.addresses && userData.addresses.length > 0 && (
@@ -1027,9 +1031,9 @@ export default function Taxi() {
                             <button
                                 disabled={!vehicleType || !routeInfo}
                                 onClick={handleContinueToPayment}
-                                className="w-full bg-slate-900 text-white py-4 rounded-xl font-black shadow-xl shadow-slate-900/30 flex justify-center items-center gap-2 active:scale-95 transition-all disabled:opacity-50 mb-4"
+                                className="w-full bg-slate-900 text-white py-4 mt-2 rounded-2xl font-black text-lg shadow-[0_6px_0_#1e293b] active:shadow-[0_0px_0_#1e293b] active:translate-y-[6px] transition-all disabled:opacity-50 disabled:translate-y-[6px] disabled:shadow-none uppercase tracking-wide flex justify-center items-center gap-2 mb-4 border border-slate-700"
                             >
-                                Continuar al Pago <ArrowRight className="w-5 h-5" />
+                                Continuar <ArrowRight className="w-5 h-5" />
                             </button>
 
                             {/* Service Hours Section */}
@@ -1198,9 +1202,9 @@ export default function Taxi() {
                             <button
                                 disabled={isUploading || !selectedPaymentMethod}
                                 onClick={handleRequestTaxi}
-                                className="w-full bg-slate-900 text-white py-4 rounded-xl font-black shadow-xl shadow-slate-900/30 flex justify-center items-center gap-2 active:scale-95 transition-all disabled:opacity-50"
+                                className="w-full bg-primary text-secondary py-4 mt-2 rounded-2xl font-black text-lg shadow-[0_6px_0_#059669] active:shadow-[0_0px_0_#059669] active:translate-y-[6px] transition-all disabled:opacity-50 disabled:translate-y-[6px] disabled:shadow-none uppercase tracking-wide flex justify-center items-center gap-2 border border-emerald-400"
                             >
-                                {isUploading ? 'Procesando pago...' : 'Pagar y Solicitar Vehículo'}
+                                {isUploading ? 'PROCESANDO...' : 'PAGAR E IR'}
                             </button>
                         </div>
                     )}
