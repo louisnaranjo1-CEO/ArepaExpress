@@ -376,7 +376,7 @@ export default function TransportTracker() {
                     <div className="flex flex-col items-center justify-center gap-6 animate-fade-in px-8">
                         <div className="w-48 h-48 bg-white rounded-[40px] shadow-2xl shadow-primary/20 p-8 flex items-center justify-center">
                             <img
-                                src="https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/logo.png?alt=media&token=8acf92ec-b853-4f37-bd82-a4f651bbdcd9"
+                                src="https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/logo.png?alt=media"
                                 alt="Deliexpress Logo"
                                 className="w-full h-full object-contain animate-bounce-subtle"
                             />

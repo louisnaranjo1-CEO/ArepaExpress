@@ -76,7 +76,7 @@ export default function Login() {
                         className="h-40 flex flex-col items-center justify-center mb-4 cursor-pointer active:scale-95 transition-transform"
                     >
                         <img
-                            src="https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/logo21.png?alt=media&token=52eab323-674a-496d-9bef-f4452af98586"
+                            src="https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/logo.png?alt=media"
                             alt="Logo Deliexpress"
                             className="h-full object-contain drop-shadow-2xl"
                         />

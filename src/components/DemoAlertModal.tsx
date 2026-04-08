@@ -35,7 +35,7 @@ const DemoAlertModal: React.FC<DemoAlertModalProps> = ({ isOpen, onClose }) => {
               <div className="w-24 h-24 rounded-full bg-slate-50 p-1 shadow-inner border border-slate-100 mb-6 relative group">
                 <div className="absolute inset-0 rounded-full border-4 border-primary/20 animate-pulse group-hover:border-primary/40 transition-colors" />
                 <img 
-                  src="https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/logos%20un%202x3.jpg?alt=media" 
+                  src="https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/logo.png?alt=media" 
                   alt="Un 2x3"
                   className="w-full h-full rounded-full object-cover transition-transform duration-700 group-hover:scale-110"
                 />

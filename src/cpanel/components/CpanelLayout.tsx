@@ -84,7 +84,7 @@ export default function CpanelLayout({ children, onLogout }: CpanelLayoutProps) 
                         <div className="flex items-center gap-3 cursor-pointer active:scale-95 transition-transform" onClick={() => window.location.href = 'https://deliexpress.app'}>
                             <div className="w-14 h-14 flex items-center justify-center p-1 overflow-visible">
                                 <img
-                                    src="https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/logo21.png?alt=media&token=52eab323-674a-496d-9bef-f4452af98586"
+                                    src="https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/logo.png?alt=media"
                                     alt="Encontrado en un 2x3"
                                     className="w-full h-full object-contain filter drop-shadow-sm"
                                 />
