@@ -18,11 +18,8 @@ interface Location {
 
 const mapContainerStyle = {
     width: '100%',
-    height: '100vh',
-    position: 'absolute' as 'absolute',
-    top: 0,
-    left: 0,
-    zIndex: 0
+    height: '100%',
+    position: 'relative' as 'relative'
 };
 
 const defaultCenter = {
@@ -393,12 +390,12 @@ export default function Taxi() {
 
         if (hasPoints) {
             // Adjust viewport with padding-bottom to clear the vehicle selection bottom sheet
-            // 320px bottom padding is usually enough for the "Elige un vehículo" UI
+            // Adjust viewport with padding
             map.fitBounds(bounds, {
-                bottom: 320,
-                top: 140,
-                left: 60,
-                right: 60
+                bottom: 80,
+                top: 40,
+                left: 40,
+                right: 40
             });
         }
     }, [map, directionsResponse, step, origin, destination]);
@@ -678,8 +675,8 @@ export default function Taxi() {
 
     return (
         <div className="relative h-[100dvh] bg-slate-100 overflow-hidden flex flex-col">
-            {/* 1. Google Map Background */}
-            <div className="absolute inset-0 z-0 h-full w-full">
+            {/* 1. Google Map Area - 85% Height */}
+            <div className="relative h-[85vh] w-full z-0 overflow-hidden">
                 <GoogleMap
                     mapContainerStyle={mapContainerStyle}
                     center={currentCenter}
@@ -689,7 +686,7 @@ export default function Taxi() {
                     options={{
                         ...mapOptions,
                         gestureHandling: 'greedy',
-                        padding: { bottom: 280, top: 0, left: 0, right: 0 }
+                        padding: { bottom: 0, top: 0, left: 0, right: 0 }
                     }}
                     onDragStart={handleMapDragStart}
                     onDragEnd={handleMapDragEnd}
@@ -707,54 +704,48 @@ export default function Taxi() {
                             }}
                         />
                     )}
-
-                    {/* Fixed center marker for selection - Adjusted to be higher (center of visible map) */}
-                    {(step === 'origin' || step === 'destination') && (
-                        <div 
-                            className="absolute left-1/2 top-[calc(50%-140px)] -translate-x-1/2 -translate-y-full z-10 pointer-events-none drop-shadow-[0_10px_15px_rgba(0,0,0,0.3)] transition-all"
-                        >
-                            {step === 'origin' ? (
-                                <div className={`transition-transform duration-200 ${isDragging ? '-translate-y-4' : ''}`}>
-                                    <svg width="48" height="48" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                        <path d="M12 2C8.13 2 5 5.13 5 9C5 14.25 12 22 12 22C12 22 19 14.25 19 9C19 5.13 15.87 2 12 2Z" fill="#000000" />
-                                        <circle cx="12" cy="9" r="3" fill="white" />
-                                        <path d="M12 22V24" stroke="black" strokeWidth="2" strokeLinecap="round"/>
-                                    </svg>
-                                </div>
-                            ) : (
-                                <div className={`transition-transform duration-200 ${isDragging ? '-translate-y-4' : ''}`}>
-                                    <svg width="48" height="48" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                        <path d="M12 2C8.13 2 5 5.13 5 9C5 14.25 12 22 12 22C12 22 19 14.25 19 9C19 5.13 15.87 2 12 2Z" fill="#FF5D00" />
-                                        <circle cx="12" cy="9" r="3" fill="white" />
-                                        <path d="M12 22V24" stroke="#FF5D00" strokeWidth="2" strokeLinecap="round"/>
-                                    </svg>
-                                </div>
-                            )}
-                        </div>
-                    )}
                 </GoogleMap>
 
+                {/* Back Button Overlay - Relative to map area */}
+                {step !== 'origin' && (
+                    <button
+                        onClick={goBack}
+                        className="absolute top-6 left-6 z-20 w-12 h-12 bg-white rounded-full shadow-lg flex items-center justify-center active:scale-95 text-slate-700"
+                    >
+                        <X className="w-6 h-6" />
+                    </button>
+                )}
 
-            </div>
+                {/* Fixed center marker for selection - Centered at exactly 50% for accuracy */}
+                {(step === 'origin' || step === 'destination') && (
+                    <div 
+                        className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-full z-10 pointer-events-none drop-shadow-[0_10px_15px_rgba(0,0,0,0.3)] transition-all"
+                    >
+                        {step === 'origin' ? (
+                            <div className={`transition-transform duration-200 ${isDragging ? '-translate-y-4' : ''}`}>
+                                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                    <path d="M12 2C8.13 2 5 5.13 5 9C5 14.25 12 22 12 22C12 22 19 14.25 19 9C19 5.13 15.87 2 12 2Z" fill="#000000" />
+                                    <circle cx="12" cy="9" r="3" fill="white" />
+                                    <path d="M12 22V24" stroke="black" strokeWidth="2" strokeLinecap="round"/>
+                                </svg>
+                            </div>
+                        ) : (
+                            <div className={`transition-transform duration-200 ${isDragging ? '-translate-y-4' : ''}`}>
+                                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                    <path d="M12 2C8.13 2 5 5.13 5 9C5 14.25 12 22 12 22C12 22 19 14.25 19 9C19 5.13 15.87 2 12 2Z" fill="#FF5D00" />
+                                    <circle cx="12" cy="9" r="3" fill="white" />
+                                    <path d="M12 22V24" stroke="#FF5D00" strokeWidth="2" strokeLinecap="round"/>
+                                </svg>
+                            </div>
+                        )}
+                    </div>
+                )}
 
-            {/* Back Button Overlay */}
-            {step !== 'origin' && (
-                <button
-                    onClick={goBack}
-                    className="absolute top-6 left-6 z-20 w-12 h-12 bg-white rounded-full shadow-lg flex items-center justify-center active:scale-95 text-slate-700"
-                >
-                    <X className="w-6 h-6" />
-                </button>
-            )}
-
-            {/* 2. Bottom Sheet UI */}
-            <div className="absolute bottom-0 left-0 right-0 z-30 bg-white/80 backdrop-blur-xl border-t border-white/50 rounded-t-[2.5rem] shadow-[0_-10px_40px_rgba(0,0,0,0.15)] transition-all duration-300">
-
-                {/* Locate Me Button Overlay */}
+                {/* Locate Me Button Overlay - Floating over map, just above the bottom sheet */}
                 {(step === 'origin' || step === 'destination') && (
                     <button
                         onClick={toggleFollowUser}
-                        className={`absolute -top-16 right-6 z-40 w-14 h-14 rounded-full shadow-lg border-2 border-white/60 flex items-center justify-center transition-all duration-300 active:scale-90 ${
+                        className={`absolute bottom-6 right-6 z-40 w-14 h-14 rounded-full shadow-lg border-2 border-white/60 flex items-center justify-center transition-all duration-300 active:scale-90 ${
                             isFollowingUser 
                             ? 'bg-orange-500 text-white animate-pulse ring-4 ring-orange-500/30' 
                             : 'bg-orange-500 text-white hover:bg-orange-600'
@@ -767,11 +758,12 @@ export default function Taxi() {
                         )}
                     </button>
                 )}
+            </div>
 
-                {/* Drag handle decoration */}
-                <div className="w-12 h-1.5 bg-slate-300/50 rounded-full mx-auto mt-4 mb-2"></div>
-
-                <div className="p-6 pt-2 max-h-[50vh] overflow-y-auto">
+            {/* 2. Bottom Area - Remaining 15%+ Height */}
+            <div className="flex-1 bg-white z-30 shadow-[0_-10px_40px_rgba(0,0,0,0.1)] rounded-t-[2.5rem] flex flex-col min-h-[15vh]">
+                <div className="w-12 h-1.5 bg-slate-200 rounded-full mx-auto mt-3 mb-1"></div>
+                <div className="flex-1 p-6 pt-2 overflow-y-auto">
 
                     {/* STEP 1: ORIGIN */}
                     {step === 'origin' && (
