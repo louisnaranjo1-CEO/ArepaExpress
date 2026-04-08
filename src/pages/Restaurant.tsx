@@ -30,6 +30,8 @@ export default function RestaurantPage() {
   const [selectedVariant, setSelectedVariant] = useState<any | null>(null);
   const [selectedModifiers, setSelectedModifiers] = useState<{[key: string]: any[]}>({});
   const [showDemoAlert, setShowDemoAlert] = useState(false);
+  const [showClearCartModal, setShowClearCartModal] = useState(false);
+  const [pendingCartItem, setPendingCartItem] = useState<{product: Product, variant?: any, modifiers?: any} | null>(null);
   const getSocialIcon = (url: string) => {
     if (url.includes('instagram.com')) return <Instagram className="w-4 h-4" />;
     if (url.includes('tiktok.com')) return <Music2 className="w-4 h-4" />;
@@ -67,7 +69,7 @@ export default function RestaurantPage() {
   const isWaiter = localStorage.getItem('isWaiter') === 'true';
   const waiterData = JSON.parse(localStorage.getItem('waiterData') || '{}');
 
-  const { addItem, totalItems, totalPrice } = useCart();
+  const { items, addItem, totalItems, totalPrice, clearCart } = useCart();
 
   useEffect(() => {
     const fetchRestaurantAndMenu = async () => {
@@ -196,6 +198,26 @@ export default function RestaurantPage() {
   });
 
   const handleAddToCart = (product: Product, variant?: any, modifiers?: any) => {
+    // Check if cart has items from another restaurant
+    if (items.length > 0 && items[0].restaurantId !== restaurant.id) {
+      setPendingCartItem({ product, variant, modifiers });
+      setShowClearCartModal(true);
+      return;
+    }
+
+    processAddToCart(product, variant, modifiers);
+  };
+
+  const confirmClearCart = () => {
+    if (pendingCartItem) {
+      clearCart();
+      processAddToCart(pendingCartItem.product, pendingCartItem.variant, pendingCartItem.modifiers);
+      setPendingCartItem(null);
+      setShowClearCartModal(false);
+    }
+  };
+
+  const processAddToCart = (product: Product, variant?: any, modifiers?: any) => {
     let finalPrice = product.promoPrice && product.promoPrice > 0 ? product.promoPrice : (product.price || 0);
     let finalName = product.name;
 
@@ -229,6 +251,7 @@ export default function RestaurantPage() {
       consultPrice: product.consultPrice,
       modifiersConfig: modifiers
     });
+    toast.success('Añadido al carrito');
   };
 
   const handleModifierToggle = (modifier: any, option: any) => {
@@ -969,7 +992,7 @@ export default function RestaurantPage() {
       )}
 
       {/* Floating Cart Button */}
-      {totalItems > 0 && (
+      {totalItems > 0 && items[0]?.restaurantId === restaurant.id && (
         <div className="fixed bottom-24 left-1/2 transform -translate-x-1/2 w-full px-5 max-w-md z-[60] animate-in slide-in-from-bottom-4 fade-in duration-300">
           <Link 
             to={isDemoMode() ? '#' : '/cart'} 
