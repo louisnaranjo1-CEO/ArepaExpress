@@ -731,44 +731,40 @@ export default function Taxi() {
                     <div 
                         className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-full z-10 pointer-events-none drop-shadow-[0_10px_15px_rgba(0,0,0,0.3)] transition-all"
                     >
-                        {step === 'origin' ? (
-                            <div className={`transition-transform duration-200 ${isDragging ? '-translate-y-4' : ''}`}>
-                                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                    <path d="M12 2C8.13 2 5 5.13 5 9C5 14.25 12 22 12 22C12 22 19 14.25 19 9C19 5.13 15.87 2 12 2Z" fill="#000000" />
-                                    <circle cx="12" cy="9" r="3" fill="white" />
-                                    <path d="M12 22V24" stroke="black" strokeWidth="2" strokeLinecap="round"/>
-                                </svg>
-                            </div>
-                        ) : (
-                            <div className={`transition-transform duration-200 ${isDragging ? '-translate-y-4' : ''}`}>
-                                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                    <path d="M12 2C8.13 2 5 5.13 5 9C5 14.25 12 22 12 22C12 22 19 14.25 19 9C19 5.13 15.87 2 12 2Z" fill="#FF5D00" />
-                                    <circle cx="12" cy="9" r="3" fill="white" />
-                                    <path d="M12 22V24" stroke="#FF5D00" strokeWidth="2" strokeLinecap="round"/>
-                                </svg>
-                            </div>
-                        )}
+                        <motion.div
+                            animate={{ 
+                                y: isDragging ? -15 : 0, 
+                                scale: isDragging ? 1.15 : 1,
+                                filter: isDragging ? 'drop-shadow(0 20px 10px rgba(0,0,0,0.3))' : 'drop-shadow(0 8px 5px rgba(0,0,0,0.2))'
+                            }}
+                            className="text-[#ff5c00] drop-shadow-lg"
+                        >
+                            <svg width="45" height="45" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                <path d="M12 2C8.13 2 5 5.13 5 9C5 14.25 12 22 12 22C12 22 19 14.25 19 9C19 5.13 15.87 2 12 2Z" fill="currentColor" stroke="white" strokeWidth="2.5"/>
+                                <circle cx="12" cy="9" r="3.5" fill="white"/>
+                            </svg>
+                        </motion.div>
                     </div>
                 )}
 
             </div>
 
-            {/* 2. Floating Bottom Panel (Game UI) */}
-            <div className="absolute top-[80px] bottom-[90px] left-0 right-0 z-30 pointer-events-none transition-all duration-500 flex flex-col justify-end items-center px-4">
+            {/* 2. Floating Bottom Panel (Game UI) - Fixed to bottom to never overlap center pin (50%) */}
+            <div className="absolute inset-x-0 bottom-[90px] top-0 z-30 pointer-events-none flex flex-col justify-end items-center px-4">
                 
                 {/* Floating "Locate Me" Button outside the card */}
                 {(step === 'origin' || step === 'destination') && (
                     <div className="max-w-md w-full flex justify-end px-2 mb-3 pointer-events-none">
                         <button
                             onClick={toggleFollowUser}
-                            className={`pointer-events-auto z-40 w-14 h-14 rounded-full shadow-[0_5px_0_#ea580c] active:shadow-[0_0px_0_#ea580c] active:translate-y-[5px] border-2 border-white/60 flex items-center justify-center transition-all duration-300 ${
+                            className={`pointer-events-auto z-40 w-14 h-14 rounded-full shadow-[0_5px_0_#ca8a04] active:shadow-[0_0px_0_#ca8a04] active:translate-y-[5px] border-2 border-slate-900 flex items-center justify-center transition-all duration-300 ${
                                 isFollowingUser 
-                                ? 'bg-orange-500 text-white animate-pulse' 
-                                : 'bg-orange-500 text-white'
+                                ? 'bg-[#ffff00] text-black animate-pulse' 
+                                : 'bg-[#ffff00] text-black'
                             }`}
                             title={isFollowingUser ? "Detener seguimiento" : "Ubicación en tiempo real"}
                         >
-                            <Navigation className={`w-6 h-6 fill-white`} />
+                            <Navigation className={`w-6 h-6 fill-black`} />
                             {isFollowingUser && (
                                 <div className="absolute -top-1 -right-1 w-4 h-4 bg-emerald-500 rounded-full border-2 border-white shadow-sm animate-bounce" />
                             )}
@@ -776,7 +772,7 @@ export default function Taxi() {
                     </div>
                 )}
 
-                <div className="max-w-md w-full pointer-events-auto bg-white/95 backdrop-blur-xl rounded-[32px] shadow-[0_20px_50px_rgba(0,0,0,0.25)] border border-white/50 p-6 overflow-y-auto max-h-full scrollbar-hide pb-6">
+                <div className="max-w-md w-full pointer-events-auto bg-white/95 backdrop-blur-xl rounded-[32px] shadow-[0_20px_50px_rgba(0,0,0,0.25)] border border-white/50 p-6 overflow-y-auto max-h-[46dvh] scrollbar-hide pb-6">
                     {/* Progress Indicator */}
                     <div className="w-12 h-1.5 bg-slate-200/60 rounded-full mx-auto mb-5 drop-shadow-sm"></div>
 
@@ -804,7 +800,7 @@ export default function Taxi() {
                                     confirmOrigin();
                                 }}
                                 disabled={isDragging || !origin}
-                                className="w-full bg-slate-900 text-white py-4 rounded-2xl font-black text-lg shadow-[0_6px_0_#1e293b] active:shadow-[0_0px_0_#1e293b] active:translate-y-[6px] transition-all disabled:opacity-50 disabled:translate-y-[6px] disabled:shadow-none uppercase tracking-wide flex justify-center items-center gap-2 mb-6 border border-slate-700"
+                                className="w-full bg-[#ffff00] text-black py-4 rounded-2xl font-black text-lg shadow-[0_6px_0_#ca8a04] active:shadow-[0_0px_0_#ca8a04] active:translate-y-[6px] transition-all disabled:opacity-50 disabled:translate-y-[6px] disabled:shadow-none uppercase tracking-wide flex justify-center items-center gap-2 mb-6 border-2 border-slate-900"
                             >
                                 Fijar Origen
                             </button>
@@ -859,7 +855,7 @@ export default function Taxi() {
                             <button
                                 onClick={confirmDestination}
                                 disabled={isDragging || !destination}
-                                className="w-full bg-primary text-secondary py-4 rounded-2xl font-black text-lg shadow-[0_6px_0_#059669] active:shadow-[0_0px_0_#059669] active:translate-y-[6px] transition-all disabled:opacity-50 disabled:translate-y-[6px] disabled:shadow-none uppercase tracking-wide flex justify-center items-center gap-2 mb-6 border border-emerald-400"
+                                className="w-full bg-[#ffff00] text-black py-4 rounded-2xl font-black text-lg shadow-[0_6px_0_#ca8a04] active:shadow-[0_0px_0_#ca8a04] active:translate-y-[6px] transition-all disabled:opacity-50 disabled:translate-y-[6px] disabled:shadow-none uppercase tracking-wide flex justify-center items-center gap-2 mb-6 border-2 border-slate-900"
                             >
                                 Fijar Destino
                             </button>
@@ -1031,9 +1027,9 @@ export default function Taxi() {
                             <button
                                 disabled={!vehicleType || !routeInfo}
                                 onClick={handleContinueToPayment}
-                                className="w-full bg-slate-900 text-white py-4 mt-2 rounded-2xl font-black text-lg shadow-[0_6px_0_#1e293b] active:shadow-[0_0px_0_#1e293b] active:translate-y-[6px] transition-all disabled:opacity-50 disabled:translate-y-[6px] disabled:shadow-none uppercase tracking-wide flex justify-center items-center gap-2 mb-4 border border-slate-700"
+                                className="w-full bg-[#ffff00] text-black py-4 mt-2 rounded-2xl font-black text-lg shadow-[0_6px_0_#ca8a04] active:shadow-[0_0px_0_#ca8a04] active:translate-y-[6px] transition-all disabled:opacity-50 disabled:translate-y-[6px] disabled:shadow-none uppercase tracking-wide flex justify-center items-center gap-2 mb-4 border-2 border-slate-900"
                             >
-                                Continuar <ArrowRight className="w-5 h-5" />
+                                Continuar con el Pago <ArrowRight className="w-5 h-5" />
                             </button>
 
                             {/* Service Hours Section */}
@@ -1202,7 +1198,7 @@ export default function Taxi() {
                             <button
                                 disabled={isUploading || !selectedPaymentMethod}
                                 onClick={handleRequestTaxi}
-                                className="w-full bg-primary text-secondary py-4 mt-2 rounded-2xl font-black text-lg shadow-[0_6px_0_#059669] active:shadow-[0_0px_0_#059669] active:translate-y-[6px] transition-all disabled:opacity-50 disabled:translate-y-[6px] disabled:shadow-none uppercase tracking-wide flex justify-center items-center gap-2 border border-emerald-400"
+                                className="w-full bg-[#ffff00] text-black py-4 mt-2 rounded-2xl font-black text-lg shadow-[0_6px_0_#ca8a04] active:shadow-[0_0px_0_#ca8a04] active:translate-y-[6px] transition-all disabled:opacity-50 disabled:translate-y-[6px] disabled:shadow-none uppercase tracking-wide flex justify-center items-center gap-2 border-2 border-slate-900"
                             >
                                 {isUploading ? 'PROCESANDO...' : 'PAGAR E IR'}
                             </button>
@@ -1258,7 +1254,7 @@ export default function Taxi() {
                                     setShowGuestModal(false);
                                     handleRequestTaxi();
                                 }}
-                                className="w-full bg-orange-500 hover:bg-orange-600 text-white font-bold py-3 mt-2 rounded-xl"
+                                className="w-full bg-[#ffff00] text-black py-4 rounded-2xl font-black text-lg shadow-[0_6px_0_#ca8a04] active:shadow-[0_0px_0_#ca8a04] active:translate-y-[6px] transition-all uppercase tracking-wide flex justify-center items-center gap-2 border-2 border-slate-900"
                             >
                                 Continuar con el Viaje
                             </button>
@@ -1296,7 +1292,7 @@ export default function Taxi() {
                                             vibrate(30);
                                             setShowTaxiNotice(false);
                                         }}
-                                        className="w-full bg-primary hover:bg-emerald-600 active:bg-emerald-700 text-secondary font-black py-4 rounded-2xl shadow-xl shadow-primary/20 transition-all flex items-center justify-center gap-2"
+                                        className="w-full bg-[#ffff00] text-black py-4 rounded-2xl font-black text-lg shadow-[0_6px_0_#ca8a04] active:shadow-[0_0px_0_#ca8a04] active:translate-y-[6px] transition-all uppercase tracking-wide flex justify-center items-center gap-2 border-2 border-slate-900"
                                     >
                                         <span>Entendido</span>
                                         <ArrowRight className="w-5 h-5" />

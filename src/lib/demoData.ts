@@ -234,7 +234,7 @@ export const DEMO_RESTAURANTS: Restaurant[] = [
     id: 'demo-2x3-active',
     name: "Tecno Store (Resuelve 2x3)",
     category: "Electrónica",
-    businessType: 'restaurant',
+    businessType: 'store',
     rating: 4.5,
     reviews: 120,
     deliveryTime: "Same Day",
