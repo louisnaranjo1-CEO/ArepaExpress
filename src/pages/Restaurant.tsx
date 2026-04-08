@@ -1,6 +1,6 @@
-import { ArrowLeft, Search, Heart, Star, Clock, Plus, AlertCircle, MessageSquare, MapPin, ChevronRight, Phone, Instagram, UserPlus, UserCheck, Store, Truck, CheckCircle, User as UserIcon, Briefcase, X, Tag, Share2, Zap, Youtube, Music2, ExternalLink, Gift, Sparkles } from 'lucide-react';
+import { ArrowLeft, Search, Heart, Star, Clock, Plus, AlertCircle, MessageSquare, MapPin, ChevronRight, Phone, Instagram, UserPlus, UserCheck, Store, Truck, CheckCircle, User as UserIcon, Briefcase, X, Tag, Share2, Zap, Youtube, Music2, ExternalLink, Gift, Sparkles, ShoppingCart } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useParams, useNavigate } from 'react-router-dom';
 import { useState, useEffect } from 'react';
 import { doc, getDoc, collection, getDocs, updateDoc, arrayUnion, arrayRemove, setDoc, deleteDoc, increment, query, where, orderBy } from 'firebase/firestore';
 import { db } from '../lib/firebase';
@@ -15,6 +15,7 @@ import DemoAlertModal from '../components/DemoAlertModal';
 
 export default function RestaurantPage() {
   const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
   const [restaurant, setRestaurant] = useState<any | null>(null);
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
@@ -209,12 +210,8 @@ export default function RestaurantPage() {
   };
 
   const confirmClearCart = () => {
-    if (pendingCartItem) {
-      clearCart();
-      processAddToCart(pendingCartItem.product, pendingCartItem.variant, pendingCartItem.modifiers);
-      setPendingCartItem(null);
-      setShowClearCartModal(false);
-    }
+    navigate('/cart');
+    setShowClearCartModal(false);
   };
 
   const processAddToCart = (product: Product, variant?: any, modifiers?: any) => {

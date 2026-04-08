@@ -60,6 +60,7 @@ export default function Home() {
     return localStorage.getItem('userCity') ? `${localStorage.getItem('userCity')}` : 'Buscando...';
   });
   const [isCityModalOpen, setIsCityModalOpen] = useState(false);
+  const [showLocationTutorial, setShowLocationTutorial] = useState(false);
   const [isInfoModalOpen, setIsInfoModalOpen] = useState(false);
   const [isPointsModalOpen, setIsPointsModalOpen] = useState(false);
 
@@ -501,7 +502,7 @@ export default function Home() {
 
         {/* Location Selector */}
         <button
-          onClick={() => setIsCityModalOpen(true)}
+          onClick={() => setShowLocationTutorial(true)}
           className="flex items-center gap-1.5 text-secondary hover:text-black transition-all active:scale-95 py-1"
         >
           <MapPin className="w-5 h-5 shrink-0" />
@@ -515,6 +516,47 @@ export default function Home() {
       {/* Banner Section Background Fade */}
       <div className="absolute top-[170px] left-0 right-0 h-40 bg-gradient-to-b from-primary to-white z-0 pointer-events-none"></div>
 
+
+      {/* Location Tutorial Modal */}
+      <AnimatePresence>
+        {showLocationTutorial && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="bg-white rounded-[32px] overflow-hidden shadow-2xl w-full max-w-sm"
+            >
+              <div className="bg-primary p-8 flex flex-col items-center">
+                <div className="w-20 h-20 bg-white rounded-full flex items-center justify-center mb-6 shadow-lg shadow-black/10">
+                  <MapPin className="w-10 h-10 text-secondary" />
+                </div>
+                <h3 className="text-xl font-black text-secondary text-center leading-tight">
+                  Tu ubicación en un 2x3
+                </h3>
+              </div>
+              <div className="p-8">
+                <p className="text-slate-600 text-center font-bold text-lg leading-relaxed">
+                  "Ahora donde vayas podrás conseguir tus lugares favoritos y recomendados en un 2x3"
+                </p>
+                <div className="mt-8">
+                  <button
+                    onClick={() => {
+                      vibrate(30);
+                      setShowLocationTutorial(false);
+                      setIsCityModalOpen(true);
+                    }}
+                    className="w-full bg-primary hover:bg-emerald-600 active:bg-emerald-700 text-secondary font-black py-4 rounded-2xl shadow-xl shadow-primary/20 transition-all flex items-center justify-center gap-2"
+                  >
+                    <span>Entendido</span>
+                    <ChevronRight className="w-5 h-5" />
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
       <CitySelectorModal
         isOpen={isCityModalOpen}
         onClose={() => setIsCityModalOpen(false)}

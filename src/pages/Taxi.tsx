@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { collection, addDoc, serverTimestamp, doc, getDoc, updateDoc, getDocs, query, where, writeBatch, onSnapshot, Timestamp } from 'firebase/firestore';
@@ -83,6 +84,7 @@ export default function Taxi() {
     const [guestCedula, setGuestCedula] = useState('');
 
     const [showDemoAlert, setShowDemoAlert] = useState(false);
+    const [showTaxiNotice, setShowTaxiNotice] = useState(false);
 
 
     const [isFollowingUser, setIsFollowingUser] = useState(false);
@@ -683,8 +685,8 @@ export default function Taxi() {
 
     return (
         <div className="relative h-[100dvh] bg-slate-100 overflow-hidden flex flex-col">
-            {/* 1. Google Map Area - 85% Height */}
-            <div className="relative h-[85vh] w-full z-0 overflow-hidden">
+            {/* 1. Google Map Area - Increased height for A/B steps, reduced for vehicle step (60/40 split) */}
+            <div className={`relative transition-all duration-500 overflow-hidden ${step === 'vehicle' ? 'h-[60dvh]' : 'h-[85vh]'} w-full z-0`}>
                 <GoogleMap
                     mapContainerStyle={mapContainerStyle}
                     center={currentCenter}
@@ -768,10 +770,11 @@ export default function Taxi() {
                 )}
             </div>
 
-            {/* 2. Bottom Area - Remaining 15%+ Height */}
-            <div className="flex-1 bg-white z-30 shadow-[0_-10px_40px_rgba(0,0,0,0.1)] rounded-t-[2.5rem] flex flex-col min-h-[15vh]">
-                <div className="w-12 h-1.5 bg-slate-200 rounded-full mx-auto mt-3 mb-1"></div>
-                <div className="flex-1 p-6 pt-2 overflow-y-auto">
+            {/* 2. Bottom Sheet Panel - 15% to 40% height based on step */}
+            <div className={`flex-1 bg-white rounded-t-[40px] shadow-[0_-20px_50px_rgba(0,0,0,0.1)] z-10 px-6 pt-8 pb-10 overflow-y-auto transition-all duration-500 ${step === 'vehicle' ? 'min-h-[40dvh]' : ''}`}>
+                <div className="max-w-md mx-auto relative">
+                    {/* Progress Indicator */}
+                    <div className="w-12 h-1.5 bg-slate-200 rounded-full mx-auto mb-6"></div>
 
                     {/* STEP 1: ORIGIN */}
                     {step === 'origin' && (
@@ -981,20 +984,23 @@ export default function Taxi() {
 
                                     {/* Taxi Option */}
                                     <button
-                                        onClick={() => setVehicleType('carro')}
-                                        className={`w-full p-4 rounded-2xl border-2 transition-all flex items-center gap-4 text-left ${vehicleType === 'carro'
+                                        onClick={() => {
+                                            setVehicleType('carro');
+                                            setShowTaxiNotice(true);
+                                        }}
+                                        className={`w-full p-6 rounded-2xl border-2 transition-all flex items-center gap-5 text-left ${vehicleType === 'carro'
                                             ? 'border-primary bg-primary text-secondary shadow-lg shadow-primary/20 scale-[1.02]'
                                             : 'border-slate-100 bg-white hover:border-primary/30'}`}
                                     >
-                                        <div className={`w-12 h-12 rounded-full flex items-center justify-center flex-shrink-0 transition-colors ${vehicleType === 'carro' ? 'bg-white/90 text-secondary shadow-sm' : 'bg-orange-100 text-orange-600'}`}>
-                                            <Car className="w-6 h-6" />
+                                        <div className={`w-14 h-14 rounded-full flex items-center justify-center flex-shrink-0 transition-colors ${vehicleType === 'carro' ? 'bg-white/90 text-secondary shadow-sm' : 'bg-orange-100 text-orange-600'}`}>
+                                            <Car className="w-8 h-8" />
                                         </div>
                                         <div className="flex-1">
                                             <div className="flex items-center justify-between">
-                                                <h3 className={`font-black ${vehicleType === 'carro' ? 'text-secondary' : 'text-slate-800'}`}>Taxi</h3>
-                                                <span className={`font-black text-lg ${vehicleType === 'carro' ? 'text-secondary' : 'text-slate-900'}`}>${calculatePrice('carro')}</span>
+                                                <h3 className={`font-black text-lg ${vehicleType === 'carro' ? 'text-secondary' : 'text-slate-800'}`}>Taxi</h3>
+                                                <span className={`font-black text-xl ${vehicleType === 'carro' ? 'text-secondary' : 'text-slate-900'}`}>${calculatePrice('carro')}</span>
                                             </div>
-                                            <p className={`text-xs font-bold mt-0.5 ${vehicleType === 'carro' ? 'text-secondary/70' : 'text-slate-400'}`}>Hasta 4 pasajeros • Viaje cómodo</p>
+                                            <p className={`text-sm font-bold mt-1 ${vehicleType === 'carro' ? 'text-secondary/70' : 'text-slate-400'}`}>Hasta 4 pasajeros • Viaje cómodo</p>
                                         </div>
                                     </button>
 
@@ -1256,6 +1262,47 @@ export default function Taxi() {
                     </div>
                 </div>
             )}
+            <DemoAlertModal isOpen={showDemoAlert} onClose={() => setShowDemoAlert(false)} />
+
+            {/* Taxi Notice Modal */}
+            <AnimatePresence>
+                {showTaxiNotice && (
+                    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+                        <motion.div
+                            initial={{ scale: 0.9, opacity: 0 }}
+                            animate={{ scale: 1, opacity: 1 }}
+                            exit={{ scale: 0.9, opacity: 0 }}
+                            className="bg-white rounded-[32px] overflow-hidden shadow-2xl w-full max-w-sm"
+                        >
+                            <div className="bg-primary p-8 flex flex-col items-center">
+                                <div className="w-20 h-20 bg-white rounded-full flex items-center justify-center mb-6 shadow-lg shadow-black/10">
+                                    <Car className="w-10 h-10 text-secondary" />
+                                </div>
+                                <h3 className="text-xl font-black text-secondary text-center leading-tight">
+                                    Muévete con Deliexpress
+                                </h3>
+                            </div>
+                            <div className="p-8">
+                                <p className="text-slate-600 font-bold text-center leading-relaxed">
+                                    "Ahora podrás transportarte en un 2x3 dentro de la misma aplicación. Puedes seleccionar un viaje ahora o una reservación para llegar a tiempo y tener tu viaje anticipado"
+                                </p>
+                                <div className="mt-8">
+                                    <button
+                                        onClick={() => {
+                                            vibrate(30);
+                                            setShowTaxiNotice(false);
+                                        }}
+                                        className="w-full bg-primary hover:bg-emerald-600 active:bg-emerald-700 text-secondary font-black py-4 rounded-2xl shadow-xl shadow-primary/20 transition-all flex items-center justify-center gap-2"
+                                    >
+                                        <span>Entendido</span>
+                                        <ArrowRight className="w-5 h-5" />
+                                    </button>
+                                </div>
+                            </div>
+                        </motion.div>
+                    </div>
+                )}
+            </AnimatePresence>
         </div>
     );
 }
