@@ -917,7 +917,7 @@ export default function ProductManagement() {
                                         {formData.modifiers.map((modifier, modIndex) => (
                                             <div key={modifier.id} className="bg-white border text-sm border-slate-200 rounded-xl p-3 space-y-3">
                                                 <div className="flex items-center gap-2">
-                                                    <span className="text-[10px] px-2 py-1 bg-primary/10 text-primary font-black uppercase rounded-lg">
+                                                    <span className="text-[10px] px-2 py-1 bg-primary/10 text-slate-900 font-black uppercase rounded-lg">
                                                         {modifier.type === 'beverage' ? 'Bebidas' : modifier.type === 'extra' ? 'Extras' : modifier.type === 'preference' ? 'Preferencias' : 'Instrucciones'}
                                                     </span>
                                                     <input
@@ -984,7 +984,7 @@ export default function ProductManagement() {
                                                         <button
                                                             type="button"
                                                             onClick={() => addModifierOption(modIndex)}
-                                                            className="text-[10px] font-black uppercase text-primary hover:text-primary-dark transition-colors flex items-center gap-1"
+                                                            className="text-[10px] font-black uppercase text-slate-900 hover:text-slate-700 transition-colors flex items-center gap-1"
                                                         >
                                                             <Plus className="w-3 h-3" /> Añadir Opción
                                                         </button>

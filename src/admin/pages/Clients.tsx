@@ -156,7 +156,7 @@ export default function Clients() {
                                             <div className="flex items-center gap-2">
                                                 <p className="text-xs text-slate-400 font-bold uppercase tracking-wider">{client.totalOrders} pedidos</p>
                                                 <span className="text-[10px] text-slate-900 font-black">•</span>
-                                                <p className="text-xs text-primary font-black tracking-tight">{client.points} Pts</p>
+                                                <p className="text-xs text-slate-900 font-black tracking-tight">{client.points} Pts</p>
                                             </div>
                                         </div>
                                         <ChevronRight className={`w-5 h-5 text-slate-300 transition-transform ${selectedClient?.id === client.id ? 'translate-x-1 text-slate-900' : ''}`} />
@@ -223,8 +223,8 @@ export default function Clients() {
                                     <p className="text-xl font-black text-slate-900">{selectedClient.cartItems?.length || 0}</p>
                                 </div>
                                 <div className="p-6 text-center border-r border-slate-50 bg-indigo-50/30">
-                                    <p className="text-[10px] font-black text-primary uppercase tracking-widest mb-1">Puntos</p>
-                                    <p className="text-xl font-black text-primary">{selectedClient.points}</p>
+                                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Puntos</p>
+                                    <p className="text-xl font-black text-slate-900">{selectedClient.points}</p>
                                 </div>
                                 <div className="p-6 text-center">
                                     <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Desde</p>
@@ -267,7 +267,7 @@ export default function Clients() {
 
                                     <div className="space-y-4">
                                         <h3 className="text-sm font-black text-slate-900 uppercase tracking-widest flex items-center gap-2">
-                                            <ShoppingBag className="w-4 h-4 text-orange-500" /> Carrito Actual
+                                            <ShoppingBag className="w-4 h-4 text-slate-900" /> Carrito Actual
                                         </h3>
                                         <div className="space-y-2">
                                             {selectedClient.cartItems && selectedClient.cartItems.length > 0 ? (
@@ -275,7 +275,7 @@ export default function Clients() {
                                                     {selectedClient.cartItems.map((item, idx) => (
                                                         <div key={idx} className="flex justify-between items-center text-sm font-bold bg-orange-50 text-orange-700 p-2 px-3 rounded-lg border border-orange-100">
                                                             <span>{item.name} x{item.quantity}</span>
-                                                            <span className="text-xs opacity-70">${(item.price * item.quantity).toFixed(2)}</span>
+                                                            <span className="text-xs text-slate-900 opacity-70">${(item.price * item.quantity).toFixed(2)}</span>
                                                         </div>
                                                     ))}
                                                 </div>

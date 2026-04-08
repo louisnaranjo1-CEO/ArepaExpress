@@ -579,7 +579,7 @@ export default function Fidelization() {
                                             </div>
                                         </td>
                                         <td className="p-6 text-center">
-                                            <div className="text-lg font-black text-primary drop-shadow-sm">
+                                            <div className="text-lg font-black text-slate-900 drop-shadow-sm">
                                                 {client.points.toLocaleString()} <span className="text-[10px] opacity-40">Pts</span>
                                             </div>
                                         </td>
@@ -680,7 +680,7 @@ export default function Fidelization() {
                                                     {c.prizes?.map((p, pidx) => (
                                                         <p key={pidx} className="text-[11px] font-bold text-slate-500">
                                                             {c.prizes.length > 1 ? `Premio #${pidx + 1}: ` : 'Premio: '}
-                                                            <span className="text-primary">{p}</span>
+                                                            <span className="text-slate-900">{p}</span>
                                                         </p>
                                                     ))}
                                                 </div>
@@ -896,7 +896,7 @@ export default function Fidelization() {
                         <div className="p-8 border-b border-slate-100 flex items-center justify-between bg-indigo-50/50">
                             <div>
                                 <h2 className="text-2xl font-black text-indigo-900">Crear Sorteo</h2>
-                                <p className="text-primary/70 text-sm font-bold">Selecciona aleatoriamente entre los clientes que cumplen los filtros.</p>
+                                <p className="text-slate-900/70 text-sm font-bold">Selecciona aleatoriamente entre los clientes que cumplen los filtros.</p>
                             </div>
                             <button onClick={() => !runningContest && setIsContestModalOpen(false)} className="p-2 text-primary hover:bg-white rounded-full transition-colors">
                                 <X className="w-6 h-6" />
@@ -931,7 +931,7 @@ export default function Fidelization() {
                                                     newPrizes[idx] = e.target.value;
                                                     setContestForm({ ...contestForm, prizes: newPrizes });
                                                 }}
-                                                className="w-full bg-white border border-slate-200 focus:border-primary p-4 rounded-2xl outline-none font-bold text-primary shadow-sm"
+                                                className="w-full bg-white border border-slate-200 focus:border-primary p-4 rounded-2xl outline-none font-bold text-slate-900 shadow-sm"
                                             />
                                         </div>
                                     ))}
