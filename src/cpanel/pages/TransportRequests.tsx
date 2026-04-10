@@ -159,7 +159,13 @@ export default function TransportRequests() {
     };
 
     const filteredRequests = requests.filter(req => {
-        if (filter !== 'all' && req.status !== filter) return false;
+        if (filter !== 'all') {
+            if (filter === 'in_progress') {
+                if (!['accepted', 'arriving', 'in_progress'].includes(req.status)) return false;
+            } else {
+                if (req.status !== filter) return false;
+            }
+        }
 
         if (searchTerm) {
             const term = searchTerm.toLowerCase();

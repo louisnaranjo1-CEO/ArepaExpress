@@ -372,37 +372,37 @@ export default function TransportTracker() {
 
             {/* Map/Logo Area */}
             <div className="flex-1 relative z-0 flex items-center justify-center bg-slate-50">
-                {request.status === 'completed' || request.status === 'searching' || request.status === 'verifying_payment' ? (
-                    <div className="flex flex-col items-center justify-center gap-6 animate-fade-in px-8">
-                        <div className="w-48 h-48 bg-white rounded-[40px] shadow-2xl shadow-primary/20 p-8 flex items-center justify-center">
+                {['completed', 'cancelled'].includes(request.status) ? (
+                    <div className="flex flex-col items-center justify-center gap-4 animate-fade-in px-6 w-full h-full pb-20">
+                        <div className="w-32 h-32 bg-white rounded-3xl shadow-xl shadow-primary/20 p-5 flex items-center justify-center">
                             <img
                                 src="https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/logo.png?alt=media&v=1.1"
                                 alt="Deliexpress Logo"
                                 className="w-full h-full object-contain animate-bounce-subtle"
                             />
                         </div>
-                        <div className="text-center">
-                            <h3 className="text-2xl font-black text-slate-900 mb-2">
-                                {request.status === 'completed' ? '¡Servicio Finalizado!' : 
-                                 request.status === 'verifying_payment' ? 'Verificando Pago' : 
-                                 'Buscando Conductor'}
+                        <div className="text-center bg-white/60 backdrop-blur-md p-4 rounded-xl shadow-sm border border-white/50">
+                            <h3 className="text-lg font-black text-slate-900 mb-1">
+                                {request.status === 'completed' ? '¡Llegamos a tu destino!' : 'Viaje Cancelado'}
                             </h3>
-                            <p className="text-slate-500 font-bold max-w-[250px]">
-                                {request.status === 'completed' ? 'Gracias por confiar en el transporte express de Deliexpress' : 
-                                 request.status === 'verifying_payment' ? 'Estamos procesando tu comprobante...' :
-                                 'Conectando con vehículos en tu zona...'}
+                            <p className="text-slate-500 font-bold max-w-[250px] text-xs">
+                                {request.status === 'completed' ? 'Gracias por usar el servicio de taxi express.' : 'Esta solicitud ya no está activa.'}
                             </p>
                         </div>
                     </div>
                 ) : !showChat ? (
-                    <GoogleMap
-                        mapContainerStyle={mapContainerStyle}
-                        center={request.origin || { lat: 10.4806, lng: -66.9036 }}
-                        zoom={14}
-                        onLoad={onLoad}
-                        onUnmount={onUnmount}
-                        options={mapOptions}
-                    />
+                    <div className="w-full h-full relative">
+                        {/* Overlay to ensure back button is visible on the map */}
+                        <div className="absolute top-0 left-0 right-0 h-24 bg-gradient-to-b from-black/20 to-transparent z-10 pointer-events-none"></div>
+                        <GoogleMap
+                            mapContainerStyle={mapContainerStyle}
+                            center={request.origin || { lat: 10.4806, lng: -66.9036 }}
+                            zoom={14}
+                            onLoad={onLoad}
+                            onUnmount={onUnmount}
+                            options={mapOptions}
+                        />
+                    </div>
                 ) : null}
             </div>
 
@@ -414,26 +414,26 @@ export default function TransportTracker() {
             )}
 
             {/* Bottom Sheet */}
-            <div className="relative z-30 bg-white rounded-t-[2rem] shadow-[0_-10px_40px_rgba(0,0,0,0.1)] pt-2 pb-6 px-6">
-                <div className="w-12 h-1.5 bg-slate-200 rounded-full mx-auto my-3"></div>
+            <div className="relative z-30 bg-white rounded-t-[24px] shadow-[0_-10px_40px_rgba(0,0,0,0.1)] pt-2 pb-4 px-4 sm:px-6">
+                <div className="w-10 h-1.5 bg-slate-200 rounded-full mx-auto my-2"></div>
 
                 {/* Status Header */}
-                <div className="flex items-center gap-4 mb-6">
-                    <div className={`w-14 h-14 ${statusInfo.bg} ${statusInfo.color} rounded-2xl flex items-center justify-center shrink-0`}>
-                        <StatusIcon className="w-7 h-7" />
+                <div className="flex items-center gap-3 mb-4">
+                    <div className={`w-10 h-10 ${statusInfo.bg} ${statusInfo.color} rounded-xl flex items-center justify-center shrink-0`}>
+                        <StatusIcon className="w-5 h-5" />
                     </div>
                     <div>
                         <div className="flex items-center gap-2">
-                            <h2 className="text-xl font-black text-slate-900">{statusInfo.title}</h2>
+                            <h2 className="text-lg font-black text-slate-900 leading-none">{statusInfo.title}</h2>
                             {request.scheduled && (
-                                <span className="bg-purple-100 text-purple-700 px-2 py-0.5 rounded-lg text-[10px] font-black uppercase tracking-wider animate-pulse border border-purple-200">
+                                <span className="bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-wider animate-pulse border border-purple-200">
                                     RESERVA
                                 </span>
                             )}
                         </div>
-                        <p className="font-bold text-slate-500 ">
+                        <p className="font-bold text-slate-500 text-xs mt-0.5">
                             {request.scheduled && request.status === 'searching' 
-                                ? `Programado para: ${request.scheduledAt && typeof request.scheduledAt.toDate === 'function' ? request.scheduledAt.toDate().toLocaleString('es-VE', { weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' }) : 'Fecha pendiente'}`
+                                ? `Programado para: ${request.scheduledAt && typeof request.scheduledAt.toDate === 'function' ? request.scheduledAt.toDate().toLocaleString('es-VE', { weekday: 'long', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : 'Fecha pendiente'}`
                                 : statusInfo.subtitle}
                         </p>
                     </div>
@@ -441,40 +441,41 @@ export default function TransportTracker() {
 
                 {/* Cancelar Reserva Botón */}
                 {request.scheduled && ['searching', 'accepted'].includes(request.status) && (
-                    <div className="mb-6 p-4 bg-red-50 border border-red-100 rounded-2xl flex flex-col items-center">
-                        <p className="text-xs text-red-600 font-bold text-center mb-3">
-                            Puedes cancelar esta reserva. El pago será reembolsado como saldo a tu billetera virtual de Deliexpress.
+                    <div className="mb-4 p-2.5 bg-red-50 border border-red-100 rounded-xl flex flex-col items-center">
+                        <p className="text-[10px] text-red-600 font-bold text-center mb-2 leading-tight">
+                            Puedes cancelar y el dinero será devuelto a tu billetera.
                         </p>
                         <button
                             onClick={handleCancelReservation}
-                            className="w-full bg-white text-red-500 font-black py-3 rounded-xl border border-red-200 shadow-sm active:scale-95 transition-all flex justify-center items-center gap-2"
+                            className="w-full bg-white text-red-500 font-black py-2.5 text-xs rounded-lg border border-red-200 shadow-sm active:scale-95 transition-all flex justify-center items-center gap-2"
                         >
-                            <XCircle className="w-5 h-5" /> CANCELAR MÍ RESERVA
+                            <XCircle className="w-4 h-4" /> CANCELAR RESERVA
                         </button>
                     </div>
                 )}
 
                 {/* Guest Banner */}
                 {request.userId?.startsWith('guest_') && (
-                    <div className="bg-gradient-to-r from-orange-500 to-amber-500 p-5 rounded-2xl shadow-lg mb-6 w-full relative overflow-hidden">
-                        <div className="absolute -top-4 -right-4 w-20 h-20 bg-white/20 rounded-full blur-xl animate-pulse"></div>
-                        <h3 className="text-white font-black text-xl mb-2 relative z-10">🎁 ¡Gana viajes gratis!</h3>
-                        <p className="text-white/90 text-xs font-medium mb-3 relative z-10">
-                            Regístrate Un 2x3 y obtén increíbles premios, descuentos y acumula puntos en todos los viajes.
-                        </p>
-                        <button onClick={() => navigate('/profile?action=register')} className="inline-block bg-white text-orange-600 text-sm font-bold px-5 py-2 rounded-xl shadow-md hover:scale-105 active:scale-95 transition-transform relative z-10">
-                            Registrarme ahora
+                    <div className="bg-gradient-to-r from-orange-500 to-amber-500 p-3 rounded-xl shadow-md mb-4 w-full flex items-center justify-between">
+                        <div>
+                            <h3 className="text-white font-black text-sm relative z-10">🎁 ¡Viajes gratis!</h3>
+                            <p className="text-white/90 text-[10px] font-bold leading-tight max-w-[160px] relative z-10">
+                                Regístrate y acumula puntos.
+                            </p>
+                        </div>
+                        <button onClick={() => navigate('/profile?action=register')} className="bg-white text-orange-600 text-xs font-bold px-3 py-1.5 rounded-lg shadow-sm active:scale-95 relative z-10">
+                            Registrarme
                         </button>
                     </div>
                 )}
 
                 {/* Rating Section if Completed */}
                 {request.status === 'completed' && !request.rating && !hasRated && (
-                    <div className="bg-indigo-50/50 border-2 border-indigo-100 rounded-3xl p-6 mb-6 animate-in fade-in slide-in-from-bottom-4">
-                        <h3 className="text-center font-black text-slate-800 text-lg mb-2">¿Qué tal estuvo tu viaje?</h3>
-                        <p className="text-center text-xs font-bold text-slate-500 mb-6">Tu opinión nos ayuda a mejorar el servicio</p>
+                    <div className="bg-indigo-50/50 border border-indigo-100 rounded-2xl p-4 mb-4">
+                        <h3 className="text-center font-black text-slate-800 text-base mb-1">¿Qué tal estuvo tu viaje?</h3>
+                        <p className="text-center text-[10px] font-bold text-slate-500 mb-3">Tu opinión ayuda a mejorar el servicio</p>
 
-                        <div className="flex justify-center gap-3 mb-8">
+                        <div className="flex justify-center gap-2 mb-4">
                             {[1, 2, 3, 4, 5].map((star) => (
                                 <button
                                     key={star}
@@ -484,7 +485,7 @@ export default function TransportTracker() {
                                     className="transition-all transform active:scale-90"
                                 >
                                     <Star
-                                        className={`w-10 h-10 ${(hoverRating || rating) >= star ? 'fill-amber-400 text-amber-400' : 'text-slate-300'} transition-colors animate-in zoom-in-75`}
+                                        className={`w-8 h-8 ${(hoverRating || rating) >= star ? 'fill-amber-400 text-amber-400' : 'text-slate-300'} transition-colors`}
                                         strokeWidth={1.5}
                                     />
                                 </button>
@@ -495,86 +496,82 @@ export default function TransportTracker() {
                             value={comment}
                             onChange={(e) => setComment(e.target.value)}
                             placeholder="Déjanos un comentario (opcional)..."
-                            className="w-full bg-white border border-slate-200 rounded-2xl p-4 text-sm font-medium focus:outline-none focus:ring-4 focus:ring-indigo-100 min-h-[100px] mb-6 outline-none transition-all placeholder:text-slate-400"
+                            className="w-full bg-white border border-slate-200 rounded-xl p-3 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-100 min-h-[60px] mb-3 outline-none transition-all placeholder:text-slate-400"
                         />
 
                         <button
                             onClick={handleRateTrip}
                             disabled={rating === 0 || submittingRating}
-                            className="w-full bg-primary text-slate-900 font-black py-4 rounded-2xl shadow-xl shadow-primary/30 flex justify-center items-center gap-2 active:scale-95 transition-all disabled:opacity-50"
+                            className="w-full bg-primary text-slate-900 font-bold py-2.5 rounded-xl shadow-md shadow-primary/20 flex justify-center items-center gap-2 active:scale-95 transition-all text-sm disabled:opacity-50"
                         >
-                            {submittingRating ? <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div> : 'Enviar Calificación'}
+                            {submittingRating ? <div className="w-4 h-4 border-2 border-slate-900 border-t-transparent rounded-full animate-spin"></div> : 'Enviar Calificación'}
                         </button>
                     </div>
                 )}
 
                 {hasRated && (
-                    <div className="bg-emerald-50 border-2 border-emerald-100 rounded-3xl p-6 mb-6 text-center animate-in zoom-in-95">
-                        <div className="w-12 h-12 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto mb-3">
-                            <CheckCircle2 className="w-7 h-7" />
-                        </div>
-                        <h3 className="font-black text-emerald-900 mb-1">¡Gracias por tu mensaje!</h3>
-                        <p className="text-sm font-bold text-emerald-700/70">Tu calificación ha sido enviada con éxito.</p>
+                    <div className="bg-emerald-50 border border-emerald-100 rounded-2xl p-3 mb-4 flex items-center justify-center gap-2">
+                        <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                        <span className="font-bold text-emerald-900 text-sm">Mensaje enviado. ¡Gracias!</span>
                     </div>
                 )}
 
                 {/* Route Info summary if available */}
                 {routeInfo && (
-                    <div className="flex gap-4 mb-6 pt-6 border-t border-slate-100">
-                        <div className="flex-1 bg-slate-50 p-3 rounded-2xl text-center">
-                            <p className="text-xs font-bold text-slate-400 uppercase tracking-wide mb-1">Distancia</p>
-                            <p className="font-black text-slate-800">{routeInfo.distance}</p>
+                    <div className="flex gap-2 mb-4 pt-3 border-t border-slate-100">
+                        <div className="flex-1 bg-slate-50 p-2 rounded-xl text-center">
+                            <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wide">Distancia</p>
+                            <p className="font-black text-sm text-slate-800">{routeInfo.distance}</p>
                         </div>
-                        <div className="flex-1 bg-slate-50 p-3 rounded-2xl text-center">
-                            <p className="text-xs font-bold text-slate-400 uppercase tracking-wide mb-1">Tiempo Estimado</p>
-                            <p className="font-black text-slate-800">{routeInfo.duration}</p>
+                        <div className="flex-1 bg-slate-50 p-2 rounded-xl text-center">
+                            <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wide">Tiempo Estimado</p>
+                            <p className="font-black text-sm text-slate-800">{routeInfo.duration}</p>
                         </div>
                     </div>
                 )}
 
                 {/* Driver Info (If Assigned) */}
                 {driver && (
-                    <div className="bg-white rounded-2xl p-4 border-2 border-slate-100 mb-6 flex items-center justify-between">
-                        <div className="flex items-center gap-4">
+                    <div className="bg-white rounded-xl p-3 border border-slate-200 mb-4 flex items-center justify-between shadow-sm">
+                        <div className="flex items-center gap-3">
                             <div className="relative">
-                                <img src={driver.documents.selfieUrl} alt="Driver" className="w-14 h-14 rounded-full object-cover bg-slate-100" />
-                                <div className="absolute -bottom-1 -right-1 bg-orange-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full border-2 border-white">
+                                <img src={driver.documents.selfieUrl} alt="Driver" className="w-10 h-10 rounded-full object-cover bg-slate-100" />
+                                <div className="absolute -bottom-1 -right-1 bg-orange-500 text-white text-[8px] font-bold px-1.5 py-0.5 rounded-full border border-white">
                                     ★ 4.9
                                 </div>
                             </div>
                             <div>
-                                <p className="font-black text-slate-900 leading-tight">{driver.fullName.split(' ')[0]}</p>
-                                <p className="text-xs font-bold text-slate-500 capitalize">{driver.vehicleType} • {driver.vehiclePlate}</p>
-                                <p className="text-[11px] font-bold text-slate-400 mt-0.5">{driver.vehicleColor}</p>
+                                <p className="font-black text-slate-900 text-sm leading-tight">{driver.fullName.split(' ')[0]}</p>
+                                <p className="text-[10px] font-bold text-slate-500 capitalize">{driver.vehicleType} • {driver.vehiclePlate}</p>
                             </div>
                         </div>
                         <div className="flex gap-2">
                             {['searching', 'verifying_payment', 'accepted', 'arriving', 'in_progress'].includes(request.status) && (
-                                <button onClick={() => setShowChat(true)} className="w-12 h-12 bg-orange-50 text-orange-500 rounded-full flex items-center justify-center active:scale-95 transition-transform relative">
-                                    <MessageCircle className="w-5 h-5" />
+                                <button onClick={() => setShowChat(true)} className="w-10 h-10 bg-orange-50 text-orange-500 rounded-full flex items-center justify-center active:scale-95 transition-transform relative">
+                                    <MessageCircle className="w-4 h-4" />
                                     {unreadCount > 0 && (
-                                        <div className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white text-[10px] font-black rounded-full border-2 border-white flex items-center justify-center animate-bounce">
+                                        <div className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white text-[9px] font-black rounded-full border border-white flex items-center justify-center animate-bounce">
                                             {unreadCount}
                                         </div>
                                     )}
                                 </button>
                             )}
-                            <a href={`tel:${driver.phone}`} className="w-12 h-12 bg-slate-100 text-slate-700 rounded-full flex items-center justify-center active:scale-95 transition-transform">
-                                <Phone className="w-5 h-5 fill-current" />
+                            <a href={`tel:${driver.phone}`} className="w-10 h-10 bg-slate-100 text-slate-700 rounded-full flex items-center justify-center active:scale-95 transition-transform">
+                                <Phone className="w-4 h-4 fill-current" />
                             </a>
                         </div>
                     </div>
                 )}
 
                 {/* Payment Summary */}
-                <div className="bg-slate-50 rounded-2xl p-4 flex justify-between items-center">
+                <div className="bg-slate-50 rounded-xl p-3 flex justify-between items-center border border-slate-100">
                     <div>
-                        <p className="text-xs font-bold text-slate-500 mb-1">Total del Viaje</p>
-                        <p className="font-black text-lg text-slate-900">${parseFloat(request.price).toFixed(2)}</p>
+                        <p className="text-[10px] font-bold text-slate-500">Total a pagar</p>
+                        <p className="font-black text-base text-slate-900">${parseFloat(request.price).toFixed(2)}</p>
                     </div>
                     <div className="text-right">
-                        <p className="text-xs font-bold text-slate-500 mb-1">Método</p>
-                        <p className="font-bold text-slate-700 capitalize">
+                        <p className="text-[10px] font-bold text-slate-500">Método de pago</p>
+                        <p className="font-bold text-xs text-slate-700 capitalize">
                             {request.paymentMethod === 'pagoMovil' ? 'Pago Móvil' : request.paymentMethod}
                         </p>
                     </div>
