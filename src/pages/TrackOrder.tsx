@@ -1,9 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { doc, onSnapshot, getDoc } from 'firebase/firestore';
+import { doc, onSnapshot, getDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { DeliveryDriver } from '../lib/delivery-service';
-import { Navigation, Clock, CheckCircle2, Package, MapPin, Phone, ArrowLeft, Store, Star, Wallet } from 'lucide-react';
+import { Navigation, Clock, CheckCircle2, Package, MapPin, Phone, ArrowLeft, Store, Star, Wallet, X } from 'lucide-react';
+import toast from 'react-hot-toast';
 import { useCurrency } from '../context/CurrencyContext';
 import DeliveryPaymentModal from '../components/DeliveryPaymentModal';
 import ReviewModal from '../components/ReviewModal';
@@ -20,6 +21,26 @@ export default function TrackOrder() {
     const { bcvRate } = useCurrency();
     const [hasPaidRestaurant, setHasPaidRestaurant] = useState(false);
     const [showDeliveryPaymentModal, setShowDeliveryPaymentModal] = useState(false);
+    
+    const [infoStep, setInfoStep] = useState<number | null>(null);
+    const [editDelivery, setEditDelivery] = useState({
+        deliveryMethod: 'app_delivery',
+        vehicleType: 'moto',
+        addressName: '',
+        addressReference: ''
+    });
+
+    useEffect(() => {
+        if (order) {
+            setEditDelivery({
+                deliveryMethod: order.deliveryMethod || 'app_delivery',
+                vehicleType: order.vehicleType || 'moto',
+                addressName: order.address?.name || '',
+                addressReference: order.address?.reference || ''
+            });
+        }
+    }, [order?.deliveryMethod, order?.vehicleType, order?.address?.name, order?.address?.reference]);
+
     useEffect(() => {
         if (order && order.status === 'delivered' && !order.hasReviewed) {
             setShowReviewModal(true);
@@ -73,6 +94,86 @@ export default function TrackOrder() {
             </div>
         );
     }
+
+    if (order.status === 'cancelled') {
+        return (
+            <div className="flex flex-col items-center justify-center min-h-screen px-6 text-center bg-slate-50">
+                <div className="w-24 h-24 bg-red-100 text-red-500 flex items-center justify-center rounded-[2.5rem] mb-6 shadow-xl shadow-red-500/20">
+                    <X className="w-10 h-10" />
+                </div>
+                <h2 className="text-2xl font-black text-slate-900 mb-2">Pedido Cancelado</h2>
+                <p className="text-slate-500 font-medium mb-8">El pedido ha sido cancelado satisfactoriamente.</p>
+                <button onClick={() => navigate('/')} className="bg-slate-900 text-white rounded-2xl px-8 py-4 font-black shadow-xl hover:bg-slate-800 transition-colors">Volver al inicio</button>
+            </div>
+        );
+    }
+
+    const handleRestaurantPaid = async () => {
+        if(!orderId) return;
+        if(window.confirm(`¿Confirmas que ya pagaste a ${restaurant?.name || 'Negocio'}?`)){
+            try {
+                await updateDoc(doc(db, 'orders', orderId), {
+                    restaurantPaymentClientConfirmed: true,
+                    status: 'preparing'
+                });
+                toast.success('Pago confirmado y validado con el restaurante');
+            } catch (error) {
+                console.error(error);
+                toast.error('Ocurrió un error al confirmar el pago');
+            }
+        }
+    };
+
+    const handleCancelOrder = async () => {
+        if(!orderId) return;
+        if(window.confirm('¿Estás seguro que deseas cancelar tu pedido? Esta acción no se puede deshacer.')) {
+            try {
+                await updateDoc(doc(db, 'orders', orderId), {
+                    status: 'cancelled',
+                    cancelledAt: serverTimestamp()
+                });
+                toast.success('Pedido cancelado');
+            } catch (error) {
+                console.error(error);
+                toast.error('Ocurrió un error al cancelar');
+            }
+        }
+    };
+
+    const handleSwitchToPickup = async () => {
+        if(!orderId || !order) return;
+        if(window.confirm('¿Deseas cambiar tu entrega a Retiro en Local? El costo de delivery será $0.')) {
+            try {
+                await updateDoc(doc(db, 'orders', orderId), {
+                    deliveryMethod: 'pickup',
+                    deliveryFee: 0,
+                    total: order.subtotal
+                });
+                toast.success("Cambiado a Pick Up");
+            } catch (error) {
+                console.error(error);
+                toast.error("Error al actualizar método de entrega");
+            }
+        }
+    };
+
+    const handleProceedToDeliveryPayment = async () => {
+        if (!orderId) return;
+        try {
+            await updateDoc(doc(db, 'orders', orderId), {
+                vehicleType: editDelivery.vehicleType,
+                address: {
+                    ...(order.address || {}),
+                    name: editDelivery.addressName,
+                    reference: editDelivery.addressReference
+                }
+            });
+            setShowDeliveryPaymentModal(true);
+        } catch (error) {
+            console.error(error);
+            toast.error("Error guardando opciones");
+        }
+    };
 
     // Determine current step index for the progress bar
     const getStepIndex = () => {
@@ -194,7 +295,11 @@ export default function TrackOrder() {
                         ></div>
                         <div className="relative flex justify-between">
                             {[1, 2, 3, 4].map((step) => (
-                                <div key={step} className={`w-8 h-8 rounded-full flex items-center justify-center ring-4 ring-white transition-colors duration-500 ${step <= currentStep ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-500/30' : 'bg-slate-200 text-slate-400'}`}>
+                                <div 
+                                    key={step} 
+                                    onClick={() => setInfoStep(infoStep === step ? null : step)}
+                                    className={`w-8 h-8 rounded-full flex items-center justify-center ring-4 ring-white cursor-pointer transition-colors duration-500 hover:scale-110 ${step <= currentStep ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-500/30' : 'bg-slate-200 text-slate-400'}`}
+                                >
                                     {step === 1 && <Wallet className="w-4 h-4" />}
                                     {step === 2 && <Package className="w-4 h-4" />}
                                     {step === 3 && <Navigation className="w-4 h-4" />}
@@ -203,35 +308,121 @@ export default function TrackOrder() {
                             ))}
                         </div>
                     </div>
+                    {infoStep && (
+                        <div className="mt-4 p-4 bg-slate-900 text-white text-xs font-bold rounded-xl text-center shadow-lg animate-in fade-in slide-in-from-top-2">
+                            {infoStep === 1 && "Verificación de Pagos: Paga a la tienda y al repartidor para iniciar tu orden."}
+                            {infoStep === 2 && "Preparación: El local ha recibido el dinero y está cocinando tus productos."}
+                            {infoStep === 3 && "En Tránsito: Tu pedido fue asignado y va en camino a tu destino."}
+                            {infoStep === 4 && "¡Disfruta! Tu pedido ha sido entregado satisfactoriamente."}
+                        </div>
+                    )}
 
                     {/* Delivery Payment Flow */ }
-                    {currentStep === 1 && order.deliveryMethod === 'app_delivery' && (!order.deliveryPaymentStatus || order.deliveryPaymentStatus === 'rejected') && (
+                    {(currentStep === 1 || currentStep === 2) && order.deliveryMethod === 'app_delivery' && (!order.deliveryPaymentStatus || order.deliveryPaymentStatus === 'rejected') && (
                         <div className="mt-6 pt-6 border-t border-slate-100 flex flex-col items-center gap-3 animate-in fade-in slide-in-from-bottom-2">
                             {order.deliveryPaymentStatus === 'rejected' && (
-                                <div className="p-3 bg-red-50 text-red-600 text-xs font-bold rounded-xl mb-2 text-center">
-                                    Tu captura de pago del delivery fue rechazada por el administrador. Por favor, verifica e intenta de nuevo.
+                                <div className="p-3 bg-red-50 text-red-600 text-xs font-bold rounded-xl mb-2 text-center w-full border border-red-200">
+                                    Tu captura de pago del delivery fue rechazada. Por favor, verifica tu referencia e intenta de nuevo.
                                 </div>
                             )}
                             
-                            {!hasPaidRestaurant ? (
-                                <button 
-                                    onClick={() => setHasPaidRestaurant(true)}
-                                    className="w-full bg-slate-900 text-white py-4 rounded-2xl font-black shadow-lg hover:bg-slate-800 transition-colors"
-                                >
-                                    Ya pagué el pedido a {restaurant?.name || "Negocio"}
-                                </button>
-                            ) : (
-                                <div className="w-full animate-in fade-in zoom-in-95 duration-200">
+                            {(!order.restaurantPaymentClientConfirmed && (order.status === 'pending' || order.status === 'pendiente_pago')) ? (
+                                <>
                                     <button 
-                                        onClick={() => setShowDeliveryPaymentModal(true)}
-                                        className="w-full bg-primary text-slate-900 py-4 rounded-2xl font-black shadow-xl shadow-primary/20 hover:scale-[1.02] active:scale-95 transition-all text-lg flex items-center justify-center gap-2"
+                                        onClick={handleRestaurantPaid}
+                                        className="w-full bg-slate-900 text-white py-4 rounded-2xl font-black shadow-lg hover:bg-slate-800 transition-colors"
                                     >
-                                        <Wallet className="w-6 h-6" />
-                                        Pagar Delivery
+                                        Ya pagué el pedido a {restaurant?.name || "Negocio"}
                                     </button>
-                                    <p className="text-center text-[10px] uppercase font-bold text-slate-400 mt-3 px-4">
-                                        Debes pagar el delivery de ${order.deliveryFee?.toFixed(2)} USD para que tu pedido sea asignado a un piloto.
-                                    </p>
+                                    <button 
+                                        onClick={handleCancelOrder}
+                                        className="w-full bg-red-100 text-red-600 py-3 rounded-2xl font-bold hover:bg-red-200 transition-colors mt-2"
+                                    >
+                                        Cancelar Pedido
+                                    </button>
+                                </>
+                            ) : (
+                                <div className="w-full animate-in fade-in zoom-in-95 duration-200 bg-slate-50 p-4 rounded-3xl border-2 border-slate-100 relative shadow-inner">
+                                    <h4 className="font-black text-slate-800 mb-4 flex items-center gap-2">
+                                        <Package className="w-5 h-5 text-primary"/>
+                                        Opciones de Envío
+                                    </h4>
+                                    
+                                    <div className="mb-4">
+                                        <label className="text-[10px] uppercase font-black text-slate-400 ml-1">Método de entrega</label>
+                                        <div className="flex bg-slate-200 p-1 rounded-xl mt-1">
+                                            <button 
+                                                onClick={() => setEditDelivery({...editDelivery, deliveryMethod: 'app_delivery'})}
+                                                className={`flex-1 py-2 rounded-lg font-bold text-xs transition-colors ${editDelivery.deliveryMethod === 'app_delivery' ? 'bg-white shadow-sm text-slate-900' : 'text-slate-500'}`}
+                                            >
+                                                Delivery
+                                            </button>
+                                            <button 
+                                                onClick={() => setEditDelivery({...editDelivery, deliveryMethod: 'pickup'})}
+                                                className={`flex-1 py-2 rounded-lg font-bold text-xs transition-colors ${editDelivery.deliveryMethod === 'pickup' ? 'bg-white shadow-sm text-slate-900' : 'text-slate-500'}`}
+                                            >
+                                                Pick Up (Retiro)
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    {editDelivery.deliveryMethod === 'app_delivery' ? (
+                                        <>
+                                            <div className="mb-4 space-y-3">
+                                                <div>
+                                                    <label className="text-[10px] uppercase font-black text-slate-400 ml-1">Tipo de Vehículo</label>
+                                                    <select 
+                                                        value={editDelivery.vehicleType}
+                                                        onChange={(e) => setEditDelivery({...editDelivery, vehicleType: e.target.value})}
+                                                        className="w-full bg-white border-2 border-slate-100 px-4 py-2.5 rounded-xl text-sm font-black text-slate-700 mt-1"
+                                                    >
+                                                        <option value="moto">Mototaxi (Estándar)</option>
+                                                        <option value="taxi">Taxi (Paquetes grandes o delicados)</option>
+                                                    </select>
+                                                </div>
+                                                <div>
+                                                    <label className="text-[10px] uppercase font-black text-slate-400 ml-1">Dirección de Entrega (Opcional)</label>
+                                                    <input 
+                                                        value={editDelivery.addressName}
+                                                        onChange={(e) => setEditDelivery({...editDelivery, addressName: e.target.value})}
+                                                        placeholder="Escribe tu dirección"
+                                                        className="w-full bg-white border-2 border-slate-100 px-4 py-2.5 rounded-xl text-sm font-bold mt-1 text-slate-700"
+                                                    />
+                                                </div>
+                                                <div>
+                                                    <label className="text-[10px] uppercase font-black text-slate-400 ml-1">Puntos de Referencia</label>
+                                                    <input 
+                                                        value={editDelivery.addressReference}
+                                                        onChange={(e) => setEditDelivery({...editDelivery, addressReference: e.target.value})}
+                                                        placeholder="Ej. Casa verde al lado del kiosco..."
+                                                        className="w-full bg-white border-2 border-slate-100 px-4 py-2.5 rounded-xl text-sm font-bold mt-1 text-slate-700"
+                                                    />
+                                                </div>
+                                            </div>
+                                            
+                                            <div className="bg-amber-50 border border-amber-200 p-3 rounded-xl mb-4 text-center">
+                                                <p className="text-[10px] font-black uppercase text-amber-600/80 leading-snug">
+                                                    ⚠️ IMPORTANTE: Una vez realizado y validado el pago por el delivery NO podrás volver a modificar tu dirección ni el tipo de vehículo. La información se enviará al proveedor del negocio para su gestión.
+                                                </p>
+                                            </div>
+
+                                            <button 
+                                                onClick={handleProceedToDeliveryPayment}
+                                                className="w-full bg-primary text-slate-900 py-4 rounded-2xl font-black shadow-xl shadow-primary/20 hover:scale-[1.02] active:scale-95 transition-all text-lg flex items-center justify-center gap-2 mt-4"
+                                            >
+                                                <Wallet className="w-6 h-6" />
+                                                Pagar Delivery
+                                            </button>
+                                        </>
+                                    ) : (
+                                        <button 
+                                            onClick={handleSwitchToPickup}
+                                            className="w-full bg-emerald-500 text-white py-4 rounded-2xl font-black shadow-xl shadow-emerald-500/20 hover:scale-[1.02] active:scale-95 transition-all text-lg flex items-center justify-center gap-2 mt-4"
+                                        >
+                                            <Store className="w-6 h-6" />
+                                            Confirmar Retiro
+                                        </button>
+                                    )}
                                 </div>
                             )}
                         </div>
