@@ -521,7 +521,11 @@ export default function OrdersRadar() {
                             </button>
                         )}
                         <a
-                            href={`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(activeTransport.status === 'in_progress' ? activeTransport.destination?.address : activeTransport.origin?.address)}`}
+                            href={
+                                activeTransport.status === 'in_progress'
+                                    ? `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(activeTransport.destination?.address || '')}`
+                                    : `https://www.google.com/maps/dir/?api=1&waypoints=${encodeURIComponent(activeTransport.origin?.address || '')}&destination=${encodeURIComponent(activeTransport.destination?.address || '')}`
+                            }
                             target="_blank"
                             className="w-full bg-slate-100 text-slate-600 font-bold py-4 rounded-2xl flex justify-center items-center gap-2 active:scale-95 transition-all"
                         >
