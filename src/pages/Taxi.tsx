@@ -10,9 +10,8 @@ import { GoogleMap, useJsApiLoader, Marker, DirectionsRenderer } from '@react-go
 import toast from 'react-hot-toast';
 import { calculateDistance } from '../lib/geo';
 import { vibrate } from '../utils/haptics';
-import { isDemoMode, UN2X3_LOGO } from '../lib/env';
+import { isDemoMode } from '../lib/env';
 import DemoAlertModal from '../components/DemoAlertModal';
-import DualPrice from '../components/DualPrice';
 
 interface Location {
     lat: number;
@@ -737,7 +736,7 @@ export default function Taxi() {
                     <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-64 h-64 bg-primary/20 rounded-full blur-3xl animate-pulse"></div>
                     <div className="relative z-10 animate-scale-in cursor-pointer active:scale-95 transition-transform" onClick={() => window.location.href = 'https://deliexpress.app'}>
                         <img
-                            src={UN2X3_LOGO}
+                            src="https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/logo.png?alt=media&v=1.1"
                             alt="Deliexpress Logo"
                             className="w-56 h-auto object-contain filter drop-shadow-2xl"
                         />
@@ -969,7 +968,7 @@ export default function Taxi() {
                                         <div className="flex-1">
                                             <div className="flex items-center justify-between">
                                                 <h3 className="font-black text-slate-800">Mototaxi</h3>
-                                                <DualPrice usdAmount={parseFloat(calculatePrice('moto'))} usdClassName="font-black text-lg text-slate-900" showDivider={false} />
+                                                <span className="font-black text-lg text-slate-900">${calculatePrice('moto')}</span>
                                             </div>
                                             {activeDrivers.moto > 0 ? (
                                                 <p className="text-xs font-bold text-slate-400 mt-0.5">1 pasajero • Rápido y económico</p>
@@ -996,7 +995,7 @@ export default function Taxi() {
                                         <div className="flex-1">
                                             <div className="flex items-center justify-between">
                                                 <h3 className={`font-black text-lg ${vehicleType === 'carro' ? 'text-secondary' : 'text-slate-800'}`}>Taxi</h3>
-                                                <DualPrice usdAmount={parseFloat(calculatePrice('carro'))} usdClassName={`font-black text-xl ${vehicleType === 'carro' ? 'text-secondary' : 'text-slate-900'}`} showDivider={false} />
+                                                <span className={`font-black text-xl ${vehicleType === 'carro' ? 'text-secondary' : 'text-slate-900'}`}>${calculatePrice('carro')}</span>
                                             </div>
                                             {activeDrivers.carro > 0 ? (
                                                 <p className={`text-sm font-bold mt-1 ${vehicleType === 'carro' ? 'text-secondary/70' : 'text-slate-400'}`}>Hasta 4 pasajeros • Viaje cómodo</p>
@@ -1019,7 +1018,7 @@ export default function Taxi() {
                                         <div className="flex-1">
                                             <div className="flex items-center justify-between">
                                                 <h3 className="font-black text-slate-800">Taxi Ejecutivo</h3>
-                                                <DualPrice usdAmount={parseFloat(calculatePrice('ejecutivo'))} usdClassName="font-black text-lg text-slate-900" showDivider={false} />
+                                                <span className="font-black text-lg text-slate-900">${calculatePrice('ejecutivo')}</span>
                                             </div>
                                             {activeDrivers.ejecutivo > 0 ? (
                                                 <p className="text-xs font-bold text-slate-400 mt-0.5">Vehículos premium c/A/C</p>
@@ -1062,7 +1061,7 @@ export default function Taxi() {
                     {step === 'payment' && (
                         <div className="animate-in fade-in slide-in-from-right-4">
                             <h2 className="text-xl font-black text-slate-900 mb-1">Método de Pago</h2>
-                            <p className="text-sm font-medium text-slate-500 mb-6 flex items-center gap-2">Total a pagar: <DualPrice usdAmount={parseFloat(calculatePrice(vehicleType!))} usdClassName="font-bold text-slate-800" showDivider={false} /></p>
+                            <p className="text-sm font-medium text-slate-500 mb-6">Total a pagar: <span className="font-bold text-slate-800">${calculatePrice(vehicleType!)}</span></p>
 
                             {!paymentMethods ? (
                                 <div className="flex justify-center p-4"><div className="w-6 h-6 border-2 border-orange-500 border-t-transparent rounded-full animate-spin"></div></div>
@@ -1083,13 +1082,9 @@ export default function Taxi() {
                                                         <Wallet className="w-4 h-4 text-slate-900" />
                                                         Mi Billetera Deliexpress
                                                     </span>
-                                                    <DualPrice 
-                                                        usdAmount={userData?.walletBalance || 0} 
-                                                        className="text-[10px] bg-emerald-100 text-emerald-700 font-bold px-2 py-0.5 rounded-full" 
-                                                        usdClassName="text-inherit"
-                                                        bsClassName="hidden"
-                                                        showDivider={false}
-                                                    />
+                                                    <span className="text-[10px] bg-emerald-100 text-emerald-700 font-bold px-2 py-0.5 rounded-full">
+                                                        Saldo: ${(userData?.walletBalance || 0).toFixed(2)}
+                                                    </span>
                                                 </div>
                                             </div>
                                         </button>
@@ -1099,8 +1094,8 @@ export default function Taxi() {
                                             </div>
                                         )}
                                         {selectedPaymentMethod === 'wallet' && (userData?.walletBalance || 0) >= parseFloat(calculatePrice(vehicleType!) as string) && (
-                                            <div className="p-3 bg-emerald-50 border-t border-emerald-100 text-xs font-bold text-emerald-700 text-center flex items-center justify-center gap-1.5 flex-wrap">
-                                                Se descontarán <DualPrice usdAmount={parseFloat(calculatePrice(vehicleType!))} showDivider={false} /> de tu billetera y el conductor será asignado de inmediato.
+                                            <div className="p-3 bg-emerald-50 border-t border-emerald-100 text-xs font-bold text-emerald-700 text-center">
+                                                Se descontarán ${calculatePrice(vehicleType!)} de tu billetera y el conductor será asignado de inmediato.
                                             </div>
                                         )}
                                     </div>

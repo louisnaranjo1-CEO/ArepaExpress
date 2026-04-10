@@ -8,8 +8,6 @@ import toast from 'react-hot-toast';
 import { Navigation, Clock, CheckCircle2, Phone, ArrowLeft, Car, ShieldCheck, MessageCircle, Star, XCircle, MapPin } from 'lucide-react';
 import { GoogleMap, useJsApiLoader, DirectionsRenderer, Marker } from '@react-google-maps/api';
 import RideChat from '../components/RideChat';
-import { UN2X3_LOGO } from '../lib/env';
-import DualPrice from '../components/DualPrice';
 
 const mapContainerStyle = {
     width: '100%',
@@ -376,9 +374,9 @@ export default function TransportTracker() {
             <div className="flex-1 relative z-0 flex items-center justify-center bg-slate-50">
                 {['completed', 'cancelled'].includes(request.status) ? (
                     <div className="flex flex-col items-center justify-center gap-4 animate-fade-in px-6 w-full h-full pb-20">
-                        <div className="w-32 h-32 bg-white rounded-3xl shadow-xl shadow-primary/20 p-5 flex items-center justify-center border-2 border-slate-100">
+                        <div className="w-32 h-32 bg-white rounded-3xl shadow-xl shadow-primary/20 p-5 flex items-center justify-center">
                             <img
-                                src={UN2X3_LOGO}
+                                src="https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/logo.png?alt=media&v=1.1"
                                 alt="Deliexpress Logo"
                                 className="w-full h-full object-contain animate-bounce-subtle"
                             />
@@ -569,12 +567,7 @@ export default function TransportTracker() {
                 <div className="bg-slate-50 rounded-xl p-3 flex justify-between items-center border border-slate-100">
                     <div>
                         <p className="text-[10px] font-bold text-slate-500">Total a pagar</p>
-                        <DualPrice 
-                            usdAmount={parseFloat(request.price || 0)} 
-                            usdClassName="text-lg font-black text-slate-900" 
-                            bsClassName="text-[10px] font-bold text-slate-500 block"
-                            showDivider={false} 
-                        />
+                        <p className="font-black text-base text-slate-900">${parseFloat(request.price).toFixed(2)}</p>
                     </div>
                     <div className="text-right">
                         <p className="text-[10px] font-bold text-slate-500">Método de pago</p>

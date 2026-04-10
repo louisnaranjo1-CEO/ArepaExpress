@@ -4,7 +4,6 @@ import { useAuth } from '../../context/AuthContext';
 import { registerDriver } from '../../lib/delivery-service';
 import { logout } from '../../lib/auth-service';
 import { Upload, ChevronRight, CheckCircle2, AlertCircle, MapPin, LogOut } from 'lucide-react';
-import { UN2X3_LOGO } from '../../lib/env';
 import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import { VENEZUELA_DATA, VENEZUELA_STATES } from '../../lib/venezuelaData';
@@ -134,7 +133,7 @@ export default function Onboarding() {
                 <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
                         <img
-                            src={UN2X3_LOGO}
+                            src="https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/logo.png?alt=media&v=1.1"
                             alt="Logo"
                             className="w-10 h-10 object-contain rounded-xl shadow-sm"
                         />

@@ -8,7 +8,6 @@ import { doc, getDoc, deleteDoc, collection, query, where, onSnapshot, updateDoc
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { useGlobalAudioAlerts } from '../../hooks/useGlobalAudioAlerts';
-import { UN2X3_LOGO } from '../../lib/env';
 
 interface AdminLayoutProps {
     children: React.ReactNode;
@@ -218,7 +217,7 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
                         <div className="flex items-center gap-3 cursor-pointer active:scale-95 transition-transform" onClick={() => window.location.href = 'https://deliexpress.app'}>
                             <div className="w-14 h-14 flex items-center justify-center p-1 overflow-visible">
                                 <img
-                                    src={UN2X3_LOGO}
+                                    src="https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/logo.png?alt=media&v=1.1"
                                     alt="Encontrado en un 2x3"
                                     className="w-full h-full object-contain filter drop-shadow-sm brightness-110"
                                 />
