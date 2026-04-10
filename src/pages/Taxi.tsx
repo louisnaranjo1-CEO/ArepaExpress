@@ -85,6 +85,7 @@ export default function Taxi() {
 
     const [showDemoAlert, setShowDemoAlert] = useState(false);
     const [showTaxiNotice, setShowTaxiNotice] = useState(false);
+    const [activeDrivers, setActiveDrivers] = useState<{ moto: number, carro: number, ejecutivo: number }>({ moto: 0, carro: 0, ejecutivo: 0 });
 
 
     const [isFollowingUser, setIsFollowingUser] = useState(false);
@@ -93,6 +94,25 @@ export default function Taxi() {
     const mapCenterRef = useRef(defaultCenter);
 
     const [activeReservations, setActiveReservations] = useState<any[]>([]);
+
+    useEffect(() => {
+        const q = query(
+            collection(db, 'users'), 
+            where('role', 'in', ['delivery', 'driver']),
+            where('isOnline', '==', true)
+        );
+        const unsubscribe = onSnapshot(q, (snapshot) => {
+            const counts = { moto: 0, carro: 0, ejecutivo: 0 };
+            snapshot.docs.forEach(doc => {
+                const data = doc.data();
+                if (data.vehicleType === 'moto') counts.moto++;
+                if (data.vehicleType === 'carro') counts.carro++;
+                if (data.vehicleType === 'ejecutivo') counts.ejecutivo++;
+            });
+            setActiveDrivers(counts);
+        });
+        return () => unsubscribe();
+    }, []);
 
     // 0. Check for active transport request
     useEffect(() => {
@@ -181,15 +201,22 @@ export default function Taxi() {
         setDirectionsService(new google.maps.DirectionsService());
 
         if (navigator.geolocation) {
-            navigator.geolocation.getCurrentPosition((pos) => {
-                const newPos = { lat: pos.coords.latitude, lng: pos.coords.longitude };
-                setCurrentCenter(newPos);
-                mapCenterRef.current = newPos;
-                map.panTo(newPos);
-                updateAddressFromCenter(newPos, 'origin');
-            }, (error) => {
-                console.error("Geolocation error:", error);
-            });
+            setIsFollowingUser(true);
+            const id = navigator.geolocation.watchPosition(
+                (pos) => {
+                    const newPos = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+                    setCurrentCenter(newPos);
+                    mapCenterRef.current = newPos;
+                    map.panTo(newPos);
+                    updateAddressFromCenter(newPos, 'origin');
+                },
+                (error) => {
+                    console.error("WatchPosition error:", error);
+                    setIsFollowingUser(false);
+                },
+                { enableHighAccuracy: true }
+            );
+            watchIdRef.current = id;
         }
     }, []);
 
@@ -230,17 +257,25 @@ export default function Taxi() {
         }
     };
 
-    const handleMapDragEnd = () => {
-        setIsDragging(false);
-        if (map && (step === 'origin' || step === 'destination')) {
-            // map center is now true center for marker selection
-            const center = map.getCenter();
-            if (center) {
-                const newPos = { lat: center.lat(), lng: center.lng() };
-                mapCenterRef.current = newPos;
-                updateAddressFromCenter(newPos, step);
-            }
+    const handleMapClick = (e: google.maps.MapMouseEvent) => {
+        if (!e.latLng || step === 'payment' || step === 'searching') return;
+        
+        setIsFollowingUser(false);
+        if (watchIdRef.current !== null) {
+            navigator.geolocation.clearWatch(watchIdRef.current);
+            watchIdRef.current = null;
         }
+
+        const dest = { lat: e.latLng.lat(), lng: e.latLng.lng() };
+        mapCenterRef.current = dest;
+        updateAddressFromCenter(dest, 'destination');
+        
+        if (!origin && currentCenter) {
+            updateAddressFromCenter(currentCenter, 'origin');
+        }
+        
+        vibrate(50);
+        setStep('vehicle');
     };
 
     const toggleFollowUser = () => {
@@ -264,7 +299,7 @@ export default function Taxi() {
                     mapCenterRef.current = newPos;
                     if (map) {
                         map.panTo(newPos);
-                        updateAddressFromCenter(newPos, step === 'destination' ? 'destination' : 'origin');
+                        updateAddressFromCenter(newPos, 'origin');
                     }
                 },
                 (error) => {
@@ -430,8 +465,6 @@ export default function Taxi() {
         setRouteCalculationAttempted(false);
 
         if (step === 'vehicle') {
-            setStep('destination');
-        } else if (step === 'destination') {
             setStep('origin');
         }
     };
@@ -699,7 +732,7 @@ export default function Taxi() {
                         padding: { bottom: 0, top: 0, left: 0, right: 0 }
                     }}
                     onDragStart={handleMapDragStart}
-                    onDragEnd={handleMapDragEnd}
+                    onClick={handleMapClick}
                 >
                     {directionsResponse && (
                         <DirectionsRenderer
@@ -726,35 +759,14 @@ export default function Taxi() {
                     </button>
                 )}
 
-                {/* Fixed center marker for selection - Centered at exactly 50% for accuracy */}
-                {(step === 'origin' || step === 'destination') && (
-                    <div 
-                        className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-full z-10 pointer-events-none drop-shadow-[0_10px_15px_rgba(0,0,0,0.3)] transition-all"
-                    >
-                        <motion.div
-                            animate={{ 
-                                y: isDragging ? -15 : 0, 
-                                scale: isDragging ? 1.15 : 1,
-                                filter: isDragging ? 'drop-shadow(0 20px 10px rgba(0,0,0,0.3))' : 'drop-shadow(0 8px 5px rgba(0,0,0,0.2))'
-                            }}
-                            className="text-[#ff5c00] drop-shadow-lg"
-                        >
-                            <svg width="45" height="45" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                <path d="M12 2C8.13 2 5 5.13 5 9C5 14.25 12 22 12 22C12 22 19 14.25 19 9C19 5.13 15.87 2 12 2Z" fill="currentColor" stroke="white" strokeWidth="2.5"/>
-                                <circle cx="12" cy="9" r="3.5" fill="white"/>
-                            </svg>
-                        </motion.div>
-                    </div>
-                )}
-
             </div>
 
-            {/* 2. Floating Bottom Panel (Game UI) - Fixed to bottom to never overlap center pin (50%) */}
-            <div className="absolute inset-x-0 bottom-[90px] top-0 z-30 pointer-events-none flex flex-col justify-end items-center px-4">
+            {/* 2. Docked Bottom Panel - 35% height */}
+            <div className="absolute inset-x-0 bottom-0 z-30 pointer-events-none flex flex-col justify-end items-center">
                 
                 {/* Floating "Locate Me" Button outside the card */}
-                {(step === 'origin' || step === 'destination') && (
-                    <div className="max-w-md w-full flex justify-end px-2 mb-3 pointer-events-none">
+                {step === 'origin' && (
+                    <div className="w-full flex justify-end px-4 mb-3 pointer-events-none">
                         <button
                             onClick={toggleFollowUser}
                             className={`pointer-events-auto z-40 w-14 h-14 rounded-full shadow-[0_5px_0_#ca8a04] active:shadow-[0_0px_0_#ca8a04] active:translate-y-[5px] border-2 border-slate-900 flex items-center justify-center transition-all duration-300 ${
@@ -772,38 +784,27 @@ export default function Taxi() {
                     </div>
                 )}
 
-                <div className="max-w-md w-full pointer-events-auto bg-white/95 backdrop-blur-xl rounded-[32px] shadow-[0_20px_50px_rgba(0,0,0,0.25)] border border-white/50 p-6 overflow-y-auto max-h-[46dvh] scrollbar-hide pb-6">
+                <div className="w-full pointer-events-auto bg-white/95 backdrop-blur-xl rounded-t-[32px] rounded-b-none shadow-[0_-10px_40px_rgba(0,0,0,0.15)] border-t border-white/50 p-6 overflow-y-auto max-h-[35dvh] scrollbar-hide pb-6">
                     {/* Progress Indicator */}
                     <div className="w-12 h-1.5 bg-slate-200/60 rounded-full mx-auto mb-5 drop-shadow-sm"></div>
 
-                    {/* STEP 1: ORIGIN */}
+                    {/* MAIN VIEW: ORIGIN & MAP TAP */}
                     {step === 'origin' && (
-                        <div className="animate-in fade-in slide-in-from-bottom-4">
-                            <h2 className="text-xl font-black text-slate-900 mb-1">¿Dónde estás?</h2>
-                            <p className="text-sm font-medium text-slate-500 mb-6">Mueve el mapa para ajustar tu partida</p>
+                        <div className="animate-in fade-in slide-in-from-bottom-4 flex flex-col h-full">
+                            <h2 className="text-xl font-black text-slate-900 mb-1">¿A dónde vamos hoy?</h2>
+                            <p className="text-sm font-medium text-slate-500 mb-4">Toca en el mapa tu destino final para trazar la ruta.</p>
 
                             <div
-                                className="flex items-center gap-4 p-4 rounded-3xl border transition-all mb-6 cursor-pointer bg-white/70 backdrop-blur-sm border-white/50 shadow-sm"
+                                className="flex items-center gap-4 p-4 rounded-3xl border transition-all mb-4 cursor-pointer bg-white/70 backdrop-blur-sm border-white/50 shadow-sm"
                             >
                                 <div className="w-3 h-3 rounded-full flex-shrink-0 bg-black animate-pulse shadow-[0_0_8px_rgba(0,0,0,0.5)]" />
-                                <div className="flex-1">
-                                    <p className="text-[10px] font-black uppercase text-slate-500 mb-0.5">Punto de Partida</p>
-                                    <p className="font-bold text-slate-800 leading-tight">
-                                        {isDragging ? 'Ubicando...' : origin?.address || 'Cargando ubicación...'}
+                                <div className="flex-1 overflow-hidden">
+                                    <p className="text-[10px] font-black uppercase text-slate-500 mb-0.5">Ubicación actual</p>
+                                    <p className="font-bold text-slate-800 leading-tight truncate">
+                                        {origin?.address || 'Detectando ubicación...'}
                                     </p>
                                 </div>
                             </div>
-
-                            <button
-                                onClick={() => {
-                                    vibrate(50);
-                                    confirmOrigin();
-                                }}
-                                disabled={isDragging || !origin}
-                                className="w-full bg-[#ffff00] text-black py-4 rounded-2xl font-black text-lg shadow-[0_6px_0_#ca8a04] active:shadow-[0_0px_0_#ca8a04] active:translate-y-[6px] transition-all disabled:opacity-50 disabled:translate-y-[6px] disabled:shadow-none uppercase tracking-wide flex justify-center items-center gap-2 mb-6 border-2 border-slate-900"
-                            >
-                                Fijar Origen
-                            </button>
 
                             {userData?.addresses && userData.addresses.length > 0 && (
                                 <div className="space-y-3">
@@ -813,71 +814,14 @@ export default function Taxi() {
                                             <button
                                                 key={addr.id}
                                                 onClick={() => {
-                                                    const loc = { lat: addr.lat, lng: addr.lng, address: addr.address };
-                                                    setOrigin(loc);
-                                                    setCurrentCenter({ lat: addr.lat, lng: addr.lng });
-                                                    if (map) map.panTo({ lat: addr.lat, lng: addr.lng });
+                                                    const dest = { lat: addr.lat, lng: addr.lng, address: addr.address };
+                                                    setDestination(dest);
+                                                    setStep('vehicle');
                                                 }}
                                                 className="flex-shrink-0 flex items-center gap-2 bg-white/60 backdrop-blur-sm hover:bg-white/80 px-4 py-2.5 rounded-xl border border-white/50 shadow-sm transition-colors"
                                             >
                                                 <Heart className="w-3.5 h-3.5 text-red-500 fill-red-500" />
                                                 <span className="text-xs font-bold text-slate-700 whitespace-nowrap drop-shadow-sm">{addr.name}</span>
-                                            </button>
-                                        ))}
-                                    </div>
-                                </div>
-                            )}
-                        </div>
-                    )}
-
-                    {/* STEP 2: DESTINATION */}
-                    {step === 'destination' && (
-                        <div className="animate-in fade-in slide-in-from-bottom-4">
-                            <h2 className="text-xl font-black text-slate-900 mb-1">¿A dónde vas?</h2>
-                            <p className="text-sm font-medium text-slate-500 mb-6">Mueve el mapa para seleccionar tu destino</p>
-
-                            <div className="space-y-2 mb-6 relative">
-                                {/* Connecting line */}
-                                <div className="absolute left-[19px] top-[24px] bottom-[24px] w-0.5 bg-slate-200 z-0"></div>
-
-                                <div className="flex items-center gap-4 bg-white/70 backdrop-blur-sm p-3 rounded-2xl border border-white/50 shadow-sm relative z-10">
-                                    <div className="w-3 h-3 bg-black rounded-full flex-shrink-0 shadow-[0_0_8px_rgba(0,0,0,0.5)]" />
-                                    <p className="flex-1 font-bold text-slate-600 text-sm leading-tight break-words">{origin?.address}</p>
-                                </div>
-                                <div className="flex items-center gap-4 bg-orange-50/80 backdrop-blur-sm p-4 rounded-3xl border border-orange-200 shadow-sm relative z-10">
-                                    <div className="w-3 h-3 bg-orange-500 rounded-full flex-shrink-0 shadow-[0_0_8px_rgba(249,115,22,0.5)] animate-pulse" />
-                                    <p className="flex-1 font-black text-slate-900 leading-tight break-words">
-                                        {isDragging ? 'Ubicando...' : destination?.address || 'Seleccionando destino...'}
-                                    </p>
-                                </div>
-                            </div>
-
-                            <button
-                                onClick={confirmDestination}
-                                disabled={isDragging || !destination}
-                                className="w-full bg-[#ffff00] text-black py-4 rounded-2xl font-black text-lg shadow-[0_6px_0_#ca8a04] active:shadow-[0_0px_0_#ca8a04] active:translate-y-[6px] transition-all disabled:opacity-50 disabled:translate-y-[6px] disabled:shadow-none uppercase tracking-wide flex justify-center items-center gap-2 mb-6 border-2 border-slate-900"
-                            >
-                                Fijar Destino
-                            </button>
-
-                            {userData?.addresses && userData.addresses.length > 0 && (
-                                <div className="space-y-3">
-                                    <h4 className="text-[10px] font-black uppercase text-slate-400">Sugerencias</h4>
-                                    <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
-                                        {userData.addresses.map((addr: any) => (
-                                            <button
-                                                key={addr.id}
-                                                onClick={() => {
-                                                    const loc = { lat: addr.lat, lng: addr.lng, address: addr.address };
-                                                    setDestination(loc);
-                                                    setCurrentCenter({ lat: addr.lat, lng: addr.lng });
-                                                    if (map) map.panTo({ lat: addr.lat, lng: addr.lng });
-                                                }}
-                                                className="flex-shrink-0 flex items-center gap-2 bg-white/60 backdrop-blur-sm hover:bg-white/80 px-4 py-2.5 rounded-xl border border-white/50 shadow-sm transition-colors"
-
-                                            >
-                                                <Star className="w-3.5 h-3.5 text-amber-500 fill-amber-500" />
-                                                <span className="text-xs font-bold text-slate-700 whitespace-nowrap">{addr.name}</span>
                                             </button>
                                         ))}
                                     </div>
@@ -967,8 +911,9 @@ export default function Taxi() {
                                 <div className="space-y-3 mb-6">
                                     {/* Moto Option */}
                                     <button
+                                        disabled={activeDrivers.moto === 0}
                                         onClick={() => setVehicleType('moto')}
-                                        className={`w-full p-4 rounded-2xl border-2 transition-all flex items-center gap-4 text-left ${vehicleType === 'moto' ? 'border-primary bg-primary/5' : 'border-slate-100 bg-white'}`}
+                                        className={`w-full p-4 rounded-2xl border-2 transition-all flex items-center gap-4 text-left ${activeDrivers.moto === 0 ? 'opacity-50 grayscale cursor-not-allowed border-slate-100' : vehicleType === 'moto' ? 'border-primary bg-primary/5' : 'border-slate-100 bg-white'}`}
                                     >
                                         <div className="w-12 h-12 bg-primary/10 rounded-full flex items-center justify-center text-slate-900 flex-shrink-0">
                                             <Bike className="w-6 h-6" />
@@ -978,17 +923,22 @@ export default function Taxi() {
                                                 <h3 className="font-black text-slate-800">Mototaxi</h3>
                                                 <span className="font-black text-lg text-slate-900">${calculatePrice('moto')}</span>
                                             </div>
-                                            <p className="text-xs font-bold text-slate-400 mt-0.5">1 pasajero • Rápido y económico</p>
+                                            {activeDrivers.moto > 0 ? (
+                                                <p className="text-xs font-bold text-slate-400 mt-0.5">1 pasajero • Rápido y económico</p>
+                                            ) : (
+                                                <p className="text-xs font-black text-rose-500 mt-0.5">No disponible temporalmente</p>
+                                            )}
                                         </div>
                                     </button>
 
                                     {/* Taxi Option */}
                                     <button
+                                        disabled={activeDrivers.carro === 0}
                                         onClick={() => {
                                             setVehicleType('carro');
                                             setShowTaxiNotice(true);
                                         }}
-                                        className={`w-full p-6 rounded-2xl border-2 transition-all flex items-center gap-5 text-left ${vehicleType === 'carro'
+                                        className={`w-full p-6 rounded-2xl border-2 transition-all flex items-center gap-5 text-left ${activeDrivers.carro === 0 ? 'opacity-50 grayscale cursor-not-allowed border-slate-100' : vehicleType === 'carro'
                                             ? 'border-primary bg-primary text-secondary shadow-lg shadow-primary/20 scale-[1.02]'
                                             : 'border-slate-100 bg-white hover:border-primary/30'}`}
                                     >
@@ -1000,14 +950,19 @@ export default function Taxi() {
                                                 <h3 className={`font-black text-lg ${vehicleType === 'carro' ? 'text-secondary' : 'text-slate-800'}`}>Taxi</h3>
                                                 <span className={`font-black text-xl ${vehicleType === 'carro' ? 'text-secondary' : 'text-slate-900'}`}>${calculatePrice('carro')}</span>
                                             </div>
-                                            <p className={`text-sm font-bold mt-1 ${vehicleType === 'carro' ? 'text-secondary/70' : 'text-slate-400'}`}>Hasta 4 pasajeros • Viaje cómodo</p>
+                                            {activeDrivers.carro > 0 ? (
+                                                <p className={`text-sm font-bold mt-1 ${vehicleType === 'carro' ? 'text-secondary/70' : 'text-slate-400'}`}>Hasta 4 pasajeros • Viaje cómodo</p>
+                                            ) : (
+                                                <p className={`text-sm font-black mt-1 text-rose-500`}>No disponible temporalmente</p>
+                                            )}
                                         </div>
                                     </button>
 
                                     {/* Ejecutivo Option */}
                                     <button
+                                        disabled={activeDrivers.ejecutivo === 0}
                                         onClick={() => setVehicleType('ejecutivo')}
-                                        className={`w-full p-4 rounded-2xl border-2 transition-all flex items-center gap-4 text-left ${vehicleType === 'ejecutivo' ? 'border-slate-900 bg-slate-50' : 'border-slate-100 bg-white'}`}
+                                        className={`w-full p-4 rounded-2xl border-2 transition-all flex items-center gap-4 text-left ${activeDrivers.ejecutivo === 0 ? 'opacity-50 grayscale cursor-not-allowed border-slate-100' : vehicleType === 'ejecutivo' ? 'border-slate-900 bg-slate-50' : 'border-slate-100 bg-white'}`}
                                     >
                                         <div className="w-12 h-12 bg-slate-100 rounded-full flex items-center justify-center text-slate-800 flex-shrink-0">
                                             <Car className="w-6 h-6" />
@@ -1018,7 +973,11 @@ export default function Taxi() {
                                                 <h3 className="font-black text-slate-800">Taxi Ejecutivo</h3>
                                                 <span className="font-black text-lg text-slate-900">${calculatePrice('ejecutivo')}</span>
                                             </div>
-                                            <p className="text-xs font-bold text-slate-400 mt-0.5">Vehículos premium c/A/C</p>
+                                            {activeDrivers.ejecutivo > 0 ? (
+                                                <p className="text-xs font-bold text-slate-400 mt-0.5">Vehículos premium c/A/C</p>
+                                            ) : (
+                                                <p className="text-xs font-black text-rose-500 mt-0.5">No disponible temporalmente</p>
+                                            )}
                                         </div>
                                     </button>
                                 </div>
