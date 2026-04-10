@@ -7,6 +7,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useCart } from '../../context/CartContext';
 import { Product } from '../../lib/seed';
 import WaiterLayout from '../components/WaiterLayout';
+import DualPrice from '../../components/DualPrice';
 
 export default function WaiterMenu() {
     const [searchParams] = useSearchParams();
@@ -193,13 +194,21 @@ export default function WaiterMenu() {
                                     <div className="w-full flex flex-col gap-2">
                                         <div className="flex items-center gap-1.5">
                                             <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tight">Desde</span>
-                                            <span className="font-black text-slate-900 text-base">${Math.min(...product.variants.map(v => v.price)).toFixed(2)}</span>
+                                            <DualPrice 
+                                                usdAmount={Math.min(...product.variants.map(v => v.price))}
+                                                className="font-black text-slate-900 text-base"
+                                                showDivider={false}
+                                            />
                                         </div>
                                         <div className="flex gap-2 flex-wrap">
                                             {product.variants.map((v, idx) => (
                                                 <div key={idx} className="bg-white border border-slate-100 px-2.5 py-1 rounded-xl flex flex-col gap-0 shadow-sm">
                                                     <span className="text-[8px] font-black uppercase text-slate-400 leading-none">{v.name}</span>
-                                                    <span className="text-[11px] font-black text-slate-800 leading-none">${v.price.toFixed(2)}</span>
+                                                    <DualPrice 
+                                                        usdAmount={v.price} 
+                                                        className="text-[11px] font-black text-slate-800 leading-none"
+                                                        showDivider={false}
+                                                    />
                                                 </div>
                                             ))}
                                         </div>
@@ -208,11 +217,19 @@ export default function WaiterMenu() {
                                     <div className="flex items-center gap-2">
                                         {product.promoPrice && product.promoPrice > 0 ? (
                                             <>
-                                                <span className="font-black text-slate-900 text-base">${product.promoPrice.toFixed(2)}</span>
+                                                <DualPrice 
+                                                    usdAmount={product.promoPrice} 
+                                                    className="font-black text-slate-900 text-base"
+                                                    showDivider={false}
+                                                />
                                                 <span className="text-[10px] text-slate-400 line-through font-bold">${product.price.toFixed(2)}</span>
                                             </>
                                         ) : (
-                                            <span className="font-black text-slate-900 text-base">${product.price.toFixed(2)}</span>
+                                            <DualPrice 
+                                                usdAmount={product.price || 0} 
+                                                className="font-black text-slate-900 text-base"
+                                                showDivider={false}
+                                            />
                                         )}
                                     </div>
                                 )}
@@ -274,9 +291,14 @@ export default function WaiterMenu() {
                                     </button>
                                     <div className="absolute bottom-0 left-0 right-0 p-6 bg-gradient-to-t from-black/80 to-transparent">
                                         <h3 className="text-xl font-black text-white">{selectedProduct.name}</h3>
-                                        <p className="text-white/80 font-bold text-xs">
-                                            {selectedProduct.category} • ${(selectedProduct.promoPrice && selectedProduct.promoPrice > 0 ? selectedProduct.promoPrice : selectedProduct.price || 0).toFixed(2)}
-                                        </p>
+                                        <div className="flex items-center gap-1 mt-1 text-white/80 font-bold text-xs">
+                                            <span>{selectedProduct.category} • </span>
+                                            <DualPrice 
+                                                usdAmount={selectedProduct.promoPrice && selectedProduct.promoPrice > 0 ? selectedProduct.promoPrice : selectedProduct.price || 0}
+                                                className="text-white font-bold"
+                                                showDivider={true}
+                                            />
+                                        </div>
                                     </div>
                                 </div>
 
@@ -310,9 +332,13 @@ export default function WaiterMenu() {
                                                             <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${selectedVariant?.name === variant.name ? 'border-primary bg-primary' : 'border-slate-300'}`}>
                                                                 {selectedVariant?.name === variant.name && <div className="w-2 h-2 bg-white rounded-full" />}
                                                             </div>
-                                                            <span className="text-sm">{variant.name}</span>
+                                                        <span className="text-sm">{variant.name}</span>
                                                         </div>
-                                                        <span className="font-black text-sm">${variant.price.toFixed(2)}</span>
+                                                        <DualPrice 
+                                                            usdAmount={variant.price} 
+                                                            className="font-black text-sm"
+                                                            showDivider={false}
+                                                        />
                                                     </button>
                                                 ))}
                                             </div>
@@ -369,7 +395,12 @@ export default function WaiterMenu() {
                                         }`}
                                     >
                                         <Plus className="w-6 h-6" />
-                                        Agregar • ${( (selectedVariant ? selectedVariant.price : (selectedProduct.promoPrice && selectedProduct.promoPrice > 0 ? selectedProduct.promoPrice : selectedProduct.price || 0)) * selectionQty ).toFixed(2)}
+                                        <span>Agregar • </span>
+                                        <DualPrice 
+                                            usdAmount={( (selectedVariant ? selectedVariant.price : (selectedProduct.promoPrice && selectedProduct.promoPrice > 0 ? selectedProduct.promoPrice : selectedProduct.price || 0)) * selectionQty )}
+                                            className="font-black text-lg"
+                                            showDivider={true}
+                                        />
                                     </button>
                                 </div>
                             </motion.div>
@@ -388,7 +419,11 @@ export default function WaiterMenu() {
                                 <div className="bg-white/20 px-3 py-1 rounded-lg text-sm font-black">{totalItems}</div>
                                 <span className="font-black text-sm uppercase tracking-wider">CREAR COMANDA</span>
                             </div>
-                            <span className="font-black text-lg">${totalPrice.toFixed(2)}</span>
+                            <DualPrice 
+                                usdAmount={totalPrice}
+                                className="font-black text-lg"
+                                usdClassName="text-lg font-black"
+                            />
                         </button>
                     </div>
                 )}

@@ -12,6 +12,7 @@ import toast from 'react-hot-toast';
 import { DEMO_RESTAURANTS } from '../lib/demoData';
 import { isDemoMode, UN2X3_LOGO } from '../lib/env';
 import DemoAlertModal from '../components/DemoAlertModal';
+import DualPrice from '../components/DualPrice';
 
 export default function RestaurantPage() {
   const { id } = useParams<{ id: string }>();
@@ -842,13 +843,13 @@ export default function RestaurantPage() {
                           <div className="w-full flex flex-col gap-2">
                             <div className="flex items-center gap-1.5">
                               <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tight">Desde</span>
-                              <span className="font-black text-slate-900 text-lg">${Math.min(...product.variants.map(v => v.price)).toFixed(2)}</span>
+                              <DualPrice usdAmount={Math.min(...product.variants.map(v => v.price))} usdClassName="font-black text-slate-900 text-lg" showDivider={false} />
                             </div>
                             <div className="flex gap-2 flex-wrap">
                               {product.variants.map((v, idx) => (
                                 <div key={idx} className="bg-slate-50 border border-slate-100 px-3 py-1.5 rounded-xl flex flex-col gap-0.5 min-w-[70px]">
                                   <span className="text-[9px] font-black uppercase text-slate-400 leading-none">{v.name}</span>
-                                  <span className="text-sm font-black text-slate-800 leading-none">${v.price.toFixed(2)}</span>
+                                  <DualPrice usdAmount={v.price} usdClassName="text-sm font-black text-slate-800 leading-none" showDivider={false} />
                                 </div>
                               ))}
                             </div>
@@ -857,14 +858,14 @@ export default function RestaurantPage() {
                           <div className="flex items-center gap-2">
                             {product.promoPrice && product.promoPrice > 0 ? (
                               <>
-                                <span className="font-bold text-slate-900 text-base">${product.promoPrice.toFixed(2)}</span>
+                                <DualPrice usdAmount={product.promoPrice} usdClassName="font-bold text-slate-900 text-base" />
                                 <span className="text-xs text-slate-400 line-through">${product.price.toFixed(2)}</span>
                                 <span className="px-2 py-0.5 bg-orange-500 text-white text-[9px] font-black rounded-full shadow-sm">
                                   -{Math.round(((product.price - product.promoPrice) / product.price) * 100)}%
                                 </span>
                               </>
                             ) : (
-                              <span className="font-bold text-slate-900 text-base">${product.price.toFixed(2)}</span>
+                              <DualPrice usdAmount={product.price} usdClassName="font-bold text-slate-900 text-base" />
                             )}
                           </div>
                         )}
@@ -1018,7 +1019,7 @@ export default function RestaurantPage() {
             </div>
             <div className="flex items-center gap-2">
               <span className="text-[10px] font-bold opacity-80 uppercase tracking-widest">Total</span>
-              <span className="font-black text-xl leading-none">${totalPrice.toFixed(2)}</span>
+              <DualPrice usdAmount={totalPrice} usdClassName="font-black text-xl leading-none" />
             </div>
           </Link>
         </div>
@@ -1247,11 +1248,11 @@ export default function RestaurantPage() {
                       <div className="flex flex-col items-end">
                         {selectedProduct.promoPrice && selectedProduct.promoPrice > 0 ? (
                           <>
-                            <span className="text-3xl font-black text-slate-900">${selectedProduct.promoPrice.toFixed(2)}</span>
+                            <DualPrice usdAmount={selectedProduct.promoPrice} usdClassName="text-3xl font-black text-slate-900" />
                             <span className="text-sm text-slate-400 line-through font-bold">${selectedProduct.price.toFixed(2)}</span>
                           </>
                         ) : (
-                          <span className="text-3xl font-black text-slate-900">${selectedProduct.price.toFixed(2)}</span>
+                          <DualPrice usdAmount={selectedProduct.price} usdClassName="text-3xl font-black text-slate-900" />
                         )}
                       </div>
                     )}
@@ -1274,7 +1275,7 @@ export default function RestaurantPage() {
                           className={`border p-4 rounded-3xl flex flex-col gap-1 text-left transition-all ${selectedVariant?.name === v.name ? 'bg-primary border-primary shadow-lg shadow-primary/20 scale-105' : 'bg-slate-50 border-slate-100 hover:border-primary/30'}`}
                         >
                           <span className={`text-[10px] font-black uppercase ${selectedVariant?.name === v.name ? 'text-slate-900/60' : 'text-slate-400'}`}>{v.name}</span>
-                          <span className={`text-lg font-black ${selectedVariant?.name === v.name ? 'text-slate-900' : 'text-slate-800'}`}>${v.price.toFixed(2)}</span>
+                          <DualPrice usdAmount={v.price} usdClassName={`text-lg font-black ${selectedVariant?.name === v.name ? 'text-slate-900' : 'text-slate-800'}`} />
                         </button>
                       ))}
                     </div>
@@ -1319,7 +1320,10 @@ export default function RestaurantPage() {
                                     <span className={`text-sm font-bold ${isSelected ? 'text-slate-900' : 'text-slate-600'}`}>{option.name}</span>
                                   </div>
                                   {option.price > 0 && (
-                                    <span className={`text-sm font-black ${isSelected ? 'text-primary-dark' : 'text-slate-400'}`}>+${option.price.toFixed(2)}</span>
+                                    <div className="flex items-center gap-1">
+                                      <span className={`text-sm font-black ${isSelected ? 'text-primary-dark' : 'text-slate-400'}`}>+</span>
+                                      <DualPrice usdAmount={option.price} usdClassName={`text-sm font-black ${isSelected ? 'text-primary-dark' : 'text-slate-400'}`} showDivider={false} />
+                                    </div>
                                   )}
                                 </button>
                               );

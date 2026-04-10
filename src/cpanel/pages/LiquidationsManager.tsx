@@ -3,8 +3,11 @@ import { collection, query, onSnapshot, orderBy, doc, updateDoc, addDoc, getDocs
 import { db } from '../../lib/firebase';
 import { DollarSign, Search, CheckCircle, RefreshCw, AlertCircle, TrendingUp, History, User } from 'lucide-react';
 import toast from 'react-hot-toast';
+import DualPrice from '../../components/DualPrice';
+import { useCurrency } from '../../context/CurrencyContext';
 
 export default function LiquidationsManager() {
+    const { bcvRate } = useCurrency();
     const [activeTab, setActiveTab] = useState<'restaurants' | 'drivers' | 'history'>('restaurants');
     
     // Data states
@@ -79,7 +82,8 @@ export default function LiquidationsManager() {
     }, []);
 
     const handleClearDeliveryDebt = async (restaurantId: string, currentDebt: number, restaurantName: string) => {
-        if (!window.confirm(`¿Confirmas que el restaurante ${restaurantName} ha pagado su deuda de $${currentDebt.toFixed(2)} por concepto de delivery/repartos?`)) return;
+        const bsAmount = currentDebt * bcvRate;
+        if (!window.confirm(`¿Confirmas que el restaurante ${restaurantName} ha pagado su deuda de $${currentDebt.toFixed(2)} (Bs. ${bsAmount.toFixed(2)}) por concepto de delivery/repartos?`)) return;
         
         try {
             const restRef = doc(db, 'restaurants', restaurantId);
@@ -105,7 +109,8 @@ export default function LiquidationsManager() {
     };
 
     const handlePayDriver = async (driver: any) => {
-        if (!window.confirm(`¿Confirmas el pago de $${driver.totalUnpaid.toFixed(2)} al piloto ${driver.fullName}?`)) return;
+        const bsAmount = driver.totalUnpaid * bcvRate;
+        if (!window.confirm(`¿Confirmas el pago de $${driver.totalUnpaid.toFixed(2)} (Bs. ${bsAmount.toFixed(2)}) al piloto ${driver.fullName}?`)) return;
 
         try {
             const batch = writeBatch(db);
@@ -233,7 +238,7 @@ export default function LiquidationsManager() {
                                     
                                     <div className="p-4 bg-red-50 text-red-900 rounded-2xl mb-4">
                                         <p className="text-xs uppercase font-bold tracking-wider opacity-75">Deuda Acumulada</p>
-                                        <p className="text-3xl font-black">${(rest.deuda_delivery_acumulada || 0).toFixed(2)}</p>
+                                        <DualPrice usdAmount={rest.deuda_delivery_acumulada || 0} usdClassName="text-3xl font-black" showDivider={false} className="flex flex-col" />
                                         <p className="text-xs mt-1 leading-tight opacity-80">Por pedidos pagados en el local usando motorizados de la plataforma.</p>
                                     </div>
                                     
@@ -274,7 +279,7 @@ export default function LiquidationsManager() {
                                         </div>
                                         <div className="text-right">
                                             <p className="text-[10px] uppercase font-bold text-slate-400">Total a Liquidar</p>
-                                            <p className="text-2xl font-black text-slate-900">${driver.totalUnpaid.toFixed(2)}</p>
+                                            <DualPrice usdAmount={driver.totalUnpaid} usdClassName="text-2xl font-black text-slate-900" showDivider={false} className="flex flex-col items-end" />
                                         </div>
                                     </div>
 
@@ -351,7 +356,7 @@ export default function LiquidationsManager() {
                                                 {record.description}
                                             </td>
                                             <td className="p-4 text-right">
-                                                <span className="font-black text-slate-900">${record.amountPaid.toFixed(2)}</span>
+                                                <DualPrice usdAmount={record.amountPaid} usdClassName="font-black text-slate-900" showDivider={false} className="flex flex-col items-end" />
                                             </td>
                                         </tr>
                                     ))}

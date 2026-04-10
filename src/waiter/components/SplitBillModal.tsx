@@ -2,6 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Users, ListFilter, Plus, Minus, Receipt, CheckCircle } from 'lucide-react';
 import { db } from '../../lib/firebase';
+import DualPrice from '../../components/DualPrice';
 import { collection, addDoc, doc, writeBatch, serverTimestamp, deleteDoc } from 'firebase/firestore';
 
 interface OrderItem {
@@ -204,7 +205,10 @@ export default function SplitBillModal({
                     <div className="bg-white p-6 border-b border-slate-100 flex justify-between items-center shrink-0">
                         <div>
                             <h2 className="text-2xl font-black text-slate-900">Dividir Cuenta</h2>
-                            <p className="text-slate-500 font-medium">Mesa {table.number} - Total: ${grandTotal.toFixed(2)}</p>
+                            <div className="flex items-center gap-1.5 text-slate-500 font-medium">
+                                <span>Mesa {table.number} - Total:</span>
+                                <DualPrice usdAmount={grandTotal} className="text-slate-500 font-medium" showDivider={true} />
+                            </div>
                         </div>
                         <button onClick={onClose} className="w-10 h-10 bg-slate-100 rounded-full flex items-center justify-center text-slate-500 hover:bg-slate-200">
                             <X className="w-5 h-5" />
@@ -264,7 +268,12 @@ export default function SplitBillModal({
 
                                 <div className="bg-white p-6 rounded-3xl border-2 border-slate-100 w-full max-w-sm text-center">
                                     <p className="text-slate-500 font-bold mb-2">Cada persona pagará:</p>
-                                    <p className="text-4xl font-black text-slate-900">${(grandTotal / numParts).toFixed(2)}</p>
+                                    <DualPrice 
+                                        usdAmount={grandTotal / numParts} 
+                                        className="text-4xl font-black text-slate-900" 
+                                        usdClassName="text-4xl font-black"
+                                        showDivider={true}
+                                    />
                                 </div>
                             </div>
                         ) : (
@@ -284,7 +293,11 @@ export default function SplitBillModal({
                                             <div key={item.uniqueId} className="p-3 bg-slate-50 border border-slate-100 rounded-xl flex flex-col gap-2">
                                                 <div className="flex justify-between items-start">
                                                     <span className="font-bold text-slate-800 text-sm">{item.name}</span>
-                                                    <span className="font-black text-slate-900">${item.price.toFixed(2)}</span>
+                                                    <DualPrice 
+                                                        usdAmount={item.price} 
+                                                        className="font-black text-slate-900"
+                                                        showDivider={false}
+                                                    />
                                                 </div>
                                                 <div className="flex gap-1 overflow-x-auto hide-scrollbar pb-1">
                                                     {accounts.map(acc => (
@@ -316,14 +329,23 @@ export default function SplitBillModal({
                                             <div key={acc.id} className="min-w-[280px] w-[280px] bg-white rounded-3xl border border-slate-200 flex flex-col overflow-hidden max-h-full">
                                                 <div className="p-4 bg-slate-800 text-white flex justify-between items-center shrink-0">
                                                     <h3 className="font-bold">Cuenta {acc.id}</h3>
-                                                    <span className="font-black">${accTotal.toFixed(2)}</span>
+                                                    <DualPrice 
+                                                        usdAmount={accTotal} 
+                                                        className="text-white font-black"
+                                                        usdClassName="text-white font-black"
+                                                        showDivider={true}
+                                                    />
                                                 </div>
                                                 <div className="flex-1 overflow-y-auto p-3 space-y-2">
                                                     {acc.items.map((item: any) => (
                                                         <div key={item.uniqueId} className="p-2 flex justify-between items-center group bg-slate-50 rounded-lg">
                                                             <div className="flex flex-col truncate pr-2">
                                                                 <span className="text-sm font-bold text-slate-800 truncate">{item.name}</span>
-                                                                <span className="text-xs text-slate-500">${item.price.toFixed(2)}</span>
+                                                                <DualPrice 
+                                                                    usdAmount={item.price} 
+                                                                    className="text-xs text-slate-500"
+                                                                    showDivider={false}
+                                                                />
                                                             </div>
                                                             <button
                                                                 onClick={() => returnItemToUnassigned(item, acc.id)}

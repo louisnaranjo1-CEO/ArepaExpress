@@ -1,6 +1,7 @@
 import React from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Plus, GitMerge, ArrowRightLeft, SplitSquareHorizontal, Receipt, Store } from 'lucide-react';
+import DualPrice from '../../components/DualPrice';
 
 interface TableOptionsModalProps {
     isOpen: boolean;
@@ -97,13 +98,21 @@ export default function TableOptionsModal({
                                             </div>
                                             <span className="text-xs font-bold text-slate-700 w-32 truncate">{item.name}</span>
                                         </div>
-                                        <span className="text-xs font-black text-slate-900">${(item.price * item.quantity).toFixed(2)}</span>
+                                        <DualPrice 
+                                            usdAmount={item.price * item.quantity} 
+                                            className="text-xs font-black text-slate-900" 
+                                            showDivider={false}
+                                        />
                                     </div>
                                 ))}
                             </div>
                             <div className="mt-4 pt-3 border-t border-slate-200 flex justify-between items-center px-1">
                                 <span className="text-sm font-black text-slate-800">Total Acumulado</span>
-                                <span className="text-lg font-black text-slate-900">${subtotal.toFixed(2)}</span>
+                                <DualPrice 
+                                    usdAmount={subtotal}
+                                    className="text-lg font-black text-slate-900"
+                                    usdClassName="text-lg font-black"
+                                />
                             </div>
                         </div>
                     )}
@@ -156,7 +165,15 @@ export default function TableOptionsModal({
                         className="w-full flex items-center justify-center gap-3 p-5 bg-slate-900 text-white rounded-[2rem] hover:scale-[1.02] active:scale-[0.98] transition-all font-black shrink-0 shadow-xl shadow-slate-900/20"
                     >
                         <Receipt className="w-6 h-6 text-emerald-400" />
-                        Pedir Cuenta {subtotal > 0 && `($${subtotal.toFixed(2)})`}
+                        <span>Pedir Cuenta</span>
+                        {subtotal > 0 && (
+                            <DualPrice 
+                                usdAmount={subtotal}
+                                className="text-white font-black"
+                                usdClassName="text-white font-black"
+                                showDivider={true}
+                            />
+                        )}
                     </button>
                 </motion.div>
             </motion.div>

@@ -6,8 +6,11 @@ import { DeliveryDriver } from '../../lib/delivery-service';
 import { Truck, CheckCircle2, XCircle, FileText, User, DollarSign, ExternalLink, Plus, Trash2, Clock, Sun, Moon, Activity, MapPin, Map as MapIcon, Navigation } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { GoogleMap, useJsApiLoader, Marker, InfoWindow } from '@react-google-maps/api';
+import DualPrice from '../../components/DualPrice';
+import { useCurrency } from '../../context/CurrencyContext';
 
 export default function DeliveryManagement() {
+    const { bcvRate } = useCurrency();
     const [drivers, setDrivers] = useState<DeliveryDriver[]>([]);
     const [loading, setLoading] = useState(true);
     const [activeTab, setActiveTab] = useState<'requests' | 'active' | 'finances' | 'history'>('requests');
@@ -262,9 +265,10 @@ _Enviado desde Deliexpress App_`
     };
 
     const handlePayDriver = async () => {
-        if (!selectedDriverFinance || driverPendingBalance.count === 0) return;
-
-        if (!window.confirm(`¿Confirmas el pago de $${driverPendingBalance.total.toFixed(2)} al repartidor ${selectedDriverFinance.fullName}?`)) return;
+        if (!selectedDriverFinance) return;
+        const driverPendingBalance = calculateDriverBalance(selectedDriverFinance.id);
+        const bsAmount = driverPendingBalance.total * bcvRate;
+        if (!window.confirm(`¿Confirmas el pago de $${driverPendingBalance.total.toFixed(2)} (Bs. ${bsAmount.toFixed(2)}) al repartidor ${selectedDriverFinance.fullName}?`)) return;
 
         setPayingDriver(true);
         try {
@@ -1120,7 +1124,7 @@ _Enviado desde Deliexpress App_`
                                 </div>
                                 <div>
                                     <p className="text-slate-500 font-medium uppercase tracking-widest text-xs mb-1">Deuda Pendiente</p>
-                                    <h4 className="text-5xl font-black text-slate-900 tracking-tighter">${driverPendingBalance.total.toFixed(2)}</h4>
+                                    <DualPrice usdAmount={driverPendingBalance.total} usdClassName="text-5xl font-black text-slate-900 tracking-tighter" showDivider={false} className="flex flex-col" />
                                     <p className="text-sm text-slate-500 mt-2 font-medium">Correspondiente a {driverPendingBalance.count} pedidos sin liquidar.</p>
                                 </div>
                             </div>

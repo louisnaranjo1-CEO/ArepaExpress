@@ -4,6 +4,7 @@ import { collection, query, where, onSnapshot, orderBy } from 'firebase/firestor
 import { db } from '../../lib/firebase';
 import WaiterLayout from '../components/WaiterLayout';
 import { motion, AnimatePresence } from 'framer-motion';
+import DualPrice from '../../components/DualPrice';
 
 export default function WaiterOrders() {
     const [orders, setOrders] = useState<any[]>([]);
@@ -94,14 +95,22 @@ export default function WaiterOrders() {
                                         {order.items.map((item: any, idx: number) => (
                                             <div key={idx} className="flex justify-between text-sm">
                                                 <span className="text-slate-600 font-medium">{item.quantity}x {item.name}</span>
-                                                <span className="text-slate-400 font-bold">${(item.price * item.quantity).toFixed(2)}</span>
+                                                <DualPrice 
+                                                    usdAmount={item.price * item.quantity} 
+                                                    className="text-slate-400 font-bold"
+                                                    showDivider={false}
+                                                />
                                             </div>
                                         ))}
                                     </div>
 
                                     <div className="flex justify-between items-center pt-4 border-t border-slate-50">
                                         <span className="text-sm font-black text-slate-400">Total</span>
-                                        <span className="text-lg font-black text-slate-900">${order.total?.toFixed(2)}</span>
+                                        <DualPrice 
+                                            usdAmount={order.total || 0}
+                                            className="text-lg font-black text-slate-900"
+                                            usdClassName="text-lg font-black text-slate-900"
+                                        />
                                     </div>
                                 </motion.div>
                             ))}

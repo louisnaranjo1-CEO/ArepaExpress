@@ -12,8 +12,8 @@ import {
 } from 'lucide-react';
 import { GLOBAL_CATEGORIES, CATEGORY_SECTORS } from '../../lib/constants';
 import { updateDoc } from 'firebase/firestore';
-import { motion, AnimatePresence } from 'framer-motion';
 import RestaurantRewardsManager from '../components/RestaurantRewardsManager';
+import DualPrice from '../../components/DualPrice';
 
 interface Category {
     id: string;
@@ -70,7 +70,11 @@ const StatCard = ({ title, value, icon: Icon, color, trend }: StatCardProps) => 
         </div>
         <div className="mt-4">
             <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{title}</p>
-            <h4 className="text-2xl font-black text-slate-900 mt-1">{value}</h4>
+            {typeof value === 'number' && (title.includes('Ventas') || title.includes('Promedio') || title.includes('Ticket')) ? (
+                <DualPrice usdAmount={value} usdClassName="text-2xl font-black text-slate-900 mt-1" showDivider={false} className="flex flex-col" />
+            ) : (
+                <h4 className="text-2xl font-black text-slate-900 mt-1">{value}</h4>
+            )}
         </div>
     </div>
 );
@@ -406,7 +410,7 @@ export default function RestaurantProfile() {
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                 <StatCard
                     title="Ventas Totales"
-                    value={`$${stats.totalSales.toFixed(2)}`}
+                    value={stats.totalSales}
                     icon={TrendingUp}
                     color="bg-emerald-50 text-emerald-600"
                     trend="+12%"
@@ -419,7 +423,7 @@ export default function RestaurantProfile() {
                 />
                 <StatCard
                     title="Promedio Ticket"
-                    value={`$${stats.averageOrderValue.toFixed(2)}`}
+                    value={stats.averageOrderValue}
                     icon={DollarSign}
                     color="bg-amber-50 text-amber-600"
                 />
@@ -483,7 +487,7 @@ export default function RestaurantProfile() {
                                                 </div>
                                             </div>
                                             <div className="text-right">
-                                                <p className="font-black text-slate-900">${(order.total || 0).toFixed(2)}</p>
+                                                <DualPrice usdAmount={order.total || 0} usdClassName="font-black text-slate-900" showDivider={false} className="flex flex-col items-end" />
                                                 <span className={`text-[9px] font-black uppercase tracking-tighter px-2 py-0.5 rounded-lg ${order.status === 'delivered' ? 'bg-green-100 text-green-700' : 'bg-orange-100 text-orange-700'
                                                     }`}>
                                                     {order.status}
@@ -512,7 +516,7 @@ export default function RestaurantProfile() {
                                             </div>
                                             <p className="font-black text-slate-900 line-clamp-1">{p.name}</p>
                                             <div className="flex items-center justify-between mt-1">
-                                                <p className="text-slate-900 font-black text-sm">${p.price?.toFixed(2)}</p>
+                                                <DualPrice usdAmount={p.price || 0} usdClassName="text-slate-900 font-black text-sm" showDivider={false} className="flex flex-col" />
                                                 <div className="flex items-center gap-1 text-[10px] text-orange-500 font-bold bg-orange-50 px-2 py-0.5 rounded-lg">
                                                     <Star className="w-3 h-3 fill-orange-500" />
                                                     4.8

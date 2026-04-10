@@ -5,6 +5,8 @@ import { db, storage } from '../../lib/firebase';
 import { Car, Bike, Clock, CheckCircle2, XCircle, Search, Calendar, DollarSign, MapPin, User, ShieldCheck, Upload, Image as ImageIcon, MessageSquare, Star, Phone, MessageCircle } from 'lucide-react';
 import toast from 'react-hot-toast';
 import RideChat from '../../components/RideChat';
+import DualPrice from '../../components/DualPrice';
+import { useCurrency } from '../../context/CurrencyContext';
 
 const formatDuration = (seconds: number) => {
     if (!seconds && seconds !== 0) return '--';
@@ -15,6 +17,7 @@ const formatDuration = (seconds: number) => {
 };
 
 export default function TransportRequests() {
+    const { bcvRate } = useCurrency();
     const [requests, setRequests] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     const [filter, setFilter] = useState('all'); // all, verifying_payment, finding_driver, in_progress, completed, cancelled
@@ -271,10 +274,11 @@ export default function TransportRequests() {
 
             // Notify driver
             const notifRef = doc(collection(db, 'notifications'));
+            const bsAmount = selectedDriver.weeklyDebt * bcvRate;
             batch.set(notifRef, {
                 userId: selectedDriver.driverId,
                 title: '¡Pago Recibido!',
-                body: `Se ha procesado tu pago de $${selectedDriver.weeklyDebt.toFixed(2)}. Revisa el comprobante en tu historial.`,
+                body: `Se ha procesado tu pago de $${selectedDriver.weeklyDebt.toFixed(2)} (Bs. ${bsAmount.toFixed(2)}). Revisa el comprobante en tu historial.`,
                 read: false,
                 createdAt: serverTimestamp(),
                 payoutReceiptUrl: receiptUrl
@@ -477,15 +481,15 @@ export default function TransportRequests() {
                                             <div className="grid grid-cols-3 gap-4 md:grid-cols-1 md:gap-2">
                                                 <div>
                                                     <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1">Costo Cliente</p>
-                                                    <p className="text-xl font-black text-emerald-600">${parseFloat(req.clientTotal || req.price || 0).toFixed(2)}</p>
+                                                    <DualPrice usdAmount={parseFloat(req.clientTotal || req.price || 0)} usdClassName="text-xl font-black text-emerald-600" showDivider={false} className="flex flex-col" />
                                                 </div>
                                                 <div className="border-l md:border-l-0 md:border-t border-slate-200 pl-4 md:pl-0 md:pt-2">
                                                     <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest leading-none mb-1">Pago a Taxi</p>
-                                                    <p className="text-lg font-black text-slate-900">${parseFloat(req.driverPayout || req.price || 0).toFixed(2)}</p>
+                                                    <DualPrice usdAmount={parseFloat(req.driverPayout || req.price || 0)} usdClassName="text-lg font-black text-slate-900" showDivider={false} className="flex flex-col" />
                                                 </div>
                                                 <div className="border-l md:border-l-0 md:border-t border-slate-200 pl-4 md:pl-0 md:pt-2">
                                                     <p className="text-[10px] font-black text-amber-500 uppercase tracking-widest leading-none mb-1">Ganancia Admin</p>
-                                                    <p className="text-lg font-black text-amber-600">${(parseFloat(req.clientTotal || req.price || 0) - parseFloat(req.driverPayout || req.price || 0)).toFixed(2)}</p>
+                                                    <DualPrice usdAmount={parseFloat(req.clientTotal || req.price || 0) - parseFloat(req.driverPayout || req.price || 0)} usdClassName="text-lg font-black text-amber-600" showDivider={false} className="flex flex-col" />
                                                 </div>
                                             </div>
                                             <div className="flex items-center gap-2 mt-3 md:justify-end text-[10px] font-bold">
@@ -662,17 +666,17 @@ export default function TransportRequests() {
                                     <div className="grid grid-cols-2 gap-4 mb-4">
                                         <div className="bg-rose-50 p-3 rounded-2xl border border-rose-100">
                                             <p className="text-[10px] font-black text-rose-500 uppercase tracking-widest mb-1">Deuda</p>
-                                            <p className="text-lg font-black text-rose-700">${stat.weeklyDebt.toFixed(2)}</p>
+                                            <DualPrice usdAmount={stat.weeklyDebt} usdClassName="text-lg font-black text-rose-700" showDivider={false} className="flex flex-col" />
                                         </div>
                                         <div className="bg-emerald-50 p-3 rounded-2xl border border-emerald-100">
                                             <p className="text-[10px] font-black text-emerald-600 uppercase tracking-widest mb-1">Pagado</p>
-                                            <p className="text-lg font-black text-emerald-700">${stat.lifetimeEarnings.toFixed(2)}</p>
+                                            <DualPrice usdAmount={stat.lifetimeEarnings} usdClassName="text-lg font-black text-emerald-700" showDivider={false} className="flex flex-col" />
                                         </div>
                                     </div>
 
                                     <div className="bg-amber-50 p-4 rounded-2xl border border-amber-100 mb-6">
                                         <p className="text-[10px] font-black text-amber-600 uppercase tracking-widest mb-1">Ganancia Admin</p>
-                                        <p className="text-2xl font-black text-amber-700">${stat.adminProfit.toFixed(2)}</p>
+                                        <DualPrice usdAmount={stat.adminProfit} usdClassName="text-2xl font-black text-amber-700" showDivider={false} className="flex flex-col" />
                                         <p className="text-[10px] font-bold text-amber-600 mt-1 uppercase tracking-tighter">Total de {stat.totalTripsCount} viajes</p>
                                     </div>
 
@@ -685,7 +689,8 @@ export default function TransportRequests() {
                                         className="w-full bg-slate-900 text-white font-black py-4 rounded-2xl shadow-xl shadow-slate-900/20 disabled:opacity-50 active:scale-[0.98] transition-all flex items-center justify-center gap-2 mt-auto"
                                     >
                                         <DollarSign className="w-5 h-5" />
-                                        Liquidar Deuda (${stat.weeklyDebt.toFixed(2)})
+                                        <span>Liquidar Deuda</span>
+                                        <DualPrice usdAmount={stat.weeklyDebt} usdClassName="font-black" showDivider={false} className="flex gap-1 items-baseline ml-1" />
                                     </button>
                                 </div>
                             ))}
@@ -766,7 +771,7 @@ export default function TransportRequests() {
                             {/* Driver Summary */}
                             <div className="bg-slate-50 rounded-2xl p-4 mb-6 border border-slate-100 text-center">
                                 <p className="text-sm font-bold text-slate-500 mb-1">Chofer: <span className="text-slate-900">{selectedDriver.driverName}</span></p>
-                                <p className="text-3xl font-black text-emerald-600">${selectedDriver.weeklyDebt.toFixed(2)}</p>
+                                <DualPrice usdAmount={selectedDriver.weeklyDebt} usdClassName="text-3xl font-black text-emerald-600" showDivider={true} className="flex flex-col items-center" />
                                 <p className="text-xs font-bold text-slate-400 mt-1 uppercase tracking-widest">{selectedDriver.unpaidTrips.length} Viajes pendientes</p>
                             </div>
 

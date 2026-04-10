@@ -4,6 +4,7 @@ import { db } from '../../lib/firebase';
 import { User, ChevronRight, Mail, Phone, Calendar, ShoppingBag, Heart, X, MapPin, Wallet, CheckCircle, XCircle, Search, Filter, Image as ImageIcon, Activity, Clock, ExternalLink, Gift, Users } from 'lucide-react';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
+import DualPrice from '../../components/DualPrice';
 
 interface UserProfile {
     id: string;
@@ -451,7 +452,7 @@ export default function UsersManager() {
 
                                         <div className="mb-4">
                                             <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Monto Solicitado</p>
-                                            <p className="text-3xl font-black text-slate-900">${parseFloat(recharge.amount).toFixed(2)}</p>
+                                            <DualPrice usdAmount={parseFloat(recharge.amount)} usdClassName="text-3xl font-black text-slate-900" showDivider={false} className="flex flex-col" />
                                         </div>
 
                                         <div className="space-y-3 mb-6 bg-slate-50 p-4 rounded-2xl">
@@ -617,7 +618,7 @@ export default function UsersManager() {
                                         </div>
                                         <div>
                                             <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Balance Billetera</p>
-                                            <p className="text-2xl font-black">${(selectedUser.walletBalance || 0).toFixed(2)}</p>
+                                            <DualPrice usdAmount={selectedUser.walletBalance || 0} usdClassName="text-2xl font-black" showDivider={false} className="flex flex-col" />
                                         </div>
                                     </div>
                                     <div className="pt-4 border-t border-white/10 flex justify-between items-center text-[10px] font-bold text-slate-500">
@@ -666,7 +667,20 @@ export default function UsersManager() {
                                     <h3 className="text-xs font-black text-slate-900 uppercase tracking-widest flex items-center gap-2 border-b border-slate-50 pb-3">Historial y Métricas</h3>
                                     <div className="grid grid-cols-2 gap-4">
                                         <ActivityStat icon={ShoppingBag} label="Pedidos" value={userOrders.length.toString()} color="text-emerald-500" bg="bg-emerald-50" />
-                                        <ActivityStat icon={Wallet} label="Total Gastado" value={`$${userOrders.reduce((acc, o) => acc + (o.total || 0), 0).toFixed(2)}`} color="text-blue-500" bg="bg-blue-50" />
+                                        <ActivityStat 
+                                            icon={Wallet} 
+                                            label="Total Gastado" 
+                                            value={
+                                                <DualPrice 
+                                                    usdAmount={userOrders.reduce((acc, o) => acc + (o.total || 0), 0)} 
+                                                    usdClassName="text-xl font-black text-slate-900" 
+                                                    showDivider={false} 
+                                                    className="flex flex-col" 
+                                                />
+                                            } 
+                                            color="text-blue-500" 
+                                            bg="bg-blue-50" 
+                                        />
                                     </div>
                                     <div className="p-5 rounded-[28px] bg-slate-50 border border-slate-100">
                                         <div className="flex items-center justify-between mb-4">
@@ -757,7 +771,7 @@ function InfoItem({ icon: Icon, label, value }: { icon: any, label: string, valu
     );
 }
 
-function ActivityStat({ icon: Icon, label, value, color, bg }: { icon: any, label: string, value: string, color: string, bg: string }) {
+function ActivityStat({ icon: Icon, label, value, color, bg }: { icon: any, label: string, value: React.ReactNode, color: string, bg: string }) {
     return (
         <div className={`p-4 ${bg} rounded-[24px] border border-transparent hover:border-slate-200 transition-all`}>
             <Icon className={`w-4 h-4 ${color} mb-2`} />

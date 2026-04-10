@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Users, Store, TrendingUp, ShoppingBag, ArrowUpRight, Award, BarChart3, Activity } from 'lucide-react';
 import { collection, getDocs } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
+import DualPrice from '../../components/DualPrice';
 
 interface TopRestaurant {
     id: string;
@@ -159,7 +160,7 @@ export default function Dashboard() {
                 />
                 <StatCard
                     title="Ingresos"
-                    value={`$${stats.revenue.toLocaleString()}`}
+                    value={<DualPrice usdAmount={stats.revenue} usdClassName="text-3xl font-black text-slate-950 mt-1 tracking-tight" showDivider={false} className="flex flex-col" />}
                     trend="Histórico"
                     icon={TrendingUp}
                     color="bg-primary text-slate-900"
@@ -228,7 +229,7 @@ export default function Dashboard() {
                                                 </span>
                                             </td>
                                             <td className="px-8 py-5 text-right font-black text-slate-900 text-lg">
-                                                ${res.sales.toLocaleString()}
+                                                <DualPrice usdAmount={res.sales} usdClassName="font-black text-slate-900 text-lg" showDivider={false} className="flex flex-col items-end" />
                                             </td>
                                         </tr>
                                     );
@@ -281,7 +282,7 @@ export default function Dashboard() {
     );
 }
 
-function StatCard({ title, value, trend, icon: Icon, color }: { title: string, value: string, trend: string, icon: any, color: string }) {
+function StatCard({ title, value, trend, icon: Icon, color }: { title: string, value: React.ReactNode, trend: string, icon: any, color: string }) {
     return (
         <div className="bg-white p-7 rounded-[40px] shadow-xl shadow-slate-200/40 border border-slate-50 group hover:-translate-y-1 transition-transform cursor-default">
             <div className="flex flex-col gap-6">
@@ -296,7 +297,11 @@ function StatCard({ title, value, trend, icon: Icon, color }: { title: string, v
                 </div>
                 <div>
                     <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest">{title}</h4>
-                    <p className="text-3xl font-black text-slate-950 mt-1 tracking-tight">{value}</p>
+                    {typeof value === 'string' ? (
+                        <p className="text-3xl font-black text-slate-950 mt-1 tracking-tight">{value}</p>
+                    ) : (
+                        value
+                    )}
                 </div>
             </div>
         </div>

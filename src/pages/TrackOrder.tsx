@@ -5,6 +5,7 @@ import { db } from '../lib/firebase';
 import { DeliveryDriver } from '../lib/delivery-service';
 import { Navigation, Clock, CheckCircle2, Package, MapPin, Phone, ArrowLeft, Store, Star } from 'lucide-react';
 import ReviewModal from '../components/ReviewModal';
+import DualPrice from '../components/DualPrice';
 
 export default function TrackOrder() {
     const { orderId } = useParams();
@@ -247,9 +248,7 @@ export default function TrackOrder() {
                                         )}
                                     </div>
                                 </div>
-                                <p className="text-sm font-black text-slate-900">
-                                    {((item.price || 0) * (item.quantity || 1)).toLocaleString('es-VE', { style: 'currency', currency: 'USD' })}
-                                </p>
+                                <DualPrice usdAmount={(item.price || 0) * (item.quantity || 1)} usdClassName="text-sm font-black text-slate-900" showDivider={false} />
                             </div>
                         ))}
                     </div>
@@ -257,19 +256,23 @@ export default function TrackOrder() {
                     <div className="mt-6 pt-4 border-t border-slate-100 space-y-2">
                         <div className="flex justify-between items-center text-xs font-bold text-slate-500 uppercase tracking-tight">
                             <span>Subtotal</span>
-                            <span>{(order.subtotal || 0).toLocaleString('es-VE', { style: 'currency', currency: 'USD' })}</span>
+                            <DualPrice usdAmount={order.subtotal || 0} showDivider={false} className="flex items-center gap-1.5" />
                         </div>
                         {order.deliveryFee > 0 && (
                             <div className="flex justify-between items-center text-xs font-bold text-slate-500 uppercase tracking-tight">
                                 <span>Delivery</span>
-                                <span>{order.deliveryFee.toLocaleString('es-VE', { style: 'currency', currency: 'USD' })}</span>
+                                <DualPrice usdAmount={order.deliveryFee} showDivider={false} className="flex items-center gap-1.5" />
                             </div>
                         )}
                         <div className="flex justify-between items-center pt-2">
                             <span className="text-sm font-black text-slate-900 uppercase tracking-widest">Total</span>
-                            <span className="text-xl font-black text-slate-900">
-                                {order.total?.toLocaleString('es-VE', { style: 'currency', currency: 'USD' })}
-                            </span>
+                            <DualPrice 
+                                usdAmount={order.total || 0} 
+                                usdClassName="text-xl font-black text-slate-900" 
+                                bsClassName="text-[11px] font-bold text-slate-400 block mt-0.5 text-right"
+                                showDivider={false} 
+                                className="flex flex-col items-end" 
+                            />
                         </div>
                     </div>
                 </div>

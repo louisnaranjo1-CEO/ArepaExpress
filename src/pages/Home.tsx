@@ -13,7 +13,10 @@ import { recommendationsService } from '../lib/recommendations';
 import { toast } from 'react-hot-toast';
 import { vibrate } from '../utils/haptics';
 import PointsModal from '../components/PointsModal';
+import BCVCalculatorModal from '../components/BCVCalculatorModal';
 import { isDemoMode, UN2X3_LOGO } from '../lib/env';
+import { useCurrency } from '../context/CurrencyContext';
+import DualPrice from '../components/DualPrice';
 import { DEMO_RESTAURANTS } from '../lib/demoData';
 
 interface RecommendedProduct extends Product {
@@ -44,6 +47,9 @@ export default function Home() {
   const [loading, setLoading] = useState(true);
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [currentBannerIndex, setCurrentBannerIndex] = useState(0);
+
+  const { bcvRate } = useCurrency();
+  const [isCalculatorOpen, setIsCalculatorOpen] = useState(false);
 
   // Recommendations State
   const [isNewUser, setIsNewUser] = useState(true);
@@ -459,8 +465,18 @@ export default function Home() {
             />
           </div>
 
-          {/* Right group: Points + Actions */}
+          {/* Right group: BCV + Points + Actions */}
           <div className="flex items-center gap-1 shrink-0">
+            {/* BCV */}
+            <div
+              onClick={() => { vibrate(20); setIsCalculatorOpen(true); }}
+              className="flex flex-col items-center justify-center shrink-0 cursor-pointer active:scale-95 transition-transform mr-1"
+            >
+              <span className="text-[9px] font-black uppercase text-secondary/60 tracking-tighter leading-none mb-0.5">Tasa BCV</span>
+              <div className="flex items-center gap-1 bg-white/20 px-2 py-0.5 rounded-full">
+                <span className="text-[11px] font-black text-secondary">Bs {(bcvRate || 0).toFixed(2)}</span>
+              </div>
+            </div>
             {/* Points */}
             <div
               onClick={() => { vibrate(30); setIsPointsModalOpen(true); }}
@@ -566,6 +582,12 @@ export default function Home() {
       />
 
       {/* App Info Modal */}
+      <BCVCalculatorModal 
+        isOpen={isCalculatorOpen} 
+        onClose={() => setIsCalculatorOpen(false)} 
+        bcvRate={bcvRate} 
+      />
+
       <AnimatePresence>
         {isInfoModalOpen && (
           <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
@@ -1005,16 +1027,24 @@ function ProductGrid({ title, products, casheaIcon }: { title: string, products:
                   {!product.consultPrice && product.price > 0 && (
                     <div className="flex flex-col">
                       {discount > 0 && (
-                        <span className="text-[10px] text-slate-400 line-through">
-                          US$ {product.price.toFixed(2)}
-                        </span>
+                        <div className="flex items-center gap-1 opacity-50">
+                          <span className="text-[10px] text-slate-400">US$</span>
+                          <DualPrice 
+                            usdAmount={product.price} 
+                            className="text-[10px] text-slate-400 line-through"
+                            showDivider={false}
+                          />
+                        </div>
                       )}
-                      <div className="flex items-center gap-1.5">
-                        <span className="font-medium text-slate-900 text-sm">
-                          US$ {finalPrice.toFixed(2)}
-                        </span>
+                      <div className="flex items-center gap-1.5 translate-y-[-2px]">
+                        <DualPrice 
+                          usdAmount={finalPrice} 
+                          className="font-black text-slate-900 text-sm" 
+                          usdClassName="text-sm font-black"
+                          showDivider={true}
+                        />
                         {discount > 0 && (
-                           <span className="text-[10px] text-emerald-500 font-medium">{discount}% OFF</span>
+                           <span className="text-[10px] text-emerald-500 font-bold whitespace-nowrap">{discount}% OFF</span>
                         )}
                       </div>
                     </div>

@@ -7,6 +7,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import ReviewsModal from '../components/ReviewsModal';
 import { printToUsbDevice, formatTicket, downloadTicketImage, downloadTicketText, formatTicketText } from '../../lib/usb-printer';
 import AddressPicker from '../../components/AddressPicker';
+import DualPrice from '../../components/DualPrice';
 import toast from 'react-hot-toast';
 
 export default function CashierPOS() {
@@ -651,7 +652,7 @@ export default function CashierPOS() {
                                         <div className="flex items-center justify-between pt-2 border-t border-slate-50">
                                             <div className="flex flex-col">
                                                 {hasVariants && <span className="text-[8px] font-black text-slate-900 uppercase tracking-widest leading-none mb-1">Desde</span>}
-                                                <span className="text-xl font-black text-slate-900 leading-none">${displayPrice.toFixed(2)}</span>
+                                                <DualPrice usdAmount={displayPrice} usdClassName="text-xl font-black text-slate-900 leading-none" showDivider={false} className="flex flex-col" />
                                             </div>
                                             <div className="w-8 h-8 rounded-xl bg-slate-50 flex items-center justify-center text-slate-400 group-hover:bg-primary group-hover:text-slate-900 transition-all">
                                                 <Plus className="w-4 h-4" />
@@ -689,7 +690,7 @@ export default function CashierPOS() {
                                         </div>
                                         <div className="text-right shrink-0 px-4 border-l border-slate-50">
                                             {hasVariants && <div className="text-[8px] font-black text-slate-900 uppercase tracking-widest mb-1 text-right">Desde</div>}
-                                            <div className="text-2xl font-black text-slate-900 leading-none">${displayPrice.toFixed(2)}</div>
+                                            <DualPrice usdAmount={displayPrice} usdClassName="text-2xl font-black text-slate-900 leading-none" showDivider={false} className="flex flex-col items-end" />
                                         </div>
                                         <div className="w-12 h-12 rounded-2xl bg-slate-50 flex items-center justify-center text-slate-400 group-hover:bg-primary group-hover:text-slate-900 transition-all shrink-0">
                                             <Plus className="w-6 h-6" />
@@ -745,10 +746,12 @@ export default function CashierPOS() {
                                 </div>
                                 <div className="flex-1 min-w-0 pr-2">
                                     <h4 className="text-[13px] font-black text-slate-900 leading-tight mb-0.5">{item.name}</h4>
-                                    <div className="flex items-center gap-2">
-                                        <span className="text-sm font-black text-slate-900">${item.price.toFixed(2)}</span>
-                                        {item.notes && <div className="flex items-center gap-1 text-[9px] font-bold text-amber-500 bg-amber-50 px-1.5 py-0.5 rounded-md"><MessageSquare className="w-2.5 h-2.5" /> Nota</div>}
-                                        {item.printed && <div className="text-[8px] font-black uppercase text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded-md">Impreso</div>}
+                                    <div className="flex flex-col gap-1">
+                                        <DualPrice usdAmount={item.price} usdClassName="text-sm font-black text-slate-900" showDivider={false} className="flex items-center gap-1.5" />
+                                        <div className="flex items-center gap-2">
+                                            {item.notes && <div className="flex items-center gap-1 text-[9px] font-bold text-amber-500 bg-amber-50 px-1.5 py-0.5 rounded-md"><MessageSquare className="w-2.5 h-2.5" /> Nota</div>}
+                                            {item.printed && <div className="text-[8px] font-black uppercase text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded-md">Impreso</div>}
+                                        </div>
                                     </div>
                                 </div>
                                 <div className="flex items-center gap-2.5 shrink-0 bg-slate-50 rounded-2xl p-1.5 border border-slate-100">
@@ -777,7 +780,12 @@ export default function CashierPOS() {
                     <div className="flex justify-between items-center mb-6">
                         <div className="flex flex-col">
                             <span className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Total a Pagar</span>
-                            <span className="text-4xl font-black text-slate-900 leading-none">${total.toFixed(2)}</span>
+                            <DualPrice 
+                                usdAmount={total} 
+                                usdClassName="text-4xl font-black text-slate-900 leading-none" 
+                                showDivider={false} 
+                                className="flex flex-col mt-1" 
+                            />
                         </div>
                     </div>
                     <button
@@ -836,7 +844,7 @@ export default function CashierPOS() {
                                                     }`}
                                                 >
                                                     <span className={`text-[10px] font-black uppercase tracking-widest mb-1 ${selectedVariant === v ? 'text-slate-900' : 'text-slate-400'}`}>{v.name}</span>
-                                                    <span className={`text-lg font-black ${selectedVariant === v ? 'text-slate-900' : 'text-slate-700'}`}>${v.price.toFixed(2)}</span>
+                                                    <DualPrice usdAmount={v.price} usdClassName={`text-lg font-black ${selectedVariant === v ? 'text-slate-900' : 'text-slate-700'}`} showDivider={false} className="flex flex-col mt-1" />
                                                 </button>
                                             ))}
                                         </div>
@@ -887,7 +895,7 @@ export default function CashierPOS() {
                         <div className="bg-slate-50 p-6 rounded-[2rem] mb-8 flex flex-col border border-slate-100">
                             <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Total Neto</span>
                             <div className="flex items-baseline gap-2">
-                                <span className="text-4xl font-black text-slate-900 leading-none">${total.toFixed(2)}</span>
+                                <DualPrice usdAmount={total} usdClassName="text-4xl font-black text-slate-900 leading-none" showDivider={false} className="flex flex-col" />
                                 {paymentStatus === 'pending' && <span className="text-[10px] font-black text-amber-500 uppercase">Pendiente</span>}
                             </div>
                         </div>

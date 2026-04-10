@@ -11,6 +11,7 @@ import AddressPicker from '../components/AddressPicker';
 import WaiterLayout from '../waiter/components/WaiterLayout';
 import { isDemoMode } from '../lib/env';
 import DemoAlertModal from '../components/DemoAlertModal';
+import DualPrice from '../components/DualPrice';
 
 interface CartProps {
   hideHeader?: boolean;
@@ -297,7 +298,7 @@ export default function Cart({ hideHeader = false }: CartProps) {
            if (mods) modifiersText = `\n    👉 ${mods}`;
         }
 
-        return `• ${item.quantity}x ${item.name}${variantText}${itemNote}${modifiersText} ($${((item.price || 0) * item.quantity).toFixed(2)})`;
+        return `• ${item.quantity}x ${item.name}${variantText}${itemNote}${modifiersText} ($${((item.price || 0) * item.quantity).toFixed(2)} | Bs ${(((item.price || 0) * item.quantity) * bcvRate).toFixed(2)})`;
       }).join('\n');
       
       const mapsLink = (deliveryMethod === 'delivery' && selectedAddress && selectedAddress.lat) ? `\n🗺️ Ubicación GPS: https://www.google.com/maps?q=${selectedAddress.lat},${selectedAddress.lng}` : '';
@@ -314,9 +315,9 @@ export default function Cart({ hideHeader = false }: CartProps) {
         `${notesString}\n\n` +
         `📦 *Método:* ${isWaiter ? 'Servicio a Mesa' : (deliveryMethod === 'pickup' ? 'Recoger en local' : (deliveryMethod === 'own_delivery' ? 'Delivery Propio del Local' : 'Delivery Un 2x3'))}\n` +
         `${(deliveryMethod === 'app_delivery' || deliveryMethod === 'own_delivery') && !isWaiter ? `📍 *Dirección:* ${addressStr}${deliveryMethod === 'app_delivery' ? mapsLink : ''}` : ''}\n\n` +
-        `💰 *SUBTOTAL ARTÍCULOS:* $${cartSubtotalUSD.toFixed(2)}\n` +
-        `${deliveryFee > 0 ? `🚚 *DELIVERY:* $${deliveryFee.toFixed(2)}\n` : ''}` +
-        `⭐ *TOTAL ${deliveryMethod === 'app_delivery' ? '(SOLO DELIVERY UN 2X3 A PAGAR)' : 'ESTIMADO'}:* $${finalTotal.toFixed(2)}\n\n` +
+        `💰 *SUBTOTAL ARTÍCULOS:* $${cartSubtotalUSD.toFixed(2)} | Bs ${(cartSubtotalUSD * bcvRate).toFixed(2)}\n` +
+        `${deliveryFee > 0 ? `🚚 *DELIVERY:* $${deliveryFee.toFixed(2)} | Bs ${(deliveryFee * bcvRate).toFixed(2)}\n` : ''}` +
+        `⭐ *TOTAL ${deliveryMethod === 'app_delivery' ? '(SOLO DELIVERY UN 2X3 A PAGAR)' : 'ESTIMADO'}:* $${finalTotal.toFixed(2)} | Bs ${(finalTotal * bcvRate).toFixed(2)}\n\n` +
         `🔢 *Orden ID:* #${docRef.id.slice(-6).toUpperCase()}\n` +
         `━━━━━━━━━━━━━━\n\n` +
         `Esperando confirmación...`
@@ -398,7 +399,7 @@ export default function Cart({ hideHeader = false }: CartProps) {
                       <div className="flex-1">
                          <div className="flex justify-between items-start mb-1">
                            <p className="font-black text-slate-800 text-sm leading-tight">{item.name}</p>
-                           <p className="text-slate-900 font-black text-sm">${(item.price || 0).toFixed(2)}</p>
+                           <DualPrice usdAmount={item.price || 0} usdClassName="text-slate-900 font-black text-sm" showDivider={false} />
                          </div>
                          {(item as any).variant && (
                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Variante: {(item as any).variant}</p>
@@ -603,7 +604,7 @@ export default function Cart({ hideHeader = false }: CartProps) {
                               <p className="text-[10px] text-slate-400 font-medium italic mt-0.5">Nota: "{ (item as any).notes }"</p>
                             )}
                           </div>
-                          <span className="font-black text-slate-900 text-sm">${((item.price || 0) * item.quantity).toFixed(2)}</span>
+                          <DualPrice usdAmount={(item.price || 0) * item.quantity} usdClassName="font-black text-slate-900 text-sm" showDivider={false} />
                         </div>
                       ))}
                     </div>
@@ -709,13 +710,13 @@ export default function Cart({ hideHeader = false }: CartProps) {
                     <div className="space-y-2 mb-4 opacity-80 text-sm font-bold text-white/70">
                       <div className="flex justify-between">
                         <span className={deliveryMethod === 'app_delivery' ? 'line-through opacity-50' : ''}>{restaurantData?.businessType === 'hotel' ? 'Subtotal Servicios' : 'Subtotal Productos'}</span>
-                        <span className={deliveryMethod === 'app_delivery' ? 'line-through opacity-50' : ''}>${cartSubtotalUSD.toFixed(2)}</span>
+                        <DualPrice usdAmount={cartSubtotalUSD} className={deliveryMethod === 'app_delivery' ? 'line-through opacity-50 flex items-center gap-1.5' : 'flex items-center gap-1.5'} showDivider={false} />
                       </div>
                       {!isWaiter && deliveryMethod === 'app_delivery' && restaurantData?.businessType !== 'hotel' && (
-                        <div className="flex justify-between text-primary opacity-100"><span>Costo Delivery Un 2x3</span><span>${deliveryFee.toFixed(2)}</span></div>
+                        <div className="flex justify-between text-primary opacity-100"><span>Costo Delivery Un 2x3</span><DualPrice usdAmount={deliveryFee} showDivider={false} /></div>
                       )}
                       {!isWaiter && deliveryMethod === 'own_delivery' && restaurantData?.businessType !== 'hotel' && (
-                        <div className="flex justify-between"><span>Costo Delivery del Local</span><span>${deliveryFee.toFixed(2)}</span></div>
+                        <div className="flex justify-between"><span>Costo Delivery del Local</span><DualPrice usdAmount={deliveryFee} showDivider={false} /></div>
                       )}
                     </div>
                     <div className="flex justify-between items-center pt-2 border-t border-white/10">
@@ -723,10 +724,13 @@ export default function Cart({ hideHeader = false }: CartProps) {
                         Total {deliveryMethod === 'app_delivery' ? 'Transporte' : (deliveryMethod === 'own_delivery' ? 'Estimado' : 'Final')}
                       </span>
                       <div className="text-right">
-                        <span className="text-3xl font-black text-primary block">${finalTotal.toFixed(2)}</span>
-                        {bcvRate > 0 && finalTotal > 0 && (
-                          <span className="text-[11px] font-bold text-slate-400 block mt-0.5">Bs. {(finalTotal * bcvRate).toFixed(2)}</span>
-                        )}
+                        <DualPrice 
+                          usdAmount={finalTotal} 
+                          usdClassName="text-3xl font-black text-primary block" 
+                          bsClassName="text-[11px] font-bold text-slate-400 block mt-0.5 text-right" 
+                          showDivider={false} 
+                          className="flex flex-col items-end" 
+                        />
                       </div>
                     </div>
                   </div>
