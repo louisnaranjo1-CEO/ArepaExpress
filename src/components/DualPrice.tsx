@@ -17,13 +17,14 @@ export default function DualPrice({
     showDivider = true
 }: DualPriceProps) {
     const { bcvRate, loadingRate } = useCurrency();
+    const amount = typeof usdAmount === 'number' ? usdAmount : 0;
 
     return (
         <span className={className}>
-            <span className={usdClassName}>${usdAmount.toFixed(2)}</span>
+            <span className={usdClassName}>${amount.toFixed(2)}</span>
             {showDivider && <span className="opacity-40">|</span>}
             <span className={bsClassName}>
-                {loadingRate || !bcvRate ? 'Bs ...' : `Bs ${(usdAmount * bcvRate).toFixed(2)}`}
+                {loadingRate || !bcvRate ? '... Bs' : `${(amount * bcvRate).toFixed(2)} Bs`}
             </span>
         </span>
     );

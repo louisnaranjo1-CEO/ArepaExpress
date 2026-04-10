@@ -8,6 +8,7 @@ import SplitBillModal from '../components/SplitBillModal';
 import { collection, query, onSnapshot, orderBy, where, doc, updateDoc, writeBatch, serverTimestamp, getDoc, addDoc } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import { useNavigate } from 'react-router-dom';
+import { UN2X3_LOGO } from '../../lib/env';
 import toast from 'react-hot-toast';
 
 interface Table {
@@ -377,7 +378,7 @@ export default function WaiterDashboard() {
                             <div className="flex items-center justify-between mb-10">
                                 <div className="flex items-center gap-3">
                                     <div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center shadow-sm p-2">
-                                        <img src="https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/logo.png?alt=media&v=1.1" alt="Logo" className="w-full h-full object-contain" />
+                                        <img src={UN2X3_LOGO} alt="Logo" className="w-full h-full object-contain" />
                                     </div>
                                     <span className="font-black text-slate-800 text-xl">Deliexpress</span>
                                 </div>
@@ -490,7 +491,7 @@ export default function WaiterDashboard() {
                         <div className="flex items-center gap-4">
                             <div className="relative">
                                 <img
-                                    src={waiterInfo.photo || "https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/logo.png?alt=media&v=1.1"}
+                                    src={waiterInfo.photo || UN2X3_LOGO}
                                     alt={waiterInfo.name}
                                     className="w-16 h-16 rounded-full object-cover border-4 border-slate-50 bg-white"
                                 />

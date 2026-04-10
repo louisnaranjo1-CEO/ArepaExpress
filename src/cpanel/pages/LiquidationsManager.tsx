@@ -83,7 +83,7 @@ export default function LiquidationsManager() {
 
     const handleClearDeliveryDebt = async (restaurantId: string, currentDebt: number, restaurantName: string) => {
         const bsAmount = currentDebt * bcvRate;
-        if (!window.confirm(`¿Confirmas que el restaurante ${restaurantName} ha pagado su deuda de $${currentDebt.toFixed(2)} (Bs. ${bsAmount.toFixed(2)}) por concepto de delivery/repartos?`)) return;
+        if (!window.confirm(`¿Confirmas que el restaurante ${restaurantName} ha pagado su deuda de $${currentDebt.toFixed(2)} (${bsAmount.toFixed(2)} Bs) por concepto de delivery/repartos?`)) return;
         
         try {
             const restRef = doc(db, 'restaurants', restaurantId);
@@ -110,7 +110,7 @@ export default function LiquidationsManager() {
 
     const handlePayDriver = async (driver: any) => {
         const bsAmount = driver.totalUnpaid * bcvRate;
-        if (!window.confirm(`¿Confirmas el pago de $${driver.totalUnpaid.toFixed(2)} (Bs. ${bsAmount.toFixed(2)}) al piloto ${driver.fullName}?`)) return;
+        if (!window.confirm(`¿Confirmas el pago de $${driver.totalUnpaid.toFixed(2)} (${bsAmount.toFixed(2)} Bs) al piloto ${driver.fullName}?`)) return;
 
         try {
             const batch = writeBatch(db);

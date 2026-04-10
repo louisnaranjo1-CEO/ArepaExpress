@@ -84,7 +84,7 @@ export default function BCVCalculatorModal({ isOpen, onClose, bcvRate }: BCVCalc
               </div>
               <h2 className="text-2xl font-black text-slate-900 text-center leading-tight">Calculadora BCV</h2>
               <p className="text-sm font-bold text-slate-600 mt-2 bg-slate-100 px-3 py-1 rounded-full">
-                Tasa Referencial: Bs {bcvRate.toFixed(2)}
+                Tasa Referencial: {bcvRate.toFixed(2)} Bs
               </p>
             </div>
 
@@ -119,12 +119,12 @@ export default function BCVCalculatorModal({ isOpen, onClose, bcvRate }: BCVCalc
                   Bolívares (Bs)
                 </label>
                 <div className="relative">
-                  <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 font-medium">Bs</span>
+                  <span className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 font-medium">Bs</span>
                   <input
                     type="number"
                     value={bsAmount}
                     onChange={handleBsChange}
-                    className="w-full bg-white border-2 border-slate-200 rounded-xl py-3 pl-12 pr-4 font-bold text-slate-900 focus:border-primary focus:outline-none transition-colors"
+                    className="w-full bg-white border-2 border-slate-200 rounded-xl py-3 pl-4 pr-12 font-bold text-slate-900 focus:border-primary focus:outline-none transition-colors"
                     placeholder="0.00"
                   />
                 </div>

@@ -268,7 +268,7 @@ _Enviado desde Deliexpress App_`
         if (!selectedDriverFinance) return;
         const driverPendingBalance = calculateDriverBalance(selectedDriverFinance.id);
         const bsAmount = driverPendingBalance.total * bcvRate;
-        if (!window.confirm(`¿Confirmas el pago de $${driverPendingBalance.total.toFixed(2)} (Bs. ${bsAmount.toFixed(2)}) al repartidor ${selectedDriverFinance.fullName}?`)) return;
+        if (!window.confirm(`¿Confirmas el pago de $${driverPendingBalance.total.toFixed(2)} (${bsAmount.toFixed(2)} Bs) al repartidor ${selectedDriverFinance.fullName}?`)) return;
 
         setPayingDriver(true);
         try {

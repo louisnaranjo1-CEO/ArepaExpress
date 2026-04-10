@@ -278,7 +278,7 @@ export default function TransportRequests() {
             batch.set(notifRef, {
                 userId: selectedDriver.driverId,
                 title: '¡Pago Recibido!',
-                body: `Se ha procesado tu pago de $${selectedDriver.weeklyDebt.toFixed(2)} (Bs. ${bsAmount.toFixed(2)}). Revisa el comprobante en tu historial.`,
+                body: `Se ha procesado tu pago de $${selectedDriver.weeklyDebt.toFixed(2)} (${bsAmount.toFixed(2)} Bs). Revisa el comprobante en tu historial.`,
                 read: false,
                 createdAt: serverTimestamp(),
                 payoutReceiptUrl: receiptUrl

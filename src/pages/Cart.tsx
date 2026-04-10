@@ -298,7 +298,7 @@ export default function Cart({ hideHeader = false }: CartProps) {
            if (mods) modifiersText = `\n    👉 ${mods}`;
         }
 
-        return `• ${item.quantity}x ${item.name}${variantText}${itemNote}${modifiersText} ($${((item.price || 0) * item.quantity).toFixed(2)} | Bs ${(((item.price || 0) * item.quantity) * bcvRate).toFixed(2)})`;
+        return `• ${item.quantity}x ${item.name}${variantText}${itemNote}${modifiersText} ($${((item.price || 0) * item.quantity).toFixed(2)} | ${(((item.price || 0) * item.quantity) * bcvRate).toFixed(2)} Bs)`;
       }).join('\n');
       
       const mapsLink = (deliveryMethod === 'delivery' && selectedAddress && selectedAddress.lat) ? `\n🗺️ Ubicación GPS: https://www.google.com/maps?q=${selectedAddress.lat},${selectedAddress.lng}` : '';
@@ -315,9 +315,9 @@ export default function Cart({ hideHeader = false }: CartProps) {
         `${notesString}\n\n` +
         `📦 *Método:* ${isWaiter ? 'Servicio a Mesa' : (deliveryMethod === 'pickup' ? 'Recoger en local' : (deliveryMethod === 'own_delivery' ? 'Delivery Propio del Local' : 'Delivery Un 2x3'))}\n` +
         `${(deliveryMethod === 'app_delivery' || deliveryMethod === 'own_delivery') && !isWaiter ? `📍 *Dirección:* ${addressStr}${deliveryMethod === 'app_delivery' ? mapsLink : ''}` : ''}\n\n` +
-        `💰 *SUBTOTAL ARTÍCULOS:* $${cartSubtotalUSD.toFixed(2)} | Bs ${(cartSubtotalUSD * bcvRate).toFixed(2)}\n` +
-        `${deliveryFee > 0 ? `🚚 *DELIVERY:* $${deliveryFee.toFixed(2)} | Bs ${(deliveryFee * bcvRate).toFixed(2)}\n` : ''}` +
-        `⭐ *TOTAL ${deliveryMethod === 'app_delivery' ? '(SOLO DELIVERY UN 2X3 A PAGAR)' : 'ESTIMADO'}:* $${finalTotal.toFixed(2)} | Bs ${(finalTotal * bcvRate).toFixed(2)}\n\n` +
+        `💰 *SUBTOTAL ARTÍCULOS:* $${cartSubtotalUSD.toFixed(2)} | ${(cartSubtotalUSD * bcvRate).toFixed(2)} Bs\n` +
+        `${deliveryFee > 0 ? `🚚 *DELIVERY:* $${deliveryFee.toFixed(2)} | ${(deliveryFee * bcvRate).toFixed(2)} Bs\n` : ''}` +
+        `⭐ *TOTAL ${deliveryMethod === 'app_delivery' ? '(SOLO DELIVERY UN 2X3 A PAGAR)' : 'ESTIMADO'}:* $${finalTotal.toFixed(2)} | ${(finalTotal * bcvRate).toFixed(2)} Bs\n\n` +
         `🔢 *Orden ID:* #${docRef.id.slice(-6).toUpperCase()}\n` +
         `━━━━━━━━━━━━━━\n\n` +
         `Esperando confirmación...`

@@ -474,7 +474,7 @@ export default function Home() {
             >
               <span className="text-[9px] font-black uppercase text-secondary/60 tracking-tighter leading-none mb-0.5">Tasa BCV</span>
               <div className="flex items-center gap-1 bg-white/20 px-2 py-0.5 rounded-full">
-                <span className="text-[11px] font-black text-secondary">Bs {(bcvRate || 0).toFixed(2)}</span>
+                <span className="text-[11px] font-black text-secondary">{(bcvRate || 0).toFixed(2)} Bs</span>
               </div>
             </div>
             {/* Points */}
