@@ -925,13 +925,22 @@ export default function OrdersRadar() {
                                     </div>
                                 </div>
 
-                                <button
-                                    onClick={() => handleAcceptTransport(req.id)}
-                                    disabled={processingAction !== null}
-                                    className="w-full bg-primary text-slate-900 font-black py-4 rounded-2xl shadow-lg shadow-primary/30 active:scale-95 transition-all flex items-center justify-center h-16 disabled:opacity-70 group-hover:shadow-primary/40"
-                                >
-                                    {processingAction === req.id ? <div className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin"></div> : 'ACEPTAR VIAJE'}
-                                </button>
+                                <div className="pt-2 grid gap-3">
+                                    <a
+                                        href={`https://www.google.com/maps/dir/?api=1&waypoints=${encodeURIComponent(req.origin?.address || '')}&destination=${encodeURIComponent(req.destination?.address || '')}`}
+                                        target="_blank"
+                                        className="w-full bg-slate-100 text-slate-600 font-bold py-4 rounded-2xl flex justify-center items-center gap-2 active:scale-95 transition-all"
+                                    >
+                                        <Navigation className="w-5 h-5" /> Ver GPS
+                                    </a>
+                                    <button
+                                        onClick={() => handleAcceptTransport(req.id)}
+                                        disabled={processingAction !== null}
+                                        className="w-full bg-primary text-slate-900 font-black py-4 rounded-2xl shadow-lg shadow-primary/30 active:scale-95 transition-all flex items-center justify-center h-16 disabled:opacity-70 group-hover:shadow-primary/40"
+                                    >
+                                        {processingAction === req.id ? <div className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin"></div> : 'ACEPTAR VIAJE'}
+                                    </button>
+                                </div>
                             </motion.div>
                         ))}
 
@@ -951,7 +960,10 @@ export default function OrdersRadar() {
                                         <Package className="w-3.5 h-3.5" />
                                         REPARTO COMIDA
                                     </div>
-                                    <div className="text-sm font-black text-primary">RECOLECTAR PEDIDO</div>
+                                    <div className="flex flex-col items-end">
+                                        <div className="text-2xl font-black text-emerald-600">${(order.deliveryFee || 0).toFixed(2)}</div>
+                                        <div className="text-[10px] font-black text-primary uppercase mt-0.5 tracking-wider">Ganancia</div>
+                                    </div>
                                 </div>
 
                                 <div className="space-y-4 mb-8 relative">
@@ -975,13 +987,22 @@ export default function OrdersRadar() {
                                     </div>
                                 </div>
 
-                                <button
-                                    onClick={() => handleAcceptOrder(order.id)}
-                                    disabled={processingAction !== null}
-                                    className="w-full bg-primary text-slate-900 font-black py-4 rounded-2xl shadow-lg shadow-primary/30 active:scale-95 transition-all flex items-center justify-center h-16 disabled:opacity-70 group-hover:bg-primary"
-                                >
-                                    {processingAction === order.id ? <div className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin"></div> : 'TOMAR REPARTO'}
-                                </button>
+                                <div className="pt-2 grid gap-3">
+                                    <a
+                                        href={`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(order.shippingAddress?.address || '')}`}
+                                        target="_blank"
+                                        className="w-full bg-slate-100 text-slate-600 font-bold py-4 rounded-2xl flex justify-center items-center gap-2 active:scale-95 transition-all"
+                                    >
+                                        <Navigation className="w-5 h-5" /> Ver GPS
+                                    </a>
+                                    <button
+                                        onClick={() => handleAcceptOrder(order.id)}
+                                        disabled={processingAction !== null}
+                                        className="w-full bg-primary text-slate-900 font-black py-4 rounded-2xl shadow-lg shadow-primary/30 active:scale-95 transition-all flex items-center justify-center h-16 disabled:opacity-70 group-hover:bg-primary"
+                                    >
+                                        {processingAction === order.id ? <div className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin"></div> : 'TOMAR REPARTO'}
+                                    </button>
+                                </div>
                             </motion.div>
                         ))}
                     </AnimatePresence>

@@ -1,8 +1,8 @@
 import React, { useEffect, useState } from 'react';
-import { DollarSign, Activity, Calendar, ArrowUpRight, Star, ExternalLink, PackageCheck, AlertCircle } from 'lucide-react';
+import { DollarSign, Activity, Calendar, ArrowUpRight, Star, ExternalLink, PackageCheck, AlertCircle, Ticket, Gift, Sparkles } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { db } from '../../lib/firebase';
-import { collection, query, where, onSnapshot, orderBy } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, orderBy, doc, getDocs, updateDoc, increment, addDoc, serverTimestamp } from 'firebase/firestore';
 
 interface EarningsItem {
     id: string;
@@ -19,11 +19,24 @@ interface EarningsItem {
     duration?: number;
 }
 
+interface DriverRaffle {
+    id: string;
+    title: string;
+    description: string;
+    pointsCost: number;
+    bannerUrl?: string;
+    status: 'active' | 'finished';
+}
+
 export default function Earnings() {
-    const { user } = useAuth();
+    const { user, profile } = useAuth();
     const [earnings, setEarnings] = useState<EarningsItem[]>([]);
     const [loading, setLoading] = useState(true);
     const [activeTab, setActiveTab] = useState<'pending' | 'history'>('pending');
+
+    const [activeRaffles, setActiveRaffles] = useState<DriverRaffle[]>([]);
+    const [driverPoints, setDriverPoints] = useState<number>(0);
+    const [processingRaffle, setProcessingRaffle] = useState<string | null>(null);
 
     const [stats, setStats] = useState({
         today: 0,
@@ -113,9 +126,22 @@ export default function Earnings() {
 
         fetchAll();
 
+        const unsubRaffles = onSnapshot(query(collection(db, 'driver_raffles'), where('status', '==', 'active')), (snapshot) => {
+            const active = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as DriverRaffle));
+            setActiveRaffles(active);
+        });
+
+        const unsubUser = onSnapshot(doc(db, 'users', user.uid), (docInfo) => {
+            if (docInfo.exists()) {
+                setDriverPoints(docInfo.data().points || 0);
+            }
+        });
+
         return () => {
             unsubOrders();
             unsubTransport();
+            unsubRaffles();
+            unsubUser();
         };
     }, [user]);
 
@@ -152,6 +178,47 @@ export default function Earnings() {
         return `${mins}m ${secs}s`;
     };
 
+    const handleExchangePoints = async (raffle: DriverRaffle) => {
+        if (!user || processingRaffle) return;
+        if (driverPoints < raffle.pointsCost) {
+            alert(`No posees suficientes puntos. Necesitas ${raffle.pointsCost}.`);
+            return;
+        }
+
+        const confirmTrade = window.confirm(`Deseas cambiar ${raffle.pointsCost} pts por un ticket de "${raffle.title}"?`);
+        if (!confirmTrade) return;
+
+        setProcessingRaffle(raffle.id);
+        try {
+            const ticketRef = collection(db, 'driver_raffle_tickets');
+            const qTickets = query(ticketRef, where('raffleId', '==', raffle.id));
+            const snapshot = await getDocs(qTickets);
+            const nextTicketNumber = snapshot.size + 1;
+            const ticketStr = `Ticket #${String(nextTicketNumber).padStart(3, '0')}`;
+
+            await addDoc(ticketRef, {
+                raffleId: raffle.id,
+                raffleTitle: raffle.title,
+                driverId: user.uid,
+                driverName: profile?.name || 'Piloto',
+                ticketNumber: ticketStr,
+                pointsCost: raffle.pointsCost,
+                createdAt: serverTimestamp()
+            });
+
+            await updateDoc(doc(db, 'users', user.uid), {
+                points: increment(-raffle.pointsCost)
+            });
+            
+            alert(`¡Ticket adquirido! Tu número es ${ticketStr}`);
+        } catch (error) {
+            console.error('Error cangando puntos:', error);
+            alert('Oh no, hubo un error procesando el canje.');
+        } finally {
+            setProcessingRaffle(null);
+        }
+    };
+
     if (loading) {
         return (
             <div className="flex justify-center items-center py-20">
@@ -166,6 +233,58 @@ export default function Earnings() {
                 <h2 className="text-2xl font-black text-slate-800 tracking-tight">Mis Ganancias</h2>
                 <p className="text-slate-500 font-medium mt-1">Supervisa tus ingresos por delivery y transporte</p>
             </div>
+
+            {/* Banners Promocionales de Rifas */}
+            {activeRaffles.map(raffle => (
+                <div key={raffle.id} className="mx-4 bg-gradient-to-br from-indigo-900 to-violet-900 rounded-[32px] p-1 shadow-xl shadow-indigo-900/30">
+                    <div className="bg-gradient-to-bl from-indigo-700 to-violet-800 rounded-[28px] overflow-hidden relative">
+                        <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 blur-3xl -mr-16 -mt-16 rounded-full pointer-events-none"></div>
+                        <div className="absolute bottom-0 left-0 w-24 h-24 bg-white/5 blur-2xl -ml-12 -mb-12 rounded-full pointer-events-none"></div>
+                        
+                        {raffle.bannerUrl && (
+                            <img src={raffle.bannerUrl} alt={raffle.title} className="w-full h-32 object-cover opacity-80" />
+                        )}
+
+                        <div className="p-5 relative z-10">
+                            <div className="flex items-center gap-2 mb-2">
+                                <Gift className="w-5 h-5 text-yellow-300 animate-pulse" />
+                                <span className="text-yellow-300 text-[10px] uppercase font-black tracking-widest bg-yellow-300/10 px-2 py-0.5 rounded-full border border-yellow-300/20">Sorteo Especial Activo</span>
+                            </div>
+                            <h3 className="text-2xl font-black text-white leading-tight">{raffle.title}</h3>
+                            <p className="text-indigo-200 text-xs font-medium mt-1">{raffle.description}</p>
+                            
+                            <div className="flex items-center justify-between mt-4 bg-black/20 rounded-2xl p-3 border border-indigo-500/30">
+                                <div>
+                                    <p className="text-indigo-200 text-[10px] uppercase font-black tracking-widest mb-0.5">Tus Puntos</p>
+                                    <p className="text-white font-black text-xl flex items-center gap-1">
+                                        <Sparkles className="w-4 h-4 text-emerald-400" />
+                                        {driverPoints}
+                                    </p>
+                                </div>
+                                <div className="text-right">
+                                    <p className="text-indigo-200 text-[10px] uppercase font-black tracking-widest mb-0.5">Costo por Ticket</p>
+                                    <p className="text-yellow-300 font-black text-lg">{raffle.pointsCost} pts</p>
+                                </div>
+                            </div>
+
+                            <button 
+                                onClick={() => handleExchangePoints(raffle)}
+                                disabled={processingRaffle === raffle.id}
+                                className="w-full mt-4 bg-gradient-to-r from-yellow-400 to-amber-500 hover:from-yellow-300 hover:to-amber-400 text-slate-900 font-black py-3 rounded-xl shadow-lg shadow-amber-500/20 active:scale-95 transition-all text-sm flex items-center justify-center gap-2 disabled:opacity-70 disabled:active:scale-100"
+                            >
+                                {processingRaffle === raffle.id ? (
+                                    <div className="w-5 h-5 border-2 border-slate-900 border-t-transparent rounded-full animate-spin"></div>
+                                ) : (
+                                    <>
+                                        <Ticket className="w-5 h-5" />
+                                        CANJEAR TICKET AHORA
+                                    </>
+                                )}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            ))}
 
             {/* Main Stats Grid */}
             <div className="px-4 grid grid-cols-2 gap-4">

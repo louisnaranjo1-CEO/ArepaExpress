@@ -14,9 +14,11 @@ interface Raffle {
     drawDate: string;
     isActive: boolean;
     createdAt: any;
+    pointsCost?: number;
 }
 
 export default function RafflesManager() {
+    const [activeTab, setActiveTab] = useState<'clients' | 'drivers'>('clients');
     const [raffles, setRaffles] = useState<Raffle[]>([]);
     const [loading, setLoading] = useState(true);
     const [showAddModal, setShowAddModal] = useState(false);
@@ -32,11 +34,13 @@ export default function RafflesManager() {
 
     useEffect(() => {
         fetchRaffles();
-    }, []);
+    }, [activeTab]);
 
     const fetchRaffles = async () => {
+        setLoading(true);
         try {
-            const querySnapshot = await getDocs(collection(db, 'raffles'));
+            const collectionName = activeTab === 'clients' ? 'raffles' : 'driver_raffles';
+            const querySnapshot = await getDocs(collection(db, collectionName));
             const data = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Raffle));
             setRaffles(data);
         } catch (error) {
@@ -52,9 +56,14 @@ export default function RafflesManager() {
             toast.error("Completa los campos obligatorios");
             return;
         }
+        if (activeTab === 'drivers' && !newRaffle.pointsCost) {
+            toast.error("Ingresa el costo en puntos");
+            return;
+        }
 
         try {
-            await addDoc(collection(db, 'raffles'), {
+            const collectionName = activeTab === 'clients' ? 'raffles' : 'driver_raffles';
+            await addDoc(collection(db, collectionName), {
                 ...newRaffle,
                 createdAt: serverTimestamp()
             });
@@ -78,7 +87,8 @@ export default function RafflesManager() {
     const handleDeleteRaffle = async (id: string) => {
         if (!window.confirm("¿Eliminar este sorteo?")) return;
         try {
-            await deleteDoc(doc(db, 'raffles', id));
+            const collectionName = activeTab === 'clients' ? 'raffles' : 'driver_raffles';
+            await deleteDoc(doc(db, collectionName, id));
             toast.success("Eliminado");
             fetchRaffles();
         } catch (error) {
@@ -96,6 +106,28 @@ export default function RafflesManager() {
                     </h1>
                     <p className="text-slate-500 font-medium">Gestiona sorteos nacionales, regionales y locales</p>
                 </div>
+                
+                <div className="flex bg-slate-100 p-1 rounded-2xl w-max relative z-0 hide-scrollbar mr-4">
+                    <button
+                        onClick={() => setActiveTab('clients')}
+                        className={`relative px-6 py-2.5 rounded-xl font-bold text-sm transition-all z-10 whitespace-nowrap ${activeTab === 'clients' ? 'text-primary' : 'text-slate-500 hover:text-slate-700'}`}
+                    >
+                        {activeTab === 'clients' && (
+                            <div className="absolute inset-0 bg-white rounded-xl -z-10 shadow-sm" />
+                        )}
+                        Para Clientes
+                    </button>
+                    <button
+                        onClick={() => setActiveTab('drivers')}
+                        className={`relative px-6 py-2.5 rounded-xl font-bold text-sm transition-all z-10 whitespace-nowrap ${activeTab === 'drivers' ? 'text-primary' : 'text-slate-500 hover:text-slate-700'}`}
+                    >
+                        {activeTab === 'drivers' && (
+                            <div className="absolute inset-0 bg-white rounded-xl -z-10 shadow-sm" />
+                        )}
+                        Para Pilotos
+                    </button>
+                </div>
+
                 <button
                     onClick={() => setShowAddModal(true)}
                     className="bg-primary text-slate-900 px-6 py-3 rounded-2xl font-black shadow-lg shadow-primary/20 hover:scale-105 active:scale-95 transition-all flex items-center gap-2"
@@ -147,6 +179,15 @@ export default function RafflesManager() {
                                             <p className="text-sm font-black text-slate-700">{raffle.drawDate}</p>
                                         </div>
                                     </div>
+                                    {activeTab === 'drivers' && (
+                                        <div className="bg-emerald-50 border border-emerald-100 p-3 rounded-2xl flex items-center gap-3">
+                                            <Ticket className="w-5 h-5 text-emerald-500" />
+                                            <div>
+                                                <p className="text-[10px] text-emerald-600/70 font-black uppercase leading-none mb-1">Costo (Puntos)</p>
+                                                <p className="text-sm font-black text-emerald-700">{raffle.pointsCost} pts</p>
+                                            </div>
+                                        </div>
+                                    )}
                                 </div>
                             </div>
                             <div className="px-6 py-4 bg-slate-50 border-t border-slate-100 flex items-center justify-between">
@@ -224,6 +265,18 @@ export default function RafflesManager() {
                                         className="w-full bg-slate-50 border-2 border-slate-100 focus:border-primary px-4 py-3 rounded-2xl outline-none font-bold"
                                     />
                                 </div>
+                                {activeTab === 'drivers' && (
+                                    <div className="space-y-1">
+                                        <label className="text-[10px] font-black text-emerald-600/70 uppercase ml-1">Costo en Puntos (Ticket)</label>
+                                        <input
+                                            type="number"
+                                            value={newRaffle.pointsCost || ''}
+                                            onChange={(e) => setNewRaffle({ ...newRaffle, pointsCost: Number(e.target.value) })}
+                                            placeholder="Ej: 50"
+                                            className="w-full bg-emerald-50 text-emerald-900 border-2 border-emerald-100 focus:border-emerald-500 px-4 py-3 rounded-2xl outline-none font-bold placeholder:text-emerald-300"
+                                        />
+                                    </div>
+                                )}
                             </div>
 
                             <button

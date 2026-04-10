@@ -13,7 +13,8 @@ export default function DeliveryManagement() {
     const { bcvRate } = useCurrency();
     const [drivers, setDrivers] = useState<DeliveryDriver[]>([]);
     const [loading, setLoading] = useState(true);
-    const [activeTab, setActiveTab] = useState<'requests' | 'active' | 'finances' | 'history'>('requests');
+    const [activeTab, setActiveTab] = useState<'requests' | 'active' | 'verifications' | 'finances' | 'history'>('requests');
+    const [verifyingOrders, setVerifyingOrders] = useState<any[]>([]);
     const [completedOrders, setCompletedOrders] = useState<any[]>([]);
     const [historySearchTerm, setHistorySearchTerm] = useState('');
     const [loadingHistory, setLoadingHistory] = useState(false);
@@ -109,6 +110,12 @@ _Enviado desde Deliexpress App_`
             setUpdateRequests(data);
         });
 
+        const qVerifications = query(collection(db, 'orders'), where('status', '==', 'verificando_pago_delivery'));
+        const unsubscribeVerifications = onSnapshot(qVerifications, (snapshot) => {
+            const data = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+            setVerifyingOrders(data);
+        });
+
         const qSettings = doc(db, 'delivery_settings', 'settings');
         const unsubscribeSettings = onSnapshot(qSettings, (docSnap) => {
             if (docSnap.exists()) {
@@ -125,6 +132,7 @@ _Enviado desde Deliexpress App_`
             unsubscribe();
             unsubscribeUpdates();
             unsubscribeSettings();
+            unsubscribeVerifications();
         };
     }, []);
 
@@ -241,6 +249,36 @@ _Enviado desde Deliexpress App_`
         }
     };
 
+    const handleApproveDeliveryPayment = async (orderId: string) => {
+        if (!window.confirm('¿Aprobar el pago de este delivery? La orden pasará a estado de búsqueda de piloto.')) return;
+        try {
+            await updateDoc(doc(db, 'orders', orderId), {
+                status: 'buscando_piloto',
+                deliveryPaymentStatus: 'approved'
+            });
+            alert('Pago aprobado. Buscando pilotos.');
+        } catch (error) {
+            console.error('Error processing delivery payment', error);
+            alert('Error al aprobar el pago.');
+        }
+    };
+
+    const handleRejectDeliveryPayment = async (orderId: string) => {
+        if (!window.confirm('¿Rechazar este pago? La orden regresará a estado de pago pendiente.')) return;
+        try {
+            await updateDoc(doc(db, 'orders', orderId), {
+                status: 'pendiente_pago',
+                deliveryPaymentStatus: 'rejected',
+                deliveryPaymentRef: null,
+                deliveryPaymentImage: null
+            });
+            alert('Pago rechazado.');
+        } catch (error) {
+            console.error('Error rejecting delivery payment', error);
+            alert('Error al rechazar el pago.');
+        }
+    };
+
     const handleOpenFinanceModal = async (driver: DeliveryDriver) => {
         setSelectedDriverFinance(driver);
         setDriverPendingBalance({ total: 0, count: 0 }); // Reset while loading
@@ -338,7 +376,7 @@ _Enviado desde Deliexpress App_`
 
             {/* TABS */}
             <div className="flex bg-slate-100 p-1 rounded-2xl w-max relative z-0 overflow-x-auto hide-scrollbar">
-                {(['requests', 'active', 'finances', 'history'] as const).map(tab => (
+                {(['requests', 'active', 'verifications', 'finances', 'history'] as const).map(tab => (
                     <button
                         key={tab}
                         onClick={() => setActiveTab(tab)}
@@ -354,8 +392,9 @@ _Enviado desde Deliexpress App_`
                         )}
                         {tab === 'requests' ? `Nuevas Solicitudes (${pendingDrivers.length})`
                             : tab === 'active' ? `Pilotos Activos (${activeDrivers.length})`
-                                : tab === 'finances' ? 'Finanzas y Tarifas'
-                                    : 'Auditoría de Entregas'}
+                                : tab === 'verifications' ? `Pagos Delivery (${verifyingOrders.length})`
+                                    : tab === 'finances' ? 'Finanzas y Tarifas'
+                                        : 'Auditoría de Entregas'}
                     </button>
                 ))}
             </div>
@@ -489,6 +528,73 @@ _Enviado desde Deliexpress App_`
                             </div>
                         )}
                     </div>
+                </div>
+            )}
+
+            {/* TAB: VERIFICATIONS */}
+            {activeTab === 'verifications' && (
+                <div className="space-y-6">
+                    <div className="flex items-center gap-3 mb-6">
+                        <DollarSign className="w-6 h-6 text-emerald-500" />
+                        <h2 className="text-xl font-black text-slate-800">Verificación de Pagos de Delivery</h2>
+                    </div>
+
+                    {verifyingOrders.length === 0 ? (
+                        <div className="text-center py-20 bg-white rounded-3xl border border-slate-100 shadow-sm">
+                            <CheckCircle2 className="w-16 h-16 mx-auto text-emerald-200 mb-4" />
+                            <h3 className="text-xl font-bold text-slate-800 mb-2">Todo al día</h3>
+                            <p className="text-slate-500">No hay pagos pendientes de verificación en este momento.</p>
+                        </div>
+                    ) : (
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                            {verifyingOrders.map(order => (
+                                <div key={order.id} className="bg-white rounded-3xl p-6 border flex flex-col justify-between border-slate-100 relative overflow-hidden shadow-sm group">
+                                    <div className="mb-4">
+                                        <div className="flex justify-between items-start mb-2">
+                                            <h3 className="font-bold text-slate-900 line-clamp-1">{order.userName}</h3>
+                                            <span className="text-xs font-bold bg-amber-100 text-amber-700 px-2 py-1 rounded-full uppercase">Pte. Verificación</span>
+                                        </div>
+                                        <p className="text-xs text-slate-500 font-medium">#{order.id.slice(-5).toUpperCase()} • {order.restaurantName}</p>
+                                        
+                                        <div className="mt-4 p-3 bg-slate-50 rounded-xl space-y-2 text-sm border border-slate-100">
+                                            <div className="flex justify-between">
+                                                <span className="text-slate-500 font-medium">Delivery:</span>
+                                                <span className="font-bold text-slate-800">${(order.deliveryFee || 0).toFixed(2)} | {((order.deliveryFee || 0) * bcvRate).toFixed(2)} Bs</span>
+                                            </div>
+                                            <div className="flex justify-between">
+                                                <span className="text-slate-500 font-medium">Referencia:</span>
+                                                <span className="font-bold text-slate-800">{order.deliveryPaymentRef || 'N/A'}</span>
+                                            </div>
+                                        </div>
+
+                                        {order.deliveryPaymentImage && (
+                                            <div className="mt-4 w-full h-32 rounded-xl overflow-hidden shadow-sm border border-slate-200 relative group cursor-pointer" onClick={() => window.open(order.deliveryPaymentImage, '_blank')}>
+                                                <img src={order.deliveryPaymentImage} className="w-full h-full object-cover transition-transform group-hover:scale-105" alt="Capture" />
+                                                <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
+                                                    <span className="text-white text-xs font-bold bg-black/50 px-2 py-1 rounded-lg backdrop-blur-sm shadow-lg">Ver Capture</span>
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    <div className="flex gap-2 mt-4">
+                                        <button 
+                                            onClick={() => handleRejectDeliveryPayment(order.id)}
+                                            className="flex-1 bg-red-50 text-red-600 hover:bg-red-100 font-bold py-2.5 rounded-xl transition-colors text-sm flex justify-center items-center gap-1"
+                                        >
+                                            <XCircle className="w-4 h-4" /> Rechazar
+                                        </button>
+                                        <button 
+                                            onClick={() => handleApproveDeliveryPayment(order.id)}
+                                            className="flex-1 bg-emerald-500 text-white hover:bg-emerald-600 font-bold py-2.5 rounded-xl shadow-lg shadow-emerald-500/30 transition-colors text-sm flex justify-center items-center gap-1"
+                                        >
+                                            <CheckCircle2 className="w-4 h-4" /> Aprobar
+                                        </button>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    )}
                 </div>
             )}
 

@@ -3,7 +3,9 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { doc, onSnapshot, getDoc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { DeliveryDriver } from '../lib/delivery-service';
-import { Navigation, Clock, CheckCircle2, Package, MapPin, Phone, ArrowLeft, Store, Star } from 'lucide-react';
+import { Navigation, Clock, CheckCircle2, Package, MapPin, Phone, ArrowLeft, Store, Star, Wallet } from 'lucide-react';
+import { useCurrency } from '../context/CurrencyContext';
+import DeliveryPaymentModal from '../components/DeliveryPaymentModal';
 import ReviewModal from '../components/ReviewModal';
 import DualPrice from '../components/DualPrice';
 
@@ -15,7 +17,9 @@ export default function TrackOrder() {
     const [restaurant, setRestaurant] = useState<any>(null);
     const [loading, setLoading] = useState(true);
     const [showReviewModal, setShowReviewModal] = useState(false);
-
+    const { bcvRate } = useCurrency();
+    const [hasPaidRestaurant, setHasPaidRestaurant] = useState(false);
+    const [showDeliveryPaymentModal, setShowDeliveryPaymentModal] = useState(false);
     useEffect(() => {
         if (order && order.status === 'delivered' && !order.hasReviewed) {
             setShowReviewModal(true);
@@ -142,7 +146,7 @@ export default function TrackOrder() {
                         <p className="font-black text-xs uppercase tracking-[0.4em] text-slate-900 mb-3">Rastreo Activo</p>
                         <h2 className="text-xl font-black text-white mb-1 uppercase tracking-tight">#{orderId?.slice(-5).toUpperCase()}</h2>
                         <p className="text-white/40 text-[10px] font-bold uppercase tracking-[0.2em] max-w-[250px] mx-auto leading-relaxed">
-                            {currentStep === 1 && "Confirmando tu pedido con el restaurante..."}
+                            {currentStep === 1 && (order.status === 'verificando_pago_delivery' ? "Verificando el pago de tu delivery..." : "Confirmando tu pedido con el restaurante...")}
                             {currentStep === 2 && "Preparación en curso. ¡Casi listo!"}
                             {currentStep === 3 && (driver ? `${driver.fullName.split(' ')[0]} está transportando tu orden` : "Asignando repartidor...")}
                             {currentStep === 4 && "¡Pedido entregado! Disfruta tu comida"}
@@ -168,7 +172,11 @@ export default function TrackOrder() {
                     <div className="flex justify-between items-start mb-6">
                         <div>
                             <h2 className="text-2xl font-black text-slate-900 leading-tight">
-                                {currentStep === 1 && (order.status === 'pendiente_pago' ? "Esperando confirmación de pago" : "Recibido, esperando negocio")}
+                                {currentStep === 1 && (
+                                    order.status === 'verificando_pago_delivery' 
+                                        ? "Verificando pago del delivery"
+                                        : (order.status === 'pendiente_pago' ? "Esperando confirmación de pago" : "Recibido, esperando negocio")
+                                )}
                                 {currentStep === 2 && order.deliveryMethod === 'app_delivery' ? "Buscando al mejor piloto" : currentStep === 2 && "Pago aceptado. Preparando tu orden"}
                                 {currentStep === 3 && "¡Tu pedido va en camino!"}
                                 {currentStep === 4 && "Pedido Entregado"}
@@ -187,7 +195,7 @@ export default function TrackOrder() {
                         <div className="relative flex justify-between">
                             {[1, 2, 3, 4].map((step) => (
                                 <div key={step} className={`w-8 h-8 rounded-full flex items-center justify-center ring-4 ring-white transition-colors duration-500 ${step <= currentStep ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-500/30' : 'bg-slate-200 text-slate-400'}`}>
-                                    {step === 1 && <Clock className="w-4 h-4" />}
+                                    {step === 1 && <Wallet className="w-4 h-4" />}
                                     {step === 2 && <Package className="w-4 h-4" />}
                                     {step === 3 && <Navigation className="w-4 h-4" />}
                                     {step === 4 && <CheckCircle2 className="w-4 h-4" />}
@@ -195,6 +203,40 @@ export default function TrackOrder() {
                             ))}
                         </div>
                     </div>
+
+                    {/* Delivery Payment Flow */ }
+                    {currentStep === 1 && order.deliveryMethod === 'app_delivery' && (!order.deliveryPaymentStatus || order.deliveryPaymentStatus === 'rejected') && (
+                        <div className="mt-6 pt-6 border-t border-slate-100 flex flex-col items-center gap-3 animate-in fade-in slide-in-from-bottom-2">
+                            {order.deliveryPaymentStatus === 'rejected' && (
+                                <div className="p-3 bg-red-50 text-red-600 text-xs font-bold rounded-xl mb-2 text-center">
+                                    Tu captura de pago del delivery fue rechazada por el administrador. Por favor, verifica e intenta de nuevo.
+                                </div>
+                            )}
+                            
+                            {!hasPaidRestaurant ? (
+                                <button 
+                                    onClick={() => setHasPaidRestaurant(true)}
+                                    className="w-full bg-slate-900 text-white py-4 rounded-2xl font-black shadow-lg hover:bg-slate-800 transition-colors"
+                                >
+                                    Ya pagué el pedido a {restaurant?.name || "Negocio"}
+                                </button>
+                            ) : (
+                                <div className="w-full animate-in fade-in zoom-in-95 duration-200">
+                                    <button 
+                                        onClick={() => setShowDeliveryPaymentModal(true)}
+                                        className="w-full bg-primary text-slate-900 py-4 rounded-2xl font-black shadow-xl shadow-primary/20 hover:scale-[1.02] active:scale-95 transition-all text-lg flex items-center justify-center gap-2"
+                                    >
+                                        <Wallet className="w-6 h-6" />
+                                        Pagar Delivery
+                                    </button>
+                                    <p className="text-center text-[10px] uppercase font-bold text-slate-400 mt-3 px-4">
+                                        Debes pagar el delivery de ${order.deliveryFee?.toFixed(2)} USD para que tu pedido sea asignado a un piloto.
+                                    </p>
+                                </div>
+                            )}
+                        </div>
+                    )}
+
                 </div>
 
                 {/* Driver Info (If Assigned) */}
@@ -299,6 +341,20 @@ export default function TrackOrder() {
                 orderId={orderId!}
                 onReviewSubmitted={() => setShowReviewModal(false)}
             />
+
+            {/* Delivery Payment Modal */}
+            <DeliveryPaymentModal
+                isOpen={showDeliveryPaymentModal}
+                onClose={() => setShowDeliveryPaymentModal(false)}
+                orderId={orderId!}
+                deliveryFee={order.deliveryFee || 0}
+                bcvRate={bcvRate}
+                businessName={restaurant?.name || "Negocio"}
+                onSuccess={() => {
+                    setShowDeliveryPaymentModal(false);
+                }}
+            />
         </div>
     );
 }
+
