@@ -689,7 +689,7 @@ export default function RestaurantProfile() {
                                 }}
                             >
                                 <div>
-                                    <span className="font-bold text-slate-700 block">Retiro en Tienda (Pickup)</span>
+                                    <span className="font-bold text-slate-700 block">PickUp</span>
                                     <span className="text-xs text-slate-500">Permitir a los clientes recoger su pedido en el local.</span>
                                 </div>
                                 <div className={`w-12 h-6 rounded-full relative transition-colors ${pickupOnly ? 'bg-primary' : 'bg-slate-200'}`}>

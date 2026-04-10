@@ -2,9 +2,17 @@ import React, { useState, useEffect, useRef } from 'react';
 import { collection, query, orderBy, onSnapshot, doc, updateDoc, deleteDoc, writeBatch, getDocs, where, serverTimestamp, limit } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { db, storage } from '../../lib/firebase';
-import { Car, Bike, Clock, CheckCircle2, XCircle, Search, Calendar, DollarSign, MapPin, User, ShieldCheck, Upload, Image as ImageIcon, MessageSquare, Star } from 'lucide-react';
+import { Car, Bike, Clock, CheckCircle2, XCircle, Search, Calendar, DollarSign, MapPin, User, ShieldCheck, Upload, Image as ImageIcon, MessageSquare, Star, Phone, MessageCircle } from 'lucide-react';
 import toast from 'react-hot-toast';
 import RideChat from '../../components/RideChat';
+
+const formatDuration = (seconds: number) => {
+    if (!seconds && seconds !== 0) return '--';
+    const absSeconds = Math.abs(seconds);
+    const m = Math.floor(absSeconds / 60);
+    const s = absSeconds % 60;
+    return `${seconds < 0 ? '-' : ''}${m}m ${s}s`;
+};
 
 export default function TransportRequests() {
     const [requests, setRequests] = useState<any[]>([]);
@@ -384,38 +392,82 @@ export default function TransportRequests() {
                                                         </span>
                                                     )}
                                                 </div>
-                                                <div className="flex items-center gap-3 text-sm font-medium text-slate-500 flex-wrap mt-1">
-                                                    <span className="flex items-center gap-1 bg-slate-100/80 px-2 py-0.5 rounded text-slate-700">
-                                                        <User className="w-4 h-4" /> 
-                                                        <span className="font-bold">{req.userName}</span>
-                                                        {(req.userCedula || req.userPhone) && (
-                                                            <span className="text-xs font-normal border-l border-slate-300 ml-1.5 pl-1.5 text-slate-500">
-                                                                {req.userCedula && `C.I: ${req.userCedula}`}
-                                                                {req.userCedula && req.userPhone && ' | '}
-                                                                {req.userPhone && `Telf: ${req.userPhone}`}
-                                                            </span>
-                                                        )}
-                                                    </span>
-                                                    <span className="flex items-center gap-1">
-                                                        <Calendar className="w-4 h-4" /> 
-                                                        {req.scheduled ? (
-                                                            <span className="text-primary font-black">
-                                                                Para: {req.scheduledAt && typeof req.scheduledAt.toDate === 'function' 
-                                                                    ? req.scheduledAt.toDate().toLocaleString('es-VE') 
-                                                                    : 'Fecha pendiente'}
-                                                            </span>
-                                                        ) : (
-                                                            req.createdAt && typeof req.createdAt.toDate === 'function' 
-                                                                ? req.createdAt.toDate().toLocaleString('es-VE') 
-                                                                : 'Fecha desconocida'
-                                                        )}
-                                                    </span>
-                                                    {req.driverAssignedAt && req.driverArrivedAt && typeof req.driverArrivedAt.toDate === 'function' && typeof req.driverAssignedAt.toDate === 'function' && (
-                                                        <span className="flex items-center gap-1 text-amber-600 bg-amber-50 px-2 py-0.5 rounded border border-amber-100 font-bold ml-2">
-                                                            <Clock className="w-4 h-4" /> 
-                                                            Llegó en: {Math.max(1, Math.round((req.driverArrivedAt.toDate().getTime() - req.driverAssignedAt.toDate().getTime()) / 60000))} min
+                                                <div className="flex flex-col gap-2 mt-2">
+                                                    <div className="flex items-center gap-3 text-sm font-medium text-slate-500 flex-wrap">
+                                                        <span className="flex items-center gap-1 bg-slate-100 px-3 py-1.5 rounded-xl border border-slate-200">
+                                                            <User className="w-4 h-4 text-slate-500" />
+                                                            <div className="flex flex-col">
+                                                                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest leading-none">Cliente</span>
+                                                                <span className="font-bold text-slate-800 leading-none mt-1">{req.userName}</span>
+                                                            </div>
+                                                            {req.userCedula && (
+                                                                <span className="text-xs font-bold bg-white px-1.5 py-0.5 rounded border border-slate-200 text-slate-500 ml-2">
+                                                                    C.I: {req.userCedula}
+                                                                </span>
+                                                            )}
+                                                            {req.userPhone && (
+                                                                <div className="flex items-center gap-1 ml-2 border-l border-slate-300 pl-2">
+                                                                    <a href={`tel:${req.userPhone}`} className="w-7 h-7 bg-white rounded-lg border border-slate-200 flex items-center justify-center text-slate-500 hover:text-primary hover:border-primary transition-colors" title="Llamar Cliente">
+                                                                        <Phone className="w-3.5 h-3.5" />
+                                                                    </a>
+                                                                    <a href={`https://wa.me/${req.userPhone.replace(/\D/g, '')}`} target="_blank" rel="noopener noreferrer" className="w-7 h-7 bg-white rounded-lg border border-emerald-200 flex items-center justify-center text-emerald-500 hover:bg-emerald-50 transition-colors" title="WhatsApp Cliente">
+                                                                        <MessageCircle className="w-3.5 h-3.5" />
+                                                                    </a>
+                                                                    <span className="text-xs font-bold text-slate-500 ml-1">{req.userPhone}</span>
+                                                                </div>
+                                                            )}
                                                         </span>
+                                                    </div>
+
+                                                    {req.driverId && (
+                                                        <div className="flex items-center gap-3 text-sm font-medium text-slate-500 flex-wrap">
+                                                            <span className="flex items-center gap-1 bg-primary/5 px-3 py-1.5 rounded-xl border border-primary/20">
+                                                                {req.vehicleType === 'moto' ? <Bike className="w-4 h-4 text-primary" /> : <Car className="w-4 h-4 text-primary" />}
+                                                                <div className="flex flex-col">
+                                                                    <span className="text-[10px] font-bold text-primary uppercase tracking-widest leading-none">Piloto Asignado</span>
+                                                                    <span className="font-bold text-slate-800 leading-none mt-1">{req.driverName || 'Desconocido'}</span>
+                                                                </div>
+                                                                {req.driverPhone && (
+                                                                    <div className="flex items-center gap-1 ml-2 border-l border-primary/30 pl-2">
+                                                                        <a href={`tel:${req.driverPhone}`} className="w-7 h-7 bg-white rounded-lg border border-primary/20 flex items-center justify-center text-slate-600 hover:text-primary hover:border-primary transition-colors" title="Llamar Piloto">
+                                                                            <Phone className="w-3.5 h-3.5" />
+                                                                        </a>
+                                                                        <a href={`https://wa.me/${req.driverPhone.replace(/\D/g, '')}`} target="_blank" rel="noopener noreferrer" className="w-7 h-7 bg-white rounded-lg border border-emerald-200 flex items-center justify-center text-emerald-500 hover:bg-emerald-50 transition-colors" title="WhatsApp Piloto">
+                                                                            <MessageCircle className="w-3.5 h-3.5" />
+                                                                        </a>
+                                                                        <span className="text-xs font-bold text-slate-600 ml-1">{req.driverPhone}</span>
+                                                                    </div>
+                                                                )}
+                                                            </span>
+                                                        </div>
                                                     )}
+
+                                                    <div className="flex items-center gap-3 text-sm font-medium text-slate-500 flex-wrap mt-1">
+                                                        <span className="flex items-center gap-1">
+                                                            <Calendar className="w-4 h-4" /> 
+                                                            {req.scheduled ? (
+                                                                <span className="text-primary font-black">
+                                                                    Para: {req.scheduledAt && typeof req.scheduledAt.toDate === 'function' 
+                                                                        ? req.scheduledAt.toDate().toLocaleString('es-VE') 
+                                                                        : 'Fecha pendiente'}
+                                                                </span>
+                                                            ) : (
+                                                                req.createdAt && typeof req.createdAt.toDate === 'function' 
+                                                                    ? req.createdAt.toDate().toLocaleString('es-VE') 
+                                                                    : 'Fecha desconocida'
+                                                            )}
+                                                        </span>
+                                                        {((req.driverAssignedAt && req.driverArrivedAt) || req.arrivalDuration !== undefined) && (
+                                                            <span className="flex items-center gap-1 text-amber-600 bg-amber-50 px-2 py-0.5 rounded border border-amber-100 font-bold ml-2">
+                                                                <Clock className="w-4 h-4" /> 
+                                                                Llegó en: {req.arrivalDuration !== undefined ? (
+                                                                    formatDuration(req.arrivalDuration)
+                                                                ) : (req.driverArrivedAt && req.driverAssignedAt && typeof req.driverArrivedAt.toDate === 'function' && typeof req.driverAssignedAt.toDate === 'function') ? (
+                                                                    `${Math.max(1, Math.round((req.driverArrivedAt.toDate().getTime() - req.driverAssignedAt.toDate().getTime()) / 60000))} min`
+                                                                ) : '--'}
+                                                            </span>
+                                                        )}
+                                                    </div>
                                                 </div>
                                             </div>
                                         </div>

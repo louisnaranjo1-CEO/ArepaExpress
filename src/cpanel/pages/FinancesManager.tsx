@@ -179,29 +179,7 @@ export default function FinancesManager() {
         }
     };
 
-    const handleClearDeliveryDebt = async (restaurantId: string, currentDebt: number) => {
-        if (!window.confirm(`¿Confirmas que el restaurante ha pagado su deuda de $${currentDebt.toFixed(2)} por concepto de delivery?`)) return;
-        
-        try {
-            const restRef = doc(db, 'restaurants', restaurantId);
-            await updateDoc(restRef, {
-                deuda_delivery_acumulada: 0
-            });
-            
-            const historyRef = collection(db, 'historial_pagos_delivery');
-            await addDoc(historyRef, {
-                restaurantId,
-                amountPaid: currentDebt,
-                paidAt: new Date().toISOString(),
-                type: 'delivery_debt_clear'
-            });
 
-            toast.success("Deuda saldada correctamente");
-        } catch (error) {
-            console.error("Error clearing delivery debt:", error);
-            toast.error("Error al saldar la deuda");
-        }
-    };
 
     const handleUpdateBannerStatus = async (id: string, newStatus: 'approved' | 'rejected') => {
         try {
@@ -391,16 +369,6 @@ export default function FinancesManager() {
                 >
                     <ImageIcon className="w-4 h-4" />
                     Banners
-                </button>
-                <button
-                    onClick={() => setActiveTab('delivery')}
-                    className={`flex items-center gap-2 px-6 py-2.5 rounded-xl text-sm font-black transition-all ${activeTab === 'delivery'
-                        ? 'bg-white text-primary shadow-sm'
-                        : 'text-slate-500 hover:text-slate-700'
-                        }`}
-                >
-                    <Bike className="w-4 h-4" />
-                    Deudas Delivery
                 </button>
             </div>
 
@@ -793,69 +761,6 @@ export default function FinancesManager() {
                         </div>
                     </div>
                 </div>
-            ) : activeTab === 'delivery' ? (
-                <div className="space-y-6 pb-20">
-                    <div className="bg-white rounded-[32px] border-2 border-slate-100 p-8">
-                        <div className="flex items-center gap-3 mb-8">
-                            <div className="w-10 h-10 bg-rose-50 rounded-xl flex items-center justify-center text-rose-600">
-                                <DollarSign className="w-5 h-5" />
-                            </div>
-                            <div>
-                                <h3 className="font-black text-slate-800 tracking-tight text-lg">Cuentas por Cobrar (Delivery)</h3>
-                                <p className="text-sm text-slate-500">Gestiona las deudas acumuladas de los restaurantes por envíos de Delivery Express.</p>
-                            </div>
-                        </div>
-
-                        <div className="overflow-x-auto">
-                            <table className="w-full text-left whitespace-nowrap">
-                                <thead className="bg-slate-50 border-b border-slate-100">
-                                    <tr>
-                                        <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Restaurante</th>
-                                        <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Deuda Acumulada</th>
-                                        <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Acciones</th>
-                                    </tr>
-                                </thead>
-                                <tbody className="divide-y divide-slate-50">
-                                    {restaurants.map((restaurant) => {
-                                        const debt = restaurant.deuda_delivery_acumulada || 0;
-                                        
-                                        return (
-                                            <tr key={restaurant.id} className="hover:bg-slate-50/50 transition-colors">
-                                                <td className="px-6 py-4">
-                                                    <div className="flex items-center gap-3">
-                                                        <div className="w-10 h-10 rounded-xl overflow-hidden bg-slate-100 border border-slate-200">
-                                                            {restaurant.logoUrl || restaurant.image ? (
-                                                                <img src={restaurant.logoUrl || restaurant.image} alt={restaurant.name} className="w-full h-full object-cover" />
-                                                            ) : (
-                                                                <div className="w-full h-full flex items-center justify-center bg-slate-100">
-                                                                    <Store className="w-5 h-5 text-slate-300" />
-                                                                </div>
-                                                            )}
-                                                        </div>
-                                                        <span className="font-bold text-slate-800">{restaurant.name}</span>
-                                                    </div>
-                                                </td>
-                                                <td className="px-6 py-4 text-center">
-                                                    <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[12px] font-black uppercase tracking-widest ${debt > 0 ? 'bg-rose-100 text-rose-700' : 'bg-emerald-100 text-emerald-700'}`}>
-                                                        ${debt.toFixed(2)}
-                                                    </span>
-                                                </td>
-                                                <td className="px-6 py-4 text-right">
-                                                    <button
-                                                        onClick={() => handleClearDeliveryDebt(restaurant.id, debt)}
-                                                        disabled={debt <= 0}
-                                                        className="px-4 py-2 bg-primary hover:bg-primary disabled:bg-slate-300 disabled:cursor-not-allowed text-slate-900 text-[10px] font-black uppercase tracking-widest rounded-xl transition-all shadow-lg shadow-primary/20 active:scale-95"
-                                                    >
-                                                        Marcar como Pagada
-                                                    </button>
-                                                </td>
-                                            </tr>
-                                        );
-                                    })}
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
                 </div>
             ) : (
                 <div className="space-y-6 pb-20">

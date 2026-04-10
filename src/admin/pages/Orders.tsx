@@ -1014,6 +1014,13 @@ export default function Orders() {
                         >
                             Entregar a Mesa
                         </button>
+                    ) : (order.deliveryAddress === 'PickUp' || order.type === 'takeout') ? (
+                        <button
+                            onClick={() => updateStatus(order.id, 'delivered', 'sold')}
+                            className="flex-1 bg-green-500 text-white py-4 rounded-2xl font-black shadow-lg shadow-green-500/20 hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-2"
+                        >
+                            <CheckCircle className="w-5 h-5" /> Venta Realizada (PickUp)
+                        </button>
                     ) : (
                         <button
                             onClick={() => { setSelectedOrderForDispatch(order); setDispatchModalOpen(true); }}

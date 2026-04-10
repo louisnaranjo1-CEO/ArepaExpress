@@ -91,7 +91,8 @@ export default function Profile() {
     const [profileForm, setProfileForm] = useState({
         displayName: '',
         phone: '',
-        cedula: ''
+        cedula: '',
+        gender: '' as 'masculine' | 'feminine' | ''
     });
 
     // Email Login/Signup State
@@ -139,7 +140,8 @@ export default function Profile() {
             setProfileForm({
                 displayName: userData.displayName || user?.displayName || '',
                 phone: userData.phone || '',
-                cedula: userData.cedula || ''
+                cedula: userData.cedula || '',
+                gender: userData.gender || ''
             });
         }
     }, [userData, user]);
@@ -528,6 +530,7 @@ export default function Profile() {
                 displayName: profileForm.displayName,
                 phone: profileForm.phone,
                 cedula: profileForm.cedula,
+                gender: profileForm.gender,
                 photoURL,
                 updatedAt: serverTimestamp()
             };
@@ -1204,6 +1207,43 @@ export default function Profile() {
                             </div>
                         )}
 
+                        {/* Lugares Calificados Section */}
+                        {activities.some(a => a.type === 'order' && a.hasReviewed) && (
+                            <div className="space-y-4 pt-2">
+                                <h3 className="text-lg font-black text-slate-900 px-2 flex items-center gap-2">
+                                    <Star className="w-5 h-5 text-orange-500 fill-orange-500" />
+                                    Lugares Calificados
+                                </h3>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                    {activities
+                                        .filter(activity => activity.type === 'order' && activity.hasReviewed)
+                                        .map(activity => (
+                                            <div key={`rated-${activity.id}`} className="bg-white border border-slate-100 p-4 rounded-2xl flex flex-col gap-2 shadow-sm">
+                                                <div className="flex justify-between items-start">
+                                                    <div className="flex items-center gap-2">
+                                                        <div className="p-1.5 bg-green-100 rounded-lg text-green-600">
+                                                            <CheckCircle className="w-4 h-4" />
+                                                        </div>
+                                                        <div>
+                                                            <p className="font-bold text-slate-900 text-sm">
+                                                                {activity.restaurantName || 'Negocio Local'}
+                                                            </p>
+                                                            <p className="text-[10px] text-slate-400 font-medium">Calificado satisfactoriamente</p>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                <div className="h-px bg-slate-50 my-1"></div>
+                                                <div className="text-[10px] text-slate-500 flex items-center gap-1.5">
+                                                    <span className="font-bold text-slate-400">PRODUCTOS:</span>
+                                                    <span className="line-clamp-1 italic">{activity.items?.map(i => i.name).join(', ')}</span>
+                                                </div>
+                                            </div>
+                                        ))
+                                    }
+                                </div>
+                            </div>
+                        )}
+
                         {/* Activity History */}
                         <div ref={ordersRef} className="space-y-4 pt-2">
                             <h3 className="text-lg font-black text-slate-900 px-2 flex items-center gap-2">
@@ -1720,6 +1760,26 @@ export default function Profile() {
                                                     placeholder="Ej. V-12345678"
                                                 />
                                                 <UserIcon className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-300" />
+                                            </div>
+                                        </div>
+
+                                        <div className="space-y-2">
+                                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Género (Para personalización)</label>
+                                            <div className="flex gap-4 p-1 bg-slate-100 rounded-2xl">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setProfileForm({ ...profileForm, gender: 'masculine' })}
+                                                    className={`flex-1 py-3 rounded-xl font-bold text-xs transition-all ${profileForm.gender === 'masculine' ? 'bg-white text-primary shadow-sm' : 'text-slate-500'}`}
+                                                >
+                                                    MASCULINO
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setProfileForm({ ...profileForm, gender: 'feminine' })}
+                                                    className={`flex-1 py-3 rounded-xl font-bold text-xs transition-all ${profileForm.gender === 'feminine' ? 'bg-white text-primary shadow-sm' : 'text-slate-500'}`}
+                                                >
+                                                    FEMENINO
+                                                </button>
                                             </div>
                                         </div>
                                     </div>

@@ -10,7 +10,35 @@ import { GoogleMap, useJsApiLoader, Marker, InfoWindow } from '@react-google-map
 export default function DeliveryManagement() {
     const [drivers, setDrivers] = useState<DeliveryDriver[]>([]);
     const [loading, setLoading] = useState(true);
-    const [activeTab, setActiveTab] = useState<'requests' | 'active' | 'finances'>('requests');
+    const [activeTab, setActiveTab] = useState<'requests' | 'active' | 'finances' | 'history'>('requests');
+    const [completedOrders, setCompletedOrders] = useState<any[]>([]);
+    const [historySearchTerm, setHistorySearchTerm] = useState('');
+    const [loadingHistory, setLoadingHistory] = useState(false);
+
+    useEffect(() => {
+        if (activeTab === 'history') {
+            setLoadingHistory(true);
+            const q = query(
+                collection(db, 'orders'),
+                where('status', '==', 'completed'),
+                orderBy('createdAt', 'desc'),
+                limit(100)
+            );
+            const unsubscribe = onSnapshot(q, (snapshot) => {
+                const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                setCompletedOrders(data);
+                setLoadingHistory(false);
+            });
+            return () => unsubscribe();
+        }
+    }, [activeTab]);
+
+    const formatDuration = (seconds: number) => {
+        if (!seconds && seconds !== 0) return '--';
+        const m = Math.floor(seconds / 60);
+        const s = seconds % 60;
+        return `${m}m ${s}s`;
+    };
     const [selectedDriver, setSelectedDriver] = useState<DeliveryDriver | null>(null);
     const [selectedDriverFinance, setSelectedDriverFinance] = useState<DeliveryDriver | null>(null);
     const [driverPendingBalance, setDriverPendingBalance] = useState({ total: 0, count: 0 });
@@ -305,12 +333,12 @@ _Enviado desde Deliexpress App_`
             </div>
 
             {/* TABS */}
-            <div className="flex bg-slate-100 p-1 rounded-2xl w-max relative z-0">
-                {(['requests', 'active', 'finances'] as const).map(tab => (
+            <div className="flex bg-slate-100 p-1 rounded-2xl w-max relative z-0 overflow-x-auto hide-scrollbar">
+                {(['requests', 'active', 'finances', 'history'] as const).map(tab => (
                     <button
                         key={tab}
                         onClick={() => setActiveTab(tab)}
-                        className={`relative px-6 py-2.5 rounded-xl font-bold text-sm transition-all z-10 ${activeTab === tab ? 'text-primary shadow-sm' : 'text-slate-500 hover:text-slate-700'
+                        className={`relative px-6 py-2.5 rounded-xl font-bold text-sm transition-all z-10 whitespace-nowrap ${activeTab === tab ? 'text-primary' : 'text-slate-500 hover:text-slate-700'
                             }`}
                     >
                         {activeTab === tab && (
@@ -322,7 +350,8 @@ _Enviado desde Deliexpress App_`
                         )}
                         {tab === 'requests' ? `Nuevas Solicitudes (${pendingDrivers.length})`
                             : tab === 'active' ? `Pilotos Activos (${activeDrivers.length})`
-                                : 'Finanzas y Tarifas'}
+                                : tab === 'finances' ? 'Finanzas y Tarifas'
+                                    : 'Auditoría de Entregas'}
                     </button>
                 ))}
             </div>
@@ -1225,6 +1254,115 @@ _Enviado desde Deliexpress App_`
                     </motion.div>
                 )}
             </AnimatePresence>
+            {/* TAB: HISTORY */}
+            {activeTab === 'history' && (
+                <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4">
+                    <div className="bg-white p-6 rounded-[32px] border border-slate-200 shadow-sm">
+                        <div className="flex flex-col md:flex-row justify-between items-center gap-4 mb-8">
+                            <div>
+                                <h3 className="text-xl font-black text-slate-800">Auditoría de Desempeño</h3>
+                                <p className="text-sm font-medium text-slate-500">Analiza el tiempo de respuesta y entrega de los pilotos.</p>
+                            </div>
+                            <div className="relative w-full md:w-80">
+                                <Search className="w-5 h-5 absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
+                                <input
+                                    type="text"
+                                    placeholder="Buscar piloto por nombre..."
+                                    value={historySearchTerm}
+                                    onChange={(e) => setHistorySearchTerm(e.target.value)}
+                                    className="w-full bg-slate-50 border-none pl-12 pr-4 py-3 rounded-2xl focus:ring-2 focus:ring-primary font-medium"
+                                />
+                            </div>
+                        </div>
+
+                        {loadingHistory ? (
+                            <div className="py-20 flex flex-col items-center gap-4">
+                                <Activity className="w-12 h-12 text-primary animate-pulse" />
+                                <p className="font-bold text-slate-400 capitalize tracking-widest text-xs">Cargando historial...</p>
+                            </div>
+                        ) : (
+                            <div className="overflow-x-auto">
+                                <table className="w-full border-separate border-spacing-y-2">
+                                    <thead>
+                                        <tr className="text-slate-400 text-xs font-black uppercase tracking-widest">
+                                            <th className="px-4 py-2 text-left">Pedido</th>
+                                            <th className="px-4 py-2 text-left">Piloto</th>
+                                            <th className="px-4 py-2 text-left">Origen/Destino</th>
+                                            <th className="px-4 py-2 text-center">Duración Total</th>
+                                            <th className="px-4 py-2 text-right">Fecha</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {completedOrders
+                                            .filter(o => 
+                                                !historySearchTerm || 
+                                                o.driverName?.toLowerCase().includes(historySearchTerm.toLowerCase())
+                                            )
+                                            .map((order) => (
+                                            <tr key={order.id} className="group hover:bg-slate-50 transition-colors">
+                                                <td className="px-4 py-4 rounded-l-2xl border-y border-l border-slate-100 bg-white">
+                                                    <div className="flex flex-col">
+                                                        <span className="font-black text-slate-900 group-hover:text-primary transition-colors">#{order.id.slice(-6).toUpperCase()}</span>
+                                                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">
+                                                            {order.restaurantName || 'Tienda'}
+                                                        </span>
+                                                    </div>
+                                                </td>
+                                                <td className="px-4 py-4 border-y border-slate-100 bg-white">
+                                                    <div className="flex items-center gap-3">
+                                                        <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold text-xs">
+                                                            {order.driverName?.charAt(0) || '?'}
+                                                        </div>
+                                                        <div className="flex flex-col">
+                                                            <span className="font-bold text-slate-800 text-sm">{order.driverName || 'N/A'}</span>
+                                                            <span className="text-[10px] text-slate-400 font-medium">Piloto</span>
+                                                        </div>
+                                                    </div>
+                                                </td>
+                                                <td className="px-4 py-4 border-y border-slate-100 bg-white">
+                                                    <div className="flex flex-col max-w-[200px]">
+                                                        <div className="flex items-center gap-1 text-xs font-bold text-slate-600 truncate">
+                                                            <MapPin className="w-3 h-3 shrink-0" />
+                                                            {order.restaurantName || 'Pickup'}
+                                                        </div>
+                                                        <div className="flex items-center gap-1 text-[10px] text-slate-400 truncate mt-1">
+                                                            <Navigation className="w-3 h-3 shrink-0" />
+                                                            {order.clientAddress || 'S/D'}
+                                                        </div>
+                                                    </div>
+                                                </td>
+                                                <td className="px-4 py-4 border-y border-slate-100 bg-white text-center">
+                                                    {order.totalServiceDuration !== undefined ? (
+                                                        <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-amber-50 text-amber-700 rounded-lg border border-amber-100 font-black text-sm">
+                                                            <Clock className="w-3.5 h-3.5" />
+                                                            {formatDuration(order.totalServiceDuration)}
+                                                        </div>
+                                                    ) : (
+                                                        <span className="text-slate-300 font-bold text-xs uppercase italic">No registrado</span>
+                                                    )}
+                                                </td>
+                                                <td className="px-4 py-4 rounded-r-2xl border-y border-r border-slate-100 bg-white text-right">
+                                                    <span className="text-xs font-bold text-slate-500">
+                                                        {order.createdAt?.toDate?.().toLocaleDateString('es-VE')}
+                                                    </span>
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+
+                                {completedOrders.length === 0 && !loadingHistory && (
+                                    <div className="py-12 text-center bg-slate-50 rounded-3xl mt-4 border-2 border-dashed border-slate-200">
+                                        <FileText className="w-12 h-12 text-slate-300 mx-auto mb-3" />
+                                        <h4 className="font-bold text-slate-600">Sin registros de entrega</h4>
+                                        <p className="text-sm text-slate-400">Cuando se completen pedidos, verás las métricas aquí.</p>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

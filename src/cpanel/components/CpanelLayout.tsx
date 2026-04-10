@@ -59,6 +59,7 @@ export default function CpanelLayout({ children, onLogout }: CpanelLayoutProps) 
         { path: '/delivery', icon: Truck, label: 'Delivery Express' },
         { path: '/transports', icon: Car, label: 'Viajes (Taxis)', badge: pendingTransports },
         { path: '/finances', icon: Wallet, label: 'Finanzas' },
+        { path: '/liquidations', icon: Wallet, label: 'Liquidaciones' },
         { path: '/fidelization', icon: Gift, label: 'Fidelización' },
         { path: '/raffles', icon: Ticket, label: 'Sorteos y Rifas' },
         { path: '/marketing', icon: Megaphone, label: 'Marketing & Push' },

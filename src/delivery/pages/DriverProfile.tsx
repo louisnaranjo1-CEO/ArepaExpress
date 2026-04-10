@@ -31,6 +31,13 @@ export default function DriverProfile() {
                         coords: data.homeLocation.coords || null
                     });
                 }
+                setUpdateForm(prev => ({
+                    ...prev,
+                    phone: data.phone || prev.phone,
+                    vehiclePlate: prev.vehiclePlate || data.vehiclePlate || '',
+                    vehicleType: prev.vehicleType === 'moto' && data.vehicleType ? data.vehicleType : prev.vehicleType,
+                    paymentMobile: data.paymentMobile || prev.paymentMobile
+                }));
             }
         });
         return () => unsub();
@@ -43,8 +50,14 @@ export default function DriverProfile() {
 
     // Update Request State
     const [updateForm, setUpdateForm] = useState({
+        phone: '',
         vehiclePlate: '',
         vehicleType: 'moto',
+        paymentMobile: {
+            bank: '',
+            cedula: '',
+            phone: ''
+        }
     });
 
     const [locationForm, setLocationForm] = useState({
@@ -182,8 +195,18 @@ export default function DriverProfile() {
 
             await addDoc(collection(db, 'delivery_update_requests'), requestData);
 
-            alert('Solicitud enviada al administrador. Tus datos se actualizarán una vez aprobados.');
-            setUpdateForm({ vehiclePlate: '', vehicleType: 'moto' });
+            // Update phone immediately for quicker communication
+            if (updateForm.phone && updateForm.phone !== driverProfile.phone) {
+                await updateDoc(doc(db, 'delivery_drivers', user.uid), {
+                    phone: updateForm.phone
+                });
+                await updateDoc(doc(db, 'users', user.uid), {
+                    phone: updateForm.phone
+                });
+            }
+
+            alert('Solicitud enviada. Tu número de teléfono se actualizó. Otros datos se actualizarán una vez aprobados.');
+            setUpdateForm(prev => ({ ...prev, vehiclePlate: '', vehicleType: 'moto' }));
             setSelfieFile(null);
             setSelfiePreview(null);
             setLicenseFile(null);
@@ -391,6 +414,18 @@ export default function DriverProfile() {
                             </div>
 
                             <div className="space-y-2">
+                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Número de WhatsApp / Teléfono</label>
+                                <input
+                                    type="tel"
+                                    value={updateForm.phone}
+                                    onChange={e => setUpdateForm({ ...updateForm, phone: e.target.value })}
+                                    className="w-full bg-white border border-slate-200 rounded-2xl p-4 font-bold text-slate-700 focus:border-primary transition-all outline-none"
+                                    placeholder="Ej: 04141234567"
+                                />
+                                <p className="text-[9px] text-primary font-bold italic ml-4">Al guardar, tu teléfono se actualizará inmediatamente.</p>
+                            </div>
+
+                            <div className="space-y-2">
                                 <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Tipo de Vehículo</label>
                                 <select
                                     value={updateForm.vehicleType}
@@ -417,6 +452,73 @@ export default function DriverProfile() {
                                     />
                                     <Truck className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-300" />
                                 </div>
+                            </div>
+                        </div>
+
+                        {/* Datos para Liquidación (Pago Móvil) */}
+                        <div className="bg-white rounded-[24px] p-6 border border-slate-100 shadow-sm space-y-6">
+                            <h3 className="text-xs font-black text-slate-400 uppercase tracking-[0.2em] flex items-center gap-2">
+                                <CreditCard className="w-4 h-4" /> Datos Bancarios (Pago Móvil)
+                            </h3>
+                            <p className="text-[10px] text-primary font-bold bg-primary/10 p-3 rounded-xl">
+                                Carga tus datos para recibir la liquidación de cobros automáticamente.
+                            </p>
+
+                            <div className="space-y-2">
+                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Banco</label>
+                                <select
+                                    required
+                                    value={updateForm.paymentMobile.bank}
+                                    onChange={e => setUpdateForm({ ...updateForm, paymentMobile: { ...updateForm.paymentMobile, bank: e.target.value }})}
+                                    className="w-full bg-slate-50 border border-slate-100 rounded-2xl p-4 font-bold text-slate-700 focus:bg-white focus:border-primary transition-all outline-none"
+                                >
+                                    <option value="">Selecciona un Banco</option>
+                                    <option value="0102">0102 - Banco de Venezuela</option>
+                                    <option value="0104">0104 - Banco Venezolano de Crédito</option>
+                                    <option value="0105">0105 - Banco Mercantil</option>
+                                    <option value="0108">0108 - Banco Provincial</option>
+                                    <option value="0114">0114 - Bancaribe</option>
+                                    <option value="0115">0115 - Banco Exterior</option>
+                                    <option value="0128">0128 - Banco Caroní</option>
+                                    <option value="0134">0134 - Banesco</option>
+                                    <option value="0138">0138 - Banco Plaza</option>
+                                    <option value="0151">0151 - BFC Banco Fondo Común</option>
+                                    <option value="0156">0156 - 100% Banco</option>
+                                    <option value="0157">0157 - Banco del Sur</option>
+                                    <option value="0163">0163 - Bancamiga</option>
+                                    <option value="0168">0168 - Bancrecer</option>
+                                    <option value="0169">0169 - Mi Banco</option>
+                                    <option value="0171">0171 - Banco Activo</option>
+                                    <option value="0172">0172 - Bancamiga</option>
+                                    <option value="0174">0174 - Banplus</option>
+                                    <option value="0175">0175 - Bicentenario</option>
+                                    <option value="0177">0177 - Banfanb</option>
+                                    <option value="0191">0191 - BNC Nacional de Crédito</option>
+                                </select>
+                            </div>
+
+                            <div className="space-y-2">
+                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Cédula del Titular</label>
+                                <input
+                                    type="text"
+                                    required
+                                    placeholder="Ej: V-12345678"
+                                    value={updateForm.paymentMobile.cedula}
+                                    onChange={e => setUpdateForm({ ...updateForm, paymentMobile: { ...updateForm.paymentMobile, cedula: e.target.value }})}
+                                    className="w-full bg-slate-50 border border-slate-100 rounded-2xl p-4 font-bold text-slate-700 focus:bg-white focus:border-primary transition-all outline-none"
+                                />
+                            </div>
+
+                            <div className="space-y-2">
+                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Teléfono Afiliado</label>
+                                <input
+                                    type="tel"
+                                    required
+                                    placeholder="Ej: 04141234567"
+                                    value={updateForm.paymentMobile.phone}
+                                    onChange={e => setUpdateForm({ ...updateForm, paymentMobile: { ...updateForm.paymentMobile, phone: e.target.value }})}
+                                    className="w-full bg-slate-50 border border-slate-100 rounded-2xl p-4 font-bold text-slate-700 focus:bg-white focus:border-primary transition-all outline-none"
+                                />
                             </div>
                         </div>
                     </div>

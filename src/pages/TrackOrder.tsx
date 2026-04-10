@@ -3,7 +3,8 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { doc, onSnapshot, getDoc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { DeliveryDriver } from '../lib/delivery-service';
-import { Navigation, Clock, CheckCircle2, Package, MapPin, Phone, ArrowLeft, Store } from 'lucide-react';
+import { Navigation, Clock, CheckCircle2, Package, MapPin, Phone, ArrowLeft, Store, Star } from 'lucide-react';
+import ReviewModal from '../components/ReviewModal';
 
 export default function TrackOrder() {
     const { orderId } = useParams();
@@ -12,6 +13,13 @@ export default function TrackOrder() {
     const [driver, setDriver] = useState<DeliveryDriver | null>(null);
     const [restaurant, setRestaurant] = useState<any>(null);
     const [loading, setLoading] = useState(true);
+    const [showReviewModal, setShowReviewModal] = useState(false);
+
+    useEffect(() => {
+        if (order && order.status === 'delivered' && !order.hasReviewed) {
+            setShowReviewModal(true);
+        }
+    }, [order]);
 
     useEffect(() => {
         if (!orderId) return;
@@ -280,6 +288,14 @@ export default function TrackOrder() {
                     </div>
                 </div>
             </div>
+
+            <ReviewModal
+                isOpen={showReviewModal}
+                onClose={() => setShowReviewModal(false)}
+                restaurantId={order.restaurantId}
+                orderId={orderId!}
+                onReviewSubmitted={() => setShowReviewModal(false)}
+            />
         </div>
     );
 }

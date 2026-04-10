@@ -3,13 +3,14 @@ import { collection, query, where, onSnapshot, updateDoc, doc, serverTimestamp, 
 import { ref, getDownloadURL } from 'firebase/storage';
 import { storage, db } from '../../lib/firebase';
 import { useAuth } from '../../context/AuthContext';
-import { MapPin, Navigation, Package, Clock, ShieldCheck, Car, Bike, Compass as CompassIcon, MessageSquare, Star, BellRing, MessageCircle, Phone, User as UserIcon } from 'lucide-react';
+import { Car, Bike, Package, MapPin, Navigation, Phone, CheckCircle2, MessageSquare, Compass, Send, User as UserIcon, Star, MessageCircle, Clock, AlertTriangle } from 'lucide-react';
+import { motion, AnimatePresence } from 'motion/react';
 import toast from 'react-hot-toast';
+import RideChat from '../../components/RideChat';
+import ServiceTimer from '../components/ServiceTimer';
+import { getCachedAudioUrl, NOTIFICATION_SOUND_URL } from '../../hooks/useGlobalAudioAlerts';
 import { updateDriverLocation } from '../../lib/delivery-service';
 import { calculateDistance } from '../../lib/geo';
-import { motion, AnimatePresence } from 'framer-motion';
-import RideChat from '../../components/RideChat';
-import { getCachedAudioUrl, NOTIFICATION_SOUND_URL } from '../../hooks/useGlobalAudioAlerts';
 
 export default function OrdersRadar() {
     const { user } = useAuth();
@@ -310,9 +311,17 @@ export default function OrdersRadar() {
         if (!activeOrder || processingAction) return;
         setProcessingAction('delivered');
         try {
+            // Calculate total service duration in seconds
+            let durationSeconds = 0;
+            if (activeOrder.driverAssignedAt) {
+                const start = activeOrder.driverAssignedAt.toDate().getTime();
+                durationSeconds = Math.floor((Date.now() - start) / 1000);
+            }
+
             await updateDoc(doc(db, 'orders', activeOrder.id), {
                 status: 'delivered',
-                deliveredAt: serverTimestamp()
+                deliveredAt: serverTimestamp(),
+                totalServiceDuration: durationSeconds
             });
 
             if (activeOrder.restaurantId && activeOrder.deliveryFee) {
@@ -323,6 +332,17 @@ export default function OrdersRadar() {
                     });
                 } catch (err) {
                     console.error("Error sumando deuda al restaurante:", err);
+                }
+            }
+            if (activeOrder.userId && activeOrder.deliveryFee) {
+                try {
+                    const pointsToAdd = activeOrder.deliveryFee * 2;
+                    const userRef = doc(db, 'users', activeOrder.userId);
+                    await updateDoc(userRef, {
+                        points: increment(pointsToAdd)
+                    });
+                } catch (err) {
+                    console.error("Error sumando puntos globales al usuario:", err);
                 }
             }
 
@@ -359,7 +379,18 @@ export default function OrdersRadar() {
         if (!activeTransport || processingAction) return;
         setProcessingAction('arriving');
         try {
-            await updateDoc(doc(db, 'transport_requests', activeTransport.id), { status: 'arriving', driverArrivedAt: serverTimestamp() });
+            // Calculate arrival duration in seconds
+            let durationSeconds = 0;
+            if (activeTransport.driverAssignedAt) {
+                const start = activeTransport.driverAssignedAt.toDate().getTime();
+                durationSeconds = Math.floor((Date.now() - start) / 1000);
+            }
+
+            await updateDoc(doc(db, 'transport_requests', activeTransport.id), { 
+                status: 'arriving', 
+                driverArrivedAt: serverTimestamp(),
+                arrivalDuration: durationSeconds
+            });
         } finally {
             setProcessingAction(null);
         }
@@ -438,6 +469,15 @@ export default function OrdersRadar() {
                             {activeTransport.status === 'in_progress' && 'En viaje al destino'}
                         </h2>
                     </div>
+
+                    {activeTransport.status === 'accepted' && activeTransport.driverAssignedAt && (
+                        <div className="pt-2">
+                            <ServiceTimer 
+                                startTime={activeTransport.driverAssignedAt} 
+                                mode="countdown" 
+                            />
+                        </div>
+                    )}
 
                     <div className="space-y-4 relative">
                         {/* Passenger Details */}
@@ -595,6 +635,15 @@ export default function OrdersRadar() {
                         </h2>
                     </div>
 
+                    {activeOrder.driverAssignedAt && (
+                        <div className="pt-2">
+                            <ServiceTimer 
+                                startTime={activeOrder.driverAssignedAt} 
+                                mode="stopwatch" 
+                            />
+                        </div>
+                    )}
+
                     <div className="space-y-4">
                         <div className="flex gap-4">
                             <div className="w-12 h-12 bg-slate-50 text-slate-400 rounded-2xl flex items-center justify-center shrink-0 border border-slate-100">
@@ -673,6 +722,41 @@ export default function OrdersRadar() {
                         >
                             <Navigation className="w-5 h-5" /> Abrir GPS
                         </a>
+
+                        {activeOrder.userPhone && (
+                            <div className="bg-emerald-50 rounded-2xl p-4 border border-emerald-100 mt-2">
+                                <h4 className="text-[10px] font-black text-emerald-600 uppercase tracking-widest mb-3 flex items-center justify-between">
+                                    Notificar al Cliente por WhatsApp
+                                    <Send className="w-3 h-3" />
+                                </h4>
+                                <div className="grid grid-cols-1 gap-2">
+                                    <a
+                                        href={`https://wa.me/${activeOrder.userPhone.replace(/\D/g, '')}?text=${encodeURIComponent(`Hola ${activeOrder.userName || ''}, soy tu piloto de Un 2x3. Tu orden está casi lista en el restaurante, en breve salgo.`)}`}
+                                        target="_blank"
+                                        className="w-full bg-white text-emerald-700 font-bold py-3 rounded-xl border border-emerald-200 text-xs flex justify-center items-center hover:bg-emerald-100 transition-all text-center"
+                                    >
+                                        "Casi Listo"
+                                    </a>
+                                    <a
+                                        href={`https://wa.me/${activeOrder.userPhone.replace(/\D/g, '')}?text=${encodeURIComponent(`Hola ${activeOrder.userName || ''}, ya tengo tu pedido en mis manos. Voy en camino a tu dirección.`)}`}
+                                        target="_blank"
+                                        className="w-full bg-white text-emerald-700 font-bold py-3 rounded-xl border border-emerald-200 text-xs flex justify-center items-center hover:bg-emerald-100 transition-all text-center"
+                                    >
+                                        "¡En camino!"
+                                    </a>
+                                </div>
+                            </div>
+                        )}
+                        
+                        {activeOrder.restaurantPhone && activeOrder.status === 'en_camino' && (
+                             <a
+                                href={`https://wa.me/${activeOrder.restaurantPhone.replace(/\D/g, '')}?text=${encodeURIComponent(`Hola, soy el piloto de Un 2x3. Estoy afuera para retirar el pedido de ${activeOrder.userName || 'Cliente'}.`)}`}
+                                target="_blank"
+                                className="w-full bg-green-50 text-green-700 font-bold py-3 rounded-xl border border-green-200 text-xs flex justify-center items-center hover:bg-green-100 mt-2 transition-all"
+                             >
+                                Avisar llegada al Restaurante
+                             </a>
+                        )}
                     </div>
                 </div>
             </motion.div>
@@ -867,7 +951,7 @@ export default function OrdersRadar() {
                                         <Package className="w-3.5 h-3.5" />
                                         REPARTO COMIDA
                                     </div>
-                                    <div className="text-2xl font-black text-primary">${(order.total || 0).toFixed(2)}</div>
+                                    <div className="text-sm font-black text-primary">RECOLECTAR PEDIDO</div>
                                 </div>
 
                                 <div className="space-y-4 mb-8 relative">

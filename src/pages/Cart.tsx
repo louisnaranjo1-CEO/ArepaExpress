@@ -2,6 +2,7 @@ import { ArrowLeft, ShoppingCart, MapPin, CreditCard, Trash2, Minus, Plus, Arrow
 import { Link, useNavigate } from 'react-router-dom';
 import { useCart } from '../context/CartContext';
 import { useAuth } from '../context/AuthContext';
+import { useCurrency } from '../context/CurrencyContext';
 import { useState, useEffect } from 'react';
 import { collection, addDoc, serverTimestamp, doc, getDoc, updateDoc, getDocs, query, where, increment, collectionGroup } from 'firebase/firestore';
 import { db } from '../lib/firebase';
@@ -35,7 +36,7 @@ export default function Cart({ hideHeader = false }: CartProps) {
   const [guestName, setGuestName] = useState('');
   const [guestPhone, setGuestPhone] = useState('');
   const [guestCedula, setGuestCedula] = useState('');
-  const [deliveryMethod, setDeliveryMethod] = useState<'delivery' | 'pickup'>('delivery');
+  const [deliveryMethod, setDeliveryMethod] = useState<'app_delivery' | 'own_delivery' | 'pickup'>('app_delivery');
 
   const isWaiter = localStorage.getItem('isWaiter') === 'true';
   const waiterData = JSON.parse(localStorage.getItem('waiterData') || '{}');
@@ -43,6 +44,8 @@ export default function Cart({ hideHeader = false }: CartProps) {
   const [tableNumber, setTableNumber] = useState('');
   const [customerName, setCustomerName] = useState('');
   const [paymentStatus, setPaymentStatus] = useState<'pending' | 'paid'>('pending');
+  
+  const { bcvRate } = useCurrency();
 
   const defaultAddress = userData?.addresses?.find((a: any) => a.isDefault) || userData?.address;
   const [selectedAddress, setSelectedAddress] = useState<any>(null);
@@ -140,8 +143,10 @@ export default function Cart({ hideHeader = false }: CartProps) {
             setRestaurantData(data);
             if (!data.ownDelivery && !data.appDelivery && data.pickupOnly) {
               setDeliveryMethod('pickup');
-            } else if (data.ownDelivery || data.appDelivery) {
-              setDeliveryMethod('delivery');
+            } else if (data.ownDelivery && !data.appDelivery) {
+              setDeliveryMethod('own_delivery');
+            } else if (data.appDelivery) {
+              setDeliveryMethod('app_delivery');
             }
             if (selectedAddress && data.location?.coords) {
               const d = calculateDistance(selectedAddress.lat, selectedAddress.lng, data.location.coords.lat, data.location.coords.lng);
@@ -184,7 +189,7 @@ export default function Cart({ hideHeader = false }: CartProps) {
   const deliveryFee = (isWaiter || deliveryMethod === 'pickup') ? 0 : feeInfo.clientFee;
   const driverPayout = (isWaiter || deliveryMethod === 'pickup') ? 0 : feeInfo.driverPayout;
   const currentShift = feeInfo.shift;
-  const finalTotal = cartSubtotalUSD + deliveryFee;
+  const finalTotal = (deliveryMethod === 'app_delivery') ? deliveryFee : (cartSubtotalUSD + deliveryFee);
 
   const handleCheckout = async () => {
     if (items.length === 0) return;
@@ -203,7 +208,7 @@ export default function Cart({ hideHeader = false }: CartProps) {
       const rData = restaurantDoc.exists() ? restaurantDoc.data() : null;
       if (!isWaiter && !rData?.whatsapp) throw new Error("No WhatsApp config");
 
-      let addressStr = isWaiter ? `Mesa: ${tableNumber}` : (deliveryMethod === 'pickup' ? "Recoger en local" : (selectedAddress ? `${selectedAddress.name} - ${selectedAddress.reference}` : "Recoger en local"));
+      let addressStr = isWaiter ? `Mesa: ${tableNumber}` : (deliveryMethod === 'pickup' ? "Recoger en local" : (selectedAddress ? `${selectedAddress.name} - ${selectedAddress.reference || ''}` : "Recoger en local"));
 
       // Sanitize items just in case they have undefined properties
       const sanitizedItems = items.map(item => {
@@ -252,7 +257,7 @@ export default function Cart({ hideHeader = false }: CartProps) {
         paymentStatus: isWaiter ? paymentStatus : 'pending', // Use the selected payment status
         notified: false,
         deliveryAddress: addressStr, 
-        deliveryCoords: (!isWaiter && deliveryMethod === 'delivery' && selectedAddress && selectedAddress.lat) ? { lat: selectedAddress.lat, lng: selectedAddress.lng } : null,
+        deliveryCoords: (!isWaiter && deliveryMethod === 'app_delivery' && selectedAddress && selectedAddress.lat) ? { lat: selectedAddress.lat, lng: selectedAddress.lng } : null,
         createdAt: serverTimestamp(), 
         orderNote: orderNote.trim() || ''
       };
@@ -307,11 +312,11 @@ export default function Cart({ hideHeader = false }: CartProps) {
         `━━━━━━━━━━━━━━\n\n` +
         `${restaurantData?.businessType === 'hotel' ? '🏨 *DETALLES DEL HOSPEDAJE:*' : '🛒 *DETALLES DEL PEDIDO:*'}\n${itemsList}\n` +
         `${notesString}\n\n` +
-        `📦 *Método:* ${isWaiter ? 'Servicio a Mesa' : (deliveryMethod === 'pickup' ? 'Recoger en local' : 'Delivery')}\n` +
-        `${deliveryMethod === 'delivery' && !isWaiter ? `📍 *Dirección:* ${addressStr}${mapsLink}` : ''}\n\n` +
-        `💰 *SUBTOTAL:* $${cartSubtotalUSD.toFixed(2)}\n` +
+        `📦 *Método:* ${isWaiter ? 'Servicio a Mesa' : (deliveryMethod === 'pickup' ? 'Recoger en local' : (deliveryMethod === 'own_delivery' ? 'Delivery Propio del Local' : 'Delivery Un 2x3'))}\n` +
+        `${(deliveryMethod === 'app_delivery' || deliveryMethod === 'own_delivery') && !isWaiter ? `📍 *Dirección:* ${addressStr}${deliveryMethod === 'app_delivery' ? mapsLink : ''}` : ''}\n\n` +
+        `💰 *SUBTOTAL ARTÍCULOS:* $${cartSubtotalUSD.toFixed(2)}\n` +
         `${deliveryFee > 0 ? `🚚 *DELIVERY:* $${deliveryFee.toFixed(2)}\n` : ''}` +
-        `⭐ *TOTAL A PAGAR:* $${finalTotal.toFixed(2)}\n\n` +
+        `⭐ *TOTAL ${deliveryMethod === 'app_delivery' ? '(SOLO DELIVERY UN 2X3 A PAGAR)' : 'ESTIMADO'}:* $${finalTotal.toFixed(2)}\n\n` +
         `🔢 *Orden ID:* #${docRef.id.slice(-6).toUpperCase()}\n` +
         `━━━━━━━━━━━━━━\n\n` +
         `Esperando confirmación...`
@@ -449,14 +454,24 @@ export default function Cart({ hideHeader = false }: CartProps) {
                   <div className="space-y-4">
                      {restaurantData?.businessType !== 'hotel' && (
                        <div className="flex gap-2 p-1 bg-slate-50 rounded-2xl border border-slate-200">
-                          {(restaurantData?.ownDelivery || restaurantData?.appDelivery) && (
+                          {restaurantData?.appDelivery && (
                             <button
-                              onClick={() => setDeliveryMethod('delivery')}
+                              onClick={() => setDeliveryMethod('app_delivery')}
                               className={`flex-1 py-3 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all ${
-                                deliveryMethod === 'delivery' ? 'bg-primary text-slate-900 shadow-lg' : 'text-slate-400 hover:text-slate-600'
+                                deliveryMethod === 'app_delivery' ? 'bg-primary text-slate-900 shadow-lg' : 'text-slate-400 hover:text-slate-600'
                               }`}
                             >
-                              Delivery
+                              Delivery Un 2x3
+                            </button>
+                          )}
+                          {restaurantData?.ownDelivery && (
+                            <button
+                              onClick={() => setDeliveryMethod('own_delivery')}
+                              className={`flex-1 py-3 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all ${
+                                deliveryMethod === 'own_delivery' ? 'bg-primary text-slate-900 shadow-lg' : 'text-slate-400 hover:text-slate-600'
+                              }`}
+                            >
+                              Delivery Local
                             </button>
                           )}
                           {restaurantData?.pickupOnly && (
@@ -466,17 +481,17 @@ export default function Cart({ hideHeader = false }: CartProps) {
                                 deliveryMethod === 'pickup' ? 'bg-primary text-slate-900 shadow-lg' : 'text-slate-400 hover:text-slate-600'
                               }`}
                             >
-                              Retiro en Tienda
+                              PickUp
                             </button>
                           )}
                        </div>
                      )}
 
-                     {deliveryMethod === 'delivery' && (
+                     {deliveryMethod === 'app_delivery' && (
                          <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2">
                              <p className="font-bold text-slate-800 text-sm uppercase tracking-wider pl-2">Dirección de Entrega</p>
                              
-                             {selectedAddress ? (
+                             {selectedAddress && selectedAddress.lat ? (
                                  <div className="bg-slate-50 p-4 border border-slate-200 rounded-2xl flex justify-between items-center group">
                                      <div className="flex-1">
                                         <div className="flex items-center gap-2 mb-1">
@@ -502,12 +517,31 @@ export default function Cart({ hideHeader = false }: CartProps) {
                          </div>
                      )}
 
+                     {deliveryMethod === 'own_delivery' && (
+                         <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2">
+                            <div className="p-4 bg-yellow-50 text-yellow-800 rounded-2xl border border-yellow-200 text-xs font-medium relative overflow-hidden">
+                                <div className="absolute top-0 right-0 p-2 opacity-10">
+                                    <AlertCircle className="w-16 h-16" />
+                                </div>
+                                <span className="font-black text-sm block mb-1">¡Aviso importante!</span>
+                                Este proveedor cuenta con su propio delivery ajeno a Un 2x3, por lo que deberás cancelarle la totalidad del pago por WhatsApp. Lamentablemente los proveedores con delivery independiente no cuentan con el sistema de rastreo de Un 2x3, por lo que el mapa está deshabilitado.
+                            </div>
+                            <p className="font-bold text-slate-800 text-sm uppercase tracking-wider pl-2">Ingresa tu dirección manualmente</p>
+                            <textarea
+                                className="w-full bg-white border border-slate-200 p-4 rounded-2xl text-sm min-h-[100px] outline-none focus:border-primary/50"
+                                placeholder="Escribe tu dirección completa y puntos de referencia aquí..."
+                                value={selectedAddress?.name && !selectedAddress.lat ? selectedAddress.name : ''}
+                                onChange={(e) => setSelectedAddress({ name: e.target.value, reference: '', lat: null, lng: null })}
+                            />
+                         </div>
+                     )}
+
                      {deliveryMethod === 'pickup' && (
                          <div className="p-6 bg-blue-50/50 rounded-2xl border border-blue-100 text-center animate-in fade-in slide-in-from-bottom-2">
                              <div className="w-12 h-12 bg-blue-100 text-blue-500 rounded-full flex items-center justify-center mx-auto mb-3">
                                 <ShoppingCart className="w-6 h-6" />
                              </div>
-                             <p className="font-black text-slate-800 uppercase tracking-tight">Retiro en Local</p>
+                             <p className="font-black text-slate-800 uppercase tracking-tight">PickUp</p>
                              <p className="text-sm font-medium text-slate-500 mt-2 mx-auto max-w-[200px]">
                                  {restaurantData?.location?.address || 'Dirección del restaurante'}
                              </p>
@@ -518,8 +552,12 @@ export default function Cart({ hideHeader = false }: CartProps) {
                 
                 <button 
                   onClick={() => {
-                      if (!isWaiter && deliveryMethod === 'delivery' && !selectedAddress && restaurantData?.businessType !== 'hotel') {
-                          alert("Por favor selecciona una dirección de entrega válida.");
+                      if (!isWaiter && deliveryMethod === 'app_delivery' && (!selectedAddress || !selectedAddress.lat) && restaurantData?.businessType !== 'hotel') {
+                          alert("Por favor selecciona una dirección de entrega en el mapa.");
+                          return;
+                      }
+                      if (!isWaiter && deliveryMethod === 'own_delivery' && (!selectedAddress || !selectedAddress.name) && restaurantData?.businessType !== 'hotel') {
+                          alert("Por favor escribe una dirección de entrega válida.");
                           return;
                       }
                       setCurrentStep(3);
@@ -579,7 +617,7 @@ export default function Cart({ hideHeader = false }: CartProps) {
                       <div className="flex-1">
                         <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Entrega en</p>
                         <p className="text-sm font-bold text-slate-700 leading-tight">
-                          {isWaiter ? `Mesa ${tableNumber}` : (deliveryMethod === 'pickup' ? 'Retiro en Tienda' : selectedAddress?.name)}
+                          {isWaiter ? `Mesa ${tableNumber}` : (deliveryMethod === 'pickup' ? 'PickUp' : selectedAddress?.name)}
                         </p>
                         {!isWaiter && deliveryMethod === 'delivery' && selectedAddress?.reference && (
                           <p className="text-[11px] text-slate-400 font-medium mt-1 italic leading-tight">Ref: {selectedAddress.reference}</p>
@@ -603,19 +641,93 @@ export default function Cart({ hideHeader = false }: CartProps) {
                     )}
                   </div>
 
+                  {/* Dynamic Incentives Banners */}
+                  {(() => {
+                    const pointsToEarn = Math.floor(cartSubtotalUSD * 2.5);
+                    const businessName = restaurantData?.name || 'este establecimiento';
+                    const userGender = userData?.gender || 'masculine';
+                    const selfDone = userGender === 'feminine' ? 'misma' : 'mismo';
+
+                    if (deliveryMethod === 'pickup') {
+                      return (
+                        <div className="p-4 mx-6 mb-4 bg-blue-50 text-blue-800 rounded-2xl border border-blue-200 flex gap-3 text-sm animate-in fade-in slide-in-from-top-2">
+                          <Gift className="w-8 h-8 text-blue-500 shrink-0" />
+                          <div>
+                            <span className="font-black text-sm block mb-1">¡Muy bien lo harás tú {selfDone}! 🛍️</span>
+                            <span className="font-medium">
+                              En la siguiente sección te comunicarás con <b>{businessName}</b> para realizar tu compra en Un 2x3. 
+                              Al retirar tu pedido en {businessName} ganarás <b className="text-blue-600">{pointsToEarn} puntos</b> para increíbles premios en el futuro o canjearlos por productos de {businessName}.
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    }
+
+                    if (deliveryMethod === 'app_delivery' || deliveryMethod === 'own_delivery') {
+                      return (
+                        <>
+                          {deliveryMethod === 'app_delivery' && (
+                            <div className="p-4 mx-6 mb-2 bg-emerald-50 text-emerald-800 rounded-2xl border border-emerald-200 flex gap-3 text-sm animate-in fade-in slide-in-from-top-2">
+                              <Award className="w-8 h-8 text-emerald-600 shrink-0" />
+                              <div>
+                                <span className="font-black text-sm block mb-1">¡Ganarás puntos por esta compra! 🏆</span>
+                                <span className="font-medium">
+                                  Al completar esta orden por Un 2x3, acumularás <b className="text-emerald-600">{pointsToEarn} puntos</b> que podrás canjear próximamente por premios y productos.
+                                </span>
+                              </div>
+                            </div>
+                          )}
+                          
+                          {deliveryMethod === 'own_delivery' && (
+                            <div className="p-4 mx-6 mb-2 bg-orange-50 text-orange-800 rounded-2xl border border-orange-200 flex gap-3 text-sm animate-in fade-in slide-in-from-top-2">
+                              <AlertCircle className="w-8 h-8 text-orange-500 shrink-0" />
+                              <div>
+                                <span className="font-black text-sm block mb-1">Aviso de Delivery Independiente</span>
+                                <span className="font-medium">
+                                  Lamentablemente <b>{businessName}</b> no está afiliado al sistema de delivery de Un 2x3 y por eso no puedes recibir los puntos correspondientes al servicio de delivery de Un 2x3, el envío es mutuo acuerdo con {businessName}.
+                                </span>
+                              </div>
+                            </div>
+                          )}
+
+                          {deliveryMethod === 'app_delivery' && (
+                            <div className="p-4 mx-6 mb-2 bg-primary/10 text-slate-800 rounded-2xl border border-primary/30 flex gap-3 text-sm animate-in fade-in">
+                               <AlertCircle className="w-8 h-8 text-primary shrink-0" />
+                               <div>
+                                 <span className="font-black text-sm block mb-1">¡Oye, espera un momento! 🛑</span>
+                                 <span className="font-medium">¿Tu comida fue pagada directamente al restaurante? Al confirmar, <b>SÓLO cobrarás el Delivery de Un 2x3</b> para ir a recoger y llevar tu pedido de forma segura. Contáctalos por sus métodos de pago si no lo has hecho.</span>
+                               </div>
+                            </div>
+                          )}
+                        </>
+                      );
+                    }
+                    return null;
+                  })()}
+
                   <div className="p-6 bg-slate-900 text-white">
                     <div className="space-y-2 mb-4 opacity-80 text-sm font-bold text-white/70">
                       <div className="flex justify-between">
-                        <span>{restaurantData?.businessType === 'hotel' ? 'Subtotal Servicios' : 'Subtotal Productos'}</span>
-                        <span>${cartSubtotalUSD.toFixed(2)}</span>
+                        <span className={deliveryMethod === 'app_delivery' ? 'line-through opacity-50' : ''}>{restaurantData?.businessType === 'hotel' ? 'Subtotal Servicios' : 'Subtotal Productos'}</span>
+                        <span className={deliveryMethod === 'app_delivery' ? 'line-through opacity-50' : ''}>${cartSubtotalUSD.toFixed(2)}</span>
                       </div>
-                      {!isWaiter && deliveryMethod === 'delivery' && restaurantData?.businessType !== 'hotel' && (
-                        <div className="flex justify-between"><span>Costo Delivery</span><span>${deliveryFee.toFixed(2)}</span></div>
+                      {!isWaiter && deliveryMethod === 'app_delivery' && restaurantData?.businessType !== 'hotel' && (
+                        <div className="flex justify-between text-primary opacity-100"><span>Costo Delivery Un 2x3</span><span>${deliveryFee.toFixed(2)}</span></div>
+                      )}
+                      {!isWaiter && deliveryMethod === 'own_delivery' && restaurantData?.businessType !== 'hotel' && (
+                        <div className="flex justify-between"><span>Costo Delivery del Local</span><span>${deliveryFee.toFixed(2)}</span></div>
                       )}
                     </div>
-                    <div className="flex justify-between items-center">
-                      <span className="text-lg font-black uppercase tracking-widest text-slate-900">Total Final</span>
-                      <span className="text-3xl font-black text-white">${finalTotal.toFixed(2)}</span>
+                    <div className="flex justify-between items-center pt-2 border-t border-white/10">
+                      <span className="text-lg font-black uppercase tracking-widest text-slate-200">
+                        Total {deliveryMethod === 'app_delivery' ? 'Transporte' : (deliveryMethod === 'own_delivery' ? 'Estimado' : 'Final')}
+                      </span>
+                      <div className="text-right">
+                        <span className="text-3xl font-black text-primary block">${finalTotal.toFixed(2)}</span>
+                        {bcvRate > 0 && finalTotal > 0 && (
+                          <span className="text-[11px] font-bold text-slate-400 block mt-0.5">Bs. {(finalTotal * bcvRate).toFixed(2)}</span>
+                        )}
+                      </div>
                     </div>
                   </div>
                 </div>

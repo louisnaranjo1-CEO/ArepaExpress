@@ -33,6 +33,7 @@ interface UserData {
     lastLogin?: any;
     lastSeen?: any;
     totalUsageMinutes?: number;
+    gender?: 'masculine' | 'feminine';
 }
 
 interface AuthContextType {

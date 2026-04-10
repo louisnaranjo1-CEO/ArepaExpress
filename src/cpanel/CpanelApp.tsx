@@ -13,6 +13,7 @@ import BannersManager from './pages/BannersManager';
 import CategoriesManager from './pages/CategoriesManager';
 import DeliveryManagement from './pages/DeliveryManagement';
 import FinancesManager from './pages/FinancesManager';
+import LiquidationsManager from './pages/LiquidationsManager';
 import TransportRequests from './pages/TransportRequests';
 import IconsManager from './pages/IconsManager';
 import FidelizationManager from './pages/FidelizationManager';
@@ -118,6 +119,7 @@ export default function CpanelApp() {
                     <Route path="/delivery" element={<DeliveryManagement />} />
                     <Route path="/transports" element={<TransportRequests />} />
                     <Route path="/finances" element={<FinancesManager />} />
+                    <Route path="/liquidations" element={<LiquidationsManager />} />
                     <Route path="/icons" element={<IconsManager />} />
                     <Route path="/fidelization" element={<FidelizationManager />} />
                     <Route path="/raffles" element={<RafflesManager />} />

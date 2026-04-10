@@ -16,6 +16,7 @@ interface EarningsItem {
     rating?: number;
     comment?: string;
     distance?: string;
+    duration?: number;
 }
 
 export default function Earnings() {
@@ -66,7 +67,8 @@ export default function Earnings() {
                         isPaid: data.deliveryPaid,
                         rating: data.rating,
                         comment: data.comment,
-                        distance: ((doc.id.length % 5) + 1.5).toFixed(1)
+                        distance: ((doc.id.length % 5) + 1.5).toFixed(1),
+                        duration: data.totalServiceDuration
                     };
                 });
 
@@ -87,7 +89,8 @@ export default function Earnings() {
                         isPaid: data.driverPaid,
                         rating: data.rating,
                         comment: data.ratingComment,
-                        distance: data.distance ? (parseFloat(data.distance) / 1000).toFixed(1) : undefined
+                        distance: data.distance ? (parseFloat(data.distance) / 1000).toFixed(1) : undefined,
+                        duration: data.arrivalDuration
                     };
                 });
 
@@ -141,6 +144,13 @@ export default function Earnings() {
 
     const historyItems = earnings.filter(o => o.isPaid);
     const displayItems = activeTab === 'pending' ? earnings.filter(o => !o.isPaid) : historyItems;
+
+    const formatDuration = (seconds?: number) => {
+        if (!seconds && seconds !== 0) return null;
+        const mins = Math.floor(seconds / 60);
+        const secs = seconds % 60;
+        return `${mins}m ${secs}s`;
+    };
 
     if (loading) {
         return (
@@ -250,6 +260,16 @@ export default function Earnings() {
                                         </div>
                                     )}
                                 </div>
+                                
+                                {item.duration !== undefined && (
+                                    <div className="mt-3 flex items-center gap-2 px-3 py-2 bg-white/50 border border-slate-100 rounded-xl">
+                                        <Clock className="w-3.5 h-3.5 text-primary" />
+                                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none">
+                                            {item.type === 'delivery' ? 'Tiempo Total: ' : 'Tiempo de LLegada: '}
+                                            <span className="text-slate-700 font-black">{formatDuration(item.duration)}</span>
+                                        </span>
+                                    </div>
+                                )}
                             </div>
 
                             {/* Rating / Review from Client */}
