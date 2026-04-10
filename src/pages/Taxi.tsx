@@ -95,8 +95,7 @@ export default function Taxi() {
         // Query delivery_drivers
         const q = query(
             collection(db, 'delivery_drivers'), 
-            where('isOnline', '==', true),
-            where('status', '==', 'active') // Only count active ones
+            where('isOnline', '==', true)
         );
 
         const unsub = onSnapshot(q, (snapshot) => {
@@ -832,7 +831,7 @@ export default function Taxi() {
                     </div>
                 )}
 
-                <div className="w-full pointer-events-auto bg-white/95 backdrop-blur-xl rounded-t-[32px] rounded-b-none shadow-[0_-10px_40px_rgba(0,0,0,0.15)] border-t border-white/50 p-6 overflow-y-auto max-h-[35dvh] scrollbar-hide pb-6">
+                <div className={`w-full pointer-events-auto bg-white/95 backdrop-blur-xl rounded-t-[32px] rounded-b-none shadow-[0_-10px_40px_rgba(0,0,0,0.15)] border-t border-white/50 p-6 overflow-y-auto scrollbar-hide pb-6 transition-all duration-500 ease-in-out break-words ${destination ? 'max-h-[50dvh] h-[50dvh]' : 'max-h-[35dvh] h-[35dvh]'}`}>
                     {/* Progress Indicator */}
                     <div className="w-12 h-1.5 bg-slate-200/60 rounded-full mx-auto mb-5 drop-shadow-sm"></div>
 
