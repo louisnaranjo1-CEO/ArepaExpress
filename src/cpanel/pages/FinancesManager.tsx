@@ -761,7 +761,6 @@ export default function FinancesManager() {
                         </div>
                     </div>
                 </div>
-                </div>
             ) : (
                 <div className="space-y-6 pb-20">
                     <div className="bg-white rounded-[32px] border-2 border-slate-100 p-8">
