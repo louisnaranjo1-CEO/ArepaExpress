@@ -20,10 +20,10 @@ export const CurrencyProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   useEffect(() => {
     const fetchBCVRate = async () => {
       try {
-        const response = await fetch('https://pydolarvenezuela-api.vercel.app/api/v1/dollar/page?page=bcv');
+        const response = await fetch('https://ve.dolarapi.com/v1/dolares/oficial');
         if (!response.ok) throw new Error('Network response was not ok');
         const data = await response.json();
-        const price = data?.monitors?.usd?.price;
+        const price = data?.promedio;
 
         if (price) {
           setBcvRate(Number(price));
