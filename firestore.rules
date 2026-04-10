@@ -15,9 +15,9 @@ service cloud.firestore {
       );
     }
 
-    // User profiles
+    // User profiles (LOCKED DOWN: Only authenticated reads)
     match /users/{userId} {
-      allow read: if true;
+      allow read: if request.auth != null;
       allow create: if request.auth != null && request.auth.uid == userId;
       allow update: if request.auth != null && (
         isCPanelAdmin() || 
@@ -29,49 +29,62 @@ service cloud.firestore {
       allow delete: if request.auth != null && (request.auth.uid == userId || isCPanelAdmin());
     }
     
-    // Restaurants and their sub-collections
+    // Restaurants and their public data
     match /restaurants/{restaurantId} {
       allow read: if true;
       allow write: if (request.auth != null && request.auth.uid == restaurantId) || isCPanelAdmin();
       
-      // Sub-collections (products, waiters, tables, reviews, printers, etc.)
-      match /{allSubcollections=**} {
-        allow read: if true;
-        allow write: if (request.auth != null && request.auth.uid == restaurantId) || isCPanelAdmin();
+      // Sub-collections: Only specific public things shouldn't be locked
+      match /products/{modId} { allow read: if true; allow write: if (request.auth != null && request.auth.uid == restaurantId) || isCPanelAdmin(); }
+      match /categories/{modId} { allow read: if true; allow write: if (request.auth != null && request.auth.uid == restaurantId) || isCPanelAdmin(); }
+      match /reviews/{modId} { allow read: if true; allow write: if (request.auth != null && request.auth.uid == restaurantId) || isCPanelAdmin(); }
+
+      // Private Data inside restaurants (tables, waiters, finances, etc.)
+      match /{privateData=**} {
+        allow read, write: if (request.auth != null && request.auth.uid == restaurantId) || isCPanelAdmin();
       }
     }
 
-    // Waiter Index for login
+    // Waiter & Cashier Index
     match /waiter_index/{email} {
       allow read: if true;
       allow create: if (request.auth != null && request.resource.data.restaurantId == request.auth.uid) || isCPanelAdmin();
-      allow update: if (request.auth != null && resource.data.restaurantId == request.auth.uid && request.resource.data.restaurantId == request.auth.uid) || isCPanelAdmin();
-      allow delete: if (request.auth != null && resource.data.restaurantId == request.auth.uid) || isCPanelAdmin();
+      allow update, delete: if (request.auth != null && resource.data.restaurantId == request.auth.uid) || isCPanelAdmin();
     }
-
-    // Cashier Index for login
     match /cashier_index/{email} {
       allow read: if true;
       allow create: if (request.auth != null && request.resource.data.restaurantId == request.auth.uid) || isCPanelAdmin();
-      allow update: if (request.auth != null && resource.data.restaurantId == request.auth.uid && request.resource.data.restaurantId == request.auth.uid) || isCPanelAdmin();
-      allow delete: if (request.auth != null && resource.data.restaurantId == request.auth.uid) || isCPanelAdmin();
+      allow update, delete: if (request.auth != null && resource.data.restaurantId == request.auth.uid) || isCPanelAdmin();
     }
     
-    // User orders
+    // User orders (LOCKED DOWN: Split Get and List)
     match /orders/{orderId} {
-      allow read: if true; // Allow guests, waiters, and cashiers to read orders
-      // Allow guests and waiters (no auth) to create orders
+      // 1. GET (Read 1 specific order) -> Guests can see their order if they know the exact link ID
+      allow get: if true; 
+
+      // 2. LIST (List multiple orders) -> Locked out from public scraping
+      allow list: if request.auth != null && (
+        request.auth.uid == resource.data.restaurantId || 
+        request.auth.uid == resource.data.deliveryDriverId ||
+        request.auth.uid == resource.data.userId || 
+        exists(/databases/$(database)/documents/restaurants/$(resource.data.restaurantId)/waiters/$(request.auth.uid)) ||
+        isCPanelAdmin()
+      );
+      
+      // Allow guests and waiters (no auth required right now) to create orders
       allow create: if true;
-      // Restaurants and Drivers can update status, plus cashiers (unauthenticated) for payment
+      
+      // Restrictions to update status/payments
       allow update: if (request.auth != null && (
         request.auth.uid == resource.data.restaurantId || 
         request.auth.uid == resource.data.deliveryDriverId ||
         exists(/databases/$(database)/documents/restaurants/$(resource.data.restaurantId)/waiters/$(request.auth.uid)) ||
-        // Allow self-assignment
         (resource.data.status == 'finding_driver' && request.resource.data.status == 'driver_assigned')
       )) || 
+      // Permit guests to attach payment
       (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['restaurantId', 'userId', 'items'])) ||
       isCPanelAdmin();
+      
       allow delete: if isCPanelAdmin();
     }
 
@@ -86,22 +99,22 @@ service cloud.firestore {
       allow create: if request.auth != null && (request.auth.uid == request.resource.data.userId || isCPanelAdmin());
     }
 
-    // System configurations
-    match /system_configs/{configId} {
-      allow read: if true;
-      allow write: if isCPanelAdmin();
-    }
-
-    // Transport requests (Taxi)
+    // Transport requests (Taxi) (LOCKED DOWN: Split Get and List)
     match /transport_requests/{requestId} {
-      allow read: if request.auth != null && (
+      // Allow guests to see their own exact taxi matching ID
+      allow get: if true;
+      
+      // Do not allow people to download all taxi history globally!
+      allow list: if request.auth != null && (
         request.auth.uid == resource.data.userId || 
         request.auth.uid == resource.data.driverId || 
         request.auth.token.admin == true ||
-        resource.data.status == 'searching' ||
+        resource.data.status == 'searching' || // Pilots looking for jobs
         isCPanelAdmin()
       );
+
       allow create: if (request.auth != null && (request.auth.uid == request.resource.data.userId || isCPanelAdmin())) || request.resource.data.userId.matches('guest_.*');
+      
       allow update: if request.auth != null && (
         request.auth.uid == resource.data.userId || 
         request.auth.uid == resource.data.driverId ||
@@ -115,108 +128,29 @@ service cloud.firestore {
       }
     }
 
-    // Notifications
-    match /notifications/{notifId} {
-      allow read: if request.auth != null && (request.auth.uid == resource.data.userId || isCPanelAdmin());
-      allow create: if request.auth != null;
-    }
-
-    // Banners
-    match /banners/{bannerId} {
-      allow read: if true;
-      allow write: if request.auth != null && (
-        request.auth.uid == request.resource.data.restaurantId || 
-        request.auth.uid == resource.data.restaurantId ||
-        isCPanelAdmin()
-      );
-    }
-
-    // Banner Updates (for stats)
-    match /banner_updates/{updateId} {
-      allow read, create: if request.auth != null && (
-        request.auth.uid == request.resource.data.restaurantId || 
-        request.auth.uid == resource.data.restaurantId ||
-        isCPanelAdmin()
-      );
-    }
-
-    // Delivery and Transport settings
-    match /delivery_settings/{docId} {
-      allow read: if true;
-      allow write: if isCPanelAdmin();
-    }
-
-    // Delivery update requests
-    match /delivery_update_requests/{requestId} {
-      allow read: if isCPanelAdmin() || (request.auth != null && resource.data.driverId == request.auth.uid);
-      allow create: if request.auth != null && request.resource.data.driverId == request.auth.uid;
-      allow update, delete: if isCPanelAdmin();
-    }
-
-    // CPanel Managed Collections
-    match /global_categories/{categoryId} {
-      allow read: if true;
-      allow write: if isCPanelAdmin();
-    }
+    // Default general rules...
+    match /notifications/{notifId} { allow read: if request.auth != null && (request.auth.uid == resource.data.userId || isCPanelAdmin()); allow create: if request.auth != null; }
+    match /banners/{bannerId} { allow read: if true; allow write: if request.auth != null && ( request.auth.uid == request.resource.data.restaurantId || request.auth.uid == resource.data.restaurantId || isCPanelAdmin()); }
+    match /banner_updates/{updateId} { allow read, create: if request.auth != null && ( request.auth.uid == request.resource.data.restaurantId || request.auth.uid == resource.data.restaurantId || isCPanelAdmin()); }
+    match /delivery_settings/{docId} { allow read: if true; allow write: if isCPanelAdmin(); }
+    match /system_configs/{configId} { allow read: if true; allow write: if isCPanelAdmin(); }
+    match /system_settings/{docId} { allow read: if true; allow write: if isCPanelAdmin(); }
     
-    match /raffles/{raffleId} {
-      allow read: if true;
-      allow write: if isCPanelAdmin();
-    }
-    
-    match /referral_contests/{contestId} {
-      allow read: if true;
-      allow write: if isCPanelAdmin();
-    }
-    
-    match /home_icons/{iconId} {
-      allow read: if true;
-      allow write: if isCPanelAdmin();
-    }
+    // CPanel Managed Public
+    match /global_categories/{categoryId} { allow read: if true; allow write: if isCPanelAdmin(); }
+    match /raffles/{raffleId} { allow read: if true; allow write: if isCPanelAdmin(); }
+    match /referral_contests/{contestId} { allow read: if true; allow write: if isCPanelAdmin(); }
+    match /home_icons/{iconId} { allow read: if true; allow write: if isCPanelAdmin(); }
+    match /global_icons/{iconId} { allow read: if true; allow write: if isCPanelAdmin(); }
+    match /payment_methods/{methodId} { allow read: if true; allow write: if isCPanelAdmin(); }
+    match /push_campaigns/{campaignId} { allow read: if true; allow create: if request.auth != null; allow update, delete: if isCPanelAdmin() || (request.auth != null && resource.data.restaurantId == request.auth.uid); }
 
-    match /global_icons/{iconId} {
-      allow read: if true;
-      allow write: if isCPanelAdmin();
-    }
-    
-    match /payment_methods/{methodId} {
-      allow read: if true;
-      allow write: if isCPanelAdmin();
-    }
+    // Subscriptions & Wallets
+    match /subscriptions/{subId} { allow read: if true; allow write: if isCPanelAdmin() || (request.auth != null && request.auth.uid == request.resource.data.restaurantId); }
+    match /wallets/{walletId} { allow read: if request.auth != null && (request.auth.uid == walletId || isCPanelAdmin()); allow write: if isCPanelAdmin(); }
+    match /support_tickets/{ticketId} { allow read: if request.auth != null && (request.auth.uid == resource.data.userId || isCPanelAdmin()); allow create: if request.auth != null && request.auth.uid == request.resource.data.userId; allow update, delete: if isCPanelAdmin(); }
+    match /delivery_update_requests/{requestId} { allow read: if isCPanelAdmin() || (request.auth != null && resource.data.driverId == request.auth.uid); allow create: if request.auth != null && request.resource.data.driverId == request.auth.uid; allow update, delete: if isCPanelAdmin(); }
 
-    match /subscriptions/{subId} {
-      allow read: if true;
-      allow write: if isCPanelAdmin() || (request.auth != null && request.auth.uid == request.resource.data.restaurantId);
-    }
-
-    match /wallets/{walletId} {
-      allow read: if request.auth != null && (request.auth.uid == walletId || isCPanelAdmin());
-      allow write: if isCPanelAdmin();
-    }
-
-    // Support Tickets
-    match /support_tickets/{ticketId} {
-      allow read: if request.auth != null && (request.auth.uid == resource.data.userId || isCPanelAdmin());
-      allow create: if request.auth != null && request.auth.uid == request.resource.data.userId;
-      allow update: if isCPanelAdmin();
-      allow delete: if isCPanelAdmin();
-    }
-
-    // Marketing and Push Campaigns
-    match /push_campaigns/{campaignId} {
-      allow read: if true;
-      allow create: if request.auth != null;
-      allow update, delete: if isCPanelAdmin() || (request.auth != null && resource.data.restaurantId == request.auth.uid);
-    }
-
-    match /system_settings/{docId} {
-      allow read: if true;
-      allow write: if isCPanelAdmin();
-    }
-
-    // Default deny
-    match /{document=**} {
-      allow read, write: if false;
-    }
+    match /{document=**} { allow read, write: if false; }
   }
 }
