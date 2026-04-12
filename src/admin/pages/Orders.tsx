@@ -1041,9 +1041,8 @@ export default function Orders() {
                         </div>
                     )}
                 </div>
-            )}
 
-            <div className="flex flex-wrap items-center gap-3">
+                <div className="flex flex-wrap items-center gap-3">
                 {(order.status === 'pending' || order.status === 'pendiente_pago' || order.status === 'pending_verification') && (
                     <>
                         <button
