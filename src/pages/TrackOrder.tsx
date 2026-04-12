@@ -720,8 +720,9 @@ export default function TrackOrder() {
                                 )}
                             </div>
                         )}
-                            </div>
+                    </div>
                 )}
+            </div>
 
                 {/* Driver Info (If Assigned) */}
                 {driver && (currentStep >= 2) && (
