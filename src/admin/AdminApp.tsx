@@ -11,7 +11,7 @@ import Clients from './pages/Clients';
 import WaitersManager from './pages/WaitersManager';
 import CashiersManager from './pages/CashiersManager';
 import PrintersManager from './pages/PrintersManager';
-import KitchenDisplay from './pages/KitchenDisplay';
+
 import TablesManager from './pages/TablesManager';
 import Subscriptions from './pages/Subscriptions';
 import Banners from './pages/Banners';
@@ -48,7 +48,6 @@ function AdminRoutes() {
                 <Route path="/cashiers" element={<CashiersManager />} />
                 <Route path="/tables" element={<TablesManager />} />
                 <Route path="/stations" element={<PrintersManager />} />
-                <Route path="/kds" element={<KitchenDisplay />} />
                 <Route path="/profile" element={<RestaurantProfile />} />
                 <Route path="/banners" element={<Banners />} />
                 <Route path="/reviews" element={<ReviewsManager />} />

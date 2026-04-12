@@ -9,6 +9,8 @@ import { useCurrency } from '../context/CurrencyContext';
 import DeliveryPaymentModal from '../components/DeliveryPaymentModal';
 import ReviewModal from '../components/ReviewModal';
 import DualPrice from '../components/DualPrice';
+import OrderChatWindow from '../components/chat/OrderChatWindow';
+import { useAuth } from '../context/AuthContext';
 
 export default function TrackOrder() {
     const { orderId } = useParams();
@@ -19,6 +21,7 @@ export default function TrackOrder() {
     const [loading, setLoading] = useState(true);
     const [showReviewModal, setShowReviewModal] = useState(false);
     const { bcvRate } = useCurrency();
+    const { user } = useAuth();
     const [hasPaidRestaurant, setHasPaidRestaurant] = useState(false);
     const [showDeliveryPaymentModal, setShowDeliveryPaymentModal] = useState(false);
     
@@ -327,20 +330,22 @@ export default function TrackOrder() {
                             )}
                             
                             {(!order.restaurantPaymentClientConfirmed && (order.status === 'pending' || order.status === 'pendiente_pago')) ? (
-                                <>
-                                    <button 
-                                        onClick={handleRestaurantPaid}
-                                        className="w-full bg-slate-900 text-white py-4 rounded-2xl font-black shadow-lg hover:bg-slate-800 transition-colors"
-                                    >
-                                        Ya pagué el pedido a {restaurant?.name || "Negocio"}
-                                    </button>
+                                <div className="w-full animate-in fade-in zoom-in-95 duration-200">
+                                    <OrderChatWindow 
+                                        orderId={orderId!} 
+                                        currentUserRole="client" 
+                                        currentUserId={user?.uid || 'guest'}
+                                        currentUserName={order.userName || 'Cliente'} 
+                                        restaurantId={order.restaurantId}
+                                        orderInfo={order}
+                                    />
                                     <button 
                                         onClick={handleCancelOrder}
-                                        className="w-full bg-red-100 text-red-600 py-3 rounded-2xl font-bold hover:bg-red-200 transition-colors mt-2"
+                                        className="w-full bg-red-100 text-red-600 py-4 rounded-2xl font-bold hover:bg-red-200 transition-colors mt-4 shadow-sm"
                                     >
                                         Cancelar Pedido
                                     </button>
-                                </>
+                                </div>
                             ) : (
                                 <div className="w-full animate-in fade-in zoom-in-95 duration-200 bg-slate-50 p-4 rounded-3xl border-2 border-slate-100 relative shadow-inner">
                                     <h4 className="font-black text-slate-800 mb-4 flex items-center gap-2">
@@ -406,13 +411,21 @@ export default function TrackOrder() {
                                                 </p>
                                             </div>
 
-                                            <button 
-                                                onClick={handleProceedToDeliveryPayment}
-                                                className="w-full bg-primary text-slate-900 py-4 rounded-2xl font-black shadow-xl shadow-primary/20 hover:scale-[1.02] active:scale-95 transition-all text-lg flex items-center justify-center gap-2 mt-4"
-                                            >
-                                                <Wallet className="w-6 h-6" />
-                                                Pagar Delivery
-                                            </button>
+                                            <div className="flex flex-col gap-3 mt-4">
+                                                <button 
+                                                    onClick={handleProceedToDeliveryPayment}
+                                                    className="w-full bg-primary text-slate-900 py-4 rounded-2xl font-black shadow-xl shadow-primary/20 hover:scale-[1.02] active:scale-95 transition-all text-lg flex items-center justify-center gap-2"
+                                                >
+                                                    <Wallet className="w-6 h-6" />
+                                                    Pagar Delivery
+                                                </button>
+                                                <button 
+                                                    onClick={handleSwitchToPickup}
+                                                    className="w-full bg-slate-100 text-slate-600 py-3 rounded-2xl font-bold hover:bg-slate-200 transition-colors text-sm flex items-center justify-center gap-2"
+                                                >
+                                                    Lo buscaré yo (Retiro en local)
+                                                </button>
+                                            </div>
                                         </>
                                     ) : (
                                         <button 

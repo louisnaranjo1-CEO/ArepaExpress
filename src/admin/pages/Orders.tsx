@@ -8,6 +8,7 @@ import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { motion, AnimatePresence } from 'framer-motion';
 import toast from 'react-hot-toast';
 import ComandaPreview from '../components/ComandaPreview';
+import OrderChatWindow from '../../components/chat/OrderChatWindow';
 
 interface OrderItem {
     id: string;
@@ -995,7 +996,7 @@ export default function Orders() {
                             {printingOrderId === order.id ? (
                                 <><Loader2 className="w-5 h-5 animate-spin" /> Imprimiendo...</>
                             ) : (
-                                <>{order.status === 'pendiente_pago' ? 'Verificar y Enviar a Cocina' : 'Aceptar'}</>
+                                <>{order.status === 'pendiente_pago' ? 'Verificar y Procesar' : 'Aceptar'}</>
                             )}
                         </button>
                         <button
@@ -1119,7 +1120,7 @@ export default function Orders() {
             <div className="grid grid-cols-2 lg:grid-cols-5 gap-2 p-2 bg-slate-100 rounded-[30px]">
                 {[
                     { id: 'pending', label: 'Pendientes', icon: Bell, color: 'bg-emerald-500' },
-                    { id: 'preparing', label: 'Cocina', icon: Package, color: 'bg-emerald-600' },
+                    { id: 'preparing', label: 'Por Despachar', icon: Package, color: 'bg-emerald-600' },
                     { id: 'delivering', label: 'Camino', icon: Truck, color: 'bg-emerald-700' },
                     { id: 'delivered', label: 'Entregados', icon: CheckCircle, color: 'bg-emerald-500' },
                     { id: 'tables', label: 'Mesas', icon: Users, color: 'bg-primary' },
@@ -1386,7 +1387,7 @@ export default function Orders() {
                     <div className="bg-white rounded-3xl p-6 w-full max-w-lg shadow-2xl animate-in zoom-in-95 duration-200 flex flex-col max-h-[90vh]">
                         <div className="flex justify-between items-center mb-6 shrink-0">
                             <h3 className="text-xl font-black text-slate-900">
-                                {selectedOrderForAccept.status === 'pendiente_pago' ? 'Verificar y Enviar a Cocina' : 'Aceptar Pedido'}
+                                {selectedOrderForAccept.status === 'pendiente_pago' ? 'Verificar y Procesar' : 'Aceptar Pedido'}
                             </h3>
                             <button onClick={() => setAcceptModalOpen(false)} className="text-slate-400 hover:text-slate-600">
                                 <X className="w-6 h-6" />
@@ -1415,7 +1416,7 @@ export default function Orders() {
                             <div className="space-y-3">
                                 <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block px-1">Confirmar Método de Pago</label>
                                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                                    {['Efectivo', 'Pago Móvil', 'Zelle', 'Punto de Venta', 'Transferencia', 'Crédito (2x3)'].map(method => (
+                                    {['Efectivo', 'Pago Móvil', 'Zelle', 'Punto de Venta', 'Transferencia', 'Crédito (2x3)', 'Cashea', 'Fidelidad'].map(method => (
                                         <button
                                             key={method}
                                             onClick={() => setPaymentMethod(method)}
@@ -1427,43 +1428,17 @@ export default function Orders() {
                                 </div>
                             </div>
 
-                            {/* Campos dinámicos según el pago */}
-                            {['Pago Móvil', 'Transferencia'].includes(paymentMethod) && (
+                            {['Pago Móvil', 'Transferencia', 'Zelle', 'Punto de Venta'].includes(paymentMethod) && (
                                 <div className="space-y-4 animate-in slide-in-from-top-2 duration-300">
-                                    <div className="space-y-2">
-                                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block px-1">Referencia Transacción</label>
-                                        <input
-                                            type="text"
-                                            placeholder="Últimos 6 dígitos..."
-                                            value={referenceInputs[selectedOrderForAccept.id] || ''}
-                                            onChange={(e) => setReferenceInputs(prev => ({ ...prev, [selectedOrderForAccept.id]: e.target.value }))}
-                                            className="w-full bg-slate-50 border border-slate-200 p-4 rounded-2xl outline-none focus:border-primary font-bold text-slate-700 h-14"
+                                    <div className="bg-slate-50 border border-slate-200 rounded-2xl overflow-hidden h-[400px]">
+                                        <OrderChatWindow 
+                                            orderId={selectedOrderForAccept.id} 
+                                            currentUserRole="restaurant" 
+                                            currentUserId={user?.uid || 'admin'}
+                                            currentUserName={user?.email === 'admin@un2x3.com' ? 'Administración 2x3' : 'Caja Central'} 
+                                            restaurantId={user?.uid!} // Or get from order.restaurantId if it's the admin panel
+                                            orderInfo={selectedOrderForAccept}
                                         />
-                                    </div>
-                                    <div className="space-y-2">
-                                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block px-1">Captura de Pantalla</label>
-                                        <label className="flex flex-col items-center justify-center p-6 border-2 border-dashed border-slate-200 rounded-2xl hover:border-primary/50 cursor-pointer transition-all bg-slate-50">
-                                            <input
-                                                type="file"
-                                                accept="image/*"
-                                                className="hidden"
-                                                onChange={(e) => {
-                                                    const file = e.target.files?.[0];
-                                                    if (file) setProofUploadFiles(prev => ({ ...prev, [selectedOrderForAccept.id]: file }));
-                                                }}
-                                            />
-                                            {proofUploadFiles[selectedOrderForAccept.id] ? (
-                                                <div className="flex items-center gap-2 text-slate-900">
-                                                    <CheckCircle className="w-5 h-5" />
-                                                    <span className="font-bold text-xs truncate max-w-[200px]">{proofUploadFiles[selectedOrderForAccept.id].name}</span>
-                                                </div>
-                                            ) : (
-                                                <div className="flex flex-col items-center gap-2 text-slate-400">
-                                                    <Upload className="w-6 h-6" />
-                                                    <span className="text-[10px] font-black uppercase tracking-tighter">Subir Comprobante</span>
-                                                </div>
-                                            )}
-                                        </label>
                                     </div>
                                 </div>
                             )}
@@ -1482,7 +1457,7 @@ export default function Orders() {
                                 disabled={isAccepting}
                                 className="w-full bg-primary text-slate-900 py-4 rounded-2xl font-black shadow-xl shadow-primary/30 hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-2 disabled:opacity-50"
                             >
-                                {isAccepting ? <Loader2 className="w-5 h-5 animate-spin" /> : <><CheckCircle className="w-5 h-5" /> Confirmar y Enviar a Cocina</>}
+                                {isAccepting ? <Loader2 className="w-5 h-5 animate-spin" /> : <><CheckCircle className="w-5 h-5" /> Confirmar y Procesar</>}
                             </button>
                         </div>
                     </div>

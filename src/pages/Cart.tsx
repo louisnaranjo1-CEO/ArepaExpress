@@ -269,6 +269,23 @@ export default function Cart({ hideHeader = false }: CartProps) {
       const docRef = await addDoc(collection(db, 'orders'), orderData);
       setOrderId(docRef.id);
 
+      // Auto-insert first chat message from the restaurant
+      if (!isWaiter) {
+          try {
+              // Wait for importing collection and addDoc is already available
+              await addDoc(collection(db, 'orders', docRef.id, 'chat'), {
+                  text: 'Gracias por elegirnos! En este momento serás atendido por uno de nuestros cajeros para confirmar la existencia de cada item de tu pedido! Lo haremos en un 2x3!',
+                  senderId: restaurantId,
+                  senderName: 'Atención al Cliente',
+                  senderRole: 'restaurant',
+                  timestamp: serverTimestamp(),
+                  isRead: false
+              });
+          } catch(e) {
+             console.error('Error adding welcome chat message', e);
+          }
+      }
+
       // SYNC TABLE STATUS: Mark as occupied
       if (isWaiter && tableId) {
         setIsSyncingTable(true);
@@ -304,31 +321,6 @@ export default function Cart({ hideHeader = false }: CartProps) {
       const mapsLink = (deliveryMethod === 'delivery' && selectedAddress && selectedAddress.lat) ? `\n🗺️ Ubicación GPS: https://www.google.com/maps?q=${selectedAddress.lat},${selectedAddress.lng}` : '';
       const notesString = orderNote.trim() ? `\n📝 Notas: ${orderNote.trim()}` : '';
       
-      const message = encodeURIComponent(
-        `Hola, me gustaría realizar una ${restaurantData?.businessType === 'hotel' ? 'RESERVACIÓN' : 'ORDEN'} a través de *Deli Express* 🚀\n\n` +
-        `━━━━━━━━━━━━━━\n` +
-        `👤 *Cliente:* ${user?.displayName || guestName}\n` +
-        `📞 *Teléfono:* ${userData?.phone || guestPhone}\n` +
-        `🆔 *Cédula:* ${userData?.cedula || guestCedula}\n` +
-        `━━━━━━━━━━━━━━\n\n` +
-        `${restaurantData?.businessType === 'hotel' ? '🏨 *DETALLES DEL HOSPEDAJE:*' : '🛒 *DETALLES DEL PEDIDO:*'}\n${itemsList}\n` +
-        `${notesString}\n\n` +
-        `📦 *Método:* ${isWaiter ? 'Servicio a Mesa' : (deliveryMethod === 'pickup' ? 'Recoger en local' : (deliveryMethod === 'own_delivery' ? 'Delivery Propio del Local' : 'Delivery Un 2x3'))}\n` +
-        `${(deliveryMethod === 'app_delivery' || deliveryMethod === 'own_delivery') && !isWaiter ? `📍 *Dirección:* ${addressStr}${deliveryMethod === 'app_delivery' ? mapsLink : ''}` : ''}\n\n` +
-        `💰 *SUBTOTAL ARTÍCULOS:* $${cartSubtotalUSD.toFixed(2)} | ${(cartSubtotalUSD * bcvRate).toFixed(2)} Bs\n` +
-        `${deliveryFee > 0 ? `🚚 *DELIVERY:* $${deliveryFee.toFixed(2)} | ${(deliveryFee * bcvRate).toFixed(2)} Bs\n` : ''}` +
-        `⭐ *TOTAL ${deliveryMethod === 'app_delivery' ? '(SOLO DELIVERY UN 2X3 A PAGAR)' : 'ESTIMADO'}:* $${finalTotal.toFixed(2)} | ${(finalTotal * bcvRate).toFixed(2)} Bs\n\n` +
-        `🔢 *Orden ID:* #${docRef.id.slice(-6).toUpperCase()}\n` +
-        `━━━━━━━━━━━━━━\n\n` +
-        `Esperando confirmación...`
-      );
-      
-      const whatsappNumber = rData.whatsapp.replace(/\D/g, '');
-      const link = `https://wa.me/${whatsappNumber}?text=${message}`;
-      setWhatsappLink(link);
-      
-      window.open(link, '_blank', 'noopener,noreferrer');
-      
       clearCart();
       setPurchaseConfirmed(true);
       setCheckoutSuccess(true);
@@ -337,7 +329,7 @@ export default function Cart({ hideHeader = false }: CartProps) {
           navigate(`/track/${docRef.id}`);
           return;
       }
-
+      
     } catch (err: any) { 
       console.error('Checkout error:', err);
       setError(err.message || 'Error al procesar la orden. Intente nuevamente.'); 
@@ -771,7 +763,7 @@ export default function Cart({ hideHeader = false }: CartProps) {
                     ) : (
                       <>
                         {restaurantData?.businessType === 'hotel' ? <CheckCircle2 className="w-5 h-5" /> : <ArrowRight className="w-5 h-5" />}
-                        {isWaiter ? 'Enviar Comanda' : (restaurantData?.businessType === 'hotel' ? 'Confirmar Reservación' : 'Pedir por WhatsApp')}
+                        {isWaiter ? 'Enviar Comanda' : (restaurantData?.businessType === 'hotel' ? 'Confirmar Reservación' : 'Confirmar Pedido')}
                       </>
                     )}
                   </button>

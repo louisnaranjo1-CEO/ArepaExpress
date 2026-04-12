@@ -8,6 +8,8 @@ import ProductTicker from '../components/ProductTicker';
 import ReviewsModal from '../components/ReviewsModal';
 import ComandaPreview from '../../admin/components/ComandaPreview';
 import { motion, AnimatePresence } from 'framer-motion';
+import QRCode from 'react-qr-code';
+import OrderChatWindow from '../../components/chat/OrderChatWindow';
 import toast from 'react-hot-toast';
 import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 
@@ -876,7 +878,7 @@ ESTADO: ${order.status.toUpperCase()}
                         'bg-red-100 text-red-600'
                     }`}>
                         {order.status === 'pending' ? 'Pendiente' :
-                         order.status === 'preparing' ? 'Cocina' :
+                         order.status === 'preparing' ? 'Por Despachar' :
                          order.status === 'delivering' ? 'En Camino' :
                          order.status === 'delivered' ? 'Entregado' : 'Rechazado'}
                     </div>
@@ -919,7 +921,7 @@ ESTADO: ${order.status.toUpperCase()}
                                 className="flex-1 bg-primary text-slate-900 py-4 rounded-2xl font-black text-xs flex items-center justify-center gap-2 hover:scale-[1.02] active:scale-[0.98] transition-all shadow-lg shadow-primary/20"
                             >
                                 <CheckCircle className="w-4 h-4" />
-                                Verificar y Cocina
+                                Verificar y Procesar
                             </button>
                             <button
                                 onClick={() => { setSelectedOrder(order); setCloseSaleModalOpen(true); }}
@@ -1137,7 +1139,7 @@ ESTADO: ${order.status.toUpperCase()}
                 <div className="grid grid-cols-2 lg:grid-cols-5 gap-2 p-2 bg-slate-100 rounded-[30px]">
                     {[
                         { id: 'pending', label: 'Pendientes', icon: Bell, color: 'bg-primary' },
-                        { id: 'preparing', label: 'Cocina', icon: Package, color: 'bg-emerald-500' },
+                        { id: 'preparing', label: 'Por Despachar', icon: Package, color: 'bg-emerald-500' },
                         { id: 'delivering', label: 'Camino', icon: Truck, color: 'bg-emerald-600' },
                         { id: 'delivered', label: 'Entregados', icon: CheckCircle, color: 'bg-slate-900' },
                         { id: 'rejected', label: 'Rechazados', icon: X, color: 'bg-red-500' },
@@ -1309,7 +1311,7 @@ ESTADO: ${order.status.toUpperCase()}
                         <div className="space-y-3 mb-6">
                             <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest">Método de Pago</label>
                             <div className="grid grid-cols-2 gap-2">
-                                {['Punto de Venta', 'Pago Móvil', 'Efectivo', 'Zelle'].map((method) => (
+                                {['Punto de Venta', 'Pago Móvil', 'Efectivo', 'Zelle', 'Cashea', 'Fidelidad'].map((method) => (
                                     <button
                                         key={method}
                                         onClick={() => setPaymentMethod(method)}
@@ -1323,7 +1325,24 @@ ESTADO: ${order.status.toUpperCase()}
                             </div>
                         </div>
 
-                        {paymentMethod === 'Pago Móvil' && (
+                        {selectedOrder.source !== 'waiter' ? (
+                            <motion.div 
+                                initial={{ opacity: 0, height: 0 }}
+                                animate={{ opacity: 1, height: 'auto' }}
+                                className="space-y-4 mb-6"
+                            >
+                                <div className="bg-slate-50 border border-slate-200 rounded-2xl overflow-hidden h-[300px]">
+                                    <OrderChatWindow 
+                                        orderId={selectedOrder.id} 
+                                        currentUserRole="restaurant" 
+                                        currentUserId={user?.uid || 'cashier'}
+                                        currentUserName="Caja Central"
+                                        restaurantId={user?.uid!} // Store owner UID or configured
+                                        orderInfo={selectedOrder}
+                                    />
+                                </div>
+                            </motion.div>
+                        ) : paymentMethod === 'Pago Móvil' && (
                             <motion.div 
                                 initial={{ opacity: 0, height: 0 }}
                                 animate={{ opacity: 1, height: 'auto' }}
@@ -1339,31 +1358,6 @@ ESTADO: ${order.status.toUpperCase()}
                                         onChange={(e) => setReferenceInputs(prev => ({ ...prev, [selectedOrder.id]: e.target.value }))}
                                         className="w-full bg-slate-50 border border-slate-200 px-4 py-3 rounded-2xl outline-none focus:border-primary font-bold text-slate-700 placeholder:text-slate-300"
                                     />
-                                </div>
-                                <div>
-                                    <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">Comprobante de Pago</label>
-                                    <div className="relative group/upload">
-                                        <input
-                                            type="file"
-                                            accept="image/*"
-                                            onChange={(e) => {
-                                                const file = e.target.files?.[0];
-                                                if (file) setProofUploadFiles(prev => ({ ...prev, [selectedOrder.id]: file }));
-                                            }}
-                                            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
-                                        />
-                                        <div className="w-full border-2 border-dashed border-slate-200 rounded-2xl p-4 flex items-center justify-center gap-2 bg-slate-50 group-hover/upload:bg-white group-hover/upload:border-primary/30 transition-all">
-                                            {proofUploadFiles[selectedOrder.id] ? (
-                                                <div className="flex items-center gap-2 text-slate-900 font-bold text-xs truncate">
-                                                    <CheckCircle className="w-4 h-4" /> {proofUploadFiles[selectedOrder.id].name}
-                                                </div>
-                                            ) : (
-                                                <div className="flex items-center gap-2 text-slate-400 font-bold text-xs">
-                                                    <Plus className="w-4 h-4" /> Subir captura
-                                                </div>
-                                            )}
-                                        </div>
-                                    </div>
                                 </div>
                             </motion.div>
                         )}
