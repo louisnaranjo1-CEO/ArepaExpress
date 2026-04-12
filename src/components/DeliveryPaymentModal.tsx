@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
 import { X, UploadCloud, CheckCircle2, AlertCircle } from 'lucide-react';
 import { doc, updateDoc } from 'firebase/firestore';
-import { db } from '../lib/firebase';
-import { uploadImg } from '../lib/uploadImg';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { db, storage } from '../lib/firebase';
 
 interface DeliveryPaymentModalProps {
     isOpen: boolean;
@@ -45,8 +45,9 @@ export default function DeliveryPaymentModal({ isOpen, onClose, orderId, deliver
             let imageUrl = '';
             // Upload screenshot if provided
             if (imageFile) {
-                // Utilizing existing upload function
-                imageUrl = await uploadImg(imageFile);
+                const storageRef = ref(storage, `delivery_payments/${orderId}_${Date.now()}`);
+                const snapshot = await uploadBytes(storageRef, imageFile);
+                imageUrl = await getDownloadURL(snapshot.ref);
             }
 
             // Update order doc
