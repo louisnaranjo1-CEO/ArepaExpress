@@ -12,6 +12,7 @@ import UsersManager from './pages/UsersManager';
 import BannersManager from './pages/BannersManager';
 import CategoriesManager from './pages/CategoriesManager';
 import DeliveryManagement from './pages/DeliveryManagement';
+import AppOrders from './pages/AppOrders';
 import FinancesManager from './pages/FinancesManager';
 import LiquidationsManager from './pages/LiquidationsManager';
 import TransportRequests from './pages/TransportRequests';
@@ -117,6 +118,7 @@ export default function CpanelApp() {
                     <Route path="/banners" element={<BannersManager />} />
                     <Route path="/categories" element={<CategoriesManager />} />
                     <Route path="/delivery" element={<DeliveryManagement />} />
+                    <Route path="/app-orders" element={<AppOrders />} />
                     <Route path="/transports" element={<TransportRequests />} />
                     <Route path="/finances" element={<FinancesManager />} />
                     <Route path="/liquidations" element={<LiquidationsManager />} />

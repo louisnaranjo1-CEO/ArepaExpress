@@ -746,9 +746,9 @@ export default function Orders() {
             return o.status === activeTab;
         })
         .filter(o =>
-            o.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            o.deliveryAddress.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            (o.userName && o.userName.toLowerCase().includes(searchTerm.toLowerCase()))
+            (o.id || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+            (o.deliveryAddress || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+            ((o.userName || '').toLowerCase().includes(searchTerm.toLowerCase()))
         );
 
     const [showTableModal, setShowTableModal] = useState(false);
@@ -1441,7 +1441,7 @@ export default function Orders() {
                                 </div>
                             </div>
 
-                            {['Pago Móvil', 'Transferencia', 'Zelle', 'Punto de Venta'].includes(paymentMethod) && (
+                            {(selectedOrderForAccept.source === 'client' || ['Pago Móvil', 'Transferencia', 'Zelle', 'Punto de Venta', 'Cashea'].includes(paymentMethod)) && (
                                 <div className="space-y-4 animate-in slide-in-from-top-2 duration-300">
                                     <div className="bg-slate-50 border border-slate-200 rounded-2xl overflow-hidden h-[400px]">
                                         <OrderChatWindow 

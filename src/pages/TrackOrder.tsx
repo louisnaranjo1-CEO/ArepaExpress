@@ -320,6 +320,28 @@ export default function TrackOrder() {
                         </div>
                     )}
 
+                    {/* Chat Window always visible until delivered/cancelled */}
+                    {order.status !== 'cancelled' && order.status !== 'delivered' && (
+                        <div className="w-full mt-6 animate-in fade-in zoom-in-95 duration-200">
+                            <OrderChatWindow 
+                                orderId={orderId!} 
+                                currentUserRole="client" 
+                                currentUserId={user?.uid || 'guest'}
+                                currentUserName={order.userName || 'Cliente'} 
+                                restaurantId={order.restaurantId}
+                                orderInfo={order}
+                            />
+                            {(!order.restaurantPaymentClientConfirmed && (order.status === 'pending' || order.status === 'pendiente_pago')) && (
+                                <button 
+                                    onClick={handleCancelOrder}
+                                    className="w-full bg-red-100 text-red-600 py-4 rounded-2xl font-bold hover:bg-red-200 transition-colors mt-4 shadow-sm"
+                                >
+                                    Cancelar Pedido
+                                </button>
+                            )}
+                        </div>
+                    )}
+
                     {/* Delivery Payment Flow */ }
                     {(currentStep === 1 || currentStep === 2) && order.deliveryMethod === 'app_delivery' && (!order.deliveryPaymentStatus || order.deliveryPaymentStatus === 'rejected') && (
                         <div className="mt-6 pt-6 border-t border-slate-100 flex flex-col items-center gap-3 animate-in fade-in slide-in-from-bottom-2">
@@ -329,24 +351,7 @@ export default function TrackOrder() {
                                 </div>
                             )}
                             
-                            {(!order.restaurantPaymentClientConfirmed && (order.status === 'pending' || order.status === 'pendiente_pago')) ? (
-                                <div className="w-full animate-in fade-in zoom-in-95 duration-200">
-                                    <OrderChatWindow 
-                                        orderId={orderId!} 
-                                        currentUserRole="client" 
-                                        currentUserId={user?.uid || 'guest'}
-                                        currentUserName={order.userName || 'Cliente'} 
-                                        restaurantId={order.restaurantId}
-                                        orderInfo={order}
-                                    />
-                                    <button 
-                                        onClick={handleCancelOrder}
-                                        className="w-full bg-red-100 text-red-600 py-4 rounded-2xl font-bold hover:bg-red-200 transition-colors mt-4 shadow-sm"
-                                    >
-                                        Cancelar Pedido
-                                    </button>
-                                </div>
-                            ) : (
+                            {order.restaurantPaymentClientConfirmed && (
                                 <div className="w-full animate-in fade-in zoom-in-95 duration-200 bg-slate-50 p-4 rounded-3xl border-2 border-slate-100 relative shadow-inner">
                                     <h4 className="font-black text-slate-800 mb-4 flex items-center gap-2">
                                         <Package className="w-5 h-5 text-primary"/>

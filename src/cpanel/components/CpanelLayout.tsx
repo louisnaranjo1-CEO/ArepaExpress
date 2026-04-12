@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, Store, Users, Image as ImageIcon, LogOut, ChevronRight, Menu, X, Tag, Truck, Wallet, Car, Share2, Gift, Ticket, MessageSquareWarning, Megaphone } from 'lucide-react';
+import { LayoutDashboard, Store, Users, Image as ImageIcon, LogOut, ChevronRight, Menu, X, Tag, Truck, Wallet, Car, Share2, Gift, Ticket, MessageSquareWarning, Megaphone, ShoppingBag } from 'lucide-react';
 import { collection, query, where, onSnapshot } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import { useGlobalAudioAlerts } from '../../hooks/useGlobalAudioAlerts';
@@ -52,6 +52,7 @@ export default function CpanelLayout({ children, onLogout }: CpanelLayoutProps) 
 
     const navItems = [
         { path: '/', icon: LayoutDashboard, label: 'Resumen' },
+        { path: '/app-orders', icon: ShoppingBag, label: 'Pedidos App en Vivo' },
         { path: '/restaurants', icon: Store, label: 'Restaurantes' },
         { path: '/users', icon: Users, label: 'Usuarios' },
         { path: '/banners', icon: ImageIcon, label: 'Banners' },

@@ -273,7 +273,7 @@ export default function Cart({ hideHeader = false }: CartProps) {
       if (!isWaiter) {
           try {
               // Wait for importing collection and addDoc is already available
-              await addDoc(collection(db, 'orders', docRef.id, 'chat'), {
+              await addDoc(collection(db, 'orders', docRef.id, 'messages'), {
                   text: 'Gracias por elegirnos! En este momento serás atendido por uno de nuestros cajeros para confirmar la existencia de cada item de tu pedido! Lo haremos en un 2x3!',
                   senderId: restaurantId,
                   senderName: 'Atención al Cliente',
