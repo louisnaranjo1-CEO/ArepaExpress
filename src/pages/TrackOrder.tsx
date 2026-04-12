@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { doc, onSnapshot, getDoc, updateDoc, serverTimestamp, addDoc, collection } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { DeliveryDriver } from '../lib/delivery-service';
-import { Navigation, Clock, CheckCircle2, Bike, MapPin, Phone, ArrowLeft, Store, Star, Wallet, X, Loader2, ImageIcon, Upload, CreditCard as CreditCardIcon, AlertCircle } from 'lucide-react';
+import { Navigation, Clock, CheckCircle2, Bike, MapPin, Phone, ArrowLeft, Store, Star, Wallet, X, Loader2, ImageIcon, Upload, CreditCard as CreditCardIcon, AlertCircle, Copy } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useCurrency } from '../context/CurrencyContext';
 import DeliveryPaymentModal from '../components/DeliveryPaymentModal';
@@ -541,7 +541,7 @@ export default function TrackOrder() {
                     )}
 
                  {/* Restaurant Payment Section (Stock Confirmation) */}
-                {(order.status === 'pending' || order.status === 'action_required' || order.status === 'awaiting_payment' || order.status === 'pending_verification') && !order.restaurantPaymentClientConfirmed && (
+                {((order.status === 'pending' || order.status === 'action_required' || order.status === 'awaiting_payment' || order.status === 'pending_verification') && !order.restaurantPaymentClientConfirmed) || order.status === 'pending_verification' ? (
                     <div className="bg-white rounded-3xl p-6 shadow-xl shadow-slate-200/50 border-2 border-primary/20 animate-in slide-in-from-bottom-4 duration-500 overflow-hidden">
                         {order.status === 'pending' ? (
                             <div className="flex flex-col items-center text-center py-4">
@@ -590,8 +590,26 @@ export default function TrackOrder() {
                                     {(order.missingItems || []).length > 0 ? "Primero elimina los productos agotados" : "Confirmar Cambios"}
                                 </button>
                             </div>
+                        ) : order.status === 'pending_verification' && order.restaurantPaymentClientConfirmed ? (
+                            // Verification in progress banner
+                            <div className="flex flex-col items-center text-center py-6 space-y-4">
+                                <div className="relative w-20 h-20 flex items-center justify-center">
+                                    <div className="absolute inset-0 rounded-full bg-blue-100 animate-ping opacity-30"></div>
+                                    <div className="w-16 h-16 bg-blue-50 text-blue-500 rounded-full flex items-center justify-center shadow-lg">
+                                        <Loader2 className="w-8 h-8 animate-spin" />
+                                    </div>
+                                </div>
+                                <div>
+                                    <h3 className="text-lg font-black text-slate-900 mb-1">Verificando tu Pago...</h3>
+                                    <p className="text-slate-500 text-sm font-medium">El negocio está revisando tu comprobante. Mientras tanto, puedes ir pagando el delivery.</p>
+                                </div>
+                                <div className="w-full bg-blue-50 border border-blue-100 rounded-2xl p-4">
+                                    <p className="text-[11px] font-black text-blue-600 uppercase tracking-wider">✅ Comprobante enviado correctamente</p>
+                                    {order.paymentReference && <p className="text-xs text-blue-500 mt-1">Referencia: {order.paymentReference}</p>}
+                                </div>
+                            </div>
                         ) : (
-                            <div className={`space-y-6 ${order.status === 'pending_verification' ? 'opacity-50 pointer-events-none' : ''}`}>
+                            <div className="space-y-6">
                                 <div className="flex items-center gap-3">
                                     <div className="w-12 h-12 bg-green-50 text-green-500 rounded-2xl flex items-center justify-center animate-bounce">
                                         <CheckCircle2 className="w-6 h-6" />
@@ -618,42 +636,98 @@ export default function TrackOrder() {
                                                             }`}></span> 
                                                             {method.type}
                                                         </span>
-                                                        <div className="mt-1 space-y-2">
+                                                        <div className="mt-1 space-y-3">
                                                             {method.type === 'Pago Móvil' && (
-                                                                <div className="grid grid-cols-2 gap-2">
-                                                                    <div>
-                                                                        <p className="text-[9px] font-bold text-slate-400 uppercase">Banco</p>
+                                                                <div className="grid grid-cols-2 gap-3">
+                                                                    <div 
+                                                                        onClick={() => {
+                                                                            navigator.clipboard.writeText(method.bank);
+                                                                            toast.success('Banco copiado');
+                                                                        }}
+                                                                        className="group cursor-pointer active:scale-95 transition-all"
+                                                                    >
+                                                                        <p className="text-[9px] font-bold text-slate-400 uppercase flex items-center gap-1">
+                                                                            Banco <Copy className="w-2 h-2 opacity-0 group-hover:opacity-100 transition-opacity" />
+                                                                        </p>
                                                                         <p className="text-xs font-black text-slate-700">{method.bank}</p>
                                                                     </div>
-                                                                    <div>
-                                                                        <p className="text-[9px] font-bold text-slate-400 uppercase">Teléfono</p>
+                                                                    <div 
+                                                                        onClick={() => {
+                                                                            navigator.clipboard.writeText(method.phone);
+                                                                            toast.success('Teléfono copiado');
+                                                                        }}
+                                                                        className="group cursor-pointer active:scale-95 transition-all"
+                                                                    >
+                                                                        <p className="text-[9px] font-bold text-slate-400 uppercase flex items-center gap-1">
+                                                                            Teléfono <Copy className="w-2 h-2 opacity-0 group-hover:opacity-100 transition-opacity" />
+                                                                        </p>
                                                                         <p className="text-xs font-black text-slate-700">{method.phone}</p>
                                                                     </div>
-                                                                    <div className="col-span-2">
-                                                                        <p className="text-[9px] font-bold text-slate-400 uppercase">Cédula/RIF</p>
+                                                                    <div 
+                                                                        onClick={() => {
+                                                                            navigator.clipboard.writeText(method.rif);
+                                                                            toast.success('Cédula/RIF copiado');
+                                                                        }}
+                                                                        className="col-span-2 group cursor-pointer active:scale-95 transition-all"
+                                                                    >
+                                                                        <p className="text-[9px] font-bold text-slate-400 uppercase flex items-center gap-1">
+                                                                            Cédula/RIF <Copy className="w-2 h-2 opacity-0 group-hover:opacity-100 transition-opacity" />
+                                                                        </p>
                                                                         <p className="text-xs font-black text-slate-700">{method.rif}</p>
                                                                     </div>
-                                                                    <div className="col-span-2">
-                                                                        <p className="text-[9px] font-bold text-slate-400 uppercase">Titular</p>
+                                                                    <div 
+                                                                        onClick={() => {
+                                                                            navigator.clipboard.writeText(method.owner);
+                                                                            toast.success('Titular copiado');
+                                                                        }}
+                                                                        className="col-span-2 group cursor-pointer active:scale-95 transition-all"
+                                                                    >
+                                                                        <p className="text-[9px] font-bold text-slate-400 uppercase flex items-center gap-1">
+                                                                            Titular <Copy className="w-2 h-2 opacity-0 group-hover:opacity-100 transition-opacity" />
+                                                                        </p>
                                                                         <p className="text-xs font-black text-slate-700">{method.owner}</p>
                                                                     </div>
                                                                 </div>
                                                             )}
                                                             {method.type === 'Zelle' && (
-                                                                <div className="grid grid-cols-1 gap-1">
-                                                                    <div>
-                                                                        <p className="text-[9px] font-bold text-slate-400 uppercase">Correo</p>
+                                                                <div className="grid grid-cols-1 gap-3">
+                                                                    <div 
+                                                                        onClick={() => {
+                                                                            navigator.clipboard.writeText(method.email);
+                                                                            toast.success('Correo copiado');
+                                                                        }}
+                                                                        className="group cursor-pointer active:scale-95 transition-all"
+                                                                    >
+                                                                        <p className="text-[9px] font-bold text-slate-400 uppercase flex items-center gap-1">
+                                                                            Correo <Copy className="w-2 h-2 opacity-0 group-hover:opacity-100 transition-opacity" />
+                                                                        </p>
                                                                         <p className="text-xs font-black text-slate-700">{method.email}</p>
                                                                     </div>
-                                                                    <div>
-                                                                        <p className="text-[9px] font-bold text-slate-400 uppercase">Titular</p>
+                                                                    <div 
+                                                                        onClick={() => {
+                                                                            navigator.clipboard.writeText(method.owner);
+                                                                            toast.success('Titular copiado');
+                                                                        }}
+                                                                        className="group cursor-pointer active:scale-95 transition-all"
+                                                                    >
+                                                                        <p className="text-[9px] font-bold text-slate-400 uppercase flex items-center gap-1">
+                                                                            Titular <Copy className="w-2 h-2 opacity-0 group-hover:opacity-100 transition-opacity" />
+                                                                        </p>
                                                                         <p className="text-xs font-black text-slate-700">{method.owner}</p>
                                                                     </div>
                                                                 </div>
                                                             )}
                                                             {method.type !== 'Pago Móvil' && method.type !== 'Zelle' && method.type !== 'Efectivo' && (
-                                                                <div>
-                                                                    <p className="text-[9px] font-bold text-slate-400 uppercase">Instrucciones</p>
+                                                                <div 
+                                                                    onClick={() => {
+                                                                        navigator.clipboard.writeText(method.note);
+                                                                        toast.success('Instrucciones copiadas');
+                                                                    }}
+                                                                    className="group cursor-pointer active:scale-95 transition-all"
+                                                                >
+                                                                    <p className="text-[9px] font-bold text-slate-400 uppercase flex items-center gap-1">
+                                                                        Instrucciones <Copy className="w-2 h-2 opacity-0 group-hover:opacity-100 transition-opacity" />
+                                                                    </p>
                                                                     <p className="text-xs font-black text-slate-700 whitespace-pre-line">{method.note}</p>
                                                                 </div>
                                                             )}
@@ -721,8 +795,7 @@ export default function TrackOrder() {
                             </div>
                         )}
                     </div>
-                )}
-            </div>
+                ) : null}
 
                 {/* Driver Info (If Assigned) */}
                 {driver && (currentStep >= 2) && (

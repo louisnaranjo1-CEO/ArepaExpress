@@ -854,7 +854,14 @@ export default function Orders() {
 
     const filteredOrders = orders
         .filter(o => {
-            if (activeTab === 'pending') return (o.status === 'pending' || o.status === 'pendiente_pago' || o.status === 'calling');
+            if (activeTab === 'pending') return (
+                o.status === 'pending' ||
+                o.status === 'pendiente_pago' ||
+                o.status === 'calling' ||
+                o.status === 'awaiting_payment' ||
+                o.status === 'action_required' ||
+                o.status === 'pending_verification'
+            );
             if (activeTab === 'tables') return false; // Handled by renderTablesView
             return o.status === activeTab;
         })
