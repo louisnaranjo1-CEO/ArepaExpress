@@ -7,7 +7,7 @@ import {
     ArrowLeft, Store, Star, Tag, MapPin, Phone,
     ShoppingBag, Box, Users, TrendingUp, Calendar,
     ChevronRight, ExternalLink, Instagram, MessageSquare,
-    DollarSign, Clock, CheckCircle, Package, Truck, X, Save, Upload,
+    DollarSign, Clock, CheckCircle, Truck, X, Save, Upload,
     Image as ImageIcon, Camera, Share2, Zap, Gift
 } from 'lucide-react';
 import { GLOBAL_CATEGORIES, CATEGORY_SECTORS } from '../../lib/constants';

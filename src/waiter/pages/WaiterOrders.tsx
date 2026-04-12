@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ClipboardList, Clock, CheckCircle, Package, Search } from 'lucide-react';
+import { ClipboardList, Clock, CheckCircle, Search } from 'lucide-react';
 import { collection, query, where, onSnapshot, orderBy } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import WaiterLayout from '../components/WaiterLayout';

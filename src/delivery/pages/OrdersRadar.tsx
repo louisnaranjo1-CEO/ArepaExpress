@@ -3,7 +3,7 @@ import { collection, query, where, onSnapshot, updateDoc, doc, serverTimestamp, 
 import { ref, getDownloadURL } from 'firebase/storage';
 import { storage, db } from '../../lib/firebase';
 import { useAuth } from '../../context/AuthContext';
-import { Car, Bike, Package, MapPin, Navigation, Phone, CheckCircle2, MessageSquare, Compass, Send, User as UserIcon, Star, MessageCircle, Clock, AlertTriangle } from 'lucide-react';
+import { Car, Bike, MapPin, Navigation, Phone, CheckCircle2, MessageSquare, Compass, Send, User as UserIcon, Star, MessageCircle, Clock, AlertTriangle } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import toast from 'react-hot-toast';
 import RideChat from '../../components/RideChat';
@@ -619,7 +619,7 @@ export default function OrdersRadar() {
             <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-4">
                 <div className="bg-emerald-50 border border-emerald-100 p-5 rounded-[2.5rem] flex items-center gap-4">
                     <div className="w-12 h-12 bg-emerald-100 rounded-2xl flex items-center justify-center text-emerald-600">
-                        <Package className="w-6 h-6 animate-bounce" />
+                        <Bike className="w-6 h-6 animate-bounce" />
                     </div>
                     <div>
                         <div className="text-emerald-700 font-black text-sm uppercase tracking-wider">Reparto Activo</div>
@@ -647,7 +647,7 @@ export default function OrdersRadar() {
                     <div className="space-y-4">
                         <div className="flex gap-4">
                             <div className="w-12 h-12 bg-slate-50 text-slate-400 rounded-2xl flex items-center justify-center shrink-0 border border-slate-100">
-                                <Package className="w-6 h-6" />
+                                <Bike className="w-6 h-6" />
                             </div>
                             <div>
                                 <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest">Restaurante</h3>
@@ -957,7 +957,7 @@ export default function OrdersRadar() {
 
                                 <div className="flex justify-between items-center mb-6 relative">
                                     <div className="flex items-center gap-2 px-3 py-1 bg-slate-100 text-slate-500 rounded-full text-[10px] font-black uppercase tracking-wider">
-                                        <Package className="w-3.5 h-3.5" />
+                                        <Bike className="w-3.5 h-3.5" />
                                         REPARTO COMIDA
                                     </div>
                                     <div className="flex flex-col items-end">
@@ -969,7 +969,7 @@ export default function OrdersRadar() {
                                 <div className="space-y-4 mb-8 relative">
                                     <div className="flex items-start gap-4">
                                         <div className="w-10 h-10 bg-slate-50 text-slate-400 rounded-2xl flex items-center justify-center shrink-0 border border-slate-100">
-                                            <Package className="w-5 h-5" />
+                                            <Bike className="w-5 h-5" />
                                         </div>
                                         <div>
                                             <p className="text-[10px] font-black text-slate-300 uppercase tracking-widest">Restaurante:</p>

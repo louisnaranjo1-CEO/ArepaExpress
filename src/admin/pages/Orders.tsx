@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Search, Filter, Clock, MapPin, ChevronRight, Package, Truck, CheckCircle, Loader2, Bell, ExternalLink, X, ShoppingCart, Plus, Minus, Trash2, User, CreditCard, Store, ShoppingBag, Users, Upload, Image as ImageIcon, DollarSign, Edit } from 'lucide-react';
+import { Search, Filter, Clock, MapPin, ChevronRight, Bike, Truck, CheckCircle, Loader2, Bell, ExternalLink, X, ShoppingCart, Plus, Minus, Trash2, User, CreditCard, Store, ShoppingBag, Users, Upload, Image as ImageIcon, DollarSign, Edit } from 'lucide-react';
 import { db } from '../../lib/firebase';
 import { collection, query, where, onSnapshot, orderBy, doc, updateDoc, getDocs, increment, addDoc, serverTimestamp, getDoc } from 'firebase/firestore';
 import { useAuth } from '../../context/AuthContext';
@@ -1040,7 +1040,6 @@ export default function Orders() {
                             </button>
                         </div>
                     )}
-                </div>
 
                 <div className="flex flex-wrap items-center gap-3">
                 {(order.status === 'pending' || order.status === 'pendiente_pago' || order.status === 'pending_verification') && (
@@ -1803,7 +1802,7 @@ export default function Orders() {
                                                         <img src={product.image} className="w-full h-full object-cover group-hover:scale-110 transition-transform" />
                                                     ) : (
                                                         <div className="w-full h-full flex items-center justify-center text-slate-300">
-                                                            <Package className="w-8 h-8" />
+                                                            <Bike className="w-8 h-8" />
                                                         </div>
                                                     )}
                                                 </div>
@@ -2095,7 +2094,7 @@ export default function Orders() {
                                 <img src={selectedProductForSelection.image} className="w-full h-full object-cover" alt={selectedProductForSelection.name} />
                             ) : (
                                 <div className="w-full h-full flex items-center justify-center text-slate-300">
-                                    <Package className="w-16 h-16" />
+                                    <Bike className="w-16 h-16" />
                                 </div>
                             )}
                             <button 

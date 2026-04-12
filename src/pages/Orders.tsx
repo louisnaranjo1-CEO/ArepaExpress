@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { ShoppingBag, Clock, ChevronRight, Package, Navigation, ArrowLeft } from 'lucide-react';
+import { ShoppingBag, Clock, ChevronRight, Bike, Navigation, ArrowLeft } from 'lucide-react';
 import { collection, query, where, orderBy, onSnapshot, limit, doc, getDoc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { useAuth } from '../context/AuthContext';
@@ -153,7 +153,7 @@ export default function Orders() {
                     <div className="flex flex-col items-center justify-center py-20 px-10 text-center space-y-6">
                         <div className="relative">
                             <div className="absolute inset-0 bg-primary/10 blur-3xl rounded-full"></div>
-                            <Package className="w-20 h-20 text-slate-200 relative z-10" />
+                            <Bike className="w-20 h-20 text-slate-200 relative z-10" />
                         </div>
                         <div className="space-y-2 relative z-10">
                             <h3 className="text-xl font-black text-slate-900">No tienes pedidos activos</h3>
