@@ -182,7 +182,7 @@ export const formatTicket = (order: PrintOrder): Uint8Array => {
     // Footer
     printer.text('------------------------------------------').newline()
         .align('center')
-        .text('*** Ticket de Cocina ***')
+        .text('*** Comanda de Preparación ***')
         .cut();
 
     return printer.generate();
@@ -219,7 +219,7 @@ export const formatTicketText = (order: PrintOrder): string => {
     }
     
     result += `------------------------------------------\n`;
-    result += `*** Ticket de Cocina ***\n`;
+    result += `*** Comanda de Preparación ***\n`;
     
     return result;
 };
@@ -314,7 +314,7 @@ export const downloadTicketImage = (order: PrintOrder) => {
     
     lineSpacing = 24;
     drawDivider();
-    drawText('*** Ticket de Cocina ***', 'center', false, 16);
+    drawText('*** Comanda de Preparación ***', 'center', false, 16);
     
     const url = canvas.toDataURL('image/png');
     const a = document.createElement('a');

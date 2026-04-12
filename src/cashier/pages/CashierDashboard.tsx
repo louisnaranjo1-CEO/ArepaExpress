@@ -59,6 +59,7 @@ export default function CashierDashboard() {
     const [registerReport, setRegisterReport] = useState<any>(null);
     const [isLoadingReport, setIsLoadingReport] = useState(false);
     const [notifiedOrderIds, setNotifiedOrderIds] = useState<Set<string>>(new Set());
+    const [notifiedPickupOrderIds, setNotifiedPickupOrderIds] = useState<Set<string>>(new Set());
 
     const [activeTab, setActiveTab] = useState<'pending' | 'preparing' | 'delivering' | 'delivered' | 'rejected' | 'tables'>('pending');
     const [searchTerm, setSearchTerm] = useState('');
@@ -199,7 +200,7 @@ export default function CashierDashboard() {
         };
     }, [navigate]);
 
-    // Real-time notification monitor
+    // Real-time WAITER notification monitor
     useEffect(() => {
         const unnotifiedWaiterOrders = orders.filter(o => 
             o.source === 'waiter' && 
@@ -284,6 +285,65 @@ export default function CashierDashboard() {
             });
         }
     }, [orders, notifiedOrderIds, notificationSound, navigate, db]);
+
+    // Pickup notification monitor
+    useEffect(() => {
+        const pickupAlerts = orders.filter(o => 
+            o.deliveryMethod === 'pickup' && 
+            o.pickupNotified === false && 
+            !notifiedPickupOrderIds.has(o.id)
+        );
+
+        if (pickupAlerts.length > 0) {
+            pickupAlerts.forEach(async (order) => {
+                // Play notification sound
+                notificationSound.play().catch(e => console.error("Error playing sound:", e));
+
+                // Show urgent notification (RED)
+                toast.custom((t) => (
+                    <motion.div 
+                        initial={{ opacity: 0, scale: 0.9, x: 50 }}
+                        animate={{ opacity: 1, scale: 1, x: 0 }}
+                        exit={{ opacity: 0, scale: 0.9, x: 50 }}
+                        className="max-w-md w-full bg-red-600 shadow-2xl rounded-[2.2rem] pointer-events-auto flex flex-col p-6 text-white border-4 border-white/20"
+                    >
+                        <div className="flex items-center gap-4 mb-4">
+                            <div className="h-14 w-14 rounded-2xl bg-white/20 flex items-center justify-center text-white shrink-0">
+                                <Store className="w-8 h-8" />
+                            </div>
+                            <div>
+                                <h3 className="text-xl font-black uppercase tracking-tight">¡Alerta de PickUp!</h3>
+                                <p className="text-sm font-bold opacity-90">Pedido #{order.id.slice(-5).toUpperCase()}</p>
+                            </div>
+                        </div>
+                        
+                        <p className="text-base font-black mb-6 leading-tight">
+                            El cliente ha cambiado su entrega a RETIRO EN LOCAL. No enviar motorizado.
+                        </p>
+
+                        <div className="flex gap-3">
+                            <button 
+                                onClick={() => {
+                                    toast.dismiss(t.id);
+                                }}
+                                className="flex-1 bg-white text-red-600 py-4 rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-slate-50 transition-all shadow-lg"
+                            >
+                                Entendido
+                            </button>
+                        </div>
+                    </motion.div>
+                ), { duration: 30000, id: `pickup-${order.id}` });
+
+                // Mark as notified
+                try {
+                    await updateDoc(doc(db, 'orders', order.id), { pickupNotified: true });
+                    setNotifiedPickupOrderIds(prev => new Set(prev).add(order.id));
+                } catch (err) {
+                    console.error("Error updating pickup notified status:", err);
+                }
+            });
+        }
+    }, [orders, notifiedPickupOrderIds, notificationSound, db]);
 
     const handleLogout = () => {
         localStorage.removeItem('cashierData');
@@ -389,11 +449,28 @@ export default function CashierDashboard() {
             if (selectedOrder.source === 'waiter') {
                 updates.status = 'delivered';
             } else {
+                // If it's from the app or POS direct, it goes to preparing and triggers printer
                 updates.status = 'preparing';
                 shouldPrint = true;
             }
 
             await updateDoc(doc(db, 'orders', selectedOrder.id), updates);
+
+            // Notify user via chat if verified from pending_verification
+            if (selectedOrder.status === 'pending_verification' || selectedOrder.source !== 'pos') {
+                try {
+                    const messagesRef = collection(db, 'orders', selectedOrder.id, 'messages');
+                    await addDoc(messagesRef, {
+                        text: "✅ ¡Tu pago ha sido verificado satisfactoriamente! Estamos preparando tu orden. 👨‍🍳",
+                        sender: 'restaurant',
+                        senderName: cashierData?.name || 'Cajero',
+                        createdAt: serverTimestamp(),
+                        type: 'system'
+                    });
+                } catch (chatError) {
+                    console.error("Error sending verification chat message:", chatError);
+                }
+            }
             
             // Print if it's a new App order verified by the Cashier
             if (shouldPrint && restaurantId) {
@@ -694,7 +771,7 @@ ESTADO: ${order.status.toUpperCase()}
 
     const stats = React.useMemo(() => {
         return {
-            pending: orders.filter(o => ['pending', 'pendiente_pago', 'occupied', 'calling'].includes(o.status)).length,
+            pending: orders.filter(o => ['pending', 'pendiente_pago', 'pending_verification', 'occupied', 'calling'].includes(o.status)).length,
             preparing: orders.filter(o => o.status === 'preparing').length,
             delivering: orders.filter(o => o.status === 'delivering' || o.status === 'buscando_piloto').length,
             delivered: orders.filter(o => o.status === 'delivered').length,
@@ -706,7 +783,7 @@ ESTADO: ${order.status.toUpperCase()}
     const filteredOrders = React.useMemo(() => {
         let result = orders.filter(order => {
             // Filter by active tab
-            if (activeTab === 'pending') return ['pending', 'pendiente_pago', 'occupied', 'calling', 'billing'].includes(order.status);
+            if (activeTab === 'pending') return ['pending', 'pendiente_pago', 'pending_verification', 'occupied', 'calling', 'billing'].includes(order.status);
             if (activeTab === 'preparing') return order.status === 'preparing';
             if (activeTab === 'delivering') return order.status === 'delivering' || order.status === 'buscando_piloto';
             if (activeTab === 'delivered') return order.status === 'delivered';
@@ -872,12 +949,14 @@ ESTADO: ${order.status.toUpperCase()}
                     </div>
                     <div className={`px-3 py-1.5 rounded-2xl text-[10px] font-black uppercase tracking-widest ${
                         order.status === 'pending' ? 'bg-primary text-slate-900' :
+                        order.status === 'pending_verification' ? 'bg-amber-400 text-slate-900 animate-pulse' :
                         order.status === 'preparing' ? 'bg-emerald-500 text-slate-900' :
                         order.status === 'delivering' ? 'bg-emerald-600 text-slate-900' :
                         order.status === 'delivered' ? 'bg-slate-900 text-white' :
                         'bg-red-100 text-red-600'
                     }`}>
                         {order.status === 'pending' ? 'Pendiente' :
+                         order.status === 'pending_verification' ? 'Verificar Pago' :
                          order.status === 'preparing' ? 'Por Despachar' :
                          order.status === 'delivering' ? 'En Camino' :
                          order.status === 'delivered' ? 'Entregado' : 'Rechazado'}
@@ -1139,7 +1218,6 @@ ESTADO: ${order.status.toUpperCase()}
                 <div className="grid grid-cols-2 lg:grid-cols-5 gap-2 p-2 bg-slate-100 rounded-[30px]">
                     {[
                         { id: 'pending', label: 'Pendientes', icon: Bell, color: 'bg-primary' },
-                        { id: 'preparing', label: 'Por Despachar', icon: Package, color: 'bg-emerald-500' },
                         { id: 'delivering', label: 'Camino', icon: Truck, color: 'bg-emerald-600' },
                         { id: 'delivered', label: 'Entregados', icon: CheckCircle, color: 'bg-slate-900' },
                         { id: 'rejected', label: 'Rechazados', icon: X, color: 'bg-red-500' },
@@ -1344,13 +1422,13 @@ ESTADO: ${order.status.toUpperCase()}
                                 animate={{ opacity: 1, height: 'auto' }}
                                 className="space-y-4 mb-6"
                             >
-                                <div className="bg-slate-50 border border-slate-200 rounded-2xl overflow-hidden h-[300px]">
+                                <div className="bg-slate-50 border border-slate-200 rounded-2xl overflow-hidden h-[450px]">
                                     <OrderChatWindow 
                                         orderId={selectedOrder.id} 
                                         currentUserRole="restaurant" 
-                                        currentUserId={user?.uid || 'cashier'}
+                                        currentUserId="cashier_central"
                                         currentUserName="Caja Central"
-                                        restaurantId={user?.uid!} // Store owner UID or configured
+                                        restaurantId={restaurantId || ''}
                                         orderInfo={selectedOrder}
                                     />
                                 </div>

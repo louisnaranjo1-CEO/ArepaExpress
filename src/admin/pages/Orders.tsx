@@ -1120,7 +1120,6 @@ export default function Orders() {
             <div className="grid grid-cols-2 lg:grid-cols-5 gap-2 p-2 bg-slate-100 rounded-[30px]">
                 {[
                     { id: 'pending', label: 'Pendientes', icon: Bell, color: 'bg-emerald-500' },
-                    { id: 'preparing', label: 'Por Despachar', icon: Package, color: 'bg-emerald-600' },
                     { id: 'delivering', label: 'Camino', icon: Truck, color: 'bg-emerald-700' },
                     { id: 'delivered', label: 'Entregados', icon: CheckCircle, color: 'bg-emerald-500' },
                     { id: 'tables', label: 'Mesas', icon: Users, color: 'bg-primary' },

@@ -86,6 +86,11 @@ service cloud.firestore {
       isCPanelAdmin();
       
       allow delete: if isCPanelAdmin();
+
+      // Chat Messages
+      match /messages/{messageId} {
+        allow read, write: if true;
+      }
     }
 
     // Delivery Drivers profiles

@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { doc, onSnapshot, getDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
+import { doc, onSnapshot, getDoc, updateDoc, serverTimestamp, addDoc, collection } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { DeliveryDriver } from '../lib/delivery-service';
 import { Navigation, Clock, CheckCircle2, Package, MapPin, Phone, ArrowLeft, Store, Star, Wallet, X } from 'lucide-react';
@@ -113,13 +113,23 @@ export default function TrackOrder() {
 
     const handleRestaurantPaid = async () => {
         if(!orderId) return;
-        if(window.confirm(`¿Confirmas que ya pagaste a ${restaurant?.name || 'Negocio'}?`)){
+        if(window.confirm(`¿Confirmas que ya pagaste a ${restaurant?.name || 'Negocio'}? El negocio verificará tu pago para proceder.`)){
             try {
                 await updateDoc(doc(db, 'orders', orderId), {
                     restaurantPaymentClientConfirmed: true,
-                    status: 'preparing'
+                    status: 'pending_verification'
                 });
-                toast.success('Pago confirmado y validado con el restaurante');
+
+                // Enviar mensaje automático al chat
+                await addDoc(collection(db, `orders/${orderId}/messages`), {
+                    text: "📢 He realizado el pago, favor validar.",
+                    senderId: user?.uid || 'guest',
+                    senderName: order.userName || 'Cliente',
+                    senderRole: 'client',
+                    createdAt: serverTimestamp()
+                });
+
+                toast.success('Información de pago enviada al negocio');
             } catch (error) {
                 console.error(error);
                 toast.error('Ocurrió un error al confirmar el pago');
@@ -150,8 +160,28 @@ export default function TrackOrder() {
                 await updateDoc(doc(db, 'orders', orderId), {
                     deliveryMethod: 'pickup',
                     deliveryFee: 0,
-                    total: order.subtotal
+                    total: order.subtotal,
+                    pickupNotified: false // Para disparar alerta en el cajero
                 });
+
+                // Enviar mensaje automático al chat
+                await addDoc(collection(db, `orders/${orderId}/messages`), {
+                    text: "🏪 He cambiado mi pedido a RETIRO EN LOCAL (PickUp). Favor no enviar motorizado.",
+                    senderId: user?.uid || 'guest',
+                    senderName: order.userName || 'Cliente',
+                    senderRole: 'client',
+                    createdAt: serverTimestamp()
+                });
+
+                // Enviar mensaje automático al chat
+                await addDoc(collection(db, `orders/${orderId}/messages`), {
+                    text: "🔔 *El cliente ha decidido retirar el pedido en el local (PickUp).* ",
+                    senderId: user?.uid || 'guest',
+                    senderName: order.userName || 'Cliente',
+                    senderRole: 'client',
+                    createdAt: serverTimestamp()
+                });
+
                 toast.success("Cambiado a Pick Up");
             } catch (error) {
                 console.error(error);
