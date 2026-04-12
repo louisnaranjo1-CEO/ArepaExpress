@@ -80,6 +80,8 @@ export default function Orders() {
     const [closeSaleModalOpen, setCloseSaleModalOpen] = useState(false);
     const [selectedOrderForClose, setSelectedOrderForClose] = useState<Order | null>(null);
     const [closeTip, setCloseTip] = useState(0);
+    const [missingItemsByOrder, setMissingItemsByOrder] = useState<Record<string, string[]>>({});
+    const [chatOrderId, setChatOrderId] = useState<string | null>(null);
 
     const handleCloseSale = async () => {
         if (!selectedOrderForClose) return;
@@ -553,26 +555,69 @@ export default function Orders() {
         setEditAddNote('');
     };
 
+    const toggleItemStock = (orderId: string, itemId: string) => {
+        setMissingItemsByOrder(prev => {
+            const current = prev[orderId] || [];
+            if (current.includes(itemId)) {
+                return { ...prev, [orderId]: current.filter(id => id !== itemId) };
+            } else {
+                return { ...prev, [orderId]: [...current, itemId] };
+            }
+        });
+    };
+
     const handleConfirmStock = async (orderId: string) => {
         try {
             const orderRef = doc(db, 'orders', orderId);
-            const orderTemp = orders.find(o => o.id === orderId);
-            await updateDoc(orderRef, { stockConfirmed: true });
+            const missing = missingItemsByOrder[orderId] || [];
             
-            // Fetch restaurant payment methods to send to chat
-            const restaurantRef = doc(db, 'restaurants', user.uid);
-            const restaurantSnap = await getDoc(restaurantRef);
-            
-            if (restaurantSnap.exists()) {
-                const restaurantData = restaurantSnap.data();
-                const methods = restaurantData.paymentMethods || [];
+            if (missing.length > 0) {
+                // Hay items faltantes, pasar a action_required
+                await updateDoc(orderRef, { 
+                    status: 'action_required', 
+                    missingItems: missing,
+                    stockConfirmed: true 
+                });
                 
-                if (methods.length > 0) {
+                const orderTemp = orders.find(o => o.id === orderId);
+                const missingNames = orderTemp?.items
+                    .filter(i => missing.includes(i.id))
+                    .map(i => i.name)
+                    .join(', ');
+
+                await addDoc(collection(db, `orders/${orderId}/messages`), {
+                    text: `⚠️ *Atención:* Lamentablemente no contamos con stock de: *${missingNames}*. Por favor, selecciona una opción en tu pantalla para continuar con el pedido.`,
+                    senderId: user.uid,
+                    senderName: 'Restaurante',
+                    senderRole: 'restaurant',
+                    createdAt: serverTimestamp()
+                });
+                
+                toast.success("Pedido marcado con falta de stock. El cliente ha sido notificado.");
+            } else {
+                // Stock completo, permitir pago
+                await updateDoc(orderRef, { 
+                    status: 'awaiting_payment',
+                    stockConfirmed: true 
+                });
+
+                // Enviar mensaje de pago
+                const restaurantRef = doc(db, 'restaurants', user.uid);
+                const restaurantSnap = await getDoc(restaurantRef);
+                
+                if (restaurantSnap.exists()) {
+                    const restaurantData = restaurantSnap.data();
+                    const methods = restaurantData.paymentMethods || [];
+                    
                     let paymentMsg = "✅ *Stock confirmado.* Ya puedes realizar tu pago:\n\n";
-                    methods.forEach((m: any) => {
-                        paymentMsg += `*${m.type}:*\n${m.details}\n\n`;
-                    });
-                    paymentMsg += "Favor enviar el capture y la referencia por este medio.";
+                    if (methods.length > 0) {
+                        methods.forEach((m: any) => {
+                            paymentMsg += `*${m.type}:*\n${m.bank ? 'Banco: ' + m.bank + '\n' : ''}${m.phone ? 'Tlf: ' + m.phone + '\n' : ''}${m.rif ? 'RIF/CI: ' + m.rif + '\n' : ''}${m.owner ? 'Titular: ' + m.owner + '\n' : ''}${m.email ? 'Correo: ' + m.email + '\n' : ''}\n`;
+                        });
+                        paymentMsg += "Favor enviar el capture y la referencia por este medio.\n\n_Hemos verificado tu pedido puedes proceder a realizar el pago_";
+                    } else {
+                        paymentMsg += "Por favor contacta con el restaurante para los métodos de pago.";
+                    }
 
                     await addDoc(collection(db, `orders/${orderId}/messages`), {
                         text: paymentMsg,
@@ -582,9 +627,8 @@ export default function Orders() {
                         createdAt: serverTimestamp()
                     });
                 }
+                toast.success("Stock confirmado. El cliente ahora puede pagar.");
             }
-
-            toast.success("Stock confirmado. El cliente ahora puede pagar.");
         } catch (error) {
             console.error("Error confirming stock:", error);
             toast.error("Error al confirmar stock");
@@ -604,6 +648,17 @@ export default function Orders() {
             
             if (orderTemp) {
                 await handlePrintOrder(orderId, orderTemp as any);
+
+                // Si hay un piloto asignado, le enviamos una alerta de que el pago fue verificado
+                if (orderTemp.deliveryDriverId) {
+                    await addDoc(collection(db, `orders/${orderId}/messages`), {
+                        text: "🔔 *Pago verificado.* El cliente ha pagado el pedido y el restaurante está preparando. Piloto, mantente atento para el despacho.",
+                        senderId: user.uid,
+                        senderName: 'Sistema',
+                        senderRole: 'admin',
+                        createdAt: serverTimestamp()
+                    });
+                }
             }
         } catch (error) {
             console.error("Error verifying payment:", error);
@@ -941,19 +996,31 @@ export default function Orders() {
             </div>
 
             <div className="space-y-3 mb-6">
-                {order.items.map((item: any, idx: number) => (
-                    <div key={idx} className="flex items-center gap-3 bg-slate-50 p-3 rounded-2xl">
-                        <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center font-black text-slate-900 border border-slate-100 shadow-sm">
-                            {item.quantity}x
+                {order.items.map((item: any, idx: number) => {
+                    const isMissing = (missingItemsByOrder[order.id] || []).includes(item.id);
+                    return (
+                        <div key={idx} className={`flex items-center gap-3 p-3 rounded-2xl transition-all ${isMissing ? 'bg-red-50 border border-red-100 opacity-60' : 'bg-slate-50 border border-transparent'}`}>
+                            <div className={`w-10 h-10 rounded-xl flex items-center justify-center font-black border shadow-sm ${isMissing ? 'bg-red-100 text-red-600 border-red-200' : 'bg-white text-slate-900 border-slate-100'}`}>
+                                {item.quantity}x
+                            </div>
+                            <div className="flex-1">
+                                <p className={`font-black ${isMissing ? 'text-red-700' : 'text-slate-700'}`}>{item.name}</p>
+                                <p className="text-xs text-slate-400 font-bold">
+                                    {item.consultPrice || item.price === 0 ? 'Precio a consultar' : `$${item.price.toFixed(2)} c/u`}
+                                </p>
+                            </div>
+                            {(!order.stockConfirmed || order.status === 'pending') && (
+                                <button
+                                    onClick={() => toggleItemStock(order.id, item.id)}
+                                    className={`p-2 rounded-xl transition-all ${isMissing ? 'bg-red-500 text-white' : 'bg-white text-slate-400 hover:text-red-500 border border-slate-100'}`}
+                                    title={isMissing ? "Marcar como disponible" : "Marcar como sin stock"}
+                                >
+                                    <ShoppingCart className="w-4 h-4" />
+                                </button>
+                            )}
                         </div>
-                        <div className="flex-1">
-                            <p className="font-black text-slate-700">{item.name}</p>
-                            <p className="text-xs text-slate-400 font-bold">
-                                {item.consultPrice || item.price === 0 ? 'Precio a consultar' : `$${item.price.toFixed(2)} c/u`}
-                            </p>
-                        </div>
-                    </div>
-                ))}
+                    );
+                })}
             </div>
 
             {(order as any).orderNote && (
@@ -1045,16 +1112,11 @@ export default function Orders() {
                 {(order.status === 'pending' || order.status === 'pendiente_pago' || order.status === 'pending_verification') && (
                     <>
                         <button
-                            onClick={() => { 
-                                setSelectedOrderForEdit(order); 
-                                setEditOrderItems([...order.items]); 
-                                setEditOrderNote((order as any).orderNote || ''); 
-                                setEditModalOpen(true); 
-                            }}
+                            onClick={() => setChatOrderId(order.id)}
                             className="px-6 bg-slate-100 text-slate-500 py-4 rounded-2xl font-black hover:bg-slate-200 transition-all flex items-center justify-center gap-2"
-                            title="Editar Pedido"
+                            title="Chatear"
                         >
-                            <ExternalLink className="w-5 h-5" />
+                            <Bell className="w-5 h-5" />
                         </button>
                         {order.status === 'pending_verification' ? (
                             <button
@@ -1153,11 +1215,17 @@ export default function Orders() {
                     </button>
                 )}
                 <button 
-                  onClick={() => { setSelectedOrderForEdit(order); setEditOrderItems([...order.items]); setEditOrderNote((order as any).orderNote || ''); setEditModalOpen(true); }}
+                  onClick={() => setChatOrderId(order.id)}
                   className="p-4 bg-slate-100 text-slate-400 rounded-2xl hover:bg-slate-200 transition-colors"
                 >
-                    <ExternalLink className="w-5 h-5" />
+                    <Bell className="w-5 h-5" />
                 </button>
+                {chatOrderId === order.id && (
+                    <OrderChatWindow
+                        orderId={order.id}
+                        onClose={() => setChatOrderId(null)}
+                    />
+                )}
             </div>
         </div>
     );

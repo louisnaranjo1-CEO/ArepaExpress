@@ -161,6 +161,51 @@ export default function TrackOrder() {
         }
     };
 
+    const handleRemoveMissingItem = async (itemId: string) => {
+        if (!order || !orderId) return;
+        
+        const newItems = order.items.filter((item: any) => item.id !== itemId);
+        const newSubtotal = newItems.reduce((acc: number, item: any) => acc + (item.price * item.quantity), 0);
+        const newTotal = newSubtotal + (order.deliveryFee || 0);
+
+        try {
+            await updateDoc(doc(db, 'orders', orderId), {
+                items: newItems,
+                subtotal: newSubtotal,
+                total: newTotal,
+                missingItems: (order.missingItems || []).filter((id: string) => id !== itemId)
+            });
+        } catch (error) {
+            console.error("Error removing item:", error);
+            toast.error("Error al eliminar producto");
+        }
+    };
+
+    const handleConfirmStockChanges = async () => {
+        if (!orderId) return;
+        try {
+            await updateDoc(doc(db, 'orders', orderId), {
+                status: 'pending',
+                stockConfirmed: false,
+                missingItems: []
+            });
+            
+            // Enviar mensaje automático al chat
+            await addDoc(collection(db, `orders/${orderId}/messages`), {
+                text: "🔄 *El cliente ha realizado cambios en su pedido.* Favor verificar stock nuevamente.",
+                senderId: user?.uid || 'guest',
+                senderName: order.userName || 'Cliente',
+                senderRole: 'client',
+                createdAt: serverTimestamp()
+            });
+
+            toast.success("Cambios confirmados. Esperando verificación del restaurante.");
+        } catch (error) {
+            console.error("Error confirming changes:", error);
+            toast.error("Error al confirmar cambios");
+        }
+    };
+
     const handleCancelOrder = async () => {
         if(!orderId) return;
         if(window.confirm('¿Estás seguro que deseas cancelar tu pedido? Esta acción no se puede deshacer.')) {
@@ -236,7 +281,10 @@ export default function TrackOrder() {
     const getStepIndex = () => {
         switch (order.status) {
             case 'pending': return 1;
+            case 'action_required': return 1;
             case 'pendiente_pago': return 1;
+            case 'pending_verification': return 1;
+            case 'awaiting_payment': return 1;
             case 'preparing': return 2;
             case 'finding_driver': return 2; // finding driver is while preparing
             case 'driver_assigned': return 2;
@@ -492,28 +540,65 @@ export default function TrackOrder() {
                         </div>
                     )}
 
-                </div>
-
-                {/* Restaurant Payment Section (Stock Confirmation) */}
-                {(order.status === 'pending' || order.status === 'pendiente_pago') && !order.restaurantPaymentClientConfirmed && (
-                    <div className="bg-white rounded-3xl p-6 shadow-xl shadow-slate-200/50 border-2 border-primary/20 animate-in slide-in-from-bottom-4 duration-500">
-                        {!order.stockConfirmed ? (
+                 {/* Restaurant Payment Section (Stock Confirmation) */}
+                {(order.status === 'pending' || order.status === 'action_required' || order.status === 'awaiting_payment' || order.status === 'pending_verification') && !order.restaurantPaymentClientConfirmed && (
+                    <div className="bg-white rounded-3xl p-6 shadow-xl shadow-slate-200/50 border-2 border-primary/20 animate-in slide-in-from-bottom-4 duration-500 overflow-hidden">
+                        {order.status === 'pending' ? (
                             <div className="flex flex-col items-center text-center py-4">
                                 <div className="w-16 h-16 bg-blue-50 text-blue-500 rounded-full flex items-center justify-center mb-4 animate-pulse">
                                     <Clock className="w-8 h-8" />
                                 </div>
-                                <h3 className="text-lg font-black text-slate-900 mb-2">Validando Disponibilidad</h3>
-                                <p className="text-slate-500 text-sm font-medium">El restaurante está confirmando que tiene todos tus productos en stock. Te avisaremos en un momento.</p>
+                                 <h3 className="text-lg font-black text-slate-900 mb-2">Verificando Pedido</h3>
+                                <p className="text-slate-500 text-sm font-medium">Estamos verificando tu orden espera un momento</p>
+                            </div>
+                        ) : order.status === 'action_required' ? (
+                            <div className="space-y-6">
+                                <div className="flex flex-col items-center text-center">
+                                    <div className="w-16 h-16 bg-amber-50 text-amber-500 rounded-full flex items-center justify-center mb-4">
+                                        <AlertCircle className="w-8 h-8" />
+                                    </div>
+                                    <h3 className="text-lg font-black text-slate-900 mb-1">Acción Requerida</h3>
+                                    <p className="text-slate-500 text-sm font-medium">Lamentablemente algunos productos no están disponibles. Por favor, elimínalos para continuar.</p>
+                                </div>
+                                
+                                <div className="max-h-60 overflow-y-auto space-y-3 p-1">
+                                    {order.items.map((item: any) => {
+                                        const isMissing = (order.missingItems || []).includes(item.id);
+                                        if (!isMissing) return null;
+                                        return (
+                                            <div key={item.id} className="flex items-center gap-3 bg-red-50 p-3 rounded-2xl border border-red-100">
+                                                <div className="flex-1">
+                                                    <p className="font-black text-red-700 text-sm">{item.name}</p>
+                                                    <p className="text-[10px] text-red-400 font-bold uppercase tracking-wider">Agotado</p>
+                                                </div>
+                                                <button 
+                                                    onClick={() => handleRemoveMissingItem(item.id)}
+                                                    className="w-10 h-10 bg-white text-red-500 rounded-xl flex items-center justify-center shadow-sm border border-red-100 active:scale-90 transition-transform"
+                                                >
+                                                    <X className="w-5 h-5" />
+                                                </button>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+
+                                <button 
+                                    onClick={handleConfirmStockChanges}
+                                    disabled={(order.missingItems || []).length > 0}
+                                    className="w-full bg-slate-900 text-white py-4 rounded-2xl font-black shadow-xl hover:scale-[1.02] active:scale-95 transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:bg-slate-300"
+                                >
+                                    {(order.missingItems || []).length > 0 ? "Primero elimina los productos agotados" : "Confirmar Cambios"}
+                                </button>
                             </div>
                         ) : (
-                            <div className="space-y-6">
+                            <div className={`space-y-6 ${order.status === 'pending_verification' ? 'opacity-50 pointer-events-none' : ''}`}>
                                 <div className="flex items-center gap-3">
-                                    <div className="w-12 h-12 bg-green-50 text-green-500 rounded-2xl flex items-center justify-center">
+                                    <div className="w-12 h-12 bg-green-50 text-green-500 rounded-2xl flex items-center justify-center animate-bounce">
                                         <CheckCircle2 className="w-6 h-6" />
                                     </div>
-                                    <div>
-                                        <h3 className="text-lg font-black text-slate-900">¡Stock Confirmado!</h3>
-                                        <p className="text-slate-500 text-xs font-bold uppercase tracking-wider text-green-600">Procede con el pago para iniciar</p>
+                                    <div className="animate-in fade-in slide-in-from-left duration-700">
+                                        <h3 className="text-lg font-black text-slate-900">¡Pedido Verificado!</h3>
+                                        <p className="text-slate-500 text-[10px] font-black uppercase tracking-wider text-green-600 leading-none italic">Hemos verificado tu pedido puedes proceder a realizar el pago</p>
                                     </div>
                                 </div>
 
@@ -572,9 +657,6 @@ export default function TrackOrder() {
                                                                     <p className="text-xs font-black text-slate-700 whitespace-pre-line">{method.note}</p>
                                                                 </div>
                                                             )}
-                                                            {method.type === 'Efectivo' && (
-                                                                <p className="text-xs font-medium text-slate-500 italic">Pago a realizar en el local o al repartidor.</p>
-                                                            )}
                                                         </div>
                                                     </div>
                                                 ))
@@ -586,50 +668,59 @@ export default function TrackOrder() {
                                 )}
 
                                 {/* Payment Proof Upload */}
-                                <div className="space-y-3">
-                                    <label className="text-[10px] uppercase font-black text-slate-400 ml-1">Reportar Pago</label>
+                                {order.status !== 'pending_verification' && (
                                     <div className="space-y-3">
-                                        <input 
-                                            type="text" 
-                                            placeholder="Referencia (últimos 6 dígitos)"
-                                            value={paymentReference}
-                                            onChange={(e) => setPaymentReference(e.target.value)}
-                                            className="w-full bg-slate-50 border-2 border-slate-100 px-4 py-3 rounded-2xl text-sm font-bold outline-none focus:border-primary transition-all text-slate-700"
-                                        />
-                                        <div className="flex gap-2">
-                                            <label className="flex-1 flex items-center justify-center gap-2 bg-slate-50 border-2 border-dashed border-slate-200 p-4 rounded-2xl cursor-pointer hover:bg-slate-100 transition-all group">
-                                                <input 
-                                                    type="file" 
-                                                    className="hidden" 
-                                                    accept="image/*"
-                                                    onChange={(e) => setPaymentProofFile(e.target.files?.[0] || null)}
-                                                />
-                                                {paymentProofFile ? (
-                                                    <div className="flex items-center gap-2">
-                                                        <CheckCircle2 className="w-5 h-5 text-green-500" />
-                                                        <span className="text-xs font-black text-slate-900 truncate max-w-[120px]">{paymentProofFile.name}</span>
-                                                    </div>
-                                                ) : (
-                                                    <>
-                                                        <ImageIcon className="w-5 h-5 text-slate-400 group-hover:text-primary transition-colors" />
-                                                        <span className="text-xs font-black text-slate-400">Adjuntar Capture</span>
-                                                    </>
-                                                )}
-                                            </label>
+                                        <label className="text-[10px] uppercase font-black text-slate-400 ml-1">Reportar Pago</label>
+                                        <div className="space-y-3">
+                                            <input 
+                                                type="text" 
+                                                placeholder="Referencia (últimos 6 dígitos)"
+                                                value={paymentReference}
+                                                onChange={(e) => setPaymentReference(e.target.value)}
+                                                className="w-full bg-slate-50 border-2 border-slate-100 px-4 py-3 rounded-2xl text-sm font-bold outline-none focus:border-primary transition-all text-slate-700"
+                                            />
+                                            <div className="flex gap-2">
+                                                <label className="flex-1 flex items-center justify-center gap-2 bg-slate-50 border-2 border-dashed border-slate-200 p-4 rounded-2xl cursor-pointer hover:bg-slate-100 transition-all group">
+                                                    <input 
+                                                        type="file" 
+                                                        className="hidden" 
+                                                        accept="image/*"
+                                                        onChange={(e) => setPaymentProofFile(e.target.files?.[0] || null)}
+                                                    />
+                                                    {paymentProofFile ? (
+                                                        <div className="flex items-center gap-2">
+                                                            <CheckCircle2 className="w-5 h-5 text-green-500" />
+                                                            <span className="text-xs font-black text-slate-900 truncate max-w-[120px]">{paymentProofFile.name}</span>
+                                                        </div>
+                                                    ) : (
+                                                        <>
+                                                            <ImageIcon className="w-5 h-5 text-slate-400 group-hover:text-primary transition-colors" />
+                                                            <span className="text-xs font-black text-slate-400">Adjuntar Capture</span>
+                                                        </>
+                                                    )}
+                                                </label>
+                                            </div>
                                         </div>
+                                        
+                                        <button 
+                                            onClick={handleRestaurantPaid}
+                                            disabled={isUploading || (!paymentReference && !paymentProofFile)}
+                                            className="w-full bg-primary text-slate-900 py-4 rounded-2xl font-black shadow-xl shadow-primary/20 hover:scale-[1.02] active:scale-95 transition-all text-lg flex items-center justify-center gap-2 disabled:opacity-50"
+                                        >
+                                            {isUploading ? <Loader2 className="w-6 h-6 animate-spin text-slate-900" /> : <><Upload className="w-6 h-6" /> Ya pagué</>}
+                                        </button>
                                     </div>
-                                    
-                                    <button 
-                                        onClick={handleRestaurantPaid}
-                                        disabled={isUploading || (!paymentReference && !paymentProofFile)}
-                                        className="w-full bg-primary text-slate-900 py-4 rounded-2xl font-black shadow-xl shadow-primary/20 hover:scale-[1.02] active:scale-95 transition-all text-lg flex items-center justify-center gap-2 disabled:opacity-50"
-                                    >
-                                        {isUploading ? <Loader2 className="w-6 h-6 animate-spin text-slate-900" /> : <><Upload className="w-6 h-6" /> Ya pagué</>}
-                                    </button>
-                                </div>
+                                )}
+                                
+                                {order.status === 'pending_verification' && (
+                                    <div className="p-4 bg-blue-50 text-blue-600 rounded-2xl text-center border border-blue-100">
+                                        <p className="text-sm font-black">Pago en Verificación</p>
+                                        <p className="text-[10px] font-bold uppercase tracking-wider mt-1">El negocio está validando tu reporte...</p>
+                                    </div>
+                                )}
                             </div>
                         )}
-                    </div>
+                            </div>
                 )}
 
                 {/* Driver Info (If Assigned) */}

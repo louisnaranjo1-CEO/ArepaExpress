@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { LogOut, DollarSign, CheckCircle, Clock, X, Loader2, Store, CreditCard, User, Plus, Edit, ClipboardList, MapPin, Instagram, Youtube, Music2, ExternalLink, Star, MessageSquare, Bike, Bell, Truck, Search, Utensils, ShoppingCart, Trash2, Minus, ChevronDown, Check, History, AlertCircle, Receipt } from 'lucide-react';
-import { db } from '../../lib/firebase';
+import { auth, db } from '../../lib/firebase';
+import { onAuthStateChanged } from 'firebase/auth';
 import { collection, query, where, onSnapshot, orderBy, doc, updateDoc, getDoc, getDocs, increment, addDoc, serverTimestamp } from 'firebase/firestore';
 import { useNavigate } from 'react-router-dom';
 import { printToUsbDevice, formatTicket, PrintOrder } from '../../lib/usb-printer';
@@ -141,7 +142,6 @@ export default function CashierDashboard() {
         console.log("CASHIER_SYNC: Stored Restaurant ID:", storedRestaurantId);
 
         // Debug Firebase Auth State
-        const { onAuthStateChanged } = require('firebase/auth');
         onAuthStateChanged(auth, (user: any) => {
             if (user) console.log("CASHIER_AUTH: User UID is", user.uid, "Anonymous:", user.isAnonymous);
             else console.log("CASHIER_AUTH: No user authenticated in Firebase Auth");
