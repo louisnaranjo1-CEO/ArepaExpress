@@ -30,7 +30,7 @@ import {
     CreditCard
 } from 'lucide-react';
 import { db, storage } from '../../lib/firebase';
-import { doc, getDoc, updateDoc, collection, getDocs, orderBy, query } from 'firebase/firestore';
+import { doc, getDoc, updateDoc, setDoc, collection, getDocs, orderBy, query } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { useAuth } from '../../context/AuthContext';
 import AddressPicker from '../../components/AddressPicker';
@@ -263,31 +263,35 @@ export default function RestaurantProfile() {
             }
 
             const docRef = doc(db, 'restaurants', user.uid);
-            await updateDoc(docRef, {
-                name,
-                rif,
-                whatsapp,
-                ownDelivery,
-                appDelivery,
-                pickupOnly,
-                deliveryTime,
-                logoUrl: currentLogoUrl,
-                coverUrl: currentCoverUrl,
-                location,
-                deliveryRates,
-                workingHours,
-                socialLinks,
-                categoryId,
-                subCategoryId,
-                hasCashea,
-                casheaQrUrl: currentCasheaQrUrl,
-                hasTwoByThree,
-                twoByThreeInitial,
-                twoByThreeInstallments,
-                businessType,
-                paymentMethods,
-                updatedAt: new Date()
-            });
+            
+            // Sanitize data to avoid undefined field errors in Firestore
+            const sanitizedData = JSON.parse(JSON.stringify({
+                name: name || '',
+                rif: rif || '',
+                whatsapp: whatsapp || '',
+                ownDelivery: ownDelivery || false,
+                appDelivery: appDelivery || false,
+                pickupOnly: pickupOnly || false,
+                deliveryTime: deliveryTime || '30-45 min',
+                logoUrl: currentLogoUrl || '',
+                coverUrl: currentCoverUrl || '',
+                location: location || null,
+                deliveryRates: deliveryRates || [],
+                workingHours: workingHours || [],
+                socialLinks: socialLinks || [],
+                categoryId: categoryId || '',
+                subCategoryId: subCategoryId || '',
+                hasCashea: hasCashea || false,
+                casheaQrUrl: currentCasheaQrUrl || '',
+                hasTwoByThree: hasTwoByThree || false,
+                twoByThreeInitial: twoByThreeInitial || 50,
+                twoByThreeInstallments: twoByThreeInstallments || 2,
+                businessType: businessType || 'restaurant',
+                paymentMethods: paymentMethods || [],
+                updatedAt: new Date().toISOString()
+            }));
+
+            await setDoc(docRef, sanitizedData, { merge: true });
 
             console.log("Restaurant profile updated successfully");
             setSaved(true);
@@ -299,6 +303,7 @@ export default function RestaurantProfile() {
             setIsSaving(false);
             setUploadingLogo(false);
             setUploadingCover(false);
+            setUploadingCasheaQr(false);
         }
     };
 
@@ -1122,13 +1127,31 @@ export default function RestaurantProfile() {
                                 <CreditCard className="w-6 h-6 text-slate-900" />
                                 Métodos de Pago
                             </h2>
-                            <button
-                                onClick={addPaymentMethod}
-                                className="flex items-center gap-1.5 text-slate-900 text-xs font-bold hover:underline"
-                            >
-                                <Plus className="w-4 h-4" />
-                                Añadir Método
-                            </button>
+                            <div className="flex items-center gap-4">
+                                <button
+                                    onClick={addPaymentMethod}
+                                    className="flex items-center gap-1.5 text-slate-900 text-xs font-bold hover:underline"
+                                >
+                                    <Plus className="w-4 h-4" />
+                                    Añadir Método
+                                </button>
+                                <button
+                                    onClick={handleSave}
+                                    disabled={isSaving}
+                                    className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-black shadow-lg transition-all ${
+                                        saved ? 'bg-emerald-500 text-white shadow-emerald-500/20' : 'bg-slate-900 text-white hover:bg-slate-800 shadow-slate-900/20 active:scale-95'
+                                    }`}
+                                >
+                                    {isSaving ? (
+                                        <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                                    ) : saved ? (
+                                        <Check className="w-3 h-3" />
+                                    ) : (
+                                        <Save className="w-3 h-3 text-primary" />
+                                    )}
+                                    {saved ? '¡Guardado!' : 'Guardar Datos'}
+                                </button>
+                            </div>
                         </div>
 
                         <div className="space-y-4">
