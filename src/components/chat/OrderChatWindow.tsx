@@ -219,7 +219,7 @@ export default function OrderChatWindow({
       )}
 
       {/* Input area */}
-      {(currentUserRole === 'client' || currentUserRole === 'restaurant') && !orderInfo?.restaurantPaymentClientConfirmed && (
+      {(currentUserRole === 'client' || currentUserRole === 'restaurant' || currentUserRole === 'cpanel') && (
         <div className="p-4 bg-white border-t border-slate-200 shrink-0">
           <div className="flex items-end gap-2">
             <div className="flex-1 bg-slate-50 rounded-2xl border-2 border-slate-100 relative focus-within:border-primary focus-within:bg-white transition-all p-1">

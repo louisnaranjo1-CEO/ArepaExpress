@@ -553,6 +553,64 @@ export default function Orders() {
         setEditAddNote('');
     };
 
+    const handleConfirmStock = async (orderId: string) => {
+        try {
+            const orderRef = doc(db, 'orders', orderId);
+            const orderTemp = orders.find(o => o.id === orderId);
+            await updateDoc(orderRef, { stockConfirmed: true });
+            
+            // Fetch restaurant payment methods to send to chat
+            const restaurantRef = doc(db, 'restaurants', user.uid);
+            const restaurantSnap = await getDoc(restaurantRef);
+            
+            if (restaurantSnap.exists()) {
+                const restaurantData = restaurantSnap.data();
+                const methods = restaurantData.paymentMethods || [];
+                
+                if (methods.length > 0) {
+                    let paymentMsg = "✅ *Stock confirmado.* Ya puedes realizar tu pago:\n\n";
+                    methods.forEach((m: any) => {
+                        paymentMsg += `*${m.type}:*\n${m.details}\n\n`;
+                    });
+                    paymentMsg += "Favor enviar el capture y la referencia por este medio.";
+
+                    await addDoc(collection(db, `orders/${orderId}/messages`), {
+                        text: paymentMsg,
+                        senderId: user.uid,
+                        senderName: 'Restaurante',
+                        senderRole: 'restaurant',
+                        createdAt: serverTimestamp()
+                    });
+                }
+            }
+
+            toast.success("Stock confirmado. El cliente ahora puede pagar.");
+        } catch (error) {
+            console.error("Error confirming stock:", error);
+            toast.error("Error al confirmar stock");
+        }
+    };
+
+    const handleVerifyPayment = async (orderId: string) => {
+        try {
+            const orderRef = doc(db, 'orders', orderId);
+            const orderTemp = orders.find(o => o.id === orderId);
+            await updateDoc(orderRef, { 
+                status: 'preparing',
+                paymentStatus: 'paid',
+                verifiedAt: serverTimestamp()
+            });
+            toast.success("Pago verificado. Orden enviada a cocina.");
+            
+            if (orderTemp) {
+                await handlePrintOrder(orderId, orderTemp as any);
+            }
+        } catch (error) {
+            console.error("Error verifying payment:", error);
+            toast.error("Error al verificar el pago");
+        }
+    };
+
     const updateStatus = async (orderId: string, newStatus: string, paymentStatus?: string) => {
         try {
             const orderRef = doc(db, 'orders', orderId);
@@ -917,24 +975,36 @@ export default function Orders() {
                         <div>
                             <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Método de Pago</p>
                             <p className="font-black text-slate-800 flex items-center gap-2">
-                                <CreditCard className="w-4 h-4 text-slate-900" /> {order.paymentMethod}
+                                <CreditCard className="w-4 h-4 text-slate-400" />
+                                {order.paymentMethod}
                             </p>
                         </div>
-                        {(order.paymentReference || order.paymentProofUrl) ? (
-                            <div className="text-right flex items-center gap-2">
-                                {order.paymentReference && (
-                                    <span className="bg-white border border-slate-200 px-3 py-1 rounded-lg text-xs font-bold text-slate-600 shadow-sm">
-                                        Ref: {order.paymentReference}
-                                    </span>
-                                )}
-                                {order.paymentProofUrl && (
-                                    <a href={order.paymentProofUrl} target="_blank" rel="noopener noreferrer" className="bg-primary/10 text-slate-900 p-2 rounded-lg hover:bg-primary/20 transition-all">
-                                        <ImageIcon className="w-4 h-4" />
-                                    </a>
-                                )}
+                        {order.status === 'pending_verification' && (
+                            <div className="bg-amber-100 text-amber-700 px-3 py-1 rounded-lg text-[10px] font-black uppercase">
+                                Por Verificar
                             </div>
-                        ) : null}
+                        )}
                     </div>
+
+                    {(order.paymentReference || order.paymentProofUrl) && (
+                        <div className="mt-3 pt-3 border-t border-slate-200/50 space-y-2">
+                            <div className="flex justify-between items-center text-xs">
+                                <span className="font-bold text-slate-400 uppercase tracking-wider text-[10px]">Referencia:</span>
+                                <span className="font-black text-slate-700">{order.paymentReference || 'N/A'}</span>
+                            </div>
+                            {order.paymentProofUrl && (
+                                <button 
+                                    onClick={() => window.open(order.paymentProofUrl, '_blank')}
+                                    className="w-full flex items-center justify-center gap-2 py-2 bg-white rounded-xl text-xs font-black text-slate-600 hover:bg-slate-100 transition-colors border border-slate-200 shadow-sm"
+                                >
+                                    <ImageIcon className="w-4 h-4" />
+                                    Ver Comprobante
+                                </button>
+                            )}
+                        </div>
+                    )}
+                </div>
+            )}
                     
                     {/* Inline Proof Upload Form */}
                     {order.status !== 'rejected' && !order.paymentProofUrl && ['Pago Móvil', 'Transferencia'].includes(order.paymentMethod) && (
@@ -974,7 +1044,7 @@ export default function Orders() {
             )}
 
             <div className="flex flex-wrap items-center gap-3">
-                {(order.status === 'pending' || order.status === 'pendiente_pago') && (
+                {(order.status === 'pending' || order.status === 'pendiente_pago' || order.status === 'pending_verification') && (
                     <>
                         <button
                             onClick={() => { 
@@ -988,17 +1058,33 @@ export default function Orders() {
                         >
                             <ExternalLink className="w-5 h-5" />
                         </button>
-                        <button
-                            onClick={() => { setSelectedOrderForAccept(order); setAcceptModalOpen(true); }}
-                            disabled={printingOrderId === order.id}
-                            className="flex-1 min-w-[140px] bg-primary text-slate-900 py-4 rounded-2xl font-black shadow-lg shadow-primary/20 hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-2 disabled:opacity-50"
-                        >
-                            {printingOrderId === order.id ? (
-                                <><Loader2 className="w-5 h-5 animate-spin" /> Imprimiendo...</>
-                            ) : (
-                                <>{order.status === 'pendiente_pago' ? 'Verificar y Procesar' : 'Aceptar'}</>
-                            )}
-                        </button>
+                        {order.status === 'pending_verification' ? (
+                            <button
+                                onClick={() => handleVerifyPayment(order.id)}
+                                className="flex-1 bg-primary text-slate-900 py-4 rounded-2xl font-black shadow-lg shadow-primary/20 hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-2"
+                            >
+                                <CheckCircle className="w-5 h-5" /> Aceptar Pago
+                            </button>
+                        ) : !(order as any).stockConfirmed ? (
+                            <button
+                                onClick={() => handleConfirmStock(order.id)}
+                                className="flex-1 bg-blue-500 text-white py-4 rounded-2xl font-black shadow-lg shadow-blue-500/20 hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-2"
+                            >
+                                <CheckCircle className="w-5 h-5" /> Confirmar Stock
+                            </button>
+                        ) : (
+                            <button
+                                onClick={() => { setSelectedOrderForAccept(order); setAcceptModalOpen(true); }}
+                                disabled={printingOrderId === order.id}
+                                className="flex-1 min-w-[140px] bg-primary text-slate-900 py-4 rounded-2xl font-black shadow-lg shadow-primary/20 hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+                            >
+                                {printingOrderId === order.id ? (
+                                    <><Loader2 className="w-5 h-5 animate-spin" /> Imprimiendo...</>
+                                ) : (
+                                    <>{order.status === 'pendiente_pago' ? 'Verificar y Procesar' : 'Aceptar'}</>
+                                )}
+                            </button>
+                        )}
                         <button
                             onClick={() => updateStatus(order.id, 'rejected')}
                             className="px-6 bg-slate-100 text-slate-500 py-4 rounded-2xl font-black hover:bg-red-50 hover:text-red-500 transition-all"

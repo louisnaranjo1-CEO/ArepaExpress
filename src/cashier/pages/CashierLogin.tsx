@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
 import { Shield } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { doc, getDoc } from 'firebase/firestore';
-import { db } from '../../lib/firebase';
+import { doc, getDoc, updateDoc } from 'firebase/firestore';
+import { db, auth } from '../../lib/firebase';
+import { signInAnonymously } from 'firebase/auth';
 import { useNavigate } from 'react-router-dom';
 
 export default function CashierLogin() {
@@ -53,6 +54,23 @@ export default function CashierLogin() {
                 id: cashierDoc.id,
                 ...data
             };
+
+            // Sign in anonymously to have a valid auth session for Firestore rules
+            try {
+                const authResult = await signInAnonymously(auth);
+                const currentUid = authResult.user.uid;
+                
+                // Link this session UID to the cashier document so rules can verify it
+                await updateDoc(doc(db, 'restaurants', restaurantId, 'cashiers', cashierId), {
+                    currentSessionUid: currentUid,
+                    lastLogin: new Date().toISOString()
+                });
+                
+                console.log("Cashier authenticated with UID:", currentUid);
+            } catch (authErr) {
+                console.error("Auth error during cashier login:", authErr);
+                // We continue even if auth fails, but sync might not work if rules are strict
+            }
 
             localStorage.setItem('cashierData', JSON.stringify(cashierData));
             localStorage.setItem('cashierRestaurantId', restaurantId);

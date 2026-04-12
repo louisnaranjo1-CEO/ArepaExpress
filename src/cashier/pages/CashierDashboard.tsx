@@ -53,6 +53,7 @@ export default function CashierDashboard() {
     const [paymentMethod, setPaymentMethod] = useState('');
     const [closeTip, setCloseTip] = useState(0);
     const [isAccepting, setIsAccepting] = useState(false);
+    const [userLoyaltyPoints, setUserLoyaltyPoints] = useState<number | null>(null);
 
     // Cierre de caja
     const [closeRegisterModalOpen, setCloseRegisterModalOpen] = useState(false);
@@ -126,7 +127,7 @@ export default function CashierDashboard() {
 
     useEffect(() => {
         const storedCashier = localStorage.getItem('cashierData');
-        const storedRestaurantId = localStorage.getItem('cashierRestaurantId');
+        const storedRestaurantId = localStorage.getItem('cashierRestaurantId')?.replace(/^"|"$/g, '');
         
         if (!storedCashier || !storedRestaurantId) {
             navigate('/login');
@@ -137,6 +138,15 @@ export default function CashierDashboard() {
         setRestaurantId(storedRestaurantId);
 
         // Fetch Restaurant Data
+        console.log("CASHIER_SYNC: Stored Restaurant ID:", storedRestaurantId);
+
+        // Debug Firebase Auth State
+        const { onAuthStateChanged } = require('firebase/auth');
+        onAuthStateChanged(auth, (user: any) => {
+            if (user) console.log("CASHIER_AUTH: User UID is", user.uid, "Anonymous:", user.isAnonymous);
+            else console.log("CASHIER_AUTH: No user authenticated in Firebase Auth");
+        });
+
         const fetchRestaurant = async () => {
             try {
                 const docRef = doc(db, 'restaurants', storedRestaurantId);
@@ -160,7 +170,11 @@ export default function CashierDashboard() {
 
         const unsubscribe2 = onSnapshot(q2, (snapshot) => {
             const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Order));
+            console.log(`CASHIER_SYNC: Received ${data.length} orders for restaurant ${storedRestaurantId}`);
             setOrders(data);
+            setLoading(false);
+        }, (err) => {
+            console.error("CASHIER_SYNC_ERROR:", err);
             setLoading(false);
         });
 
@@ -200,6 +214,38 @@ export default function CashierDashboard() {
         };
     }, [navigate]);
 
+    // Fetch user points when Loyalty method is selected
+    useEffect(() => {
+        if (paymentMethod === 'Fidelidad' && selectedOrder?.userId) {
+            const fetchUserPoints = async () => {
+                try {
+                    const userSnap = await getDoc(doc(db, 'users', selectedOrder.userId));
+                    if (userSnap.exists()) {
+                        setUserLoyaltyPoints(userSnap.data().loyaltyPoints || 0);
+                    } else {
+                        setUserLoyaltyPoints(0);
+                    }
+                } catch (e) {
+                    console.error("Error fetching user loyalty points:", e);
+                    setUserLoyaltyPoints(0);
+                }
+            };
+            fetchUserPoints();
+        } else {
+            setUserLoyaltyPoints(null);
+        }
+    }, [paymentMethod, selectedOrder]);
+
+    const handleMarkPickupNotified = async (orderId: string) => {
+        try {
+            await updateDoc(doc(db, 'orders', orderId), {
+                pickupNotified: true
+            });
+        } catch (e) {
+            console.error("Error marking pickup as notified:", e);
+        }
+    };
+
     // Real-time WAITER notification monitor
     useEffect(() => {
         const unnotifiedWaiterOrders = orders.filter(o => 
@@ -207,6 +253,50 @@ export default function CashierDashboard() {
             o.notified === false && 
             !notifiedOrderIds.has(o.id)
         );
+
+        // Monitor orders that changed to PICKUP
+        const unnotifiedPickupOrders = orders.filter(o => 
+            o.deliveryMethod === 'pickup' && 
+            o.pickupNotified === false && 
+            !notifiedOrderIds.has(o.id + '_pickup')
+        );
+
+        if (unnotifiedPickupOrders.length > 0) {
+            unnotifiedPickupOrders.forEach(async (order) => {
+                // Play special sound if possible or reuse notification sound
+                notificationSound.play().catch(e => console.error("Error playing sound:", e));
+
+                toast.custom((t) => (
+                    <motion.div 
+                        initial={{ opacity: 0, scale: 0.9, y: 20 }}
+                        animate={{ opacity: 1, scale: 1, y: 0 }}
+                        exit={{ opacity: 0, scale: 0.9, y: 20 }}
+                        className="max-w-md w-full bg-emerald-600 shadow-2xl rounded-[2.2rem] pointer-events-auto flex ring-1 ring-black ring-opacity-5 overflow-hidden border-2 border-white/20 p-6 text-white"
+                    >
+                        <div className="shrink-0 pt-0.5">
+                            <div className="h-14 w-14 rounded-2xl bg-white/20 flex items-center justify-center text-white">
+                                <Store className="w-7 h-7" />
+                            </div>
+                        </div>
+                        <div className="ml-5 flex-1 text-left">
+                            <h3 className="text-xs font-black uppercase tracking-[0.2em] mb-1 opacity-70">Cambio a PickUp</h3>
+                            <p className="text-lg font-black leading-tight">Mesa {order.table || 'N/A'}: El cliente retirará en el local</p>
+                            <button 
+                                onClick={() => {
+                                    handleMarkPickupNotified(order.id);
+                                    toast.dismiss(t.id);
+                                }}
+                                className="mt-4 bg-white text-emerald-600 px-6 py-2 rounded-xl font-black text-xs uppercase tracking-widest active:scale-95 transition-transform"
+                            >
+                                Entendido
+                            </button>
+                        </div>
+                    </motion.div>
+                ), { duration: 10000 });
+
+                setNotifiedOrderIds(prev => new Set(prev).add(order.id + '_pickup'));
+            });
+        }
 
         if (unnotifiedWaiterOrders.length > 0) {
             unnotifiedWaiterOrders.forEach(async (order) => {
@@ -424,6 +514,22 @@ export default function CashierDashboard() {
         }
         setIsAccepting(true);
         try {
+            // Fidelidad Points logic
+            if (paymentMethod === 'Fidelidad' && selectedOrder.userId) {
+                const pointsNeeded = Math.round((((selectedOrder.subtotal ?? selectedOrder.total ?? 0) + (selectedOrder.deliveryFee || 0) + closeTip)) * 100);
+                if (userLoyaltyPoints !== null && userLoyaltyPoints < pointsNeeded) {
+                    alert("El cliente no tiene puntos suficientes.");
+                    setIsAccepting(false);
+                    return;
+                }
+                
+                // Subtract points from user profile
+                const { increment } = await import('firebase/firestore');
+                await updateDoc(doc(db, 'users', selectedOrder.userId), {
+                    loyaltyPoints: increment(-pointsNeeded)
+                });
+            }
+
             let proofURL = '';
             const file = proofUploadFiles[selectedOrder.id];
             
@@ -607,6 +713,65 @@ ESTADO: ${order.status.toUpperCase()}
         toast.success("Comanda descargada");
     };
 
+    const handleConfirmStock = async (orderId: string) => {
+        try {
+            const orderRef = doc(db, 'orders', orderId);
+            await updateDoc(orderRef, { stockConfirmed: true });
+
+            // Fetch restaurant payment methods to send to chat
+            if (restaurantId) {
+                const restaurantRef = doc(db, 'restaurants', restaurantId);
+                const restaurantSnap = await getDoc(restaurantRef);
+                
+                if (restaurantSnap.exists()) {
+                    const restaurantData = restaurantSnap.data();
+                    const methods = restaurantData.paymentMethods || [];
+                    
+                    if (methods.length > 0) {
+                        let paymentMsg = "✅ *Stock confirmado.* Ya puedes realizar tu pago:\n\n";
+                        methods.forEach((m: any) => {
+                            paymentMsg += `*${m.type}:*\n${m.details}\n\n`;
+                        });
+                        paymentMsg += "Favor enviar el capture y la referencia por este medio.";
+
+                        await addDoc(collection(db, `orders/${orderId}/messages`), {
+                            text: paymentMsg,
+                            senderId: restaurantId,
+                            senderName: 'Restaurante',
+                            senderRole: 'restaurant',
+                            createdAt: serverTimestamp()
+                        });
+                    }
+                }
+            }
+
+            toast.success("Stock confirmado.");
+        } catch (error) {
+            console.error("Error confirming stock:", error);
+            toast.error("Error al confirmar stock");
+        }
+    };
+
+    const handleVerifyPayment = async (orderId: string) => {
+        try {
+            const orderRef = doc(db, 'orders', orderId);
+            const orderTemp = orders.find(o => o.id === orderId);
+            await updateDoc(orderRef, { 
+                status: 'preparing',
+                paymentStatus: 'paid',
+                verifiedAt: serverTimestamp()
+            });
+            toast.success("Pago verificado. Orden enviada a cocina.");
+            
+            if (orderTemp) {
+                await handlePrintOrder(orderId, orderTemp);
+            }
+        } catch (error) {
+            console.error("Error verifying payment:", error);
+            toast.error("Error al verificar el pago");
+        }
+    };
+
     const updateStatus = async (orderId: string, newStatus: string) => {
         try {
             const orderRef = doc(db, 'orders', orderId);
@@ -783,12 +948,22 @@ ESTADO: ${order.status.toUpperCase()}
     const filteredOrders = React.useMemo(() => {
         let result = orders.filter(order => {
             // Filter by active tab
-            if (activeTab === 'pending') return ['pending', 'pendiente_pago', 'pending_verification', 'occupied', 'calling', 'billing'].includes(order.status);
-            if (activeTab === 'preparing') return order.status === 'preparing';
-            if (activeTab === 'delivering') return order.status === 'delivering' || order.status === 'buscando_piloto';
-            if (activeTab === 'delivered') return order.status === 'delivered';
-            if (activeTab === 'rejected') return order.status === 'rejected';
-            if (activeTab === 'tables') return false; // Orders are not shown in tables tab directly
+            if (activeTab === 'pending') {
+                return ['pending', 'pendiente_pago', 'pending_verification', 'occupied', 'calling', 'billing'].includes(order.status);
+            }
+            if (activeTab === 'preparing') {
+                return order.status === 'preparing';
+            }
+            if (activeTab === 'delivering') {
+                return ['delivering', 'buscando_piloto', 'conductor_asignado', 'en_camino'].includes(order.status);
+            }
+            if (activeTab === 'delivered') {
+                return order.status === 'delivered';
+            }
+            if (activeTab === 'rejected') {
+                return order.status === 'rejected';
+            }
+            if (activeTab === 'tables') return false;
             return true;
         });
 
@@ -980,28 +1155,66 @@ ESTADO: ${order.status.toUpperCase()}
                     </div>
 
                     {!isWaiter && (
-                        <div className="flex items-center gap-2 px-3 py-2 bg-emerald-50 text-emerald-600 rounded-xl text-[10px] font-black uppercase tracking-widest border border-emerald-100">
-                            <CreditCard className="w-3 h-3" />
-                            {order.paymentMethod || 'Por confirmar'}
+                        <div className="space-y-2">
+                            <div className="flex items-center gap-2 px-3 py-2 bg-emerald-50 text-emerald-600 rounded-xl text-[10px] font-black uppercase tracking-widest border border-emerald-100">
+                                <CreditCard className="w-3 h-3" />
+                                {order.paymentMethod || 'Por confirmar'}
+                            </div>
+                            
+                            {order.status === 'pending_verification' && (
+                                <div className="p-3 bg-amber-50 rounded-2xl border border-amber-200 border-dashed space-y-2">
+                                    <div className="flex justify-between items-center text-[10px] font-black uppercase tracking-wider text-amber-700">
+                                        <span>Referencia:</span>
+                                        <span className="bg-white px-2 py-0.5 rounded-lg border border-amber-100 font-black">{order.paymentReference || 'N/A'}</span>
+                                    </div>
+                                    {order.paymentProofUrl && (
+                                        <button 
+                                            onClick={() => window.open(order.paymentProofUrl, '_blank')}
+                                            className="w-full flex items-center justify-center gap-2 py-2 bg-white rounded-xl text-[10px] font-black text-amber-600 hover:bg-amber-100 transition-colors border border-amber-200"
+                                        >
+                                            <ImageIcon className="w-3 h-3" />
+                                            Ver Capture
+                                        </button>
+                                    )}
+                                </div>
+                            )}
                         </div>
                     )}
                 </div>
 
                 {/* Actions */}
                 <div className="flex gap-2">
-                    {(order.status === 'pending' || order.status === 'pendiente_pago') && (
+                    {(order.status === 'pending' || order.status === 'pendiente_pago' || order.status === 'pending_verification') && (
                         <>
-                            <button
-                                onClick={() => { 
-                                    setSelectedOrderForAccept(order); 
-                                    setPaymentMethod(order.paymentMethod || '');
-                                    setAcceptModalOpen(true); 
-                                }}
-                                className="flex-1 bg-primary text-slate-900 py-4 rounded-2xl font-black text-xs flex items-center justify-center gap-2 hover:scale-[1.02] active:scale-[0.98] transition-all shadow-lg shadow-primary/20"
-                            >
-                                <CheckCircle className="w-4 h-4" />
-                                Verificar y Procesar
-                            </button>
+                            {order.status === 'pending_verification' ? (
+                                <button
+                                    onClick={() => handleVerifyPayment(order.id)}
+                                    className="flex-1 bg-primary text-slate-900 py-4 rounded-2xl font-black text-xs flex items-center justify-center gap-2 hover:scale-[1.02] active:scale-[0.98] transition-all shadow-lg shadow-primary/20"
+                                >
+                                    <CheckCircle className="w-4 h-4" />
+                                    Aceptar Pago
+                                </button>
+                            ) : !(order as any).stockConfirmed ? (
+                                <button
+                                    onClick={() => handleConfirmStock(order.id)}
+                                    className="flex-1 bg-blue-500 text-white py-4 rounded-2xl font-black text-xs flex items-center justify-center gap-2 hover:scale-[1.02] active:scale-[0.98] transition-all shadow-lg shadow-blue-500/20"
+                                >
+                                    <CheckCircle className="w-4 h-4" />
+                                    Confirmar Stock
+                                </button>
+                            ) : (
+                                <button
+                                    onClick={() => { 
+                                        setSelectedOrderForAccept(order); 
+                                        setPaymentMethod(order.paymentMethod || '');
+                                        setAcceptModalOpen(true); 
+                                    }}
+                                    className="flex-1 bg-primary text-slate-900 py-4 rounded-2xl font-black text-xs flex items-center justify-center gap-2 hover:scale-[1.02] active:scale-[0.98] transition-all shadow-lg shadow-primary/20"
+                                >
+                                    <CheckCircle className="w-4 h-4" />
+                                    Verificar y Procesar
+                                </button>
+                            )}
                             <button
                                 onClick={() => { setSelectedOrder(order); setCloseSaleModalOpen(true); }}
                                 className="flex-1 bg-emerald-50 text-emerald-600 py-4 rounded-2xl font-black text-xs flex items-center justify-center gap-2 hover:bg-emerald-100 transition-all border border-emerald-100"
@@ -1215,13 +1428,14 @@ ESTADO: ${order.status.toUpperCase()}
 
             <main className="flex-1 p-6 max-w-7xl mx-auto w-full space-y-8 pb-20">
                 {/* Status Tabs */}
-                <div className="grid grid-cols-2 lg:grid-cols-5 gap-2 p-2 bg-slate-100 rounded-[30px]">
+                <div className="grid grid-cols-2 lg:grid-cols-6 gap-2 p-2 bg-slate-100 rounded-[30px]">
                     {[
                         { id: 'pending', label: 'Pendientes', icon: Bell, color: 'bg-primary' },
+                        { id: 'preparing', label: 'Cocinando', icon: Clock, color: 'bg-amber-400' },
                         { id: 'delivering', label: 'Camino', icon: Truck, color: 'bg-emerald-600' },
                         { id: 'delivered', label: 'Entregados', icon: CheckCircle, color: 'bg-slate-900' },
                         { id: 'rejected', label: 'Rechazados', icon: X, color: 'bg-red-500' },
-                        { id: 'tables', label: 'Mesas', icon: Utensils, color: 'bg-primary' },
+                        { id: 'tables', label: 'Mesas', icon: Utensils, color: 'bg-primary text-slate-900' },
                     ].map((tab) => (
                         <button
                             key={tab.id}
@@ -1433,7 +1647,7 @@ ESTADO: ${order.status.toUpperCase()}
                                     />
                                 </div>
                             </motion.div>
-                        ) : paymentMethod === 'Pago Móvil' && (
+                        ) : paymentMethod === 'Pago Móvil' ? (
                             <motion.div 
                                 initial={{ opacity: 0, height: 0 }}
                                 animate={{ opacity: 1, height: 'auto' }}
@@ -1449,6 +1663,28 @@ ESTADO: ${order.status.toUpperCase()}
                                         onChange={(e) => setReferenceInputs(prev => ({ ...prev, [selectedOrder.id]: e.target.value }))}
                                         className="w-full bg-slate-50 border border-slate-200 px-4 py-3 rounded-2xl outline-none focus:border-primary font-bold text-slate-700 placeholder:text-slate-300"
                                     />
+                                </div>
+                            </motion.div>
+                        ) : null}
+
+                        {paymentMethod === 'Fidelidad' && (
+                            <motion.div 
+                                initial={{ opacity: 0, height: 0 }}
+                                animate={{ opacity: 1, height: 'auto' }}
+                                className="space-y-4 mb-6"
+                            >
+                                <div className="p-4 bg-purple-50 border border-purple-100 rounded-2xl">
+                                    <div className="flex items-center justify-between mb-2">
+                                        <span className="text-xs font-bold text-purple-600 uppercase tracking-widest">Puntos Disponibles</span>
+                                        <span className="text-lg font-black text-purple-700">{userLoyaltyPoints !== null ? userLoyaltyPoints : '...'} pts</span>
+                                    </div>
+                                    <div className="flex items-center justify-between">
+                                        <span className="text-xs font-bold text-purple-600 uppercase tracking-widest">Costo de la Orden</span>
+                                        <span className="text-sm font-black text-purple-700">-{Math.round((selectedOrder.total || 0) * 100)} pts</span>
+                                    </div>
+                                    {userLoyaltyPoints !== null && userLoyaltyPoints < ((selectedOrder.total || 0) * 100) && (
+                                        <p className="text-[10px] font-black text-red-500 mt-2 uppercase tracking-tight">⚠️ Saldo Insuficiente</p>
+                                    )}
                                 </div>
                             </motion.div>
                         )}

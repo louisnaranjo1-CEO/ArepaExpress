@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { doc, onSnapshot, getDoc, updateDoc, serverTimestamp, addDoc, collection } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { DeliveryDriver } from '../lib/delivery-service';
-import { Navigation, Clock, CheckCircle2, Package, MapPin, Phone, ArrowLeft, Store, Star, Wallet, X } from 'lucide-react';
+import { Navigation, Clock, CheckCircle2, Bike, MapPin, Phone, ArrowLeft, Store, Star, Wallet, X, Loader2, ImageIcon, Upload, CreditCard as CreditCardIcon, AlertCircle } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useCurrency } from '../context/CurrencyContext';
 import DeliveryPaymentModal from '../components/DeliveryPaymentModal';
@@ -11,6 +11,7 @@ import ReviewModal from '../components/ReviewModal';
 import DualPrice from '../components/DualPrice';
 import OrderChatWindow from '../components/chat/OrderChatWindow';
 import { useAuth } from '../context/AuthContext';
+import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 
 export default function TrackOrder() {
     const { orderId } = useParams();
@@ -24,6 +25,11 @@ export default function TrackOrder() {
     const { user } = useAuth();
     const [hasPaidRestaurant, setHasPaidRestaurant] = useState(false);
     const [showDeliveryPaymentModal, setShowDeliveryPaymentModal] = useState(false);
+    
+    // New payment states
+    const [paymentReference, setPaymentReference] = useState('');
+    const [paymentProofFile, setPaymentProofFile] = useState<File | null>(null);
+    const [isUploading, setIsUploading] = useState(false);
     
     const [infoStep, setInfoStep] = useState<number | null>(null);
     const [editDelivery, setEditDelivery] = useState({
@@ -91,7 +97,7 @@ export default function TrackOrder() {
     if (!order) {
         return (
             <div className="flex flex-col items-center justify-center min-h-[60vh] px-6 text-center">
-                <Package className="w-16 h-16 text-slate-300 mb-4" />
+                <Bike className="w-16 h-16 text-slate-300 mb-4" />
                 <h2 className="text-xl font-black text-slate-900 mb-2">Pedido no encontrado</h2>
                 <button onClick={() => navigate('/')} className="text-slate-900 font-bold">Volver al inicio</button>
             </div>
@@ -112,28 +118,46 @@ export default function TrackOrder() {
     }
 
     const handleRestaurantPaid = async () => {
-        if(!orderId) return;
-        if(window.confirm(`¿Confirmas que ya pagaste a ${restaurant?.name || 'Negocio'}? El negocio verificará tu pago para proceder.`)){
-            try {
-                await updateDoc(doc(db, 'orders', orderId), {
-                    restaurantPaymentClientConfirmed: true,
-                    status: 'pending_verification'
-                });
+        if(!orderId || !order) return;
+        
+        if (!paymentReference && !paymentProofFile) {
+            toast.error('Por favor ingresa un número de referencia o adjunta un capture de pago.');
+            return;
+        }
 
-                // Enviar mensaje automático al chat
-                await addDoc(collection(db, `orders/${orderId}/messages`), {
-                    text: "📢 He realizado el pago, favor validar.",
-                    senderId: user?.uid || 'guest',
-                    senderName: order.userName || 'Cliente',
-                    senderRole: 'client',
-                    createdAt: serverTimestamp()
-                });
+        setIsUploading(true);
+        try {
+            const updates: any = {
+                restaurantPaymentClientConfirmed: true,
+                status: 'pending_verification',
+                paymentReference: paymentReference
+            };
 
-                toast.success('Información de pago enviada al negocio');
-            } catch (error) {
-                console.error(error);
-                toast.error('Ocurrió un error al confirmar el pago');
+            if (paymentProofFile) {
+                const storage = getStorage();
+                const fileRef = ref(storage, `payment_proofs/${orderId}_${Date.now()}`);
+                await uploadBytes(fileRef, paymentProofFile);
+                const url = await getDownloadURL(fileRef);
+                updates.paymentProofUrl = url;
             }
+
+            await updateDoc(doc(db, 'orders', orderId), updates);
+
+            // Enviar mensaje automático al chat
+            await addDoc(collection(db, `orders/${orderId}/messages`), {
+                text: "📢 He realizado el pago, favor validar.",
+                senderId: user?.uid || 'guest',
+                senderName: order.userName || 'Cliente',
+                senderRole: 'client',
+                createdAt: serverTimestamp()
+            });
+
+            toast.success('Información de pago enviada al negocio');
+        } catch (error) {
+            console.error(error);
+            toast.error('Ocurrió un error al enviar la información de pago');
+        } finally {
+            setIsUploading(false);
         }
     };
 
@@ -243,7 +267,7 @@ export default function TrackOrder() {
                 <button onClick={() => window.history.length > 1 ? window.history.back() : navigate('/profile')} className="w-10 h-10 bg-slate-100 rounded-full flex items-center justify-center active:scale-95 transition-transform text-slate-600">
                     <ArrowLeft className="w-5 h-5" />
                 </button>
-                <h1 className="text-lg font-black text-slate-900">Rastrear Pedido</h1>
+                <h1 className="text-lg font-black text-slate-900">Seguimiento de Pedido</h1>
             </div>
 
             {/* Map Placeholder Area - Using Premium Logo Brand Overlay */}
@@ -334,7 +358,7 @@ export default function TrackOrder() {
                                     className={`w-8 h-8 rounded-full flex items-center justify-center ring-4 ring-white cursor-pointer transition-colors duration-500 hover:scale-110 ${step <= currentStep ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-500/30' : 'bg-slate-200 text-slate-400'}`}
                                 >
                                     {step === 1 && <Wallet className="w-4 h-4" />}
-                                    {step === 2 && <Package className="w-4 h-4" />}
+                                    {step === 2 && <Bike className="w-4 h-4" />}
                                     {step === 3 && <Navigation className="w-4 h-4" />}
                                     {step === 4 && <CheckCircle2 className="w-4 h-4" />}
                                 </div>
@@ -361,14 +385,6 @@ export default function TrackOrder() {
                                 restaurantId={order.restaurantId}
                                 orderInfo={order}
                             />
-                            {(!order.restaurantPaymentClientConfirmed && (order.status === 'pending' || order.status === 'pendiente_pago')) && (
-                                <button 
-                                    onClick={handleCancelOrder}
-                                    className="w-full bg-red-100 text-red-600 py-4 rounded-2xl font-bold hover:bg-red-200 transition-colors mt-4 shadow-sm"
-                                >
-                                    Cancelar Pedido
-                                </button>
-                            )}
                         </div>
                     )}
 
@@ -384,7 +400,7 @@ export default function TrackOrder() {
                             {order.restaurantPaymentClientConfirmed && (
                                 <div className="w-full animate-in fade-in zoom-in-95 duration-200 bg-slate-50 p-4 rounded-3xl border-2 border-slate-100 relative shadow-inner">
                                     <h4 className="font-black text-slate-800 mb-4 flex items-center gap-2">
-                                        <Package className="w-5 h-5 text-primary"/>
+                                        <Bike className="w-5 h-5 text-primary"/>
                                         Opciones de Envío
                                     </h4>
                                     
@@ -477,6 +493,144 @@ export default function TrackOrder() {
                     )}
 
                 </div>
+
+                {/* Restaurant Payment Section (Stock Confirmation) */}
+                {(order.status === 'pending' || order.status === 'pendiente_pago') && !order.restaurantPaymentClientConfirmed && (
+                    <div className="bg-white rounded-3xl p-6 shadow-xl shadow-slate-200/50 border-2 border-primary/20 animate-in slide-in-from-bottom-4 duration-500">
+                        {!order.stockConfirmed ? (
+                            <div className="flex flex-col items-center text-center py-4">
+                                <div className="w-16 h-16 bg-blue-50 text-blue-500 rounded-full flex items-center justify-center mb-4 animate-pulse">
+                                    <Clock className="w-8 h-8" />
+                                </div>
+                                <h3 className="text-lg font-black text-slate-900 mb-2">Validando Disponibilidad</h3>
+                                <p className="text-slate-500 text-sm font-medium">El restaurante está confirmando que tiene todos tus productos en stock. Te avisaremos en un momento.</p>
+                            </div>
+                        ) : (
+                            <div className="space-y-6">
+                                <div className="flex items-center gap-3">
+                                    <div className="w-12 h-12 bg-green-50 text-green-500 rounded-2xl flex items-center justify-center">
+                                        <CheckCircle2 className="w-6 h-6" />
+                                    </div>
+                                    <div>
+                                        <h3 className="text-lg font-black text-slate-900">¡Stock Confirmado!</h3>
+                                        <p className="text-slate-500 text-xs font-bold uppercase tracking-wider text-green-600">Procede con el pago para iniciar</p>
+                                    </div>
+                                </div>
+
+                                 {/* Information about Payment Methods */}
+                                {restaurant?.paymentMethods && (
+                                    <div className="bg-slate-50 rounded-2xl p-4 border border-slate-100">
+                                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">Datos de Pago</p>
+                                        <div className="space-y-4">
+                                            {Array.isArray(restaurant.paymentMethods) ? (
+                                                restaurant.paymentMethods.map((method: any, idx: number) => (
+                                                    <div key={idx} className={`flex flex-col gap-1 ${idx > 0 ? 'border-t border-slate-200 pt-3' : ''}`}>
+                                                        <span className="text-xs font-black text-slate-800 flex items-center gap-2">
+                                                            <span className={`w-2 h-2 rounded-full ${
+                                                                method.type === 'Pago Móvil' ? 'bg-primary' : 
+                                                                method.type === 'Zelle' ? 'bg-indigo-500' : 
+                                                                method.type === 'Transferencia' ? 'bg-blue-500' : 'bg-slate-400'
+                                                            }`}></span> 
+                                                            {method.type}
+                                                        </span>
+                                                        <div className="mt-1 space-y-2">
+                                                            {method.type === 'Pago Móvil' && (
+                                                                <div className="grid grid-cols-2 gap-2">
+                                                                    <div>
+                                                                        <p className="text-[9px] font-bold text-slate-400 uppercase">Banco</p>
+                                                                        <p className="text-xs font-black text-slate-700">{method.bank}</p>
+                                                                    </div>
+                                                                    <div>
+                                                                        <p className="text-[9px] font-bold text-slate-400 uppercase">Teléfono</p>
+                                                                        <p className="text-xs font-black text-slate-700">{method.phone}</p>
+                                                                    </div>
+                                                                    <div className="col-span-2">
+                                                                        <p className="text-[9px] font-bold text-slate-400 uppercase">Cédula/RIF</p>
+                                                                        <p className="text-xs font-black text-slate-700">{method.rif}</p>
+                                                                    </div>
+                                                                    <div className="col-span-2">
+                                                                        <p className="text-[9px] font-bold text-slate-400 uppercase">Titular</p>
+                                                                        <p className="text-xs font-black text-slate-700">{method.owner}</p>
+                                                                    </div>
+                                                                </div>
+                                                            )}
+                                                            {method.type === 'Zelle' && (
+                                                                <div className="grid grid-cols-1 gap-1">
+                                                                    <div>
+                                                                        <p className="text-[9px] font-bold text-slate-400 uppercase">Correo</p>
+                                                                        <p className="text-xs font-black text-slate-700">{method.email}</p>
+                                                                    </div>
+                                                                    <div>
+                                                                        <p className="text-[9px] font-bold text-slate-400 uppercase">Titular</p>
+                                                                        <p className="text-xs font-black text-slate-700">{method.owner}</p>
+                                                                    </div>
+                                                                </div>
+                                                            )}
+                                                            {method.type !== 'Pago Móvil' && method.type !== 'Zelle' && method.type !== 'Efectivo' && (
+                                                                <div>
+                                                                    <p className="text-[9px] font-bold text-slate-400 uppercase">Instrucciones</p>
+                                                                    <p className="text-xs font-black text-slate-700 whitespace-pre-line">{method.note}</p>
+                                                                </div>
+                                                            )}
+                                                            {method.type === 'Efectivo' && (
+                                                                <p className="text-xs font-medium text-slate-500 italic">Pago a realizar en el local o al repartidor.</p>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                ))
+                                            ) : (
+                                                <p className="text-[10px] text-slate-400 italic">No hay métodos de pago configurados.</p>
+                                            )}
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* Payment Proof Upload */}
+                                <div className="space-y-3">
+                                    <label className="text-[10px] uppercase font-black text-slate-400 ml-1">Reportar Pago</label>
+                                    <div className="space-y-3">
+                                        <input 
+                                            type="text" 
+                                            placeholder="Referencia (últimos 6 dígitos)"
+                                            value={paymentReference}
+                                            onChange={(e) => setPaymentReference(e.target.value)}
+                                            className="w-full bg-slate-50 border-2 border-slate-100 px-4 py-3 rounded-2xl text-sm font-bold outline-none focus:border-primary transition-all text-slate-700"
+                                        />
+                                        <div className="flex gap-2">
+                                            <label className="flex-1 flex items-center justify-center gap-2 bg-slate-50 border-2 border-dashed border-slate-200 p-4 rounded-2xl cursor-pointer hover:bg-slate-100 transition-all group">
+                                                <input 
+                                                    type="file" 
+                                                    className="hidden" 
+                                                    accept="image/*"
+                                                    onChange={(e) => setPaymentProofFile(e.target.files?.[0] || null)}
+                                                />
+                                                {paymentProofFile ? (
+                                                    <div className="flex items-center gap-2">
+                                                        <CheckCircle2 className="w-5 h-5 text-green-500" />
+                                                        <span className="text-xs font-black text-slate-900 truncate max-w-[120px]">{paymentProofFile.name}</span>
+                                                    </div>
+                                                ) : (
+                                                    <>
+                                                        <ImageIcon className="w-5 h-5 text-slate-400 group-hover:text-primary transition-colors" />
+                                                        <span className="text-xs font-black text-slate-400">Adjuntar Capture</span>
+                                                    </>
+                                                )}
+                                            </label>
+                                        </div>
+                                    </div>
+                                    
+                                    <button 
+                                        onClick={handleRestaurantPaid}
+                                        disabled={isUploading || (!paymentReference && !paymentProofFile)}
+                                        className="w-full bg-primary text-slate-900 py-4 rounded-2xl font-black shadow-xl shadow-primary/20 hover:scale-[1.02] active:scale-95 transition-all text-lg flex items-center justify-center gap-2 disabled:opacity-50"
+                                    >
+                                        {isUploading ? <Loader2 className="w-6 h-6 animate-spin text-slate-900" /> : <><Upload className="w-6 h-6" /> Ya pagué</>}
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                )}
 
                 {/* Driver Info (If Assigned) */}
                 {driver && (currentStep >= 2) && (
@@ -571,6 +725,18 @@ export default function TrackOrder() {
                         </div>
                     </div>
                 </div>
+
+                {/* Cancel Order Button at the end */}
+                {(order.status === 'pending' || order.status === 'pendiente_pago') && !order.restaurantPaymentClientConfirmed && (
+                    <div className="px-2 pt-4 border-t border-slate-100 mt-4">
+                        <button 
+                            onClick={handleCancelOrder}
+                            className="w-full flex items-center justify-center gap-2 text-red-500 font-bold py-4 hover:bg-red-50 rounded-2xl transition-all"
+                        >
+                            <X className="w-4 h-4" /> Cancelar mi pedido
+                        </button>
+                    </div>
+                )}
             </div>
 
             <ReviewModal

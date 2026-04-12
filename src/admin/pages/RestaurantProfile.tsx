@@ -26,7 +26,8 @@ import {
     Building2,
     ChevronRight,
     Search,
-    ChevronUp
+    ChevronUp,
+    CreditCard
 } from 'lucide-react';
 import { db, storage } from '../../lib/firebase';
 import { doc, getDoc, updateDoc, collection, getDocs, orderBy, query } from 'firebase/firestore';
@@ -62,6 +63,16 @@ interface SocialLink {
     name: string; // The name of the social network
     url: string; // The user's profile URL
     imageUrl: string; // The icon image URL
+}
+
+interface PaymentMethod {
+    type: 'Pago Móvil' | 'Zelle' | 'Transferencia' | 'Efectivo' | 'Otro';
+    bank?: string;
+    rif?: string;
+    phone?: string;
+    owner?: string;
+    email?: string;
+    note?: string;
 }
 
 const DEFAULT_WORKING_HOURS: WorkingHour[] = [
@@ -128,6 +139,9 @@ export default function RestaurantProfile() {
     const [twoByThreeInitial, setTwoByThreeInitial] = useState(50);
     const [twoByThreeInstallments, setTwoByThreeInstallments] = useState(2);
 
+    // Payment Methods states
+    const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([]);
+
     useEffect(() => {
         if (!user) return;
 
@@ -160,6 +174,7 @@ export default function RestaurantProfile() {
                     setTwoByThreeInitial(data.twoByThreeInitial || 50);
                     setTwoByThreeInstallments(data.twoByThreeInstallments || 2);
                     setBusinessType(data.businessType || 'restaurant');
+                    setPaymentMethods(data.paymentMethods || []);
 
                     // Fetch followers list
                     const followersRef = collection(db, 'restaurants', user.uid, 'followers');
@@ -270,6 +285,7 @@ export default function RestaurantProfile() {
                 twoByThreeInitial,
                 twoByThreeInstallments,
                 businessType,
+                paymentMethods,
                 updatedAt: new Date()
             });
 
@@ -354,6 +370,20 @@ export default function RestaurantProfile() {
 
     const updateSocialUrl = (id: string, url: string) => {
         setSocialLinks(socialLinks.map(s => s.id === id ? { ...s, url } : s));
+    };
+
+    const addPaymentMethod = () => {
+        setPaymentMethods([...paymentMethods, { type: 'Pago Móvil', bank: '', rif: '', phone: '', owner: '' }]);
+    };
+
+    const removePaymentMethod = (index: number) => {
+        setPaymentMethods(paymentMethods.filter((_, i) => i !== index));
+    };
+
+    const updatePaymentMethod = (index: number, field: keyof PaymentMethod, value: string) => {
+        const newMethods = [...paymentMethods];
+        newMethods[index] = { ...newMethods[index], [field]: value };
+        setPaymentMethods(newMethods);
     };
 
     if (loading) {
@@ -1079,6 +1109,147 @@ export default function RestaurantProfile() {
                                                     className="w-full bg-white border border-slate-200 p-2 pl-9 rounded-xl outline-none focus:border-primary font-medium text-slate-600 text-sm"
                                                 />
                                             </div>
+                                        </div>
+                                    </div>
+                                ))
+                            )}
+                        </div>
+                    </section>
+
+                    <section className="bg-white p-8 rounded-[40px] shadow-sm border border-slate-100 space-y-6">
+                        <div className="flex justify-between items-center">
+                            <h2 className="text-xl font-black text-slate-900 flex items-center gap-2">
+                                <CreditCard className="w-6 h-6 text-slate-900" />
+                                Métodos de Pago
+                            </h2>
+                            <button
+                                onClick={addPaymentMethod}
+                                className="flex items-center gap-1.5 text-slate-900 text-xs font-bold hover:underline"
+                            >
+                                <Plus className="w-4 h-4" />
+                                Añadir Método
+                            </button>
+                        </div>
+
+                        <div className="space-y-4">
+                            {paymentMethods.length === 0 ? (
+                                <div className="text-center py-8 bg-slate-50 rounded-3xl border border-dashed border-slate-200">
+                                    <CreditCard className="w-10 h-10 text-slate-200 mx-auto mb-2" />
+                                    <p className="text-slate-400 text-sm font-medium">Configura cómo tus clientes pueden pagarte.</p>
+                                </div>
+                            ) : (
+                                paymentMethods.map((method, idx) => (
+                                    <div key={idx} className="bg-slate-50 p-6 rounded-3xl border border-slate-100 space-y-4 relative group font-bold">
+                                        <button
+                                            onClick={() => removePaymentMethod(idx)}
+                                            className="absolute top-4 right-4 p-2 text-slate-300 hover:text-red-500 transition-colors bg-white rounded-xl shadow-sm opacity-0 group-hover:opacity-100"
+                                        >
+                                            <Trash2 className="w-4 h-4" />
+                                        </button>
+
+                                        <div className="grid grid-cols-1 gap-4">
+                                            <div className="space-y-1">
+                                                <label className="text-[10px] font-black text-slate-400 uppercase ml-1">Tipo de Pago</label>
+                                                <select
+                                                    value={method.type}
+                                                    onChange={(e) => updatePaymentMethod(idx, 'type', e.target.value as any)}
+                                                    className="w-full bg-white border border-slate-200 p-3 rounded-xl outline-none focus:border-primary font-bold text-slate-700 text-sm appearance-none"
+                                                >
+                                                    <option value="Pago Móvil">Pago Móvil</option>
+                                                    <option value="Zelle">Zelle</option>
+                                                    <option value="Transferencia">Transferencia</option>
+                                                    <option value="Efectivo">Efectivo</option>
+                                                    <option value="Otro">Otro</option>
+                                                </select>
+                                            </div>
+
+                                            {method.type === 'Pago Móvil' && (
+                                                <div className="grid grid-cols-2 gap-3">
+                                                    <div className="space-y-1">
+                                                        <label className="text-[10px] font-black text-slate-400 uppercase ml-1">Banco</label>
+                                                        <input
+                                                            type="text"
+                                                            value={method.bank}
+                                                            onChange={(e) => updatePaymentMethod(idx, 'bank', e.target.value)}
+                                                            className="w-full bg-white border border-slate-200 p-3 rounded-xl outline-none focus:border-primary font-bold text-slate-700 text-sm"
+                                                            placeholder="Ej: Banesco"
+                                                        />
+                                                    </div>
+                                                    <div className="space-y-1">
+                                                        <label className="text-[10px] font-black text-slate-400 uppercase ml-1">Teléfono</label>
+                                                        <input
+                                                            type="text"
+                                                            value={method.phone}
+                                                            onChange={(e) => updatePaymentMethod(idx, 'phone', e.target.value)}
+                                                            className="w-full bg-white border border-slate-200 p-3 rounded-xl outline-none focus:border-primary font-bold text-slate-700 text-sm"
+                                                            placeholder="0412..."
+                                                        />
+                                                    </div>
+                                                    <div className="space-y-1">
+                                                        <label className="text-[10px] font-black text-slate-400 uppercase ml-1">Cédula / RIF</label>
+                                                        <input
+                                                            type="text"
+                                                            value={method.rif}
+                                                            onChange={(e) => updatePaymentMethod(idx, 'rif', e.target.value)}
+                                                            className="w-full bg-white border border-slate-200 p-3 rounded-xl outline-none focus:border-primary font-bold text-slate-700 text-sm"
+                                                            placeholder="V-123..."
+                                                        />
+                                                    </div>
+                                                    <div className="space-y-1">
+                                                        <label className="text-[10px] font-black text-slate-400 uppercase ml-1">Titular</label>
+                                                        <input
+                                                            type="text"
+                                                            value={method.owner}
+                                                            onChange={(e) => updatePaymentMethod(idx, 'owner', e.target.value)}
+                                                            className="w-full bg-white border border-slate-200 p-3 rounded-xl outline-none focus:border-primary font-bold text-slate-700 text-sm"
+                                                            placeholder="Nombre..."
+                                                        />
+                                                    </div>
+                                                </div>
+                                            )}
+
+                                            {method.type === 'Zelle' && (
+                                                <div className="grid grid-cols-2 gap-3">
+                                                    <div className="space-y-1 col-span-2">
+                                                        <label className="text-[10px] font-black text-slate-400 uppercase ml-1">Correo Zelle</label>
+                                                        <input
+                                                            type="email"
+                                                            value={method.email}
+                                                            onChange={(e) => updatePaymentMethod(idx, 'email', e.target.value)}
+                                                            className="w-full bg-white border border-slate-200 p-3 rounded-xl outline-none focus:border-primary font-bold text-slate-700 text-sm"
+                                                            placeholder="ejemplo@correo.com"
+                                                        />
+                                                    </div>
+                                                    <div className="space-y-1 col-span-2">
+                                                        <label className="text-[10px] font-black text-slate-400 uppercase ml-1">Titular</label>
+                                                        <input
+                                                            type="text"
+                                                            value={method.owner}
+                                                            onChange={(e) => updatePaymentMethod(idx, 'owner', e.target.value)}
+                                                            className="w-full bg-white border border-slate-200 p-3 rounded-xl outline-none focus:border-primary font-bold text-slate-700 text-sm"
+                                                            placeholder="Nombre completo"
+                                                        />
+                                                    </div>
+                                                </div>
+                                            )}
+
+                                            {method.type !== 'Pago Móvil' && method.type !== 'Zelle' && method.type !== 'Efectivo' && (
+                                                <div className="space-y-1">
+                                                    <label className="text-[10px] font-black text-slate-400 uppercase ml-1">Instrucciones / Datos</label>
+                                                    <textarea
+                                                        value={method.note}
+                                                        onChange={(e) => updatePaymentMethod(idx, 'note', e.target.value)}
+                                                        className="w-full bg-white border border-slate-200 p-3 rounded-xl outline-none focus:border-primary font-bold text-slate-700 text-sm min-h-[100px]"
+                                                        placeholder="Escribe los detalles para que el cliente pueda pagar..."
+                                                    />
+                                                </div>
+                                            )}
+
+                                            {method.type === 'Efectivo' && (
+                                                <p className="text-xs text-slate-500 italic ml-1">
+                                                    Se indicará al cliente que el pago será recibido en el local o al repartidor.
+                                                </p>
+                                            )}
                                         </div>
                                     </div>
                                 ))
