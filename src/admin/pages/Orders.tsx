@@ -1397,7 +1397,20 @@ export default function Orders() {
                         <div className="flex-1 overflow-y-auto pr-2 space-y-6 scrollbar-hide">
                             {/* Resumen de Orden */}
                             <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100">
-                                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">Resumen del Pedido</p>
+                                <div className="flex justify-between items-center mb-3">
+                                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Resumen del Pedido</p>
+                                    <button 
+                                        onClick={() => { 
+                                            setSelectedOrderForEdit(selectedOrderForAccept); 
+                                            setEditOrderItems([...selectedOrderForAccept.items]); 
+                                            setEditOrderNote((selectedOrderForAccept as any).orderNote || ''); 
+                                            setEditModalOpen(true); 
+                                        }}
+                                        className="text-[10px] font-black text-primary hover:text-primary-dark transition-colors flex items-center gap-1"
+                                    >
+                                        <Edit className="w-3 h-3" /> Editar
+                                    </button>
+                                </div>
                                 <div className="space-y-2">
                                     {selectedOrderForAccept.items.map((item, idx) => (
                                         <div key={idx} className="flex justify-between text-sm">

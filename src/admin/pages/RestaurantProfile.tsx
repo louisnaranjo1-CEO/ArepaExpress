@@ -117,6 +117,10 @@ export default function RestaurantProfile() {
     const [globalCategories, setGlobalCategories] = useState<any[]>([]);
     const [hasCashea, setHasCashea] = useState(false);
     const [casheaIcon, setCasheaIcon] = useState<string | null>(null);
+    const [casheaQrUrl, setCasheaQrUrl] = useState('');
+    const [casheaQrFile, setCasheaQrFile] = useState<File | null>(null);
+    const [casheaQrPreviewUrl, setCasheaQrPreviewUrl] = useState<string | null>(null);
+    const [uploadingCasheaQr, setUploadingCasheaQr] = useState(false);
     const [businessType, setBusinessType] = useState<'restaurant' | 'hotel'>('restaurant');
 
     // 2x3 Config
@@ -151,6 +155,7 @@ export default function RestaurantProfile() {
                     setCategoryId(data.categoryId || '');
                     setSubCategoryId(data.subCategoryId || '');
                     setHasCashea(data.hasCashea || false);
+                    setCasheaQrUrl(data.casheaQrUrl || '');
                     setHasTwoByThree(data.hasTwoByThree || false);
                     setTwoByThreeInitial(data.twoByThreeInitial || 50);
                     setTwoByThreeInstallments(data.twoByThreeInstallments || 2);
@@ -229,6 +234,18 @@ export default function RestaurantProfile() {
                 setCoverPreviewUrl(null);
                 setUploadingCover(false);
             }
+            
+            let currentCasheaQrUrl = casheaQrUrl;
+            if (casheaQrFile) {
+                setUploadingCasheaQr(true);
+                const casheaStorageRef = ref(storage, `restaurants/${user.uid}/cashea_qr_${Date.now()}`);
+                const snapshot = await uploadBytes(casheaStorageRef, casheaQrFile);
+                currentCasheaQrUrl = await getDownloadURL(snapshot.ref);
+                setCasheaQrUrl(currentCasheaQrUrl);
+                setCasheaQrFile(null);
+                setCasheaQrPreviewUrl(null);
+                setUploadingCasheaQr(false);
+            }
 
             const docRef = doc(db, 'restaurants', user.uid);
             await updateDoc(docRef, {
@@ -248,6 +265,7 @@ export default function RestaurantProfile() {
                 categoryId,
                 subCategoryId,
                 hasCashea,
+                casheaQrUrl: currentCasheaQrUrl,
                 hasTwoByThree,
                 twoByThreeInitial,
                 twoByThreeInstallments,
@@ -310,6 +328,14 @@ export default function RestaurantProfile() {
         if (file) {
             setCoverFile(file);
             setCoverPreviewUrl(URL.createObjectURL(file));
+        }
+    };
+
+    const handleCasheaQrChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (file) {
+            setCasheaQrFile(file);
+            setCasheaQrPreviewUrl(URL.createObjectURL(file));
         }
     };
 
@@ -775,28 +801,67 @@ export default function RestaurantProfile() {
                             </div>
                         </div>
 
-                        <div
-                            className={`flex items-center justify-between p-4 rounded-2xl cursor-pointer group transition-all border-2 ${hasCashea ? 'bg-yellow-50 border-yellow-200 shadow-lg shadow-yellow-100/50' : 'bg-slate-50 border-transparent hover:border-slate-100'}`}
-                            onClick={() => setHasCashea(!hasCashea)}
-                        >
-                            <div className="flex items-center gap-3">
-                                <div className={`w-12 h-12 rounded-xl flex items-center justify-center transition-all ${hasCashea ? 'bg-yellow-400 shadow-lg shadow-yellow-400/30 ring-4 ring-yellow-500/10' : 'bg-white shadow-sm border border-slate-100'}`}>
-                                    <img
-                                        src={casheaIcon || "https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/logo%20cashea.png?alt=media&token=5b266100-3323-41bb-a5a4-23957ce678a1"}
-                                        className={`w-8 h-8 object-contain transition-all ${hasCashea ? 'scale-110' : ''}`}
-                                        alt="Cashea"
-                                    />
+                        <div className="space-y-4">
+                            <div
+                                className={`flex items-center justify-between p-4 rounded-2xl cursor-pointer group transition-all border-2 ${hasCashea ? 'bg-yellow-50 border-yellow-200 shadow-lg shadow-yellow-100/50' : 'bg-slate-50 border-transparent hover:border-slate-100'}`}
+                                onClick={() => setHasCashea(!hasCashea)}
+                            >
+                                <div className="flex items-center gap-3">
+                                    <div className={`w-12 h-12 rounded-xl flex items-center justify-center transition-all ${hasCashea ? 'bg-yellow-400 shadow-lg shadow-yellow-400/30 ring-4 ring-yellow-500/10' : 'bg-white shadow-sm border border-slate-100'}`}>
+                                        <img
+                                            src={casheaIcon || "https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/logo%20cashea.png?alt=media&token=5b266100-3323-41bb-a5a4-23957ce678a1"}
+                                            className={`w-8 h-8 object-contain transition-all ${hasCashea ? 'scale-110' : ''}`}
+                                            alt="Cashea"
+                                        />
+                                    </div>
+                                    <div>
+                                        <p className={`font-black tracking-tight leading-none mb-1 ${hasCashea ? 'text-yellow-900' : 'text-slate-700'}`}>Servicio Cashea</p>
+                                        <p className={`text-[10px] font-bold ${hasCashea ? 'text-amber-700' : 'text-slate-400'}`}>
+                                            {hasCashea ? 'Insignia habilitada en el perfil' : 'Habilitar distintivo de pago por cuotas'}
+                                        </p>
+                                    </div>
                                 </div>
-                                <div>
-                                    <p className={`font-black tracking-tight leading-none mb-1 ${hasCashea ? 'text-yellow-900' : 'text-slate-700'}`}>Servicio Cashea</p>
-                                    <p className={`text-[10px] font-bold ${hasCashea ? 'text-amber-700' : 'text-slate-400'}`}>
-                                        {hasCashea ? 'Insignia habilitada en el perfil' : 'Habilitar distintivo de pago por cuotas'}
-                                    </p>
+                                <div className={`w-12 h-6 rounded-full relative transition-colors ${hasCashea ? 'bg-yellow-400' : 'bg-slate-200'}`}>
+                                    <div className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow-sm transition-all ${hasCashea ? 'left-7' : 'left-1'}`}></div>
                                 </div>
                             </div>
-                            <div className={`w-12 h-6 rounded-full relative transition-colors ${hasCashea ? 'bg-yellow-400' : 'bg-slate-200'}`}>
-                                <div className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow-sm transition-all ${hasCashea ? 'left-7' : 'left-1'}`}></div>
-                            </div>
+                            
+                            {hasCashea && (
+                                <div className="space-y-3 bg-white p-4 rounded-2xl border border-yellow-200">
+                                    <label className="text-sm font-black text-slate-400 uppercase ml-2">Sube tu Código QR de Cashea</label>
+                                    <div className="flex items-center gap-4">
+                                        <div className="relative w-24 h-24 rounded-2xl bg-white border-2 border-dashed border-slate-200 flex items-center justify-center overflow-hidden group">
+                                            {(casheaQrPreviewUrl || casheaQrUrl) ? (
+                                                <img
+                                                    src={casheaQrPreviewUrl || casheaQrUrl}
+                                                    alt="Cashea QR"
+                                                    className="w-full h-full object-contain p-2"
+                                                />
+                                            ) : (
+                                                <div className="text-slate-300">
+                                                    <ImageIcon className="w-8 h-8" />
+                                                </div>
+                                            )}
+                                            <input
+                                                type="file"
+                                                accept="image/*"
+                                                onChange={handleCasheaQrChange}
+                                                className="absolute inset-0 opacity-0 cursor-pointer"
+                                                disabled={uploadingCasheaQr}
+                                            />
+                                            {uploadingCasheaQr && (
+                                                <div className="absolute inset-0 bg-white/80 backdrop-blur-sm flex items-center justify-center rounded-2xl z-10 pointer-events-none">
+                                                    <Loader2 className="w-6 h-6 text-slate-900 animate-spin" />
+                                                </div>
+                                            )}
+                                            <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
+                                                <Camera className="w-6 h-6 text-white" />
+                                            </div>
+                                        </div>
+                                        <p className="text-xs text-slate-500 italic flex-1">Este QR se mostrará automáticamente en el Chat a los clientes que soliciten pago por Cashea.</p>
+                                    </div>
+                                </div>
+                            )}
                         </div>
 
                         {/* 2x3 Config */}

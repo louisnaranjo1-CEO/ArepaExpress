@@ -35,7 +35,23 @@ export default function OrderChatWindow({
   const [messages, setMessages] = useState<Message[]>([]);
   const [newMessage, setNewMessage] = useState('');
   const [sending, setSending] = useState(false);
+  const [casheaQrUrl, setCasheaQrUrl] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    // Fetch cashea QR directly from restaurant profile
+    const fetchRestaurantData = async () => {
+      if (!restaurantId) return;
+      try {
+        const { getDoc, doc } = await import('firebase/firestore');
+        const resSnap = await getDoc(doc(db, 'restaurants', restaurantId));
+        if (resSnap.exists() && resSnap.data().casheaQrUrl) {
+          setCasheaQrUrl(resSnap.data().casheaQrUrl);
+        }
+      } catch (e) { console.error("Error fetching cashea QR", e); }
+    };
+    fetchRestaurantData();
+  }, [restaurantId]);
 
   useEffect(() => {
     const q = query(
@@ -176,7 +192,13 @@ export default function OrderChatWindow({
             📸 Pedir Capture
           </button>
           <button 
-            onClick={() => handleSendMessage("Puedes realizar tu pago a través de Cashea. Si necesitas nuestro QR, avísanos para enviártelo o búscanos directo en el app.")}
+            onClick={() => {
+              if (casheaQrUrl) {
+                handleSendMessage("Puedes realizar tu pago a través de Cashea escaneando el siguiente QR.", casheaQrUrl);
+              } else {
+                handleSendMessage("Puedes realizar tu pago a través de Cashea. Búscanos directo en el app.");
+              }
+            }}
             className="shrink-0 bg-slate-100 border border-slate-200 px-4 py-2 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-200 active:scale-95 transition-all"
           >
             🛍️ Cashea

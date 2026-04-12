@@ -1279,7 +1279,20 @@ ESTADO: ${order.status.toUpperCase()}
                         <div className="bg-slate-50 p-4 rounded-2xl mb-6">
                             <div className="flex justify-between items-center mb-2">
                                 <span className="text-sm font-bold text-slate-500">Subtotal:</span>
-                                <span className="font-bold text-slate-700">${selectedOrder.subtotal.toFixed(2)}</span>
+                                <div className="flex items-center gap-3">
+                                    <button 
+                                        onClick={() => { 
+                                            setEditOrderItems([...selectedOrder.items]); 
+                                            setEditOrderNote((selectedOrder as any).orderNote || ''); 
+                                            setShowPOS(true); 
+                                            setCloseSaleModalOpen(false); 
+                                        }}
+                                        className="text-[10px] font-black text-primary hover:text-primary-dark transition-colors flex items-center gap-1"
+                                    >
+                                        <Edit className="w-3 h-3" /> Editar
+                                    </button>
+                                    <span className="font-bold text-slate-700">${selectedOrder.subtotal.toFixed(2)}</span>
+                                </div>
                             </div>
                             {selectedOrder.deliveryFee && selectedOrder.deliveryFee > 0 ? (
                                 <div className="flex justify-between items-center mb-2">
