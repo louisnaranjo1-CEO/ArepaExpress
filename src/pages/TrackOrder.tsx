@@ -350,7 +350,6 @@ export default function TrackOrder() {
             toast.error("Error al actualizar vehículo");
         }
     };
-    };
 
     const handleProceedToDeliveryPayment = async () => {
         if (!orderId) return;
