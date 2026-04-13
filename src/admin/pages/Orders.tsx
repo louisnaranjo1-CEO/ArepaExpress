@@ -67,6 +67,12 @@ export default function Orders() {
     const [proofUploadFiles, setProofUploadFiles] = useState<Record<string, File>>({});
     const [isUploadingProof, setIsUploadingProof] = useState<Record<string, boolean>>({});
 
+    // Payment Verification Modal State
+    const [verifyModalOpen, setVerifyModalOpen] = useState(false);
+    const [selectedOrderForVerify, setSelectedOrderForVerify] = useState<Order | null>(null);
+    const [isVerifying, setIsVerifying] = useState(false);
+    const [verificationSuccess, setVerificationSuccess] = useState(false);
+
     // Edit Order Modal State
     const [editModalOpen, setEditModalOpen] = useState(false);
     const [selectedOrderForEdit, setSelectedOrderForEdit] = useState<Order | null>(null);
@@ -661,33 +667,82 @@ export default function Orders() {
     };
 
     const handleVerifyPayment = async (orderId: string) => {
-        try {
-            const orderRef = doc(db, 'orders', orderId);
-            const orderTemp = orders.find(o => o.id === orderId);
-            await updateDoc(orderRef, { 
-                status: 'preparing',
-                paymentStatus: 'paid',
-                verifiedAt: serverTimestamp()
-            });
-            toast.success("Pago verificado. Orden enviada a cocina.");
-            
-            if (orderTemp) {
-                await handlePrintOrder(orderId, orderTemp as any);
+        const order = orders.find(o => o.id === orderId);
+        if (!order) return;
+        setSelectedOrderForVerify(order);
+        setVerifyModalOpen(true);
+        setVerificationSuccess(false);
+    };
 
-                // Si hay un piloto asignado, le enviamos una alerta de que el pago fue verificado
-                if (orderTemp.deliveryDriverId) {
-                    await addDoc(collection(db, `orders/${orderId}/messages`), {
-                        text: "🔔 *Pago verificado.* El cliente ha pagado el pedido y el restaurante está preparando. Piloto, mantente atento para el despacho.",
-                        senderId: user.uid,
-                        senderName: 'Sistema',
-                        senderRole: 'admin',
-                        createdAt: serverTimestamp()
+    const handleConfirmPayment = async () => {
+        if (!selectedOrderForVerify) return;
+        setIsVerifying(true);
+        try {
+            const orderRef = doc(db, 'orders', selectedOrderForVerify.id);
+            const isDeliveryVerification = selectedOrderForVerify.status === 'verificando_pago_delivery';
+            
+            if (isDeliveryVerification) {
+                // Verificación de Pago de DELIVERY
+                await updateDoc(orderRef, { 
+                    status: 'buscando_piloto',
+                    deliveryPaymentStatus: 'paid',
+                    deliveryVerifiedAt: serverTimestamp()
+                });
+
+                // Otorgar puntos fijos por delivery (10 puntos)
+                if (selectedOrderForVerify.userId && selectedOrderForVerify.userId !== 'pos_customer') {
+                    const userRef = doc(db, 'users', selectedOrderForVerify.userId);
+                    await updateDoc(userRef, {
+                        points: increment(10),
+                        [`restaurantPoints.${rid}`]: increment(10)
                     });
                 }
+
+                toast.success("Pago de delivery acreditado. Buscando piloto...");
+            } else {
+                // Verificación de Pago de RESTAURANTE
+                const nextStatus = (selectedOrderForVerify.source !== 'waiter' && selectedOrderForVerify.deliveryAddress !== 'PickUp' && selectedOrderForVerify.type !== 'takeout') 
+                    ? 'awaiting_delivery_payment' 
+                    : 'preparing';
+
+                await updateDoc(orderRef, { 
+                    status: nextStatus,
+                    paymentStatus: 'paid',
+                    restaurantPaymentStatus: 'paid',
+                    verifiedAt: serverTimestamp()
+                });
+
+                // Otorgar puntos por consumo (2.5 por cada $)
+                if (selectedOrderForVerify.userId && selectedOrderForVerify.userId !== 'pos_customer') {
+                    const pointsToAdd = selectedOrderForVerify.total * 2.5;
+                    const userRef = doc(db, 'users', selectedOrderForVerify.userId);
+                    await updateDoc(userRef, {
+                        points: increment(pointsToAdd),
+                        [`restaurantPoints.${rid}`]: increment(pointsToAdd)
+                    });
+                }
+
+                if (nextStatus === 'preparing') {
+                    await handlePrintOrder(selectedOrderForVerify.id, selectedOrderForVerify as any);
+                }
+
+                toast.success("Pago de restaurante acreditado.");
             }
+
+            setVerificationSuccess(true);
+            
+            // Cerrar modal automáticamente tras 2 segundos
+            setTimeout(() => {
+                setVerifyModalOpen(false);
+                setSelectedOrderForVerify(null);
+                setVerificationSuccess(false);
+            }, 2000);
+
         } catch (error) {
             console.error("Error verifying payment:", error);
-            toast.error("Error al verificar el pago");
+            toast.error("Error al procesar la acreditación");
+        } finally {
+            setIsVerifying(false);
         }
     };
 
@@ -875,13 +930,10 @@ export default function Orders() {
             o.status === 'calling' ||
             o.status === 'awaiting_payment' ||
             o.status === 'action_required' ||
-            o.status === 'pending_verification'
+            o.status === 'pending_verification' ||
+            o.status === 'preparing'
         ).length,
-        preparing: orders.filter(o => 
-            o.status === 'preparing' || 
-            o.status === 'buscando_piloto'
-        ).length,
-        delivering: orders.filter(o => o.status === 'delivering').length,
+        delivering: orders.filter(o => o.status === 'delivering' || o.status === 'buscando_piloto' || o.status === 'conductor_asignado' || o.status === 'en_camino').length,
         delivered: orders.filter(o => o.status === 'delivered').length,
         rejected: orders.filter(o => o.status === 'rejected').length,
         tables: tables.length
@@ -895,11 +947,16 @@ export default function Orders() {
                 o.status === 'calling' ||
                 o.status === 'awaiting_payment' ||
                 o.status === 'action_required' ||
-                o.status === 'pending_verification'
-            );
-            if (activeTab === 'preparing') return (
+                o.status === 'pending_verification' ||
                 o.status === 'preparing' ||
-                o.status === 'buscando_piloto'
+                o.status === 'awaiting_delivery_payment' ||
+                o.status === 'verificando_pago_delivery'
+            );
+            if (activeTab === 'delivering') return (
+                o.status === 'delivering' ||
+                o.status === 'buscando_piloto' ||
+                o.status === 'conductor_asignado' ||
+                o.status === 'en_camino'
             );
             if (activeTab === 'tables') return false; // Handled by renderTablesView
             return o.status === activeTab;
@@ -1164,13 +1221,17 @@ export default function Orders() {
                         >
                             <Bell className="w-5 h-5" />
                         </button>
-                        {order.status === 'pending_verification' ? (
+                        {order.status === 'pending_verification' || order.status === 'verificando_pago_delivery' ? (
                             <button
                                 onClick={() => handleVerifyPayment(order.id)}
                                 className="flex-1 bg-primary text-slate-900 py-4 rounded-2xl font-black shadow-lg shadow-primary/20 hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-2"
                             >
-                                <CheckCircle className="w-5 h-5" /> Aceptar Pago
+                                <CheckCircle className="w-5 h-5" /> {order.status === 'verificando_pago_delivery' ? 'Validar Delivery' : 'Validar Pago'}
                             </button>
+                        ) : order.status === 'awaiting_delivery_payment' ? (
+                            <div className="flex-1 bg-slate-100 text-slate-400 py-4 rounded-2xl font-black flex items-center justify-center gap-2">
+                                <Clock className="w-5 h-5" /> Esperando Pago Delivery
+                            </div>
                         ) : !(order as any).stockConfirmed ? (
                             <button
                                 onClick={() => handleConfirmStock(order.id)}
@@ -1724,6 +1785,129 @@ export default function Orders() {
                     </div>
                 </div>
             )}
+
+            {/* Payment Verification Modal */}
+            <AnimatePresence>
+                {verifyModalOpen && selectedOrderForVerify && (
+                    <motion.div 
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        className="fixed inset-0 z-[150] flex items-center justify-center bg-slate-900/60 backdrop-blur-md px-4"
+                    >
+                        <motion.div 
+                            initial={{ scale: 0.9, y: 20 }}
+                            animate={{ scale: 1, y: 0 }}
+                            exit={{ scale: 0.9, y: 20 }}
+                            className="bg-white rounded-[40px] p-8 w-full max-w-lg shadow-2xl relative overflow-hidden"
+                        >
+                            {verificationSuccess ? (
+                                <div className="py-12 flex flex-col items-center justify-center text-center animate-in zoom-in-50 duration-500">
+                                    <div className="w-24 h-24 bg-emerald-500 text-white rounded-full flex items-center justify-center mb-6 shadow-xl shadow-emerald-500/20">
+                                        <CheckCircle className="w-16 h-16" />
+                                    </div>
+                                    <h3 className="text-4xl font-black text-slate-900 mb-2">PAGO ACREDITADO</h3>
+                                    <p className="text-slate-500 font-bold text-lg">El pedido ha sido procesado con éxito</p>
+                                    <div className="mt-8 px-6 py-3 bg-emerald-50 text-emerald-600 rounded-2xl font-black text-sm border border-emerald-100 italic">
+                                        Puntos asignados al cliente automáticamente ✨
+                                    </div>
+                                </div>
+                            ) : (
+                                <>
+                                    <div className="flex justify-between items-start mb-8">
+                                        <div>
+                                            <h3 className="text-2xl font-black text-slate-900 tracking-tight">
+                                                {selectedOrderForVerify.status === 'verificando_pago_delivery' ? 'Validar Pago Delivery' : 'Validar Pago Restaurante'}
+                                            </h3>
+                                            <p className="text-slate-500 font-bold text-xs uppercase tracking-widest mt-1">Revisión de Comprobante</p>
+                                        </div>
+                                        <button 
+                                            onClick={() => setVerifyModalOpen(false)}
+                                            className="bg-slate-50 p-2 rounded-2xl text-slate-400 hover:text-slate-600 transition-colors"
+                                        >
+                                            <X className="w-6 h-6" />
+                                        </button>
+                                    </div>
+
+                                    <div className="space-y-6">
+                                        {/* Reference Info */}
+                                        <div className="p-6 bg-slate-50 rounded-[32px] border border-slate-100">
+                                            <div className="flex items-center gap-4 mb-4">
+                                                <div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center shadow-sm text-slate-400">
+                                                    <CreditCard className="w-6 h-6" />
+                                                </div>
+                                                <div>
+                                                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Referencia reported</p>
+                                                    <p className="text-xl font-black text-slate-900">
+                                                        #{selectedOrderForVerify.status === 'verificando_pago_delivery' ? selectedOrderForVerify.deliveryPaymentReference : selectedOrderForVerify.paymentReference || 'N/A'}
+                                                    </p>
+                                                </div>
+                                            </div>
+                                            
+                                            <div className="flex items-center gap-4">
+                                                <div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center shadow-sm text-slate-400">
+                                                    <DollarSign className="w-6 h-6" />
+                                                </div>
+                                                <div>
+                                                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Monto a Verificar</p>
+                                                    <p className="text-xl font-black text-emerald-600">
+                                                        ${selectedOrderForVerify.status === 'verificando_pago_delivery' ? selectedOrderForVerify.deliveryFee?.toFixed(2) : selectedOrderForVerify.total?.toFixed(2)}
+                                                    </p>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {/* Proof Image */}
+                                        <div className="relative group">
+                                            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 ml-1">Comprobante (Captura)</p>
+                                            <div 
+                                                className="w-full h-64 rounded-[32px] bg-slate-100 border-2 border-slate-200 overflow-hidden cursor-zoom-in"
+                                                onClick={() => window.open(selectedOrderForVerify.status === 'verificando_pago_delivery' ? selectedOrderForVerify.deliveryPaymentProofUrl : selectedOrderForVerify.paymentProofUrl, '_blank')}
+                                            >
+                                                {(selectedOrderForVerify.status === 'verificando_pago_delivery' ? selectedOrderForVerify.deliveryPaymentProofUrl : selectedOrderForVerify.paymentProofUrl) ? (
+                                                    <img 
+                                                        src={selectedOrderForVerify.status === 'verificando_pago_delivery' ? selectedOrderForVerify.deliveryPaymentProofUrl : selectedOrderForVerify.paymentProofUrl} 
+                                                        alt="Comprobante de pago" 
+                                                        className="w-full h-full object-cover hover:scale-105 transition-transform duration-500"
+                                                    />
+                                                ) : (
+                                                    <div className="w-full h-full flex flex-col items-center justify-center text-slate-300">
+                                                        <ImageIcon className="w-12 h-12 mb-2" />
+                                                        <p className="font-bold text-sm">Sin imagen adjunta</p>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+
+                                        {/* Actions */}
+                                        <div className="grid grid-cols-2 gap-4 pt-4">
+                                            <button
+                                                onClick={() => {
+                                                    if(window.confirm("¿Seguro que deseas rechazar este pago?")) {
+                                                        const isDelivery = selectedOrderForVerify.status === 'verificando_pago_delivery';
+                                                        updateStatus(selectedOrderForVerify.id, isDelivery ? 'awaiting_delivery_payment' : 'pendiente_pago');
+                                                        setVerifyModalOpen(false);
+                                                    }
+                                                }}
+                                                className="bg-slate-100 text-slate-500 py-4 rounded-2xl font-black hover:bg-red-50 hover:text-red-500 transition-all"
+                                            >
+                                                Rechazar
+                                            </button>
+                                            <button
+                                                onClick={handleConfirmPayment}
+                                                disabled={isVerifying}
+                                                className="bg-primary text-slate-900 py-4 rounded-2xl font-black shadow-xl shadow-primary/20 hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+                                            >
+                                                {isVerifying ? <Loader2 className="w-5 h-5 animate-spin" /> : <><CheckCircle className="w-5 h-5" /> Aprobar</>}
+                                            </button>
+                                        </div>
+                                    </div>
+                                </>
+                            )}
+                        </motion.div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
 
             {/* Edit Order Modal */}
             {editModalOpen && selectedOrderForEdit && (

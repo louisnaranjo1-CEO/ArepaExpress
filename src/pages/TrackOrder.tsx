@@ -39,6 +39,12 @@ export default function TrackOrder() {
         addressReference: ''
     });
 
+    // Platform Finance Config
+    const [platformConfig, setPlatformConfig] = useState<any>(null);
+    const [deliveryPaymentReference, setDeliveryPaymentReference] = useState('');
+    const [deliveryPaymentProofFile, setDeliveryPaymentProofFile] = useState<File | null>(null);
+    const [isUploadingDeliveryReport, setIsUploadingDeliveryReport] = useState(false);
+
     useEffect(() => {
         if (order) {
             setEditDelivery({
@@ -58,6 +64,13 @@ export default function TrackOrder() {
 
     useEffect(() => {
         if (!orderId) return;
+
+        // Fetch Platform Config for Delivery Payment
+        getDoc(doc(db, 'system_configs', 'finances')).then(snap => {
+            if (snap.exists()) {
+                setPlatformConfig(snap.data());
+            }
+        });
 
         const unsubscribe = onSnapshot(doc(db, 'orders', orderId), async (snapshot) => {
             if (snapshot.exists()) {
@@ -259,6 +272,50 @@ export default function TrackOrder() {
         }
     };
 
+    const handleReportDeliveryPayment = async () => {
+        if(!orderId || !order) return;
+        
+        if (!deliveryPaymentReference && !deliveryPaymentProofFile) {
+            toast.error('Por favor ingresa un número de referencia o adjunta un capture de pago.');
+            return;
+        }
+
+        setIsUploadingDeliveryReport(true);
+        try {
+            const updates: any = {
+                deliveryPaymentClientConfirmed: true,
+                status: 'verificando_pago_delivery',
+                deliveryPaymentReference: deliveryPaymentReference
+            };
+
+            if (deliveryPaymentProofFile) {
+                const storage = getStorage();
+                const fileRef = ref(storage, `delivery_payment_proofs/${orderId}_${Date.now()}`);
+                await uploadBytes(fileRef, deliveryPaymentProofFile);
+                const url = await getDownloadURL(fileRef);
+                updates.deliveryPaymentProofUrl = url;
+            }
+
+            await updateDoc(doc(db, 'orders', orderId), updates);
+
+            // Enviar mensaje automático al chat
+            await addDoc(collection(db, `orders/${orderId}/messages`), {
+                text: "🚚 *He realizado el pago del delivery.* Favor validar para iniciar búsqueda de piloto.",
+                senderId: user?.uid || 'guest',
+                senderName: order.userName || 'Cliente',
+                senderRole: 'client',
+                createdAt: serverTimestamp()
+            });
+
+            toast.success('Información de pago del delivery enviada');
+        } catch (error) {
+            console.error(error);
+            toast.error('Ocurrió un error al enviar el reporte de pago');
+        } finally {
+            setIsUploadingDeliveryReport(false);
+        }
+    };
+
     const handleProceedToDeliveryPayment = async () => {
         if (!orderId) return;
         try {
@@ -285,8 +342,11 @@ export default function TrackOrder() {
             case 'pendiente_pago': return 1;
             case 'pending_verification': return 1;
             case 'awaiting_payment': return 1;
+            case 'awaiting_delivery_payment': return 1;
+            case 'verificando_pago_delivery': return 1;
             case 'preparing': return 2;
-            case 'finding_driver': return 2; // finding driver is while preparing
+            case 'buscando_piloto': return 2;
+            case 'finding_driver': return 2;
             case 'driver_assigned': return 2;
             case 'in_transit': return 3;
             case 'completed': return 4;
@@ -797,6 +857,175 @@ export default function TrackOrder() {
                         )}
                     </div>
                 ) : null}
+
+                {/* Delivery Payment Section (Platform Data) */}
+                {(order.status === 'awaiting_delivery_payment' || order.status === 'verificando_pago_delivery') && (
+                    <div className="bg-white rounded-3xl p-6 shadow-xl shadow-slate-200/50 border-2 border-primary/20 animate-in slide-in-from-bottom-4 duration-500 overflow-hidden">
+                        <div className="flex items-center gap-3 mb-6">
+                            <div className="w-12 h-12 bg-emerald-50 text-emerald-500 rounded-2xl flex items-center justify-center">
+                                <Bike className="w-6 h-6" />
+                            </div>
+                            <div>
+                                <h3 className="text-lg font-black text-slate-900">Pago del Delivery</h3>
+                                <p className="text-slate-500 text-[10px] font-black uppercase tracking-wider text-emerald-600 leading-none italic">
+                                    {order.status === 'verificando_pago_delivery' ? "Verificando tu reporte..." : "Paga el envío para activar el radar de pilotos"}
+                                </p>
+                            </div>
+                        </div>
+
+                        {order.status === 'verificando_pago_delivery' ? (
+                            <div className="flex flex-col items-center text-center py-6 space-y-4">
+                                <div className="relative w-20 h-20 flex items-center justify-center">
+                                    <div className="absolute inset-0 rounded-full bg-emerald-100 animate-ping opacity-30"></div>
+                                    <div className="w-16 h-16 bg-emerald-50 text-emerald-500 rounded-full flex items-center justify-center shadow-lg">
+                                        <Loader2 className="w-8 h-8 animate-spin" />
+                                    </div>
+                                </div>
+                                <h3 className="text-lg font-black text-slate-900 mb-1">Casi terminamos...</h3>
+                                <p className="text-slate-500 text-sm font-medium px-4">Estamos validando el pago del servicio de delivery. En segundos activaremos la búsqueda de piloto.</p>
+                            </div>
+                        ) : (
+                            <div className="space-y-6">
+                                {/* Amount to Pay */}
+                                <div className="bg-slate-900 rounded-2xl p-5 text-center shadow-lg">
+                                    <p className="text-[10px] font-black text-white/40 uppercase tracking-[0.2em] mb-1">Monto del Delivery</p>
+                                    <div className="text-2xl font-black text-primary">
+                                        <DualPrice usdAmount={order.deliveryFee || 0} showDivider={false} />
+                                    </div>
+                                </div>
+
+                                {/* Platform Payment Info */}
+                                {platformConfig?.paymentMethods && (
+                                    <div className="bg-slate-50 rounded-2xl p-4 border border-slate-100">
+                                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">Pagar al Sistema Arepa Express</p>
+                                        <div className="space-y-4">
+                                            {/* Pago Móvil Platform */}
+                                            {platformConfig.paymentMethods.pagoMovil?.active && (
+                                                <div className="flex flex-col gap-1">
+                                                    <span className="text-xs font-black text-slate-800 flex items-center gap-2">
+                                                        <span className="w-2 h-2 rounded-full bg-primary"></span> 
+                                                        Pago Móvil
+                                                    </span>
+                                                    <div className="mt-1 grid grid-cols-2 gap-3">
+                                                        <div onClick={() => { navigator.clipboard.writeText(platformConfig.paymentMethods.pagoMovil.bank); toast.success('Banco copiado'); }} className="group cursor-pointer active:scale-95 transition-all">
+                                                            <p className="text-[9px] font-bold text-slate-400 uppercase">Banco</p>
+                                                            <p className="text-xs font-black text-slate-700">{platformConfig.paymentMethods.pagoMovil.bank}</p>
+                                                        </div>
+                                                        <div onClick={() => { navigator.clipboard.writeText(platformConfig.paymentMethods.pagoMovil.phone); toast.success('Teléfono copiado'); }} className="group cursor-pointer active:scale-95 transition-all">
+                                                            <p className="text-[9px] font-bold text-slate-400 uppercase">Teléfono</p>
+                                                            <p className="text-xs font-black text-slate-700">{platformConfig.paymentMethods.pagoMovil.phone}</p>
+                                                        </div>
+                                                        <div onClick={() => { navigator.clipboard.writeText(platformConfig.paymentMethods.pagoMovil.idf); toast.success('RIF copiado'); }} className="col-span-2 group cursor-pointer active:scale-95 transition-all">
+                                                            <p className="text-[9px] font-bold text-slate-400 uppercase">RIF</p>
+                                                            <p className="text-xs font-black text-slate-700">{platformConfig.paymentMethods.pagoMovil.idf}</p>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            )}
+
+                                            {/* Zelle Platform */}
+                                            {platformConfig.paymentMethods.zelle?.active && (
+                                                <div className="flex flex-col gap-1 border-t border-slate-200 pt-3">
+                                                    <span className="text-xs font-black text-slate-800 flex items-center gap-2">
+                                                        <span className="w-2 h-2 rounded-full bg-indigo-500"></span> 
+                                                        Zelle
+                                                    </span>
+                                                    <div className="mt-1 grid grid-cols-1 gap-3">
+                                                        <div onClick={() => { navigator.clipboard.writeText(platformConfig.paymentMethods.zelle.email); toast.success('Correo copiado'); }} className="group cursor-pointer active:scale-95 transition-all">
+                                                            <p className="text-[9px] font-bold text-slate-400 uppercase">Correo</p>
+                                                            <p className="text-xs font-black text-slate-700">{platformConfig.paymentMethods.zelle.email}</p>
+                                                        </div>
+                                                        <div onClick={() => { navigator.clipboard.writeText(platformConfig.paymentMethods.zelle.name); toast.success('Titular copiado'); }} className="group cursor-pointer active:scale-95 transition-all">
+                                                            <p className="text-[9px] font-bold text-slate-400 uppercase">Titular</p>
+                                                            <p className="text-xs font-black text-slate-700">{platformConfig.paymentMethods.zelle.name}</p>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            )}
+
+                                            {/* Transfer Platform */}
+                                            {platformConfig.paymentMethods.transfer?.active && (
+                                                <div className="flex flex-col gap-1 border-t border-slate-200 pt-3">
+                                                    <span className="text-xs font-black text-slate-800 flex items-center gap-2">
+                                                        <span className="w-2 h-2 rounded-full bg-blue-500"></span> 
+                                                        Transferencia
+                                                    </span>
+                                                    <div className="mt-1 grid grid-cols-2 gap-3">
+                                                        <div onClick={() => { navigator.clipboard.writeText(platformConfig.paymentMethods.transfer.bank); toast.success('Banco copiado'); }} className="group cursor-pointer active:scale-95 transition-all">
+                                                            <p className="text-[9px] font-bold text-slate-400 uppercase">Banco</p>
+                                                            <p className="text-xs font-black text-slate-700">{platformConfig.paymentMethods.transfer.bank}</p>
+                                                        </div>
+                                                        <div onClick={() => { navigator.clipboard.writeText(platformConfig.paymentMethods.transfer.accountNumber); toast.success('Número de cuenta copiado'); }} className="group cursor-pointer active:scale-95 transition-all">
+                                                            <p className="text-[9px] font-bold text-slate-400 uppercase">Cuenta</p>
+                                                            <p className="text-[10px] font-black text-slate-700">{platformConfig.paymentMethods.transfer.accountNumber}</p>
+                                                        </div>
+                                                        <div onClick={() => { navigator.clipboard.writeText(platformConfig.paymentMethods.transfer.name); toast.success('Titular copiado'); }} className="col-span-2 group cursor-pointer active:scale-95 transition-all">
+                                                            <p className="text-[9px] font-bold text-slate-400 uppercase">Titular</p>
+                                                            <p className="text-xs font-black text-slate-700">{platformConfig.paymentMethods.transfer.name}</p>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            )}
+
+                                            {/* USDT Platform */}
+                                            {platformConfig.paymentMethods.usdt?.active && (
+                                                <div className="flex flex-col gap-1 border-t border-slate-200 pt-3">
+                                                    <span className="text-xs font-black text-slate-800 flex items-center gap-2">
+                                                        <span className="w-2 h-2 rounded-full bg-emerald-500"></span> 
+                                                        USDT ({platformConfig.paymentMethods.usdt.network})
+                                                    </span>
+                                                    <div onClick={() => { navigator.clipboard.writeText(platformConfig.paymentMethods.usdt.wallet); toast.success('Billetera copiada'); }} className="mt-1 group cursor-pointer active:scale-95 transition-all">
+                                                        <p className="text-[9px] font-bold text-slate-400 uppercase">Wallet Address</p>
+                                                        <p className="text-[10px] font-black text-slate-700 break-all">{platformConfig.paymentMethods.usdt.wallet}</p>
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* Report Form */}
+                                <div className="space-y-3">
+                                    <label className="text-[10px] uppercase font-black text-slate-400 ml-1">Reportar Pago Delivery</label>
+                                    <input 
+                                        type="text" 
+                                        placeholder="Referencia del pago"
+                                        value={deliveryPaymentReference}
+                                        onChange={(e) => setDeliveryPaymentReference(e.target.value)}
+                                        className="w-full bg-slate-50 border-2 border-slate-100 px-4 py-3 rounded-2xl text-sm font-bold outline-none focus:border-primary transition-all text-slate-700"
+                                    />
+                                    <label className="w-full flex items-center justify-center gap-2 bg-slate-50 border-2 border-dashed border-slate-200 p-4 rounded-2xl cursor-pointer hover:bg-slate-100 transition-all group">
+                                        <input 
+                                            type="file" 
+                                            className="hidden" 
+                                            accept="image/*"
+                                            onChange={(e) => setDeliveryPaymentProofFile(e.target.files?.[0] || null)}
+                                        />
+                                        {deliveryPaymentProofFile ? (
+                                            <div className="flex items-center gap-2">
+                                                <CheckCircle2 className="w-5 h-5 text-green-500" />
+                                                <span className="text-xs font-black text-slate-900 truncate">{deliveryPaymentProofFile.name}</span>
+                                            </div>
+                                        ) : (
+                                            <>
+                                                <ImageIcon className="w-5 h-5 text-slate-400 group-hover:text-primary transition-colors" />
+                                                <span className="text-xs font-black text-slate-400">Adjuntar Capture Delivery</span>
+                                            </>
+                                        )}
+                                    </label>
+                                    
+                                    <button 
+                                        onClick={handleReportDeliveryPayment}
+                                        disabled={isUploadingDeliveryReport || (!deliveryPaymentReference && !deliveryPaymentProofFile)}
+                                        className="w-full bg-slate-900 text-white py-4 rounded-2xl font-black shadow-xl hover:scale-[1.02] active:scale-95 transition-all text-lg flex items-center justify-center gap-2 disabled:opacity-50"
+                                    >
+                                        {isUploadingDeliveryReport ? <Loader2 className="w-6 h-6 animate-spin" /> : <><CheckCircle2 className="w-6 h-6" /> Notificar Pago Delivery</>}
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                )}
 
                 {/* Driver Info (If Assigned) */}
                 {driver && (currentStep >= 2) && (

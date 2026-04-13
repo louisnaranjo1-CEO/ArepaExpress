@@ -951,8 +951,7 @@ ESTADO: ${order.status.toUpperCase()}
 
     const stats = React.useMemo(() => {
         return {
-            pending: orders.filter(o => ['pending', 'pendiente_pago', 'pending_verification', 'occupied', 'calling'].includes(o.status)).length,
-            preparing: orders.filter(o => o.status === 'preparing').length,
+            pending: orders.filter(o => ['pending', 'pendiente_pago', 'pending_verification', 'occupied', 'calling', 'preparing'].includes(o.status)).length,
             delivering: orders.filter(o => o.status === 'delivering' || o.status === 'buscando_piloto').length,
             delivered: orders.filter(o => o.status === 'delivered').length,
             rejected: orders.filter(o => o.status === 'rejected').length,
@@ -964,10 +963,7 @@ ESTADO: ${order.status.toUpperCase()}
         let result = orders.filter(order => {
             // Filter by active tab
             if (activeTab === 'pending') {
-                return ['pending', 'pendiente_pago', 'pending_verification', 'occupied', 'calling', 'billing'].includes(order.status);
-            }
-            if (activeTab === 'preparing') {
-                return order.status === 'preparing';
+                return ['pending', 'pendiente_pago', 'pending_verification', 'occupied', 'calling', 'billing', 'preparing'].includes(order.status);
             }
             if (activeTab === 'delivering') {
                 return ['delivering', 'buscando_piloto', 'conductor_asignado', 'en_camino'].includes(order.status);
@@ -1446,7 +1442,6 @@ ESTADO: ${order.status.toUpperCase()}
                 <div className="grid grid-cols-2 lg:grid-cols-6 gap-2 p-2 bg-slate-100 rounded-[30px]">
                     {[
                         { id: 'pending', label: 'Pendientes', icon: Bell, color: 'bg-primary' },
-                        { id: 'preparing', label: 'Cocinando', icon: Clock, color: 'bg-amber-400' },
                         { id: 'delivering', label: 'Camino', icon: Truck, color: 'bg-emerald-600' },
                         { id: 'delivered', label: 'Entregados', icon: CheckCircle, color: 'bg-slate-900' },
                         { id: 'rejected', label: 'Rechazados', icon: X, color: 'bg-red-500' },
