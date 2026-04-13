@@ -69,6 +69,8 @@ export default function CashiersManager() {
             if (indexDoc.exists()) {
                 alert("Este correo ya está registrado en el sistema.");
                 setIsSubmitting(false);
+                return;
+            }
             let photoUrl = '';
             if (photoFile) {
                 const storageRef = ref(getStorage(), `restaurants/${rid}/cashiers/${Date.now()}_photo`);
