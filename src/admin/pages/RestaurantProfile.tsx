@@ -100,7 +100,7 @@ export default function RestaurantProfile() {
     const [ownDelivery, setOwnDelivery] = useState(false);
     const [appDelivery, setAppDelivery] = useState(false);
     const [pickupOnly, setPickupOnly] = useState(false);
-    const [deliveryTime, setDeliveryTime] = useState('30-45 min');
+    const [deliveryTime, setDeliveryTime] = useState('20-40 min');
     const [logoUrl, setLogoUrl] = useState('');
     const [coverUrl, setCoverUrl] = useState('');
     const [location, setLocation] = useState<Location | null>(null);
