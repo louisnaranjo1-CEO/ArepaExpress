@@ -23,7 +23,7 @@ import ResuelveManager from './pages/ResuelveManager';
 import PushCampaigns from './pages/PushCampaigns';
 
 function AdminRoutes() {
-    const { user, loading } = useAuth();
+    const { user, userData, loading } = useAuth();
 
     if (loading) {
         return (
