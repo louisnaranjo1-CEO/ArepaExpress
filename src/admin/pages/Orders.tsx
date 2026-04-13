@@ -679,55 +679,35 @@ export default function Orders() {
         setIsVerifying(true);
         try {
             const orderRef = doc(db, 'orders', selectedOrderForVerify.id);
-            const isDeliveryVerification = selectedOrderForVerify.status === 'verificando_pago_delivery';
             
-            if (isDeliveryVerification) {
-                // Verificación de Pago de DELIVERY
-                await updateDoc(orderRef, { 
-                    status: 'buscando_piloto',
-                    deliveryPaymentStatus: 'paid',
-                    deliveryVerifiedAt: serverTimestamp()
+            // Verificación de Pago de RESTAURANTE (La del delivery se hace en C-Panel)
+            const nextStatus = (selectedOrderForVerify.source !== 'waiter' && selectedOrderForVerify.deliveryAddress !== 'PickUp' && selectedOrderForVerify.type !== 'takeout') 
+                ? 'awaiting_delivery_payment' 
+                : 'preparing';
+
+            await updateDoc(orderRef, { 
+                status: nextStatus,
+                paymentStatus: 'paid',
+                restaurantPaymentStatus: 'paid',
+                restaurantPaid: true, // Flag para UI de "Pago Acreditado"
+                verifiedAt: serverTimestamp()
+            });
+
+            // Otorgar puntos por consumo (2.5 por cada $)
+            if (selectedOrderForVerify.userId && selectedOrderForVerify.userId !== 'pos_customer') {
+                const pointsToAdd = selectedOrderForVerify.total * 2.5;
+                const userRef = doc(db, 'users', selectedOrderForVerify.userId);
+                await updateDoc(userRef, {
+                    points: increment(pointsToAdd),
+                    [`restaurantPoints.${rid}`]: increment(pointsToAdd)
                 });
-
-                // Otorgar puntos fijos por delivery (10 puntos)
-                if (selectedOrderForVerify.userId && selectedOrderForVerify.userId !== 'pos_customer') {
-                    const userRef = doc(db, 'users', selectedOrderForVerify.userId);
-                    await updateDoc(userRef, {
-                        points: increment(10),
-                        [`restaurantPoints.${rid}`]: increment(10)
-                    });
-                }
-
-                toast.success("Pago de delivery acreditado. Buscando piloto...");
-            } else {
-                // Verificación de Pago de RESTAURANTE
-                const nextStatus = (selectedOrderForVerify.source !== 'waiter' && selectedOrderForVerify.deliveryAddress !== 'PickUp' && selectedOrderForVerify.type !== 'takeout') 
-                    ? 'awaiting_delivery_payment' 
-                    : 'preparing';
-
-                await updateDoc(orderRef, { 
-                    status: nextStatus,
-                    paymentStatus: 'paid',
-                    restaurantPaymentStatus: 'paid',
-                    verifiedAt: serverTimestamp()
-                });
-
-                // Otorgar puntos por consumo (2.5 por cada $)
-                if (selectedOrderForVerify.userId && selectedOrderForVerify.userId !== 'pos_customer') {
-                    const pointsToAdd = selectedOrderForVerify.total * 2.5;
-                    const userRef = doc(db, 'users', selectedOrderForVerify.userId);
-                    await updateDoc(userRef, {
-                        points: increment(pointsToAdd),
-                        [`restaurantPoints.${rid}`]: increment(pointsToAdd)
-                    });
-                }
-
-                if (nextStatus === 'preparing') {
-                    await handlePrintOrder(selectedOrderForVerify.id, selectedOrderForVerify as any);
-                }
-
-                toast.success("Pago de restaurante acreditado.");
             }
+
+            if (nextStatus === 'preparing') {
+                await handlePrintOrder(selectedOrderForVerify.id, selectedOrderForVerify as any);
+            }
+
+            toast.success("Pago de restaurante acreditado.");
 
             setVerificationSuccess(true);
             
@@ -1212,7 +1192,17 @@ export default function Orders() {
                     )}
 
                 <div className="flex flex-wrap items-center gap-3">
-                {(order.status === 'pending' || order.status === 'pendiente_pago' || order.status === 'pending_verification') && (
+                {order.restaurantPaid && (
+                   <div className="w-full flex flex-col items-center justify-center p-6 bg-green-50 rounded-3xl border-2 border-green-200 animate-in zoom-in duration-500 mb-4">
+                       <div className="w-16 h-16 bg-green-500 rounded-full flex items-center justify-center mb-3 shadow-lg shadow-green-200">
+                           <CheckCircle className="w-10 h-10 text-white" />
+                       </div>
+                       <p className="text-xl font-black text-green-600 uppercase tracking-tighter">Pago Acreditado</p>
+                       <p className="text-[10px] font-bold text-green-500/70 uppercase">Verificado por Administración</p>
+                   </div>
+                )}
+
+                {(order.status === 'pending' || order.status === 'pendiente_pago' || order.status === 'pending_verification' || order.status === 'awaiting_delivery_payment') && (
                     <>
                         <button
                             onClick={() => setChatOrderId(order.id)}
@@ -1221,16 +1211,17 @@ export default function Orders() {
                         >
                             <Bell className="w-5 h-5" />
                         </button>
-                        {order.status === 'pending_verification' || order.status === 'verificando_pago_delivery' ? (
+                        {order.status === 'pending_verification' ? (
                             <button
                                 onClick={() => handleVerifyPayment(order.id)}
                                 className="flex-1 bg-primary text-slate-900 py-4 rounded-2xl font-black shadow-lg shadow-primary/20 hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-2"
                             >
-                                <CheckCircle className="w-5 h-5" /> {order.status === 'verificando_pago_delivery' ? 'Validar Delivery' : 'Validar Pago'}
+                                <CheckCircle className="w-5 h-5" /> Validar Pago
                             </button>
                         ) : order.status === 'awaiting_delivery_payment' ? (
-                            <div className="flex-1 bg-slate-100 text-slate-400 py-4 rounded-2xl font-black flex items-center justify-center gap-2">
-                                <Clock className="w-5 h-5" /> Esperando Pago Delivery
+                            <div className="flex-1 bg-amber-50 text-amber-600 py-4 rounded-2xl font-black border border-amber-100 flex flex-col items-center justify-center group relative overflow-hidden">
+                                <span className="flex items-center gap-2 relative z-10"><Clock className="w-4 h-4 animate-spin" /> Esperando Delivery...</span>
+                                <div className="absolute inset-0 bg-amber-100/30 -translate-x-full group-hover:translate-x-0 transition-transform duration-500"></div>
                             </div>
                         ) : !(order as any).stockConfirmed ? (
                             <button
@@ -1252,43 +1243,34 @@ export default function Orders() {
                                 )}
                             </button>
                         )}
-                        <button
-                            onClick={() => updateStatus(order.id, 'rejected')}
-                            className="px-6 bg-slate-100 text-slate-500 py-4 rounded-2xl font-black hover:bg-red-50 hover:text-red-500 transition-all"
-                        >
-                            Rechazar
-                        </button>
+                        {!order.restaurantPaid && (
+                            <button
+                                onClick={() => updateStatus(order.id, 'rejected')}
+                                className="px-6 bg-slate-100 text-slate-500 py-4 rounded-2xl font-black hover:bg-red-50 hover:text-red-500 transition-all"
+                            >
+                                Rechazar
+                            </button>
+                        )}
                     </>
                 )}
-                {order.status === 'preparing' && (
-                    order.source === 'waiter' ? (
+                
+                {(order.status === 'preparing' || order.status === 'buscando_piloto' || order.status === 'piloto_asignado') && (
+                    <div className="flex w-full gap-2">
                         <button
-                            onClick={() => updateStatus(order.id, 'delivered')}
-                            className="flex-1 bg-primary text-slate-900 py-4 rounded-2xl font-black shadow-lg shadow-primary/20 hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-2"
+                            onClick={() => updateStatus(order.id, 'buscando_piloto')}
+                            className="flex-1 bg-indigo-500 text-white py-4 rounded-2xl font-black shadow-lg shadow-indigo-500/20 hover:scale-[1.02] transition-all flex items-center justify-center gap-2"
                         >
-                            Entregar a Mesa
+                            <Bell className="w-5 h-5" /> Alertar Delivery
                         </button>
-                    ) : (order.deliveryAddress === 'PickUp' || order.type === 'takeout') ? (
                         <button
-                            onClick={() => updateStatus(order.id, 'delivered', 'sold')}
-                            className="flex-1 bg-green-500 text-white py-4 rounded-2xl font-black shadow-lg shadow-green-500/20 hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-2"
+                            onClick={() => updateStatus(order.id, 'delivering')}
+                            className="flex-1 bg-slate-900 text-white py-4 rounded-2xl font-black shadow-lg shadow-slate-900/20 hover:scale-[1.02] transition-all flex items-center justify-center gap-2"
                         >
-                            <CheckCircle className="w-5 h-5" /> Venta Realizada (PickUp)
+                            <Truck className="w-5 h-5" /> Enviado
                         </button>
-                    ) : (
-                        <button
-                            onClick={() => { setSelectedOrderForDispatch(order); setDispatchModalOpen(true); }}
-                            disabled={printingOrderId === order.id}
-                            className="flex-1 bg-primary text-slate-900 py-4 rounded-2xl font-black shadow-lg shadow-blue-500/20 hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-2 disabled:opacity-50"
-                        >
-                            {printingOrderId === order.id ? (
-                                <><Loader2 className="w-5 h-5 animate-spin" /> Imprimiendo...</>
-                            ) : (
-                                <>Enviar Pedido</>
-                            )}
-                        </button>
-                    )
+                    </div>
                 )}
+
                 {order.status === 'delivering' && (
                     <button
                         onClick={() => updateStatus(order.id, 'delivered')}

@@ -44,6 +44,8 @@ export default function TrackOrder() {
     const [deliveryPaymentReference, setDeliveryPaymentReference] = useState('');
     const [deliveryPaymentProofFile, setDeliveryPaymentProofFile] = useState<File | null>(null);
     const [isUploadingDeliveryReport, setIsUploadingDeliveryReport] = useState(false);
+    const [deliverySettings, setDeliverySettings] = useState<any>(null);
+    const [selectedVehicle, setSelectedVehicle] = useState<'moto' | 'carro'>('moto');
 
     useEffect(() => {
         if (order) {
@@ -69,6 +71,13 @@ export default function TrackOrder() {
         getDoc(doc(db, 'system_configs', 'finances')).then(snap => {
             if (snap.exists()) {
                 setPlatformConfig(snap.data());
+            }
+        });
+
+        // Fetch Delivery Settings for Fees
+        getDoc(doc(db, 'delivery_settings', 'settings')).then(snap => {
+            if (snap.exists()) {
+                setDeliverySettings(snap.data());
             }
         });
 
@@ -300,20 +309,47 @@ export default function TrackOrder() {
 
             // Enviar mensaje automático al chat
             await addDoc(collection(db, `orders/${orderId}/messages`), {
-                text: "🚚 *He realizado el pago del delivery.* Favor validar para iniciar búsqueda de piloto.",
+                text: `🚀 He reportado el pago del delivery (Ref: ${deliveryPaymentReference}). Por favor verificar.`,
                 senderId: user?.uid || 'guest',
                 senderName: order.userName || 'Cliente',
                 senderRole: 'client',
                 createdAt: serverTimestamp()
             });
 
-            toast.success('Información de pago del delivery enviada');
+            toast.success('Información de pago enviada exitosamente');
         } catch (error) {
             console.error(error);
-            toast.error('Ocurrió un error al enviar el reporte de pago');
+            toast.error('Ocurrió un error al enviar la información de pago');
         } finally {
             setIsUploadingDeliveryReport(false);
         }
+    };
+
+    const handleSelectVehicle = async (type: 'moto' | 'carro') => {
+        if (!order || !orderId || !deliverySettings) return;
+
+        setSelectedVehicle(type);
+        
+        // Calculate new fee based on distance and vehicle type
+        const distance = order.distance || 0;
+        const rates = deliverySettings.transportRates?.[type] || [];
+        const rate = rates.find((r: any) => distance >= r.from && (distance <= r.to || !r.to));
+        
+        const newFee = rate ? (rate.clientPrice || rate.price) : (type === 'moto' ? 2.5 : 5.0);
+        const newTotal = order.subtotal + newFee;
+
+        try {
+            await updateDoc(doc(db, 'orders', orderId), {
+                vehicleType: type,
+                deliveryFee: newFee,
+                total: newTotal
+            });
+            toast.success(`Vehículo actualizado: ${type === 'moto' ? 'Moto' : 'Carro'}`);
+        } catch (error) {
+            console.error("Error updating vehicle:", error);
+            toast.error("Error al actualizar vehículo");
+        }
+    };
     };
 
     const handleProceedToDeliveryPayment = async () => {
@@ -886,12 +922,44 @@ export default function TrackOrder() {
                             </div>
                         ) : (
                             <div className="space-y-6">
+                                {/* Vehicle Selection */}
+                                <div className="space-y-4">
+                                    <p className="text-[10px] uppercase font-black text-slate-400 ml-1">Selecciona tipo de transporte</p>
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <button 
+                                            onClick={() => handleSelectVehicle('moto')}
+                                            className={`p-4 rounded-2xl border-2 transition-all flex flex-col items-center gap-2 ${
+                                                (order.vehicleType || 'moto') === 'moto' 
+                                                ? 'border-primary bg-primary/5 text-primary shadow-lg shadow-primary/10' 
+                                                : 'border-slate-100 bg-slate-50 text-slate-400 grayscale'
+                                            }`}
+                                        >
+                                            <Bike className="w-8 h-8" />
+                                            <span className="text-xs font-black">MOTO</span>
+                                            <span className="text-[10px] font-bold opacity-70">Más rápido</span>
+                                        </button>
+                                        <button 
+                                            onClick={() => handleSelectVehicle('carro')}
+                                            className={`p-4 rounded-2xl border-2 transition-all flex flex-col items-center gap-2 ${
+                                                order.vehicleType === 'carro' 
+                                                ? 'border-primary bg-primary/5 text-primary shadow-lg shadow-primary/10' 
+                                                : 'border-slate-100 bg-slate-50 text-slate-400 grayscale'
+                                            }`}
+                                        >
+                                            <Navigation className="w-8 h-8" />
+                                            <span className="text-xs font-black">CARRO</span>
+                                            <span className="text-[10px] font-bold opacity-70">Más seguro</span>
+                                        </button>
+                                    </div>
+                                </div>
+
                                 {/* Amount to Pay */}
                                 <div className="bg-slate-900 rounded-2xl p-5 text-center shadow-lg">
                                     <p className="text-[10px] font-black text-white/40 uppercase tracking-[0.2em] mb-1">Monto del Delivery</p>
                                     <div className="text-2xl font-black text-primary">
                                         <DualPrice usdAmount={order.deliveryFee || 0} showDivider={false} />
                                     </div>
+                                    <p className="text-[10px] font-bold text-white/30 italic mt-2">Tarifa basada en {order.distance?.toFixed(1) || 0}km</p>
                                 </div>
 
                                 {/* Platform Payment Info */}
