@@ -1,3 +1,4 @@
+// v1.0.2 - Fixed catch syntax error
 import React, { useState, useEffect } from 'react';
 import { Shield, Plus, X, Search, User, Key, Building2, Eye, Edit2, Trash2, CheckCircle, Loader2, Upload, ImageIcon } from 'lucide-react';
 import { db } from '../../lib/firebase';
