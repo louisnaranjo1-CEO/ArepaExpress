@@ -217,25 +217,49 @@ export default function Orders() {
             orderBy('createdAt', 'desc')
         );
 
-        const unsubscribe = onSnapshot(q, (snapshot) => {
-            const items: Order[] = [];
-            snapshot.forEach((doc) => {
-                items.push({ id: doc.id, ...doc.data() } as Order);
+        const setupSnapshot = (currentQuery: any, isFallback = false) => {
+            return onSnapshot(currentQuery, (snapshot) => {
+                const items: Order[] = [];
+                snapshot.forEach((doc) => {
+                    items.push({ id: doc.id, ...doc.data() } as Order);
+                });
+
+                // Manual sort if fallback
+                if (isFallback) {
+                    items.sort((a, b) => {
+                        const timeA = a.createdAt?.toMillis() || 0;
+                        const timeB = b.createdAt?.toMillis() || 0;
+                        return timeB - timeA;
+                    });
+                }
+
+                // Check for new pending orders for sound
+                const hasNewPending = items.some(o => (o.status === 'pending' || o.status === 'pendiente_pago') && (!orders.find(prev => prev.id === o.id)));
+                if (hasNewPending && orders.length > 0) {
+                    const audio = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3');
+                    audio.play().catch(e => console.log("Audio play blocked"));
+                }
+
+                setOrders(items);
+                setLoading(false);
+            }, (error: any) => {
+                console.error(`Error listening to orders ${isFallback ? '(fallback)' : '(primary)'}:`, error);
+                
+                // If primary query fails due to missing index, try fallback without sort
+                if (!isFallback && error.code === 'failed-precondition') {
+                    console.warn("Retrying without sort - likely missing index");
+                    const fallbackQ = query(
+                        ordersRef,
+                        where('restaurantId', '==', user.uid)
+                    );
+                    setupSnapshot(fallbackQ, true);
+                } else {
+                    setLoading(false);
+                }
             });
+        };
 
-            // Check for new pending orders for sound
-            const hasNewPending = items.some(o => (o.status === 'pending' || o.status === 'pendiente_pago') && (!orders.find(prev => prev.id === o.id)));
-            if (hasNewPending && orders.length > 0) {
-                const audio = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3');
-                audio.play().catch(e => console.log("Audio play blocked"));
-            }
-
-            setOrders(items);
-            setLoading(false);
-        }, (error) => {
-            console.error("Error listening to orders:", error);
-            setLoading(false);
-        });
+        const unsubscribe = setupSnapshot(q);
 
         return () => unsubscribe();
     }, [user, orders.length]);
@@ -844,8 +868,18 @@ export default function Orders() {
     };
 
     const stats = {
-        pending: orders.filter(o => o.status === 'pending' || o.status === 'pendiente_pago' || o.status === 'calling').length,
-        preparing: orders.filter(o => o.status === 'preparing').length,
+        pending: orders.filter(o => 
+            o.status === 'pending' || 
+            o.status === 'pendiente_pago' || 
+            o.status === 'calling' ||
+            o.status === 'awaiting_payment' ||
+            o.status === 'action_required' ||
+            o.status === 'pending_verification'
+        ).length,
+        preparing: orders.filter(o => 
+            o.status === 'preparing' || 
+            o.status === 'buscando_piloto'
+        ).length,
         delivering: orders.filter(o => o.status === 'delivering').length,
         delivered: orders.filter(o => o.status === 'delivered').length,
         rejected: orders.filter(o => o.status === 'rejected').length,
@@ -861,6 +895,10 @@ export default function Orders() {
                 o.status === 'awaiting_payment' ||
                 o.status === 'action_required' ||
                 o.status === 'pending_verification'
+            );
+            if (activeTab === 'preparing') return (
+                o.status === 'preparing' ||
+                o.status === 'buscando_piloto'
             );
             if (activeTab === 'tables') return false; // Handled by renderTablesView
             return o.status === activeTab;

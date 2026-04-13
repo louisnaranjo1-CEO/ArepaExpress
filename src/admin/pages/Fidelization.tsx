@@ -110,10 +110,24 @@ export default function Fidelization() {
         try {
             setLoading(true);
 
-            // 1. Fetch Ranking Data
+            // 1. Fetch Ranking Data with index fallback
             const ordersRef = collection(db, 'orders');
             const qOrders = query(ordersRef, where('restaurantId', '==', user!.uid), orderBy('createdAt', 'desc'));
-            const ordersSnap = await getDocs(qOrders);
+            
+            const fetchOrders = async (queryToUse: any, isFallback = false) => {
+                try {
+                    const snap = await getDocs(queryToUse);
+                    return snap;
+                } catch (err: any) {
+                    if (!isFallback && err.code === 'failed-precondition') {
+                        const fallbackQ = query(ordersRef, where('restaurantId', '==', user!.uid));
+                        return await getDocs(fallbackQ);
+                    }
+                    throw err;
+                }
+            };
+
+            const ordersSnap = await fetchOrders(qOrders);
 
             const clientMap = new Map<string, { lastOrder: any, count: number }>();
             let totalRestaurantOrdersValue = 0;

@@ -51,13 +51,31 @@ export default function Dashboard() {
                 }));
             });
 
-            // Recent orders
+            // Recent orders with index fallback
             const recentQ = query(ordersRef, where('restaurantId', '==', user.uid), orderBy('createdAt', 'desc'), limit(5));
-            getDocs(recentQ).then(recentSnap => {
-                const items: any[] = [];
-                recentSnap.forEach(d => items.push({ id: d.id, ...d.data() }));
-                setRecentOrders(items);
-            });
+            const fetchRecent = async (queryToUse: any, isFallback = false) => {
+                try {
+                    const recentSnap = await getDocs(queryToUse);
+                    const items: any[] = [];
+                    recentSnap.forEach(d => items.push({ id: d.id, ...d.data() }));
+                    
+                    if (isFallback) {
+                        items.sort((a, b) => {
+                            const timeA = a.createdAt?.toMillis?.() || 0;
+                            const timeB = b.createdAt?.toMillis?.() || 0;
+                            return timeB - timeA;
+                        });
+                    }
+                    setRecentOrders(items.slice(0, 5));
+                } catch (err: any) {
+                    console.error("Error fetching recent orders:", err);
+                    if (!isFallback && err.code === 'failed-precondition') {
+                        const fallbackQ = query(ordersRef, where('restaurantId', '==', user.uid));
+                        fetchRecent(fallbackQ, true);
+                    }
+                }
+            };
+            fetchRecent(recentQ);
 
             setLoading(false);
         });

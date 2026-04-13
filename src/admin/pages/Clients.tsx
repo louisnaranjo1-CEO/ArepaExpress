@@ -33,61 +33,114 @@ export default function Clients() {
     }, [user]);
 
     const fetchClients = async () => {
+        if (!user) return;
+        setLoading(true);
+        console.log("Fetching clients for restaurant:", user.uid);
+        
         try {
-            setLoading(true);
-            // 1. Get all orders for this restaurant to identify unique clients
+            // 1. Get all orders for this restaurant
             const ordersRef = collection(db, 'orders');
-            const q = query(ordersRef, where('restaurantId', '==', user!.uid), orderBy('createdAt', 'desc'));
-            const ordersSnap = await getDocs(q);
+            let ordersSnap;
+            
+            try {
+                // Try with sorting (requires index: restaurantId ASC, createdAt DESC)
+                const q = query(ordersRef, where('restaurantId', '==', user.uid), orderBy('createdAt', 'desc'));
+                ordersSnap = await getDocs(q);
+            } catch (indexError) {
+                console.warn("Index not found for sorted orders, falling back to unsorted query:", indexError);
+                // Fallback to unsorted query (doesn't require composite index)
+                const qFallback = query(ordersRef, where('restaurantId', '==', user.uid));
+                ordersSnap = await getDocs(qFallback);
+            }
 
-            const clientMap = new Map<string, { lastOrderDate: any, totalOrders: number }>();
+            console.log(`Found ${ordersSnap.size} orders`);
 
-            ordersSnap.docs.forEach(orderDoc => {
-                const data = orderDoc.data();
-                const userId = data.userId;
-                if (!userId) return;
+            const clientMap = new Map<string, { 
+                lastOrderDate: any, 
+                totalOrders: number,
+                name: string,
+                email: string,
+                phone: string,
+                photoURL?: string
+            }>();
 
-                if (!clientMap.has(userId)) {
-                    clientMap.set(userId, {
-                        lastOrderDate: data.createdAt,
-                        totalOrders: 1
-                    });
+            ordersSnap.forEach(docSnap => {
+                const data = docSnap.data();
+                if (!data) return;
+
+                // Determine a unique ID for this client
+                let clientId = data.userId;
+                
+                // Special handling for guest/local/POS orders to ensure they don't aggregate together incorrectly
+                const isGenericId = !clientId || 
+                                   clientId === 'waiter' || 
+                                   clientId === 'local_walk_in' || 
+                                   clientId === 'pos_customer' || 
+                                   clientId.startsWith('guest_');
+
+                if (isGenericId) {
+                    // Try to use unique identifiers in this order:
+                    // 1. clientId (which POS uses for DNI)
+                    // 2. userPhone
+                    // 3. userEmail
+                    // 4. userName (last resort, might group different people with same name)
+                    // 5. fallback to order doc ID
+                    clientId = data.clientId || data.userPhone || data.userEmail || data.userName || `anonymous_${docSnap.id}`;
+                }
+                
+                const orderDate = data.createdAt;
+                
+                if (clientMap.has(clientId)) {
+                    const stats = clientMap.get(clientId)!;
+                    stats.totalOrders += 1;
+                    
+                    // Safe comparison using timestamps or conversion
+                    const currentLastMillis = stats.lastOrderDate?.toMillis?.() || (stats.lastOrderDate instanceof Date ? stats.lastOrderDate.getTime() : 0);
+                    const orderDateMillis = orderDate?.toMillis?.() || (orderDate instanceof Date ? orderDate.getTime() : 0);
+                    const isMoreRecent = orderDateMillis > currentLastMillis;
+                    
+                    if (isMoreRecent) {
+                        stats.lastOrderDate = orderDate;
+                        if (data.userName) stats.name = data.userName;
+                        if (data.userEmail) stats.email = data.userEmail;
+                        if (data.userPhone) stats.phone = data.userPhone;
+                    }
                 } else {
-                    const existing = clientMap.get(userId)!;
-                    clientMap.set(userId, {
-                        ...existing,
-                        totalOrders: existing.totalOrders + 1
+                    clientMap.set(clientId, {
+                        lastOrderDate: orderDate,
+                        totalOrders: 1,
+                        name: data.userName || 'Cliente Invitado',
+                        email: data.userEmail || 'N/A',
+                        phone: data.userPhone || 'N/A'
                     });
                 }
             });
 
-            // 2. Fetch user details for each identified client
-            const clientList: Client[] = [];
-            for (const [userId, stats] of clientMap.entries()) {
-                const userRef = doc(db, 'users', userId);
-                const userSnap = await getDoc(userRef);
+            // 2. Map aggregated data to Client objects
+            const fetchedClients: Client[] = Array.from(clientMap.entries()).map(([cid, stats]) => ({
+                id: cid,
+                name: stats.name,
+                email: stats.email,
+                phone: stats.phone,
+                photoURL: stats.photoURL,
+                lastOrderDate: stats.lastOrderDate,
+                totalOrders: stats.totalOrders,
+                points: 0,
+                favorites: [],
+                createdAt: stats.lastOrderDate // Approximation
+            }));
 
-                if (userSnap.exists()) {
-                    const userData = userSnap.data();
-                    clientList.push({
-                        id: userId,
-                        name: userData.displayName || userData.name || 'Cliente sin nombre',
-                        email: userData.email,
-                        phone: userData.phone,
-                        photoURL: userData.photoURL || userData.image,
-                        createdAt: userData.createdAt,
-                        lastOrderDate: stats.lastOrderDate,
-                        totalOrders: stats.totalOrders,
-                        points: userData.points || 0,
-                        favorites: userData.favorites || [],
-                        cartItems: userData.cart || []
-                    });
-                }
-            }
+            // Sort by last order date descending manually
+            fetchedClients.sort((a, b) => {
+                const timeA = a.lastOrderDate?.toMillis?.() || (a.lastOrderDate instanceof Date ? a.lastOrderDate.getTime() : 0);
+                const timeB = b.lastOrderDate?.toMillis?.() || (b.lastOrderDate instanceof Date ? b.lastOrderDate.getTime() : 0);
+                return timeB - timeA;
+            });
 
-            setClients(clientList);
+            console.log(`Aggregated ${fetchedClients.length} unique clients`);
+            setClients(fetchedClients);
         } catch (error) {
-            console.error("Error fetching clients:", error);
+            console.error("Error in fetchClients:", error);
         } finally {
             setLoading(false);
         }

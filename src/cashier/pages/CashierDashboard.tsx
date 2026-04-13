@@ -162,21 +162,36 @@ export default function CashierDashboard() {
 
         const ordersRef = collection(db, 'orders');
 
-        const q2 = query(
-            ordersRef,
-            where('restaurantId', '==', storedRestaurantId),
-            orderBy('createdAt', 'desc')
-        );
+        // Order subscription with index fallback
+        let unsubscribe2: () => void;
+        const setupOrderSubscription = (isFallback = false) => {
+            const q = isFallback 
+                ? query(ordersRef, where('restaurantId', '==', storedRestaurantId))
+                : query(ordersRef, where('restaurantId', '==', storedRestaurantId), orderBy('createdAt', 'desc'));
 
-        const unsubscribe2 = onSnapshot(q2, (snapshot) => {
-            const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Order));
-            console.log(`CASHIER_SYNC: Received ${data.length} orders for restaurant ${storedRestaurantId}`);
-            setOrders(data);
-            setLoading(false);
-        }, (err) => {
-            console.error("CASHIER_SYNC_ERROR:", err);
-            setLoading(false);
-        });
+            unsubscribe2 = onSnapshot(q, (snapshot) => {
+                let data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Order));
+                if (isFallback) {
+                    data.sort((a, b) => {
+                        const timeA = a.createdAt?.toMillis?.() || 0;
+                        const timeB = b.createdAt?.toMillis?.() || 0;
+                        return timeB - timeA;
+                    });
+                }
+                console.log(`CASHIER_SYNC: Received ${data.length} orders for restaurant ${storedRestaurantId}${isFallback ? ' (using fallback)' : ''}`);
+                setOrders(data);
+                setLoading(false);
+            }, (err: any) => {
+                if (!isFallback && err.code === 'failed-precondition') {
+                    console.warn("Index not found in Cashier dashboard, using fallback query");
+                    setupOrderSubscription(true);
+                } else {
+                    console.error("CASHIER_SYNC_ERROR:", err);
+                    setLoading(false);
+                }
+            });
+        };
+        setupOrderSubscription();
 
         // Fetch products for edit modal
         const fetchProducts = async () => {
