@@ -99,9 +99,13 @@ export default function RestaurantPage() {
 
           // Check if it's in user following
           if (user) {
-            const followRef = doc(db, 'restaurants', id, 'followers', user.uid);
-            const followSnap = await getDoc(followRef);
-            setIsFollowing(followSnap.exists());
+            try {
+              const followRef = doc(db, 'restaurants', id, 'followers', user.uid);
+              const followSnap = await getDoc(followRef);
+              setIsFollowing(followSnap.exists());
+            } catch (followErr) {
+              console.warn("Could not check follow status:", followErr);
+            }
           }
 
           // Fetch products subcollection
@@ -112,11 +116,15 @@ export default function RestaurantPage() {
 
           // Check if it's in user favorites
           if (user) {
-            const userRef = doc(db, 'users', user.uid);
-            const userSnap = await getDoc(userRef);
-            if (userSnap.exists()) {
-              const favs = userSnap.data().favorites || [];
-              setIsFavorite(favs.includes(id));
+            try {
+              const userRef = doc(db, 'users', user.uid);
+              const userSnap = await getDoc(userRef);
+              if (userSnap.exists()) {
+                const favs = userSnap.data().favorites || [];
+                setIsFavorite(favs.includes(id));
+              }
+            } catch (favErr) {
+              console.warn("Could not check favorites status:", favErr);
             }
           }
         } else {
