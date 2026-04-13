@@ -29,7 +29,7 @@ if (typeof window !== 'undefined') {
     const RECAPTCHA_V3_SITE_KEY = "6Ld2ILAsAAAAAIAeMLQoPDP4SAllceAVso3Nfz9p"; 
     
     // Solo inicia App Check si la clave fue reemplazada o para modo debug local
-    if (RECAPTCHA_V3_SITE_KEY !== "PEGA_AQUI_TU_CLAVE_DE_SITIO_RECAPTCHA_V3") {
+    if ((RECAPTCHA_V3_SITE_KEY as string) !== "PEGA_AQUI_TU_CLAVE_DE_SITIO_RECAPTCHA_V3") {
         appCheck = initializeAppCheck(app, {
             provider: new ReCaptchaV3Provider(RECAPTCHA_V3_SITE_KEY),
             // Activar rotación automática de tokens
