@@ -62,6 +62,7 @@ export default function TransportTracker() {
     const [directionsService, setDirectionsService] = useState<google.maps.DirectionsService | null>(null);
     const [directionsRenderer, setDirectionsRenderer] = useState<google.maps.DirectionsRenderer | null>(null);
     const [routeInfo, setRouteInfo] = useState<{ distance: string, duration: string } | null>(null);
+    const [userLocation, setUserLocation] = useState<google.maps.LatLngLiteral | null>(null);
 
 
     useEffect(() => {
@@ -98,6 +99,26 @@ export default function TransportTracker() {
             }
         };
         fetchSound();
+    }, []);
+
+    // Real-time user location tracking (Blue Dot)
+    useEffect(() => {
+        let watchId: number;
+        if (navigator.geolocation) {
+            watchId = navigator.geolocation.watchPosition(
+                (pos) => {
+                    setUserLocation({
+                        lat: pos.coords.latitude,
+                        lng: pos.coords.longitude
+                    });
+                },
+                (err) => console.warn("Error watching user location:", err),
+                { enableHighAccuracy: true }
+            );
+        }
+        return () => {
+            if (watchId) navigator.geolocation.clearWatch(watchId);
+        };
     }, []);
 
     // Monitor status changes for notification sound
@@ -401,7 +422,23 @@ export default function TransportTracker() {
                             onLoad={onLoad}
                             onUnmount={onUnmount}
                             options={mapOptions}
-                        />
+                        >
+                            {/* Real-time User Location (Blue Dot) */}
+                            {userLocation && (
+                                <Marker
+                                    position={userLocation}
+                                    icon={{
+                                        path: google.maps.SymbolPath.CIRCLE,
+                                        fillColor: '#4285F4',
+                                        fillOpacity: 1,
+                                        strokeColor: 'white',
+                                        strokeWeight: 2,
+                                        scale: 7
+                                    }}
+                                    zIndex={1}
+                                />
+                            )}
+                        </GoogleMap>
                     </div>
                 ) : null}
             </div>

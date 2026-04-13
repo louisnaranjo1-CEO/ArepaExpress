@@ -58,6 +58,7 @@ export default function Taxi() {
     const [origin, setOrigin] = useState<Location | null>(null);
     const [destination, setDestination] = useState<Location | null>(null);
     const [currentCenter, setCurrentCenter] = useState(defaultCenter);
+    const [userLocation, setUserLocation] = useState<google.maps.LatLngLiteral | null>(null);
     const [isDragging, setIsDragging] = useState(false);
 
     const [routeInfo, setRouteInfo] = useState<{ distance: number, duration: string } | null>(null);
@@ -252,6 +253,7 @@ export default function Taxi() {
             const id = navigator.geolocation.watchPosition(
                 (pos) => {
                     const newPos = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+                    setUserLocation(newPos);
                     setCurrentCenter(newPos);
                     mapCenterRef.current = newPos;
                     map.panTo(newPos);
@@ -792,6 +794,22 @@ export default function Taxi() {
                                     strokeOpacity: 0.9
                                 }
                             }}
+                        />
+                    )}
+
+                    {/* Real-time User Location (Blue Dot) */}
+                    {userLocation && (
+                        <Marker
+                            position={userLocation}
+                            icon={{
+                                path: google.maps.SymbolPath.CIRCLE,
+                                fillColor: '#4285F4',
+                                fillOpacity: 1,
+                                strokeColor: 'white',
+                                strokeWeight: 2,
+                                scale: 7
+                            }}
+                            zIndex={1}
                         />
                     )}
                 </GoogleMap>

@@ -121,7 +121,7 @@ export default function ReviewModal({ isOpen, onClose, restaurantId, orderId, on
             onReviewSubmitted();
         } catch (err: any) {
             console.error("Error submitting review:", err);
-            setError("Hubo un error al enviar tu reseña. Por favor, intenta de nuevo.");
+            toast.error(`Error al publicar la reseña: ${err.message || 'Inténtalo de nuevo'}`);
         } finally {
             setIsSubmitting(false);
         }

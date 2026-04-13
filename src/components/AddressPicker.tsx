@@ -35,6 +35,7 @@ export default function AddressPicker({ onClose, onSave, initialData }: AddressP
     });
 
     const [position, setPosition] = useState(initialData ? { lat: initialData.lat, lng: initialData.lng } : defaultCenter);
+    const [userLocation, setUserLocation] = useState<google.maps.LatLngLiteral | null>(null);
     const [reference, setReference] = useState(initialData?.reference || '');
     const [name, setName] = useState(initialData?.name || 'Casa');
     const [map, setMap] = useState<google.maps.Map | null>(null);
@@ -55,6 +56,25 @@ export default function AddressPicker({ onClose, onSave, initialData }: AddressP
                 if (map) map.panTo(newPos);
             });
         }
+
+        // Real-time location tracking (Blue Dot)
+        let watchId: number;
+        if (navigator.geolocation) {
+            watchId = navigator.geolocation.watchPosition(
+                (pos) => {
+                    setUserLocation({
+                        lat: pos.coords.latitude,
+                        lng: pos.coords.longitude
+                    });
+                },
+                (err) => console.warn("Error watching location:", err),
+                { enableHighAccuracy: true }
+            );
+        }
+
+        return () => {
+            if (watchId) navigator.geolocation.clearWatch(watchId);
+        };
     }, [map, initialData]);
 
     const onClick = (e: google.maps.MapMouseEvent) => {
@@ -117,6 +137,22 @@ export default function AddressPicker({ onClose, onSave, initialData }: AddressP
                                     }
                                 }}
                             />
+
+                            {/* Real-time User Location (Blue Dot) */}
+                            {userLocation && (
+                                <Marker
+                                    position={userLocation}
+                                    icon={{
+                                        path: google.maps.SymbolPath.CIRCLE,
+                                        fillColor: '#4285F4',
+                                        fillOpacity: 1,
+                                        strokeColor: 'white',
+                                        strokeWeight: 2,
+                                        scale: 7
+                                    }}
+                                    zIndex={1}
+                                />
+                            )}
                         </GoogleMap>
                     ) : (
                         <div style={containerStyle} className="bg-slate-100 flex flex-col items-center justify-center gap-2">
