@@ -14,7 +14,8 @@ interface Table {
 }
 
 export default function TablesManager() {
-    const { user } = useAuth();
+    const { user, userData } = useAuth();
+    const rid = userData?.managedRestaurantId || user?.uid;
     const [tables, setTables] = useState<Table[]>([]);
     const [loading, setLoading] = useState(true);
     const [isFormOpen, setIsFormOpen] = useState(false);
@@ -26,16 +27,16 @@ export default function TablesManager() {
     const [capacity, setCapacity] = useState(4);
 
     useEffect(() => {
-        if (user) {
+        if (user && rid) {
             fetchTables();
         }
-    }, [user]);
+    }, [user, rid]);
 
     const fetchTables = async () => {
-        if (!user) return;
+        if (!user || !rid) return;
         setLoading(true);
         try {
-            const q = query(collection(db, 'restaurants', user.uid, 'tables'));
+            const q = query(collection(db, 'restaurants', rid, 'tables'));
             const snapshot = await getDocs(q);
             const data = snapshot.docs.map(doc => ({
                 id: doc.id,
@@ -80,12 +81,12 @@ export default function TablesManager() {
 
     const handleSaveTable = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!user || !number.trim()) return;
+        if (!user || !rid || !number.trim()) return;
 
         setSaving(true);
         try {
             const tableId = editingTable ? editingTable.id : Date.now().toString();
-            const tableRef = doc(db, 'restaurants', user.uid, 'tables', tableId);
+            const tableRef = doc(db, 'restaurants', rid, 'tables', tableId);
 
             const tableData: any = {
                 number: number.trim(),
@@ -111,10 +112,10 @@ export default function TablesManager() {
     };
 
     const handleDeleteTable = async (tableId: string) => {
-        if (!user || !window.confirm('¿Estás seguro de que deseas eliminar esta mesa?')) return;
+        if (!user || !rid || !window.confirm('¿Estás seguro de que deseas eliminar esta mesa?')) return;
 
         try {
-            await deleteDoc(doc(db, 'restaurants', user.uid, 'tables', tableId));
+            await deleteDoc(doc(db, 'restaurants', rid, 'tables', tableId));
             await fetchTables();
         } catch (error) {
             console.error("Error deleting table:", error);

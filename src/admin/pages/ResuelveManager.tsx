@@ -22,7 +22,8 @@ interface Credit {
 }
 
 export default function ResuelveManager() {
-    const { user } = useAuth();
+    const { user, userData } = useAuth();
+    const rid = userData?.managedRestaurantId || user?.uid;
     const [credits, setCredits] = useState<Credit[]>([]);
     const [isAdding, setIsAdding] = useState(false);
     const [searchTerm, setSearchTerm] = useState('');
@@ -42,14 +43,14 @@ export default function ResuelveManager() {
     const activeUsers = new Set(credits.filter(c => c.status !== 'completed').map(c => c.userEmail)).size;
 
     useEffect(() => {
-        if (!user) return;
-        const q = query(collection(db, 'restaurants', user.uid, 'credits'));
+        if (!rid) return;
+        const q = query(collection(db, 'restaurants', rid, 'credits'));
         const unsub = onSnapshot(q, (snap) => {
             const data = snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Credit));
             setCredits(data.sort((a,b) => b.createdAt - a.createdAt));
         });
         return () => unsub();
-    }, [user]);
+    }, [rid]);
 
     const handleCreateCredit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -87,7 +88,7 @@ export default function ResuelveManager() {
                 createdAt: Date.now()
             };
 
-            await addDoc(collection(db, 'restaurants', user.uid, 'credits'), newCredit);
+            await addDoc(collection(db, 'restaurants', rid, 'credits'), newCredit);
             setIsAdding(false);
             
             // Reset
@@ -103,7 +104,7 @@ export default function ResuelveManager() {
     };
 
     const markInstallmentPaid = async (creditId: string, installmentIndex: number) => {
-        if(!user) return;
+        if(!rid) return;
         try {
             const credit = credits.find(c => c.id === creditId);
             if(!credit) return;
@@ -114,7 +115,7 @@ export default function ResuelveManager() {
             const allPaid = updatedInstallments.every(i => i.status === 'paid');
             const newStatus = allPaid ? 'completed' : 'active';
 
-            await updateDoc(doc(db, 'restaurants', user.uid, 'credits', creditId), {
+            await updateDoc(doc(db, 'restaurants', rid, 'credits', creditId), {
                 installments: updatedInstallments,
                 status: newStatus
             });

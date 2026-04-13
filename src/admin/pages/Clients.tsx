@@ -21,7 +21,7 @@ interface Client {
 }
 
 export default function Clients() {
-    const { user } = useAuth();
+    const { user, userData } = useAuth();
     const [clients, setClients] = useState<Client[]>([]);
     const [loading, setLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
@@ -34,8 +34,9 @@ export default function Clients() {
 
     const fetchClients = async () => {
         if (!user) return;
+        const rid = userData?.managedRestaurantId || user.uid;
         setLoading(true);
-        console.log("Fetching clients for restaurant:", user.uid);
+        console.log("Fetching clients for restaurant:", rid);
         
         try {
             // 1. Get all orders for this restaurant
@@ -44,12 +45,12 @@ export default function Clients() {
             
             try {
                 // Try with sorting (requires index: restaurantId ASC, createdAt DESC)
-                const q = query(ordersRef, where('restaurantId', '==', user.uid), orderBy('createdAt', 'desc'));
+                const q = query(ordersRef, where('restaurantId', '==', rid), orderBy('createdAt', 'desc'));
                 ordersSnap = await getDocs(q);
             } catch (indexError) {
                 console.warn("Index not found for sorted orders, falling back to unsorted query:", indexError);
                 // Fallback to unsorted query (doesn't require composite index)
-                const qFallback = query(ordersRef, where('restaurantId', '==', user.uid));
+                const qFallback = query(ordersRef, where('restaurantId', '==', rid));
                 ordersSnap = await getDocs(qFallback);
             }
 

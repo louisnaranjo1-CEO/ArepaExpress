@@ -7,7 +7,8 @@ import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 
 export default function Subscriptions() {
-    const { user } = useAuth();
+    const { user, userData } = useAuth();
+    const rid = userData?.managedRestaurantId || user?.uid;
     const [loading, setLoading] = useState(true);
     const [subConfig, setSubConfig] = useState<any>(null);
     const [businessSub, setBusinessSub] = useState<any>(null);
@@ -19,7 +20,7 @@ export default function Subscriptions() {
     });
 
     useEffect(() => {
-        if (!user) return;
+        if (!rid) return;
 
         // Fetch Global Subscription Config
         const fetchConfig = async () => {
@@ -31,7 +32,7 @@ export default function Subscriptions() {
         };
 
         // Listen to Restaurant's Subscription
-        const unsubSub = onSnapshot(doc(db, 'restaurants', user.uid), (doc) => {
+        const unsubSub = onSnapshot(doc(db, 'restaurants', rid), (doc) => {
             if (doc.exists()) {
                 const data = doc.data();
                 setRestaurantData(data);
@@ -42,11 +43,11 @@ export default function Subscriptions() {
 
         fetchConfig();
         return () => unsubSub();
-    }, [user]);
+    }, [rid]);
 
     // Calculate Banner Stats based on current month
     useEffect(() => {
-        if (!user || !businessSub) return;
+        if (!rid || !businessSub) return;
 
         const startOfMonth = new Date();
         startOfMonth.setDate(1);
@@ -54,7 +55,7 @@ export default function Subscriptions() {
 
         const q = query(
             collection(db, 'banner_updates'),
-            where('restaurantId', '==', user.uid),
+            where('restaurantId', '==', rid),
             where('timestamp', '>=', startOfMonth)
         );
 
@@ -69,7 +70,7 @@ export default function Subscriptions() {
         });
 
         return () => unsubStats();
-    }, [user, businessSub]);
+    }, [rid, businessSub]);
 
     if (loading) {
         return (

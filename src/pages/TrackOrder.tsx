@@ -539,6 +539,7 @@ export default function TrackOrder() {
                             )}
                         </div>
                     )}
+                </div>
 
                  {/* Restaurant Payment Section (Stock Confirmation) */}
                 {((order.status === 'pending' || order.status === 'action_required' || order.status === 'awaiting_payment' || order.status === 'pending_verification') && !order.restaurantPaymentClientConfirmed) || order.status === 'pending_verification' ? (

@@ -18,7 +18,8 @@ const BANNER_PLANS = [
 ];
 
 export default function AdsManager() {
-    const { user } = useAuth();
+    const { user, userData } = useAuth();
+    const rid = userData?.managedRestaurantId || user?.uid;
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
 
@@ -34,10 +35,10 @@ export default function AdsManager() {
     const [bannerPreview, setBannerPreview] = useState<string | null>(null);
 
     useEffect(() => {
-        if (!user) return;
+        if (!rid) return;
         const fetchSettings = async () => {
             try {
-                const docSnap = await getDoc(doc(db, 'restaurants', user.uid));
+                const docSnap = await getDoc(doc(db, 'restaurants', rid));
                 if (docSnap.exists()) {
                     const data = docSnap.data();
                     if (data.jobOpportunities) {
@@ -52,13 +53,13 @@ export default function AdsManager() {
             }
         };
         fetchSettings();
-    }, [user]);
+    }, [rid]);
 
     const saveJobsSettings = async (newActiveState: boolean, newPositions: JobPosition[]) => {
-        if (!user) return;
+        if (!rid) return;
         setSaving(true);
         try {
-            await updateDoc(doc(db, 'restaurants', user.uid), {
+            await updateDoc(doc(db, 'restaurants', rid), {
                 'jobOpportunities.active': newActiveState,
                 'jobOpportunities.positions': newPositions
             });
@@ -102,7 +103,7 @@ export default function AdsManager() {
     };
 
     const handleRequestBanner = async (plan: any) => {
-        if (!user || !bannerFile) {
+        if (!rid || !bannerFile) {
             alert("Por favor selecciona una imagen para el banner.");
             return;
         }
@@ -110,17 +111,17 @@ export default function AdsManager() {
         setSaving(true);
         try {
             // Get Restaurant Name
-            const restSnap = await getDoc(doc(db, 'restaurants', user.uid));
+            const restSnap = await getDoc(doc(db, 'restaurants', rid));
             const restName = restSnap.exists() ? restSnap.data().name : 'Restaurante Desconocido';
 
             // Upload Image
-            const fileRef = ref(storage, `banner_requests/${user.uid}_${Date.now()}`);
+            const fileRef = ref(storage, `banner_requests/${rid}_${Date.now()}`);
             await uploadBytes(fileRef, bannerFile);
             const imageUrl = await getDownloadURL(fileRef);
 
             // Save Request
             await addDoc(collection(db, 'banner_requests'), {
-                restaurantId: user.uid,
+                restaurantId: rid,
                 restaurantName: restName,
                 planId: plan.id,
                 planName: plan.name,

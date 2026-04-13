@@ -18,7 +18,8 @@ interface Cashier {
 }
 
 export default function CashiersManager() {
-    const { user } = useAuth();
+    const { user, userData } = useAuth();
+    const rid = userData?.managedRestaurantId || user?.uid;
     const [cashiers, setCashiers] = useState<Cashier[]>([]);
     const [searchTerm, setSearchTerm] = useState('');
     const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -35,14 +36,14 @@ export default function CashiersManager() {
     });
 
     useEffect(() => {
-        if (!user) return;
-        const q = query(collection(db, 'restaurants', user.uid, 'cashiers'));
+        if (!user || !rid) return;
+        const q = query(collection(db, 'restaurants', rid, 'cashiers'));
         const unsubscribe = onSnapshot(q, (snapshot) => {
             const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Cashier));
             setCashiers(data);
         });
         return unsubscribe;
-    }, [user]);
+    }, [user, rid]);
 
     const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         if (e.target.files && e.target.files[0]) {
@@ -68,34 +69,27 @@ export default function CashiersManager() {
             if (indexDoc.exists()) {
                 alert("Este correo ya está registrado en el sistema.");
                 setIsSubmitting(false);
-                return;
-            }
-
-            const cashierRef = doc(collection(db, 'restaurants', user.uid, 'cashiers'));
             let photoUrl = '';
-
             if (photoFile) {
-                const storage = getStorage();
-                const storageRef = ref(storage, `restaurants/${user.uid}/cashiers/${cashierRef.id}`);
-                await uploadBytes(storageRef, photoFile);
-                photoUrl = await getDownloadURL(storageRef);
+                const storageRef = ref(getStorage(), `restaurants/${rid}/cashiers/${Date.now()}_photo`);
+                const snapshot = await uploadBytes(storageRef, photoFile);
+                photoUrl = await getDownloadURL(snapshot.ref);
             }
 
-            const newCashier = {
-                id: cashierRef.id,
+            const cashierData = {
                 ...formData,
-                email: emailKey,
-                photo: photoUrl,
-                permissions: ['charge_orders', 'view_history'],
-                createdAt: Date.now()
+                photo: photoUrl || '',
+                createdAt: Date.now(),
+                permissions: ['pos', 'orders', 'tables'] // Default permissions
             };
 
-            await setDoc(cashierRef, newCashier);
-
-            await setDoc(doc(db, 'cashier_index', emailKey), {
-                restaurantId: user.uid,
-                cashierId: cashierRef.id,
-                email: emailKey
+            await setDoc(doc(db, 'restaurants', rid, 'cashiers', formData.email.toLowerCase()), cashierData);
+            
+            // Add to cashier index for global login
+            await setDoc(doc(db, 'cashier_index', formData.email.toLowerCase()), {
+                restaurantId: rid,
+                cashierId: formData.email.toLowerCase(),
+                email: formData.email.toLowerCase()
             });
 
             setIsAddModalOpen(false);
@@ -111,11 +105,11 @@ export default function CashiersManager() {
         }
     };
 
-    const handleDelete = async (cashier: Cashier) => {
-        if (!user || !window.confirm(`¿Estás seguro de eliminar a la cajera ${cashier.name}?`)) return;
+    const handleDelete = async (email: string) => {
+        if (!rid || !window.confirm('¿Estás seguro de eliminar este cajero?')) return;
         try {
-            await deleteDoc(doc(db, 'restaurants', user.uid, 'cashiers', cashier.id));
-            await deleteDoc(doc(db, 'cashier_index', cashier.email.toLowerCase()));
+            await deleteDoc(doc(db, 'restaurants', rid, 'cashiers', email));
+            await deleteDoc(doc(db, 'cashier_index', email));
         } catch (error) {
             console.error("Error deleting cashier:", error);
             alert("Error al eliminar");

@@ -52,7 +52,8 @@ interface Contest {
 }
 
 export default function Fidelization() {
-    const { user } = useAuth();
+    const { user, userData } = useAuth();
+    const rid = userData?.managedRestaurantId || user?.uid;
     const [activeTab, setActiveTab] = useState<'ranking' | 'contests' | 'promotion'>('ranking');
 
     // Ranking State
@@ -102,9 +103,9 @@ export default function Fidelization() {
     const [savingPromotion, setSavingPromotion] = useState(false);
 
     useEffect(() => {
-        if (!user) return;
+        if (!rid) return;
         fetchFidelizationData();
-    }, [user]);
+    }, [rid]);
 
     const fetchFidelizationData = async () => {
         try {
@@ -112,7 +113,7 @@ export default function Fidelization() {
 
             // 1. Fetch Ranking Data with index fallback
             const ordersRef = collection(db, 'orders');
-            const qOrders = query(ordersRef, where('restaurantId', '==', user!.uid), orderBy('createdAt', 'desc'));
+            const qOrders = query(ordersRef, where('restaurantId', '==', rid), orderBy('createdAt', 'desc'));
             
             const fetchOrders = async (queryToUse: any, isFallback = false) => {
                 try {
@@ -120,7 +121,7 @@ export default function Fidelization() {
                     return snap;
                 } catch (err: any) {
                     if (!isFallback && err.code === 'failed-precondition') {
-                        const fallbackQ = query(ordersRef, where('restaurantId', '==', user!.uid));
+                        const fallbackQ = query(ordersRef, where('restaurantId', '==', rid));
                         return await getDocs(fallbackQ);
                     }
                     throw err;
@@ -183,7 +184,7 @@ export default function Fidelization() {
             }));
 
             // 2. Fetch Restaurant's Products
-            const productsRef = collection(db, 'restaurants', user!.uid, 'products');
+            const productsRef = collection(db, 'restaurants', rid, 'products');
             const productsSnap = await getDocs(productsRef);
             const prods: Product[] = [];
             productsSnap.forEach(doc => {
@@ -192,7 +193,7 @@ export default function Fidelization() {
             setProducts(prods);
 
             // 3. Fetch Past Contests
-            const contestsRef = collection(db, 'restaurants', user!.uid, 'restaurant_contests');
+            const contestsRef = collection(db, 'restaurants', rid, 'restaurant_contests');
             const qContests = query(contestsRef, orderBy('createdAt', 'desc'));
             const contestsSnap = await getDocs(qContests);
             const fetchedContests: Contest[] = [];
@@ -202,7 +203,7 @@ export default function Fidelization() {
             setContests(fetchedContests);
 
             // 4. Fetch Public Raffle / Promotion
-            const resSnap = await getDoc(doc(db, 'restaurants', user!.uid));
+            const resSnap = await getDoc(doc(db, 'restaurants', rid));
             if (resSnap.exists()) {
                 const resData = resSnap.data();
                 if (resData.activeRaffle) {
@@ -233,9 +234,9 @@ export default function Fidelization() {
     }, [contestForm.winnersCount]);
 
     const handleDeleteContest = async (contestId: string) => {
-        if (!user || !window.confirm('¿Estás seguro de que deseas eliminar este registro de sorteo?')) return;
+        if (!rid || !window.confirm('¿Estás seguro de que deseas eliminar este registro de sorteo?')) return;
         try {
-            await deleteDoc(doc(db, 'restaurants', user.uid, 'restaurant_contests', contestId));
+            await deleteDoc(doc(db, 'restaurants', rid, 'restaurant_contests', contestId));
             setContests(contests.filter(c => c.id !== contestId));
             toast.success("Sorteo eliminado correctamente");
         } catch (error) {
@@ -246,7 +247,7 @@ export default function Fidelization() {
 
     const handleCreateContest = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!user) return;
+        if (!rid) return;
         setRunningContest(true);
         setRecentWinners(null);
 
@@ -255,7 +256,7 @@ export default function Fidelization() {
             const minPurchase = parseFloat(contestForm.filters.minPurchase) || 0;
 
             const ordersRef = collection(db, 'orders');
-            const qOrders = query(ordersRef, where('restaurantId', '==', user.uid));
+            const qOrders = query(ordersRef, where('restaurantId', '==', rid));
             const ordersSnap = await getDocs(qOrders);
 
             let eligibleUserIds = new Set<string>();
@@ -348,7 +349,7 @@ export default function Fidelization() {
             }));
 
             // STEP 4: Save Contest to Database
-            const resSnap = await getDoc(doc(db, 'restaurants', user.uid));
+            const resSnap = await getDoc(doc(db, 'restaurants', rid));
             const restaurantName = resSnap.data()?.name || 'El Restaurante';
 
             const contestData = {
@@ -361,14 +362,14 @@ export default function Fidelization() {
                 createdAt: serverTimestamp()
             };
 
-            const contestsRef = collection(db, 'restaurants', user.uid, 'restaurant_contests');
+            const contestsRef = collection(db, 'restaurants', rid, 'restaurant_contests');
             const newContestRef = await addDoc(contestsRef, contestData);
 
             // STEP 5: Send In-App Notifications
             for (const winner of selectedWinners) {
                 await addDoc(collection(db, 'notifications'), {
                     userId: winner.userId,
-                    restaurantId: user.uid,
+                    restaurantId: rid,
                     title: `¡Ganaste en ${restaurantName}! 🎉`,
                     body: `Has sido seleccionado como ganador del sorteo "${contestForm.title}". Premio: ${winner.prize}. ¡Felicidades!`,
                     read: false,
@@ -398,10 +399,10 @@ export default function Fidelization() {
 
     const handleSavePromotion = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!user) return;
+        if (!rid) return;
         setSavingPromotion(true);
         try {
-            await updateDoc(doc(db, 'restaurants', user.uid), {
+            await updateDoc(doc(db, 'restaurants', rid), {
                 activeRaffle: publicRaffle
             });
             toast.success("Anuncio de sorteo actualizado correctamente");
@@ -415,11 +416,11 @@ export default function Fidelization() {
 
     const handleRaffleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
-        if (!file || !user) return;
+        if (!file || !rid) return;
 
         setUploadingImage(true);
         try {
-            const storageRef = ref(storage, `restaurants/${user.uid}/raffle_${Date.now()}`);
+            const storageRef = ref(storage, `restaurants/${rid}/raffle_${Date.now()}`);
             await uploadBytes(storageRef, file);
             const url = await getDownloadURL(storageRef);
             setPublicRaffle(prev => ({ ...prev, image: url }));

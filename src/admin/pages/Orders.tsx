@@ -39,7 +39,8 @@ interface Order {
 }
 
 export default function Orders() {
-    const { user } = useAuth();
+    const { user, userData } = useAuth();
+    const rid = userData?.managedRestaurantId || user?.uid;
     const [activeTab, setActiveTab] = useState<'pending' | 'pendiente_pago' | 'preparing' | 'delivering' | 'delivered' | 'rejected' | 'tables'>('pending');
     const [orders, setOrders] = useState<Order[]>([]);
     const [loading, setLoading] = useState(true);
@@ -114,9 +115,9 @@ export default function Orders() {
         };
         fetchDrivers();
 
-        if (user) {
+        if (user && rid) {
             // Real-time Tables for Admin
-            const tablesRef = collection(db, 'restaurants', user.uid, 'tables');
+            const tablesRef = collection(db, 'restaurants', rid, 'tables');
             const unsubscribeTables = onSnapshot(tablesRef, (snapshot) => {
                 const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
                 data.sort((a: any, b: any) => {
@@ -130,7 +131,7 @@ export default function Orders() {
 
             // Fetch Waiters
             const fetchWaiters = async () => {
-                const waitersRef = collection(db, 'restaurants', user.uid, 'waiters');
+                const waitersRef = collection(db, 'restaurants', rid, 'waiters');
                 const snap = await getDocs(waitersRef);
                 setWaiters(snap.docs.map(d => ({ id: d.id, ...d.data() })));
             };
@@ -143,14 +144,14 @@ export default function Orders() {
     const [restaurantConfig, setRestaurantConfig] = useState<any>(null);
 
     useEffect(() => {
-        if (!user) return;
+        if (!user || !rid) return;
         const fetchConfig = async () => {
-            const docRef = doc(db, 'restaurants', user.uid);
+            const docRef = doc(db, 'restaurants', rid);
             const snap = await getDoc(docRef);
             if (snap.exists()) setRestaurantConfig(snap.data());
         };
         fetchConfig();
-    }, [user]);
+    }, [user, rid]);
 
     // POS State
     const [showPOS, setShowPOS] = useState(false);
@@ -186,9 +187,9 @@ export default function Orders() {
     const [posEditingOrderId, setPosEditingOrderId] = useState<string | null>(null);
 
     useEffect(() => {
-        if (!user || !showPOS) return;
+        if (!user || !showPOS || !rid) return;
         const fetchPosProducts = async () => {
-            const productsRef = collection(db, 'restaurants', user.uid, 'products');
+            const productsRef = collection(db, 'restaurants', rid, 'products');
             const q = query(productsRef);
             const snapshot = await getDocs(q);
             const items: any[] = [];
@@ -208,12 +209,12 @@ export default function Orders() {
     }, [user, showPOS]);
 
     useEffect(() => {
-        if (!user) return;
+        if (!user || !rid) return;
 
         const ordersRef = collection(db, 'orders');
         const q = query(
             ordersRef,
-            where('restaurantId', '==', user.uid),
+            where('restaurantId', '==', rid),
             orderBy('createdAt', 'desc')
         );
 
@@ -250,7 +251,7 @@ export default function Orders() {
                     console.warn("Retrying without sort - likely missing index");
                     const fallbackQ = query(
                         ordersRef,
-                        where('restaurantId', '==', user.uid)
+                        where('restaurantId', '==', rid)
                     );
                     setupSnapshot(fallbackQ, true);
                 } else {
@@ -265,11 +266,11 @@ export default function Orders() {
     }, [user, orders.length]);
 
     const handlePrintOrder = async (orderId: string, orderData: Order) => {
-        if (!user) return;
+        if (!user || !rid) return;
         setPrintingOrderId(orderId);
         try {
             // Obtener todas las impresoras configuradas
-            const printersRef = collection(db, 'restaurants', user.uid, 'printers');
+            const printersRef = collection(db, 'restaurants', rid, 'printers');
             const snapshot = await getDocs(printersRef);
             const printers = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() as any }));
 
@@ -626,7 +627,7 @@ export default function Orders() {
                 });
 
                 // Enviar mensaje de pago
-                const restaurantRef = doc(db, 'restaurants', user.uid);
+                const restaurantRef = doc(db, 'restaurants', rid);
                 const restaurantSnap = await getDoc(restaurantRef);
                 
                 if (restaurantSnap.exists()) {
@@ -711,7 +712,7 @@ export default function Orders() {
                         const userRef = doc(db, 'users', orderTemp.userId);
                         await updateDoc(userRef, {
                             points: increment(pointsToAdd),
-                            [`restaurantPoints.${user.uid}`]: increment(pointsToAdd)
+                            [`restaurantPoints.${rid}`]: increment(pointsToAdd)
                         });
                         console.log(`Se sumaron ${pointsToAdd} puntos al usuario ${orderTemp.userId}`);
                     } catch (pointsError) {
@@ -768,7 +769,7 @@ export default function Orders() {
             } else {
                 // Create new order
                 const newOrderRef = await addDoc(collection(db, 'orders'), {
-                    restaurantId: user.uid,
+                    restaurantId: rid,
                     userId: 'pos_customer',
                     userName: posClientName || 'Cliente en mostrador',
                     clientId: posClientDNI || '',
@@ -792,7 +793,7 @@ export default function Orders() {
 
             // Update Table Status if local
             if (posOrderType === 'local' && selectedTable) {
-                const tableRef = doc(db, 'restaurants', user.uid, 'tables', selectedTable.id);
+                const tableRef = doc(db, 'restaurants', rid, 'tables', selectedTable.id);
                 await updateDoc(tableRef, {
                     status: 'occupied',
                     lastOrderId: targetOrderRefId,
@@ -914,7 +915,7 @@ export default function Orders() {
     const handleAssignWaiter = async (tableId: string, waiter: { id: string, name: string } | null) => {
         if (!user) return;
         try {
-            const tableRef = doc(db, 'restaurants', user.uid, 'tables', tableId);
+            const tableRef = doc(db, 'restaurants', rid as string, 'tables', tableId);
             await updateDoc(tableRef, {
                 waiterId: waiter ? waiter.id : '',
                 waiterName: waiter ? waiter.name : '',

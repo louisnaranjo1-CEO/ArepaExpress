@@ -7,7 +7,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '../../context/AuthContext';
 
 export default function Banners() {
-    const { user } = useAuth();
+    const { user, userData } = useAuth();
+    const rid = userData?.managedRestaurantId || user?.uid;
     const [banners, setBanners] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     const [isAdding, setIsAdding] = useState(false);
@@ -30,10 +31,10 @@ export default function Banners() {
     });
 
     useEffect(() => {
-        if (!user) return;
+        if (!rid) return;
 
         // Fetch Business Data (Subscription)
-        const unsubBus = onSnapshot(doc(db, 'restaurants', user.uid),
+        const unsubBus = onSnapshot(doc(db, 'restaurants', rid),
             (docSnap) => {
                 if (docSnap.exists()) {
                     const data = docSnap.data();
@@ -51,7 +52,7 @@ export default function Banners() {
         // Fetch Banners for this Restaurant
         const q = query(
             collection(db, 'banners'),
-            where('restaurantId', '==', user.uid)
+            where('restaurantId', '==', rid)
         );
 
         const unsubBanners = onSnapshot(q,
@@ -76,7 +77,7 @@ export default function Banners() {
 
         const qStats = query(
             collection(db, 'banner_updates'),
-            where('restaurantId', '==', user.uid),
+            where('restaurantId', '==', rid),
             where('timestamp', '>=', startOfMonth)
         );
 
@@ -101,7 +102,7 @@ export default function Banners() {
             unsubBanners();
             unsubStats();
         };
-    }, [user]);
+    }, [rid]);
 
     const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
@@ -113,7 +114,7 @@ export default function Banners() {
 
     const handleSaveBanner = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!user || !businessData) return;
+        if (!user || !rid || !businessData) return;
 
         // Check if user has subscription
         if (!businessData.subscription) {
@@ -137,7 +138,7 @@ export default function Banners() {
             let finalImageUrl = newBanner.imageUrl;
 
             if (selectedFile) {
-                const storageRef = ref(storage, `banners/${user.uid}/${Date.now()}_${selectedFile.name}`);
+                const storageRef = ref(storage, `banners/${rid}/${Date.now()}_${selectedFile.name}`);
                 const snapshot = await uploadBytes(storageRef, selectedFile);
                 finalImageUrl = await getDownloadURL(snapshot.ref);
             }
@@ -145,7 +146,7 @@ export default function Banners() {
             const bannerData = {
                 ...newBanner,
                 imageUrl: finalImageUrl,
-                restaurantId: user.uid,
+                restaurantId: rid,
                 restaurantName: businessData.name || '',
                 updatedAt: serverTimestamp(),
                 isActive: false,
@@ -161,7 +162,7 @@ export default function Banners() {
                 // Record update if image changed
                 if (selectedFile) {
                     await addDoc(collection(db, 'banner_updates'), {
-                        restaurantId: user.uid,
+                        restaurantId: rid,
                         bannerId: editingId,
                         timestamp: serverTimestamp(),
                         type: 'update'
@@ -174,7 +175,7 @@ export default function Banners() {
                 });
                 // Record update (creation counts as one)
                 await addDoc(collection(db, 'banner_updates'), {
-                    restaurantId: user.uid,
+                    restaurantId: rid,
                     bannerId: docRef.id,
                     timestamp: serverTimestamp(),
                     type: 'create'

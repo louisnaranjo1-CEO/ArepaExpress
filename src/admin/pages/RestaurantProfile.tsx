@@ -79,6 +79,87 @@ const DEFAULT_WORKING_HOURS: WorkingHour[] = [
     { day: 'Lunes', open: '08:00', close: '22:00', closed: false },
     { day: 'Martes', open: '08:00', close: '22:00', closed: false },
     { day: 'Miércoles', open: '08:00', close: '22:00', closed: false },
+import React, { useState, useEffect } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { useNavigate } from 'react-router-dom';
+import {
+    Save,
+    Check,
+    Loader2,
+    Image as ImageIcon,
+    MapPin,
+    Plus,
+    Trash2,
+    Phone,
+    Clock,
+    Bike,
+    ChevronDown,
+    Camera,
+    Store,
+    Truck,
+    Map as MapIcon,
+    Upload,
+    Share2,
+    ExternalLink,
+    Globe,
+    Zap,
+    Hotel,
+    Building2,
+    ChevronRight,
+    Search,
+    ChevronUp,
+    CreditCard
+} from 'lucide-react';
+import { db, storage } from '../../lib/firebase';
+import { doc, getDoc, updateDoc, setDoc, collection, getDocs, orderBy, query } from 'firebase/firestore';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { useAuth } from '../../context/AuthContext';
+import AddressPicker from '../../components/AddressPicker';
+import { VENEZUELA_DATA, VENEZUELA_STATES } from '../../lib/venezuelaData';
+
+interface Location {
+    address: string;
+    city: string;
+    state: string;
+    coords?: { lat: number; lng: number };
+    type: 'principal' | 'sucursal';
+    reference?: string;
+}
+
+interface DeliveryRate {
+    minKm: number;
+    maxKm: number;
+    price: number;
+}
+
+interface WorkingHour {
+    day: string;
+    open: string;
+    close: string;
+    closed: boolean;
+}
+
+interface SocialLink {
+    id: string; // The ID of the global icon
+    name: string; // The name of the social network
+    url: string; // The user's profile URL
+    imageUrl: string; // The icon image URL
+}
+
+interface PaymentMethod {
+    type: 'Pago Móvil' | 'Zelle' | 'Transferencia' | 'Efectivo' | 'Otro';
+    bank?: string;
+    rif?: string;
+    phone?: string;
+    owner?: string;
+    email?: string;
+    note?: string;
+}
+
+const DEFAULT_WORKING_HOURS: WorkingHour[] = [
+    { day: 'Lunes', open: '08:00', close: '22:00', closed: false },
+    { day: 'Martes', open: '08:00', close: '22:00', closed: false },
+    { day: 'Miércoles', open: '08:00', close: '22:00', closed: false },
     { day: 'Jueves', open: '08:00', close: '22:00', closed: false },
     { day: 'Viernes', open: '08:00', close: '22:00', closed: false },
     { day: 'Sábado', open: '08:00', close: '22:00', closed: false },
@@ -86,8 +167,9 @@ const DEFAULT_WORKING_HOURS: WorkingHour[] = [
 ];
 
 export default function RestaurantProfile() {
-    const { user } = useAuth();
+    const { user, userData } = useAuth();
     const navigate = useNavigate();
+    const rid = userData?.managedRestaurantId || user?.uid;
     const [loading, setLoading] = useState(true);
     const [isSaving, setIsSaving] = useState(false);
     const [saved, setSaved] = useState(false);
@@ -143,11 +225,11 @@ export default function RestaurantProfile() {
     const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([]);
 
     useEffect(() => {
-        if (!user) return;
+        if (!user || !rid) return;
 
         const fetchRestaurant = async () => {
             try {
-                const docRef = doc(db, 'restaurants', user.uid);
+                const docRef = doc(db, 'restaurants', rid);
                 const docSnap = await getDoc(docRef);
 
                 if (docSnap.exists()) {
@@ -177,7 +259,7 @@ export default function RestaurantProfile() {
                     setPaymentMethods(data.paymentMethods || []);
 
                     // Fetch followers list
-                    const followersRef = collection(db, 'restaurants', user.uid, 'followers');
+                    const followersRef = collection(db, 'restaurants', rid, 'followers');
                     const followersQuery = query(followersRef, orderBy('followedAt', 'desc'));
                     const followersSnap = await getDocs(followersQuery);
                     const followersList = followersSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
@@ -217,10 +299,10 @@ export default function RestaurantProfile() {
             setGlobalCategories(catSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
         };
         fetchGlobalCategories();
-    }, [user]);
+    }, [user, rid]);
 
     const handleSave = async () => {
-        if (!user) return;
+        if (!user || !rid) return;
         setIsSaving(true);
         try {
             let currentLogoUrl = logoUrl;
@@ -229,7 +311,7 @@ export default function RestaurantProfile() {
             // Handle Logo Upload
             if (logoFile) {
                 setUploadingLogo(true);
-                const logoStorageRef = ref(storage, `restaurants/${user.uid}/logo_${Date.now()}`);
+                const logoStorageRef = ref(storage, `restaurants/${rid}/logo_${Date.now()}`);
                 const snapshot = await uploadBytes(logoStorageRef, logoFile);
                 currentLogoUrl = await getDownloadURL(snapshot.ref);
                 setLogoUrl(currentLogoUrl);
@@ -241,7 +323,7 @@ export default function RestaurantProfile() {
             // Handle Cover Upload
             if (coverFile) {
                 setUploadingCover(true);
-                const coverStorageRef = ref(storage, `restaurants/${user.uid}/cover_${Date.now()}`);
+                const coverStorageRef = ref(storage, `restaurants/${rid}/cover_${Date.now()}`);
                 const snapshot = await uploadBytes(coverStorageRef, coverFile);
                 currentCoverUrl = await getDownloadURL(snapshot.ref);
                 setCoverUrl(currentCoverUrl);
@@ -253,7 +335,7 @@ export default function RestaurantProfile() {
             let currentCasheaQrUrl = casheaQrUrl;
             if (casheaQrFile) {
                 setUploadingCasheaQr(true);
-                const casheaStorageRef = ref(storage, `restaurants/${user.uid}/cashea_qr_${Date.now()}`);
+                const casheaStorageRef = ref(storage, `restaurants/${rid}/cashea_qr_${Date.now()}`);
                 const snapshot = await uploadBytes(casheaStorageRef, casheaQrFile);
                 currentCasheaQrUrl = await getDownloadURL(snapshot.ref);
                 setCasheaQrUrl(currentCasheaQrUrl);
@@ -262,7 +344,7 @@ export default function RestaurantProfile() {
                 setUploadingCasheaQr(false);
             }
 
-            const docRef = doc(db, 'restaurants', user.uid);
+            const docRef = doc(db, 'restaurants', rid as string);
             
             // Sanitize data to avoid undefined field errors in Firestore
             const sanitizedData = JSON.parse(JSON.stringify({

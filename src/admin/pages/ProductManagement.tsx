@@ -37,7 +37,8 @@ interface Product {
 }
 
 export default function ProductManagement() {
-    const { user } = useAuth();
+    const { user, userData } = useAuth();
+    const rid = userData?.managedRestaurantId || user?.uid;
     const [products, setProducts] = useState<Product[]>([]);
     const [loading, setLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
@@ -80,8 +81,9 @@ export default function ProductManagement() {
     }, [user]);
 
     const fetchRestaurantLogo = async () => {
+        if (!rid) return;
         try {
-            const docRef = doc(db, 'restaurants', user!.uid);
+            const docRef = doc(db, 'restaurants', rid);
             const docSnap = await getDoc(docRef);
             if (docSnap.exists()) {
                 const data = docSnap.data();
@@ -93,8 +95,9 @@ export default function ProductManagement() {
     };
 
     const fetchStations = async () => {
+        if (!rid) return;
         try {
-            const stationsRef = collection(db, 'restaurants', user!.uid, 'printers');
+            const stationsRef = collection(db, 'restaurants', rid, 'printers');
             const snapshot = await getDocs(stationsRef);
             const items = snapshot.docs.map(doc => ({ id: doc.id, name: doc.data().name }));
             setStations(items);
@@ -104,8 +107,9 @@ export default function ProductManagement() {
     };
 
     const fetchProducts = async () => {
+        if (!rid) return;
         try {
-            const productsRef = collection(db, 'restaurants', user!.uid, 'products');
+            const productsRef = collection(db, 'restaurants', rid, 'products');
             const q = query(productsRef);
             const querySnapshot = await getDocs(q);
             const items: Product[] = [];
@@ -183,7 +187,7 @@ export default function ProductManagement() {
                 try {
                     console.log(`Uploading file: ${file.name}`);
                     const sanitizedName = file.name.replace(/[^a-z0-9.]/gi, '_').toLowerCase();
-                    const storageRef = ref(storage, `restaurants/${user.uid}/products/${Date.now()}_${sanitizedName}`);
+                    const storageRef = ref(storage, `restaurants/${rid}/products/${Date.now()}_${sanitizedName}`);
                     const snapshot = await uploadBytes(storageRef, file);
                     const url = await getDownloadURL(snapshot.ref);
                     uploadedUrls.push(url);
@@ -244,7 +248,7 @@ export default function ProductManagement() {
             console.log("Saving product data:", productData);
 
             if (editingProduct) {
-                const productRef = doc(db, 'restaurants', user.uid, 'products', editingProduct.id);
+                const productRef = doc(db, 'restaurants', rid, 'products', editingProduct.id);
                 await updateDoc(productRef, productData);
 
                 // Notification for price drop
@@ -256,7 +260,7 @@ export default function ProductManagement() {
                     );
                 }
             } else {
-                const productsRef = collection(db, 'restaurants', user.uid, 'products');
+                const productsRef = collection(db, 'restaurants', rid, 'products');
                 await addDoc(productsRef, {
                     ...productData,
                     createdAt: new Date()
@@ -302,9 +306,9 @@ export default function ProductManagement() {
     };
 
     const handleDelete = async (id: string) => {
-        if (!user || !window.confirm('¿Estás seguro de eliminar este producto?')) return;
+        if (!user || !rid || !window.confirm('¿Estás seguro de eliminar este producto?')) return;
         try {
-            await deleteDoc(doc(db, 'restaurants', user.uid, 'products', id));
+            await deleteDoc(doc(db, 'restaurants', rid, 'products', id));
             fetchProducts();
         } catch (error) {
             console.error("Error deleting product:", error);
@@ -312,9 +316,9 @@ export default function ProductManagement() {
     };
 
     const toggleAvailability = async (product: Product) => {
-        if (!user) return;
+        if (!user || !rid) return;
         try {
-            const productRef = doc(db, 'restaurants', user.uid, 'products', product.id);
+            const productRef = doc(db, 'restaurants', rid, 'products', product.id);
             await updateDoc(productRef, { isAvailable: !product.isAvailable });
             fetchProducts();
         } catch (error) {
@@ -419,13 +423,13 @@ export default function ProductManagement() {
     };
 
     const notifyFollowers = async (title: string, body: string) => {
-        if (!user) return;
+        if (!user || !rid) return;
         try {
             // Fetch restaurant name
-            const resSnap = await getDoc(doc(db, 'restaurants', user.uid));
+            const resSnap = await getDoc(doc(db, 'restaurants', rid));
             const restaurantName = resSnap.data()?.name || 'Un restaurante que sigues';
 
-            const followersRef = collection(db, 'restaurants', user.uid, 'followers');
+            const followersRef = collection(db, 'restaurants', rid, 'followers');
             const followersSnap = await getDocs(followersRef);
 
             if (followersSnap.empty) return;
@@ -436,7 +440,7 @@ export default function ProductManagement() {
                 const notifRef = doc(collection(db, 'notifications'));
                 batch.set(notifRef, {
                     userId,
-                    restaurantId: user.uid,
+                    restaurantId: rid,
                     restaurantName,
                     title,
                     body,

@@ -6,7 +6,7 @@ import { useAuth } from '../../context/AuthContext';
 import { Link } from 'react-router-dom';
 
 export default function Dashboard() {
-    const { user } = useAuth();
+    const { user, userData } = useAuth();
     const [stats, setStats] = useState({
         totalSales: 0,
         ordersToday: 0,
@@ -20,8 +20,11 @@ export default function Dashboard() {
         if (!user) return;
 
         // Fetch Stats
+        const rid = userData?.managedRestaurantId || user?.uid;
+        if (!rid) return;
+
         const ordersRef = collection(db, 'orders');
-        const q = query(ordersRef, where('restaurantId', '==', user.uid));
+        const q = query(ordersRef, where('restaurantId', '==', rid));
 
         const unsubscribe = onSnapshot(q, (snapshot) => {
             let sales = 0;
@@ -41,7 +44,7 @@ export default function Dashboard() {
             });
 
             // Active products count
-            const productsRef = collection(db, 'restaurants', user.uid, 'products');
+            const productsRef = collection(db, 'restaurants', rid, 'products');
             getDocs(query(productsRef, where('isActive', '==', true))).then(prodSnap => {
                 setStats(prev => ({
                     ...prev,
@@ -52,7 +55,7 @@ export default function Dashboard() {
             });
 
             // Recent orders with index fallback
-            const recentQ = query(ordersRef, where('restaurantId', '==', user.uid), orderBy('createdAt', 'desc'), limit(5));
+            const recentQ = query(ordersRef, where('restaurantId', '==', rid), orderBy('createdAt', 'desc'), limit(5));
             const fetchRecent = async (queryToUse: any, isFallback = false) => {
                 try {
                     const recentSnap = await getDocs(queryToUse);
@@ -70,7 +73,7 @@ export default function Dashboard() {
                 } catch (err: any) {
                     console.error("Error fetching recent orders:", err);
                     if (!isFallback && err.code === 'failed-precondition') {
-                        const fallbackQ = query(ordersRef, where('restaurantId', '==', user.uid));
+                        const fallbackQ = query(ordersRef, where('restaurantId', '==', rid));
                         fetchRecent(fallbackQ, true);
                     }
                 }

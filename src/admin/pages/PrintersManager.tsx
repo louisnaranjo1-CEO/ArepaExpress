@@ -28,7 +28,8 @@ interface Station {
 }
 
 export default function PrintersManager() {
-    const { user } = useAuth();
+    const { user, userData } = useAuth();
+    const rid = userData?.managedRestaurantId || user?.uid;
     const [stations, setStations] = useState<Station[]>([]);
     const [loading, setLoading] = useState(true);
     const [isModalOpen, setIsModalOpen] = useState(false);
@@ -46,9 +47,9 @@ export default function PrintersManager() {
     });
 
     useEffect(() => {
-        if (!user) return;
+        if (!user || !rid) return;
 
-        const stationsRef = collection(db, 'restaurants', user.uid, 'printers');
+        const stationsRef = collection(db, 'restaurants', rid, 'printers');
         const q = query(stationsRef);
 
         const unsubscribe = onSnapshot(q, (snapshot) => {
@@ -61,7 +62,7 @@ export default function PrintersManager() {
         });
 
         return () => unsubscribe();
-    }, [user]);
+    }, [user, rid]);
 
     const handleOpenModal = (station?: Station) => {
         if (station) {
@@ -94,10 +95,10 @@ export default function PrintersManager() {
 
         setSubmitting(true);
         try {
-            const stationsRef = collection(db, 'restaurants', user.uid, 'printers');
+            const stationsRef = collection(db, 'restaurants', rid, 'printers');
 
             if (editingStation) {
-                await updateDoc(doc(db, 'restaurants', user.uid, 'printers', editingStation.id), {
+                await updateDoc(doc(db, 'restaurants', rid, 'printers', editingStation.id), {
                     ...formData,
                     updatedAt: new Date()
                 });
@@ -117,10 +118,10 @@ export default function PrintersManager() {
     };
 
     const handleDelete = async (id: string) => {
-        if (!user || !window.confirm('¿Estás seguro de eliminar esta estación?')) return;
+        if (!user || !rid || !window.confirm('¿Estás seguro de eliminar esta estación?')) return;
 
         try {
-            await deleteDoc(doc(db, 'restaurants', user.uid, 'printers', id));
+            await deleteDoc(doc(db, 'restaurants', rid, 'printers', id));
         } catch (error) {
             console.error("Error deleting station:", error);
             alert("Error al eliminar la estación");

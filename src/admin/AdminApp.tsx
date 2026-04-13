@@ -37,6 +37,8 @@ function AdminRoutes() {
         return <AdminAuth />;
     }
 
+    const rid = userData?.managedRestaurantId || user?.uid;
+
     return (
         <AdminLayout>
             <Routes>
@@ -56,7 +58,7 @@ function AdminRoutes() {
                 <Route path="/finance" element={<Finance />} />
                 <Route path="/fidelization" element={<Fidelization />} />
                 <Route path="/resuelve" element={<ResuelveManager />} />
-                <Route path="/push-campaigns" element={<PushCampaigns restaurantId={user.uid} />} />
+                <Route path="/push-campaigns" element={<PushCampaigns restaurantId={rid} />} />
                 <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
         </AdminLayout>

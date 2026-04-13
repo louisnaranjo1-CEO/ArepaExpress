@@ -19,8 +19,8 @@ interface Waiter {
 }
 
 export default function WaitersManager() {
-    const { user } = useAuth();
-    const restaurantId = user?.uid;
+    const { user, userData } = useAuth();
+    const rid = userData?.managedRestaurantId || user?.uid;
     const [waiters, setWaiters] = useState<Waiter[]>([]);
     const [loading, setLoading] = useState(true);
     const [isAdding, setIsAdding] = useState(false);
@@ -35,15 +35,15 @@ export default function WaitersManager() {
     const [showPassword, setShowPassword] = useState(false);
 
     useEffect(() => {
-        if (!restaurantId) return;
+        if (!rid) return;
         fetchWaiters();
-    }, [restaurantId]);
+    }, [rid]);
 
     const fetchWaiters = async () => {
-        if (!restaurantId) return;
+        if (!rid) return;
         setLoading(true);
         try {
-            const waitersRef = collection(db, 'restaurants', restaurantId, 'waiters');
+            const waitersRef = collection(db, 'restaurants', rid, 'waiters');
             const q = query(waitersRef);
             const snapshot = await getDocs(q);
             const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Waiter[];
@@ -56,7 +56,7 @@ export default function WaitersManager() {
                     const idxSnap = await getDoc(idxRef);
                     if (!idxSnap.exists()) {
                         await setDoc(idxRef, {
-                            restaurantId: restaurantId,
+                            restaurantId: rid,
                             waiterId: w.id,
                             email: w.email.toLowerCase()
                         });
@@ -83,15 +83,15 @@ export default function WaitersManager() {
     };
 
     const uploadPhoto = async (file: File) => {
-        if (!restaurantId) return '';
-        const fileRef = ref(storage, `restaurants/${restaurantId}/waiters/${Date.now()}_${file.name}`);
+        if (!rid) return '';
+        const fileRef = ref(storage, `restaurants/${rid}/waiters/${Date.now()}_${file.name}`);
         await uploadBytes(fileRef, file);
         return await getDownloadURL(fileRef);
     };
 
     const handleAddWaiter = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!restaurantId || isSaving) return;
+        if (!rid || isSaving) return;
 
         setIsSaving(true);
         try {
@@ -103,16 +103,16 @@ export default function WaitersManager() {
             const waiterData = {
                 ...formData,
                 photoUrl,
-                restaurantId,
+                restaurantId: rid,
                 isActive: true,
                 createdAt: new Date()
             };
 
-            const docRef = await addDoc(collection(db, 'restaurants', restaurantId, 'waiters'), waiterData);
+            const docRef = await addDoc(collection(db, 'restaurants', rid, 'waiters'), waiterData);
 
             // Add to index for global lookup
             await setDoc(doc(db, 'waiter_index', formData.email.toLowerCase()), {
-                restaurantId,
+                restaurantId: rid,
                 waiterId: docRef.id,
                 email: formData.email.toLowerCase()
             });
@@ -137,7 +137,7 @@ export default function WaitersManager() {
 
     const handleUpdateWaiter = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!restaurantId || !editingId || isSaving) return;
+        if (!rid || !editingId || isSaving) return;
         setIsSaving(true);
         try {
             let photoUrl = editData.photoUrl;
@@ -148,7 +148,7 @@ export default function WaitersManager() {
             // Get old data to check if email changed
             const oldWaiter = waiters.find(w => w.id === editingId);
 
-            await updateDoc(doc(db, 'restaurants', restaurantId, 'waiters', editingId), {
+            await updateDoc(doc(db, 'restaurants', rid, 'waiters', editingId), {
                 ...editData,
                 photoUrl,
                 updatedAt: new Date()
@@ -160,7 +160,7 @@ export default function WaitersManager() {
             }
 
             await setDoc(doc(db, 'waiter_index', editData.email.toLowerCase()), {
-                restaurantId,
+                restaurantId: rid,
                 waiterId: editingId,
                 email: editData.email.toLowerCase()
             });
@@ -178,13 +178,13 @@ export default function WaitersManager() {
     };
 
     const handleDeleteWaiter = async (waiterId: string) => {
-        if (!restaurantId || !confirm('¿Estás seguro de eliminar a este mesero?')) return;
+        if (!rid || !confirm('¿Estás seguro de eliminar a este mesero?')) return;
         try {
             const waiter = waiters.find(w => w.id === waiterId);
             if (waiter) {
                 await deleteDoc(doc(db, 'waiter_index', waiter.email.toLowerCase()));
             }
-            await deleteDoc(doc(db, 'restaurants', restaurantId, 'waiters', waiterId));
+            await deleteDoc(doc(db, 'restaurants', rid, 'waiters', waiterId));
             fetchWaiters();
         } catch (error) {
             console.error("Error deleting waiter:", error);

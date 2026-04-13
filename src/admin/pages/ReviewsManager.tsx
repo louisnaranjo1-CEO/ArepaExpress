@@ -7,16 +7,17 @@ import { useAuth } from '../../context/AuthContext';
 import { Link } from 'react-router-dom';
 
 export default function ReviewsManager() {
-    const { user } = useAuth();
+    const { user, userData } = useAuth();
+    const rid = userData?.managedRestaurantId || user?.uid;
     const [reviews, setReviews] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     const [stats, setStats] = useState({ total: 0, avg: 0 });
 
     const fetchReviews = async () => {
-        if (!user) return;
+        if (!rid) return;
         setLoading(true);
         try {
-            const reviewsRef = collection(db, 'restaurants', user.uid, 'reviews');
+            const reviewsRef = collection(db, 'restaurants', rid, 'reviews');
             const q = query(reviewsRef, orderBy('createdAt', 'desc'));
             const snap = await getDocs(q);
             const fetched = snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as any));
@@ -36,12 +37,12 @@ export default function ReviewsManager() {
 
     useEffect(() => {
         fetchReviews();
-    }, [user]);
+    }, [rid]);
 
     const toggleVisibility = async (reviewId: string, currentHidden: boolean) => {
-        if (!user) return;
+        if (!rid) return;
         try {
-            await updateDoc(doc(db, 'restaurants', user.uid, 'reviews', reviewId), {
+            await updateDoc(doc(db, 'restaurants', rid, 'reviews', reviewId), {
                 isHidden: !currentHidden
             });
             setReviews(prev => prev.map(r => r.id === reviewId ? { ...r, isHidden: !currentHidden } : r));
@@ -52,11 +53,11 @@ export default function ReviewsManager() {
     };
 
     const deleteReview = async (reviewId: string) => {
-        if (!user) return;
+        if (!rid) return;
         if (!window.confirm("¿Estás seguro de que quieres eliminar esta reseña permanentemente?")) return;
 
         try {
-            await deleteDoc(doc(db, 'restaurants', user.uid, 'reviews', reviewId));
+            await deleteDoc(doc(db, 'restaurants', rid, 'reviews', reviewId));
             setReviews(prev => prev.filter(r => r.id !== reviewId));
             const newReviews = reviews.filter(r => r.id !== reviewId);
             if (newReviews.length > 0) {

@@ -23,7 +23,8 @@ interface CashRegister {
 }
 
 export default function Finance() {
-    const { user } = useAuth();
+    const { user, userData } = useAuth();
+    const rid = userData?.managedRestaurantId || user?.uid;
     const [loading, setLoading] = useState(true);
     const [grossIncome, setGrossIncome] = useState(0);
     const [totalExpenses, setTotalExpenses] = useState(0);
@@ -46,9 +47,9 @@ export default function Finance() {
     const paymentMethods = ['Efectivo', 'Punto de Venta', 'Transferencia', 'Pago Móvil'];
 
     useEffect(() => {
-        if (!user) return;
+        if (!rid) return;
         fetchFinanceData();
-    }, [user]);
+    }, [rid]);
 
     const fetchFinanceData = async () => {
         if (!user) return;
@@ -67,7 +68,7 @@ export default function Finance() {
             const ordersRef = collection(db, 'orders');
             const qOrders = query(
                 ordersRef,
-                where('restaurantId', '==', user.uid),
+                where('restaurantId', '==', rid),
                 where('paymentStatus', '==', 'sold'),
                 where('createdAt', '>=', startOfDay),
                 where('createdAt', '<', endOfDay)
@@ -84,7 +85,7 @@ export default function Finance() {
             setSales(salesList.sort((a, b) => b.createdAt?.toDate().getTime() - a.createdAt?.toDate().getTime()));
 
             // Fetch expenses
-            const expensesRef = collection(db, 'restaurants', user.uid, 'expenses');
+            const expensesRef = collection(db, 'restaurants', rid, 'expenses');
             const qExpenses = query(expensesRef, orderBy('date', 'desc'));
             const expensesSnap = await getDocs(qExpenses);
 
@@ -104,7 +105,7 @@ export default function Finance() {
             setExpenses(expensesList);
 
             // Fetch closures
-            const closuresRef = collection(db, 'restaurants', user.uid, 'cash_registers');
+            const closuresRef = collection(db, 'restaurants', rid, 'cash_registers');
             const qClosures = query(closuresRef, orderBy('date', 'desc'));
             const closuresSnap = await getDocs(qClosures);
 
@@ -123,11 +124,11 @@ export default function Finance() {
 
     const handleAddExpense = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!user) return;
+        if (!rid) return;
 
         setIsSubmitting(true);
         try {
-            await addDoc(collection(db, 'restaurants', user.uid, 'expenses'), {
+            await addDoc(collection(db, 'restaurants', rid, 'expenses'), {
                 description: expenseForm.description,
                 category: expenseForm.category,
                 amount: parseFloat(expenseForm.amount),
@@ -147,11 +148,11 @@ export default function Finance() {
     };
 
     const handleCloseRegister = async () => {
-        if (!user) return;
+        if (!rid) return;
         if (!window.confirm("¿Estás seguro de cerrar la caja de hoy? Esto guardará un registro histórico con el saldo actual.")) return;
 
         try {
-            await addDoc(collection(db, 'restaurants', user.uid, 'cash_registers'), {
+            await addDoc(collection(db, 'restaurants', rid, 'cash_registers'), {
                 date: serverTimestamp(),
                 grossIncome,
                 totalExpenses,

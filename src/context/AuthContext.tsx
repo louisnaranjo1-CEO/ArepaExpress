@@ -34,6 +34,7 @@ interface UserData {
     lastSeen?: any;
     totalUsageMinutes?: number;
     gender?: 'masculine' | 'feminine';
+    managedRestaurantId?: string;
 }
 
 interface AuthContextType {
