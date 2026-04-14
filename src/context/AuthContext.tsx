@@ -87,6 +87,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                                 reference: data.address.reference,
                                 isDefault: true
                             };
+                            // Optional: updateDoc(doc(db, 'users', firebaseUser.uid), { addresses: [newAddress] });
+                        }
                         setUserData(data);
 
                         // Lógica de Bloqueo Inicial
