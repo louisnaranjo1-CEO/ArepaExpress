@@ -333,7 +333,7 @@ export default function TrackOrder() {
             await updateDoc(doc(db, 'orders', orderId), updates);
 
             // Create transport request so it appears in CPanel "Viajes (Taxis)"
-            await addDoc(collection(db, 'transport_requests'), {
+            const transportData: any = {
                 type: 'food_delivery',
                 serviceType: 'Delivery de Comida',
                 orderId: orderId,
@@ -343,22 +343,35 @@ export default function TrackOrder() {
                 userPhone: order.userPhone || user?.phoneNumber || '',
                 userCedula: order.userCedula || '',
                 origin: {
-                    address: order.restaurantName || restaurant?.name || 'Restaurante',
-                    details: 'Recoger pedido de comida'
+                    address: restaurant?.location?.address 
+                        ? `${order.restaurantName || restaurant?.name} - ${restaurant.location.address}, ${restaurant.location.city || ''}`
+                        : order.restaurantName || restaurant?.name || 'Restaurante',
+                    details: 'Recoger pedido de comida',
+                    coords: restaurant?.location?.coords || null
                 },
                 destination: {
-                    address: `${order.address?.name || ''} ${order.address?.reference || ''}`.trim() || 'Dirección del cliente',
-                    details: order.address?.reference || ''
+                    address: order.deliveryAddress || `${order.address?.name || ''} ${order.address?.reference || ''}`.trim() || 'Dirección del cliente',
+                    details: order.address?.reference || order.orderNote || '',
+                    coords: order.deliveryCoords || order.address?.coords || userLocation || null
                 },
                 vehicleType: order.vehicleType || 'moto',
                 clientTotal: order.deliveryFee || 0,
-                driverPayout: (order.deliveryFee || 0) * 0.8, // Assuming 80% for driver
-                serviceFee: (order.deliveryFee || 0) * 0.2, // Assuming 20% for platform
+                driverPayout: (order.deliveryFee || 0) * 0.8,
+                serviceFee: (order.deliveryFee || 0) * 0.2,
                 status: 'verifying_payment',
                 paymentMethod: 'Transferencia/Pago Móvil',
                 paymentRef: deliveryPaymentReference,
                 createdAt: serverTimestamp()
+            };
+
+            // Clean undefined values to prevent Firestore errors
+            Object.keys(transportData).forEach(key => {
+                if (transportData[key] === undefined) {
+                    delete transportData[key];
+                }
             });
+
+            await addDoc(collection(db, 'transport_requests'), transportData);
 
             // Enviar mensaje automático al chat
             await addDoc(collection(db, `orders/${orderId}/messages`), {

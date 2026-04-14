@@ -246,7 +246,7 @@ export default function TransportRequests() {
 
     const getStatusBadge = (status: string) => {
         switch (status) {
-            case 'verifying_payment': return <span className="bg-amber-100 text-amber-800 px-3 py-1 rounded-full text-xs font-bold animate-pulse">Pagado (Por Verificar)</span>;
+            case 'verifying_payment': return <span className="bg-purple-100 text-purple-800 px-3 py-1 rounded-full text-xs font-black animate-pulse">PAGO POR VERIFICAR</span>;
             case 'searching': return <span className="bg-indigo-100 text-indigo-800 px-3 py-1 rounded-full text-xs font-bold">Buscando Conductor</span>;
             case 'accepted': return <span className="bg-blue-100 text-blue-800 px-3 py-1 rounded-full text-xs font-bold">Conductor Asignado</span>;
             case 'in_progress': return <span className="bg-emerald-100 text-emerald-800 px-3 py-1 rounded-full text-xs font-bold">En Viaje</span>;
@@ -390,8 +390,20 @@ export default function TransportRequests() {
                                     <div className="flex flex-col md:flex-row justify-between gap-6 mb-6">
                                         {/* User & Type Info */}
                                         <div className="flex items-start gap-4">
-                                            <div className={`w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 ${req.vehicleType === 'moto' ? 'bg-primary/20 text-slate-900' : 'bg-slate-100 text-slate-700'}`}>
-                                                {req.vehicleType === 'moto' ? <Bike className="w-6 h-6" /> : <Car className="w-6 h-6" />}
+                                            <div className={`w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 ${
+                                                req.type === 'food_delivery' 
+                                                    ? 'bg-orange-100 text-orange-600'
+                                                    : req.vehicleType === 'moto' 
+                                                        ? 'bg-primary/20 text-slate-900' 
+                                                        : 'bg-slate-100 text-slate-700'
+                                            }`}>
+                                                {req.type === 'food_delivery' ? (
+                                                    <ShoppingBag className="w-6 h-6" />
+                                                ) : req.vehicleType === 'moto' ? (
+                                                    <Bike className="w-6 h-6" />
+                                                ) : (
+                                                    <Car className="w-6 h-6" />
+                                                )}
                                             </div>
                                             <div>
                                                 <div className="flex items-center gap-2 mb-1">
@@ -519,9 +531,15 @@ export default function TransportRequests() {
                                     <div className="grid md:grid-cols-2 gap-4 mb-6">
                                         <div className="flex gap-3 bg-slate-50 p-4 rounded-2xl border border-slate-100 relative overflow-hidden">
                                             <div className="absolute left-0 top-0 bottom-0 w-1 bg-slate-400"></div>
-                                            <MapPin className="w-5 h-5 text-slate-400 shrink-0 mt-0.5" />
+                                            {req.type === 'food_delivery' ? (
+                                                <Store className="w-5 h-5 text-slate-400 shrink-0 mt-0.5" />
+                                            ) : (
+                                                <MapPin className="w-5 h-5 text-slate-400 shrink-0 mt-0.5" />
+                                            )}
                                             <div>
-                                                <p className="text-xs font-bold text-slate-400 uppercase mb-1">Punto de Origen</p>
+                                                <p className="text-xs font-bold text-slate-400 uppercase mb-1">
+                                                    {req.type === 'food_delivery' ? 'Punto A: Restaurante' : 'Punto de Origen'}
+                                                </p>
                                                 <p className="font-bold text-slate-700 text-sm">{req.origin?.address}</p>
                                             </div>
                                         </div>
@@ -529,7 +547,9 @@ export default function TransportRequests() {
                                             <div className="absolute left-0 top-0 bottom-0 w-1 bg-primary"></div>
                                             <MapPin className="w-5 h-5 text-primary shrink-0 mt-0.5" />
                                             <div>
-                                                <p className="text-xs font-bold text-slate-600 uppercase mb-1">Destino</p>
+                                                <p className="text-xs font-bold text-slate-600 uppercase mb-1">
+                                                    {req.type === 'food_delivery' ? 'Punto B: Cliente' : 'Destino'}
+                                                </p>
                                                 <p className="font-bold text-slate-900 text-sm">{req.destination?.address}</p>
                                             </div>
                                         </div>
