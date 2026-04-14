@@ -1,12 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { collection, query, orderBy, limit, onSnapshot, updateDoc, doc, where } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
-import { ShoppingBag, Clock, MapPin, Truck, Check, X, ShieldAlert, Phone } from 'lucide-react';
+import { ShoppingBag, Clock, MapPin, Truck, Check, X, ShieldAlert, Phone, MessageCircle } from 'lucide-react';
 import DualPrice from '../../components/DualPrice';
+import OrderChatWindow from '../../components/chat/OrderChatWindow';
 
 export default function AppOrders() {
     const [orders, setOrders] = useState<any[]>([]);
     const [isLoading, setIsLoading] = useState(true);
+    const [selectedOrderForChat, setSelectedOrderForChat] = useState<any | null>(null);
 
     useEffect(() => {
         // We query by source = client and order by createdAt desc
@@ -112,20 +114,50 @@ export default function AppOrders() {
                                 <div>
                                     <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-1">Total</p>
                                     <p className="text-xl font-black text-slate-900">
-                                        <DualPrice amount={order.total} />
+                                        <DualPrice usdAmount={order.total} />
                                     </p>
                                 </div>
-                                {order.status === 'verificando_pago_delivery' && order.deliveryPaymentReceipt && (
+                                <div className="flex gap-2">
                                     <button 
-                                        onClick={() => window.open(order.deliveryPaymentReceipt, '_blank')}
-                                        className="px-4 py-2 bg-purple-100 text-purple-700 font-bold rounded-xl text-sm hover:bg-purple-200 transition-colors"
+                                        onClick={() => setSelectedOrderForChat(order)}
+                                        className="px-4 py-2 bg-slate-900 text-white font-bold rounded-xl text-sm flex items-center gap-2 hover:bg-slate-800 transition-colors"
                                     >
-                                        Ver Recibo
+                                        <MessageCircle className="w-4 h-4" />
+                                        Chat
                                     </button>
-                                )}
+                                    {order.status === 'verificando_pago_delivery' && order.deliveryPaymentReceipt && (
+                                        <button 
+                                            onClick={() => window.open(order.deliveryPaymentReceipt, '_blank')}
+                                            className="px-4 py-2 bg-purple-100 text-purple-700 font-bold rounded-xl text-sm hover:bg-purple-200 transition-colors"
+                                        >
+                                            Ver Recibo
+                                        </button>
+                                    )}
+                                </div>
                             </div>
                         </div>
                     ))}
+                </div>
+            )}
+
+            {/* Chat Modal */}
+            {selectedOrderForChat && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+                    <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={() => setSelectedOrderForChat(null)}></div>
+                    <div className="relative w-full max-w-2xl bg-white rounded-[32px] overflow-hidden shadow-2xl h-[80vh] flex flex-col">
+                        <div className="p-4 border-b border-slate-100 flex items-center justify-between bg-slate-50">
+                            <div>
+                                <h3 className="font-black text-slate-900">Chat con {selectedOrderForChat.userName}</h3>
+                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Pedido #{selectedOrderForChat.id.slice(0, 8).toUpperCase()}</p>
+                            </div>
+                            <button onClick={() => setSelectedOrderForChat(null)} className="p-2 hover:bg-slate-200 rounded-full transition-colors">
+                                <X className="w-5 h-5 text-slate-500" />
+                            </button>
+                        </div>
+                        <div className="flex-1 overflow-hidden">
+                            <OrderChatWindow order={selectedOrderForChat} />
+                        </div>
+                    </div>
                 </div>
             )}
         </div>

@@ -326,10 +326,39 @@ export default function TrackOrder() {
             const updates: any = {
                 deliveryPaymentClientConfirmed: true,
                 status: 'verificando_pago_delivery',
-                deliveryPaymentReference: deliveryPaymentReference
+                deliveryPaymentReference: deliveryPaymentReference,
+                deliveryPaymentStatus: 'pending_verification'
             };
 
             await updateDoc(doc(db, 'orders', orderId), updates);
+
+            // Create transport request so it appears in CPanel "Viajes (Taxis)"
+            await addDoc(collection(db, 'transport_requests'), {
+                type: 'food_delivery',
+                serviceType: 'Delivery de Comida',
+                orderId: orderId,
+                restaurantId: order.restaurantId,
+                userId: order.userId || user?.uid,
+                userName: order.userName || user?.displayName || 'Cliente',
+                userPhone: order.userPhone || user?.phoneNumber || '',
+                userCedula: order.userCedula || '',
+                origin: {
+                    address: order.restaurantName || restaurant?.name || 'Restaurante',
+                    details: 'Recoger pedido de comida'
+                },
+                destination: {
+                    address: `${order.address?.name || ''} ${order.address?.reference || ''}`.trim() || 'Dirección del cliente',
+                    details: order.address?.reference || ''
+                },
+                vehicleType: order.vehicleType || 'moto',
+                clientTotal: order.deliveryFee || 0,
+                driverPayout: (order.deliveryFee || 0) * 0.8, // Assuming 80% for driver
+                serviceFee: (order.deliveryFee || 0) * 0.2, // Assuming 20% for platform
+                status: 'verifying_payment',
+                paymentMethod: 'Transferencia/Pago Móvil',
+                paymentRef: deliveryPaymentReference,
+                createdAt: serverTimestamp()
+            });
 
             // Enviar mensaje automático al chat
             await addDoc(collection(db, `orders/${orderId}/messages`), {
@@ -1079,19 +1108,7 @@ export default function TrackOrder() {
                                                 </div>
                                             )}
 
-                                            {/* USDT Platform */}
-                                            {platformConfig.paymentMethods.usdt?.active && (
-                                                <div className="flex flex-col gap-1 border-t border-slate-200 pt-3">
-                                                    <span className="text-xs font-black text-slate-800 flex items-center gap-2">
-                                                        <span className="w-2 h-2 rounded-full bg-emerald-500"></span> 
-                                                        USDT ({platformConfig.paymentMethods.usdt.network})
-                                                    </span>
-                                                    <div onClick={() => { navigator.clipboard.writeText(platformConfig.paymentMethods.usdt.wallet); toast.success('Billetera copiada'); }} className="mt-1 group cursor-pointer active:scale-95 transition-all">
-                                                        <p className="text-[9px] font-bold text-slate-400 uppercase">Wallet Address</p>
-                                                        <p className="text-[10px] font-black text-slate-700 break-all">{platformConfig.paymentMethods.usdt.wallet}</p>
-                                                    </div>
-                                                </div>
-                                            )}
+
                                         </div>
                                     </div>
                                 )}

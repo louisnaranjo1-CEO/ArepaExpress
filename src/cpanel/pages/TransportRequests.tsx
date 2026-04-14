@@ -99,11 +99,20 @@ export default function TransportRequests() {
         return () => unsub();
     }, []);
 
-    const handleVerifyPayment = async (id: string, isApproved: boolean) => {
+    const handleVerifyPayment = async (req: any, isApproved: boolean) => {
+        const id = req.id;
         try {
             await updateDoc(doc(db, 'transport_requests', id), {
                 status: isApproved ? 'searching' : 'cancelled'
             });
+
+            // If it's linked to an order, update the order as well
+            if (req.orderId) {
+                await updateDoc(doc(db, 'orders', req.orderId), {
+                    status: isApproved ? 'buscando_piloto' : 'pendiente_pago_delivery',
+                    deliveryPaymentStatus: isApproved ? 'approved' : 'rejected'
+                });
+            }
 
             if (isApproved) {
                 const driversSnap = await getDocs(query(collection(db, 'users'), where('role', 'in', ['delivery', 'driver'])));
@@ -561,13 +570,13 @@ export default function TransportRequests() {
 
                                             <div className="flex gap-2 w-full md:w-auto">
                                                 <button
-                                                    onClick={() => handleVerifyPayment(req.id, false)}
+                                                    onClick={() => handleVerifyPayment(req, false)}
                                                     className="flex-1 md:flex-none px-4 py-2 bg-white text-red-600 font-bold rounded-xl border border-red-200 hover:bg-red-50 transition-colors"
                                                 >
                                                     Rechazar
                                                 </button>
                                                 <button
-                                                    onClick={() => handleVerifyPayment(req.id, true)}
+                                                    onClick={() => handleVerifyPayment(req, true)}
                                                     className="flex-1 md:flex-none px-6 py-2 bg-primary text-slate-900 font-black rounded-xl hover:bg-primary/90 transition-colors shadow-lg shadow-primary/20"
                                                 >
                                                     Aprobar Pago
@@ -591,13 +600,13 @@ export default function TransportRequests() {
 
                                             <div className="flex gap-2 w-full md:w-auto">
                                                 <button
-                                                    onClick={() => handleVerifyPayment(req.id, false)}
+                                                    onClick={() => handleVerifyPayment(req, false)}
                                                     className="flex-1 md:flex-none px-4 py-2 bg-white text-red-600 font-bold rounded-xl border border-red-200 hover:bg-red-50 transition-colors"
                                                 >
                                                     Rechazar
                                                 </button>
                                                 <button
-                                                    onClick={() => handleVerifyPayment(req.id, true)}
+                                                    onClick={() => handleVerifyPayment(req, true)}
                                                     className="flex-1 md:flex-none px-6 py-2 bg-primary text-slate-900 font-black rounded-xl hover:bg-primary/90 transition-colors shadow-lg shadow-primary/20"
                                                 >
                                                     Aprobar Vehículo

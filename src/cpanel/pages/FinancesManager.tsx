@@ -37,12 +37,6 @@ export default function FinancesManager() {
                 idf: '',
                 logoUrl: ''
             },
-            usdt: {
-                active: false,
-                wallet: '',
-                network: 'TRC20',
-                logoUrl: ''
-            },
             cash: {
                 active: true,
                 logoUrl: ''
@@ -507,41 +501,6 @@ export default function FinancesManager() {
                         <LogoSection methodId="transfer" />
                     </div>
 
-                    {/* USDT */}
-                    <div className={`p-6 bg-white rounded-[32px] border-2 transition-all flex flex-col ${config.paymentMethods.usdt.active ? 'border-yellow-500 shadow-lg shadow-yellow-500/5' : 'border-slate-100'}`}>
-                        <div className="flex items-center justify-between mb-6">
-                            <div className="flex items-center gap-3">
-                                <div className="w-10 h-10 bg-yellow-50 rounded-xl flex items-center justify-center text-amber-700">
-                                    <ImageIcon className="w-5 h-5" />
-                                </div>
-                                <h3 className="font-black text-slate-800 tracking-tight text-lg">USDT</h3>
-                            </div>
-                            <label className="relative inline-flex items-center cursor-pointer">
-                                <input
-                                    type="checkbox"
-                                    className="sr-only peer"
-                                    checked={config.paymentMethods.usdt.active}
-                                    onChange={e => setConfig((prev: any) => ({
-                                        ...prev,
-                                        paymentMethods: { ...prev.paymentMethods, usdt: { ...prev.paymentMethods.usdt, active: e.target.checked } }
-                                    }))}
-                                />
-                                <div className="w-11 h-6 bg-slate-200 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-yellow-500"></div>
-                            </label>
-                        </div>
-
-                        <div className="space-y-4">
-                            <input type="text" placeholder="Wallet Address"
-                                value={config.paymentMethods.usdt.wallet}
-                                onChange={e => setConfig((prev: any) => ({ ...prev, paymentMethods: { ...prev.paymentMethods, usdt: { ...prev.paymentMethods.usdt, wallet: e.target.value } } }))}
-                                className="w-full bg-slate-50 border border-slate-100 rounded-xl px-4 py-3 text-sm font-bold outline-none font-mono" />
-                            <input type="text" placeholder="Red (Ej: TRC20)"
-                                value={config.paymentMethods.usdt.network}
-                                onChange={e => setConfig((prev: any) => ({ ...prev, paymentMethods: { ...prev.paymentMethods, usdt: { ...prev.paymentMethods.usdt, network: e.target.value } } }))}
-                                className="w-full bg-slate-50 border border-slate-100 rounded-xl px-4 py-3 text-sm font-bold outline-none" />
-                        </div>
-                        <LogoSection methodId="usdt" />
-                    </div>
 
                     {/* Efectivo */}
                     <div className={`p-6 bg-white rounded-[32px] border-2 transition-all flex flex-col ${config.paymentMethods.cash.active ? 'border-emerald-500 shadow-lg shadow-emerald-500/5' : 'border-slate-100'}`}>
