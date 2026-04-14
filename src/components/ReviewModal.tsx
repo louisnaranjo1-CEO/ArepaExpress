@@ -5,6 +5,7 @@ import { db, storage } from '../lib/firebase';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { collection, addDoc, serverTimestamp, doc, updateDoc } from 'firebase/firestore';
 import { useAuth } from '../context/AuthContext';
+import toast from 'react-hot-toast';
 
 interface ReviewModalProps {
     isOpen: boolean;
