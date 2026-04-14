@@ -1,9 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { doc, onSnapshot, getDoc, updateDoc, serverTimestamp, addDoc, collection } from 'firebase/firestore';
+import { doc, onSnapshot, getDoc, updateDoc, serverTimestamp, addDoc, collection, query, where, orderBy, limit } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { DeliveryDriver } from '../lib/delivery-service';
-import { Navigation, Clock, CheckCircle2, Bike, MapPin, Phone, ArrowLeft, Store, Star, Wallet, X, Loader2, ImageIcon, Upload, CreditCard as CreditCardIcon, AlertCircle, Copy } from 'lucide-react';
+import { Navigation, Clock, CheckCircle2, Bike, MapPin, Phone, ArrowLeft, Store, Star, Wallet, X, Loader2, ImageIcon, Upload, CreditCard as CreditCardIcon, AlertCircle, Copy, MessageCircle } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useCurrency } from '../context/CurrencyContext';
 import DeliveryPaymentModal from '../components/DeliveryPaymentModal';
@@ -33,6 +33,9 @@ export default function TrackOrder() {
     const [pendingCountdown, setPendingCountdown] = useState(120);
     const [showStockWhatsapp, setShowStockWhatsapp] = useState(false);
     const [userLocation, setUserLocation] = useState<{lat: number, lng: number} | null>(null);
+    const [transportRequest, setTransportRequest] = useState<any>(null);
+    const [driverLocation, setDriverLocation] = useState<{lat: number, lng: number} | null>(null);
+    const [activeTab, setActiveTab] = useState<'order' | 'delivery'>('order');
     
     const [infoStep, setInfoStep] = useState<number | null>(null);
     const [editDelivery, setEditDelivery] = useState({
@@ -41,6 +44,8 @@ export default function TrackOrder() {
         addressName: '',
         addressReference: ''
     });
+    const [isEditingAddress, setIsEditingAddress] = useState(false);
+    const [isUpdatingAddress, setIsUpdatingAddress] = useState(false);
 
     // Platform Finance Config
     const [platformConfig, setPlatformConfig] = useState<any>(null);
@@ -84,18 +89,11 @@ export default function TrackOrder() {
             }
         });
 
+        // 1. Listen to Order
         const unsubscribe = onSnapshot(doc(db, 'orders', orderId), async (snapshot) => {
             if (snapshot.exists()) {
                 const orderData = snapshot.data();
                 setOrder(orderData);
-
-                // If a driver was assigned, fetch their profile
-                if (orderData.deliveryDriverId && (!driver || driver.id !== orderData.deliveryDriverId)) {
-                    const dDoc = await getDoc(doc(db, 'delivery_drivers', orderData.deliveryDriverId));
-                    if (dDoc.exists()) {
-                        setDriver({ id: dDoc.id, ...dDoc.data() } as DeliveryDriver);
-                    }
-                }
 
                 // Fetch restaurant logo
                 if (orderData.restaurantId && (!restaurant || restaurant.id !== orderData.restaurantId)) {
@@ -108,8 +106,53 @@ export default function TrackOrder() {
             setLoading(false);
         });
 
-        return () => unsubscribe();
+        // 2. Listen to Transport Request
+        const transportQ = query(
+            collection(db, 'transport_requests'),
+            where('orderId', '==', orderId),
+            orderBy('createdAt', 'desc'),
+            limit(1)
+        );
+
+        const unsubscribeTransport = onSnapshot(transportQ, async (snapshot) => {
+            if (!snapshot.empty) {
+                const trData = snapshot.docs[0].data();
+                const trId = snapshot.docs[0].id;
+                setTransportRequest({ id: trId, ...trData });
+
+                // If assigned, fetch driver
+                if (trData.driverId && (!driver || driver.id !== trData.driverId)) {
+                    const dDoc = await getDoc(doc(db, 'delivery_drivers', trData.driverId));
+                    if (dDoc.exists()) {
+                        setDriver({ id: dDoc.id, ...dDoc.data() } as DeliveryDriver);
+                    }
+                }
+
+                // Auto switch tab to delivery if assigned or searching
+                if (trData.status === 'searching' || trData.driverId) {
+                    // setActiveTab('delivery'); // Maybe too intrusive? Let's leave it for now.
+                }
+            }
+        });
+
+        return () => {
+            unsubscribe();
+            unsubscribeTransport();
+        };
     }, [orderId]);
+
+    // Listen to Driver Live Location if available
+    useEffect(() => {
+        if (!transportRequest?.driverId) return;
+
+        const unsubLoc = onSnapshot(doc(db, 'driver_locations', transportRequest.driverId), (snap) => {
+            if (snap.exists()) {
+                setDriverLocation(snap.data() as any);
+            }
+        });
+
+        return () => unsubLoc();
+    }, [transportRequest?.driverId]);
 
     // Live geolocation for the "blue dot"
     useEffect(() => {
@@ -276,6 +319,39 @@ export default function TrackOrder() {
         }
     };
 
+    const handleUpdateAddress = async () => {
+        if (!orderId || !order) return;
+        setIsUpdatingAddress(true);
+        try {
+            await updateDoc(doc(db, 'orders', orderId), {
+                address: {
+                    ...(order.address || {}),
+                    name: editDelivery.addressName,
+                    reference: editDelivery.addressReference
+                },
+                // Also update deliveryAddress string for compatibility
+                deliveryAddress: `${editDelivery.addressName} (${editDelivery.addressReference})`.trim()
+            });
+
+            // Enviar mensaje automático al chat
+            await addDoc(collection(db, `orders/${orderId}/messages`), {
+                text: `📍 *El cliente ha actualizado su dirección de entrega:* \n\n*Dirección:* ${editDelivery.addressName}\n*Referencia:* ${editDelivery.addressReference}`,
+                senderId: user?.uid || 'guest',
+                senderName: order.userName || 'Cliente',
+                senderRole: 'client',
+                createdAt: serverTimestamp()
+            });
+
+            toast.success("Dirección actualizada correctamente");
+            setIsEditingAddress(false);
+        } catch (error) {
+            console.error("Error updating address:", error);
+            toast.error("Error al actualizar la dirección");
+        } finally {
+            setIsUpdatingAddress(false);
+        }
+    };
+
     const handleSwitchToPickup = async () => {
         if(!orderId || !order) return;
         if(window.confirm('¿Deseas cambiar tu entrega a Retiro en Local? El costo de delivery será $0.')) {
@@ -310,6 +386,17 @@ export default function TrackOrder() {
                 console.error(error);
                 toast.error("Error al actualizar método de entrega");
             }
+        }
+    };
+
+    const getDeliveryStatusLabel = (status: string) => {
+        switch (status) {
+            case 'searching': return 'Buscando Delivery...';
+            case 'accepted': return 'En camino para recoger';
+            case 'arriving': return 'Llegó al punto (Negocio)';
+            case 'in_progress': return 'Inicié el viaje a tu dirección';
+            case 'completed': return 'Llegué (finalicé mi viaje)';
+            default: return 'Buscando Repartidor';
         }
     };
 
@@ -1150,35 +1237,116 @@ export default function TrackOrder() {
                     </div>
                 )}
 
-                {/* Driver Info (If Assigned) */}
-                {driver && (currentStep >= 2) && (
-                    <div className="bg-white rounded-3xl p-6 shadow-xl shadow-slate-200/40 border border-slate-100">
-                        <div className="flex items-center justify-between mb-4">
-                            <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Tu Repartidor</h3>
-                            <span className="bg-emerald-100 text-emerald-600 px-2 py-0.5 rounded-full text-[10px] font-bold">Asignado</span>
+                {/* Delivery Radar (Searching) */}
+                {transportRequest?.status === 'searching' && (
+                    <div className="bg-slate-900 rounded-[3rem] p-8 text-center shadow-2xl shadow-slate-900/40 relative overflow-hidden border border-slate-800">
+                        {/* Radar Background Animation */}
+                        <div className="absolute inset-0 flex items-center justify-center opacity-20">
+                            <motion.div 
+                                animate={{ scale: [1, 2, 1], opacity: [0.5, 0.1, 0.5] }}
+                                transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
+                                className="w-64 h-64 border border-primary rounded-full absolute"
+                            />
+                            <motion.div 
+                                animate={{ scale: [1, 1.5, 1], opacity: [0.3, 0.05, 0.3] }}
+                                transition={{ duration: 3, repeat: Infinity, ease: "easeInOut", delay: 1 }}
+                                className="w-96 h-96 border border-primary rounded-full absolute"
+                            />
                         </div>
-                        <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-4">
-                                <div className="relative">
-                                    <img src={driver.documents.selfieUrl} alt="Driver" className="w-16 h-16 rounded-2xl object-cover bg-slate-100 shadow-lg" />
-                                    <div className="absolute -bottom-1 -right-1 w-6 h-6 bg-emerald-500 rounded-full border-2 border-white flex items-center justify-center">
-                                        <CheckCircle2 className="w-3 h-3 text-white" />
+
+                        <div className="relative z-10">
+                            <div className="w-24 h-24 bg-primary/20 rounded-[2.5rem] flex items-center justify-center mx-auto mb-6 border-2 border-primary/30 shadow-lg shadow-primary/10">
+                                <motion.div
+                                    animate={{ rotate: 360 }}
+                                    transition={{ duration: 3, repeat: Infinity, ease: "linear" }}
+                                >
+                                    <Navigation className="w-12 h-12 text-primary" />
+                                </motion.div>
+                            </div>
+                            <h3 className="text-xl font-black text-white mb-2 uppercase tracking-tight">Rastreo Activo</h3>
+                            <p className="text-primary/70 font-black text-sm uppercase tracking-[0.2em] mb-4">Buscando Delivery...</p>
+                            
+                            <div className="flex items-center justify-center gap-2 mb-2">
+                                <span className="w-2 h-2 bg-primary rounded-full animate-ping"></span>
+                                <span className="text-[10px] text-white/50 font-bold uppercase tracking-widest">Escaneando zona...</span>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {/* Driver Info (If Assigned) */}
+                {driver && transportRequest && transportRequest.status !== 'searching' && (
+                    <div className="bg-white rounded-3xl p-1 overflow-hidden shadow-xl shadow-slate-200/40 border border-slate-100">
+                        {/* Status Header */}
+                        <div className="bg-slate-900 p-6 rounded-[2rem]">
+                            <div className="flex items-center justify-between mb-2">
+                                <span className="text-[9px] font-black text-white/40 uppercase tracking-[0.2em]">Estado del Delivery</span>
+                                {transportRequest.status === 'in_progress' && (
+                                    <span className="flex items-center gap-1.5 bg-emerald-500/10 text-emerald-400 px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-wider border border-emerald-500/20">
+                                        <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse"></div>
+                                        En Vivo
+                                    </span>
+                                )}
+                            </div>
+                            <h4 className="text-xl font-black text-white leading-tight uppercase tracking-tight">
+                                {getDeliveryStatusLabel(transportRequest.status)}
+                            </h4>
+                        </div>
+
+                        {/* Driver Profile */}
+                        <div className="p-6">
+                            <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-4">
+                                    <div className="relative">
+                                        <img src={driver.documents?.selfieUrl || 'https://images.unsplash.com/photo-1599566150163-29194dcaad36?auto=format&fit=crop&q=80&w=200'} alt="Driver" className="w-16 h-16 rounded-2xl object-cover bg-slate-100 shadow-lg" />
+                                        <div className="absolute -bottom-1 -right-1 w-6 h-6 bg-emerald-500 rounded-full border-2 border-white flex items-center justify-center shadow-lg">
+                                            <CheckCircle2 className="w-3 h-3 text-white" />
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <p className="font-black text-slate-900 text-lg leading-none mb-1">{driver.fullName}</p>
+                                        <div className="flex items-center gap-2">
+                                            <span className="text-[10px] font-black text-primary bg-slate-900 px-2 py-0.5 rounded-md uppercase tracking-wider">{driver.vehicleType || 'Repartidor'}</span>
+                                            <span className="text-[10px] font-black text-slate-400 uppercase">{driver.vehiclePlate || 'ABC-123'}</span>
+                                        </div>
                                     </div>
                                 </div>
-                                <div>
-                                    <p className="font-black text-slate-900 text-lg">{driver.fullName}</p>
-                                    <div className="flex items-center gap-2 mt-0.5">
-                                        <span className="text-xs font-bold text-slate-500 uppercase">{driver.vehicleType}</span>
-                                        <span className="w-1 h-1 bg-slate-200 rounded-full"></span>
-                                        <span className="text-xs font-black text-slate-900 uppercase">{driver.vehiclePlate}</span>
-                                    </div>
+                                <div className="flex gap-2">
+                                    <a href={`tel:${driver.phone}`} className="w-12 h-12 bg-slate-100 text-slate-900 rounded-2xl flex items-center justify-center active:scale-95 transition-all">
+                                        <Phone className="w-5 h-5" />
+                                    </a>
+                                    <button 
+                                        onClick={() => setActiveTab('delivery')}
+                                        className={`w-12 h-12 rounded-2xl flex items-center justify-center active:scale-95 transition-all ${activeTab === 'delivery' ? 'bg-primary text-slate-900' : 'bg-slate-100 text-slate-500'}`}
+                                    >
+                                        <MessageCircle className="w-5 h-5" />
+                                    </button>
                                 </div>
                             </div>
-                            <a href={`tel:${driver.phone}`} className="w-14 h-14 bg-primary text-slate-900 rounded-2xl flex flex-col items-center justify-center active:scale-95 transition-all shadow-lg shadow-primary/30">
-                                <Phone className="w-5 h-5 mb-0.5" />
-                                <span className="text-[8px] font-black uppercase">Llamar</span>
-                            </a>
                         </div>
+
+                        {/* Chat with Pilot (If activeTab is delivery) */}
+                        {activeTab === 'delivery' && (
+                            <div className="px-4 pb-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                                <div className="h-[400px]">
+                                    <OrderChatWindow 
+                                        orderId={orderId!}
+                                        currentUserRole="client"
+                                        currentUserId={user?.uid || ''}
+                                        currentUserName={user?.displayName || 'Cliente'}
+                                        restaurantId={order.restaurantId}
+                                        orderInfo={order}
+                                        customCollectionPath={`transport_requests/${transportRequest.id}/messages`}
+                                    />
+                                </div>
+                                <button 
+                                    onClick={() => setActiveTab('order')}
+                                    className="w-full mt-4 py-3 text-xs font-black text-slate-400 uppercase tracking-widest hover:text-slate-600 transition-colors"
+                                >
+                                    Cerrar Chat y ver orden
+                                </button>
+                            </div>
+                        )}
                     </div>
                 )}
 
@@ -1230,18 +1398,68 @@ export default function TrackOrder() {
                     </div>
                 </div>
 
-                {/* Delivery details */}
                 <div className="bg-white rounded-3xl p-6 shadow-xl shadow-slate-200/40 border border-slate-100">
-                    <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">Detalles de Entrega</h3>
-                    <div className="flex gap-4">
-                        <div className="w-12 h-12 bg-primary/10 text-slate-900 rounded-2xl flex items-center justify-center shrink-0">
-                            <MapPin className="w-6 h-6" />
-                        </div>
-                        <div>
-                            <p className="font-black text-slate-900 leading-tight">{order.address?.name || 'Dirección de Entrega'}</p>
-                            <p className="text-xs text-slate-500 font-medium leading-relaxed mt-1">{order.address?.reference || 'Sin referencias'}</p>
-                        </div>
+                    <div className="flex justify-between items-center mb-4">
+                        <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Detalles de Entrega</h3>
+                        {!order.deliveryPaymentClientConfirmed && (
+                            <button 
+                                onClick={() => setIsEditingAddress(!isEditingAddress)} 
+                                className="text-[10px] font-black text-primary uppercase tracking-widest bg-slate-900 px-3 py-1.5 rounded-lg active:scale-95 transition-transform"
+                            >
+                                {isEditingAddress ? 'Cancelar' : 'Editar Dirección'}
+                            </button>
+                        )}
                     </div>
+                    
+                    {isEditingAddress ? (
+                        <div className="space-y-4 animate-in fade-in zoom-in-95 duration-200">
+                            <div>
+                                <label className="text-[9px] font-black text-slate-400 uppercase ml-1">Nueva Dirección</label>
+                                <input 
+                                    type="text"
+                                    value={editDelivery.addressName}
+                                    onChange={(e) => setEditDelivery({...editDelivery, addressName: e.target.value})}
+                                    className="w-full bg-slate-50 border-2 border-slate-100 p-3 rounded-2xl text-sm font-bold mt-1 outline-none focus:border-primary transition-all"
+                                    placeholder="Nombre de la calle, edificio, etc."
+                                />
+                            </div>
+                            <div>
+                                <label className="text-[9px] font-black text-slate-400 uppercase ml-1">Referencias Adicionales</label>
+                                <textarea 
+                                    value={editDelivery.addressReference}
+                                    onChange={(e) => setEditDelivery({...editDelivery, addressReference: e.target.value})}
+                                    className="w-full bg-slate-50 border-2 border-slate-100 p-3 rounded-2xl text-sm font-bold mt-1 outline-none focus:border-primary transition-all h-20 resize-none"
+                                    placeholder="Ej. Casa de portón blanco, subiendo por..."
+                                />
+                            </div>
+                            <button 
+                                onClick={handleUpdateAddress}
+                                disabled={isUpdatingAddress || !editDelivery.addressName}
+                                className="w-full bg-primary text-slate-900 py-3 rounded-2xl font-black shadow-lg shadow-primary/20 flex items-center justify-center gap-2 disabled:opacity-50"
+                            >
+                                {isUpdatingAddress ? <Loader2 className="w-5 h-5 animate-spin" /> : 'Guardar Nueva Dirección'}
+                            </button>
+                        </div>
+                    ) : (
+                        <div className="flex gap-4">
+                            <div className="w-12 h-12 bg-primary/10 text-slate-900 rounded-2xl flex items-center justify-center shrink-0">
+                                <MapPin className="w-6 h-6" />
+                            </div>
+                            <div className="flex-1">
+                                <p className="font-black text-slate-900 leading-tight">{order.address?.name || 'Dirección de Entrega'}</p>
+                                <p className="text-xs text-slate-500 font-medium leading-relaxed mt-1">{order.address?.reference || 'Sin referencias'}</p>
+                            </div>
+                        </div>
+                    )}
+
+                    {order.deliveryPaymentClientConfirmed && (
+                        <div className="mt-4 p-3 bg-slate-50 rounded-xl border border-slate-100 flex items-center gap-2">
+                            <AlertCircle className="w-4 h-4 text-slate-400" />
+                            <p className="text-[9px] font-bold text-slate-500 uppercase leading-tight">
+                                La dirección está bloqueada porque el pago del delivery está en proceso o validado.
+                            </p>
+                        </div>
+                    )}
                 </div>
 
                 {/* Cancel Order Button at the end */}

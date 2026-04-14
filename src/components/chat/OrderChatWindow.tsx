@@ -21,7 +21,8 @@ interface OrderChatWindowProps {
   currentUserId: string;
   currentUserName: string;
   restaurantId: string;
-  orderInfo: any; // Passing order details to display quick actions based on conditions
+  orderInfo: any;
+  customCollectionPath?: string; // Optional path like 'transport_requests/XYZ/messages'
 }
 
 export default function OrderChatWindow({
@@ -30,7 +31,8 @@ export default function OrderChatWindow({
   currentUserId,
   currentUserName,
   restaurantId,
-  orderInfo
+  orderInfo,
+  customCollectionPath
 }: OrderChatWindowProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [newMessage, setNewMessage] = useState('');
@@ -54,8 +56,9 @@ export default function OrderChatWindow({
   }, [restaurantId]);
 
   useEffect(() => {
+    const chatPath = customCollectionPath || `orders/${orderId}/messages`;
     const q = query(
-      collection(db, `orders/${orderId}/messages`),
+      collection(db, chatPath),
       orderBy('createdAt', 'asc')
     );
 
@@ -75,8 +78,9 @@ export default function OrderChatWindow({
     if ((!text.trim() && !actionUrl && !actionType) || sending) return;
     setSending(true);
 
+    const chatPath = customCollectionPath || `orders/${orderId}/messages`;
     try {
-      await addDoc(collection(db, `orders/${orderId}/messages`), {
+      await addDoc(collection(db, chatPath), {
         text: text.trim(),
         imageUrl: actionUrl || null,
         action: actionType || null,

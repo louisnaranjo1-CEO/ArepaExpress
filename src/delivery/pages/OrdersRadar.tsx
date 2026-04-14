@@ -3,7 +3,7 @@ import { collection, query, where, onSnapshot, updateDoc, doc, serverTimestamp, 
 import { ref, getDownloadURL } from 'firebase/storage';
 import { storage, db } from '../../lib/firebase';
 import { useAuth } from '../../context/AuthContext';
-import { Car, Bike, MapPin, Navigation, Phone, CheckCircle2, MessageSquare, Compass, Send, User as UserIcon, Star, MessageCircle, Clock, AlertTriangle } from 'lucide-react';
+import { Car, Bike, MapPin, Navigation, Phone, CheckCircle2, MessageSquare, Compass, Send, User as UserIcon, Star, MessageCircle, Clock, AlertTriangle, ArrowLeft } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import toast from 'react-hot-toast';
 import RideChat from '../../components/RideChat';
@@ -114,20 +114,57 @@ export default function OrdersRadar() {
             return;
         }
 
+        // Escuchar viajes disponibles
+        // Nota: Para delivery de comida, podríamos querer mostrarlo a todos los conductores activos 
+        // o filtrar también por tipo de vehículo si es necesario.
         const transportQ = query(
             collection(db, 'transport_requests'),
-            where('status', '==', 'searching'),
-            where('vehicleType', '==', driverProfile.vehicleType)
+            where('status', '==', 'searching')
         );
 
         const unsub = onSnapshot(transportQ, (snapshot) => {
-            const reqs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            const reqs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as any))
+                .filter((req: any) => {
+                    // Si es taxi, filtrar por tipo de vehículo
+                    if (req.type !== 'food_delivery') {
+                        return req.vehicleType === driverProfile.vehicleType;
+                    }
+                    // Si es food_delivery, permitir que todos lo vean
+                    return true;
+                });
             setAvailableTransport(reqs);
             setLoading(false);
         });
 
         return () => unsub();
     }, [driverProfile]);
+    
+    // 3.1 Alerta sonora cuando llega un nuevo viaje o pedido
+    const lastAvailableCount = React.useRef(0);
+    useEffect(() => {
+        const currentCount = availableOrders.length + availableTransport.length;
+        
+        if (currentCount > lastAvailableCount.current) {
+            // Solo sonar si no hay órdenes activas o si es una nueva entrada
+            if (notificationSoundUrl.current) {
+                const audio = new Audio(notificationSoundUrl.current);
+                audio.play().catch(e => console.error("Error playing notification sound:", e));
+            }
+            
+            toast.success('¡Nueva solicitud disponible en el radar!', {
+                icon: '🚀',
+                duration: 5000,
+                style: {
+                    borderRadius: '1.25rem',
+                    background: '#fefce8',
+                    color: '#854d0e',
+                    border: '1px solid #fef08a'
+                }
+            });
+        }
+        
+        lastAvailableCount.current = currentCount;
+    }, [availableOrders, availableTransport]);
 
     // 5. Escuchar último feedback (calificación)
     useEffect(() => {
@@ -416,6 +453,18 @@ export default function OrdersRadar() {
                 completedAt: serverTimestamp()
             });
 
+            // Si es un food_delivery, actualizar el estado de la orden original
+            if (activeTransport.type === 'food_delivery' && activeTransport.id) {
+                try {
+                    await updateDoc(doc(db, 'orders', activeTransport.id), {
+                        status: 'delivered',
+                        deliveredAt: serverTimestamp()
+                    });
+                } catch (orderError) {
+                    console.error("Error al actualizar estado de orden:", orderError);
+                }
+            }
+
             // Si el viaje tiene usuario asociado y costo, sumar puntos al usuario (2.5 puntos por cada $)
             if (activeTransport.userId && activeTransport.price) {
                 try {
@@ -602,7 +651,7 @@ export default function OrdersRadar() {
                         initial={{ opacity: 0, y: 100 }}
                         animate={{ opacity: 1, y: 0 }}
                         exit={{ opacity: 0, y: 100 }}
-                        className="fixed inset-0 z-50 bg-slate-50 flex flex-col"
+                        className="fixed inset-0 z-[100] bg-white flex flex-col"
                     >
                         <RideChat
                             requestId={activeTransport.id}
@@ -786,15 +835,15 @@ export default function OrdersRadar() {
                             initial={{ opacity: 0, y: 100 }}
                             animate={{ opacity: 1, y: 0 }}
                             exit={{ opacity: 0, y: 100 }}
-                            className="fixed inset-0 z-50 bg-slate-50 flex flex-col"
+                            className="fixed inset-0 z-[100] bg-white flex flex-col"
                         >
                             <div className="flex-1 flex flex-col pt-4">
                                 <div className="px-4 pb-4 flex items-center justify-between">
                                     <button 
                                         onClick={() => setShowChat(false)}
-                                        className="w-10 h-10 bg-white shadow-sm rounded-full flex items-center justify-center text-slate-500"
+                                        className="w-10 h-10 bg-white shadow-sm rounded-full flex items-center justify-center text-slate-500 active:scale-90 transition-all"
                                     >
-                                        <Clock className="w-5 h-5 rotate-180" />
+                                        <ArrowLeft className="w-6 h-6" />
                                     </button>
                                     <div className="text-center">
                                         <h3 className="font-black text-slate-900 leading-none">Chat de Entrega</h3>
@@ -930,8 +979,8 @@ export default function OrdersRadar() {
 
                                 <div className="flex justify-between items-center mb-6 relative">
                                     <div className="flex items-center gap-2 px-3 py-1 bg-primary text-slate-900 rounded-full text-[10px] font-black uppercase tracking-wider shadow-lg shadow-primary/20">
-                                        {req.vehicleType === 'moto' ? <Bike className="w-3.5 h-3.5" /> : <Car className="w-3.5 h-3.5" />}
-                                        {req.scheduled ? 'VIAJE PROGRAMADO' : 'SOLICITUD TAXI'}
+                                        {req.type === 'food_delivery' ? <Bike className="w-3.5 h-3.5" /> : (req.vehicleType === 'moto' ? <Bike className="w-3.5 h-3.5" /> : <Car className="w-3.5 h-3.5" />)}
+                                        {req.scheduled ? 'VIAJE PROGRAMADO' : (req.type === 'food_delivery' ? 'REPARTO COMIDA' : 'SOLICITUD TAXI')}
                                     </div>
                                     <div className="text-2xl font-black text-emerald-600">${(req.price || 0).toFixed(2)}</div>
                                 </div>

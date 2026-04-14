@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { collection, query, orderBy, onSnapshot, addDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { useAuth } from '../context/AuthContext';
-import { Send, X } from 'lucide-react';
+import { Send, ArrowLeft } from 'lucide-react';
 
 interface ChatProps {
     requestId: string;
@@ -75,8 +75,8 @@ export default function RideChat({ requestId, onClose, readOnly = false }: ChatP
                     <p className="text-xs font-bold text-slate-500">Comunícate en tiempo real</p>
                 </div>
                 {onClose && (
-                    <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-full bg-slate-100 text-slate-500 hover:bg-slate-200 shadow-sm transition-colors">
-                        <X className="w-5 h-5" />
+                    <button onClick={onClose} className="w-10 h-10 flex items-center justify-center rounded-full bg-slate-100 text-slate-500 hover:bg-slate-200 shadow-sm transition-all active:scale-90">
+                        <ArrowLeft className="w-6 h-6" />
                     </button>
                 )}
             </div>
