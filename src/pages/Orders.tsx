@@ -25,7 +25,7 @@ export default function Orders() {
         const q = query(
             collection(db, 'orders'),
             where('userId', '==', user.uid),
-            where('status', 'not-in', ['completed', 'cancelled', 'rejected']),
+            where('status', 'not-in', ['completed', 'cancelled', 'rejected', 'delivered']),
             orderBy('status'),
             orderBy('createdAt', 'desc'),
             limit(10)

@@ -1282,15 +1282,18 @@ export default function Profile() {
                                                 </div>
                                                 <span className={`px-2 py-1 rounded text-[10px] font-bold uppercase tracking-wider mt-1 ${
                                                     activity.status === 'pending' || activity.status === 'finding_driver' ? 'bg-orange-100 text-orange-600' :
-                                                    activity.status === 'completed' ? 'bg-green-100 text-green-600' :
+                                                    activity.status === 'completed' || activity.status === 'delivered' ? 'bg-emerald-100 text-emerald-600' :
                                                     (activity.status === 'accepted' || activity.status === 'arriving' || activity.status === 'in_progress' || activity.status === 'in_transit' || activity.status === 'driver_assigned') ? 'bg-blue-100 text-blue-600' :
+                                                    activity.status === 'cancelled' || activity.status === 'rejected' ? 'bg-red-100 text-red-600' :
                                                     'bg-slate-200 text-slate-600'
                                                 }`}>
                                                     {activity.status === 'pending' ? 'Buscando' :
                                                     activity.status === 'finding_driver' ? 'Buscando Piloto' :
                                                     activity.status === 'driver_assigned' || activity.status === 'accepted' ? 'Asignado' :
                                                     activity.status === 'in_transit' || activity.status === 'in_progress' || activity.status === 'arriving' ? 'En Camino' :
-                                                    activity.status === 'completed' ? 'Completado' : 'Cancelado'}
+                                                    activity.status === 'completed' ? 'Completado' : 
+                                                    activity.status === 'delivered' ? 'Entregado' :
+                                                    activity.status === 'cancelled' || activity.status === 'rejected' ? 'Cancelado' : activity.status}
                                                 </span>
                                             </div>
                                             <div className="h-px bg-slate-200 my-1"></div>

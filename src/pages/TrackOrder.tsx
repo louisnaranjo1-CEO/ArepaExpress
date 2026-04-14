@@ -1226,7 +1226,7 @@ export default function TrackOrder() {
             </div>
 
             {/* Final Success Screen if Reviewed and Delivered */}
-            {order.hasReviewed && order.status === 'delivered' && (
+            {order.hasReviewed && (order.status === 'delivered' || order.status === 'completed') && (
                 <div className="px-4 translate-y-[-2rem] pb-20">
                     <motion.div 
                         initial={{ scale: 0.8, opacity: 0 }} 

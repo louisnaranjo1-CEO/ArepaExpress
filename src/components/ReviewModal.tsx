@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { X, Star, UploadCloud, Image as ImageIcon, Trash2 } from 'lucide-react';
 import { db, storage } from '../lib/firebase';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { collection, addDoc, serverTimestamp, doc, updateDoc } from 'firebase/firestore';
+import { collection, addDoc, serverTimestamp, doc, updateDoc, getDoc } from 'firebase/firestore';
 import { useAuth } from '../context/AuthContext';
 import toast from 'react-hot-toast';
 
@@ -115,9 +115,16 @@ export default function ReviewModal({ isOpen, onClose, restaurantId, orderId, on
             const reviewsRef = collection(db, 'restaurants', restaurantId, 'reviews');
             await addDoc(reviewsRef, reviewData);
 
-            // Update order to mark as reviewed
+            // Update order to mark as reviewed and completed if it was delivered
             const orderRef = doc(db, 'orders', orderId);
-            await updateDoc(orderRef, { hasReviewed: true });
+            const orderSnap = await getDoc(orderRef);
+            const updateData: any = { hasReviewed: true };
+            
+            if (orderSnap.exists() && orderSnap.data().status === 'delivered') {
+                updateData.status = 'completed';
+            }
+            
+            await updateDoc(orderRef, updateData);
 
             onReviewSubmitted();
         } catch (err: any) {
