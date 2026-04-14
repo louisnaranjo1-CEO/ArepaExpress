@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { User, Mail, MapPin, CreditCard, LogOut, ShoppingBag, Settings, ChevronRight, Clock, FileText, Bell, Navigation, X, Shield, UploadCloud, Star, Wallet, Gift, Award, MessageSquareWarning, Plus, Send, AlertCircle, CheckCircle, Store, Handshake, LifeBuoy } from 'lucide-react';
+import { User, Mail, MapPin, CreditCard, LogOut, ShoppingBag, Settings, ChevronRight, Clock, FileText, Bell, Navigation, X, Shield, UploadCloud, Star, Wallet, Gift, Award, MessageSquareWarning, Plus, Send, AlertCircle, CheckCircle, Store, Handshake, LifeBuoy, Fingerprint } from 'lucide-react';
 import { isDemoMode } from '../lib/env';
 import DemoAlertModal from '../components/DemoAlertModal';
 import { requestNotificationPermission, disableNotifications } from '../lib/notifications';
@@ -17,6 +17,7 @@ import ReviewModal from '../components/ReviewModal';
 import { Copy, Check } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { vibrate } from '../utils/haptics';
+import { registerBiometric } from '../utils/security';
 
 interface SupportTicket {
     id: string;
@@ -83,6 +84,8 @@ export default function Profile() {
     const [showAddressPicker, setShowAddressPicker] = useState(false);
     const [showEditProfileModal, setShowEditProfileModal] = useState(false);
     const [updatingNotifications, setUpdatingNotifications] = useState(false);
+    const [updatingBiometrics, setUpdatingBiometrics] = useState(false);
+    const [updatingLocation, setUpdatingLocation] = useState(false);
     const [completingProfile, setCompletingProfile] = useState(false);
     const [reviewModalData, setReviewModalData] = useState<{ isOpen: boolean; orderId: string; restaurantId: string } | null>(null);
     const ordersRef = useRef<HTMLDivElement>(null);
@@ -1394,6 +1397,120 @@ export default function Profile() {
                                         ) : (
                                             <span
                                                 className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${userData?.notificationsEnabled || (userData?.fcmTokens && userData.fcmTokens.length > 0) ? 'translate-x-6' : 'translate-x-1'
+                                                    }`}
+                                            />
+                                        )}
+                                    </div>
+                                </div>
+
+                                <div
+                                    onClick={async () => {
+                                        if (!user) return;
+                                        setUpdatingBiometrics(true);
+                                        try {
+                                            if (userData?.biometricLockEnabled) {
+                                                // Disable
+                                                await setDoc(doc(db, 'users', user.uid), {
+                                                    biometricLockEnabled: false
+                                                }, { merge: true });
+                                                toast.success('Bloqueo biométrico desactivado');
+                                            } else {
+                                                // Enable
+                                                const credential = await registerBiometric(user.uid, user.email || '');
+                                                await setDoc(doc(db, 'users', user.uid), {
+                                                    biometricLockEnabled: true,
+                                                    biometricCredentialId: credential.id
+                                                }, { merge: true });
+                                                toast.success('Bloqueo biométrico activado');
+                                            }
+                                        } catch (err) {
+                                            console.error(err);
+                                            toast.error('Error al configurar biometría');
+                                        } finally {
+                                            setUpdatingBiometrics(false);
+                                        }
+                                    }}
+                                    className={`w-full flex items-center justify-between p-4 bg-slate-50 rounded-2xl transition-all cursor-pointer hover:bg-slate-100 ${updatingBiometrics ? 'opacity-70 pointer-events-none' : ''}`}
+                                >
+                                    <div className="flex items-center gap-3">
+                                        <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center shadow-sm">
+                                            <Fingerprint className="w-5 h-5 text-indigo-500" />
+                                        </div>
+                                        <div className="flex flex-col">
+                                            <span className="font-bold text-slate-700">Bloqueo Biométrico</span>
+                                            <span className="text-[10px] text-slate-400 font-medium font-bold">Protege tu cuenta con tu huella o rostro</span>
+                                        </div>
+                                    </div>
+                                    <div
+                                        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${userData?.biometricLockEnabled ? 'bg-indigo-500' : 'bg-slate-300'
+                                            }`}
+                                    >
+                                        {updatingBiometrics ? (
+                                            <div className="ml-1 w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                                        ) : (
+                                            <span
+                                                className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${userData?.biometricLockEnabled ? 'translate-x-6' : 'translate-x-1'
+                                                    }`}
+                                            />
+                                        )}
+                                    </div>
+                                </div>
+
+                                <div
+                                    onClick={async () => {
+                                        if (!user) return;
+                                        setUpdatingLocation(true);
+                                        try {
+                                            if (userData?.locationPermissionsAllowed) {
+                                                await setDoc(doc(db, 'users', user.uid), {
+                                                    locationPermissionsAllowed: false
+                                                }, { merge: true });
+                                                toast.success('Ubicación en tiempo real desactivada');
+                                            } else {
+                                                if ("geolocation" in navigator) {
+                                                    navigator.geolocation.getCurrentPosition(
+                                                        async () => {
+                                                            await setDoc(doc(db, 'users', user.uid), {
+                                                                locationPermissionsAllowed: true
+                                                            }, { merge: true });
+                                                            toast.success('Ubicación en tiempo real activada');
+                                                        },
+                                                        (error) => {
+                                                            console.error(error);
+                                                            toast.error('No se pudo obtener permiso de ubicación');
+                                                        }
+                                                    );
+                                                } else {
+                                                    toast.error('Gps no disponible en este dispositivo');
+                                                }
+                                            }
+                                        } catch (err) {
+                                            console.error(err);
+                                            toast.error('Error al configurar ubicación');
+                                        } finally {
+                                            setUpdatingLocation(false);
+                                        }
+                                    }}
+                                    className={`w-full flex items-center justify-between p-4 bg-slate-50 rounded-2xl transition-all cursor-pointer hover:bg-slate-100 ${updatingLocation ? 'opacity-70 pointer-events-none' : ''}`}
+                                >
+                                    <div className="flex items-center gap-3">
+                                        <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center shadow-sm">
+                                            <Navigation className="w-5 h-5 text-emerald-500" />
+                                        </div>
+                                        <div className="flex flex-col">
+                                            <span className="font-bold text-slate-700">Ubicación en Línea</span>
+                                            <span className="text-[10px] text-slate-400 font-medium font-bold font-bold font-bold">Permite usar todas las funciones de la app</span>
+                                        </div>
+                                    </div>
+                                    <div
+                                        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${userData?.locationPermissionsAllowed ? 'bg-emerald-500' : 'bg-slate-300'
+                                            }`}
+                                    >
+                                        {updatingLocation ? (
+                                            <div className="ml-1 w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                                        ) : (
+                                            <span
+                                                className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${userData?.locationPermissionsAllowed ? 'translate-x-6' : 'translate-x-1'
                                                     }`}
                                             />
                                         )}

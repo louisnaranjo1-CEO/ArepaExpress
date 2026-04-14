@@ -35,6 +35,9 @@ interface UserData {
     totalUsageMinutes?: number;
     gender?: 'masculine' | 'feminine';
     managedRestaurantId?: string;
+    biometricLockEnabled?: boolean;
+    biometricCredentialId?: string;
+    locationPermissionsAllowed?: boolean;
 }
 
 interface AuthContextType {
@@ -42,9 +45,18 @@ interface AuthContextType {
     userData: UserData | null;
     loading: boolean;
     isProfileComplete: boolean;
+    isUnlocked: boolean;
+    setIsUnlocked: (unlocked: boolean) => void;
 }
 
-const AuthContext = createContext<AuthContextType>({ user: null, userData: null, loading: true, isProfileComplete: false });
+const AuthContext = createContext<AuthContextType>({ 
+    user: null, 
+    userData: null, 
+    loading: true, 
+    isProfileComplete: false,
+    isUnlocked: true,
+    setIsUnlocked: () => {}
+});
 
 export const useAuth = () => useContext(AuthContext);
 
@@ -52,6 +64,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const [user, setUser] = useState<User | null>(null);
     const [userData, setUserData] = useState<UserData | null>(null);
     const [loading, setLoading] = useState(true);
+    const [isUnlocked, setIsUnlocked] = useState(true); // Default to true, LockScreen will handle setting it to false if needed
 
     useEffect(() => {
         let unsubscribeDoc: (() => void) | null = null;
@@ -74,9 +87,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                                 reference: data.address.reference,
                                 isDefault: true
                             };
-                            data.addresses = [newAddress];
-                        }
                         setUserData(data);
+
+                        // Lógica de Bloqueo Inicial
+                        if (data.biometricLockEnabled && !sessionStorage.getItem('lock_unlocked')) {
+                            setIsUnlocked(false);
+                        }
 
                         // Update lastLogin if it's a new session (roughly > 1 hour since last login)
                         const now = new Date();
@@ -122,7 +138,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const isProfileComplete = !!(userData?.displayName && userData?.phone);
 
     return (
-        <AuthContext.Provider value={{ user, userData, loading, isProfileComplete }}>
+        <AuthContext.Provider value={{ user, userData, loading, isProfileComplete, isUnlocked, setIsUnlocked }}>
             {!loading && children}
         </AuthContext.Provider>
     );

@@ -7,9 +7,22 @@ import DeliveryApp from './delivery/DeliveryApp';
 import CashierApp from './cashier/CashierApp';
 import { OfflineIndicator } from './components/OfflineIndicator';
 import SplashScreen from './components/SplashScreen';
+import LockScreen from './components/LockScreen';
+import { useAuth } from './context/AuthContext';
 
 function App() {
+  const { isUnlocked } = useAuth();
   const [showSplash, setShowSplash] = useState(true);
+
+  // Solicitar ubicación al cargar
+  useEffect(() => {
+    if ("geolocation" in navigator) {
+      navigator.geolocation.getCurrentPosition(
+        () => console.log("Ubicación permitida"),
+        () => console.log("Ubicación denegada")
+      );
+    }
+  }, []);
   const isDevAdminPath = window.location.pathname.startsWith('/admin');
   const isAdminSubdomain = window.location.hostname.startsWith('restaurante.');
   const isCpanelSubdomain = window.location.hostname.startsWith('cpanel.') || window.location.pathname.startsWith('/cpanel');
@@ -45,7 +58,7 @@ function App() {
     <>
       {showSplash && <SplashScreen onComplete={() => setShowSplash(false)} />}
       <div className={showSplash ? 'hidden' : 'block animate-fade-in'}>
-        {renderApp()}
+        {!isUnlocked ? <LockScreen /> : renderApp()}
         <OfflineIndicator />
       </div>
     </>
