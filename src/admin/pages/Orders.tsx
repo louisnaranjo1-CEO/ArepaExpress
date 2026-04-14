@@ -1310,10 +1310,24 @@ export default function Orders() {
                     <Bell className="w-5 h-5" />
                 </button>
                 {chatOrderId === order.id && (
-                    <OrderChatWindow
-                        orderId={order.id}
-                        onClose={() => setChatOrderId(null)}
-                    />
+                    <div className="fixed inset-0 z-[200] flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-4">
+                        <div className="w-full max-w-lg relative">
+                            <button 
+                                onClick={() => setChatOrderId(null)}
+                                className="absolute -top-12 right-0 bg-white/20 hover:bg-white/40 text-white p-2 rounded-full transition-all"
+                            >
+                                <X className="w-6 h-6" />
+                            </button>
+                            <OrderChatWindow
+                                orderId={order.id}
+                                currentUserRole="restaurant"
+                                currentUserId={user?.uid || 'admin'}
+                                currentUserName={user?.email === 'admin@un2x3.com' ? 'Administración 2x3' : 'Caja Central'}
+                                restaurantId={rid!}
+                                orderInfo={order}
+                            />
+                        </div>
+                    </div>
                 )}
             </div>
         </div>
@@ -1683,16 +1697,14 @@ export default function Orders() {
 
                             {(selectedOrderForAccept.source === 'client' || ['Pago Móvil', 'Transferencia', 'Zelle', 'Punto de Venta', 'Cashea'].includes(paymentMethod)) && (
                                 <div className="space-y-4 animate-in slide-in-from-top-2 duration-300">
-                                    <div className="bg-slate-50 border border-slate-200 rounded-2xl overflow-hidden h-[400px]">
-                                        <OrderChatWindow 
-                                            orderId={selectedOrderForAccept.id} 
-                                            currentUserRole="restaurant" 
-                                            currentUserId={user?.uid || 'admin'}
-                                            currentUserName={user?.email === 'admin@un2x3.com' ? 'Administración 2x3' : 'Caja Central'} 
-                                            restaurantId={user?.uid!} // Or get from order.restaurantId if it's the admin panel
-                                            orderInfo={selectedOrderForAccept}
-                                        />
-                                    </div>
+                                    <OrderChatWindow 
+                                        orderId={selectedOrderForAccept.id} 
+                                        currentUserRole="restaurant" 
+                                        currentUserId={user?.uid || 'admin'}
+                                        currentUserName={user?.email === 'admin@un2x3.com' ? 'Administración 2x3' : 'Caja Central'} 
+                                        restaurantId={rid!}
+                                        orderInfo={selectedOrderForAccept}
+                                    />
                                 </div>
                             )}
 

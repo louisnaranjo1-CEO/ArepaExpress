@@ -683,15 +683,7 @@ export default function Cart({ hideHeader = false }: CartProps) {
                             </div>
                           )}
 
-                          {deliveryMethod === 'app_delivery' && (
-                            <div className="p-4 mx-6 mb-2 bg-primary/10 text-slate-800 rounded-2xl border border-primary/30 flex gap-3 text-sm animate-in fade-in">
-                               <AlertCircle className="w-8 h-8 text-primary shrink-0" />
-                               <div>
-                                 <span className="font-black text-sm block mb-1">¡Oye, espera un momento! 🛑</span>
-                                 <span className="font-medium">¿Tu comida fue pagada directamente al restaurante? Al confirmar, <b>SÓLO cobrarás el Delivery de Un 2x3</b> para ir a recoger y llevar tu pedido de forma segura. Contáctalos por sus métodos de pago si no lo has hecho.</span>
-                               </div>
-                            </div>
-                          )}
+
                         </>
                       );
                     }
@@ -699,31 +691,24 @@ export default function Cart({ hideHeader = false }: CartProps) {
                   })()}
 
                   <div className="p-6 bg-slate-900 text-white">
-                    <div className="space-y-2 mb-4 opacity-80 text-sm font-bold text-white/70">
-                      <div className="flex justify-between">
-                        <span className={deliveryMethod === 'app_delivery' ? 'line-through opacity-50' : ''}>{restaurantData?.businessType === 'hotel' ? 'Subtotal Servicios' : 'Subtotal Productos'}</span>
-                        <DualPrice usdAmount={cartSubtotalUSD} className={deliveryMethod === 'app_delivery' ? 'line-through opacity-50 flex items-center gap-1.5' : 'flex items-center gap-1.5'} showDivider={false} />
+                    <div className="space-y-4 mb-4 font-bold text-white">
+                      <div className="flex justify-between items-center bg-white/5 p-3 rounded-xl">
+                        <span className="text-sm uppercase tracking-wider text-white/70">{restaurantData?.businessType === 'hotel' ? 'Subtotal Servicios' : 'Subtotal Productos'}</span>
+                        <div className="text-right">
+                          <DualPrice usdAmount={cartSubtotalUSD} usdClassName="text-xl font-black text-white" bsClassName="text-[10px] text-white/50" showDivider={false} />
+                          <span className="text-[10px] block mt-1 text-white/40 font-black uppercase tracking-widest">Total a pagar a {restaurantData?.name || 'el restaurante'}</span>
+                        </div>
                       </div>
-                      {!isWaiter && deliveryMethod === 'app_delivery' && restaurantData?.businessType !== 'hotel' && (
-                        <div className="flex justify-between text-primary opacity-100"><span>Costo Delivery Un 2x3</span><DualPrice usdAmount={deliveryFee} showDivider={false} /></div>
+
+                      {!isWaiter && (deliveryMethod === 'app_delivery' || deliveryMethod === 'own_delivery') && restaurantData?.businessType !== 'hotel' && (
+                        <div className="flex justify-between items-center bg-primary/10 p-4 rounded-2xl border border-primary/20">
+                          <span className="text-xs uppercase tracking-widest text-primary font-black">Transporte Un 2x3</span>
+                          <div className="text-right">
+                            <DualPrice usdAmount={deliveryFee} usdClassName="text-2xl font-black text-primary" bsClassName="text-[10px] text-primary/60" showDivider={false} />
+                            <span className="text-[9px] block mt-1 text-primary/70 font-black uppercase tracking-widest">Pago al Delivery</span>
+                          </div>
+                        </div>
                       )}
-                      {!isWaiter && deliveryMethod === 'own_delivery' && restaurantData?.businessType !== 'hotel' && (
-                        <div className="flex justify-between"><span>Costo Delivery del Local</span><DualPrice usdAmount={deliveryFee} showDivider={false} /></div>
-                      )}
-                    </div>
-                    <div className="flex justify-between items-center pt-2 border-t border-white/10">
-                      <span className="text-lg font-black uppercase tracking-widest text-slate-200">
-                        Total {deliveryMethod === 'app_delivery' ? 'Transporte' : (deliveryMethod === 'own_delivery' ? 'Estimado' : 'Final')}
-                      </span>
-                      <div className="text-right">
-                        <DualPrice 
-                          usdAmount={finalTotal} 
-                          usdClassName="text-3xl font-black text-primary block" 
-                          bsClassName="text-[11px] font-bold text-slate-400 block mt-0.5 text-right" 
-                          showDivider={false} 
-                          className="flex flex-col items-end" 
-                        />
-                      </div>
                     </div>
                   </div>
                 </div>

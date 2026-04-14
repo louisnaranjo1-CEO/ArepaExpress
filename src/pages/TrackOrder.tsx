@@ -30,7 +30,7 @@ export default function TrackOrder() {
     // New payment states
     const [paymentReference, setPaymentReference] = useState('');
     const [isUploading, setIsUploading] = useState(false);
-    const [pendingCountdown, setPendingCountdown] = useState(60);
+    const [pendingCountdown, setPendingCountdown] = useState(120);
     const [showStockWhatsapp, setShowStockWhatsapp] = useState(false);
     const [userLocation, setUserLocation] = useState<{lat: number, lng: number} | null>(null);
     
@@ -468,9 +468,9 @@ export default function TrackOrder() {
                                     }}
                                 >
                                     <div className="relative w-4 h-4">
-                                        <div className="absolute inset-0 bg-blue-500 rounded-full animate-ping opacity-75"></div>
-                                        <div className="relative w-4 h-4 bg-blue-500 rounded-full shadow-lg shadow-blue-500/50 border-2 border-white"></div>
-                                        <div className="absolute -bottom-6 left-1/2 -translate-x-1/2 whitespace-nowrap bg-blue-600 text-[8px] font-black text-white px-2 py-0.5 rounded-full uppercase tracking-widest">Tú</div>
+                                        <div className="absolute inset-0 bg-primary rounded-full animate-ping opacity-75"></div>
+                                        <div className="relative w-4 h-4 bg-primary rounded-full shadow-lg shadow-primary/50 border-2 border-white"></div>
+                                        <div className="absolute -bottom-6 left-1/2 -translate-x-1/2 whitespace-nowrap bg-slate-900 text-[8px] font-black text-primary px-2 py-0.5 rounded-full uppercase tracking-widest">Tú</div>
                                     </div>
                                 </motion.div>
                             )}
@@ -489,7 +489,9 @@ export default function TrackOrder() {
                     </div>
                     
                     <div className="text-center">
-                        <p className="font-black text-xs uppercase tracking-[0.4em] text-slate-900 mb-3">Rastreo Activo</p>
+                        <div className="inline-block bg-primary px-4 py-1.5 rounded-full mb-3 shadow-lg shadow-primary/20 border border-primary/50">
+                            <p className="font-black text-[9px] uppercase tracking-[0.4em] text-slate-900">Rastreo Activo</p>
+                        </div>
                         <h2 className="text-xl font-black text-white mb-1 uppercase tracking-tight">#{orderId?.slice(-5).toUpperCase()}</h2>
                         <p className="text-white/40 text-[10px] font-bold uppercase tracking-[0.2em] max-w-[250px] mx-auto leading-relaxed">
                             {currentStep === 1 && (order.status === 'verificando_pago_delivery' ? "Verificando el pago de tu delivery..." : "Confirmando tu pedido con el restaurante...")}
