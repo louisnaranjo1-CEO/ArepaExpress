@@ -16,20 +16,10 @@ interface DeliveryPaymentModalProps {
 
 export default function DeliveryPaymentModal({ isOpen, onClose, orderId, deliveryFee, bcvRate, businessName, onSuccess }: DeliveryPaymentModalProps) {
     const [reference, setReference] = useState('');
-    const [imageFile, setImageFile] = useState<File | null>(null);
-    const [previewUrl, setPreviewUrl] = useState<string | null>(null);
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
     if (!isOpen) return null;
-
-    const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0];
-        if (file) {
-            setImageFile(file);
-            setPreviewUrl(URL.createObjectURL(file));
-        }
-    };
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -42,18 +32,9 @@ export default function DeliveryPaymentModal({ isOpen, onClose, orderId, deliver
         setError(null);
 
         try {
-            let imageUrl = '';
-            // Upload screenshot if provided
-            if (imageFile) {
-                const storageRef = ref(storage, `delivery_payments/${orderId}_${Date.now()}`);
-                const snapshot = await uploadBytes(storageRef, imageFile);
-                imageUrl = await getDownloadURL(snapshot.ref);
-            }
-
             // Update order doc
             await updateDoc(doc(db, 'orders', orderId), {
                 deliveryPaymentRef: reference.trim(),
-                deliveryPaymentImage: imageUrl,
                 deliveryPaymentStatus: 'verifying',
                 status: 'verificando_pago_delivery' // new status
             });
@@ -120,32 +101,6 @@ export default function DeliveryPaymentModal({ isOpen, onClose, orderId, deliver
                                 className="w-full bg-slate-50 border border-slate-200 p-4 rounded-2xl text-sm outline-none focus:border-primary focus:bg-white transition-all font-medium"
                                 required
                             />
-                        </div>
-
-                        <div className="space-y-2">
-                            <label className="text-xs font-black text-slate-700 uppercase tracking-wider block">Capture de Pantalla <span className="text-slate-400 font-medium">(Opcional)</span></label>
-                            
-                            <label className={`w-full group cursor-pointer flex flex-col items-center justify-center p-6 border-2 border-dashed rounded-2xl transition-all ${
-                                previewUrl ? 'border-primary/50 bg-primary/5' : 'border-slate-200 bg-slate-50 hover:bg-slate-100 hover:border-slate-300'
-                            }`}>
-                                <input type="file" accept="image/*" className="hidden" onChange={handleImageChange} />
-                                {previewUrl ? (
-                                    <div className="relative w-full aspect-video rounded-xl overflow-hidden shadow-sm">
-                                        <img src={previewUrl} alt="Preview" className="w-full h-full object-cover" />
-                                        <div className="absolute inset-0 bg-slate-900/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                                            <span className="text-white text-xs font-bold bg-slate-900/80 px-3 py-1 rounded-full backdrop-blur-md">Cambiar imagen</span>
-                                        </div>
-                                    </div>
-                                ) : (
-                                    <div className="text-center">
-                                        <div className="w-12 h-12 bg-white rounded-full flex items-center justify-center mx-auto shadow-sm text-slate-400 group-hover:text-primary transition-colors">
-                                            <UploadCloud className="w-5 h-5" />
-                                        </div>
-                                        <p className="mt-3 text-sm font-bold text-slate-700">Seleccionar imagen</p>
-                                        <p className="text-xs text-slate-400 font-medium mt-1">JPG, PNG o WEBP</p>
-                                    </div>
-                                )}
-                            </label>
                         </div>
 
                     </form>

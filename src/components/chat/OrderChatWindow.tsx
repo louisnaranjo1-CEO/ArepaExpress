@@ -10,14 +10,14 @@ interface Message {
   imageUrl?: string;
   senderId: string;
   senderName: string;
-  senderRole: 'client' | 'restaurant' | 'system';
+  senderRole: 'client' | 'restaurant' | 'system' | 'delivery';
   createdAt: any;
   action?: 'payment_confirmed' | 'payment_reminder' | 'items_modified';
 }
 
 interface OrderChatWindowProps {
   orderId: string;
-  currentUserRole: 'client' | 'restaurant' | 'cpanel';
+  currentUserRole: 'client' | 'restaurant' | 'cpanel' | 'delivery';
   currentUserId: string;
   currentUserName: string;
   restaurantId: string;
@@ -94,6 +94,20 @@ export default function OrderChatWindow({
     }
   };
 
+  const updateOrderStatus = async (newStatus: string, messageText: string) => {
+    try {
+      await updateDoc(doc(db, 'orders', orderId), {
+        status: newStatus,
+        updatedAt: serverTimestamp()
+      });
+      await handleSendMessage(messageText);
+      toast.success(`Estado del pedido actualizado a: ${newStatus}`);
+    } catch (e) {
+      console.error(e);
+      toast.error('Error al actualizar el estado del pedido');
+    }
+  };
+
   const confirmPayment = async () => {
     if (currentUserRole !== 'restaurant') return;
     
@@ -122,6 +136,16 @@ export default function OrderChatWindow({
         </div>
       );
     }
+
+    if (msg.senderRole === 'delivery' && currentUserRole === 'client') {
+       return (
+        <div className={`p-4 rounded-2xl max-w-[85%] bg-amber-50 border border-amber-200 text-slate-700 rounded-tl-none mr-auto shadow-sm`}>
+          <p className="text-[10px] font-black opacity-50 mb-1 uppercase tracking-wider flex items-center gap-1.5"><Bike className="w-3 h-3"/> Repartidor: {msg.senderName}</p>
+          <p className="text-sm font-bold leading-relaxed whitespace-pre-wrap">{msg.text}</p>
+        </div>
+      );
+    }
+
     return (
       <div className={`p-4 rounded-2xl max-w-[85%] ${
         msg.senderRole === currentUserRole 
@@ -218,8 +242,32 @@ export default function OrderChatWindow({
         </div>
       )}
 
+      {/* Quick Actions (for drivers/pilots) */}
+      {currentUserRole === 'delivery' && (
+        <div className="bg-white p-3 border-t border-slate-200 flex items-center gap-2 overflow-x-auto whitespace-nowrap scrollbar-hide shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)] z-10 w-full">
+           <button 
+            onClick={() => updateOrderStatus('in_transit', "🏍️ ¡Acabo de recoger tu pedido en el negocio! Voy en camino.")}
+            className="shrink-0 bg-primary border-b-4 border-amber-600 px-4 py-2 rounded-xl text-xs font-black text-slate-900 hover:brightness-110 active:border-b-0 active:translate-y-1 transition-all flex items-center gap-2"
+          >
+            <Bike className="w-4 h-4" /> RECOGÍ EL PEDIDO
+          </button>
+          <button 
+            onClick={() => handleSendMessage("📍 Ya estoy en el lugar de entrega. Por favor, sal a recibir tu pedido.")}
+            className="shrink-0 bg-blue-100 border border-blue-200 px-4 py-2 rounded-xl text-xs font-bold text-blue-700 hover:bg-blue-200 active:scale-95 transition-all"
+          >
+            📍 YA LLEGUÉ
+          </button>
+          <button 
+            onClick={() => updateOrderStatus('delivered', "✅ ¡Pedido entregado! Muchas gracias por preferirnos. No olvides calificar mi servicio.")}
+            className="shrink-0 bg-emerald-500 border-b-4 border-emerald-700 px-4 py-2 rounded-xl text-xs font-black text-white hover:brightness-110 active:border-b-0 active:translate-y-1 transition-all flex items-center gap-2 ml-auto"
+          >
+            <CheckCircle className="w-4 h-4" /> ENTREGADO
+          </button>
+        </div>
+      )}
+
       {/* Input area */}
-      {(currentUserRole === 'client' || currentUserRole === 'restaurant' || currentUserRole === 'cpanel') && (
+      {(currentUserRole === 'client' || currentUserRole === 'restaurant' || currentUserRole === 'cpanel' || currentUserRole === 'delivery') && (
         <div className="p-4 bg-white border-t border-slate-200 shrink-0">
           <div className="flex items-end gap-2">
             <div className="flex-1 bg-slate-50 rounded-2xl border-2 border-slate-100 relative focus-within:border-primary focus-within:bg-white transition-all p-1">

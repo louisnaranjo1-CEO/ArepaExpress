@@ -12,6 +12,7 @@ import DualPrice from '../components/DualPrice';
 import OrderChatWindow from '../components/chat/OrderChatWindow';
 import { useAuth } from '../context/AuthContext';
 import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { motion, AnimatePresence } from 'framer-motion';
 
 export default function TrackOrder() {
     const { orderId } = useParams();
@@ -28,8 +29,10 @@ export default function TrackOrder() {
     
     // New payment states
     const [paymentReference, setPaymentReference] = useState('');
-    const [paymentProofFile, setPaymentProofFile] = useState<File | null>(null);
     const [isUploading, setIsUploading] = useState(false);
+    const [pendingCountdown, setPendingCountdown] = useState(60);
+    const [showStockWhatsapp, setShowStockWhatsapp] = useState(false);
+    const [userLocation, setUserLocation] = useState<{lat: number, lng: number} | null>(null);
     
     const [infoStep, setInfoStep] = useState<number | null>(null);
     const [editDelivery, setEditDelivery] = useState({
@@ -108,6 +111,43 @@ export default function TrackOrder() {
         return () => unsubscribe();
     }, [orderId]);
 
+    // Live geolocation for the "blue dot"
+    useEffect(() => {
+        if (!navigator.geolocation) return;
+        
+        const watchId = navigator.geolocation.watchPosition(
+            (pos) => {
+                setUserLocation({
+                    lat: pos.coords.latitude,
+                    lng: pos.coords.longitude
+                });
+            },
+            (err) => console.error("Geolocation error:", err),
+            { enableHighAccuracy: true }
+        );
+
+        return () => navigator.geolocation.clearWatch(watchId);
+    }, []);
+
+    // Pending stock countdown
+    useEffect(() => {
+        let timer: any;
+        if (order?.status === 'pending' && !order.stockConfirmed && pendingCountdown > 0) {
+            timer = setInterval(() => {
+                setPendingCountdown(prev => {
+                    if (prev <= 1) {
+                        setShowStockWhatsapp(true);
+                        clearInterval(timer);
+                        return 0;
+                    }
+                    return prev - 1;
+                });
+            }, 1000);
+        } else if (order?.stockConfirmed) {
+            setPendingCountdown(0);
+        }
+        }, [order?.status, order?.stockConfirmed, pendingCountdown]);
+
     if (loading) {
         return (
             <div className="flex items-center justify-center min-h-[60vh]">
@@ -142,8 +182,8 @@ export default function TrackOrder() {
     const handleRestaurantPaid = async () => {
         if(!orderId || !order) return;
         
-        if (!paymentReference && !paymentProofFile) {
-            toast.error('Por favor ingresa un número de referencia o adjunta un capture de pago.');
+        if (!paymentReference) {
+            toast.error('Por favor ingresa el número de referencia del pago.');
             return;
         }
 
@@ -155,19 +195,11 @@ export default function TrackOrder() {
                 paymentReference: paymentReference
             };
 
-            if (paymentProofFile) {
-                const storage = getStorage();
-                const fileRef = ref(storage, `payment_proofs/${orderId}_${Date.now()}`);
-                await uploadBytes(fileRef, paymentProofFile);
-                const url = await getDownloadURL(fileRef);
-                updates.paymentProofUrl = url;
-            }
-
             await updateDoc(doc(db, 'orders', orderId), updates);
 
             // Enviar mensaje automático al chat
             await addDoc(collection(db, `orders/${orderId}/messages`), {
-                text: "📢 He realizado el pago, favor validar.",
+                text: `📢 He realizado el pago. Referencia: ${paymentReference}. Favor validar.`,
                 senderId: user?.uid || 'guest',
                 senderName: order.userName || 'Cliente',
                 senderRole: 'client',
@@ -284,8 +316,8 @@ export default function TrackOrder() {
     const handleReportDeliveryPayment = async () => {
         if(!orderId || !order) return;
         
-        if (!deliveryPaymentReference && !deliveryPaymentProofFile) {
-            toast.error('Por favor ingresa un número de referencia o adjunta un capture de pago.');
+        if (!deliveryPaymentReference) {
+            toast.error('Por favor ingresa el número de referencia del pago.');
             return;
         }
 
@@ -296,14 +328,6 @@ export default function TrackOrder() {
                 status: 'verificando_pago_delivery',
                 deliveryPaymentReference: deliveryPaymentReference
             };
-
-            if (deliveryPaymentProofFile) {
-                const storage = getStorage();
-                const fileRef = ref(storage, `delivery_payment_proofs/${orderId}_${Date.now()}`);
-                await uploadBytes(fileRef, deliveryPaymentProofFile);
-                const url = await getDownloadURL(fileRef);
-                updates.deliveryPaymentProofUrl = url;
-            }
 
             await updateDoc(doc(db, 'orders', orderId), updates);
 
@@ -430,6 +454,27 @@ export default function TrackOrder() {
                         <div className="absolute w-[250px] h-[250px] top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2">
                             <div className="w-full h-1 bg-gradient-to-r from-transparent to-primary/40 origin-left animate-[spin_4s_linear_infinite]" style={{ transformOrigin: '0% 50%' }}></div>
                         </div>
+
+                        {/* User Blue Dot (Live Location) */}
+                        <AnimatePresence>
+                            {userLocation && (
+                                <motion.div 
+                                    initial={{ scale: 0, opacity: 0 }}
+                                    animate={{ scale: 1, opacity: 1 }}
+                                    className="absolute z-20 transition-all duration-1000" 
+                                    style={{ 
+                                        // Visual simulation: center around radar
+                                        transform: 'translate(45px, -55px)' 
+                                    }}
+                                >
+                                    <div className="relative w-4 h-4">
+                                        <div className="absolute inset-0 bg-blue-500 rounded-full animate-ping opacity-75"></div>
+                                        <div className="relative w-4 h-4 bg-blue-500 rounded-full shadow-lg shadow-blue-500/50 border-2 border-white"></div>
+                                        <div className="absolute -bottom-6 left-1/2 -translate-x-1/2 whitespace-nowrap bg-blue-600 text-[8px] font-black text-white px-2 py-0.5 rounded-full uppercase tracking-widest">Tú</div>
+                                    </div>
+                                </motion.div>
+                            )}
+                        </AnimatePresence>
                     </div>
                 </div>
                 
@@ -641,11 +686,30 @@ export default function TrackOrder() {
                     <div className="bg-white rounded-3xl p-6 shadow-xl shadow-slate-200/50 border-2 border-primary/20 animate-in slide-in-from-bottom-4 duration-500 overflow-hidden">
                         {order.status === 'pending' ? (
                             <div className="flex flex-col items-center text-center py-4">
-                                <div className="w-16 h-16 bg-blue-50 text-blue-500 rounded-full flex items-center justify-center mb-4 animate-pulse">
-                                    <Clock className="w-8 h-8" />
+                                <div className="w-16 h-16 bg-blue-50 text-blue-500 rounded-full flex items-center justify-center mb-4 relative">
+                                    <Clock className="w-8 h-8 animate-pulse" />
+                                    {pendingCountdown > 0 && (
+                                        <div className="absolute -top-1 -right-1 bg-primary text-slate-900 text-[10px] font-black w-6 h-6 rounded-full flex items-center justify-center border-2 border-white">
+                                            {pendingCountdown}
+                                        </div>
+                                    )}
                                 </div>
                                  <h3 className="text-lg font-black text-slate-900 mb-2">Verificando Pedido</h3>
-                                <p className="text-slate-500 text-sm font-medium">Estamos verificando tu orden espera un momento</p>
+                                <p className="text-slate-500 text-sm font-medium">Estamos verificando tu orden, espera un momento...</p>
+                                
+                                {showStockWhatsapp && (
+                                    <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="mt-6 w-full">
+                                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3 italic">¿El negocio no responde? Envía un recordatorio:</p>
+                                        <a 
+                                            href={`https://wa.me/${restaurant?.phone?.replace(/\D/g, '')}?text=${encodeURIComponent(`Hola ${restaurant?.name}, acabo de realizar un pedido (#${orderId?.slice(-5).toUpperCase()}) y estoy esperando la confirmación de stock. \n\nResumen:\n${order.items.map((i:any) => `- ${i.quantity}x ${i.name}`).join('\n')}\n\nTotal: $${order.total}`)}`}
+                                            target="_blank"
+                                            className="w-full bg-[#25D366] text-white py-4 rounded-2xl font-black shadow-xl shadow-[#25D366]/20 hover:scale-[1.02] active:scale-95 transition-all flex items-center justify-center gap-2"
+                                        >
+                                            <Phone className="w-5 h-5 fill-white/20" />
+                                            Enviar Resumen WhatsApp
+                                        </a>
+                                    </motion.div>
+                                )}
                             </div>
                         ) : order.status === 'action_required' ? (
                             <div className="space-y-6">
@@ -849,35 +913,14 @@ export default function TrackOrder() {
                                                 onChange={(e) => setPaymentReference(e.target.value)}
                                                 className="w-full bg-slate-50 border-2 border-slate-100 px-4 py-3 rounded-2xl text-sm font-bold outline-none focus:border-primary transition-all text-slate-700"
                                             />
-                                            <div className="flex gap-2">
-                                                <label className="flex-1 flex items-center justify-center gap-2 bg-slate-50 border-2 border-dashed border-slate-200 p-4 rounded-2xl cursor-pointer hover:bg-slate-100 transition-all group">
-                                                    <input 
-                                                        type="file" 
-                                                        className="hidden" 
-                                                        accept="image/*"
-                                                        onChange={(e) => setPaymentProofFile(e.target.files?.[0] || null)}
-                                                    />
-                                                    {paymentProofFile ? (
-                                                        <div className="flex items-center gap-2">
-                                                            <CheckCircle2 className="w-5 h-5 text-green-500" />
-                                                            <span className="text-xs font-black text-slate-900 truncate max-w-[120px]">{paymentProofFile.name}</span>
-                                                        </div>
-                                                    ) : (
-                                                        <>
-                                                            <ImageIcon className="w-5 h-5 text-slate-400 group-hover:text-primary transition-colors" />
-                                                            <span className="text-xs font-black text-slate-400">Adjuntar Capture</span>
-                                                        </>
-                                                    )}
-                                                </label>
-                                            </div>
                                         </div>
                                         
                                         <button 
                                             onClick={handleRestaurantPaid}
-                                            disabled={isUploading || (!paymentReference && !paymentProofFile)}
+                                            disabled={isUploading || !paymentReference}
                                             className="w-full bg-primary text-slate-900 py-4 rounded-2xl font-black shadow-xl shadow-primary/20 hover:scale-[1.02] active:scale-95 transition-all text-lg flex items-center justify-center gap-2 disabled:opacity-50"
                                         >
-                                            {isUploading ? <Loader2 className="w-6 h-6 animate-spin text-slate-900" /> : <><Upload className="w-6 h-6" /> Ya pagué</>}
+                                            {isUploading ? <Loader2 className="w-6 h-6 animate-spin text-slate-900" /> : <><Upload className="w-6 h-6" /> Informar Pago</>}
                                         </button>
                                     </div>
                                 )}
@@ -1056,37 +1099,18 @@ export default function TrackOrder() {
                                     <label className="text-[10px] uppercase font-black text-slate-400 ml-1">Reportar Pago Delivery</label>
                                     <input 
                                         type="text" 
-                                        placeholder="Referencia del pago"
+                                        placeholder="Número de Referencia"
                                         value={deliveryPaymentReference}
                                         onChange={(e) => setDeliveryPaymentReference(e.target.value)}
                                         className="w-full bg-slate-50 border-2 border-slate-100 px-4 py-3 rounded-2xl text-sm font-bold outline-none focus:border-primary transition-all text-slate-700"
                                     />
-                                    <label className="w-full flex items-center justify-center gap-2 bg-slate-50 border-2 border-dashed border-slate-200 p-4 rounded-2xl cursor-pointer hover:bg-slate-100 transition-all group">
-                                        <input 
-                                            type="file" 
-                                            className="hidden" 
-                                            accept="image/*"
-                                            onChange={(e) => setDeliveryPaymentProofFile(e.target.files?.[0] || null)}
-                                        />
-                                        {deliveryPaymentProofFile ? (
-                                            <div className="flex items-center gap-2">
-                                                <CheckCircle2 className="w-5 h-5 text-green-500" />
-                                                <span className="text-xs font-black text-slate-900 truncate">{deliveryPaymentProofFile.name}</span>
-                                            </div>
-                                        ) : (
-                                            <>
-                                                <ImageIcon className="w-5 h-5 text-slate-400 group-hover:text-primary transition-colors" />
-                                                <span className="text-xs font-black text-slate-400">Adjuntar Capture Delivery</span>
-                                            </>
-                                        )}
-                                    </label>
                                     
                                     <button 
                                         onClick={handleReportDeliveryPayment}
-                                        disabled={isUploadingDeliveryReport || (!deliveryPaymentReference && !deliveryPaymentProofFile)}
-                                        className="w-full bg-slate-900 text-white py-4 rounded-2xl font-black shadow-xl hover:scale-[1.02] active:scale-95 transition-all text-lg flex items-center justify-center gap-2 disabled:opacity-50"
+                                        disabled={isUploadingDeliveryReport || !deliveryPaymentReference}
+                                        className="w-full bg-slate-950 text-white py-4 rounded-2xl font-black shadow-xl hover:bg-slate-800 active:scale-95 transition-all text-lg flex items-center justify-center gap-2 disabled:opacity-50"
                                     >
-                                        {isUploadingDeliveryReport ? <Loader2 className="w-6 h-6 animate-spin" /> : <><CheckCircle2 className="w-6 h-6" /> Notificar Pago Delivery</>}
+                                        {isUploadingDeliveryReport ? <Loader2 className="w-6 h-6 animate-spin" /> : 'Informar Pago Delivery'}
                                     </button>
                                 </div>
                             </div>
@@ -1200,6 +1224,36 @@ export default function TrackOrder() {
                     </div>
                 )}
             </div>
+
+            {/* Final Success Screen if Reviewed and Delivered */}
+            {order.hasReviewed && order.status === 'delivered' && (
+                <div className="px-4 translate-y-[-2rem] pb-20">
+                    <motion.div 
+                        initial={{ scale: 0.8, opacity: 0 }} 
+                        animate={{ scale: 1, opacity: 1 }}
+                        className="bg-emerald-50 border-2 border-emerald-200 p-8 rounded-[3rem] text-center shadow-2xl shadow-emerald-200/40 relative overflow-hidden"
+                    >
+                        <div className="absolute top-0 right-0 p-4 opacity-[0.03]">
+                            <CheckCircle2 className="w-32 h-32 text-emerald-600" />
+                        </div>
+                        <div className="w-20 h-20 bg-emerald-100 rounded-[2.5rem] flex items-center justify-center mx-auto mb-6 border-4 border-white shadow-inner">
+                            <CheckCircle2 className="w-10 h-10 text-emerald-600" />
+                        </div>
+                        <h3 className="text-2xl font-black text-emerald-900 mb-2 uppercase tracking-tight">¡Proceso Terminado!</h3>
+                        <p className="text-emerald-700 font-bold leading-relaxed text-sm">Gracias por confiar en el ecosistema <b>Un 2x3</b>. Tu pedido ha sido completado y cada parte del proceso ha sido calificada.</p>
+                        
+                        <div className="mt-8 flex flex-col gap-3">
+                            <button 
+                                onClick={() => navigate('/profile')}
+                                className="w-full bg-emerald-600 text-white font-black py-5 rounded-2xl hover:bg-emerald-700 active:scale-95 transition-all shadow-xl shadow-emerald-600/30 flex items-center justify-center gap-2"
+                            >
+                                <CheckCircle2 className="w-5 h-5" /> VOLVER AL PERFIL
+                            </button>
+                            <p className="text-[10px] text-emerald-800/40 font-black uppercase tracking-[0.2em] mt-2">Pronto recibirás noticias de nuestras promociones</p>
+                        </div>
+                    </motion.div>
+                </div>
+            )}
 
             <ReviewModal
                 isOpen={showReviewModal}

@@ -7,6 +7,7 @@ import { Car, Bike, MapPin, Navigation, Phone, CheckCircle2, MessageSquare, Comp
 import { motion, AnimatePresence } from 'motion/react';
 import toast from 'react-hot-toast';
 import RideChat from '../../components/RideChat';
+import OrderChatWindow from '../../components/chat/OrderChatWindow';
 import ServiceTimer from '../components/ServiceTimer';
 import { getCachedAudioUrl, NOTIFICATION_SOUND_URL } from '../../hooks/useGlobalAudioAlerts';
 import { updateDriverLocation } from '../../lib/delivery-service';
@@ -613,153 +614,209 @@ export default function OrdersRadar() {
         </>);
     }
 
-    // --- VISTA DE PEDIDO ACTIVO ---
     if (activeOrder) {
         return (
-            <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-4">
-                <div className="bg-emerald-50 border border-emerald-100 p-5 rounded-[2.5rem] flex items-center gap-4">
-                    <div className="w-12 h-12 bg-emerald-100 rounded-2xl flex items-center justify-center text-emerald-600">
-                        <Bike className="w-6 h-6 animate-bounce" />
-                    </div>
-                    <div>
-                        <div className="text-emerald-700 font-black text-sm uppercase tracking-wider">Reparto Activo</div>
-                        <p className="text-emerald-600/80 text-[10px] font-bold">Entrega la comida lo antes posible.</p>
-                    </div>
-                </div>
-
-                <div className="bg-white p-6 rounded-[2.5rem] shadow-xl shadow-slate-200/50 border border-slate-100 space-y-6">
-                    <div>
-                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1 block">Ruta de Entrega</span>
-                        <h2 className="text-2xl font-black text-slate-900 border-b border-slate-50 pb-4">
-                            {activeOrder.status === 'en_camino' ? 'Recolectar Pedido' : 'Entregar al Cliente'}
-                        </h2>
-                    </div>
-
-                    {activeOrder.driverAssignedAt && (
-                        <div className="pt-2">
-                            <ServiceTimer 
-                                startTime={activeOrder.driverAssignedAt} 
-                                mode="stopwatch" 
-                            />
+            <>
+                <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-4">
+                    <div className="bg-emerald-50 border border-emerald-100 p-5 rounded-[2.5rem] flex items-center gap-4">
+                        <div className="w-12 h-12 bg-emerald-100 rounded-2xl flex items-center justify-center text-emerald-600">
+                            <Bike className="w-6 h-6 animate-bounce" />
                         </div>
-                    )}
+                        <div>
+                            <div className="text-emerald-700 font-black text-sm uppercase tracking-wider">Reparto Activo</div>
+                            <p className="text-emerald-600/80 text-[10px] font-bold">Entrega la comida lo antes posible.</p>
+                        </div>
+                    </div>
 
-                    <div className="space-y-4">
-                        <div className="flex gap-4">
-                            <div className="w-12 h-12 bg-slate-50 text-slate-400 rounded-2xl flex items-center justify-center shrink-0 border border-slate-100">
-                                <Bike className="w-6 h-6" />
-                            </div>
-                            <div>
-                                <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest">Restaurante</h3>
-                                <p className="font-bold text-slate-800 text-lg leading-tight mt-0.5">{activeOrder.restaurantName}</p>
-                            </div>
+                    <div className="bg-white p-6 rounded-[2.5rem] shadow-xl shadow-slate-200/50 border border-slate-100 space-y-6">
+                        <div>
+                            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1 block">Ruta de Entrega</span>
+                            <h2 className="text-2xl font-black text-slate-900 border-b border-slate-50 pb-4">
+                                {activeOrder.status === 'en_camino' ? 'Recolectar Pedido' : 'Entregar al Cliente'}
+                            </h2>
                         </div>
 
-                        <div className="w-px h-8 bg-slate-100 ml-6"></div>
-
-                        {/* Detalles del Cliente */}
-                        <div className="flex gap-4">
-                            <div className="w-12 h-12 bg-blue-50 text-blue-500 rounded-2xl flex items-center justify-center shrink-0 border border-blue-100 shadow-inner">
-                                <UserIcon className="w-6" />
+                        {activeOrder.driverAssignedAt && (
+                            <div className="pt-2">
+                                <ServiceTimer 
+                                    startTime={activeOrder.driverAssignedAt} 
+                                    mode="stopwatch" 
+                                />
                             </div>
-                            <div className="flex-1 flex justify-between items-center gap-2">
+                        )}
+
+                        <div className="space-y-4">
+                            <div className="flex gap-4">
+                                <div className="w-12 h-12 bg-slate-50 text-slate-400 rounded-2xl flex items-center justify-center shrink-0 border border-slate-100">
+                                    <Bike className="w-6 h-6" />
+                                </div>
                                 <div>
-                                    <h3 className="text-xs font-black text-blue-500 uppercase tracking-widest">Cliente:</h3>
-                                    <p className="font-bold text-slate-700 leading-tight mt-0.5">{activeOrder.userName || 'Cliente Invitado'}</p>
-                                    {(activeOrder.userCedula || activeOrder.userPhone) && (
-                                        <div className="text-xs text-slate-500 font-medium mt-0.5 space-y-0.5 pb-2">
-                                            {activeOrder.userCedula && <p>C.I: {activeOrder.userCedula}</p>}
-                                            {activeOrder.userPhone && <p>Telf: {activeOrder.userPhone}</p>}
-                                        </div>
+                                    <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest">Restaurante</h3>
+                                    <p className="font-bold text-slate-800 text-lg leading-tight mt-0.5">{activeOrder.restaurantName}</p>
+                                </div>
+                            </div>
+
+                            <div className="w-px h-8 bg-slate-100 ml-6"></div>
+
+                            {/* Detalles del Cliente */}
+                            <div className="flex gap-4">
+                                <div className="w-12 h-12 bg-blue-50 text-blue-500 rounded-2xl flex items-center justify-center shrink-0 border border-blue-100 shadow-inner">
+                                    <UserIcon className="w-6" />
+                                </div>
+                                <div className="flex-1 flex justify-between items-center gap-2">
+                                    <div>
+                                        <h3 className="text-xs font-black text-blue-500 uppercase tracking-widest">Cliente:</h3>
+                                        <p className="font-bold text-slate-700 leading-tight mt-0.5">{activeOrder.userName || 'Cliente Invitado'}</p>
+                                        {(activeOrder.userCedula || activeOrder.userPhone) && (
+                                            <div className="text-xs text-slate-500 font-medium mt-0.5 space-y-0.5 pb-2">
+                                                {activeOrder.userCedula && <p>C.I: {activeOrder.userCedula}</p>}
+                                                {activeOrder.userPhone && <p>Telf: {activeOrder.userPhone}</p>}
+                                            </div>
+                                        )}
+                                    </div>
+                                    {activeOrder.userPhone && (
+                                        <a
+                                            href={`tel:${activeOrder.userPhone}`}
+                                            className="w-12 h-12 bg-emerald-50 text-emerald-600 rounded-2xl flex items-center justify-center shrink-0 border border-emerald-100 shadow-sm active:scale-95 transition-all hover:bg-emerald-100"
+                                        >
+                                            <Phone className="w-5 h-5 fill-emerald-600/20" />
+                                        </a>
                                     )}
                                 </div>
-                                {activeOrder.userPhone && (
-                                    <a
-                                        href={`tel:${activeOrder.userPhone}`}
-                                        className="w-12 h-12 bg-emerald-50 text-emerald-600 rounded-2xl flex items-center justify-center shrink-0 border border-emerald-100 shadow-sm active:scale-95 transition-all hover:bg-emerald-100"
-                                    >
-                                        <Phone className="w-5 h-5 fill-emerald-600/20" />
-                                    </a>
-                                )}
                             </div>
-                        </div>
 
-                        <div className="w-px h-8 bg-slate-100 ml-6"></div>
+                            <div className="w-px h-8 bg-slate-100 ml-6"></div>
 
-                        <div className="flex gap-4">
-                            <div className="w-12 h-12 bg-emerald-50 text-emerald-600 rounded-2xl flex items-center justify-center shrink-0 border border-emerald-100">
-                                <MapPin className="w-6 h-6" />
-                            </div>
-                            <div>
-                                <h3 className="text-xs font-black text-emerald-600 uppercase tracking-widest">Dirección de Entrega</h3>
-                                <p className="font-bold text-slate-800 leading-tight mt-0.5">{activeOrder.shippingAddress?.address || activeOrder.deliveryAddress || 'Dirección de entrega...'}</p>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div className="pt-2 grid gap-3">
-                        {activeOrder.status === 'en_camino' ? (
-                            <button
-                                onClick={handleMarkInTransit}
-                                disabled={processingAction !== null}
-                                className="w-full bg-primary text-slate-900 font-black py-4 rounded-2xl shadow-lg shadow-primary/30 active:scale-95 transition-all flex items-center justify-center h-16 disabled:opacity-70"
-                            >
-                                {processingAction === 'in_transit' ? <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div> : 'Ya tengo el Pedido'}
-                            </button>
-                        ) : (
-                            <button
-                                onClick={handleMarkDelivered}
-                                disabled={processingAction !== null}
-                                className="w-full bg-emerald-500 text-white font-black py-4 rounded-2xl shadow-lg shadow-emerald-500/30 active:scale-95 transition-all flex items-center justify-center h-16 disabled:opacity-70"
-                            >
-                                {processingAction === 'delivered' ? <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div> : 'Marcar como Entregado'}
-                            </button>
-                        )}
-                        <a
-                            href={`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(activeOrder.shippingAddress?.address)}`}
-                            target="_blank"
-                            className="w-full bg-slate-100 text-slate-600 font-bold py-4 rounded-2xl flex justify-center items-center gap-2 active:scale-95 transition-all"
-                        >
-                            <Navigation className="w-5 h-5" /> Abrir GPS
-                        </a>
-
-                        {activeOrder.userPhone && (
-                            <div className="bg-emerald-50 rounded-2xl p-4 border border-emerald-100 mt-2">
-                                <h4 className="text-[10px] font-black text-emerald-600 uppercase tracking-widest mb-3 flex items-center justify-between">
-                                    Notificar al Cliente por WhatsApp
-                                    <Send className="w-3 h-3" />
-                                </h4>
-                                <div className="grid grid-cols-1 gap-2">
-                                    <a
-                                        href={`https://wa.me/${activeOrder.userPhone.replace(/\D/g, '')}?text=${encodeURIComponent(`Hola ${activeOrder.userName || ''}, soy tu piloto de Un 2x3. Tu orden está casi lista en el restaurante, en breve salgo.`)}`}
-                                        target="_blank"
-                                        className="w-full bg-white text-emerald-700 font-bold py-3 rounded-xl border border-emerald-200 text-xs flex justify-center items-center hover:bg-emerald-100 transition-all text-center"
-                                    >
-                                        "Casi Listo"
-                                    </a>
-                                    <a
-                                        href={`https://wa.me/${activeOrder.userPhone.replace(/\D/g, '')}?text=${encodeURIComponent(`Hola ${activeOrder.userName || ''}, ya tengo tu pedido en mis manos. Voy en camino a tu dirección.`)}`}
-                                        target="_blank"
-                                        className="w-full bg-white text-emerald-700 font-bold py-3 rounded-xl border border-emerald-200 text-xs flex justify-center items-center hover:bg-emerald-100 transition-all text-center"
-                                    >
-                                        "¡En camino!"
-                                    </a>
+                            <div className="flex gap-4">
+                                <div className="w-12 h-12 bg-emerald-50 text-emerald-600 rounded-2xl flex items-center justify-center shrink-0 border border-emerald-100">
+                                    <MapPin className="w-6 h-6" />
+                                </div>
+                                <div>
+                                    <h3 className="text-xs font-black text-emerald-600 uppercase tracking-widest">Dirección de Entrega</h3>
+                                    <p className="font-bold text-slate-800 leading-tight mt-0.5">{activeOrder.shippingAddress?.address || activeOrder.deliveryAddress || 'Dirección de entrega...'}</p>
                                 </div>
                             </div>
-                        )}
-                        
-                        {activeOrder.restaurantPhone && activeOrder.status === 'en_camino' && (
-                             <a
-                                href={`https://wa.me/${activeOrder.restaurantPhone.replace(/\D/g, '')}?text=${encodeURIComponent(`Hola, soy el piloto de Un 2x3. Estoy afuera para retirar el pedido de ${activeOrder.userName || 'Cliente'}.`)}`}
+                        </div>
+
+                        <div className="pt-2 grid gap-3">
+                            {activeOrder.status === 'en_camino' ? (
+                                <button
+                                    onClick={handleMarkInTransit}
+                                    disabled={processingAction !== null}
+                                    className="w-full bg-primary text-slate-900 font-black py-4 rounded-2xl shadow-lg shadow-primary/30 active:scale-95 transition-all flex items-center justify-center h-16 disabled:opacity-70"
+                                >
+                                    {processingAction === 'in_transit' ? <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div> : 'Ya tengo el Pedido'}
+                                </button>
+                            ) : (
+                                <button
+                                    onClick={handleMarkDelivered}
+                                    disabled={processingAction !== null}
+                                    className="w-full bg-emerald-500 text-white font-black py-4 rounded-2xl shadow-lg shadow-emerald-500/30 active:scale-95 transition-all flex items-center justify-center h-16 disabled:opacity-70"
+                                >
+                                    {processingAction === 'delivered' ? <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div> : 'Marcar como Entregado'}
+                                </button>
+                            )}
+                            <a
+                                href={`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(activeOrder.shippingAddress?.address)}`}
                                 target="_blank"
-                                className="w-full bg-green-50 text-green-700 font-bold py-3 rounded-xl border border-green-200 text-xs flex justify-center items-center hover:bg-green-100 mt-2 transition-all"
-                             >
-                                Avisar llegada al Restaurante
-                             </a>
-                        )}
+                                className="w-full bg-slate-100 text-slate-600 font-bold py-4 rounded-2xl flex justify-center items-center gap-2 active:scale-95 transition-all"
+                            >
+                                <Navigation className="w-5 h-5" /> Abrir GPS
+                            </a>
+
+                            <button
+                                onClick={() => setShowChat(true)}
+                                className="w-full mt-2 bg-emerald-50 text-emerald-700 font-bold py-4 rounded-2xl flex justify-center items-center gap-2 active:scale-95 transition-all relative overflow-hidden"
+                            >
+                                <MessageSquare className="w-5 h-5" /> 
+                                Ver Chat con Cliente
+                                {unreadChatCount > 0 && (
+                                    <motion.div 
+                                        initial={{ scale: 0 }} 
+                                        animate={{ scale: 1 }} 
+                                        className="absolute top-3 right-4 bg-primary text-slate-900 text-[10px] font-black w-6 h-6 rounded-full flex items-center justify-center border-2 border-emerald-50 shadow-sm"
+                                    >
+                                        {unreadChatCount}
+                                    </motion.div>
+                                )}
+                            </button>
+
+                            {activeOrder.userPhone && (
+                                <div className="bg-emerald-50 rounded-2xl p-4 border border-emerald-100 mt-2">
+                                    <h4 className="text-[10px] font-black text-emerald-600 uppercase tracking-widest mb-3 flex items-center justify-between">
+                                        Notificar al Cliente por WhatsApp
+                                        <Send className="w-3 h-3" />
+                                    </h4>
+                                    <div className="grid grid-cols-1 gap-2">
+                                        <a
+                                            href={`https://wa.me/${activeOrder.userPhone.replace(/\D/g, '')}?text=${encodeURIComponent(`Hola ${activeOrder.userName || ''}, soy tu piloto de Un 2x3. Tu orden está casi lista en el restaurante, en breve salgo.`)}`}
+                                            target="_blank"
+                                            className="w-full bg-white text-emerald-700 font-bold py-3 rounded-xl border border-emerald-200 text-xs flex justify-center items-center hover:bg-emerald-100 transition-all text-center"
+                                        >
+                                            "Casi Listo"
+                                        </a>
+                                        <a
+                                            href={`https://wa.me/${activeOrder.userPhone.replace(/\D/g, '')}?text=${encodeURIComponent(`Hola ${activeOrder.userName || ''}, ya tengo tu pedido en mis manos. Voy en camino a tu dirección.`)}`}
+                                            target="_blank"
+                                            className="w-full bg-white text-emerald-700 font-bold py-3 rounded-xl border border-emerald-200 text-xs flex justify-center items-center hover:bg-emerald-100 transition-all text-center"
+                                        >
+                                            "¡En camino!"
+                                        </a>
+                                    </div>
+                                </div>
+                            )}
+                            
+                            {activeOrder.restaurantPhone && activeOrder.status === 'en_camino' && (
+                                 <a
+                                    href={`https://wa.me/${activeOrder.restaurantPhone.replace(/\D/g, '')}?text=${encodeURIComponent(`Hola, soy el piloto de Un 2x3. Estoy afuera para retirar el pedido de ${activeOrder.userName || 'Cliente'}.`)}`}
+                                    target="_blank"
+                                    className="w-full bg-green-50 text-green-700 font-bold py-3 rounded-xl border border-green-200 text-xs flex justify-center items-center hover:bg-green-100 mt-2 transition-all"
+                                 >
+                                    Avisar llegada al Restaurante
+                                 </a>
+                            )}
+                        </div>
                     </div>
-                </div>
-            </motion.div>
+                </motion.div>
+
+                {/* Modal de Chat Integrado para Comida */}
+                <AnimatePresence>
+                    {showChat && (
+                        <motion.div
+                            initial={{ opacity: 0, y: 100 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            exit={{ opacity: 0, y: 100 }}
+                            className="fixed inset-0 z-50 bg-slate-50 flex flex-col"
+                        >
+                            <div className="flex-1 flex flex-col pt-4">
+                                <div className="px-4 pb-4 flex items-center justify-between">
+                                    <button 
+                                        onClick={() => setShowChat(false)}
+                                        className="w-10 h-10 bg-white shadow-sm rounded-full flex items-center justify-center text-slate-500"
+                                    >
+                                        <Clock className="w-5 h-5 rotate-180" />
+                                    </button>
+                                    <div className="text-center">
+                                        <h3 className="font-black text-slate-900 leading-none">Chat de Entrega</h3>
+                                        <p className="text-[10px] text-slate-400 font-bold uppercase mt-1 tracking-widest">Orden #{activeOrder.id.slice(-5).toUpperCase()}</p>
+                                    </div>
+                                    <div className="w-10 h-10"></div>
+                                </div>
+                                <div className="flex-1">
+                                    <OrderChatWindow
+                                        orderId={activeOrder.id}
+                                        currentUserRole="delivery"
+                                        currentUserId={user?.uid || ''}
+                                        currentUserName={driverProfile?.displayName || 'Repartidor'}
+                                        restaurantId={activeOrder.restaurantId}
+                                        orderInfo={activeOrder}
+                                    />
+                                </div>
+                            </div>
+                        </motion.div>
+                    )}
+                </AnimatePresence>
+            </>
         );
     }
 
