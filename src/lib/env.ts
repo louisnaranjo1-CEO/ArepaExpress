@@ -1,4 +1,7 @@
+import { Capacitor } from '@capacitor/core';
+
 export const isDemoMode = () => {
+  if (Capacitor.isNativePlatform()) return false;
   const hostname = window.location.hostname;
   return hostname === 'demo.deliexpress.app' || hostname === 'localhost';
 };
