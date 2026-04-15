@@ -22,23 +22,27 @@ export const db = getFirestore(app);
 export const storage = getStorage(app);
 export const messaging = typeof window !== 'undefined' ? getMessaging(app) : null;
 
-// Inicializa App Check solo si estamos en el entorno del navegador
+// Inicializa App Check solo si estamos en el entorno del navegador web real
 export let appCheck: any = null;
-if (typeof window !== 'undefined') {
+if (typeof window !== 'undefined' && !Capacitor.isNativePlatform()) {
     // !IMPORTANTE: Pega aquí la clave de tu sitio (Site Key) de Google Cloud Console (Parte pública)
     const RECAPTCHA_V3_SITE_KEY = "6Ld2ILAsAAAAAIAeMLQoPDP4SAllceAVso3Nfz9p"; 
     
     // Solo inicia App Check si la clave fue reemplazada o para modo debug local
     if ((RECAPTCHA_V3_SITE_KEY as string) !== "PEGA_AQUI_TU_CLAVE_DE_SITIO_RECAPTCHA_V3") {
-        appCheck = initializeAppCheck(app, {
-            provider: new ReCaptchaV3Provider(RECAPTCHA_V3_SITE_KEY),
-            // Activar rotación automática de tokens
-            isTokenAutoRefreshEnabled: true
-        });
+        try {
+            appCheck = initializeAppCheck(app, {
+                provider: new ReCaptchaV3Provider(RECAPTCHA_V3_SITE_KEY),
+                // Activar rotación automática de tokens
+                isTokenAutoRefreshEnabled: true
+            });
+        } catch (e) {
+            console.error("Error initializing App Check", e);
+        }
     } else {
         console.warn("APP CHECK DESACTIVADO: Necesitas registrar la web app en Firebase > App Check y colocar el ReCaptcha V3 Site Key.");
-        // Si corres en localhost, firebase provee un token de debug automáticamente si lo configuras
     }
 }
+
 
 export default app;
