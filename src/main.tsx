@@ -4,13 +4,16 @@ import App from './App.tsx';
 import './index.css';
 import { registerSW } from 'virtual:pwa-register';
 import { CurrencyProvider } from './context/CurrencyContext.tsx';
+import { AuthProvider } from './context/AuthContext';
 
 registerSW({ immediate: true });
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <CurrencyProvider>
-      <App />
-    </CurrencyProvider>
+    <AuthProvider>
+      <CurrencyProvider>
+        <App />
+      </CurrencyProvider>
+    </AuthProvider>
   </StrictMode>,
 );

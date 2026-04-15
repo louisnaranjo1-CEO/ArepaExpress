@@ -11,7 +11,7 @@ import LockScreen from './components/LockScreen';
 import { useAuth } from './context/AuthContext';
 
 function App() {
-  const { isUnlocked } = useAuth();
+  const { isUnlocked, loading } = useAuth();
   const [showSplash, setShowSplash] = useState(true);
 
   // Solicitar ubicación al cargar
@@ -56,8 +56,8 @@ function App() {
 
   return (
     <>
-      {showSplash && <SplashScreen onComplete={() => setShowSplash(false)} />}
-      <div className={showSplash ? 'hidden' : 'block animate-fade-in'}>
+      {(showSplash || loading) && <SplashScreen onComplete={() => setShowSplash(false)} />}
+      <div className={(showSplash || loading) ? 'hidden' : 'block animate-fade-in'}>
         {!isUnlocked ? <LockScreen /> : renderApp()}
         <OfflineIndicator />
       </div>

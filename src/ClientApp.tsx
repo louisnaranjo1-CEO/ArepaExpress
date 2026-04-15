@@ -13,7 +13,7 @@ import TransportTracker from './pages/TransportTracker';
 import Taxi from './pages/Taxi';
 import Rewards from './pages/Rewards';
 import Orders from './pages/Orders';
-import { AuthProvider, useAuth } from './context/AuthContext';
+import { useAuth } from './context/AuthContext';
 import { Toaster } from 'react-hot-toast';
 import { CartProvider } from './context/CartContext';
 import { useEffect } from 'react';
@@ -39,9 +39,8 @@ function RedirectHandler({ children }: { children: React.ReactNode }) {
 export default function ClientApp() {
     return (
         <Router>
-            <AuthProvider>
-                <Toaster position="top-center" reverseOrder={false} />
-                <RedirectHandler>
+            <Toaster position="top-center" reverseOrder={false} />
+            <RedirectHandler>
                     <CartProvider>
                         <div className="h-screen bg-slate-100 flex justify-center overflow-hidden">
                             <div className="bg-white w-full max-w-md flex flex-col shadow-2xl h-full relative overflow-hidden">
@@ -66,7 +65,6 @@ export default function ClientApp() {
                         </div>
                     </CartProvider>
                 </RedirectHandler>
-            </AuthProvider>
         </Router>
     );
 }

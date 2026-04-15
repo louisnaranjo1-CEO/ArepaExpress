@@ -1,5 +1,5 @@
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
-import { AuthProvider, useAuth } from '../context/AuthContext';
+import { useAuth } from '../context/AuthContext';
 import { auth } from '../lib/firebase';
 import AdminAuth from './AdminAuth';
 import AdminLayout from './components/AdminLayout';
@@ -73,9 +73,7 @@ export default function AdminApp() {
 
     return (
         <Router basename={basename}>
-            <AuthProvider>
-                <AdminRoutes />
-            </AuthProvider>
+            <AdminRoutes />
         </Router>
     );
 }

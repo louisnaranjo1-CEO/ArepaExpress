@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
-import { AuthProvider, useAuth } from '../context/AuthContext';
+import { useAuth } from '../context/AuthContext';
 import { doc, onSnapshot } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import DeliveryLayout from './components/DeliveryLayout';
@@ -120,10 +120,8 @@ export default function DeliveryApp() {
     }, []);
 
     return (
-        <AuthProvider>
-            <Router basename={basename}>
-                <DeliveryRoutes />
-            </Router>
-        </AuthProvider>
+        <Router basename={basename}>
+            <DeliveryRoutes />
+        </Router>
     );
 }
