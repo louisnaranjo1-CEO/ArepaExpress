@@ -1,0 +1,39 @@
+{
+  "project_info": {
+    "project_number": "549258124406",
+    "project_id": "arepa-express-ve-2026",
+    "storage_bucket": "arepa-express-ve-2026.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:549258124406:android:26042584d1dad996ea9357",
+        "android_client_info": {
+          "package_name": "deliexpress.app"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "549258124406-f5hsmurh0iafjak30108d88m6bqhmcvj.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCznTMgBlzwy5LKNsUaRwI0X5t7Dw1fi5c"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "549258124406-f5hsmurh0iafjak30108d88m6bqhmcvj.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

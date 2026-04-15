@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Un 2x3app</string>
+    <string name="title_activity_main">Un 2x3app</string>
+    <string name="package_name">deliexpress.app</string>
+    <string name="custom_url_scheme">deliexpress.app</string>
+</resources>

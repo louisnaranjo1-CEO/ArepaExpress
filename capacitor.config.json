@@ -1,0 +1,9 @@
+{
+  "appId": "deliexpress.app",
+  "appName": "Un 2x3app",
+  "webDir": "dist",
+  "server": {
+    "url": "https://deliexpress.app",
+    "cleartext": true
+  }
+}
