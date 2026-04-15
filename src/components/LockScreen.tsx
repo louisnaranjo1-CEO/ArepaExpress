@@ -10,30 +10,29 @@ export default function LockScreen() {
     const [error, setError] = useState<string | null>(null);
 
     const handleUnlock = async () => {
-        if (!userData?.biometricCredentialId) {
-            // Failsafe: if somehow the id is missing but lock is enabled
-            setIsUnlocked(true);
-            return;
-        }
-
         setLoading(true);
         setError(null);
         try {
-            const success = await verifyBiometric(userData.biometricCredentialId);
+            const success = await verifyBiometric();
             if (success) {
                 sessionStorage.setItem('lock_unlocked', 'true');
                 setIsUnlocked(true);
-            } else {
-                setError("No se pudo verificar la identidad biométrica. Debes iniciar sesión de nuevo por seguridad.");
-                // Wait 2 seconds so the user can read the error before logging out
+            }
+        } catch (err: any) {
+            console.error(err);
+            setError(err.message || "No se pudo verificar la identidad biométrica.");
+            
+            // Only logout if it's a persistent failure or if we want to enforce security
+            // If the user just canceled, maybe we shouldn't logout immediately?
+            // But for now, let's keep the security policy strict.
+            if (!err.message?.includes('canceled')) {
                 setTimeout(async () => {
                     await auth.signOut();
-                    window.location.reload(); // Refresh to clean state
-                }, 2000);
+                    window.location.reload();
+                }, 3000);
             }
-        } catch (err) {
-            setError("Ocurrió un error al intentar desbloquear.");
         } finally {
+
             setLoading(false);
         }
     };

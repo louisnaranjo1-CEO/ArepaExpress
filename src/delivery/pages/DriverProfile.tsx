@@ -4,8 +4,9 @@ import { User, Mail, MapPin, CreditCard, LogOut, ShoppingBag, Settings, ChevronR
 import { useNavigate } from 'react-router-dom';
 import { signOut, updateEmail, updatePassword, deleteUser } from 'firebase/auth';
 import { auth, db, storage } from '../../lib/firebase';
-import { collection, addDoc, serverTimestamp, doc, onSnapshot, setDoc, updateDoc } from 'firebase/firestore';
+import { collection, addDoc, serverTimestamp, doc, onSnapshot, updateDoc } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { Geolocation } from '@capacitor/geolocation';
 import { requestNotificationPermission, disableNotifications } from '../../lib/notifications';
 import { VENEZUELA_DATA, VENEZUELA_STATES } from '../../lib/venezuelaData';
 import AddressPicker from '../../components/AddressPicker';
@@ -348,21 +349,27 @@ export default function DriverProfile() {
                                 setUpdatingBiometrics(true);
                                 try {
                                     if (userData?.biometricLockEnabled) {
+                                        // Disable
                                         await setDoc(doc(db, 'users', user.uid), {
                                             biometricLockEnabled: false
                                         }, { merge: true });
                                         alert('Bloqueo biométrico desactivado');
                                     } else {
-                                        const credential = await registerBiometric(user.uid, user.email || '');
-                                        await setDoc(doc(db, 'users', user.uid), {
-                                            biometricLockEnabled: true,
-                                            biometricCredentialId: credential.id
-                                        }, { merge: true });
-                                        alert('Bloqueo biométrico activado');
+                                        // Enable
+                                        const biometricData = await registerBiometric(user.uid, user.email || '');
+                                        if (biometricData) {
+                                            await setDoc(doc(db, 'users', user.uid), {
+                                                biometricLockEnabled: true,
+                                                biometricCredentialId: biometricData.id
+                                            }, { merge: true });
+                                            alert('Bloqueo biométrico activado');
+                                        } else {
+                                            alert('No se pudo activar la biometría');
+                                        }
                                     }
-                                } catch (err) {
+                                } catch (err: any) {
                                     console.error(err);
-                                    alert('Error al configurar biometría');
+                                    alert(`Error: ${err.message || 'Error al configurar biometría'}`);
                                 } finally {
                                     setUpdatingBiometrics(false);
                                 }
@@ -403,26 +410,21 @@ export default function DriverProfile() {
                                 setUpdatingLocation(true);
                                 try {
                                     if (userData?.locationPermissionsAllowed) {
-                                        await setDoc(doc(db, 'users', user.uid), {
+                                        // Disable
+                                        await updateDoc(doc(db, 'users', user.uid), {
                                             locationPermissionsAllowed: false
-                                        }, { merge: true });
+                                        });
                                         alert('Ubicación en tiempo real desactivada');
                                     } else {
-                                        if ("geolocation" in navigator) {
-                                            navigator.geolocation.getCurrentPosition(
-                                                async () => {
-                                                    await setDoc(doc(db, 'users', user.uid), {
-                                                        locationPermissionsAllowed: true
-                                                    }, { merge: true });
-                                                    alert('Ubicación en tiempo real activada');
-                                                },
-                                                (error) => {
-                                                    console.error(error);
-                                                    alert('No se pudo obtener permiso de ubicación');
-                                                }
-                                            );
+                                        // Enable
+                                        const permission = await Geolocation.requestPermissions();
+                                        if (permission.location === 'granted') {
+                                            await updateDoc(doc(db, 'users', user.uid), {
+                                                locationPermissionsAllowed: true
+                                            });
+                                            alert('Ubicación en tiempo real activada');
                                         } else {
-                                            alert('Gps no disponible en este dispositivo');
+                                            alert('Se requiere permiso de ubicación para activar esta función');
                                         }
                                     }
                                 } catch (err) {
@@ -838,7 +840,7 @@ export default function DriverProfile() {
                 <div className="absolute top-0 left-0 w-full h-24 bg-primary/10 backdrop-blur-3xl -z-10"></div>
                 <div className="w-24 h-24 bg-white p-1 rounded-full mx-auto mb-4 relative shadow-xl shadow-primary/20">
                     <img
-                        src={driverProfile?.documents?.selfieUrl || user?.photoURL || `https://ui-avatars.com/api/?name=${user?.email}&background=e0e7ff&color=4f46e5`}
+                        src={(userData?.photoURL && userData.photoURL.trim() !== "") ? userData.photoURL : (driverProfile?.documents?.selfieUrl && driverProfile.documents.selfieUrl.trim() !== "") ? driverProfile.documents.selfieUrl : (user?.photoURL && user.photoURL.trim() !== "") ? user.photoURL : `https://ui-avatars.com/api/?name=${encodeURIComponent(user?.email || 'Driver')}&background=e0e7ff&color=4f46e5`}
                         alt="Profile"
                         className="w-full h-full rounded-full object-cover"
                     />

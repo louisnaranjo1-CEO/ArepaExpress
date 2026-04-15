@@ -12,6 +12,7 @@ import WaiterLayout from '../waiter/components/WaiterLayout';
 import { isDemoMode } from '../lib/env';
 import DemoAlertModal from '../components/DemoAlertModal';
 import DualPrice from '../components/DualPrice';
+import LocationRequiredModal from '../components/LocationRequiredModal';
 
 interface CartProps {
   hideHeader?: boolean;
@@ -60,6 +61,7 @@ export default function Cart({ hideHeader = false }: CartProps) {
 
   const [hasDefaultedCredit, setHasDefaultedCredit] = useState(false);
   const [showDemoAlert, setShowDemoAlert] = useState(false);
+  const [showLocationModal, setShowLocationModal] = useState(false);
 
   useEffect(() => {
     const checkCredits = async () => {
@@ -200,6 +202,11 @@ export default function Cart({ hideHeader = false }: CartProps) {
     }
     if (!isWaiter && !user && (!guestName || !guestPhone || !guestCedula)) { setShowGuestModal(true); return; }
     if (!isWaiter && user && (!userData?.phone || !userData?.cedula)) { alert("Completa tu perfil primero."); navigate('/profile'); return; }
+    
+    if (!isWaiter && deliveryMethod === 'app_delivery' && !userData?.locationPermissionsAllowed) {
+        setShowLocationModal(true);
+        return;
+    }
 
     setIsCheckingOut(true);
     setError(null);
@@ -789,6 +796,10 @@ export default function Cart({ hideHeader = false }: CartProps) {
       <DemoAlertModal 
           isOpen={showDemoAlert} 
           onClose={() => setShowDemoAlert(false)} 
+      />
+      <LocationRequiredModal 
+          isOpen={showLocationModal} 
+          onClose={() => setShowLocationModal(false)} 
       />
     </div>
   );

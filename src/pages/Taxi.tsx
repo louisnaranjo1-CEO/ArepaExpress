@@ -12,6 +12,7 @@ import { calculateDistance } from '../lib/geo';
 import { vibrate } from '../utils/haptics';
 import { isDemoMode } from '../lib/env';
 import DemoAlertModal from '../components/DemoAlertModal';
+import LocationRequiredModal from '../components/LocationRequiredModal';
 
 interface Location {
     lat: number;
@@ -86,7 +87,14 @@ export default function Taxi() {
 
     const [showDemoAlert, setShowDemoAlert] = useState(false);
     const [showTaxiNotice, setShowTaxiNotice] = useState(false);
-    // Real-time active drivers listener
+    const [showLocationModal, setShowLocationModal] = useState(false);
+
+    // Check location permission on mount
+    useEffect(() => {
+        if (userData && !userData.locationPermissionsAllowed) {
+            setShowLocationModal(true);
+        }
+    }, [userData]);
     const [onlineDrivers, setOnlineDrivers] = useState<{ id: string, vehicleType: string, availability: string }[]>([]);
     const [busyTransportDrivers, setBusyTransportDrivers] = useState<Set<string>>(new Set());
     const [busyOrderDrivers, setBusyOrderDrivers] = useState<Set<string>>(new Set());
@@ -1327,6 +1335,10 @@ export default function Taxi() {
                     </div>
                 )}
             </AnimatePresence>
+            <LocationRequiredModal 
+                isOpen={showLocationModal} 
+                onClose={() => setShowLocationModal(false)} 
+            />
         </div>
     );
 }

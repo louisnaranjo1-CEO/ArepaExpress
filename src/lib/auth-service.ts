@@ -83,7 +83,9 @@ export const signInWithGoogle = async (): Promise<{ user: User, isNewUser: boole
                 useCredentialManager: true // Restauramos a true ya que es el flujo óptimo
             });
             const idToken = result.credential?.idToken;
-            if (!idToken) throw new Error("No se pudo obtener el token de Google del credential nativo.");
+            if (!idToken) {
+                throw new Error("Login fallido. Resultado crudo: " + JSON.stringify(result));
+            }
 
             const credential = GoogleAuthProvider.credential(idToken);
             const userCredential = await signInWithCredential(auth, credential);

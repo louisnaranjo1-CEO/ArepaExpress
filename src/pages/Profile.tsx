@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { User, Mail, MapPin, CreditCard, LogOut, ShoppingBag, Settings, ChevronRight, Clock, FileText, Bell, Navigation, X, Shield, UploadCloud, Star, Wallet, Gift, Award, MessageSquareWarning, Plus, Send, AlertCircle, CheckCircle, Store, Handshake, LifeBuoy, Fingerprint } from 'lucide-react';
+import { Geolocation } from '@capacitor/geolocation';
 import { isDemoMode } from '../lib/env';
 import DemoAlertModal from '../components/DemoAlertModal';
 import { requestNotificationPermission, disableNotifications } from '../lib/notifications';
@@ -529,14 +530,17 @@ export default function Profile() {
                 await updateProfile(user, { photoURL });
             }
 
-            const updateData = {
+            const updateData: any = {
                 displayName: profileForm.displayName,
                 phone: profileForm.phone,
                 cedula: profileForm.cedula,
                 gender: profileForm.gender,
-                photoURL,
                 updatedAt: serverTimestamp()
             };
+
+            if (photoURL) {
+                updateData.photoURL = photoURL;
+            }
 
             await setDoc(doc(db, 'users', user.uid), updateData, { merge: true });
 
@@ -1033,7 +1037,9 @@ export default function Profile() {
                         </div>
 
                         <div className="w-20 h-20 bg-white/20 backdrop-blur-md rounded-full border-4 border-white/30 flex items-center justify-center overflow-hidden shadow-inner shrink-0">
-                            {user.photoURL ? (
+                            {userData?.photoURL && userData.photoURL.trim() !== "" ? (
+                                <img src={userData.photoURL} alt="Profile" className="w-full h-full object-cover rounded-full" />
+                            ) : user.photoURL && user.photoURL.trim() !== "" ? (
                                 <img src={user.photoURL} alt="Profile" className="w-full h-full object-cover rounded-full" />
                             ) : (
                                 <User className="w-10 h-10 text-white" />
@@ -1416,16 +1422,20 @@ export default function Profile() {
                                                 toast.success('Bloqueo biométrico desactivado');
                                             } else {
                                                 // Enable
-                                                const credential = await registerBiometric(user.uid, user.email || '');
-                                                await setDoc(doc(db, 'users', user.uid), {
-                                                    biometricLockEnabled: true,
-                                                    biometricCredentialId: credential.id
-                                                }, { merge: true });
-                                                toast.success('Bloqueo biométrico activado');
+                                                const biometricData = await registerBiometric(user.uid, user.email || '');
+                                                if (biometricData) {
+                                                    await setDoc(doc(db, 'users', user.uid), {
+                                                        biometricLockEnabled: true,
+                                                        biometricCredentialId: biometricData.id
+                                                    }, { merge: true });
+                                                    toast.success('Bloqueo biométrico activado');
+                                                } else {
+                                                    toast.error('No se pudo activar la biometría');
+                                                }
                                             }
-                                        } catch (err) {
+                                        } catch (err: any) {
                                             console.error(err);
-                                            toast.error('Error al configurar biometría');
+                                            toast.error(`Error: ${err.message || 'Error al configurar biometría'}`);
                                         } finally {
                                             setUpdatingBiometrics(false);
                                         }
@@ -1462,26 +1472,21 @@ export default function Profile() {
                                         setUpdatingLocation(true);
                                         try {
                                             if (userData?.locationPermissionsAllowed) {
-                                                await setDoc(doc(db, 'users', user.uid), {
+                                                // Disable
+                                                await updateDoc(doc(db, 'users', user.uid), {
                                                     locationPermissionsAllowed: false
-                                                }, { merge: true });
+                                                });
                                                 toast.success('Ubicación en tiempo real desactivada');
                                             } else {
-                                                if ("geolocation" in navigator) {
-                                                    navigator.geolocation.getCurrentPosition(
-                                                        async () => {
-                                                            await setDoc(doc(db, 'users', user.uid), {
-                                                                locationPermissionsAllowed: true
-                                                            }, { merge: true });
-                                                            toast.success('Ubicación en tiempo real activada');
-                                                        },
-                                                        (error) => {
-                                                            console.error(error);
-                                                            toast.error('No se pudo obtener permiso de ubicación');
-                                                        }
-                                                    );
+                                                // Enable
+                                                const permission = await Geolocation.requestPermissions();
+                                                if (permission.location === 'granted') {
+                                                    await updateDoc(doc(db, 'users', user.uid), {
+                                                        locationPermissionsAllowed: true
+                                                    });
+                                                    toast.success('Ubicación en tiempo real activada');
                                                 } else {
-                                                    toast.error('Gps no disponible en este dispositivo');
+                                                    toast.error('Se requiere permiso de ubicación para activar esta función');
                                                 }
                                             }
                                         } catch (err) {

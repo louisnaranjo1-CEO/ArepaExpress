@@ -1,7 +1,8 @@
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, { createContext, useContext, useEffect, useState, useRef } from 'react';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { auth, db } from '../lib/firebase';
 import { doc, onSnapshot, updateDoc, serverTimestamp } from 'firebase/firestore';
+import { Geolocation } from '@capacitor/geolocation';
 
 export interface UserAddress {
     id: string; // Unique ID (could be timestamp)
@@ -47,6 +48,7 @@ interface AuthContextType {
     isProfileComplete: boolean;
     isUnlocked: boolean;
     setIsUnlocked: (unlocked: boolean) => void;
+    currentLocation: { lat: number, lng: number } | null;
 }
 
 const AuthContext = createContext<AuthContextType>({ 
@@ -55,7 +57,8 @@ const AuthContext = createContext<AuthContextType>({
     loading: true, 
     isProfileComplete: false,
     isUnlocked: true,
-    setIsUnlocked: () => {}
+    setIsUnlocked: () => {},
+    currentLocation: null
 });
 
 export const useAuth = () => useContext(AuthContext);
@@ -64,7 +67,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const [user, setUser] = useState<User | null>(null);
     const [userData, setUserData] = useState<UserData | null>(null);
     const [loading, setLoading] = useState(true);
-    const [isUnlocked, setIsUnlocked] = useState(true); // Default to true, LockScreen will handle setting it to false if needed
+    const [isUnlocked, setIsUnlocked] = useState(true);
+    const locationWatchId = useRef<string | null>(null);
 
     useEffect(() => {
         let unsubscribeDoc: (() => void) | null = null;
@@ -94,6 +98,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                         // Lógica de Bloqueo Inicial
                         if (data.biometricLockEnabled && !sessionStorage.getItem('lock_unlocked')) {
                             setIsUnlocked(false);
+                        } else {
+                            setIsUnlocked(true);
                         }
 
                         // Update lastLogin if it's a new session (roughly > 1 hour since last login)
@@ -123,24 +129,65 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         };
     }, []);
 
-    // Activity Heartbeat
+    const [currentLocation, setCurrentLocation] = useState<{ lat: number, lng: number } | null>(null);
+
+    // Watch Geolocation based on user preference
     useEffect(() => {
-        if (!user) return;
+        const startWatching = async () => {
+            // Clear existing watch if any
+            if (locationWatchId.current) {
+                await Geolocation.clearWatch({ id: locationWatchId.current });
+                locationWatchId.current = null;
+            }
 
-        const heartbeatInterval = setInterval(() => {
-            updateDoc(doc(db, 'users', user.uid), {
-                lastSeen: serverTimestamp(),
-                totalUsageMinutes: (userData?.totalUsageMinutes || 0) + 1
-            }).catch(console.error);
-        }, 60000); // Every 1 minute
+            if (!user || !userData?.locationPermissionsAllowed) {
+                return;
+            }
 
-        return () => clearInterval(heartbeatInterval);
-    }, [user, userData?.totalUsageMinutes]);
+            try {
+                const id = await Geolocation.watchPosition({
+                    enableHighAccuracy: true,
+                    timeout: 10000
+                }, (position, err) => {
+                    if (err) {
+                        console.error("Location watch error:", err);
+                        return;
+                    }
+                    if (position) {
+                        const newLoc = {
+                            lat: position.coords.latitude,
+                            lng: position.coords.longitude
+                        };
+                        setCurrentLocation(newLoc);
+
+                        // Also update Firestore lastSeen / location for drivers or active users
+                        updateDoc(doc(db, 'users', user.uid), {
+                            currentLocation: newLoc,
+                            lastSeen: serverTimestamp()
+                        }).catch(console.error);
+                    }
+                });
+                locationWatchId.current = id;
+            } catch (error) {
+                console.error("Could not start location watch:", error);
+            }
+        };
+
+        startWatching();
+
+        return () => {
+            if (locationWatchId.current) {
+                Geolocation.clearWatch({ id: locationWatchId.current }).catch(console.error);
+                locationWatchId.current = null;
+            }
+        };
+    }, [user, userData?.locationPermissionsAllowed]);
+
 
     const isProfileComplete = !!(userData?.displayName && userData?.phone);
 
     return (
-        <AuthContext.Provider value={{ user, userData, loading, isProfileComplete, isUnlocked, setIsUnlocked }}>
+        <AuthContext.Provider value={{ user, userData, loading, isProfileComplete, isUnlocked, setIsUnlocked, currentLocation }}>
             {!loading && children}
         </AuthContext.Provider>
     );
