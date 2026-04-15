@@ -1,5 +1,4 @@
-import React from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence } from 'motion';
 import { MapPin, Navigation, X, ShieldAlert } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 

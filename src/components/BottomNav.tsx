@@ -1,5 +1,5 @@
 import { Home, Search, ShoppingBag, User, Car } from 'lucide-react';
-import { Link, useLocation } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useCart } from '../context/CartContext';
 import { useAuth } from '../context/AuthContext';
 import { vibrate } from '../utils/haptics';

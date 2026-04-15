@@ -1,5 +1,4 @@
-import React from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence } from 'motion';
 import { X, ExternalLink, ShieldCheck } from 'lucide-react';
 
 interface DemoAlertModalProps {

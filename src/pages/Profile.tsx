@@ -13,7 +13,7 @@ import { collection, query, where, orderBy, getDocs, doc, setDoc, serverTimestam
 import { updateProfile } from 'firebase/auth';
 import { Image as ImageIcon, Camera, Smartphone, User as UserIcon, Save } from 'lucide-react';
 import AddressPicker from '../components/AddressPicker';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence } from 'motion';
 import ReviewModal from '../components/ReviewModal';
 import { Copy, Check } from 'lucide-react';
 import toast from 'react-hot-toast';

@@ -1,5 +1,5 @@
 import { MapPin, ChevronDown, ChevronRight, Bell, Search, SlidersHorizontal, Utensils, Star, Heart, Clock, Store, Truck, Zap, Tag, X, Layout, Gift, ArrowUp } from 'lucide-react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence } from 'motion';
 import { Link, useNavigate } from 'react-router-dom';
 import { useState, useEffect, useMemo } from 'react';
 import { collection, getDocs, query, where, doc, updateDoc, increment, collectionGroup, limit, serverTimestamp } from 'firebase/firestore';

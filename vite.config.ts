@@ -87,7 +87,7 @@ export default defineConfig(({ mode }) => {
             if (id.includes('node_modules')) {
               if (id.includes('firebase')) return 'firebase';
               if (id.includes('@react-google-maps')) return 'maps';
-              if (id.includes('framer-motion')) return 'motion';
+              if (id.includes('motion')) return 'motion';
               if (id.includes('lucide-react')) return 'icons';
               return 'vendor';
             }
