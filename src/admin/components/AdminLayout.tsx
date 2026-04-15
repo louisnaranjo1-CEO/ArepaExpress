@@ -29,6 +29,8 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
     const [billingInfo, setBillingInfo] = React.useState<{ type: 'warning' | 'danger' | 'none', daysLeft?: number, daysLate?: number, amount?: number }>({ type: 'none' });
     const [audioAlertsEnabled, setAudioAlertsEnabled] = React.useState(true);
     const [isUpdatingAudio, setIsUpdatingAudio] = React.useState(false);
+    const [isActive, setIsActive] = React.useState<boolean | null>(null);
+    const [supportPhone, setSupportPhone] = React.useState<string>('');
 
     useGlobalAudioAlerts('restaurant', user?.uid);
 
@@ -47,9 +49,24 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
                     calculateBilling(data.billingDay, data.billingAmount);
                 }
                 setAudioAlertsEnabled(data.audioAlertsEnabled ?? true);
+                setIsActive(data.isActive !== false);
+            } else {
+                setIsActive(false);
             }
         }
+        const fetchSupport = async () => {
+            try {
+                const sRef = doc(db, 'settings', 'customer_service');
+                const sSnap = await getDoc(sRef);
+                if (sSnap.exists()) {
+                    setSupportPhone(sSnap.data().phoneNumber || '');
+                }
+            } catch (err) {
+                console.error("Error fetching support settings:", err);
+            }
+        };
         fetchRestaurant();
+        fetchSupport();
 
         // Listen for new orders
         const q = query(collection(db, 'orders'), where('restaurantId', '==', user.uid));
@@ -480,6 +497,49 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
                     {children}
                 </div>
             </main>
+            {/* Suspension Overlay */}
+            {isActive === false && (
+                <div className="fixed inset-0 z-[9999] bg-slate-900/90 backdrop-blur-md flex items-center justify-center p-6 text-center">
+                    <div className="bg-white rounded-[40px] p-8 md:p-12 max-w-lg w-full space-y-8 animate-in zoom-in-95 duration-500 shadow-2xl border border-slate-100 italic">
+                        <div className="w-24 h-24 bg-rose-50 rounded-full flex items-center justify-center mx-auto animate-bounce duration-[2000ms]">
+                            <Shield className="w-12 h-12 text-rose-500" />
+                        </div>
+                        
+                        <div className="space-y-4">
+                            <h2 className="text-3xl font-black text-slate-900 leading-tight">Acceso Restringido</h2>
+                            <div className="h-1.5 w-20 bg-primary mx-auto rounded-full" />
+                            <p className="text-lg text-slate-500 font-medium leading-relaxed">
+                                Tu cuenta se encuentra <span className="text-rose-600 font-black">Inactiva o Suspendida</span>. 
+                                Para reactivar tu servicio y continuar gestionando tu negocio, por favor contacta con soporte técnico.
+                            </p>
+                        </div>
+
+                        <div className="flex flex-col gap-4">
+                            <a 
+                                href={`https://wa.me/${supportPhone?.replace(/\D/g, '') || '584243258536'}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="w-full bg-primary text-slate-900 py-5 rounded-2xl font-black shadow-xl shadow-primary/30 hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-3 text-lg"
+                            >
+                                <MessageSquare className="w-6 h-6" />
+                                Contactar Soporte
+                            </a>
+                            
+                            <button 
+                                onClick={handleLogout}
+                                className="w-full bg-slate-50 text-slate-500 py-4 rounded-2xl font-bold hover:bg-slate-100 hover:text-slate-900 transition-all flex items-center justify-center gap-2"
+                            >
+                                <LogOut className="w-5 h-5" />
+                                Cerrar Sesión
+                            </button>
+                        </div>
+
+                        <p className="text-xs text-slate-400 font-bold uppercase tracking-widest">
+                            ID del Negocio: {user?.uid}
+                        </p>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

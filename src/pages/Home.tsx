@@ -232,6 +232,9 @@ export default function Home() {
                ...doc.data()
             })) as Restaurant[];
 
+            // Filter inactive restaurants
+            fetchedRestaurants = fetchedRestaurants.filter(r => r.isActive !== false);
+
             // Update distance strings and compute sorting weights
             fetchedRestaurants = fetchedRestaurants.map(rest => {
               let dist = 999;

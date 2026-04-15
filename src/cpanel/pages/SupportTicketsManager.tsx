@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { collection, query, orderBy, onSnapshot, doc, updateDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, query, orderBy, onSnapshot, doc, updateDoc, serverTimestamp, getDoc, setDoc } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
-import { MessageSquareWarning, Search, Filter, Clock, CheckCircle, AlertCircle, User, Phone, Mail, Send, X } from 'lucide-react';
+import { MessageSquareWarning, Search, Filter, Clock, CheckCircle, AlertCircle, User, Phone, Mail, Send, X, Settings } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import toast from 'react-hot-toast';
 
@@ -27,6 +27,43 @@ export default function SupportTicketsManager() {
     const [selectedTicket, setSelectedTicket] = useState<SupportTicket | null>(null);
     const [adminResponse, setAdminResponse] = useState('');
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const [supportPhone, setSupportPhone] = useState('');
+    const [savingSettings, setSavingSettings] = useState(false);
+
+    useEffect(() => {
+        const fetchSettings = async () => {
+            try {
+                const settingsDoc = await getDoc(doc(db, 'settings', 'customer_service'));
+                if (settingsDoc.exists()) {
+                    setSupportPhone(settingsDoc.data().supportPhone || '');
+                }
+            } catch (error) {
+                console.error("Error fetching settings:", error);
+            }
+        };
+        fetchSettings();
+    }, []);
+
+    const handleSaveSettings = async () => {
+        if (!supportPhone.trim()) {
+            toast.error('Ingresa un número de soporte');
+            return;
+        }
+        setSavingSettings(true);
+        try {
+            await setDoc(doc(db, 'settings', 'customer_service'), {
+                supportPhone: supportPhone,
+                updatedAt: serverTimestamp()
+            }, { merge: true });
+            toast.success('Configuración guardada correctamente');
+        } catch (error) {
+            console.error("Error saving settings:", error);
+            toast.error('Error al guardar la configuración');
+        } finally {
+            setSavingSettings(false);
+        }
+    };
+
 
     useEffect(() => {
         const q = query(
@@ -101,6 +138,49 @@ export default function SupportTicketsManager() {
                     <p className="text-slate-500 font-medium mt-1">
                         Gestiona los tickets de soporte técnico de los usuarios
                     </p>
+                </div>
+            </div>
+
+            {/* Support Config Section */}
+            <div className="bg-white p-6 rounded-[32px] border border-slate-200 shadow-sm">
+                <div className="flex items-center gap-3 mb-4">
+                    <div className="w-10 h-10 rounded-2xl bg-slate-900 flex items-center justify-center">
+                        <Settings className="w-5 h-5 text-white" />
+                    </div>
+                    <div>
+                        <h3 className="font-black text-slate-900 leading-tight">Configuración de Soporte</h3>
+                        <p className="text-xs text-slate-500 font-medium">Este número aparecerá en locales suspendidos</p>
+                    </div>
+                </div>
+
+                <div className="flex flex-col md:flex-row gap-4 items-end">
+                    <div className="flex-1 w-full space-y-2">
+                        <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">WhatsApp de Soporte (con código de país)</label>
+                        <div className="relative">
+                            <Phone className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
+                            <input
+                                type="text"
+                                placeholder="+584120000000"
+                                value={supportPhone}
+                                onChange={(e) => setSupportPhone(e.target.value)}
+                                className="w-full pl-12 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl focus:bg-white focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all outline-none font-bold text-slate-700"
+                            />
+                        </div>
+                    </div>
+                    <button
+                        onClick={handleSaveSettings}
+                        disabled={savingSettings}
+                        className="w-full md:w-auto px-8 py-3.5 bg-primary hover:bg-primary/90 text-slate-900 font-black rounded-2xl transition-all shadow-lg shadow-primary/20 disabled:opacity-50 flex items-center justify-center gap-2"
+                    >
+                        {savingSettings ? (
+                            <div className="w-5 h-5 border-2 border-slate-900 border-t-transparent rounded-full animate-spin"></div>
+                        ) : (
+                            <>
+                                <CheckCircle className="w-5 h-5" />
+                                Guardar Cambios
+                            </>
+                        )}
+                    </button>
                 </div>
             </div>
 

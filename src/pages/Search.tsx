@@ -74,8 +74,10 @@ export default function Search() {
                         products
                     } as Restaurant;
                 }));
+                // Filter inactive restaurants
+                const fetchedResults = fetched.filter(r => r.isActive !== false);
                 // Shuffle to make 'Explorar' random
-                const shuffled = fetched.sort(() => Math.random() - 0.5);
+                const shuffled = fetchedResults.sort(() => Math.random() - 0.5);
                 setRestaurants(shuffled);
             } catch (error) {
                 console.error("Error fetching restaurants:", error);

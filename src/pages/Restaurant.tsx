@@ -94,8 +94,14 @@ export default function RestaurantPage() {
         const docSnap = await getDoc(docRef);
 
         if (docSnap.exists()) {
-          setRestaurant({ id: docSnap.id, ...docSnap.data() });
-          setFollowerCount(docSnap.data().followerCount || 0);
+          const data = docSnap.data();
+          if (data.isActive === false) {
+            setError("Este restaurante no se encuentra disponible actualmente.");
+            setLoading(false);
+            return;
+          }
+          setRestaurant({ id: docSnap.id, ...data });
+          setFollowerCount(data.followerCount || 0);
 
           // Check if it's in user following
           if (user) {
