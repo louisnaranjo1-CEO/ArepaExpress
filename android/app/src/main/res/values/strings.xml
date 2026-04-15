@@ -4,4 +4,6 @@
     <string name="title_activity_main">Un 2x3app</string>
     <string name="package_name">deliexpress.app</string>
     <string name="custom_url_scheme">deliexpress.app</string>
+    <string name="default_web_client_id">549258124406-f5hsmurh0iafjak30108d88m6bqhmcvj.apps.googleusercontent.com</string>
+    <string name="server_client_id">549258124406-f5hsmurh0iafjak30108d88m6bqhmcvj.apps.googleusercontent.com</string>
 </resources>
