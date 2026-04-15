@@ -80,12 +80,12 @@ export const signInWithGoogle = async (): Promise<{ user: User, isNewUser: boole
         if (Capacitor.isNativePlatform()) {
             // Flujo nativo: usa el plugin de Capacitor
             const result = await FirebaseAuthentication.signInWithGoogle({
-                useCredentialManager: false // Intentamos deshabilitar Credential Manager para usar el flujo tradicional si hay problemas de versión
+                useCredentialManager: true // Restauramos a true ya que es el flujo óptimo
             });
-            if (!result.idToken) throw new Error("No se pudo obtener el token de Google.");
+            const idToken = result.credential?.idToken;
+            if (!idToken) throw new Error("No se pudo obtener el token de Google del credential nativo.");
 
-            
-            const credential = GoogleAuthProvider.credential(result.idToken);
+            const credential = GoogleAuthProvider.credential(idToken);
             const userCredential = await signInWithCredential(auth, credential);
             user = userCredential.user;
         } else {
