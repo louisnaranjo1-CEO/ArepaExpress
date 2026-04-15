@@ -35,17 +35,12 @@ export default function SplashScreen({ onComplete }: SplashScreenProps) {
         <div className="absolute inset-0 w-48 h-48 bg-white/20 rounded-full blur-2xl animate-pulse scale-150" />
         
         {/* Logo Container */}
-        <div className="relative w-40 h-40 bg-white rounded-3xl shadow-2xl flex items-center justify-center p-6 animate-scale-in">
+        <div className="relative w-64 h-64 flex items-center justify-center p-6 animate-scale-in">
           <img 
             src="https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/logo%20principal.png?alt=media&token=c1438ea3-f244-4bc9-9e94-cd67d0b252d4" 
             alt="Arepa Express Official Logo" 
-            className="w-full h-full object-contain"
+            className="w-full h-full object-contain filter drop-shadow-xl"
           />
-        </div>
-
-        {/* Brand Text or Loading bar can go here if needed */}
-        <div className="mt-8 overflow-hidden rounded-full bg-black/10 w-32 h-1">
-          <div className="h-full bg-black animate-[loading_2.5s_ease-in-out_forwards]" style={{ width: '0%' }} />
         </div>
       </div>
 

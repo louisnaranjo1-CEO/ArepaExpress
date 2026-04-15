@@ -55,11 +55,11 @@ export default function LockScreen() {
                 {/* Visual Header */}
                 <div className="relative group">
                     <div className="absolute inset-0 bg-black/10 rounded-full blur-2xl group-hover:blur-3xl transition-all duration-500" />
-                    <div className="relative w-32 h-32 bg-white rounded-[40px] shadow-2xl flex items-center justify-center p-6 animate-scale-in">
+                    <div className="relative w-48 h-48 flex items-center justify-center p-6 animate-scale-in">
                         <img 
                             src="https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/logo%20principal.png?alt=media&token=c1438ea3-f244-4bc9-9e94-cd67d0b252d4" 
                             alt="Arepa Express Official Logo" 
-                            className="w-full h-full object-contain"
+                            className="w-full h-full object-contain filter drop-shadow-xl"
                         />
                     </div>
                     <div className="absolute -bottom-2 -right-2 w-10 h-10 bg-black text-[#FFFF00] rounded-2xl flex items-center justify-center shadow-lg animate-bounce">
