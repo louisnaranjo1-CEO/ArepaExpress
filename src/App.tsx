@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from 'react';
-import { AnimatePresence } from 'framer-motion';
 import ClientApp from './ClientApp';
 import AdminApp from './admin/AdminApp';
 import CpanelApp from './cpanel/CpanelApp';
@@ -60,23 +59,19 @@ function App() {
   const isTransitioning = showSplash || loading;
 
   return (
-    <>
-      <AnimatePresence>
-        {isTransitioning && (
-          <SplashScreen 
-            onComplete={() => setShowSplash(false)} 
-            isAuthLoading={loading} 
-          />
-        )}
-      </AnimatePresence>
-      
-      {!isTransitioning && (
-        <div className="block animate-fade-in h-screen overflow-hidden">
+    <div className="w-full h-full bg-[#FFFF00]">
+      {isTransitioning ? (
+        <SplashScreen 
+          onComplete={() => setShowSplash(false)} 
+          isAuthLoading={loading} 
+        />
+      ) : (
+        <div className="animate-fade-in h-screen overflow-hidden bg-slate-100">
           {!isUnlocked ? <LockScreen /> : renderApp()}
           <OfflineIndicator />
         </div>
       )}
-    </>
+    </div>
   );
 }
 
