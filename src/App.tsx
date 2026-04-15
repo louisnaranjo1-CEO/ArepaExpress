@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { AnimatePresence } from 'framer-motion';
 import ClientApp from './ClientApp';
 import AdminApp from './admin/AdminApp';
 import CpanelApp from './cpanel/CpanelApp';
@@ -23,9 +24,10 @@ function App() {
       );
     }
   }, []);
+
   const isDevAdminPath = window.location.pathname.startsWith('/admin');
   const isAdminSubdomain = window.location.hostname.startsWith('restaurante.');
-  const isCpanelSubdomain = window.location.hostname.startsWith('cpanel.') || window.location.pathname.startsWith('/cpanel');
+  const isCpanelSubdomain = window.location.hostname.startsWith('cpanel.') || window.location.hostname.startsWith('admin.');
   const isWaiterSubdomain = window.location.hostname.startsWith('meseros.');
   const isDeliveryPath = window.location.pathname.startsWith('/delivery') || window.location.hostname.startsWith('delivery.');
   const isCashierSubdomain = window.location.hostname.startsWith('caja.') || window.location.pathname.startsWith('/caja');
@@ -54,13 +56,26 @@ function App() {
     return <ClientApp />;
   };
 
+  // The app is ready when the splash timer finishes AND auth loading is done
+  const isTransitioning = showSplash || loading;
+
   return (
     <>
-      {(showSplash || loading) && <SplashScreen onComplete={() => setShowSplash(false)} />}
-      <div className={(showSplash || loading) ? 'hidden' : 'block animate-fade-in'}>
-        {!isUnlocked ? <LockScreen /> : renderApp()}
-        <OfflineIndicator />
-      </div>
+      <AnimatePresence>
+        {isTransitioning && (
+          <SplashScreen 
+            onComplete={() => setShowSplash(false)} 
+            isAuthLoading={loading} 
+          />
+        )}
+      </AnimatePresence>
+      
+      {!isTransitioning && (
+        <div className="block animate-fade-in h-screen overflow-hidden">
+          {!isUnlocked ? <LockScreen /> : renderApp()}
+          <OfflineIndicator />
+        </div>
+      )}
     </>
   );
 }

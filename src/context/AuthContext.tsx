@@ -115,6 +115,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                         setUserData(null);
                     }
                     setLoading(false);
+                }, (error) => {
+                    console.error("Firestore User Snapshot error:", error);
+                    setLoading(false);
                 });
             } else {
                 setUserData(null);
