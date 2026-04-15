@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { verifyBiometric } from '../utils/security';
-import { Shield, Fingerprint, Lock, ChevronRight, AlertCircle } from 'lucide-react';
+import { auth } from '../lib/firebase';
+import { Shield, Fingerprint, Lock, ChevronRight, AlertCircle, LogOut } from 'lucide-react';
 
 export default function LockScreen() {
     const { userData, setIsUnlocked } = useAuth();
@@ -23,7 +24,12 @@ export default function LockScreen() {
                 sessionStorage.setItem('lock_unlocked', 'true');
                 setIsUnlocked(true);
             } else {
-                setError("No se pudo verificar la identidad biométrica.");
+                setError("No se pudo verificar la identidad biométrica. Debes iniciar sesión de nuevo por seguridad.");
+                // Wait 2 seconds so the user can read the error before logging out
+                setTimeout(async () => {
+                    await auth.signOut();
+                    window.location.reload(); // Refresh to clean state
+                }, 2000);
             }
         } catch (err) {
             setError("Ocurrió un error al intentar desbloquear.");
@@ -51,8 +57,8 @@ export default function LockScreen() {
                     <div className="absolute inset-0 bg-black/10 rounded-full blur-2xl group-hover:blur-3xl transition-all duration-500" />
                     <div className="relative w-32 h-32 bg-white rounded-[40px] shadow-2xl flex items-center justify-center p-6 animate-scale-in">
                         <img 
-                            src="https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/logos%20un%202x3.jpg?alt=media&token=8002c006-9009-4aef-8043-76bd29ef01e8" 
-                            alt="Un 2x3 Logo" 
+                            src="https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/logo%20principal.png?alt=media&token=c1438ea3-f244-4bc9-9e94-cd67d0b252d4" 
+                            alt="Arepa Express Official Logo" 
                             className="w-full h-full object-contain"
                         />
                     </div>

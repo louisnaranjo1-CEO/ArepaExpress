@@ -37,8 +37,8 @@ export default function SplashScreen({ onComplete }: SplashScreenProps) {
         {/* Logo Container */}
         <div className="relative w-40 h-40 bg-white rounded-3xl shadow-2xl flex items-center justify-center p-6 animate-scale-in">
           <img 
-            src="https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/logos%20un%202x3.jpg?alt=media&token=8002c006-9009-4aef-8043-76bd29ef01e8" 
-            alt="Un 2x3 Logo" 
+            src="https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/logo%20principal.png?alt=media&token=c1438ea3-f244-4bc9-9e94-cd67d0b252d4" 
+            alt="Arepa Express Official Logo" 
             className="w-full h-full object-contain"
           />
         </div>
