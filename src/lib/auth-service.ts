@@ -5,6 +5,7 @@ import {
     User,
     createUserWithEmailAndPassword,
     signInWithEmailAndPassword,
+    signInWithCredential,
     updateProfile,
     updateEmail,
     updatePassword,
@@ -12,6 +13,8 @@ import {
     EmailAuthProvider
 } from 'firebase/auth';
 import { doc, getDoc, setDoc, updateDoc, serverTimestamp, collection, query, where, getDocs, increment, writeBatch } from 'firebase/firestore';
+import { Capacitor } from '@capacitor/core';
+import { FirebaseAuthentication } from '@capacitor-firebase/authentication';
 
 export const processReferralCode = async (newUserId: string, referralCode: string) => {
     if (!referralCode || typeof referralCode !== 'string') return false;
@@ -72,8 +75,21 @@ googleProvider.addScope('email');
 
 export const signInWithGoogle = async (): Promise<{ user: User, isNewUser: boolean }> => {
     try {
-        const result = await signInWithPopup(auth, googleProvider);
-        const user = result.user;
+        let user: User;
+        
+        if (Capacitor.isNativePlatform()) {
+            // Flujo nativo: usa el plugin de Capacitor
+            const result = await FirebaseAuthentication.signInWithGoogle();
+            if (!result.idToken) throw new Error("No se pudo obtener el token de Google.");
+            
+            const credential = GoogleAuthProvider.credential(result.idToken);
+            const userCredential = await signInWithCredential(auth, credential);
+            user = userCredential.user;
+        } else {
+            // Flujo web: usa el popup estándar
+            const result = await signInWithPopup(auth, googleProvider);
+            user = result.user;
+        }
 
         // Check if user document already exists in Firestore
         const userRef = doc(db, 'users', user.uid);
@@ -115,8 +131,17 @@ export const signInWithGoogle = async (): Promise<{ user: User, isNewUser: boole
 
 export const signInWithEmail = async (email: string, pass: string): Promise<User> => {
     try {
-        const result = await signInWithEmailAndPassword(auth, email, pass);
-        const user = result.user;
+        let user: User;
+
+        if (Capacitor.isNativePlatform()) {
+            const result = await FirebaseAuthentication.signInWithEmailAndPassword({ email, password: pass });
+            const credential = EmailAuthProvider.credential(email, pass);
+            const userCredential = await signInWithCredential(auth, credential);
+            user = userCredential.user;
+        } else {
+            const result = await signInWithEmailAndPassword(auth, email, pass);
+            user = result.user;
+        }
 
         // Ensure UID is set in localStorage
         localStorage.setItem('deliexpress_uid', user.uid);
@@ -136,8 +161,17 @@ export const signInWithEmail = async (email: string, pass: string): Promise<User
 
 export const signUpWithEmail = async (email: string, pass: string, name: string, referralCode?: string): Promise<User> => {
     try {
-        const result = await createUserWithEmailAndPassword(auth, email, pass);
-        const user = result.user;
+        let user: User;
+
+        if (Capacitor.isNativePlatform()) {
+            await FirebaseAuthentication.createUserWithEmailAndPassword({ email, password: pass });
+            const credential = EmailAuthProvider.credential(email, pass);
+            const userCredential = await signInWithCredential(auth, credential);
+            user = userCredential.user;
+        } else {
+            const result = await createUserWithEmailAndPassword(auth, email, pass);
+            user = result.user;
+        }
 
         // Update profile with display name
         await updateProfile(user, { displayName: name });
@@ -224,8 +258,19 @@ export const signInAdmin = async (email: string, pass: string): Promise<User> =>
 };
 export const signInAdminWithGoogle = async (): Promise<User | null> => {
     try {
-        const result = await signInWithPopup(auth, googleProvider);
-        const user = result.user;
+        let user: User;
+
+        if (Capacitor.isNativePlatform()) {
+            const result = await FirebaseAuthentication.signInWithGoogle();
+            if (!result.idToken) throw new Error("No se pudo obtener el token de Google.");
+            
+            const credential = GoogleAuthProvider.credential(result.idToken);
+            const userCredential = await signInWithCredential(auth, credential);
+            user = userCredential.user;
+        } else {
+            const result = await signInWithPopup(auth, googleProvider);
+            user = result.user;
+        }
 
         // Check if restaurant document already exists
         const restaurantRef = doc(db, 'restaurants', user.uid);

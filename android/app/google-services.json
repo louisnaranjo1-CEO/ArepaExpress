@@ -14,6 +14,14 @@
       },
       "oauth_client": [
         {
+          "client_id": "549258124406-78vo1osjsl5l9cs78821t2p311asmj8u.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "deliexpress.app",
+            "certificate_hash": "7654691efc2898506a6530c5b4e1cf986d5adb21"
+          }
+        },
+        {
           "client_id": "549258124406-f5hsmurh0iafjak30108d88m6bqhmcvj.apps.googleusercontent.com",
           "client_type": 3
         }
