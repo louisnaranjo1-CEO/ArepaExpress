@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { collection, query, orderBy, onSnapshot, doc, updateDoc, serverTimestamp, getDoc, setDoc } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import { MessageSquareWarning, Search, Filter, Clock, CheckCircle, AlertCircle, User, Phone, Mail, Send, X, Settings } from 'lucide-react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence } from 'motion/react';
 import toast from 'react-hot-toast';
 
 interface SupportTicket {

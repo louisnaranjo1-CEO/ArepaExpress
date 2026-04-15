@@ -1,4 +1,4 @@
-import { motion, AnimatePresence } from 'motion';
+import { motion, AnimatePresence } from 'motion/react';
 import { MapPin, Navigation, X, ShieldAlert } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 

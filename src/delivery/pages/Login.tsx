@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { LogIn, UserPlus, Mail, Lock, User, ArrowRight, ChevronRight, Gavel } from 'lucide-react';
 import { signInWithGoogle, signInWithEmail, signUpWithEmail } from '../../lib/auth-service';
 import { getDriverProfile } from '../../lib/delivery-service';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence } from 'motion/react';
 import { UN2X3_LOGO } from '../../lib/env';
 
 export default function Login() {

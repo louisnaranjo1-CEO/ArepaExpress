@@ -3,7 +3,7 @@ import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import { doc, getDoc, collection, getDocs, setDoc, updateDoc, serverTimestamp, query, where } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import { ArrowLeft, Plus, Minus, Trash2, ShoppingBag, CheckCircle, Loader2, Star, Clock, Store, Truck, X, Tag, MessageSquare, MapPin, Instagram, Youtube, Music2, ExternalLink, Search, LayoutGrid, List } from 'lucide-react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence } from 'motion/react';
 import ReviewsModal from '../components/ReviewsModal';
 import { printToUsbDevice, formatTicket, downloadTicketImage, downloadTicketText, formatTicketText } from '../../lib/usb-printer';
 import AddressPicker from '../../components/AddressPicker';

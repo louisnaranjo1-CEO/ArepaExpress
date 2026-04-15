@@ -5,7 +5,7 @@ import { collection, query, where, onSnapshot, orderBy, doc, updateDoc, getDocs,
 import { useAuth } from '../../context/AuthContext';
 import { printToUsbDevice, formatTicket, PrintOrder } from '../../lib/usb-printer';
 import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence } from 'motion/react';
 import toast from 'react-hot-toast';
 import ComandaPreview from '../components/ComandaPreview';
 import OrderChatWindow from '../../components/chat/OrderChatWindow';

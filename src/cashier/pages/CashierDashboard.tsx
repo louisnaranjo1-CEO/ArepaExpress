@@ -8,7 +8,7 @@ import { printToUsbDevice, formatTicket, PrintOrder } from '../../lib/usb-printe
 import ProductTicker from '../components/ProductTicker';
 import ReviewsModal from '../components/ReviewsModal';
 import ComandaPreview from '../../admin/components/ComandaPreview';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence } from 'motion/react';
 import QRCode from 'react-qr-code';
 import OrderChatWindow from '../../components/chat/OrderChatWindow';
 import toast from 'react-hot-toast';

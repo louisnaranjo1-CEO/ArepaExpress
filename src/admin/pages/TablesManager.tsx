@@ -3,7 +3,7 @@ import { collection, query, getDocs, doc, setDoc, deleteDoc, serverTimestamp } f
 import { db } from '../../lib/firebase';
 import { useAuth } from '../../context/AuthContext';
 import { LayoutGrid, Plus, Edit2, Trash2, X, Users as UsersIcon } from 'lucide-react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence } from 'motion/react';
 
 interface Table {
     id: string;

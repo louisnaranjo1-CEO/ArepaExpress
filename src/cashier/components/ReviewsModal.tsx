@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence } from 'motion/react';
 import { X, Star, MessageSquare, Loader2, User } from 'lucide-react';
 import { db } from '../../lib/firebase';
 import { collection, query, where, orderBy, getDocs } from 'firebase/firestore';

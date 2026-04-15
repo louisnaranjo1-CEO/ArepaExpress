@@ -3,7 +3,7 @@ import { ClipboardList, Clock, CheckCircle, Search } from 'lucide-react';
 import { collection, query, where, onSnapshot, orderBy } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import WaiterLayout from '../components/WaiterLayout';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence } from 'motion/react';
 import DualPrice from '../../components/DualPrice';
 
 export default function WaiterOrders() {

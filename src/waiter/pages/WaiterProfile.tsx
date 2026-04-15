@@ -3,7 +3,7 @@ import { User, Camera, TrendingUp, Calendar, Clock, LogOut, ChevronRight, Award,
 import { collection, query, where, getDocs, orderBy } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import WaiterLayout from '../components/WaiterLayout';
-import { motion } from 'framer-motion';
+import { motion } from 'motion/react';
 import { useNavigate } from 'react-router-dom';
 
 export default function WaiterProfile() {

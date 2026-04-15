@@ -3,7 +3,7 @@ import { useSearchParams, useNavigate } from 'react-router-dom';
 import { doc, getDoc, collection, getDocs } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import { ArrowLeft, Search, Star, Clock, Plus, Store, CheckCircle, Smartphone, X, Tag } from 'lucide-react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence } from 'motion/react';
 import { useCart } from '../../context/CartContext';
 import { Product } from '../../lib/seed';
 import WaiterLayout from '../components/WaiterLayout';

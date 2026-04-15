@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Bell, Search, Menu, Plus, ChevronDown, CheckCircle, Clock, AlertCircle, LogOut, User, Settings, Check, X, Smartphone, CreditCard, History } from 'lucide-react';
 import WaiterLayout from '../components/WaiterLayout';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence } from 'motion/react';
 import TableOptionsModal from '../components/TableOptionsModal';
 import MergeTransferModal from '../components/MergeTransferModal';
 import SplitBillModal from '../components/SplitBillModal';

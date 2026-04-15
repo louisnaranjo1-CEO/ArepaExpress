@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { motion, AnimatePresence } from 'motion';
+import { motion, AnimatePresence } from 'motion/react';
 import { X, ArrowRightLeft, DollarSign } from 'lucide-react';
 import { vibrate } from '../utils/haptics';
 

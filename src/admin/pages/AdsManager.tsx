@@ -4,7 +4,7 @@ import { db, storage } from '../../lib/firebase';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { useAuth } from '../../context/AuthContext';
 import { Megaphone, Briefcase, Plus, Trash2, Image as ImageIcon, Save, Loader2, Target, CheckCircle } from 'lucide-react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence } from 'motion/react';
 
 interface JobPosition {
     id: string;

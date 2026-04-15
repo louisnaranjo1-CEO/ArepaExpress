@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Shield } from 'lucide-react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence } from 'motion/react';
 import { doc, getDoc, updateDoc } from 'firebase/firestore';
 import { db, auth } from '../../lib/firebase';
 import { signInAnonymously } from 'firebase/auth';

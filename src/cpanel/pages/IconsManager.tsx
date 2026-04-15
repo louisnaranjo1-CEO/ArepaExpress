@@ -3,7 +3,7 @@ import { collection, getDocs, addDoc, deleteDoc, doc, updateDoc, query, orderBy 
 import { db, storage } from '../../lib/firebase';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { Trash2, Plus, Edit3, Save, X, ImageIcon, Camera, Loader2, Share2 } from 'lucide-react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence } from 'motion/react';
 
 interface GlobalIcon {
     id: string;

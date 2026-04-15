@@ -8,7 +8,7 @@ import {
     FolderPlus, FileEdit, Zap
 } from 'lucide-react';
 import { GLOBAL_CATEGORIES, CATEGORY_SECTORS } from '../../lib/constants';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence } from 'motion/react';
 import toast from 'react-hot-toast';
 
 interface Category {
