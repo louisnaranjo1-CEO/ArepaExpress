@@ -19,6 +19,9 @@ const formatDuration = (seconds: number) => {
 export default function TransportRequests() {
     const { bcvRate } = useCurrency();
     const [requests, setRequests] = useState<any[]>([]);
+    
+    const validRequests = Array.isArray(requests) ? requests : [];
+
     const [loading, setLoading] = useState(true);
     const [filter, setFilter] = useState('all'); // all, verifying_payment, finding_driver, in_progress, completed, cancelled
     const [searchTerm, setSearchTerm] = useState('');
@@ -318,7 +321,6 @@ export default function TransportRequests() {
         );
     }
 
-    const validRequests = Array.isArray(requests) ? requests : [];
 
     return (
         <div className="space-y-6">
