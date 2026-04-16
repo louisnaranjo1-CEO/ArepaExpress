@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { doc, onSnapshot, getDoc, updateDoc, serverTimestamp, addDoc, collection, query, where, orderBy, limit } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { DeliveryDriver } from '../lib/delivery-service';
-import { Navigation, Clock, CheckCircle2, Bike, MapPin, Phone, ArrowLeft, Store, Star, Wallet, X, Loader2, ImageIcon, Upload, CreditCard as CreditCardIcon, AlertCircle, Copy, MessageCircle } from 'lucide-react';
+import { Navigation, Clock, CheckCircle2, Bike, Motorbike, MapPin, Phone, ArrowLeft, Store, Star, Wallet, X, Loader2, ImageIcon, Upload, CreditCard as CreditCardIcon, AlertCircle, Copy, MessageCircle } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useCurrency } from '../context/CurrencyContext';
 import DeliveryPaymentModal from '../components/DeliveryPaymentModal';
@@ -208,7 +208,7 @@ export default function TrackOrder() {
     if (!order) {
         return (
             <div className="flex flex-col items-center justify-center min-h-[60vh] px-6 text-center">
-                <Bike className="w-16 h-16 text-slate-300 mb-4" />
+                <Motorbike className="w-16 h-16 text-slate-300 mb-4" />
                 <h2 className="text-xl font-black text-slate-900 mb-2">Pedido no encontrado</h2>
                 <button onClick={() => navigate('/')} className="text-slate-900 font-bold">Volver al inicio</button>
             </div>
@@ -530,6 +530,15 @@ export default function TrackOrder() {
 
     // Determine current step index for the progress bar
     const getStepIndex = () => {
+        // Priority 1: Delivery Driver Status
+        if (transportRequest) {
+            if (transportRequest.status === 'completed') return 4;
+            if (transportRequest.status === 'in_progress') return 3;
+            if (transportRequest.status === 'arriving') return 2; // Llegó al negocio, es parte de la preparación todavía
+            if (transportRequest.status === 'accepted') return 2; // Va en camino a buscar el pedido
+        }
+
+        // Priority 2: General Order Status
         switch (order.status) {
             case 'pending': return 1;
             case 'action_required': return 1;
@@ -630,7 +639,9 @@ export default function TrackOrder() {
                         <h2 className="text-xl font-black text-white mb-1 uppercase tracking-tight">#{orderId?.slice(-5).toUpperCase()}</h2>
                         <p className="text-white/40 text-[10px] font-bold uppercase tracking-[0.2em] max-w-[250px] mx-auto leading-relaxed">
                             {currentStep === 1 && (order.status === 'verificando_pago_delivery' ? "Verificando el pago de tu delivery..." : "Confirmando tu pedido con el restaurante...")}
-                            {currentStep === 2 && "Preparación en curso. ¡Casi listo!"}
+                            {currentStep === 2 && (!transportRequest || transportRequest.status === 'searching') ? "Preparación en curso. ¡Casi listo!" : null}
+                            {currentStep === 2 && transportRequest?.status === 'accepted' ? "Tu piloto va camino al restaurante" : null}
+                            {currentStep === 2 && transportRequest?.status === 'arriving' ? "El piloto aguarda por tu pedido" : null}
                             {currentStep === 3 && (driver ? `${driver.fullName.split(' ')[0]} está transportando tu orden` : "Asignando repartidor...")}
                             {currentStep === 4 && "¡Pedido entregado! Disfruta tu comida"}
                         </p>
@@ -660,7 +671,10 @@ export default function TrackOrder() {
                                         ? "Verificando pago del delivery"
                                         : (order.status === 'pendiente_pago' ? "Esperando confirmación de pago" : "Recibido, esperando negocio")
                                 )}
-                                {currentStep === 2 && order.deliveryMethod === 'app_delivery' ? "Buscando al mejor piloto" : currentStep === 2 && "Pago aceptado. Preparando tu orden"}
+                                {currentStep === 2 && (!transportRequest || transportRequest.status === 'searching') && order.deliveryMethod === 'app_delivery' ? "Buscando al mejor piloto" : null}
+                                {currentStep === 2 && (!transportRequest || transportRequest.status === 'searching') && order.deliveryMethod !== 'app_delivery' ? "Pago aceptado. Preparando tu orden" : null}
+                                {currentStep === 2 && transportRequest?.status === 'accepted' && "El piloto va por tu pedido"}
+                                {currentStep === 2 && transportRequest?.status === 'arriving' && "El piloto espera por tu pedido"}
                                 {currentStep === 3 && "¡Tu pedido va en camino!"}
                                 {currentStep === 4 && "Pedido Entregado"}
                             </h2>
@@ -683,8 +697,8 @@ export default function TrackOrder() {
                                     className={`w-8 h-8 rounded-full flex items-center justify-center ring-4 ring-white cursor-pointer transition-colors duration-500 hover:scale-110 ${step <= currentStep ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-500/30' : 'bg-slate-200 text-slate-400'}`}
                                 >
                                     {step === 1 && <Wallet className="w-4 h-4" />}
-                                    {step === 2 && <Bike className="w-4 h-4" />}
-                                    {step === 3 && <Navigation className="w-4 h-4" />}
+                                    {step === 2 && <Store className="w-4 h-4" />}
+                                    {step === 3 && <Motorbike className="w-4 h-4" />}
                                     {step === 4 && <CheckCircle2 className="w-4 h-4" />}
                                 </div>
                             ))}
@@ -725,7 +739,7 @@ export default function TrackOrder() {
                             {order.restaurantPaymentClientConfirmed && (
                                 <div className="w-full animate-in fade-in zoom-in-95 duration-200 bg-slate-50 p-4 rounded-3xl border-2 border-slate-100 relative shadow-inner">
                                     <h4 className="font-black text-slate-800 mb-4 flex items-center gap-2">
-                                        <Bike className="w-5 h-5 text-slate-900"/>
+                                        <Motorbike className="w-5 h-5 text-slate-900"/>
                                         Opciones de Envío
                                     </h4>
                                     
@@ -1133,12 +1147,12 @@ export default function TrackOrder() {
                                 </div>
 
                                 {/* Amount to Pay */}
-                                <div className="bg-slate-900 rounded-2xl p-5 text-center shadow-lg">
-                                    <p className="text-[10px] font-black text-white/40 uppercase tracking-[0.2em] mb-1">Monto del Delivery</p>
-                                    <div className="text-2xl font-black text-slate-900">
-                                        <DualPrice usdAmount={order.deliveryFee || 0} showDivider={false} />
+                                <div className="bg-emerald-500 rounded-2xl p-5 text-center shadow-xl shadow-emerald-500/20 animate-pulse border-2 border-emerald-400">
+                                    <p className="text-[10px] font-black text-white/80 uppercase tracking-widest mb-1">Monto del Delivery</p>
+                                    <div className="text-3xl font-black text-white">
+                                        <DualPrice usdAmount={order.deliveryFee || 0} showDivider={false} usdClassName="text-white" />
                                     </div>
-                                    <p className="text-[10px] font-bold text-white/30 italic mt-2">Tarifa basada en {order.distance?.toFixed(1) || 0}km</p>
+                                    <p className="text-[10px] font-bold text-emerald-100 italic mt-2">Tarifa basada en {order.distance?.toFixed(1) || 0}km</p>
                                 </div>
 
                                 {/* Platform Payment Info */}

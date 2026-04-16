@@ -47,6 +47,8 @@ export default function ServiceTimer({ startTime, mode, onTimeUpdate }: ServiceT
     const countdownTarget = 15 * 60; // 15 minutes
     displaySeconds = countdownTarget - elapsedSeconds;
     isLate = displaySeconds < 0;
+  } else {
+    isLate = elapsedSeconds > 60;
   }
 
   return (
@@ -71,7 +73,7 @@ export default function ServiceTimer({ startTime, mode, onTimeUpdate }: ServiceT
         </span>
       </div>
       
-      <div className={`text-6xl font-black tabular-nums tracking-tighter ${isLate ? 'text-red-500' : 'text-white'}`}>
+      <div className={`text-6xl font-black tabular-nums tracking-tighter ${isLate ? 'text-red-600' : 'text-slate-900'}`}>
         {formatTime(displaySeconds)}
       </div>
 

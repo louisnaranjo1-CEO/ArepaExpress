@@ -537,7 +537,7 @@ export default function OrdersRadar() {
                             </div>
                             <div className="flex-1 flex justify-between items-center gap-2">
                                 <div>
-                                    <h3 className="text-xs font-black text-blue-500 uppercase tracking-widest">Pasajero:</h3>
+                                    <h3 className="text-xs font-black text-blue-500 uppercase tracking-widest">{activeTransport.type === 'food_delivery' ? 'Pedido a nombre de:' : 'Pasajero:'}</h3>
                                     <p className="font-bold text-slate-700 leading-tight mt-0.5">{activeTransport.userName || 'Usuario'}</p>
                                     {(activeTransport.userCedula || activeTransport.userPhone) && (
                                         <div className="text-xs text-slate-500 font-medium mt-0.5 space-y-0.5 pb-2">
@@ -694,14 +694,46 @@ export default function OrdersRadar() {
                             </div>
                         )}
 
+                        <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-2xl flex gap-3 shadow-inner">
+                            <AlertTriangle className="w-8 h-8 text-yellow-500 shrink-0" />
+                            <div className="text-sm text-yellow-800 font-medium">
+                                <span className="font-bold block mb-0.5">Bolso Especial Requerido</span>
+                                Este es un pedido de mercancía. ¡Es importante que cuentes con tu bolso especial para guardar el pedido del cliente!
+                            </div>
+                        </div>
+
                         <div className="space-y-4">
                             <div className="flex gap-4">
                                 <div className="w-12 h-12 bg-slate-50 text-slate-400 rounded-2xl flex items-center justify-center shrink-0 border border-slate-100">
                                     <Bike className="w-6 h-6" />
                                 </div>
-                                <div>
-                                    <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest">Restaurante</h3>
+                                <div className="flex-1">
+                                    <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest">Recoger en:</h3>
                                     <p className="font-bold text-slate-800 text-lg leading-tight mt-0.5">{activeOrder.restaurantName}</p>
+                                    
+                                    {activeOrder.restaurantPhone && (
+                                        <div className="flex gap-2 mt-3">
+                                            <a href={`tel:${activeOrder.restaurantPhone}`} className="flex-1 py-2 bg-slate-100 rounded-xl text-slate-700 font-bold text-xs flex justify-center items-center gap-1 active:scale-95 transition-all">
+                                                <Phone className="w-3.5 h-3.5" /> Llamar
+                                            </a>
+                                            <a href={`https://wa.me/${activeOrder.restaurantPhone.replace(/\D/g, '')}?text=${encodeURIComponent(`Hola, soy el piloto de Un 2x3. Estoy en camino a buscar el pedido de ${activeOrder.userName || 'Cliente'}.`)}`} target="_blank" className="flex-1 py-2 bg-emerald-50 text-emerald-700 rounded-xl font-bold text-xs flex justify-center items-center gap-1 active:scale-95 transition-all border border-emerald-100">
+                                                <MessageSquare className="w-3.5 h-3.5" /> WhatsApp
+                                            </a>
+                                        </div>
+                                    )}
+
+                                    {activeOrder.items && activeOrder.items.length > 0 && (
+                                        <div className="mt-3 p-3 bg-slate-50 rounded-xl border border-slate-100 shadow-inner">
+                                            <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 flex items-center gap-2">Resumen del Pedido</h4>
+                                            <ul className="space-y-1.5">
+                                                {activeOrder.items.map((item: any, i: number) => (
+                                                    <li key={i} className="text-xs font-bold text-slate-700 flex items-start gap-1">
+                                                        <span className="text-emerald-600 shrink-0">{item.quantity}x</span> {item.name}
+                                                    </li>
+                                                ))}
+                                            </ul>
+                                        </div>
+                                    )}
                                 </div>
                             </div>
 
@@ -714,7 +746,7 @@ export default function OrdersRadar() {
                                 </div>
                                 <div className="flex-1 flex justify-between items-center gap-2">
                                     <div>
-                                        <h3 className="text-xs font-black text-blue-500 uppercase tracking-widest">Cliente:</h3>
+                                        <h3 className="text-xs font-black text-blue-500 uppercase tracking-widest">Pedido a nombre de:</h3>
                                         <p className="font-bold text-slate-700 leading-tight mt-0.5">{activeOrder.userName || 'Cliente Invitado'}</p>
                                         {(activeOrder.userCedula || activeOrder.userPhone) && (
                                             <div className="text-xs text-slate-500 font-medium mt-0.5 space-y-0.5 pb-2">
