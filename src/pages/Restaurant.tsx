@@ -1335,8 +1335,8 @@ export default function RestaurantPage() {
                                   </div>
                                   {option.price > 0 && (
                                     <div className="flex items-center gap-1">
-                                      <span className={`text-sm font-black ${isSelected ? 'text-primary-dark' : 'text-slate-400'}`}>+</span>
-                                      <DualPrice usdAmount={option.price} usdClassName={`text-sm font-black ${isSelected ? 'text-primary-dark' : 'text-slate-400'}`} showDivider={false} />
+                                      <span className={`text-sm font-black ${isSelected ? 'text-slate-900-dark' : 'text-slate-400'}`}>+</span>
+                                      <DualPrice usdAmount={option.price} usdClassName={`text-sm font-black ${isSelected ? 'text-slate-900-dark' : 'text-slate-400'}`} showDivider={false} />
                                     </div>
                                   )}
                                 </button>

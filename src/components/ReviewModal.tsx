@@ -1,3 +1,4 @@
+import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { X, Star, UploadCloud, Image as ImageIcon, Trash2 } from 'lucide-react';
 import { db, storage } from '../lib/firebase';

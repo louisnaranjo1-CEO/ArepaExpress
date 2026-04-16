@@ -599,7 +599,7 @@ export default function TrackOrder() {
                                     <div className="relative w-4 h-4">
                                         <div className="absolute inset-0 bg-primary rounded-full animate-ping opacity-75"></div>
                                         <div className="relative w-4 h-4 bg-primary rounded-full shadow-lg shadow-primary/50 border-2 border-white"></div>
-                                        <div className="absolute -bottom-6 left-1/2 -translate-x-1/2 whitespace-nowrap bg-slate-900 text-[8px] font-black text-primary px-2 py-0.5 rounded-full uppercase tracking-widest">Tú</div>
+                                        <div className="absolute -bottom-6 left-1/2 -translate-x-1/2 whitespace-nowrap bg-slate-900 text-[8px] font-black text-slate-900 px-2 py-0.5 rounded-full uppercase tracking-widest">Tú</div>
                                     </div>
                                 </motion.div>
                             )}
@@ -719,7 +719,7 @@ export default function TrackOrder() {
                             {order.restaurantPaymentClientConfirmed && (
                                 <div className="w-full animate-in fade-in zoom-in-95 duration-200 bg-slate-50 p-4 rounded-3xl border-2 border-slate-100 relative shadow-inner">
                                     <h4 className="font-black text-slate-800 mb-4 flex items-center gap-2">
-                                        <Bike className="w-5 h-5 text-primary"/>
+                                        <Bike className="w-5 h-5 text-slate-900"/>
                                         Opciones de Envío
                                     </h4>
                                     
@@ -1103,7 +1103,7 @@ export default function TrackOrder() {
                                             onClick={() => handleSelectVehicle('moto')}
                                             className={`p-4 rounded-2xl border-2 transition-all flex flex-col items-center gap-2 ${
                                                 (order.vehicleType || 'moto') === 'moto' 
-                                                ? 'border-primary bg-primary/5 text-primary shadow-lg shadow-primary/10' 
+                                                ? 'border-primary bg-primary/5 text-slate-900 shadow-lg shadow-primary/10' 
                                                 : 'border-slate-100 bg-slate-50 text-slate-400 grayscale'
                                             }`}
                                         >
@@ -1115,7 +1115,7 @@ export default function TrackOrder() {
                                             onClick={() => handleSelectVehicle('carro')}
                                             className={`p-4 rounded-2xl border-2 transition-all flex flex-col items-center gap-2 ${
                                                 order.vehicleType === 'carro' 
-                                                ? 'border-primary bg-primary/5 text-primary shadow-lg shadow-primary/10' 
+                                                ? 'border-primary bg-primary/5 text-slate-900 shadow-lg shadow-primary/10' 
                                                 : 'border-slate-100 bg-slate-50 text-slate-400 grayscale'
                                             }`}
                                         >
@@ -1129,7 +1129,7 @@ export default function TrackOrder() {
                                 {/* Amount to Pay */}
                                 <div className="bg-slate-900 rounded-2xl p-5 text-center shadow-lg">
                                     <p className="text-[10px] font-black text-white/40 uppercase tracking-[0.2em] mb-1">Monto del Delivery</p>
-                                    <div className="text-2xl font-black text-primary">
+                                    <div className="text-2xl font-black text-slate-900">
                                         <DualPrice usdAmount={order.deliveryFee || 0} showDivider={false} />
                                     </div>
                                     <p className="text-[10px] font-bold text-white/30 italic mt-2">Tarifa basada en {order.distance?.toFixed(1) || 0}km</p>
@@ -1260,11 +1260,11 @@ export default function TrackOrder() {
                                     animate={{ rotate: 360 }}
                                     transition={{ duration: 3, repeat: Infinity, ease: "linear" }}
                                 >
-                                    <Navigation className="w-12 h-12 text-primary" />
+                                    <Navigation className="w-12 h-12 text-slate-900" />
                                 </motion.div>
                             </div>
                             <h3 className="text-xl font-black text-white mb-2 uppercase tracking-tight">Rastreo Activo</h3>
-                            <p className="text-primary/70 font-black text-sm uppercase tracking-[0.2em] mb-4">Buscando Delivery...</p>
+                            <p className="text-slate-900/70 font-black text-sm uppercase tracking-[0.2em] mb-4">Buscando Delivery...</p>
                             
                             <div className="flex items-center justify-center gap-2 mb-2">
                                 <span className="w-2 h-2 bg-primary rounded-full animate-ping"></span>
@@ -1306,7 +1306,7 @@ export default function TrackOrder() {
                                     <div>
                                         <p className="font-black text-slate-900 text-lg leading-none mb-1">{driver.fullName}</p>
                                         <div className="flex items-center gap-2">
-                                            <span className="text-[10px] font-black text-primary bg-slate-900 px-2 py-0.5 rounded-md uppercase tracking-wider">{driver.vehicleType || 'Repartidor'}</span>
+                                            <span className="text-[10px] font-black text-slate-900 bg-slate-900 px-2 py-0.5 rounded-md uppercase tracking-wider">{driver.vehicleType || 'Repartidor'}</span>
                                             <span className="text-[10px] font-black text-slate-400 uppercase">{driver.vehiclePlate || 'ABC-123'}</span>
                                         </div>
                                     </div>
@@ -1404,7 +1404,7 @@ export default function TrackOrder() {
                         {!order.deliveryPaymentClientConfirmed && (
                             <button 
                                 onClick={() => setIsEditingAddress(!isEditingAddress)} 
-                                className="text-[10px] font-black text-primary uppercase tracking-widest bg-slate-900 px-3 py-1.5 rounded-lg active:scale-95 transition-transform"
+                                className="text-[10px] font-black text-slate-900 uppercase tracking-widest bg-slate-900 px-3 py-1.5 rounded-lg active:scale-95 transition-transform"
                             >
                                 {isEditingAddress ? 'Cancelar' : 'Editar Dirección'}
                             </button>

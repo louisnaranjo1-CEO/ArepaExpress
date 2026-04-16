@@ -15,27 +15,30 @@ export const isBiometricSupported = async (): Promise<{ isAvailable: boolean; er
   }
 };
 
-export const registerBiometric = async (userId: string, userEmail: string): Promise<{ id: string } | null> => {
+export const registerBiometric = async (userId: string, userEmail: string): Promise<{ id: string, type: string } | null> => {
   try {
+    console.log("Checking biometric availability...");
     const support = await isBiometricSupported();
     if (!support.isAvailable) {
       throw new Error(support.error || "Biometría no soportada o configurada en este dispositivo.");
     }
 
-    const result = await NativeBiometric.verifyIdentity({
-      reason: "Configurar acceso biométrico para Arepa Express",
-      title: "Autenticación Biométrica",
+    console.log("Requesting identity verification...");
+    await NativeBiometric.verifyIdentity({
+      reason: "Registrar acceso biométrico",
+      title: "Seguridad",
       subtitle: "Usa tu huella o rostro para proteger tu cuenta",
-      description: "Confirma tu identidad para activar el bloqueo biométrico",
+      description: "Confirma tu identidad para activar el acceso rápido"
     });
 
-    if (result) {
-      return { id: `native_${userId}` };
-    }
-    return null;
+    console.log("Biometric verification successful");
+    return {
+      id: `bio_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      type: 'biometric'
+    };
   } catch (error: any) {
-    console.error("Error registrando biometría:", error);
-    throw error; // Throw to handle in the UI and show the message
+    console.error("Biometric registration error:", error);
+    return null;
   }
 };
 

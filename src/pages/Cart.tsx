@@ -573,7 +573,7 @@ export default function Cart({ hideHeader = false }: CartProps) {
                 <div className="flex items-center justify-between mb-8">
                   <h1 className="text-3xl font-black text-slate-900 flex items-center gap-3">
                     {restaurantData?.businessType === 'hotel' ? 'Tu Reservación' : 'Tu Pedido'}
-                    <span className="text-primary text-sm bg-primary/10 px-3 py-1 rounded-full uppercase tracking-widest">{items.length} {restaurantData?.businessType === 'hotel' ? 'servicios' : 'items'}</span>
+                    <span className="text-slate-900 text-sm bg-primary/10 px-3 py-1 rounded-full uppercase tracking-widest">{items.length} {restaurantData?.businessType === 'hotel' ? 'servicios' : 'items'}</span>
                   </h1>
                   <Link to={`/restaurant/${items[0].restaurantId}`} className="text-sm font-bold text-slate-400 hover:text-slate-600 underline underline-offset-4">
                     {restaurantData?.businessType === 'hotel' ? '+ Añadir servicios' : '+ Seguir pidiendo'}
@@ -709,10 +709,10 @@ export default function Cart({ hideHeader = false }: CartProps) {
 
                       {!isWaiter && (deliveryMethod === 'app_delivery' || deliveryMethod === 'own_delivery') && restaurantData?.businessType !== 'hotel' && (
                         <div className="flex justify-between items-center bg-primary/10 p-4 rounded-2xl border border-primary/20">
-                          <span className="text-xs uppercase tracking-widest text-primary font-black">Transporte Un 2x3</span>
+                          <span className="text-xs uppercase tracking-widest text-slate-900 font-black">Transporte Un 2x3</span>
                           <div className="text-right">
-                            <DualPrice usdAmount={deliveryFee} usdClassName="text-2xl font-black text-primary" bsClassName="text-[10px] text-primary/60" showDivider={false} />
-                            <span className="text-[9px] block mt-1 text-primary/70 font-black uppercase tracking-widest">Pago al Delivery</span>
+                            <DualPrice usdAmount={deliveryFee} usdClassName="text-2xl font-black text-slate-900" bsClassName="text-[10px] text-slate-900/60" showDivider={false} />
+                            <span className="text-[9px] block mt-1 text-slate-900/70 font-black uppercase tracking-widest">Pago al Delivery</span>
                           </div>
                         </div>
                       )}

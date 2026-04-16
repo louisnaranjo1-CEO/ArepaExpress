@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { verifyBiometric } from '../utils/security';
 import { auth } from '../lib/firebase';
+import { UN2X3_LOGO } from '../lib/env';
 import { Shield, Fingerprint, Lock, ChevronRight, AlertCircle, LogOut } from 'lucide-react';
 
 export default function LockScreen() {
@@ -45,7 +46,7 @@ export default function LockScreen() {
     }, []);
 
     return (
-        <div className="fixed inset-0 z-[10000] bg-[#FFFF00] flex flex-col items-center justify-center p-6 animate-fade-in">
+        <div className="fixed inset-0 z-[10000] bg-white flex flex-col items-center justify-center p-6 animate-fade-in">
             {/* Glossy Backdrop Elements */}
             <div className="absolute top-[-10%] left-[-10%] w-[50%] h-[50%] bg-white/20 rounded-full blur-[100px] animate-pulse" />
             <div className="absolute bottom-[-10%] right-[-10%] w-[50%] h-[50%] bg-black/5 rounded-full blur-[100px] animate-pulse" />
@@ -56,12 +57,12 @@ export default function LockScreen() {
                     <div className="absolute inset-0 bg-black/10 rounded-full blur-2xl group-hover:blur-3xl transition-all duration-500" />
                     <div className="relative w-48 h-48 flex items-center justify-center p-6 animate-scale-in">
                         <img 
-                            src="https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/logo%20principal.png?alt=media&token=c1438ea3-f244-4bc9-9e94-cd67d0b252d4" 
+                            src={UN2X3_LOGO} 
                             alt="Arepa Express Official Logo" 
                             className="w-full h-full object-contain filter drop-shadow-xl"
                         />
                     </div>
-                    <div className="absolute -bottom-2 -right-2 w-10 h-10 bg-black text-[#FFFF00] rounded-2xl flex items-center justify-center shadow-lg animate-bounce">
+                    <div className="absolute -bottom-2 -right-2 w-10 h-10 bg-slate-900 text-white rounded-2xl flex items-center justify-center shadow-lg animate-bounce">
                         <Lock className="w-5 h-5" />
                     </div>
                 </div>
@@ -88,7 +89,7 @@ export default function LockScreen() {
                         <div className="w-6 h-6 border-4 border-white/20 border-t-white rounded-full animate-spin" />
                     ) : (
                         <>
-                            <Fingerprint className="w-7 h-7 text-[#FFFF00]" />
+                            <Fingerprint className="w-7 h-7 text-primary" />
                             <span>Desbloquear App</span>
                             <ChevronRight className="w-5 h-5 text-white/40 group-hover:translate-x-1 transition-transform" />
                         </>

@@ -1,3 +1,4 @@
+import React from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { X, ExternalLink, ShieldCheck } from 'lucide-react';
 

@@ -1,3 +1,4 @@
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
@@ -43,6 +44,14 @@ const mapOptions: google.maps.MapOptions = {
 export default function Taxi() {
     const { user, userData } = useAuth();
     const navigate = useNavigate();
+
+    useEffect(() => {
+        console.log('Taxi component mounted');
+    }, []);
+
+    useEffect(() => {
+        console.log('Google Maps isLoaded:', isLoaded);
+    }, [isLoaded]);
 
     // Map instances and services
     const { isLoaded } = useJsApiLoader({

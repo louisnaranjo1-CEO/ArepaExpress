@@ -9,6 +9,7 @@ import { OfflineIndicator } from './components/OfflineIndicator';
 import SplashScreen from './components/SplashScreen';
 import LockScreen from './components/LockScreen';
 import { useAuth } from './context/AuthContext';
+import { UN2X3_LOGO } from './lib/env';
 
 function App() {
   const { isUnlocked, loading } = useAuth();
@@ -59,14 +60,14 @@ function App() {
   const isTransitioning = showSplash || loading;
 
   return (
-    <div className="w-full h-full bg-[#FFFF00]">
+    <div className="w-full h-full bg-white">
       {isTransitioning ? (
         <SplashScreen 
           onComplete={() => setShowSplash(false)} 
           isAuthLoading={loading} 
         />
       ) : (
-        <div className="animate-fade-in h-screen overflow-hidden bg-slate-100">
+        <div className="animate-fade-in h-screen overflow-hidden bg-white">
           {!isUnlocked ? <LockScreen /> : renderApp()}
           <OfflineIndicator />
         </div>

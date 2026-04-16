@@ -640,7 +640,7 @@ export default function Home() {
                   <div className="space-y-5">
                     <div className="flex gap-4">
                       <div className="w-10 h-10 rounded-2xl bg-indigo-50 flex items-center justify-center shrink-0 border border-indigo-100 shadow-sm">
-                        <MapPin className="w-5 h-5 text-primary" />
+                        <MapPin className="w-5 h-5 text-slate-900" />
                       </div>
                       <div>
                         <h4 className="font-bold text-slate-900 text-sm mb-1">Geolocalización Inteligente</h4>
@@ -1017,7 +1017,7 @@ function ProductGrid({ title, products, casheaIcon }: { title: string, products:
               </div>
 
               <div className="p-3 flex-1 flex flex-col">
-                <h3 className="text-xs text-slate-700 font-medium line-clamp-2 leading-tight group-hover:text-primary transition-colors">
+                <h3 className="text-xs text-slate-700 font-medium line-clamp-2 leading-tight group-hover:text-slate-900 transition-colors">
                   {product.name}
                 </h3>
                 

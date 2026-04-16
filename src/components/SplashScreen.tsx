@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { UN2X3_LOGO } from '../lib/env';
 
 interface SplashScreenProps {
   onComplete: () => void;
@@ -31,7 +32,7 @@ export default function SplashScreen({ onComplete, isAuthLoading }: SplashScreen
 
   return (
     <div 
-      className={`fixed inset-0 z-[9999] flex items-center justify-center bg-[#FFFF00] transition-opacity duration-500 ${isFadingOut ? 'opacity-0' : 'opacity-100'}`}
+      className={`fixed inset-0 z-[9999] flex items-center justify-center bg-white transition-opacity duration-500 ${isFadingOut ? 'opacity-0' : 'opacity-100'}`}
     >
       <div className="relative flex flex-col items-center">
         {/* Subtle Background Pulse with pure CSS */}
@@ -40,7 +41,7 @@ export default function SplashScreen({ onComplete, isAuthLoading }: SplashScreen
         {/* Logo Container with CSS animation from index.css */}
         <div className="relative w-64 h-64 flex items-center justify-center p-6 animate-scale-in">
           <img 
-            src="https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/logo%20principal.png?alt=media&token=c1438ea3-f244-4bc9-9e94-cd67d0b252d4" 
+            src={UN2X3_LOGO} 
             alt="Arepa Express Official Logo" 
             className="w-full h-full object-contain filter drop-shadow-xl"
           />

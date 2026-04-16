@@ -68,7 +68,7 @@ export default function LocationRequiredModal({
                             <p className="text-gray-600 mb-8 leading-relaxed">
                                 {description}
                                 <br />
-                                <span className="text-sm font-medium text-primary mt-2 block italic">
+                                <span className="text-sm font-medium text-slate-900 mt-2 block italic">
                                     "Tu privacidad es nuestra prioridad, puedes apagarla cuando gustes."
                                 </span>
                             </p>
@@ -76,7 +76,7 @@ export default function LocationRequiredModal({
                             <div className="space-y-4">
                                 <button
                                     onClick={handleGoToSettings}
-                                    className="w-full py-4 bg-primary text-white rounded-2xl font-bold shadow-lg shadow-primary/30 hover:bg-primary-dark transition-all flex items-center justify-center gap-2 group"
+                                    className="w-full py-4 bg-primary text-slate-900 rounded-2xl font-bold shadow-lg shadow-primary/30 hover:bg-primary-dark transition-all flex items-center justify-center gap-2 group"
                                 >
                                     <ShieldAlert className="w-5 h-5 group-hover:scale-110 transition-transform" />
                                     Activar Ubicación en Perfil

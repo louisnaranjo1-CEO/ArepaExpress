@@ -13,6 +13,7 @@ import { collection, query, where, orderBy, getDocs, doc, setDoc, serverTimestam
 import { updateProfile } from 'firebase/auth';
 import { Image as ImageIcon, Camera, Smartphone, User as UserIcon, Save } from 'lucide-react';
 import AddressPicker from '../components/AddressPicker';
+import React from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import ReviewModal from '../components/ReviewModal';
 import { Copy, Check } from 'lucide-react';
@@ -700,7 +701,7 @@ export default function Profile() {
                                 className="w-full text-center py-2 group"
                             >
                                 <span className="text-slate-900 font-bold text-xs group-hover:text-primary transition-colors">¿No tienes cuenta? </span>
-                                <span className="text-primary font-black text-xs group-hover:underline">Regístrate</span>
+                                <span className="text-slate-900 font-black text-xs group-hover:underline">Regístrate</span>
                             </button>
                             <div className="flex items-center gap-4 my-2">
                                 <div className="h-px bg-slate-100 flex-1"></div>
@@ -1038,9 +1039,27 @@ export default function Profile() {
 
                         <div className="w-20 h-20 bg-white/20 backdrop-blur-md rounded-full border-4 border-white/30 flex items-center justify-center overflow-hidden shadow-inner shrink-0">
                             {userData?.photoURL && userData.photoURL.trim() !== "" ? (
-                                <img src={userData.photoURL} alt="Profile" className="w-full h-full object-cover rounded-full" />
+                                <img 
+                                    src={userData.photoURL} 
+                                    alt="Profile" 
+                                    className="w-full h-full object-cover rounded-full" 
+                                    crossOrigin="anonymous"
+                                    onError={(e) => {
+                                        (e.target as HTMLImageElement).onerror = null;
+                                        (e.target as HTMLImageElement).src = 'https://www.gravatar.com/avatar/00000000000000000000000000000000?d=mp&f=y';
+                                    }}
+                                />
                             ) : user.photoURL && user.photoURL.trim() !== "" ? (
-                                <img src={user.photoURL} alt="Profile" className="w-full h-full object-cover rounded-full" />
+                                <img 
+                                    src={user.photoURL} 
+                                    alt="Profile" 
+                                    className="w-full h-full object-cover rounded-full"
+                                    crossOrigin="anonymous"
+                                    onError={(e) => {
+                                        (e.target as HTMLImageElement).onerror = null;
+                                        (e.target as HTMLImageElement).src = 'https://www.gravatar.com/avatar/00000000000000000000000000000000?d=mp&f=y';
+                                    }}
+                                />
                             ) : (
                                 <User className="w-10 h-10 text-white" />
                             )}
