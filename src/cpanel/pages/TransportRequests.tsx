@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { collection, query, orderBy, onSnapshot, doc, updateDoc, deleteDoc, writeBatch, getDocs, where, serverTimestamp, limit } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { db, storage } from '../../lib/firebase';
-import { Car, Bike, Clock, CheckCircle2, XCircle, Search, Calendar, DollarSign, MapPin, User, ShieldCheck, Upload, Image as ImageIcon, MessageSquare, Star, Phone, MessageCircle } from 'lucide-react';
+import { Car, Bike, Clock, CheckCircle2, XCircle, Search, Calendar, DollarSign, MapPin, User, ShieldCheck, Upload, Image as ImageIcon, MessageSquare, Star, Phone, MessageCircle, ShoppingBag, Store } from 'lucide-react';
 import toast from 'react-hot-toast';
 import RideChat from '../../components/RideChat';
 import DualPrice from '../../components/DualPrice';
@@ -178,7 +178,8 @@ export default function TransportRequests() {
         }
     };
 
-    const filteredRequests = requests.filter(req => {
+    const filteredRequests = validRequests.filter(req => {
+        if (!req) return false;
         if (filter !== 'all') {
             if (filter === 'in_progress') {
                 if (!['accepted', 'arriving', 'in_progress'].includes(req.status)) return false;
@@ -191,7 +192,8 @@ export default function TransportRequests() {
             const term = searchTerm.toLowerCase();
             return (
                 req.userPhone?.toLowerCase().includes(term) ||
-                req.id.toLowerCase().includes(term)
+                req.id?.toLowerCase().includes(term) ||
+                req.userName?.toLowerCase().includes(term)
             );
         }
         return true;
@@ -209,7 +211,7 @@ export default function TransportRequests() {
             adminProfit: number;
         }> = {};
 
-        requests.filter(r => r.status === 'completed').forEach(req => {
+        validRequests.filter(r => r && r.status === 'completed').forEach(req => {
             const { driverId, driverName, driverPhone, driverPayout, clientTotal, driverPaid } = req;
             const payout = parseFloat(driverPayout || req.price || 0);
             const total = parseFloat(clientTotal || req.price || 0);
@@ -309,11 +311,14 @@ export default function TransportRequests() {
 
     if (loading) {
         return (
-            <div className="flex items-center justify-center h-64">
-                <div className="w-10 h-10 border-4 border-primary border-t-transparent rounded-full animate-spin"></div>
+            <div className="flex flex-col items-center justify-center min-h-[400px] w-full py-20">
+                <div className="w-12 h-12 border-4 border-primary border-t-transparent rounded-full animate-spin mb-4" />
+                <p className="text-slate-500 font-black animate-pulse uppercase tracking-widest text-xs">Cargando Solicitudes...</p>
             </div>
         );
     }
+
+    const validRequests = Array.isArray(requests) ? requests : [];
 
     return (
         <div className="space-y-6">

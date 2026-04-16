@@ -103,8 +103,8 @@ export default function RideChat({ requestId, onClose, readOnly = false }: ChatP
                                         : 'bg-white border border-slate-200 text-slate-800 rounded-tl-sm shadow-sm'
                                     }`}>
                                     <p className="text-sm font-medium">{msg.text}</p>
-                                    <span className={`text-[10px] block mt-1 font-bold ${isMine ? 'text-indigo-200 text-right' : 'text-slate-400 text-left'}`}>
-                                        {msg.createdAt?.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                    <span className={`text-[10px] block mt-1 font-bold ${isMine ? 'text-black/40 text-right' : 'text-slate-400 text-left'}`}>
+                                        {msg.createdAt?.toDate?.() ? msg.createdAt.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}
                                     </span>
                                 </div>
                             </div>

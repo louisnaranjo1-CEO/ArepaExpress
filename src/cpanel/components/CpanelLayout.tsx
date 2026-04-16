@@ -3,6 +3,7 @@ import { NavLink, useNavigate } from 'react-router-dom';
 import { LayoutDashboard, Store, Users, Image as ImageIcon, LogOut, ChevronRight, Menu, X, Tag, Truck, Wallet, Car, Share2, Gift, Ticket, MessageSquareWarning, Megaphone, ShoppingBag } from 'lucide-react';
 import { collection, query, where, onSnapshot } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
+import { UN2X3_LOGO } from '../../lib/env';
 import { useGlobalAudioAlerts } from '../../hooks/useGlobalAudioAlerts';
 
 interface CpanelLayoutProps {
@@ -84,10 +85,10 @@ export default function CpanelLayout({ children, onLogout }: CpanelLayoutProps) 
                     {/* Sidebar Header */}
                     <div className="p-4 border-b border-slate-800 flex items-center justify-between">
                         <div className="flex items-center gap-3 cursor-pointer active:scale-95 transition-transform" onClick={() => window.location.href = 'https://deliexpress.app'}>
-                            <div className="w-14 h-14 flex items-center justify-center p-1 overflow-visible">
+                            <div className="relative w-14 h-14 flex items-center justify-center p-1 overflow-visible">
                                 <img
-                                    src="https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/logo.png?alt=media&v=1.1"
-                                    alt="Encontrado en un 2x3"
+                                    src={UN2X3_LOGO}
+                                    alt="Arepa Express"
                                     className="w-full h-full object-contain filter drop-shadow-sm"
                                 />
                             </div>

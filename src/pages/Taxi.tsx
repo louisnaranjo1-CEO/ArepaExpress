@@ -7,6 +7,7 @@ import { db, storage } from '../lib/firebase';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { Car, Bike, MapPin, Navigation, ArrowRight, CheckCircle2, X, Heart, History, Star, Wallet, Upload, Copy, Check, Calendar, Clock as ClockIcon } from 'lucide-react';
 import { GoogleMap, useJsApiLoader, Marker, DirectionsRenderer } from '@react-google-maps/api';
+import { UN2X3_LOGO } from '../lib/env';
 import toast from 'react-hot-toast';
 import { calculateDistance } from '../lib/geo';
 import { vibrate } from '../utils/haptics';
@@ -32,7 +33,7 @@ const defaultCenter = {
 };
 
 // Custom map theme to hide default POIs
-const mapOptions: google.maps.MapOptions = {
+const mapOptions: any = {
     disableDefaultUI: true,
     zoomControl: false,
     streetViewControl: false,
@@ -410,6 +411,11 @@ export default function Taxi() {
             console.log("Starting route calculation...");
             setIsCalculatingRoute(true);
 
+            if (!window.google) {
+                console.error("Google Maps API not available.");
+                return;
+            }
+
             const request: google.maps.DirectionsRequest = {
                 origin: { lat: origin.lat, lng: origin.lng },
                 destination: { lat: destination.lat, lng: destination.lng },
@@ -437,6 +443,14 @@ export default function Taxi() {
                 }
             }, 8000);
 
+            if (!window.google || !window.google.maps) {
+                clearTimeout(timeoutId);
+                setIsCalculatingRoute(false);
+                setRouteCalculationAttempted(true);
+                applyFallbackRoute();
+                return;
+            }
+
             directionsService.route(request, (result, status) => {
                 clearTimeout(timeoutId);
                 if (!isMounted) return;
@@ -445,7 +459,7 @@ export default function Taxi() {
                 setIsCalculatingRoute(false);
                 setRouteCalculationAttempted(true);
 
-                if (status === google.maps.DirectionsStatus.OK && result) {
+                if (window.google && window.google.maps && status === window.google.maps.DirectionsStatus.OK && result) {
                     setDirectionsResponse(result);
                     const leg = result.routes[0]?.legs[0];
                     if (leg && leg.distance) {
@@ -477,9 +491,9 @@ export default function Taxi() {
 
     // 6. Viewport Auto-Adjustment
     useEffect(() => {
-        if (!map || step !== 'vehicle') return;
+        if (!map || step !== 'vehicle' || !window.google || !window.google.maps) return;
 
-        const bounds = new google.maps.LatLngBounds();
+        const bounds = new window.google.maps.LatLngBounds();
         let hasPoints = false;
 
         if (directionsResponse) {
@@ -752,13 +766,13 @@ export default function Taxi() {
             <div className="flex-1 flex flex-col items-center justify-center p-8 text-center animate-fade-in bg-white h-[100dvh]">
                 <div className="relative mb-8">
                     <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-64 h-64 bg-primary/20 rounded-full blur-3xl animate-pulse"></div>
-                    <div className="relative z-10 animate-scale-in cursor-pointer active:scale-95 transition-transform" onClick={() => window.location.href = 'https://deliexpress.app'}>
-                        <img
-                            src="https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/logo.png?alt=media&v=1.1"
-                            alt="Deliexpress Logo"
-                            className="w-56 h-auto object-contain filter drop-shadow-2xl"
-                        />
-                    </div>
+                        <div className="relative z-10 animate-scale-in cursor-pointer active:scale-95 transition-transform" onClick={() => window.location.href = 'https://deliexpress.app'}>
+                            <img
+                                src={UN2X3_LOGO}
+                                alt="Deliexpress Logo"
+                                className="w-56 h-auto object-contain filter drop-shadow-2xl"
+                            />
+                        </div>
                 </div>
                 <h2 className="text-2xl font-black text-slate-900 mb-3 tracking-tight">
                     {initialStatus === 'searching' ? 'Buscando Conductor...' : 'Verificando Pago...'}
@@ -814,18 +828,18 @@ export default function Taxi() {
                     )}
 
                     {/* Real-time User Location (Blue Dot) */}
-                    {userLocation && (
+                    {userLocation && window.google && window.google.maps && (
                         <Marker
                             position={userLocation}
                             icon={{
-                                path: google.maps.SymbolPath.CIRCLE,
+                                path: window.google.maps.SymbolPath.CIRCLE,
                                 fillColor: '#4285F4',
                                 fillOpacity: 1,
                                 strokeColor: 'white',
                                 strokeWeight: 2,
                                 scale: 7
                             }}
-                            zIndex={1}
+                            zIndex={100}
                         />
                     )}
                 </GoogleMap>
@@ -1314,11 +1328,11 @@ export default function Taxi() {
                             exit={{ scale: 0.9, opacity: 0 }}
                             className="bg-white rounded-[32px] overflow-hidden shadow-2xl w-full max-w-sm"
                         >
-                            <div className="bg-primary p-8 flex flex-col items-center">
-                                <div className="w-20 h-20 bg-white rounded-full flex items-center justify-center mb-6 shadow-lg shadow-black/10">
-                                    <Car className="w-10 h-10 text-secondary" />
+                            <div className="bg-white p-8 flex flex-col items-center">
+                                <div className="w-20 h-20 bg-slate-100 rounded-full flex items-center justify-center mb-6 shadow-lg shadow-black/5">
+                                    <Car className="w-10 h-10 text-slate-900" />
                                 </div>
-                                <h3 className="text-xl font-black text-secondary text-center leading-tight">
+                                <h3 className="text-xl font-black text-slate-900 text-center leading-tight">
                                     Muévete con Deliexpress
                                 </h3>
                             </div>

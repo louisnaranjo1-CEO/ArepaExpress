@@ -24,12 +24,17 @@ export const registerBiometric = async (userId: string, userEmail: string): Prom
     }
 
     console.log("Requesting identity verification...");
-    await NativeBiometric.verifyIdentity({
-      reason: "Registrar acceso biométrico",
-      title: "Seguridad",
-      subtitle: "Usa tu huella o rostro para proteger tu cuenta",
-      description: "Confirma tu identidad para activar el acceso rápido"
-    });
+    try {
+      await NativeBiometric.verifyIdentity({
+        reason: "Registrar acceso biométrico",
+        title: "Seguridad",
+        subtitle: "Usa tu huella o rostro para proteger tu cuenta",
+        description: "Confirma tu identidad para activar el acceso rápido"
+      });
+    } catch (e: any) {
+      console.error("verifyIdentity failed:", e);
+      throw new Error(`Error de verificación: ${e.message || 'El usuario canceló o falló la identificación'}`);
+    }
 
     console.log("Biometric verification successful");
     return {

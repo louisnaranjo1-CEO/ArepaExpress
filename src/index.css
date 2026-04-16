@@ -118,6 +118,10 @@
   .text-gradient {
     @apply bg-clip-text text-transparent bg-gradient-to-r from-primary to-accent;
   }
+
+  .btn-primary-black {
+    @apply bg-primary text-slate-900 font-black uppercase tracking-widest shadow-lg shadow-primary/20 hover:scale-[1.02] active:scale-[0.98] transition-all;
+  }
 }
 
 html,

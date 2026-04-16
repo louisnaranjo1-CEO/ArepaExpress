@@ -1037,27 +1037,17 @@ export default function Profile() {
                             </button>
                         </div>
 
-                        <div className="w-20 h-20 bg-white/20 backdrop-blur-md rounded-full border-4 border-white/30 flex items-center justify-center overflow-hidden shadow-inner shrink-0">
-                            {userData?.photoURL && userData.photoURL.trim() !== "" ? (
+                        <div className="w-20 h-20 bg-white/20 backdrop-blur-md rounded-full border-4 border-white/30 flex items-center justify-center overflow-hidden shadow-inner shrink-0 relative">
+                            {((userData?.photoURL && typeof userData.photoURL === 'string' && userData.photoURL !== '') || (user?.photoURL && typeof user.photoURL === 'string' && user.photoURL !== '')) ? (
                                 <img 
-                                    src={userData.photoURL} 
+                                    src={userData?.photoURL || user?.photoURL || ''} 
                                     alt="Profile" 
                                     className="w-full h-full object-cover rounded-full" 
-                                    crossOrigin="anonymous"
+                                    referrerPolicy="no-referrer"
                                     onError={(e) => {
+                                        console.warn("Profile image failed to load, using fallback");
                                         (e.target as HTMLImageElement).onerror = null;
-                                        (e.target as HTMLImageElement).src = 'https://www.gravatar.com/avatar/00000000000000000000000000000000?d=mp&f=y';
-                                    }}
-                                />
-                            ) : user.photoURL && user.photoURL.trim() !== "" ? (
-                                <img 
-                                    src={user.photoURL} 
-                                    alt="Profile" 
-                                    className="w-full h-full object-cover rounded-full"
-                                    crossOrigin="anonymous"
-                                    onError={(e) => {
-                                        (e.target as HTMLImageElement).onerror = null;
-                                        (e.target as HTMLImageElement).src = 'https://www.gravatar.com/avatar/00000000000000000000000000000000?d=mp&f=y';
+                                        (e.target as HTMLImageElement).src = `https://ui-avatars.com/api/?name=${encodeURIComponent(user?.displayName || 'D')}&background=random&color=fff`;
                                     }}
                                 />
                             ) : (
