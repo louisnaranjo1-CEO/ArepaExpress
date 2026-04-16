@@ -56,12 +56,12 @@ export default defineConfig(({ mode }) => {
             },
             {
               urlPattern: /^https:\/\/firebasestorage\.googleapis\.com\/v0\/b\/arepa-express-ve-2026\.firebasestorage\.app\//,
-              handler: 'StaleWhileRevalidate',
+              handler: 'CacheFirst',
               options: {
                 cacheName: 'firebase-images-cache',
                 expiration: {
-                  maxEntries: 200,
-                  maxAgeSeconds: 30 * 24 * 60 * 60,
+                  maxEntries: 500,
+                  maxAgeSeconds: 30 * 24 * 60 * 60, // 30 days
                 },
                 cacheableResponse: {
                   statuses: [0, 200],

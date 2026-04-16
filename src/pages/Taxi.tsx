@@ -50,15 +50,20 @@ export default function Taxi() {
         console.log('Taxi component mounted');
     }, []);
 
-    useEffect(() => {
-        console.log('Google Maps isLoaded:', isLoaded);
-    }, [isLoaded]);
-
     // Map instances and services
     const { isLoaded } = useJsApiLoader({
         id: 'google-map-script',
         googleMapsApiKey: "AIzaSyCb1c-p1R6AZGetk8YzKiLuxjaxjmPqJX8"
     });
+
+    // States for components (Delivery UI)
+    const [activeTab, setActiveTab] = useState<'map' | 'chat'>('map');
+    const [rideStatus, setRideStatus] = useState<string>('idle'); // idle -> searching -> assigned -> arrived -> in_transit -> completed
+    const [watchId, setWatchId] = useState<number | null>(null);
+
+    useEffect(() => {
+        console.log('Google Maps isLoaded:', isLoaded);
+    }, [isLoaded]);
 
     const [map, setMap] = useState<google.maps.Map | null>(null);
     const [directionsService, setDirectionsService] = useState<google.maps.DirectionsService | null>(null);

@@ -10,6 +10,7 @@ import DeliveryPaymentModal from '../components/DeliveryPaymentModal';
 import ReviewModal from '../components/ReviewModal';
 import DualPrice from '../components/DualPrice';
 import OrderChatWindow from '../components/chat/OrderChatWindow';
+import AddressPicker from '../components/AddressPicker';
 import { useAuth } from '../context/AuthContext';
 import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { motion, AnimatePresence } from 'motion/react';
@@ -42,9 +43,12 @@ export default function TrackOrder() {
         deliveryMethod: 'app_delivery',
         vehicleType: 'moto',
         addressName: '',
-        addressReference: ''
+        addressReference: '',
+        lat: 0,
+        lng: 0
     });
     const [isEditingAddress, setIsEditingAddress] = useState(false);
+    const [showAddressPicker, setShowAddressPicker] = useState(false);
     const [isUpdatingAddress, setIsUpdatingAddress] = useState(false);
 
     // Platform Finance Config
@@ -61,7 +65,9 @@ export default function TrackOrder() {
                 deliveryMethod: order.deliveryMethod || 'app_delivery',
                 vehicleType: order.vehicleType || 'moto',
                 addressName: order.address?.name || '',
-                addressReference: order.address?.reference || ''
+                addressReference: order.address?.reference || '',
+                lat: order.address?.lat || 0,
+                lng: order.address?.lng || 0
             });
         }
     }, [order?.deliveryMethod, order?.vehicleType, order?.address?.name, order?.address?.reference]);
@@ -1376,7 +1382,7 @@ export default function TrackOrder() {
 
                     <div className="mt-6 pt-4 border-t border-slate-100 space-y-2">
                         <div className="flex justify-between items-center text-xs font-bold text-slate-500 uppercase tracking-tight">
-                            <span>Subtotal</span>
+                            <span>Compra a {restaurant?.name || 'negocio'}</span>
                             <DualPrice usdAmount={order.subtotal || 0} showDivider={false} className="flex items-center gap-1.5" />
                         </div>
                         {order.deliveryFee > 0 && (
@@ -1385,16 +1391,6 @@ export default function TrackOrder() {
                                 <DualPrice usdAmount={order.deliveryFee} showDivider={false} className="flex items-center gap-1.5" />
                             </div>
                         )}
-                        <div className="flex justify-between items-center pt-2">
-                            <span className="text-sm font-black text-slate-900 uppercase tracking-widest">Total</span>
-                            <DualPrice 
-                                usdAmount={order.total || 0} 
-                                usdClassName="text-xl font-black text-slate-900" 
-                                bsClassName="text-[11px] font-bold text-slate-400 block mt-0.5 text-right"
-                                showDivider={false} 
-                                className="flex flex-col items-end" 
-                            />
-                        </div>
                     </div>
                 </div>
 
@@ -1403,45 +1399,45 @@ export default function TrackOrder() {
                         <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Detalles de Entrega</h3>
                         {!order.deliveryPaymentClientConfirmed && (
                             <button 
-                                onClick={() => setIsEditingAddress(!isEditingAddress)} 
+                                onClick={() => setShowAddressPicker(true)} 
                                 className="text-[10px] font-black text-slate-900 uppercase tracking-widest bg-slate-900 px-3 py-1.5 rounded-lg active:scale-95 transition-transform"
                             >
-                                {isEditingAddress ? 'Cancelar' : 'Editar Dirección'}
+                                Cambiar Dirección
                             </button>
                         )}
                     </div>
                     
-                    {isEditingAddress ? (
-                        <div className="space-y-4 animate-in fade-in zoom-in-95 duration-200">
-                            <div>
-                                <label className="text-[9px] font-black text-slate-400 uppercase ml-1">Nueva Dirección</label>
-                                <input 
-                                    type="text"
-                                    value={editDelivery.addressName}
-                                    onChange={(e) => setEditDelivery({...editDelivery, addressName: e.target.value})}
-                                    className="w-full bg-slate-50 border-2 border-slate-100 p-3 rounded-2xl text-sm font-bold mt-1 outline-none focus:border-primary transition-all"
-                                    placeholder="Nombre de la calle, edificio, etc."
-                                />
-                            </div>
-                            <div>
-                                <label className="text-[9px] font-black text-slate-400 uppercase ml-1">Referencias Adicionales</label>
-                                <textarea 
-                                    value={editDelivery.addressReference}
-                                    onChange={(e) => setEditDelivery({...editDelivery, addressReference: e.target.value})}
-                                    className="w-full bg-slate-50 border-2 border-slate-100 p-3 rounded-2xl text-sm font-bold mt-1 outline-none focus:border-primary transition-all h-20 resize-none"
-                                    placeholder="Ej. Casa de portón blanco, subiendo por..."
-                                />
-                            </div>
-                            <button 
-                                onClick={handleUpdateAddress}
-                                disabled={isUpdatingAddress || !editDelivery.addressName}
-                                className="w-full bg-primary text-slate-900 py-3 rounded-2xl font-black shadow-lg shadow-primary/20 flex items-center justify-center gap-2 disabled:opacity-50"
-                            >
-                                {isUpdatingAddress ? <Loader2 className="w-5 h-5 animate-spin" /> : 'Guardar Nueva Dirección'}
-                            </button>
-                        </div>
-                    ) : (
-                        <div className="flex gap-4">
+                    {showAddressPicker && (
+                        <AddressPicker 
+                            onClose={() => setShowAddressPicker(false)}
+                            onSave={async (data) => {
+                                setShowAddressPicker(false);
+                                setIsUpdatingAddress(true);
+                                try {
+                                    await updateDoc(doc(db, 'orders', order.id), {
+                                        'address.name': data.name,
+                                        'address.reference': data.reference,
+                                        'address.lat': data.lat,
+                                        'address.lng': data.lng
+                                    });
+                                    toast.success('Dirección actualizada');
+                                } catch (error) {
+                                    console.error(error);
+                                    toast.error('Error al actualizar dirección');
+                                } finally {
+                                    setIsUpdatingAddress(false);
+                                }
+                            }}
+                            initialData={{
+                                name: editDelivery.addressName || 'Casa',
+                                lat: editDelivery.lat || 10.4806,
+                                lng: editDelivery.lng || -66.9036,
+                                reference: editDelivery.addressReference || ''
+                            }}
+                        />
+                    )}
+
+                    <div className="flex gap-4">
                             <div className="w-12 h-12 bg-primary/10 text-slate-900 rounded-2xl flex items-center justify-center shrink-0">
                                 <MapPin className="w-6 h-6" />
                             </div>
@@ -1450,7 +1446,6 @@ export default function TrackOrder() {
                                 <p className="text-xs text-slate-500 font-medium leading-relaxed mt-1">{order.address?.reference || 'Sin referencias'}</p>
                             </div>
                         </div>
-                    )}
 
                     {order.deliveryPaymentClientConfirmed && (
                         <div className="mt-4 p-3 bg-slate-50 rounded-xl border border-slate-100 flex items-center gap-2">
