@@ -19,6 +19,10 @@ export default function WaiterLogin() {
         setError(null);
         try {
             console.log("Attempting waiter login for:", waiterEmail);
+            
+            // Sign in anonymously first so we have a valid auth session to read collections
+            const authResult = await signInAnonymously(auth);
+            const currentUid = authResult.user.uid;
 
             // Look up in the index instead of collectionGroup to avoid missing index error
             const indexSnap = await getDoc(doc(db, 'waiter_index', waiterEmail.toLowerCase()));
@@ -55,24 +59,15 @@ export default function WaiterLogin() {
                 ...data
             };
 
-            // Sign in anonymously to have a valid auth session for Firestore rules
-            try {
-                const authResult = await signInAnonymously(auth);
-                const currentUid = authResult.user.uid;
-                
-                // Register session in top-level sessions collection for rules to validate
-                await setDoc(doc(db, 'sessions', currentUid), {
+            // Register session in top-level sessions collection for rules to validate
+            await setDoc(doc(db, 'sessions', currentUid), {
                     restaurantId: restaurantId,
                     role: 'waiter',
                     userId: waiterId,
                     createdAt: new Date().toISOString()
                 });
                 
-                console.log("Waiter authenticated and session registered with UID:", currentUid);
-            } catch (authErr) {
-                console.error("Auth error during waiter login:", authErr);
-                // We continue even if auth fails, but sync might not work if rules are strict
-            }
+            console.log("Waiter authenticated and session registered with UID:", currentUid);
 
             localStorage.setItem('waiterData', JSON.stringify(waiterData));
             localStorage.setItem('waiterRestaurantId', restaurantId);

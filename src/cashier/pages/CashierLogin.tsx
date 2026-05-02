@@ -18,6 +18,10 @@ export default function CashierLogin() {
         setIsSigningIn(true);
         setError(null);
         try {
+            // Sign in anonymously first so we have a valid auth session to read collections
+            const authResult = await signInAnonymously(auth);
+            const currentUid = authResult.user.uid;
+
             const indexSnap = await getDoc(doc(db, 'cashier_index', cashierEmail.toLowerCase()));
 
             if (!indexSnap.exists()) {
@@ -55,13 +59,8 @@ export default function CashierLogin() {
                 ...data
             };
 
-            // Sign in anonymously to have a valid auth session for Firestore rules
-            try {
-                const authResult = await signInAnonymously(auth);
-                const currentUid = authResult.user.uid;
-                
-                // Link this session UID to the cashier document
-                await updateDoc(doc(db, 'restaurants', restaurantId, 'cashiers', cashierId), {
+            // Link this session UID to the cashier document
+            await updateDoc(doc(db, 'restaurants', restaurantId, 'cashiers', cashierId), {
                     currentSessionUid: currentUid,
                     lastLogin: new Date().toISOString()
                 });
@@ -76,16 +75,12 @@ export default function CashierLogin() {
                 });
                 
                 console.log("Cashier authenticated with UID:", currentUid);
-            } catch (authErr) {
-                console.error("Auth error during cashier login:", authErr);
-                // We continue even if auth fails, but sync might not work if rules are strict
-            }
 
-            localStorage.setItem('cashierData', JSON.stringify(cashierData));
-            localStorage.setItem('cashierRestaurantId', restaurantId);
-            localStorage.setItem('isCashier', 'true');
+                localStorage.setItem('cashierData', JSON.stringify(cashierData));
+                localStorage.setItem('cashierRestaurantId', restaurantId);
+                localStorage.setItem('isCashier', 'true');
 
-            navigate('/');
+                navigate('/');
         } catch (err: any) {
             console.error("Failed to sign in as cashier", err);
             setError(err.message || "Error al iniciar sesión. Intenta de nuevo.");
