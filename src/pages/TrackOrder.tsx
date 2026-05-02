@@ -14,8 +14,23 @@ import AddressPicker from '../components/AddressPicker';
 import { useAuth } from '../context/AuthContext';
 import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { motion, AnimatePresence } from 'motion/react';
+import { GoogleMap, useJsApiLoader, Marker } from '@react-google-maps/api';
+
+const mapOptions: google.maps.MapOptions = {
+    disableDefaultUI: true,
+    zoomControl: false,
+    streetViewControl: false,
+    mapTypeControl: false,
+    fullscreenControl: false,
+    clickableIcons: false,
+};
 
 export default function TrackOrder() {
+    const { isLoaded } = useJsApiLoader({
+        id: 'google-map-script',
+        googleMapsApiKey: "AIzaSyCb1c-p1R6AZGetk8YzKiLuxjaxjmPqJX8"
+    });
+
     const { orderId } = useParams();
     const navigate = useNavigate();
     const [order, setOrder] = useState<any>(null);
@@ -581,74 +596,62 @@ export default function TrackOrder() {
                 <h1 className="text-lg font-black text-slate-900">Seguimiento de Pedido</h1>
             </div>
 
-            {/* Map Placeholder Area - Using Premium Logo Brand Overlay */}
-            <div className="h-80 bg-slate-950 relative overflow-hidden flex flex-col items-center justify-center text-white p-6">
-                {/* Background Effects */}
-                <div className="absolute inset-0">
-                    <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-primary/20 via-transparent to-transparent animate-pulse"></div>
-                    <div className="h-full w-full bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')] opacity-10"></div>
-                </div>
-                
-                {/* Animated Scanner / Radar Background */}
-                <div className="absolute inset-0 flex items-center justify-center opacity-30 pointer-events-none">
-                    <div className="w-[500px] h-[500px] rounded-full border border-primary/20 flex items-center justify-center relative">
-                        <div className="absolute inset-0 rounded-full border border-primary/10 animate-[ping_3s_linear_infinite]"></div>
-                        <div className="absolute inset-20 rounded-full border border-primary/10 animate-[ping_4s_linear_infinite]"></div>
-                        {/* Rotating Radar Line */}
-                        <div className="absolute w-[250px] h-[250px] top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2">
-                            <div className="w-full h-1 bg-gradient-to-r from-transparent to-primary/40 origin-left animate-[spin_4s_linear_infinite]" style={{ transformOrigin: '0% 50%' }}></div>
-                        </div>
-
-                        {/* User Blue Dot (Live Location) */}
-                        <AnimatePresence>
-                            {userLocation && (
-                                <motion.div 
-                                    initial={{ scale: 0, opacity: 0 }}
-                                    animate={{ scale: 1, opacity: 1 }}
-                                    className="absolute z-20 transition-all duration-1000" 
-                                    style={{ 
-                                        // Visual simulation: center around radar
-                                        transform: 'translate(45px, -55px)' 
-                                    }}
-                                >
-                                    <div className="relative w-4 h-4">
-                                        <div className="absolute inset-0 bg-primary rounded-full animate-ping opacity-75"></div>
-                                        <div className="relative w-4 h-4 bg-primary rounded-full shadow-lg shadow-primary/50 border-2 border-white"></div>
-                                        <div className="absolute -bottom-6 left-1/2 -translate-x-1/2 whitespace-nowrap bg-slate-900 text-[8px] font-black text-slate-900 px-2 py-0.5 rounded-full uppercase tracking-widest">Tú</div>
-                                    </div>
-                                </motion.div>
-                            )}
-                        </AnimatePresence>
-                    </div>
-                </div>
-                
-                <div className="relative flex flex-col items-center z-10">
-                    <div className="w-24 h-24 bg-white rounded-[2.5rem] shadow-2xl flex items-center justify-center mb-6 relative group border-4 border-slate-900 overflow-hidden">
-                        {restaurant?.logoUrl ? (
-                            <img src={restaurant.logoUrl} alt="Logo" className="w-full h-full object-cover p-2" />
-                        ) : (
-                            <Store className="w-10 h-10 text-slate-900" />
+            {/* Interactive Map Area */}
+            <div className="h-80 relative overflow-hidden bg-slate-100">
+                {isLoaded ? (
+                    <GoogleMap
+                        mapContainerStyle={{ width: '100%', height: '100%' }}
+                        center={driverLocation || (order?.address?.lat ? { lat: order.address.lat, lng: order.address.lng } : { lat: 10.4806, lng: -66.9036 })}
+                        zoom={driverLocation ? 16 : 14}
+                        options={mapOptions}
+                    >
+                        {/* Destination (Client) Marker */}
+                        {order?.address?.lat && order?.address?.lng && (
+                            <Marker 
+                                position={{ lat: order.address.lat, lng: order.address.lng }} 
+                                icon={{
+                                    url: 'https://cdn-icons-png.flaticon.com/512/1004/1004285.png',
+                                    scaledSize: window.google ? new window.google.maps.Size(32, 32) : undefined
+                                }}
+                            />
                         )}
-                        <div className="absolute inset-0 bg-primary/10 animate-pulse group-hover:opacity-0 transition-opacity"></div>
+                        {/* Driver Marker */}
+                        {driverLocation && (
+                            <Marker 
+                                position={driverLocation} 
+                                icon={{
+                                    url: 'https://cdn-icons-png.flaticon.com/512/3209/3209935.png',
+                                    scaledSize: window.google ? new window.google.maps.Size(48, 48) : undefined
+                                }}
+                            />
+                        )}
+                    </GoogleMap>
+                ) : (
+                    <div className="absolute inset-0 flex items-center justify-center">
+                        <Loader2 className="w-8 h-8 animate-spin text-slate-400" />
                     </div>
-                    
-                    <div className="text-center">
-                        <div className="inline-block bg-primary px-4 py-1.5 rounded-full mb-3 shadow-lg shadow-primary/20 border border-primary/50">
-                            <p className="font-black text-[9px] uppercase tracking-[0.4em] text-slate-900">Rastreo Activo</p>
-                        </div>
-                        <h2 className="text-xl font-black text-white mb-1 uppercase tracking-tight">#{orderId?.slice(-5).toUpperCase()}</h2>
-                        <p className="text-white/40 text-[10px] font-bold uppercase tracking-[0.2em] max-w-[250px] mx-auto leading-relaxed">
-                            {currentStep === 1 && (order.status === 'verificando_pago_delivery' ? "Verificando el pago de tu delivery..." : "Confirmando tu pedido con el restaurante...")}
-                            {currentStep === 2 && (!transportRequest || transportRequest.status === 'searching') ? "Preparación en curso. ¡Casi listo!" : null}
-                            {currentStep === 2 && transportRequest?.status === 'accepted' ? "Tu piloto va camino al restaurante" : null}
-                            {currentStep === 2 && transportRequest?.status === 'arriving' ? "El piloto aguarda por tu pedido" : null}
-                            {currentStep === 3 && (driver ? `${driver.fullName.split(' ')[0]} está transportando tu orden` : "Asignando repartidor...")}
-                            {currentStep === 4 && "¡Pedido entregado! Disfruta tu comida"}
-                        </p>
+                )}
+                
+                <div className="absolute top-4 left-4 z-10">
+                    <div className="w-16 h-16 bg-white rounded-[1.5rem] shadow-xl flex items-center justify-center relative border-4 border-slate-900 overflow-hidden group">
+                        {restaurant?.logoUrl ? (
+                            <img src={restaurant.logoUrl} alt="Logo" className="w-full h-full object-cover p-1" />
+                        ) : (
+                            <Store className="w-8 h-8 text-slate-900" />
+                        )}
                     </div>
                 </div>
 
-                <div className="absolute bottom-6 left-6 right-6 bg-slate-900/40 backdrop-blur-xl px-5 py-3 rounded-full border border-white/5 flex items-center justify-between shadow-lg">
+                <div className="absolute top-4 right-4 z-10 flex flex-col items-end">
+                    <div className="inline-block bg-primary px-4 py-1.5 rounded-full mb-3 shadow-lg shadow-primary/20 border border-primary/50 backdrop-blur-md bg-opacity-90">
+                        <p className="font-black text-[9px] uppercase tracking-[0.4em] text-slate-900">Rastreo Activo</p>
+                    </div>
+                    <div className="bg-slate-900/90 backdrop-blur-md px-3 py-1 rounded-full border border-white/10">
+                        <h2 className="text-sm font-black text-white uppercase tracking-tight">#{orderId?.slice(-5).toUpperCase()}</h2>
+                    </div>
+                </div>
+
+                <div className="absolute bottom-6 left-6 right-6 bg-slate-900/90 backdrop-blur-xl px-5 py-3 rounded-full border border-white/10 flex items-center justify-between shadow-xl z-10">
                     <div className="flex items-center gap-3">
                         <div className="relative w-2.5 h-2.5">
                             <div className="absolute inset-0 bg-emerald-500 rounded-full animate-ping opacity-75"></div>
@@ -656,7 +659,7 @@ export default function TrackOrder() {
                         </div>
                         <span className="text-[10px] font-black uppercase tracking-[0.2em] text-emerald-400">Track en Vivo</span>
                     </div>
-                    <span className="text-[10px] font-black text-white/40 uppercase tracking-widest">{restaurant?.name || "Deliexpress"}</span>
+                    <span className="text-[10px] font-black text-white/60 uppercase tracking-widest">{restaurant?.name || "Deliexpress"}</span>
                 </div>
             </div>
 

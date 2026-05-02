@@ -1099,7 +1099,7 @@ export default function OrdersRadar() {
                                         REPARTO COMIDA
                                     </div>
                                     <div className="flex flex-col items-end">
-                                        <div className="text-2xl font-black text-emerald-600">${(order.deliveryFee || 0).toFixed(2)}</div>
+                                        <div className="text-2xl font-black text-emerald-600">${(order.driverPayout || order.deliveryFee || 0).toFixed(2)}</div>
                                         <div className="text-[10px] font-black text-primary uppercase mt-0.5 tracking-wider">Ganancia</div>
                                     </div>
                                 </div>

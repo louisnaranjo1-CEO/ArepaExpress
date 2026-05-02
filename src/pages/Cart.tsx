@@ -708,11 +708,11 @@ export default function Cart({ hideHeader = false }: CartProps) {
                       </div>
 
                       {!isWaiter && (deliveryMethod === 'app_delivery' || deliveryMethod === 'own_delivery') && restaurantData?.businessType !== 'hotel' && (
-                        <div className="flex justify-between items-center bg-primary/10 p-4 rounded-2xl border border-primary/20">
-                          <span className="text-xs uppercase tracking-widest text-slate-900 font-black">Transporte Un 2x3</span>
+                        <div className="flex justify-between items-center bg-primary p-4 rounded-2xl shadow-lg border border-primary/20">
+                          <span className="text-xs uppercase tracking-widest text-black font-black">Transporte Un 2x3</span>
                           <div className="text-right">
-                            <DualPrice usdAmount={deliveryFee} usdClassName="text-2xl font-black text-slate-900" bsClassName="text-[10px] text-slate-900/60" showDivider={false} />
-                            <span className="text-[9px] block mt-1 text-slate-900/70 font-black uppercase tracking-widest">Pago al Delivery</span>
+                            <DualPrice usdAmount={deliveryFee} usdClassName="text-2xl font-black text-black" bsClassName="text-[10px] text-black" showDivider={false} />
+                            <span className="text-[9px] block mt-1 text-black font-black uppercase tracking-widest">Pago al Delivery</span>
                           </div>
                         </div>
                       )}
