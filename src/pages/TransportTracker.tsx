@@ -68,24 +68,29 @@ export default function TransportTracker() {
     useEffect(() => {
         if (!requestId) return;
 
-        const unsubscribe = onSnapshot(doc(db, 'transport_requests', requestId), async (snapshot) => {
+        const unsubscribe = onSnapshot(doc(db, 'transport_requests', requestId), (snapshot) => {
             if (snapshot.exists()) {
                 const requestData = snapshot.data();
                 setRequest(requestData);
-
-                // If a driver was assigned, fetch their profile
-                if (requestData.driverId && (!driver || driver.id !== requestData.driverId)) {
-                    const dDoc = await getDoc(doc(db, 'delivery_drivers', requestData.driverId));
-                    if (dDoc.exists()) {
-                        setDriver({ id: dDoc.id, ...dDoc.data() } as DeliveryDriver);
-                    }
-                }
             }
             setLoading(false);
         });
 
         return () => unsubscribe();
     }, [requestId]);
+
+    // Escuchar los cambios del conductor en tiempo real (para obtener la ubicación actualizada)
+    useEffect(() => {
+        if (!request?.driverId) return;
+
+        const unsubscribe = onSnapshot(doc(db, 'delivery_drivers', request.driverId), (dDoc) => {
+            if (dDoc.exists()) {
+                setDriver({ id: dDoc.id, ...dDoc.data() } as DeliveryDriver);
+            }
+        });
+
+        return () => unsubscribe();
+    }, [request?.driverId]);
 
     // Fetch notification sound
     useEffect(() => {
@@ -438,15 +443,32 @@ export default function TransportTracker() {
                                     zIndex={1}
                                 />
                             )}
+
+                            {/* Driver Real-time Location (Vehicle Icon) */}
+                            {driver?.currentLocation && ['accepted', 'arriving', 'in_progress'].includes(request.status) && (
+                                <Marker
+                                    position={{ lat: driver.currentLocation.latitude, lng: driver.currentLocation.longitude }}
+                                    icon={{
+                                        url: driver.vehicleType === 'moto' 
+                                            ? 'https://cdn-icons-png.flaticon.com/512/3721/3721619.png' 
+                                            : 'https://cdn-icons-png.flaticon.com/512/1048/1048314.png',
+                                        scaledSize: new google.maps.Size(40, 40),
+                                        anchor: new google.maps.Point(20, 20)
+                                    }}
+                                    zIndex={2}
+                                />
+                            )}
                         </GoogleMap>
                     </div>
                 ) : null}
             </div>
 
-            {/* Modal de Chat Integrado, fixed a pantalla completa */}
+            {/* Modal de Chat Integrado, estilo Bottom Sheet para que el mapa quede visible */}
             {showChat && (
-                <div className="fixed inset-0 z-[100] bg-white flex flex-col">
-                    <RideChat requestId={requestId!} onClose={() => setShowChat(false)} />
+                <div className="fixed inset-0 z-[100] bg-slate-900/40 flex flex-col justify-end animate-fade-in pointer-events-auto">
+                    <div className="h-[75vh] w-full bg-white rounded-t-3xl overflow-hidden shadow-[0_-10px_40px_rgba(0,0,0,0.2)] animate-slide-up">
+                        <RideChat requestId={requestId!} onClose={() => setShowChat(false)} />
+                    </div>
                 </div>
             )}
 

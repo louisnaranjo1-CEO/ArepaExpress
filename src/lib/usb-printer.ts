@@ -356,7 +356,19 @@ export const printToUsbDevice = async (vendorId: number, productId: number, data
         if (!navigator.usb) throw new Error("WebUSB no soportado");
 
         const devices = await navigator.usb.getDevices();
-        const device = devices.find(d => d.vendorId === vendorId && d.productId === productId);
+        let device = devices.find(d => d.vendorId === vendorId && d.productId === productId);
+
+        if (!device) {
+            try {
+                // Request permission if not already granted.
+                // Note: This must be called from a user gesture.
+                device = await navigator.usb.requestDevice({
+                    filters: [{ vendorId, productId }]
+                });
+            } catch (err) {
+                console.error("Permiso denegado o no seleccionado por el usuario:", err);
+            }
+        }
 
         if (!device) {
             console.error(`Dispositivo no encontrado (VID: ${vendorId}, PID: ${productId})`);

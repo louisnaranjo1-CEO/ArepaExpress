@@ -76,6 +76,21 @@ export default function Taxi() {
     const [userLocation, setUserLocation] = useState<google.maps.LatLngLiteral | null>(null);
     const [isDragging, setIsDragging] = useState(false);
 
+    // Fetch initial location immediately on mount
+    useEffect(() => {
+        if (navigator.geolocation) {
+            navigator.geolocation.getCurrentPosition(
+                (pos) => {
+                    const newPos = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+                    setUserLocation(newPos);
+                    setCurrentCenter(newPos);
+                },
+                (err) => console.error("Initial location fetch error:", err),
+                { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+            );
+        }
+    }, []);
+
     const [routeInfo, setRouteInfo] = useState<{ distance: number, duration: string } | null>(null);
 
     const [vehicleType, setVehicleType] = useState<'moto' | 'carro' | 'ejecutivo' | null>(null);
@@ -169,9 +184,9 @@ export default function Taxi() {
         onlineDrivers.forEach(d => {
             // Count if not busy explicitly from UI, and not having active order or run
             if (d.availability !== 'busy' && !busyTransportDrivers.has(d.id) && !busyOrderDrivers.has(d.id)) {
-                if (d.vehicleType === 'moto') counts.moto++;
-                if (d.vehicleType === 'carro') counts.carro++;
-                if (d.vehicleType === 'ejecutivo') counts.ejecutivo++;
+                if (d.vehicleType?.toLowerCase() === 'moto') counts.moto++;
+                if (d.vehicleType?.toLowerCase() === 'carro') counts.carro++;
+                if (d.vehicleType?.toLowerCase() === 'ejecutivo') counts.ejecutivo++;
             }
         });
         setActiveDrivers(counts);
@@ -627,7 +642,7 @@ export default function Taxi() {
         }
 
         const clientTotal = calculatePrice(vehicleType);
-        const driverPayout = calculatePrice(vehicleType, true);
+        const driverPayout = clientTotal;
 
         // Wallet validation
         if (selectedPaymentMethod === 'wallet') {
@@ -858,32 +873,10 @@ export default function Taxi() {
                         <X className="w-6 h-6" />
                     </button>
                 )}
-
             </div>
 
-            {/* 2. Docked Bottom Panel - 35% height */}
+             {/* 2. Docked Bottom Panel - 35% height */}
             <div className="absolute inset-x-0 bottom-0 z-30 pointer-events-none flex flex-col justify-end items-center">
-                
-                {/* Floating "Locate Me" Button outside the card */}
-                {step === 'origin' && (
-                    <div className="w-full flex justify-end px-4 mb-3 pointer-events-none">
-                        <button
-                            onClick={toggleFollowUser}
-                            className={`pointer-events-auto z-40 w-14 h-14 rounded-full shadow-[0_5px_0_#ca8a04] active:shadow-[0_0px_0_#ca8a04] active:translate-y-[5px] border-2 border-slate-900 flex items-center justify-center transition-all duration-300 ${
-                                isFollowingUser 
-                                ? 'bg-[#ffff00] text-black animate-pulse' 
-                                : 'bg-[#ffff00] text-black'
-                            }`}
-                            title={isFollowingUser ? "Detener seguimiento" : "Ubicación en tiempo real"}
-                        >
-                            <Navigation className={`w-6 h-6 fill-black`} />
-                            {isFollowingUser && (
-                                <div className="absolute -top-1 -right-1 w-4 h-4 bg-emerald-500 rounded-full border-2 border-white shadow-sm animate-bounce" />
-                            )}
-                        </button>
-                    </div>
-                )}
-
                 <div className={`w-full pointer-events-auto bg-white/95 backdrop-blur-xl rounded-t-[32px] rounded-b-none shadow-[0_-10px_40px_rgba(0,0,0,0.15)] border-t border-white/50 p-6 overflow-y-auto scrollbar-hide pb-6 transition-all duration-500 ease-in-out break-words ${destination ? 'max-h-[50dvh] h-[50dvh]' : 'max-h-[35dvh] h-[35dvh]'}`}>
                     {/* Progress Indicator */}
                     <div className="w-12 h-1.5 bg-slate-200/60 rounded-full mx-auto mb-5 drop-shadow-sm"></div>

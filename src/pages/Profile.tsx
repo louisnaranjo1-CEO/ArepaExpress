@@ -1339,7 +1339,7 @@ export default function Profile() {
 
                                             <div className="flex justify-end items-end mt-1">
                                                 <span className="font-black text-slate-900 text-base">
-                                                    ${(activity.type === 'transport' ? (activity.fare || 0) : ((activity.total || 0) + (activity.deliveryFee || 0))).toFixed(2)}
+                                                    ${(activity.type === 'transport' ? (activity.price || activity.fare || 0) : ((activity.total || 0) + (activity.deliveryFee || 0))).toFixed(2)}
                                                 </span>
                                             </div>
                                             

@@ -28,7 +28,11 @@ service cloud.firestore {
       );
       allow delete: if request.auth != null && (request.auth.uid == userId || isCPanelAdmin());
     }
-    
+    // Staff sessions validation
+    match /sessions/{sessionId} {
+      allow read, write: if request.auth != null && request.auth.uid == sessionId;
+    }
+
     // Restaurants and their public data
     match /restaurants/{restaurantId} {
       allow read: if true;
@@ -46,7 +50,28 @@ service cloud.firestore {
         allow read, write: if (request.auth != null && request.auth.uid == followerId) || isCPanelAdmin();
       }
 
-      // Private Data inside restaurants (tables, waiters, finances, etc.)
+      // Waiters, Cashiers, Printers, and Tables access for staff
+      match /tables/{tableId} {
+        allow read, write: if request.auth != null && (
+          request.auth.uid == restaurantId || 
+          isCPanelAdmin() ||
+          (exists(/databases/$(database)/documents/sessions/$(request.auth.uid)) && get(/databases/$(database)/documents/sessions/$(request.auth.uid)).data.restaurantId == restaurantId)
+        );
+      }
+      match /printers/{printerId} {
+        allow read: if request.auth != null;
+        allow write: if (request.auth != null && request.auth.uid == restaurantId) || isCPanelAdmin();
+      }
+      match /waiters/{waiterId} {
+        allow read: if request.auth != null;
+        allow write: if (request.auth != null && request.auth.uid == restaurantId) || isCPanelAdmin();
+      }
+      match /cashiers/{cashierId} {
+        allow read: if request.auth != null;
+        allow write: if (request.auth != null && request.auth.uid == restaurantId) || isCPanelAdmin();
+      }
+
+      // Other Private Data inside restaurants
       match /{privateData=**} {
         allow read, write: if (request.auth != null && request.auth.uid == restaurantId) || isCPanelAdmin();
       }
@@ -74,7 +99,7 @@ service cloud.firestore {
         request.auth.uid == resource.data.restaurantId || 
         request.auth.uid == resource.data.deliveryDriverId ||
         request.auth.uid == resource.data.userId || 
-        exists(/databases/$(database)/documents/restaurants/$(resource.data.restaurantId)/waiters/$(request.auth.uid)) ||
+        (exists(/databases/$(database)/documents/sessions/$(request.auth.uid)) && get(/databases/$(database)/documents/sessions/$(request.auth.uid)).data.restaurantId == resource.data.restaurantId) ||
         isCPanelAdmin()
       );
       
@@ -85,7 +110,7 @@ service cloud.firestore {
       allow update: if (request.auth != null && (
         request.auth.uid == resource.data.restaurantId || 
         request.auth.uid == resource.data.deliveryDriverId ||
-        exists(/databases/$(database)/documents/restaurants/$(resource.data.restaurantId)/waiters/$(request.auth.uid)) ||
+        (exists(/databases/$(database)/documents/sessions/$(request.auth.uid)) && get(/databases/$(database)/documents/sessions/$(request.auth.uid)).data.restaurantId == resource.data.restaurantId) ||
         (resource.data.status == 'finding_driver' && request.resource.data.status == 'driver_assigned')
       )) || 
       // Permit guests to attach payment

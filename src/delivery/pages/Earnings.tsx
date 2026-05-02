@@ -71,7 +71,7 @@ export default function Earnings() {
                     const data = doc.data();
                     return {
                         id: doc.id,
-                        amount: data.deliveryFee || 0,
+                        amount: Number(data.deliveryFee || 0) || 0,
                         type: 'delivery',
                         status: data.status,
                         createdAt: data.createdAt,
@@ -93,7 +93,7 @@ export default function Earnings() {
                     const data = doc.data();
                     return {
                         id: doc.id,
-                        amount: parseFloat(data.driverPayout || data.price || 0),
+                        amount: parseFloat(String(data.driverPayout || data.price || 0)) || 0,
                         type: 'transport',
                         status: data.status,
                         createdAt: data.createdAt,
@@ -102,7 +102,7 @@ export default function Earnings() {
                         isPaid: data.driverPaid,
                         rating: data.rating,
                         comment: data.ratingComment,
-                        distance: data.distance ? (parseFloat(data.distance) / 1000).toFixed(1) : undefined,
+                        distance: data.distance ? (parseFloat(String(data.distance)) / 1000).toFixed(1) : undefined,
                         duration: data.arrivalDuration
                     };
                 });
@@ -156,8 +156,14 @@ export default function Earnings() {
         const diff = d.getDate() - day; // 0 for Sunday
         const startOfWeek = new Date(d.setDate(diff)).setHours(0, 0, 0, 0);
 
-        const todayItems = earnings.filter(o => (o.createdAt?.seconds * 1000) >= startOfToday);
-        const weekItems = earnings.filter(o => (o.createdAt?.seconds * 1000) >= startOfWeek);
+        const todayItems = earnings.filter(o => {
+            const time = o.createdAt?.seconds ? o.createdAt.seconds * 1000 : (typeof o.createdAt === 'string' ? new Date(o.createdAt).getTime() : 0);
+            return time >= startOfToday;
+        });
+        const weekItems = earnings.filter(o => {
+            const time = o.createdAt?.seconds ? o.createdAt.seconds * 1000 : (typeof o.createdAt === 'string' ? new Date(o.createdAt).getTime() : 0);
+            return time >= startOfWeek;
+        });
         const pendingItems = earnings.filter(o => !o.isPaid);
 
         setStats({

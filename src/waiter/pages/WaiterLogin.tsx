@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
 import { Shield, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { doc, getDoc } from 'firebase/firestore';
-import { db } from '../../lib/firebase';
+import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { db, auth } from '../../lib/firebase';
+import { signInAnonymously } from 'firebase/auth';
 import { useNavigate } from 'react-router-dom';
 
 export default function WaiterLogin() {
@@ -53,6 +54,25 @@ export default function WaiterLogin() {
                 id: waiterDoc.id,
                 ...data
             };
+
+            // Sign in anonymously to have a valid auth session for Firestore rules
+            try {
+                const authResult = await signInAnonymously(auth);
+                const currentUid = authResult.user.uid;
+                
+                // Register session in top-level sessions collection for rules to validate
+                await setDoc(doc(db, 'sessions', currentUid), {
+                    restaurantId: restaurantId,
+                    role: 'waiter',
+                    userId: waiterId,
+                    createdAt: new Date().toISOString()
+                });
+                
+                console.log("Waiter authenticated and session registered with UID:", currentUid);
+            } catch (authErr) {
+                console.error("Auth error during waiter login:", authErr);
+                // We continue even if auth fails, but sync might not work if rules are strict
+            }
 
             localStorage.setItem('waiterData', JSON.stringify(waiterData));
             localStorage.setItem('waiterRestaurantId', restaurantId);

@@ -60,10 +60,19 @@ export default function CashierLogin() {
                 const authResult = await signInAnonymously(auth);
                 const currentUid = authResult.user.uid;
                 
-                // Link this session UID to the cashier document so rules can verify it
+                // Link this session UID to the cashier document
                 await updateDoc(doc(db, 'restaurants', restaurantId, 'cashiers', cashierId), {
                     currentSessionUid: currentUid,
                     lastLogin: new Date().toISOString()
+                });
+                
+                // Register session in top-level sessions collection for rules to validate
+                const { setDoc } = await import('firebase/firestore');
+                await setDoc(doc(db, 'sessions', currentUid), {
+                    restaurantId: restaurantId,
+                    role: 'cashier',
+                    userId: cashierId,
+                    createdAt: new Date().toISOString()
                 });
                 
                 console.log("Cashier authenticated with UID:", currentUid);
