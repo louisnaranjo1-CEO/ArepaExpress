@@ -1319,13 +1319,13 @@ export default function Profile() {
                                             {/* Details Section */}
                                             {activity.type === 'transport' ? (
                                                 <div className="text-xs text-slate-500 flex flex-col gap-1.5">
-                                                    <div className="flex items-start gap-1">
-                                                        <div className="min-w-4 pt-0.5 max-w-4 flex justify-center"><div className="w-2 h-2 rounded-full bg-primary ring-2 ring-blue-200"></div></div>
-                                                        <span className="line-clamp-1">{activity.origin?.address || 'Punto de partida'}</span>
-                                                    </div>
-                                                    <div className="flex items-start gap-1">
-                                                        <div className="min-w-4 pt-0.5 max-w-4 flex justify-center"><MapPin className="w-3.5 h-3.5 text-red-500" /></div>
-                                                        <span className="line-clamp-1 font-medium">{activity.destination?.address || 'Destino'}</span>
+                                                    <div className="flex items-center gap-2">
+                                                        <div className="p-1.5 bg-slate-100 rounded-lg text-slate-600">
+                                                            <Navigation className="w-4 h-4" />
+                                                        </div>
+                                                        <span className="font-bold text-slate-800 text-sm capitalize">
+                                                            Vehículo: {activity.vehicleType || 'No especificado'}
+                                                        </span>
                                                     </div>
                                                 </div>
                                             ) : (
@@ -1339,7 +1339,7 @@ export default function Profile() {
 
                                             <div className="flex justify-end items-end mt-1">
                                                 <span className="font-black text-slate-900 text-base">
-                                                    ${(activity.type === 'transport' ? (activity.fare || 0) : (activity.total || 0)).toFixed(2)}
+                                                    ${(activity.type === 'transport' ? (activity.fare || 0) : ((activity.total || 0) + (activity.deliveryFee || 0))).toFixed(2)}
                                                 </span>
                                             </div>
                                             
