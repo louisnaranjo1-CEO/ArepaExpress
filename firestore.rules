@@ -199,6 +199,17 @@ service cloud.firestore {
     match /support_tickets/{ticketId} { allow read: if request.auth != null && (request.auth.uid == resource.data.userId || isCPanelAdmin()); allow create: if request.auth != null && request.auth.uid == request.resource.data.userId; allow update, delete: if isCPanelAdmin(); }
     match /delivery_update_requests/{requestId} { allow read: if isCPanelAdmin() || (request.auth != null && resource.data.driverId == request.auth.uid); allow create: if request.auth != null && request.resource.data.driverId == request.auth.uid; allow update, delete: if isCPanelAdmin(); }
 
+    // Lost items — user creates, driver reads their own, admin manages
+    match /lost_items/{itemId} {
+      allow create: if request.auth != null && request.resource.data.userId == request.auth.uid;
+      allow read: if request.auth != null && (
+        resource.data.userId == request.auth.uid ||
+        resource.data.driverId == request.auth.uid ||
+        isCPanelAdmin()
+      );
+      allow update, delete: if isCPanelAdmin();
+    }
+
     match /{document=**} { allow read, write: if false; }
   }
 }

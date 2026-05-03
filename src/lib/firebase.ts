@@ -3,11 +3,13 @@ import { getAuth } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
 import { getStorage } from "firebase/storage";
 import { getMessaging } from "firebase/messaging";
+import { getDatabase } from "firebase/database";
 import { initializeAppCheck, ReCaptchaV3Provider } from "firebase/app-check";
 
 const firebaseConfig = {
     apiKey: "AIzaSyCb1c-p1R6AZGetk8YzKiLuxjaxjmPqJX8",
     authDomain: "arepa-express-ve-2026.firebaseapp.com",
+    databaseURL: "https://arepa-express-ve-2026-default-rtdb.firebaseio.com",
     projectId: "arepa-express-ve-2026",
     storageBucket: "arepa-express-ve-2026.firebasestorage.app",
     messagingSenderId: "549258124406",
@@ -20,6 +22,7 @@ const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 export const db = getFirestore(app);
 export const storage = getStorage(app);
+export const rtdb = getDatabase(app);
 export const messaging = typeof window !== 'undefined' ? getMessaging(app) : null;
 
 // Inicializa App Check solo si estamos en el entorno del navegador web real

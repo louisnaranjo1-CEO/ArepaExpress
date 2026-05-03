@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { collection, query, where, onSnapshot, updateDoc, doc, serverTimestamp, getDoc, orderBy, limit, increment, runTransaction } from 'firebase/firestore';
 import { ref, getDownloadURL } from 'firebase/storage';
-import { storage, db } from '../../lib/firebase';
+import { rtdb, storage, db } from '../../lib/firebase';
+import { ref as rtdbRef, onValue } from 'firebase/database';
 import { useAuth } from '../../context/AuthContext';
 import { Car, Bike, MapPin, Navigation, Phone, CheckCircle2, MessageSquare, Compass, Send, User as UserIcon, Star, MessageCircle, Clock, AlertTriangle, ArrowLeft } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
@@ -12,6 +13,7 @@ import ServiceTimer from '../components/ServiceTimer';
 import { getCachedAudioUrl, NOTIFICATION_SOUND_URL } from '../../hooks/useGlobalAudioAlerts';
 import { updateDriverLocation } from '../../lib/delivery-service';
 import { calculateDistance } from '../../lib/geo';
+import InAppCall from '../../components/InAppCall';
 
 export default function OrdersRadar() {
     const { user } = useAuth();
@@ -27,6 +29,8 @@ export default function OrdersRadar() {
     const [unreadChatCount, setUnreadChatCount] = useState(0);
     const lastChatIdSeen = React.useRef<string | null>(null);
     const notificationSoundUrl = React.useRef<string | null>(null);
+    // Incoming in-app call state
+    const [showIncomingCall, setShowIncomingCall] = useState(false);
 
     // 1. Fetch Driver Profile for vehicleType
     useEffect(() => {
@@ -138,7 +142,36 @@ export default function OrdersRadar() {
 
         return () => unsub();
     }, [driverProfile]);
-    
+
+    // 3.1 Listen for incoming in-app calls when driver has an active transport
+    useEffect(() => {
+        if (!activeTransport?.id || !user) return;
+        const callStatusRef = rtdbRef(rtdb, `calls/${activeTransport.id}/status`);
+        const callInitRef = rtdbRef(rtdb, `calls/${activeTransport.id}/initiatorId`);
+        let initiatorId: string | null = null;
+
+        // First get who is initiating
+        const initUnsub = onValue(callInitRef, (snap) => {
+            initiatorId = snap.val();
+        });
+
+        const statusUnsub = onValue(callStatusRef, (snap) => {
+            const status = snap.val();
+            if (status === 'calling' && initiatorId && initiatorId !== user.uid) {
+                setShowIncomingCall(true);
+            }
+            if (status === 'ended' || status === null) {
+                setShowIncomingCall(false);
+            }
+        });
+
+        return () => {
+            initUnsub();
+            statusUnsub();
+        };
+    }, [activeTransport?.id, user]);
+
+
     // 3.1 Alerta sonora cuando llega un nuevo viaje o pedido
     const lastAvailableCount = React.useRef(0);
     useEffect(() => {
@@ -496,6 +529,17 @@ export default function OrdersRadar() {
     if (activeTransport) {
         return (
             <>
+            {/* Incoming in-app call from user */}
+            {showIncomingCall && activeTransport && (
+                <InAppCall
+                    requestId={activeTransport.id}
+                    myId={user!.uid}
+                    remoteId={activeTransport.userId}
+                    remoteDisplayName={activeTransport.userName || 'Pasajero'}
+                    role="receiver"
+                    onClose={() => setShowIncomingCall(false)}
+                />
+            )}
             <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="space-y-4">
                 <div className="bg-primary/5 border border-primary/10 p-5 rounded-[2.5rem] mb-4 flex items-center gap-4">
                     <div className="w-12 h-12 bg-primary/10 rounded-2xl flex items-center justify-center text-slate-900">

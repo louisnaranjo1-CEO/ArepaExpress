@@ -1,13 +1,14 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
-import { doc, onSnapshot, getDoc, updateDoc, serverTimestamp, query, collection, orderBy, limit, increment, addDoc } from 'firebase/firestore';
+import { doc, onSnapshot, updateDoc, serverTimestamp, query, collection, orderBy, limit, increment, addDoc } from 'firebase/firestore';
 import { ref, getDownloadURL } from 'firebase/storage';
 import { db, storage } from '../lib/firebase';
 import { DeliveryDriver } from '../lib/delivery-service';
 import toast from 'react-hot-toast';
-import { Navigation, Clock, CheckCircle2, Phone, ArrowLeft, Car, ShieldCheck, MessageCircle, Star, XCircle, MapPin } from 'lucide-react';
+import { Navigation, Clock, CheckCircle2, Phone, ArrowLeft, Car, ShieldCheck, MessageCircle, Star, XCircle, MapPin, Package } from 'lucide-react';
 import { GoogleMap, useJsApiLoader, DirectionsRenderer, Marker } from '@react-google-maps/api';
 import RideChat from '../components/RideChat';
+import InAppCall from '../components/InAppCall';
 
 const mapContainerStyle = {
     width: '100%',
@@ -43,10 +44,18 @@ export default function TransportTracker() {
     const [showChat, setShowChat] = useState(new URLSearchParams(location.search).get('chat') === 'true');
     const [rating, setRating] = useState(0);
     const [hoverRating, setHoverRating] = useState(0);
+    const [selectedTags, setSelectedTags] = useState<string[]>([]);
     const [comment, setComment] = useState('');
     const [submittingRating, setSubmittingRating] = useState(false);
     const [hasRated, setHasRated] = useState(false);
     const [unreadCount, setUnreadCount] = useState(0);
+    // In-app call
+    const [showCall, setShowCall] = useState(false);
+    // Lost items
+    const [showLostItem, setShowLostItem] = useState(false);
+    const [lostItemDesc, setLostItemDesc] = useState('');
+    const [submittingLost, setSubmittingLost] = useState(false);
+    const [lostItemSent, setLostItemSent] = useState(false);
     
     // Notification sound
     const notificationSoundUrl = useRef<string | null>(null);
@@ -239,12 +248,35 @@ export default function TransportTracker() {
         }
     }, [request?.status]);
 
+    // Rating tags by star range
+    const POSITIVE_TAGS = [
+        { id: 'buena_musica', label: '🎵 Buena música' },
+        { id: 'vehiculo_limpio', label: '✨ Vehículo limpio' },
+        { id: 'buena_conversacion', label: '💬 Buena conversación' },
+        { id: 'llego_rapido', label: '⚡ Llegó rápido' },
+        { id: 'manejo_seguro', label: '🛡️ Manejo seguro' },
+        { id: 'puntual', label: '⏱️ Muy puntual' },
+    ];
+    const NEGATIVE_TAGS = [
+        { id: 'sin_musica', label: '🔇 Sin música' },
+        { id: 'vehiculo_sucio', label: '🤢 Vehículo sucio' },
+        { id: 'poco_amable', label: '😶 Poco amable' },
+        { id: 'llego_tarde', label: '🐢 Llegó tarde' },
+        { id: 'manejo_brusco', label: '😰 Manejo brusco' },
+        { id: 'no_puntual', label: '⏰ Impuntual' },
+    ];
+
+    const toggleTag = (id: string) => {
+        setSelectedTags(prev => prev.includes(id) ? prev.filter(t => t !== id) : [...prev, id]);
+    };
+
     const handleRateTrip = async () => {
         if (!requestId || rating === 0) return;
         setSubmittingRating(true);
         try {
             await updateDoc(doc(db, 'transport_requests', requestId), {
                 rating,
+                ratingTags: selectedTags,
                 ratingComment: comment,
                 ratedAt: serverTimestamp()
             });
@@ -255,6 +287,29 @@ export default function TransportTracker() {
             toast.error("Error al enviar calificación");
         } finally {
             setSubmittingRating(false);
+        }
+    };
+
+    const handleLostItem = async () => {
+        if (!requestId || !request || !lostItemDesc.trim()) return;
+        setSubmittingLost(true);
+        try {
+            await addDoc(collection(db, 'lost_items'), {
+                requestId,
+                userId: request.userId,
+                driverId: request.driverId,
+                description: lostItemDesc.trim(),
+                status: 'pending',
+                createdAt: serverTimestamp(),
+            });
+            setLostItemSent(true);
+            setShowLostItem(false);
+            toast.success('Tu reporte fue enviado al conductor.');
+        } catch (err) {
+            console.error(err);
+            toast.error('Error al enviar reporte.');
+        } finally {
+            setSubmittingLost(false);
         }
     };
 
@@ -528,12 +583,13 @@ export default function TransportTracker() {
                     </div>
                 )}
 
-                {/* Rating Section if Completed */}
+                {/* ── RATING SECTION ── */}
                 {request.status === 'completed' && !request.rating && !hasRated && (
-                    <div className="bg-indigo-50/50 border border-indigo-100 rounded-2xl p-4 mb-4">
-                        <h3 className="text-center font-black text-slate-800 text-base mb-1">¿Qué tal estuvo tu viaje?</h3>
-                        <p className="text-center text-[10px] font-bold text-slate-500 mb-3">Tu opinión ayuda a mejorar el servicio</p>
+                    <div className="bg-gradient-to-b from-indigo-50 to-white border border-indigo-100 rounded-2xl p-4 mb-4 shadow-sm">
+                        <h3 className="text-center font-black text-slate-800 text-base mb-0.5">¿Cómo fue tu viaje?</h3>
+                        <p className="text-center text-[10px] font-bold text-slate-400 mb-3">Tu opinión ayuda a mejorar el servicio</p>
 
+                        {/* Stars */}
                         <div className="flex justify-center gap-2 mb-4">
                             {[1, 2, 3, 4, 5].map((star) => (
                                 <button
@@ -544,34 +600,98 @@ export default function TransportTracker() {
                                     className="transition-all transform active:scale-90"
                                 >
                                     <Star
-                                        className={`w-8 h-8 ${(hoverRating || rating) >= star ? 'fill-amber-400 text-amber-400' : 'text-slate-300'} transition-colors`}
+                                        className={`w-9 h-9 ${(hoverRating || rating) >= star ? 'fill-amber-400 text-amber-400' : 'text-slate-200'} transition-colors drop-shadow`}
                                         strokeWidth={1.5}
                                     />
                                 </button>
                             ))}
                         </div>
 
+                        {/* Experience tags — appear after selecting stars */}
+                        {rating > 0 && (
+                            <div className="mb-3">
+                                <p className="text-[10px] font-black text-slate-500 uppercase tracking-wider mb-2">
+                                    {rating >= 4 ? '¿Qué fue lo mejor?' : '¿Qué falló?'}
+                                </p>
+                                <div className="flex flex-wrap gap-1.5">
+                                    {(rating >= 4 ? POSITIVE_TAGS : NEGATIVE_TAGS).map(tag => (
+                                        <button
+                                            key={tag.id}
+                                            onClick={() => toggleTag(tag.id)}
+                                            className={`px-2.5 py-1 rounded-full text-[11px] font-bold border transition-all active:scale-95 ${
+                                                selectedTags.includes(tag.id)
+                                                    ? 'bg-primary border-primary text-slate-900 shadow-sm'
+                                                    : 'bg-white border-slate-200 text-slate-600'
+                                            }`}
+                                        >
+                                            {tag.label}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+
                         <textarea
                             value={comment}
                             onChange={(e) => setComment(e.target.value)}
-                            placeholder="Déjanos un comentario (opcional)..."
-                            className="w-full bg-white border border-slate-200 rounded-xl p-3 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-100 min-h-[60px] mb-3 outline-none transition-all placeholder:text-slate-400"
+                            placeholder="Comentario adicional (opcional)..."
+                            className="w-full bg-white border border-slate-200 rounded-xl p-3 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-100 min-h-[52px] mb-3 outline-none transition-all placeholder:text-slate-400 resize-none"
                         />
 
                         <button
                             onClick={handleRateTrip}
                             disabled={rating === 0 || submittingRating}
-                            className="w-full bg-primary text-slate-900 font-bold py-2.5 rounded-xl shadow-md shadow-primary/20 flex justify-center items-center gap-2 active:scale-95 transition-all text-sm disabled:opacity-50"
+                            className="w-full bg-primary text-slate-900 font-black py-2.5 rounded-xl shadow-md shadow-primary/20 flex justify-center items-center gap-2 active:scale-95 transition-all text-sm disabled:opacity-50"
                         >
-                            {submittingRating ? <div className="w-4 h-4 border-2 border-slate-900 border-t-transparent rounded-full animate-spin"></div> : 'Enviar Calificación'}
+                            {submittingRating
+                                ? <div className="w-4 h-4 border-2 border-slate-900 border-t-transparent rounded-full animate-spin" />
+                                : 'Enviar Calificación'}
                         </button>
                     </div>
                 )}
 
                 {hasRated && (
-                    <div className="bg-emerald-50 border border-emerald-100 rounded-2xl p-3 mb-4 flex items-center justify-center gap-2">
+                    <div className="bg-emerald-50 border border-emerald-100 rounded-2xl p-3 mb-3 flex items-center justify-center gap-2">
                         <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                        <span className="font-bold text-emerald-900 text-sm">Mensaje enviado. ¡Gracias!</span>
+                        <span className="font-bold text-emerald-900 text-sm">¡Gracias por tu calificación!</span>
+                    </div>
+                )}
+
+                {/* ── OBJETOS PERDIDOS ── */}
+                {request.status === 'completed' && !lostItemSent && (
+                    <button
+                        onClick={() => setShowLostItem(s => !s)}
+                        className="w-full flex items-center justify-center gap-2 py-2.5 mb-3 rounded-xl border border-dashed border-amber-300 bg-amber-50 text-amber-700 text-xs font-bold active:scale-95 transition-all"
+                    >
+                        <Package className="w-4 h-4" />
+                        ¿Olvidaste algo en el vehículo?
+                    </button>
+                )}
+                {lostItemSent && (
+                    <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 mb-3 flex items-center gap-2">
+                        <CheckCircle2 className="w-4 h-4 text-amber-600" />
+                        <span className="text-xs font-bold text-amber-800">Reporte enviado. El conductor fue notificado.</span>
+                    </div>
+                )}
+                {showLostItem && !lostItemSent && (
+                    <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 mb-3 animate-fade-in">
+                        <h4 className="font-black text-slate-800 text-sm mb-1">📦 Reportar objeto olvidado</h4>
+                        <p className="text-[10px] text-slate-500 font-medium mb-3">Describe el objeto. Tu conductor recibirá una notificación inmediata.</p>
+                        <textarea
+                            value={lostItemDesc}
+                            onChange={e => setLostItemDesc(e.target.value)}
+                            placeholder="Ej: Mochila negra con mi laptop..."
+                            className="w-full bg-white border border-amber-200 rounded-xl p-3 text-xs outline-none min-h-[60px] resize-none mb-3 focus:ring-2 focus:ring-amber-200 placeholder:text-slate-400"
+                        />
+                        <button
+                            onClick={handleLostItem}
+                            disabled={!lostItemDesc.trim() || submittingLost}
+                            className="w-full bg-amber-400 text-slate-900 font-black py-2.5 rounded-xl text-sm flex justify-center items-center gap-2 active:scale-95 transition-all disabled:opacity-50"
+                        >
+                            {submittingLost
+                                ? <div className="w-4 h-4 border-2 border-slate-900 border-t-transparent rounded-full animate-spin" />
+                                : 'Enviar Reporte'}
+                        </button>
                     </div>
                 )}
 
@@ -615,11 +735,31 @@ export default function TransportTracker() {
                                     )}
                                 </button>
                             )}
-                            <a href={`tel:${driver.phone}`} className="w-10 h-10 bg-slate-100 text-slate-700 rounded-full flex items-center justify-center active:scale-95 transition-transform">
-                                <Phone className="w-4 h-4 fill-current" />
-                            </a>
+                            {/* In-app call — only during active trip */}
+                            {['accepted', 'arriving', 'in_progress'].includes(request.status) && (
+                                <button
+                                    onClick={() => setShowCall(true)}
+                                    className="w-10 h-10 bg-emerald-50 text-emerald-600 rounded-full flex items-center justify-center active:scale-95 transition-transform"
+                                    title="Llamar al conductor"
+                                >
+                                    <Phone className="w-4 h-4 fill-current" />
+                                </button>
+                            )}
                         </div>
                     </div>
+                )}
+
+                {/* In-App Call Modal */}
+                {showCall && driver && request && (
+                    <InAppCall
+                        requestId={requestId!}
+                        myId={request.userId}
+                        remoteId={request.driverId}
+                        remoteDisplayName={driver.fullName.split(' ')[0]}
+                        remotePhotoUrl={driver.documents?.selfieUrl}
+                        role="caller"
+                        onClose={() => setShowCall(false)}
+                    />
                 )}
 
                 {/* Payment Summary */}
