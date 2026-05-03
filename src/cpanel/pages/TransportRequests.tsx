@@ -2,7 +2,9 @@ import React, { useState, useEffect, useRef } from 'react';
 import { collection, query, orderBy, onSnapshot, doc, updateDoc, deleteDoc, writeBatch, getDocs, where, serverTimestamp, limit } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { db, storage } from '../../lib/firebase';
-import { Car, Bike, Clock, CheckCircle2, XCircle, Search, Calendar, DollarSign, MapPin, User, ShieldCheck, Upload, Image as ImageIcon, MessageSquare, Star, Phone, MessageCircle, ShoppingBag, Store } from 'lucide-react';
+import { Car, Bike, Clock, CheckCircle2, XCircle, Search, Calendar, DollarSign, MapPin, User, ShieldCheck, Upload, Image as ImageIcon, MessageSquare, Star, Phone, MessageCircle, ShoppingBag, Store, Navigation, Map } from 'lucide-react';
+import { GoogleMap, useJsApiLoader, Marker } from '@react-google-maps/api';
+import { motion, AnimatePresence } from 'motion/react';
 import toast from 'react-hot-toast';
 import RideChat from '../../components/RideChat';
 import DualPrice from '../../components/DualPrice';
@@ -14,6 +16,15 @@ const formatDuration = (seconds: number) => {
     const m = Math.floor(absSeconds / 60);
     const s = absSeconds % 60;
     return `${seconds < 0 ? '-' : ''}${m}m ${s}s`;
+};
+
+const mapOptions: google.maps.MapOptions = {
+    disableDefaultUI: false,
+    zoomControl: true,
+    streetViewControl: false,
+    mapTypeControl: false,
+    fullscreenControl: true,
+    clickableIcons: false,
 };
 
 export default function TransportRequests() {
@@ -32,6 +43,15 @@ export default function TransportRequests() {
     const [selectedDriver, setSelectedDriver] = useState<any>(null);
     const [payoutReceipt, setPayoutReceipt] = useState<File | null>(null);
     const [payoutLoading, setPayoutLoading] = useState(false);
+
+    // Map States
+    const [showMapModal, setShowMapModal] = useState(false);
+    const [selectedMapRequest, setSelectedMapRequest] = useState<any>(null);
+
+    const { isLoaded } = useJsApiLoader({
+        id: 'google-map-script',
+        googleMapsApiKey: "AIzaSyCb1c-p1R6AZGetk8YzKiLuxjaxjmPqJX8"
+    });
 
     // Notification sound
     const notificationSoundUrl = useRef<string | null>(null);
@@ -521,13 +541,22 @@ export default function TransportRequests() {
                                                 </div>
                                             </div>
                                             <div className="flex items-center gap-2 mt-3 md:justify-end text-[10px] font-bold">
-                                                <button
-                                                    onClick={() => setSelectedChatRequest(req.id)}
-                                                    className="bg-white px-2 py-1 rounded shadow-sm text-slate-900 border border-primary flex items-center gap-1 hover:bg-primary transition-colors"
-                                                >
-                                                    <MessageSquare className="w-3 h-3" /> Ver Chat
-                                                </button>
-                                                <span className="bg-white px-2 py-1 rounded shadow-sm text-slate-600 border border-slate-200 flex items-center gap-1">
+                                                    <button
+                                                        onClick={() => setSelectedChatRequest(req.id)}
+                                                        className="bg-white px-2 py-1 rounded shadow-sm text-slate-900 border border-primary flex items-center gap-1 hover:bg-primary transition-colors"
+                                                    >
+                                                        <MessageSquare className="w-3 h-3" /> Ver Chat
+                                                    </button>
+                                                    <button
+                                                        onClick={() => {
+                                                            setSelectedMapRequest(req);
+                                                            setShowMapModal(true);
+                                                        }}
+                                                        className="bg-slate-900 px-2 py-1 rounded shadow-sm text-white flex items-center gap-1 hover:bg-slate-800 transition-colors"
+                                                    >
+                                                        <Navigation className="w-3 h-3" /> Ver GPS
+                                                    </button>
+                                                    <span className="bg-white px-2 py-1 rounded shadow-sm text-slate-600 border border-slate-200 flex items-center gap-1">
                                                     <DollarSign className="w-3 h-3 text-emerald-500" /> {req.paymentMethod === 'pagoMovil' ? 'Pago Móvil' : req.paymentMethod === 'cash' ? 'Efectivo' : req.paymentMethod}
                                                 </span>
                                             </div>
@@ -779,6 +808,92 @@ export default function TransportRequests() {
                     </div>
                 </div>
             )}
+
+            {/* GPS Map Modal */}
+            <AnimatePresence>
+                {showMapModal && selectedMapRequest && (
+                    <motion.div 
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-[100]"
+                    >
+                        <motion.div 
+                            initial={{ scale: 0.9, opacity: 0, y: 20 }}
+                            animate={{ scale: 1, opacity: 1, y: 0 }}
+                            exit={{ scale: 0.9, opacity: 0, y: 20 }}
+                            className="bg-white rounded-[2.5rem] w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col shadow-2xl"
+                        >
+                            <div className="p-6 bg-slate-900 text-white flex justify-between items-center">
+                                <div>
+                                    <h3 className="text-xl font-black flex items-center gap-2">
+                                        <Map className="w-6 h-6 text-primary" />
+                                        Rastreo de Viaje
+                                    </h3>
+                                    <p className="text-slate-400 text-xs font-bold uppercase tracking-widest mt-1">
+                                        ID: {selectedMapRequest.id} • Cliente: {selectedMapRequest.userName}
+                                    </p>
+                                </div>
+                                <button 
+                                    onClick={() => setShowMapModal(false)}
+                                    className="w-10 h-10 bg-white/10 rounded-full flex items-center justify-center hover:bg-white/20 transition-colors"
+                                >
+                                    <XCircle className="w-6 h-6" />
+                                </button>
+                            </div>
+
+                            <div className="flex-1 relative bg-slate-100 min-h-[400px]">
+                                {isLoaded ? (
+                                    <GoogleMap
+                                        mapContainerStyle={{ width: '100%', height: '100%' }}
+                                        center={selectedMapRequest.origin?.coords || { lat: 10.4806, lng: -66.9036 }}
+                                        zoom={14}
+                                        options={mapOptions}
+                                    >
+                                        {/* Origin Marker */}
+                                        {selectedMapRequest.origin?.coords && (
+                                            <Marker 
+                                                position={selectedMapRequest.origin.coords}
+                                                label={{
+                                                    text: "A",
+                                                    className: "font-black text-white"
+                                                }}
+                                                title="Punto de Origen"
+                                            />
+                                        )}
+                                        {/* Destination Marker */}
+                                        {selectedMapRequest.destination?.coords && (
+                                            <Marker 
+                                                position={selectedMapRequest.destination.coords}
+                                                label={{
+                                                    text: "B",
+                                                    className: "font-black text-white"
+                                                }}
+                                                title="Destino"
+                                            />
+                                        )}
+                                    </GoogleMap>
+                                ) : (
+                                    <div className="absolute inset-0 flex items-center justify-center">
+                                        <div className="w-10 h-10 border-4 border-primary border-t-transparent rounded-full animate-spin"></div>
+                                    </div>
+                                )}
+                            </div>
+
+                            <div className="p-6 bg-slate-50 border-t border-slate-200 grid md:grid-cols-2 gap-4">
+                                <div className="space-y-1">
+                                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Origen (Punto A)</p>
+                                    <p className="text-sm font-bold text-slate-700">{selectedMapRequest.origin?.address}</p>
+                                </div>
+                                <div className="space-y-1 border-l border-slate-200 pl-4">
+                                    <p className="text-[10px] font-black text-primary uppercase tracking-widest">Destino (Punto B)</p>
+                                    <p className="text-sm font-bold text-slate-900">{selectedMapRequest.destination?.address}</p>
+                                </div>
+                            </div>
+                        </motion.div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
 
             {/* Payout Modal */}
             {showPayoutModal && selectedDriver && (

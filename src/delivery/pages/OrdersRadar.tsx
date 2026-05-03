@@ -31,6 +31,11 @@ export default function OrdersRadar() {
     const notificationSoundUrl = React.useRef<string | null>(null);
     // Incoming in-app call state
     const [showIncomingCall, setShowIncomingCall] = useState(false);
+    // Outgoing in-app call state
+    const [showOutgoingCall, setShowOutgoingCall] = useState(false);
+    
+    // Helper to get the current active item for calling
+    const currentActiveItem = activeTransport || activeOrder;
 
     // 1. Fetch Driver Profile for vehicleType
     useEffect(() => {
@@ -540,6 +545,17 @@ export default function OrdersRadar() {
                     onClose={() => setShowIncomingCall(false)}
                 />
             )}
+            {/* Outgoing in-app call from driver */}
+            {showOutgoingCall && currentActiveItem && (
+                <InAppCall
+                    requestId={currentActiveItem.id}
+                    myId={user!.uid}
+                    remoteId={currentActiveItem.userId}
+                    remoteDisplayName={currentActiveItem.userName || 'Pasajero'}
+                    role="caller"
+                    onClose={() => setShowOutgoingCall(false)}
+                />
+            )}
             <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="space-y-4">
                 <div className="bg-primary/5 border border-primary/10 p-5 rounded-[2.5rem] mb-4 flex items-center gap-4">
                     <div className="w-12 h-12 bg-primary/10 rounded-2xl flex items-center justify-center text-slate-900">
@@ -583,21 +599,19 @@ export default function OrdersRadar() {
                                 <div>
                                     <h3 className="text-xs font-black text-blue-500 uppercase tracking-widest">{activeTransport.type === 'food_delivery' ? 'Pedido a nombre de:' : 'Pasajero:'}</h3>
                                     <p className="font-bold text-slate-700 leading-tight mt-0.5">{activeTransport.userName || 'Usuario'}</p>
-                                    {(activeTransport.userCedula || activeTransport.userPhone) && (
+                                    {(activeTransport.userCedula) && (
                                         <div className="text-xs text-slate-500 font-medium mt-0.5 space-y-0.5 pb-2">
                                             {activeTransport.userCedula && <p>C.I: {activeTransport.userCedula}</p>}
-                                            {activeTransport.userPhone && <p>Telf: {activeTransport.userPhone}</p>}
                                         </div>
                                     )}
                                 </div>
-                                {activeTransport.userPhone && (
-                                    <a
-                                        href={`tel:${activeTransport.userPhone}`}
-                                        className="w-12 h-12 bg-emerald-50 text-emerald-600 rounded-2xl flex items-center justify-center shrink-0 border border-emerald-100 shadow-sm active:scale-95 transition-all hover:bg-emerald-100"
-                                    >
-                                        <Phone className="w-5 h-5 fill-emerald-600/20" />
-                                    </a>
-                                )}
+                                <button
+                                    onClick={() => setShowOutgoingCall(true)}
+                                    className="w-12 h-12 bg-emerald-50 text-emerald-600 rounded-2xl flex items-center justify-center shrink-0 border border-emerald-100 shadow-sm active:scale-95 transition-all hover:bg-emerald-100"
+                                    title="Llamar Pasajero"
+                                >
+                                    <Phone className="w-5 h-5 fill-emerald-600/20" />
+                                </button>
                             </div>
                         </div>
 
@@ -792,21 +806,19 @@ export default function OrdersRadar() {
                                     <div>
                                         <h3 className="text-xs font-black text-blue-500 uppercase tracking-widest">Pedido a nombre de:</h3>
                                         <p className="font-bold text-slate-700 leading-tight mt-0.5">{activeOrder.userName || 'Cliente Invitado'}</p>
-                                        {(activeOrder.userCedula || activeOrder.userPhone) && (
+                                        {(activeOrder.userCedula) && (
                                             <div className="text-xs text-slate-500 font-medium mt-0.5 space-y-0.5 pb-2">
                                                 {activeOrder.userCedula && <p>C.I: {activeOrder.userCedula}</p>}
-                                                {activeOrder.userPhone && <p>Telf: {activeOrder.userPhone}</p>}
                                             </div>
                                         )}
                                     </div>
-                                    {activeOrder.userPhone && (
-                                        <a
-                                            href={`tel:${activeOrder.userPhone}`}
-                                            className="w-12 h-12 bg-emerald-50 text-emerald-600 rounded-2xl flex items-center justify-center shrink-0 border border-emerald-100 shadow-sm active:scale-95 transition-all hover:bg-emerald-100"
-                                        >
-                                            <Phone className="w-5 h-5 fill-emerald-600/20" />
-                                        </a>
-                                    )}
+                                    <button
+                                        onClick={() => setShowOutgoingCall(true)}
+                                        className="w-12 h-12 bg-emerald-50 text-emerald-600 rounded-2xl flex items-center justify-center shrink-0 border border-emerald-100 shadow-sm active:scale-95 transition-all hover:bg-emerald-100"
+                                        title="Llamar Pasajero"
+                                    >
+                                        <Phone className="w-5 h-5 fill-emerald-600/20" />
+                                    </button>
                                 </div>
                             </div>
 

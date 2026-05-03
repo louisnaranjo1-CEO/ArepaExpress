@@ -14,6 +14,7 @@ import { vibrate } from '../utils/haptics';
 import { isDemoMode } from '../lib/env';
 import DemoAlertModal from '../components/DemoAlertModal';
 import LocationRequiredModal from '../components/LocationRequiredModal';
+import { useCurrency } from '../context/CurrencyContext';
 
 interface Location {
     lat: number;
@@ -44,6 +45,7 @@ const mapOptions: any = {
 
 export default function Taxi() {
     const { user, userData } = useAuth();
+    const { bcvRate } = useCurrency();
     const navigate = useNavigate();
 
     useEffect(() => {
@@ -1135,7 +1137,14 @@ export default function Taxi() {
                     {step === 'payment' && (
                         <div className="animate-in fade-in slide-in-from-right-4">
                             <h2 className="text-xl font-black text-slate-900 mb-1">Método de Pago</h2>
-                            <p className="text-sm font-medium text-slate-500 mb-6">Total a pagar: <span className="font-bold text-slate-800">${calculatePrice(vehicleType!)}</span></p>
+                            <p className="text-sm font-medium text-slate-500 mb-6">
+                                Total a pagar: <span className="font-bold text-slate-800">${calculatePrice(vehicleType!)}</span>
+                                {bcvRate > 0 && (
+                                    <span className="ml-1 text-slate-400 font-bold">
+                                        ({(parseFloat(calculatePrice(vehicleType!) as string) * bcvRate).toFixed(2)} Bs)
+                                    </span>
+                                )}
+                            </p>
 
                             {!paymentMethods ? (
                                 <div className="flex justify-center p-4"><div className="w-6 h-6 border-2 border-orange-500 border-t-transparent rounded-full animate-spin"></div></div>
@@ -1188,6 +1197,14 @@ export default function Taxi() {
 
                                             {selectedPaymentMethod === 'pagoMovil' && (
                                                 <div className="p-4 bg-slate-50 border-t items-center border-slate-100 text-sm space-y-3 pointer-events-auto">
+                                                    {bcvRate > 0 && (
+                                                        <div className="flex items-center justify-between bg-primary/10 p-3 rounded-xl border border-primary/20">
+                                                            <p className="text-slate-900 font-black">
+                                                                <span className="opacity-60 font-bold">Monto:</span> {(parseFloat(calculatePrice(vehicleType!) as string) * bcvRate).toFixed(2)} Bs
+                                                            </p>
+                                                            <CopyButton text={(parseFloat(calculatePrice(vehicleType!) as string) * bcvRate).toFixed(2)} id="pm-amount" />
+                                                        </div>
+                                                    )}
                                                     <div className="flex items-center justify-between bg-white p-3 rounded-xl border border-slate-100">
                                                         <p><span className="font-bold text-slate-700">Banco:</span> {paymentMethods.pagoMovil.bank}</p>
                                                         <CopyButton text={paymentMethods.pagoMovil.bank} id="pm-bank" />
@@ -1207,7 +1224,7 @@ export default function Taxi() {
                                                             type="text"
                                                             placeholder="Nro. de Referencia o teléfono emisor"
                                                             value={paymentRef}
-                                                            onChange={e => setPaymentRef(e.target.value)}
+                                                            onChange={e => setPaymentRef(e.target.value.replace(/\D/g, ''))}
                                                             className="w-full bg-white border border-slate-200 p-4 rounded-2xl mb-3 focus:border-primary focus:ring-4 focus:ring-primary/10 outline-none transition-all font-bold text-slate-700"
                                                         />
                                                         <div className="relative">
@@ -1263,7 +1280,7 @@ export default function Taxi() {
                                                             type="text"
                                                             placeholder="Nro. de Confirmación"
                                                             value={paymentRef}
-                                                            onChange={e => setPaymentRef(e.target.value)}
+                                                            onChange={e => setPaymentRef(e.target.value.replace(/\D/g, ''))}
                                                             className="w-full bg-white border border-slate-200 p-3 rounded-xl mb-2 focus:border-primary outline-none transition-all"
                                                         />
                                                     </div>
