@@ -10,6 +10,7 @@ interface RestaurantDetail extends Restaurant {
     productsCount?: number;
     totalOrders?: number;
     status?: 'active' | 'busy' | 'unavailable';
+    email?: string;
 }
 
 export default function RestaurantsManager() {
@@ -109,8 +110,14 @@ export default function RestaurantsManager() {
                                     <div className="font-bold text-lg text-slate-900 truncate">
                                         {restaurant.name}
                                     </div>
-                                    <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-0.5 truncate">
-                                        {restaurant.id.slice(0, 8)}...
+                                    <div className="flex items-center gap-2 mt-0.5">
+                                        <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest truncate">
+                                            ID: {restaurant.id.slice(0, 8)}...
+                                        </div>
+                                        <span className="text-slate-200">•</span>
+                                        <div className="text-[10px] font-bold text-indigo-500 lowercase truncate">
+                                            {restaurant.email || 'Sin correo'}
+                                        </div>
                                     </div>
                                     <div className="mt-1.5 flex flex-wrap gap-2">
                                         <span className="text-[10px] font-bold text-slate-600 bg-slate-50 px-2.5 py-1 rounded-lg border border-slate-100 uppercase tracking-wider">

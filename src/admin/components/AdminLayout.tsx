@@ -357,7 +357,7 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
                             </div>
                             <div className="min-w-0 flex-1 text-left">
                                 <p className="text-sm font-bold text-white truncate">{restaurantName}</p>
-                                <p className="text-[10px] text-slate-400 truncate capitalize">Business Manager</p>
+                                <p className="text-[10px] text-slate-400 truncate lowercase font-medium">{user?.email || 'Business Manager'}</p>
                             </div>
                             <ChevronUp className={`w-4 h-4 text-slate-500 transition-transform ${isProfileMenuOpen ? 'rotate-180' : ''}`} />
                         </button>
