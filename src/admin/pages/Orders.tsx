@@ -428,6 +428,19 @@ export default function Orders() {
             }
 
             const orderRef = doc(db, 'orders', selectedOrderForAccept.id);
+            
+            // Si el pago ya es exitoso (sold), otorgar puntos
+            if (updates.paymentStatus === 'sold' && selectedOrderForAccept.userId && selectedOrderForAccept.userId !== 'pos_customer') {
+                const pointsToAdd = selectedOrderForAccept.total * 2.5;
+                const userRef = doc(db, 'users', selectedOrderForAccept.userId);
+                await updateDoc(userRef, {
+                    points: increment(pointsToAdd),
+                    [`restaurantPoints.${rid}`]: increment(pointsToAdd)
+                });
+                updates.pointsCredited = true;
+                console.log(`Puntos otorgados al aceptar: ${pointsToAdd}`);
+            }
+
             await updateDoc(orderRef, updates);
             
             const orderTemp = { ...selectedOrderForAccept, ...updates };
@@ -693,14 +706,15 @@ export default function Orders() {
                 verifiedAt: serverTimestamp()
             });
 
-            // Otorgar puntos por consumo (2.5 por cada $)
-            if (selectedOrderForVerify.userId && selectedOrderForVerify.userId !== 'pos_customer') {
+            // Otorgar puntos por consumo (2.5 por cada $) si no se han otorgado
+            if (selectedOrderForVerify.userId && selectedOrderForVerify.userId !== 'pos_customer' && !(selectedOrderForVerify as any).pointsCredited) {
                 const pointsToAdd = selectedOrderForVerify.total * 2.5;
                 const userRef = doc(db, 'users', selectedOrderForVerify.userId);
                 await updateDoc(userRef, {
                     points: increment(pointsToAdd),
                     [`restaurantPoints.${rid}`]: increment(pointsToAdd)
                 });
+                await updateDoc(orderRef, { pointsCredited: true });
             }
 
             if (nextStatus === 'preparing') {
@@ -741,7 +755,7 @@ export default function Orders() {
                 updates.paymentStatus = paymentStatus;
 
                 // Si la venta es exitosa, se otorgan puntos al usuario (2.5 puntos por cada $)
-                if (paymentStatus === 'sold' && orderTemp?.userId && orderTemp.userId !== 'pos_customer') {
+                if (paymentStatus === 'sold' && orderTemp?.userId && orderTemp.userId !== 'pos_customer' && !(orderTemp as any).pointsCredited) {
                     try {
                         const pointsToAdd = orderTemp.total * 2.5;
                         const userRef = doc(db, 'users', orderTemp.userId);
@@ -749,6 +763,7 @@ export default function Orders() {
                             points: increment(pointsToAdd),
                             [`restaurantPoints.${rid}`]: increment(pointsToAdd)
                         });
+                        updates.pointsCredited = true;
                         console.log(`Se sumaron ${pointsToAdd} puntos al usuario ${orderTemp.userId}`);
                     } catch (pointsError) {
                         console.error("Error al sumar puntos al usuario:", pointsError);

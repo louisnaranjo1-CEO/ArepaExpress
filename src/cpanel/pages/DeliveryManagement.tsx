@@ -424,24 +424,54 @@ _Enviado desde Deliexpress App_`
                                                         {req.newData.documents.selfieUrl && (
                                                             <div className="flex flex-col items-center">
                                                                 <span className="text-[9px] font-bold text-slate-400 uppercase mb-1">Selfie</span>
-                                                                <a href={req.newData.documents.selfieUrl} target="_blank" rel="noreferrer">
-                                                                    <img src={req.newData.documents.selfieUrl} alt="Selfie" className="w-16 h-16 object-cover rounded-xl border border-slate-200" />
+                                                                <a href={req.newData.documents.selfieUrl} target="_blank" rel="noreferrer" className="relative group block">
+                                                                    <img 
+                                                                        src={req.newData.documents.selfieUrl} 
+                                                                        alt="Selfie" 
+                                                                        className="w-16 h-16 object-cover rounded-xl border border-slate-200"
+                                                                        onError={(e) => {
+                                                                            (e.target as HTMLImageElement).src = 'https://via.placeholder.com/150?text=Error';
+                                                                        }}
+                                                                    />
+                                                                    <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity rounded-xl">
+                                                                        <ExternalLink className="text-white w-4 h-4" />
+                                                                    </div>
                                                                 </a>
                                                             </div>
                                                         )}
                                                         {req.newData.documents.licenseUrl && (
                                                             <div className="flex flex-col items-center">
                                                                 <span className="text-[9px] font-bold text-slate-400 uppercase mb-1">Licencia</span>
-                                                                <a href={req.newData.documents.licenseUrl} target="_blank" rel="noreferrer">
-                                                                    <img src={req.newData.documents.licenseUrl} alt="Licencia" className="w-16 h-16 object-cover rounded-xl border border-slate-200" />
+                                                                <a href={req.newData.documents.licenseUrl} target="_blank" rel="noreferrer" className="relative group block">
+                                                                    <img 
+                                                                        src={req.newData.documents.licenseUrl} 
+                                                                        alt="Licencia" 
+                                                                        className="w-16 h-16 object-cover rounded-xl border border-slate-200"
+                                                                        onError={(e) => {
+                                                                            (e.target as HTMLImageElement).src = 'https://via.placeholder.com/150?text=Error';
+                                                                        }}
+                                                                    />
+                                                                    <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity rounded-xl">
+                                                                        <ExternalLink className="text-white w-4 h-4" />
+                                                                    </div>
                                                                 </a>
                                                             </div>
                                                         )}
-                                                        {req.newData.documents.vehicleUrl && (
+                                                        {(req.newData.documents.vehicleUrl || req.newData.documents.vehicleImageUrl) && (
                                                             <div className="flex flex-col items-center">
                                                                 <span className="text-[9px] font-bold text-slate-400 uppercase mb-1">Vehículo</span>
-                                                                <a href={req.newData.documents.vehicleUrl} target="_blank" rel="noreferrer">
-                                                                    <img src={req.newData.documents.vehicleUrl} alt="Vehículo" className="w-16 h-16 object-cover rounded-xl border border-slate-200" />
+                                                                <a href={req.newData.documents.vehicleUrl || req.newData.documents.vehicleImageUrl} target="_blank" rel="noreferrer" className="relative group block">
+                                                                    <img 
+                                                                        src={req.newData.documents.vehicleUrl || req.newData.documents.vehicleImageUrl} 
+                                                                        alt="Vehículo" 
+                                                                        className="w-16 h-16 object-cover rounded-xl border border-slate-200"
+                                                                        onError={(e) => {
+                                                                            (e.target as HTMLImageElement).src = 'https://via.placeholder.com/150?text=Error';
+                                                                        }}
+                                                                    />
+                                                                    <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity rounded-xl">
+                                                                        <ExternalLink className="text-white w-4 h-4" />
+                                                                    </div>
                                                                 </a>
                                                             </div>
                                                         )}
@@ -486,7 +516,19 @@ _Enviado desde Deliexpress App_`
                                     <div key={driver.id} className="bg-white rounded-[24px] border border-slate-200 overflow-hidden shadow-sm hover:shadow-md transition-all">
                                         <div className="p-5 border-b border-slate-100">
                                             <div className="flex items-center gap-4 mb-4">
-                                                <img src={driver.documents.selfieUrl} alt="Selfie" className="w-16 h-16 rounded-full object-cover bg-slate-100" />
+                                                <a href={driver.documents.selfieUrl} target="_blank" rel="noreferrer" className="relative group">
+                                                    <img 
+                                                       src={driver.documents.selfieUrl} 
+                                                       alt="Selfie" 
+                                                       className="w-16 h-16 rounded-full object-cover bg-slate-100 border border-slate-200 shadow-sm"
+                                                       onError={(e) => {
+                                                           (e.target as HTMLImageElement).src = 'https://via.placeholder.com/150?text=Error';
+                                                       }}
+                                                    />
+                                                    <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity rounded-full">
+                                                        <ExternalLink className="text-white w-4 h-4" />
+                                                    </div>
+                                                </a>
                                                 <div>
                                                     <h3 className="font-bold text-slate-900 leading-tight">{driver.fullName}</h3>
                                                     <p className="text-xs text-slate-500">{driver.phone} • {driver.age} años</p>
@@ -621,8 +663,20 @@ _Enviado desde Deliexpress App_`
                                     <tr key={driver.id} className="border-b border-slate-100 last:border-none hover:bg-slate-50/50 transition-colors group">
                                         <td className="p-4 pl-6">
                                             <div className="flex items-center gap-3">
-                                                <div className="relative">
-                                                    <img src={driver.documents.selfieUrl} alt="Pic" className="w-10 h-10 rounded-full object-cover" />
+                                                <div className="relative group">
+                                                    <a href={driver.documents.selfieUrl} target="_blank" rel="noreferrer" className="block">
+                                                        <img 
+                                                            src={driver.documents.selfieUrl} 
+                                                            alt="Pic" 
+                                                            className="w-10 h-10 rounded-full object-cover border border-slate-200" 
+                                                            onError={(e) => {
+                                                                (e.target as HTMLImageElement).src = 'https://via.placeholder.com/150?text=Error';
+                                                            }}
+                                                        />
+                                                        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity rounded-full">
+                                                            <ExternalLink className="text-white w-2 h-2" />
+                                                        </div>
+                                                    </a>
                                                     {driver.isOnline && (
                                                         <div className="absolute bottom-0 right-0 w-3 h-3 bg-emerald-500 border-2 border-white rounded-full"></div>
                                                     )}
@@ -1156,27 +1210,54 @@ _Enviado desde Deliexpress App_`
                                 <div>
                                     <h4 className="text-sm font-bold text-slate-900 mb-3 flex items-center gap-2"><User className="w-4 h-4 text-slate-400" /> Selfie y Rostro</h4>
                                     <a href={selectedDriver.documents.selfieUrl} target="_blank" rel="noreferrer" className="block relative group rounded-2xl overflow-hidden border border-slate-200 aspect-video bg-slate-100">
-                                        <img src={selectedDriver.documents.selfieUrl} alt="Selfie" className="w-full h-full object-cover" />
-                                        <div className="absolute inset-0 bg-slate-900/50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                                            <ExternalLink className="text-white w-8 h-8" />
+                                        <img 
+                                            src={selectedDriver.documents.selfieUrl} 
+                                            alt="Selfie" 
+                                            className="w-full h-full object-cover" 
+                                            onError={(e) => {
+                                                (e.target as HTMLImageElement).src = 'https://via.placeholder.com/150?text=Error';
+                                            }}
+                                        />
+                                        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
+                                            <div className="bg-white/20 backdrop-blur-md p-2 rounded-full border border-white/30">
+                                                <ExternalLink className="text-white w-5 h-5" />
+                                            </div>
                                         </div>
                                     </a>
                                 </div>
                                 <div>
                                     <h4 className="text-sm font-bold text-slate-900 mb-3 flex items-center gap-2"><Truck className="w-4 h-4 text-slate-400" /> Vehículo (Placa: {selectedDriver.vehiclePlate})</h4>
                                     <a href={selectedDriver.documents.vehicleUrl || (selectedDriver.documents as any).vehicleImageUrl} target="_blank" rel="noreferrer" className="block relative group rounded-2xl overflow-hidden border border-slate-200 aspect-video bg-slate-100">
-                                        <img src={selectedDriver.documents.vehicleUrl || (selectedDriver.documents as any).vehicleImageUrl} alt="Vehicle" className="w-full h-full object-cover" />
-                                        <div className="absolute inset-0 bg-slate-900/50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                                            <ExternalLink className="text-white w-8 h-8" />
+                                        <img 
+                                            src={selectedDriver.documents.vehicleUrl || (selectedDriver.documents as any).vehicleImageUrl} 
+                                            alt="Vehicle" 
+                                            className="w-full h-full object-cover" 
+                                            onError={(e) => {
+                                                (e.target as HTMLImageElement).src = 'https://via.placeholder.com/150?text=Error';
+                                            }}
+                                        />
+                                        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
+                                            <div className="bg-white/20 backdrop-blur-md p-2 rounded-full border border-white/30">
+                                                <ExternalLink className="text-white w-5 h-5" />
+                                            </div>
                                         </div>
                                     </a>
                                 </div>
                                 <div>
                                     <h4 className="text-sm font-bold text-slate-900 mb-3 flex items-center gap-2"><FileText className="w-4 h-4 text-slate-400" /> Licencia / Documento Legal</h4>
                                     <a href={selectedDriver.documents.licenseUrl} target="_blank" rel="noreferrer" className="block relative group rounded-2xl overflow-hidden border border-slate-200 aspect-video bg-slate-100">
-                                        <img src={selectedDriver.documents.licenseUrl} alt="License" className="w-full h-full object-cover" />
-                                        <div className="absolute inset-0 bg-slate-900/50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                                            <ExternalLink className="text-white w-8 h-8" />
+                                        <img 
+                                            src={selectedDriver.documents.licenseUrl} 
+                                            alt="License" 
+                                            className="w-full h-full object-cover" 
+                                            onError={(e) => {
+                                                (e.target as HTMLImageElement).src = 'https://via.placeholder.com/150?text=Error';
+                                            }}
+                                        />
+                                        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
+                                            <div className="bg-white/20 backdrop-blur-md p-2 rounded-full border border-white/30">
+                                                <ExternalLink className="text-white w-5 h-5" />
+                                            </div>
                                         </div>
                                     </a>
                                 </div>

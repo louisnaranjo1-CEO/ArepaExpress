@@ -410,6 +410,7 @@ export default function OrdersRadar() {
                     console.error("Error sumando deuda al restaurante:", err);
                 }
             }
+            // Puntos Globales por Delivery Fee (2 puntos por cada $)
             if (activeOrder.userId && activeOrder.deliveryFee) {
                 try {
                     const pointsToAdd = activeOrder.deliveryFee * 2;
@@ -419,6 +420,22 @@ export default function OrdersRadar() {
                     });
                 } catch (err) {
                     console.error("Error sumando puntos globales al usuario:", err);
+                }
+            }
+
+            // Puntos por Consumo de Restaurante (2.5 puntos por cada $) si no se han otorgado
+            if (activeOrder.userId && activeOrder.userId !== 'pos_customer' && !activeOrder.pointsCredited) {
+                try {
+                    const pointsToAdd = (activeOrder.total || 0) * 2.5;
+                    const userRef = doc(db, 'users', activeOrder.userId);
+                    await updateDoc(userRef, {
+                        points: increment(pointsToAdd),
+                        [`restaurantPoints.${activeOrder.restaurantId}`]: increment(pointsToAdd)
+                    });
+                    await updateDoc(doc(db, 'orders', activeOrder.id), { pointsCredited: true });
+                    console.log(`Puntos de consumo otorgados por delivery: ${pointsToAdd}`);
+                } catch (err) {
+                    console.error("Error sumando puntos de consumo:", err);
                 }
             }
 
@@ -508,9 +525,17 @@ export default function OrdersRadar() {
                 try {
                     const pointsToAdd = activeTransport.price * 2.5;
                     const userRef = doc(db, 'users', activeTransport.userId);
-                    await updateDoc(userRef, {
+                    
+                    const updates: any = {
                         points: increment(pointsToAdd)
-                    });
+                    };
+
+                    // Si es un food_delivery, también sumar a puntos de restaurante
+                    if (activeTransport.type === 'food_delivery' && activeTransport.restaurantId) {
+                        updates[`restaurantPoints.${activeTransport.restaurantId}`] = increment(pointsToAdd);
+                    }
+
+                    await updateDoc(userRef, updates);
                 } catch (pointsError) {
                     console.error("Error al sumar puntos de viaje:", pointsError);
                 }
@@ -878,30 +903,7 @@ export default function OrdersRadar() {
                                 )}
                             </button>
 
-                            {activeOrder.userPhone && (
-                                <div className="bg-emerald-50 rounded-2xl p-4 border border-emerald-100 mt-2">
-                                    <h4 className="text-[10px] font-black text-emerald-600 uppercase tracking-widest mb-3 flex items-center justify-between">
-                                        Notificar al Cliente por WhatsApp
-                                        <Send className="w-3 h-3" />
-                                    </h4>
-                                    <div className="grid grid-cols-1 gap-2">
-                                        <a
-                                            href={`https://wa.me/${activeOrder.userPhone.replace(/\D/g, '')}?text=${encodeURIComponent(`Hola ${activeOrder.userName || ''}, soy tu piloto de Un 2x3. Tu orden está casi lista en el restaurante, en breve salgo.`)}`}
-                                            target="_blank"
-                                            className="w-full bg-white text-emerald-700 font-bold py-3 rounded-xl border border-emerald-200 text-xs flex justify-center items-center hover:bg-emerald-100 transition-all text-center"
-                                        >
-                                            "Casi Listo"
-                                        </a>
-                                        <a
-                                            href={`https://wa.me/${activeOrder.userPhone.replace(/\D/g, '')}?text=${encodeURIComponent(`Hola ${activeOrder.userName || ''}, ya tengo tu pedido en mis manos. Voy en camino a tu dirección.`)}`}
-                                            target="_blank"
-                                            className="w-full bg-white text-emerald-700 font-bold py-3 rounded-xl border border-emerald-200 text-xs flex justify-center items-center hover:bg-emerald-100 transition-all text-center"
-                                        >
-                                            "¡En camino!"
-                                        </a>
-                                    </div>
-                                </div>
-                            )}
+
                             
                             {activeOrder.restaurantPhone && activeOrder.status === 'en_camino' && (
                                  <a
@@ -1105,11 +1107,9 @@ export default function OrdersRadar() {
                                             <p className="text-[10px] font-black text-emerald-600 uppercase tracking-widest mb-1">Cliente:</p>
                                             <p className="font-bold text-slate-900 leading-tight flex flex-col gap-0.5">
                                                 <span>{req.userName}</span>
-                                                {(req.userCedula || req.userPhone) && (
+                                                {req.userCedula && (
                                                     <span className="text-xs text-slate-500 font-medium">
-                                                        {req.userCedula && `C.I: ${req.userCedula}`}
-                                                        {req.userCedula && req.userPhone && ' • '}
-                                                        {req.userPhone && `Telf: ${req.userPhone}`}
+                                                        C.I: {req.userCedula}
                                                     </span>
                                                 )}
                                             </p>

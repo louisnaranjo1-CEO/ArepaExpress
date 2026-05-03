@@ -62,15 +62,18 @@ export const registerDriver = async (
     files: { selfie: File; vehicle: File; license: File }
 ) => {
     // Upload documents to Firebase Storage (images stay in Firebase)
-    const uploadDoc = async (file: File, path: string) => {
-        const storageRef = ref(storage, path);
-        await uploadBytes(storageRef, file);
+    const uploadDoc = async (file: File, type: string) => {
+        const extension = file.name.split('.').pop() || 'jpg';
+        const storageRef = ref(storage, `delivery_docs/${uid}/${type}_${Date.now()}.${extension}`);
+        await uploadBytes(storageRef, file, {
+            contentType: file.type
+        });
         return await getDownloadURL(storageRef);
     };
 
-    const selfieUrl = await uploadDoc(files.selfie, `delivery_docs/${uid}/selfie`);
-    const vehicleUrl = await uploadDoc(files.vehicle, `delivery_docs/${uid}/vehicle`);
-    const licenseUrl = await uploadDoc(files.license, `delivery_docs/${uid}/license`);
+    const selfieUrl = await uploadDoc(files.selfie, 'selfie');
+    const vehicleUrl = await uploadDoc(files.vehicle, 'vehicle');
+    const licenseUrl = await uploadDoc(files.license, 'license');
 
     // Register in PostgreSQL (primary source of truth)
     try {

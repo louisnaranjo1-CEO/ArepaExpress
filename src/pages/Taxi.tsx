@@ -1218,6 +1218,19 @@ export default function Taxi() {
                                                         <CopyButton text={paymentMethods.pagoMovil.idf} id="pm-id" />
                                                     </div>
 
+                                                    <div className="mt-2">
+                                                        <button
+                                                            onClick={() => {
+                                                                const textToCopy = `Banco: ${paymentMethods.pagoMovil.bank}\nTeléfono: ${paymentMethods.pagoMovil.phone}\nCédula/RIF: ${paymentMethods.pagoMovil.idf}\nMonto: ${(parseFloat(calculatePrice(vehicleType!) as string) * bcvRate).toFixed(2)} Bs`;
+                                                                navigator.clipboard.writeText(textToCopy);
+                                                                toast.success('Datos copiados');
+                                                            }}
+                                                            className="w-full bg-blue-50 text-blue-600 py-2.5 rounded-xl font-bold text-xs flex items-center justify-center gap-2 active:scale-95 transition-all border border-blue-100 hover:bg-blue-100"
+                                                        >
+                                                            <Copy className="w-4 h-4" /> Copiar monto y datos (Pago Móvil)
+                                                        </button>
+                                                    </div>
+
                                                     <div className="mt-4 pt-4 border-t border-slate-200">
                                                         <label className="block text-xs font-bold text-slate-500 mb-2">Comprobante o Referencia</label>
                                                         <input

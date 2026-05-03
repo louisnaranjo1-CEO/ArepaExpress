@@ -167,22 +167,25 @@ export default function DriverProfile() {
 
             // Upload Selfie
             if (selfieFile) {
-                const sRef = ref(storage, `delivery_docs/${user.uid}/selfie_${Date.now()}`);
-                const snap = await uploadBytes(sRef, selfieFile);
+                const ext = selfieFile.name.split('.').pop() || 'jpg';
+                const sRef = ref(storage, `delivery_docs/${user.uid}/selfie_${Date.now()}.${ext}`);
+                const snap = await uploadBytes(sRef, selfieFile, { contentType: selfieFile.type });
                 documents.selfieUrl = await getDownloadURL(snap.ref);
             }
 
             // Upload License
             if (licenseFile) {
-                const lRef = ref(storage, `delivery_docs/${user.uid}/license_${Date.now()}`);
-                const snap = await uploadBytes(lRef, licenseFile);
+                const ext = licenseFile.name.split('.').pop() || 'jpg';
+                const lRef = ref(storage, `delivery_docs/${user.uid}/license_${Date.now()}.${ext}`);
+                const snap = await uploadBytes(lRef, licenseFile, { contentType: licenseFile.type });
                 documents.licenseUrl = await getDownloadURL(snap.ref);
             }
 
             // Upload Vehicle Photo
             if (vehicleFile) {
-                const vRef = ref(storage, `delivery_docs/${user.uid}/vehicle_${Date.now()}`);
-                const snap = await uploadBytes(vRef, vehicleFile);
+                const ext = vehicleFile.name.split('.').pop() || 'jpg';
+                const vRef = ref(storage, `delivery_docs/${user.uid}/vehicle_${Date.now()}.${ext}`);
+                const snap = await uploadBytes(vRef, vehicleFile, { contentType: vehicleFile.type });
                 documents.vehicleUrl = await getDownloadURL(snap.ref);
             }
 

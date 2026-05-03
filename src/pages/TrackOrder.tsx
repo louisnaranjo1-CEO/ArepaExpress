@@ -11,6 +11,7 @@ import ReviewModal from '../components/ReviewModal';
 import DualPrice from '../components/DualPrice';
 import OrderChatWindow from '../components/chat/OrderChatWindow';
 import AddressPicker from '../components/AddressPicker';
+import InAppCall from '../components/InAppCall';
 import { useAuth } from '../context/AuthContext';
 import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { motion, AnimatePresence } from 'motion/react';
@@ -52,6 +53,7 @@ export default function TrackOrder() {
     const [transportRequest, setTransportRequest] = useState<any>(null);
     const [driverLocation, setDriverLocation] = useState<{lat: number, lng: number} | null>(null);
     const [activeTab, setActiveTab] = useState<'order' | 'delivery'>('order');
+    const [showCall, setShowCall] = useState(false);
     
     const [infoStep, setInfoStep] = useState<number | null>(null);
     const [editDelivery, setEditDelivery] = useState({
@@ -851,19 +853,7 @@ export default function TrackOrder() {
                                  <h3 className="text-lg font-black text-slate-900 mb-2">Verificando Pedido</h3>
                                 <p className="text-slate-500 text-sm font-medium">Estamos verificando tu orden, espera un momento...</p>
                                 
-                                {showStockWhatsapp && (
-                                    <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="mt-6 w-full">
-                                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3 italic">¿El negocio no responde? Envía un recordatorio:</p>
-                                        <a 
-                                            href={`https://wa.me/${restaurant?.phone?.replace(/\D/g, '')}?text=${encodeURIComponent(`Hola ${restaurant?.name}, acabo de realizar un pedido (#${orderId?.slice(-5).toUpperCase()}) y estoy esperando la confirmación de stock. \n\nResumen:\n${order.items.map((i:any) => `- ${i.quantity}x ${i.name}`).join('\n')}\n\nTotal: $${order.total}`)}`}
-                                            target="_blank"
-                                            className="w-full bg-[#25D366] text-white py-4 rounded-2xl font-black shadow-xl shadow-[#25D366]/20 hover:scale-[1.02] active:scale-95 transition-all flex items-center justify-center gap-2"
-                                        >
-                                            <Phone className="w-5 h-5 fill-white/20" />
-                                            Enviar Resumen WhatsApp
-                                        </a>
-                                    </motion.div>
-                                )}
+
                             </div>
                         ) : order.status === 'action_required' ? (
                             <div className="space-y-6">
@@ -1000,6 +990,18 @@ export default function TrackOrder() {
                                                                             Titular <Copy className="w-2 h-2 opacity-0 group-hover:opacity-100 transition-opacity" />
                                                                         </p>
                                                                         <p className="text-xs font-black text-slate-700">{method.owner}</p>
+                                                                    </div>
+                                                                    <div className="col-span-2 mt-2">
+                                                                        <button
+                                                                            onClick={() => {
+                                                                                const textToCopy = `Banco: ${method.bank}\nTeléfono: ${method.phone}\nCédula/RIF: ${method.rif}\nTitular: ${method.owner}\nMonto: ${(order.subtotal * bcvRate).toFixed(2)} Bs`;
+                                                                                navigator.clipboard.writeText(textToCopy);
+                                                                                toast.success('Datos copiados');
+                                                                            }}
+                                                                            className="w-full bg-blue-50 text-blue-600 py-2.5 rounded-xl font-bold text-xs flex items-center justify-center gap-2 active:scale-95 transition-all border border-blue-100 hover:bg-blue-100"
+                                                                        >
+                                                                            <Copy className="w-4 h-4" /> Copiar monto y datos (Pago Móvil)
+                                                                        </button>
                                                                     </div>
                                                                 </div>
                                                             )}
@@ -1183,6 +1185,18 @@ export default function TrackOrder() {
                                                             <p className="text-[9px] font-bold text-slate-400 uppercase">RIF</p>
                                                             <p className="text-xs font-black text-slate-700">{platformConfig.paymentMethods.pagoMovil.idf}</p>
                                                         </div>
+                                                        <div className="col-span-2 mt-2">
+                                                            <button
+                                                                onClick={() => {
+                                                                    const textToCopy = `Banco: ${platformConfig.paymentMethods.pagoMovil.bank}\nTeléfono: ${platformConfig.paymentMethods.pagoMovil.phone}\nRIF: ${platformConfig.paymentMethods.pagoMovil.idf}\nMonto: ${(order.deliveryFee * bcvRate).toFixed(2)} Bs`;
+                                                                    navigator.clipboard.writeText(textToCopy);
+                                                                    toast.success('Datos copiados');
+                                                                }}
+                                                                className="w-full bg-blue-50 text-blue-600 py-2.5 rounded-xl font-bold text-xs flex items-center justify-center gap-2 active:scale-95 transition-all border border-blue-100 hover:bg-blue-100"
+                                                            >
+                                                                <Copy className="w-4 h-4" /> Copiar monto y datos (Pago Móvil)
+                                                            </button>
+                                                        </div>
                                                     </div>
                                                 </div>
                                             )}
@@ -1335,9 +1349,12 @@ export default function TrackOrder() {
                                     </div>
                                 </div>
                                 <div className="flex gap-2">
-                                    <a href={`tel:${driver.phone}`} className="w-12 h-12 bg-slate-100 text-slate-900 rounded-2xl flex items-center justify-center active:scale-95 transition-all">
-                                        <Phone className="w-5 h-5" />
-                                    </a>
+                                    <button 
+                                        onClick={() => setShowCall(true)}
+                                        className="w-12 h-12 bg-emerald-50 text-emerald-600 rounded-2xl flex items-center justify-center active:scale-95 transition-all"
+                                    >
+                                        <Phone className="w-5 h-5 fill-current" />
+                                    </button>
                                     <button 
                                         onClick={() => setActiveTab('delivery')}
                                         className={`w-12 h-12 rounded-2xl flex items-center justify-center active:scale-95 transition-all ${activeTab === 'delivery' ? 'bg-primary text-slate-900' : 'bg-slate-100 text-slate-500'}`}
@@ -1371,6 +1388,19 @@ export default function TrackOrder() {
                             </div>
                         )}
                     </div>
+                )}
+
+                {/* In-App Call Modal */}
+                {showCall && driver && transportRequest && (
+                    <InAppCall 
+                        requestId={orderId!}
+                        myId={user?.uid || ''}
+                        remoteId={transportRequest.driverId}
+                        remoteDisplayName={driver.fullName.split(' ')[0]}
+                        remotePhotoUrl={driver.documents?.selfieUrl}
+                        role="caller"
+                        onClose={() => setShowCall(false)}
+                    />
                 )}
 
                 {/* Order Summary */}

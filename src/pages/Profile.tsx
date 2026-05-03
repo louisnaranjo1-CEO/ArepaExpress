@@ -36,8 +36,9 @@ interface SupportTicket {
 
 interface ActivityItem {
     id: string;
-    type: 'order' | 'transport';
+    type: 'order' | 'transport' | 'wallet_recharge';
     total?: number;
+    amount?: number; // for recharges
     status: string;
     createdAt: any;
     // Order specific
@@ -45,11 +46,13 @@ interface ActivityItem {
     deliveryMethod?: string;
     hasReviewed?: boolean;
     restaurantId?: string;
+    restaurantName?: string;
     // Transport specific
     origin?: { lat: number, lng: number, address: string };
     destination?: { lat: number, lng: number, address: string };
     fare?: number;
     serviceType?: string;
+    vehicleType?: string;
 }
 
 const RestaurantPointCard: React.FC<{ restId: string, points: number }> = ({ restId, points }) => {
@@ -208,10 +211,25 @@ export default function Profile() {
                     } as ActivityItem;
                 });
 
+                // Fetch Wallet Recharges
+                const qRecharges = query(
+                    collection(db, 'wallet_recharges'),
+                    where('userId', '==', user.uid),
+                    orderBy('createdAt', 'desc')
+                );
+                const rechargeSnapshot = await getDocs(qRecharges);
+                const fetchedRecharges = rechargeSnapshot.docs.map(doc => {
+                    return {
+                        id: doc.id,
+                        type: 'wallet_recharge',
+                        ...doc.data()
+                    } as ActivityItem;
+                });
+
                 // Combine and sort
-                const combined = [...fetchedOrders, ...fetchedTransports].sort((a, b) => {
-                    const timeA = a.createdAt?.toMillis() || 0;
-                    const timeB = b.createdAt?.toMillis() || 0;
+                const combined = [...fetchedOrders, ...fetchedTransports, ...fetchedRecharges].sort((a, b) => {
+                    const timeA = a.createdAt?.toMillis ? a.createdAt.toMillis() : (a.createdAt instanceof Date ? a.createdAt.getTime() : 0);
+                    const timeB = b.createdAt?.toMillis ? b.createdAt.toMillis() : (b.createdAt instanceof Date ? b.createdAt.getTime() : 0);
                     return timeB - timeA;
                 });
 
@@ -1299,19 +1317,20 @@ export default function Profile() {
                                                     </div>
                                                 </div>
                                                 <span className={`px-2 py-1 rounded text-[10px] font-bold uppercase tracking-wider mt-1 ${
-                                                    activity.status === 'pending' || activity.status === 'finding_driver' ? 'bg-orange-100 text-orange-600' :
-                                                    activity.status === 'completed' || activity.status === 'delivered' ? 'bg-emerald-100 text-emerald-600' :
-                                                    (activity.status === 'accepted' || activity.status === 'arriving' || activity.status === 'in_progress' || activity.status === 'in_transit' || activity.status === 'driver_assigned') ? 'bg-blue-100 text-blue-600' :
-                                                    activity.status === 'cancelled' || activity.status === 'rejected' ? 'bg-red-100 text-red-600' :
+                                                    activity.status === 'pending' || activity.status === 'finding_driver' || activity.status === 'searching' ? 'bg-orange-100 text-orange-600' :
+                                                    activity.status === 'completed' || activity.status === 'delivered' || activity.status === 'paid' || activity.status === 'approved' || activity.status === 'sold' ? 'bg-emerald-100 text-emerald-600' :
+                                                    (activity.status === 'accepted' || activity.status === 'arriving' || activity.status === 'in_progress' || activity.status === 'in_transit' || activity.status === 'driver_assigned' || activity.status === 'preparing') ? 'bg-blue-100 text-blue-600' :
+                                                    activity.status === 'cancelled' || activity.status === 'rejected' || activity.status === 'failed' ? 'bg-red-100 text-red-600' :
                                                     'bg-slate-200 text-slate-600'
                                                 }`}>
-                                                    {activity.status === 'pending' ? 'Buscando' :
-                                                    activity.status === 'finding_driver' ? 'Buscando Piloto' :
+                                                    {activity.status === 'pending' ? (activity.type === 'wallet_recharge' ? 'Pendiente' : 'Buscando') :
+                                                    activity.status === 'finding_driver' || activity.status === 'searching' ? 'Buscando Piloto' :
                                                     activity.status === 'driver_assigned' || activity.status === 'accepted' ? 'Asignado' :
+                                                    activity.status === 'preparing' ? 'Preparando' :
                                                     activity.status === 'in_transit' || activity.status === 'in_progress' || activity.status === 'arriving' ? 'En Camino' :
-                                                    activity.status === 'completed' ? 'Completado' : 
-                                                    activity.status === 'delivered' ? 'Entregado' :
-                                                    activity.status === 'cancelled' || activity.status === 'rejected' ? 'Cancelado' : activity.status}
+                                                    activity.status === 'completed' || activity.status === 'delivered' || activity.status === 'sold' ? 'Completado' : 
+                                                    activity.status === 'approved' || activity.status === 'paid' ? 'Aprobado' :
+                                                    activity.status === 'cancelled' || activity.status === 'rejected' || activity.status === 'failed' ? 'Cancelado' : activity.status}
                                                 </span>
                                             </div>
                                             <div className="h-px bg-slate-200 my-1"></div>
@@ -1328,18 +1347,34 @@ export default function Profile() {
                                                         </span>
                                                     </div>
                                                 </div>
+                                            ) : activity.type === 'wallet_recharge' ? (
+                                                <div className="text-xs text-slate-500 flex items-center gap-1.5">
+                                                    <div className="p-1.5 bg-green-100 rounded-lg text-green-600">
+                                                        <Wallet className="w-4 h-4" />
+                                                    </div>
+                                                    <span className="font-bold text-slate-800 text-sm">
+                                                        Recarga de Saldo - Ref: {activity.paymentRef || 'S/N'}
+                                                    </span>
+                                                </div>
                                             ) : (
                                                 <div className="text-xs text-slate-500 flex items-center gap-1.5">
+                                                    <div className="p-1.5 bg-slate-100 rounded-lg text-slate-400">
+                                                        <Store className="w-4 h-4" />
+                                                    </div>
+                                                    <span className="font-bold text-slate-700 text-sm truncate max-w-[150px]">
+                                                        {activity.restaurantName || 'Negocio'}
+                                                    </span>
+                                                    <span className="text-slate-300 mx-1">|</span>
                                                     <span className="bg-slate-200 px-2 py-0.5 rounded-md font-bold text-slate-600">
                                                         {activity.items?.length || 0} art.
                                                     </span>
-                                                    <span className="line-clamp-1 italic">{activity.items?.map(i => i.name).join(', ')}</span>
+                                                    <span className="line-clamp-1 italic text-[10px]">{activity.items?.map(i => i.name).join(', ')}</span>
                                                 </div>
                                             )}
 
                                             <div className="flex justify-end items-end mt-1">
                                                 <span className="font-black text-slate-900 text-base">
-                                                    ${(activity.type === 'transport' ? (activity.price || activity.fare || 0) : ((activity.total || 0) + (activity.deliveryFee || 0))).toFixed(2)}
+                                                    ${(activity.type === 'wallet_recharge' ? (activity.amount || 0) : activity.type === 'transport' ? (activity.price || activity.fare || 0) : ((activity.total || 0) + (activity.deliveryFee || 0))).toFixed(2)}
                                                 </span>
                                             </div>
                                             
