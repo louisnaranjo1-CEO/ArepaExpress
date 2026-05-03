@@ -96,14 +96,21 @@ export const registerDriver = async (
         console.error("Error registering driver in PostgreSQL:", apiErr);
     }
 
+    // Sanitize homeLocation: remove coords if undefined to avoid Firestore error
+    const homeLocation = data.homeLocation ? {
+        state: data.homeLocation.state,
+        city: data.homeLocation.city,
+        ...(data.homeLocation.coords ? { coords: data.homeLocation.coords } : {})
+    } : undefined;
+
     const driverData: DeliveryDriver = {
         id: uid,
         email,
         ...data,
+        ...(homeLocation ? { homeLocation } : {}),
         status: 'pending',
         isOnline: false,
         availability: 'offline',
-        currentLocation: null,
         documents: {
             selfieUrl,
             vehicleUrl,
@@ -113,8 +120,11 @@ export const registerDriver = async (
         updatedAt: serverTimestamp(),
     };
 
+    // Strip any undefined values before sending to Firestore
+    const firestoreData = JSON.parse(JSON.stringify(driverData));
+
     // Also save to Firestore for auth-related features
-    await setDoc(doc(db, 'delivery_drivers', uid), driverData);
+    await setDoc(doc(db, 'delivery_drivers', uid), firestoreData);
 
     const userRole = (data.vehicleType === 'carro' || data.vehicleType === 'ejecutivo') ? 'driver' : 'delivery';
 

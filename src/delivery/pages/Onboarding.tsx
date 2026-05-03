@@ -100,7 +100,7 @@ export default function Onboarding() {
                     homeLocation: {
                         state: formData.homeState,
                         city: formData.homeCity,
-                        coords: formData.homeCoords || undefined
+                        ...(formData.homeCoords ? { coords: formData.homeCoords } : {})
                     }
                 },
                 {
