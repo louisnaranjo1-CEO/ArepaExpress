@@ -13,6 +13,7 @@ import {
     onSnapshot
 } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { driversApi } from './api';
 
 export type DeliveryStatus = 'pending' | 'active' | 'rejected' | 'inactive';
 export type AvailabilityStatus = 'active' | 'busy' | 'offline';
@@ -31,7 +32,9 @@ export interface DeliveryDriver {
     status: DeliveryStatus;
     isOnline: boolean;
     availability?: AvailabilityStatus;
-    currentLocation?: GeoPoint | null;
+    currentLocation?: GeoPoint | { latitude: number; longitude: number } | null;
+    currentHeading?: number;
+    currentSpeed?: number;
     homeLocation?: {
         state: string;
         city: string;
@@ -58,7 +61,7 @@ export const registerDriver = async (
     data: Omit<DeliveryDriver, 'id' | 'email' | 'status' | 'isOnline' | 'createdAt' | 'updatedAt' | 'documents' | 'currentLocation'>,
     files: { selfie: File; vehicle: File; license: File }
 ) => {
-    // Upload documents
+    // Upload documents to Firebase Storage (images stay in Firebase)
     const uploadDoc = async (file: File, path: string) => {
         const storageRef = ref(storage, path);
         await uploadBytes(storageRef, file);
@@ -68,6 +71,30 @@ export const registerDriver = async (
     const selfieUrl = await uploadDoc(files.selfie, `delivery_docs/${uid}/selfie`);
     const vehicleUrl = await uploadDoc(files.vehicle, `delivery_docs/${uid}/vehicle`);
     const licenseUrl = await uploadDoc(files.license, `delivery_docs/${uid}/license`);
+
+    // Register in PostgreSQL (primary source of truth)
+    try {
+        await driversApi.register({
+            firebase_uid: uid,
+            email,
+            full_name: data.fullName,
+            phone: data.phone,
+            cedula: data.cedula,
+            rif: data.rif,
+            age: data.age,
+            vehicle_type: data.vehicleType,
+            vehicle_plate: data.vehiclePlate,
+            selfie_url: selfieUrl,
+            vehicle_url: vehicleUrl,
+            license_url: licenseUrl,
+            home_state: data.homeLocation?.state,
+            home_city: data.homeLocation?.city,
+            home_coords_lat: data.homeLocation?.coords?.lat,
+            home_coords_lng: data.homeLocation?.coords?.lng,
+        });
+    } catch (apiErr) {
+        console.error("Error registering driver in PostgreSQL:", apiErr);
+    }
 
     const driverData: DeliveryDriver = {
         id: uid,
@@ -86,11 +113,12 @@ export const registerDriver = async (
         updatedAt: serverTimestamp(),
     };
 
+    // Also save to Firestore for auth-related features
     await setDoc(doc(db, 'delivery_drivers', uid), driverData);
 
     const userRole = (data.vehicleType === 'carro' || data.vehicleType === 'ejecutivo') ? 'driver' : 'delivery';
 
-    // Update user role
+    // Update user role in Firestore (auth-related)
     await setDoc(doc(db, 'users', uid), {
         email,
         role: userRole,
@@ -101,7 +129,17 @@ export const registerDriver = async (
 };
 
 export const getDriverProfile = async (idOrEmail: string): Promise<DeliveryDriver | null> => {
-    // Check if it's an email
+    // Try PostgreSQL first (primary source of truth)
+    try {
+        if (!idOrEmail.includes('@')) {
+            const driver = await driversApi.getDriver(idOrEmail);
+            return driver as unknown as DeliveryDriver;
+        }
+    } catch (apiErr) {
+        console.warn("PostgreSQL driver lookup failed, falling back to Firestore:", apiErr);
+    }
+
+    // Fallback to Firestore
     if (idOrEmail.includes('@')) {
         const q = query(collection(db, 'delivery_drivers'), where('email', '==', idOrEmail));
         const querySnapshot = await getDocs(q);
@@ -118,28 +156,60 @@ export const getDriverProfile = async (idOrEmail: string): Promise<DeliveryDrive
     return null;
 };
 
-export const updateDriverLocation = async (uid: string, lat: number, lng: number) => {
-    const docRef = doc(db, 'delivery_drivers', uid);
-    await updateDoc(docRef, {
-        currentLocation: new GeoPoint(lat, lng),
-        updatedAt: serverTimestamp()
-    });
+/**
+ * Actualizar ubicación del driver — PostgreSQL es la fuente primaria
+ * Con soporte para heading y speed para tracking animado
+ */
+export const updateDriverLocation = async (uid: string, lat: number, lng: number, heading?: number, speed?: number) => {
+    // PostgreSQL (primary — usado para tracking en tiempo real)
+    try {
+        await driversApi.updateLocation(uid, lat, lng, heading, speed);
+    } catch (apiErr) {
+        console.error("Error updating driver location in PostgreSQL:", apiErr);
+    }
 };
 
+/**
+ * Cambiar estado online/offline del driver — PostgreSQL es la fuente primaria
+ */
 export const setDriverOnlineStatus = async (uid: string, isOnline: boolean) => {
-    const docRef = doc(db, 'delivery_drivers', uid);
-    await updateDoc(docRef, {
-        isOnline,
-        availability: isOnline ? 'active' : 'offline',
-        updatedAt: serverTimestamp()
-    });
+    // PostgreSQL (primary — usado para disponibilidad en Taxi.tsx)
+    try {
+        await driversApi.updateStatus(uid, isOnline);
+    } catch (apiErr) {
+        console.error("Error updating driver status in PostgreSQL:", apiErr);
+    }
+
+    // Firestore (para compatibilidad temporal con otros flujos)
+    try {
+        const docRef = doc(db, 'delivery_drivers', uid);
+        await updateDoc(docRef, {
+            isOnline,
+            availability: isOnline ? 'active' : 'offline',
+            updatedAt: serverTimestamp()
+        });
+    } catch (fbErr) {
+        console.warn("Firestore status update failed (non-critical):", fbErr);
+    }
 };
 
 export const setDriverAvailability = async (uid: string, availability: AvailabilityStatus) => {
-    const docRef = doc(db, 'delivery_drivers', uid);
-    await updateDoc(docRef, {
-        availability,
-        isOnline: availability !== 'offline',
-        updatedAt: serverTimestamp()
-    });
+    // PostgreSQL (primary)
+    try {
+        await driversApi.updateStatus(uid, availability !== 'offline', availability);
+    } catch (apiErr) {
+        console.error("Error updating driver availability in PostgreSQL:", apiErr);
+    }
+
+    // Firestore (compatibilidad)
+    try {
+        const docRef = doc(db, 'delivery_drivers', uid);
+        await updateDoc(docRef, {
+            availability,
+            isOnline: availability !== 'offline',
+            updatedAt: serverTimestamp()
+        });
+    } catch (fbErr) {
+        console.warn("Firestore availability update failed (non-critical):", fbErr);
+    }
 };

@@ -124,73 +124,25 @@ export default function Taxi() {
             setShowLocationModal(true);
         }
     }, [userData]);
-    const [onlineDrivers, setOnlineDrivers] = useState<{ id: string, vehicleType: string, availability: string }[]>([]);
-    const [busyTransportDrivers, setBusyTransportDrivers] = useState<Set<string>>(new Set());
-    const [busyOrderDrivers, setBusyOrderDrivers] = useState<Set<string>>(new Set());
     const [activeDrivers, setActiveDrivers] = useState<{ moto: number, carro: number, ejecutivo: number }>({ moto: 0, carro: 0, ejecutivo: 0 });
 
+    // PostgreSQL: Polling de disponibilidad de conductores (reemplaza 3 Firestore listeners)
     useEffect(() => {
-        // Query delivery_drivers
-        const q = query(
-            collection(db, 'delivery_drivers'), 
-            where('isOnline', '==', true)
-        );
-
-        const unsub = onSnapshot(q, (snapshot) => {
-            const drivers = snapshot.docs.map(doc => ({
-                id: doc.id,
-                vehicleType: doc.data().vehicleType,
-                availability: doc.data().availability || 'active'
-            }));
-            setOnlineDrivers(drivers);
-        });
-
-        // Find busy drivers in transport_requests
-        const qReq = query(
-            collection(db, 'transport_requests'),
-            where('status', 'in', ['accepted', 'arriving', 'in_progress'])
-        );
-        const unsubReq = onSnapshot(qReq, (snapshot) => {
-            const temp = new Set<string>();
-            snapshot.docs.forEach(doc => {
-                if (doc.data().driverId) temp.add(doc.data().driverId);
-            });
-            setBusyTransportDrivers(temp);
-        });
-
-        // Find busy drivers in orders
-        const qOrders = query(
-            collection(db, 'orders'),
-            where('status', 'in', ['en_camino', 'in_transit'])
-        );
-        const unsubOrders = onSnapshot(qOrders, (snapshot) => {
-            const temp = new Set<string>();
-            snapshot.docs.forEach(doc => {
-                const driverId = doc.data().deliveryDriverId;
-                if (driverId) temp.add(driverId);
-            });
-            setBusyOrderDrivers(temp);
-        });
-
-        return () => {
-            unsub();
-            unsubReq();
-            unsubOrders();
-        };
-    }, []);
-
-    useEffect(() => {
-        const counts = { moto: 0, carro: 0, ejecutivo: 0 };
-        onlineDrivers.forEach(d => {
-            // Count if not busy explicitly from UI, and not having active order or run
-            if (d.availability !== 'busy' && !busyTransportDrivers.has(d.id) && !busyOrderDrivers.has(d.id)) {
-                if (d.vehicleType?.toLowerCase() === 'moto') counts.moto++;
-                if (d.vehicleType?.toLowerCase() === 'carro') counts.carro++;
-                if (d.vehicleType?.toLowerCase() === 'ejecutivo') counts.ejecutivo++;
+        const fetchAvailability = async () => {
+            try {
+                const { driversApi } = await import('../lib/api');
+                const counts = await driversApi.getAvailable();
+                setActiveDrivers(counts);
+            } catch (error) {
+                console.error('Error fetching driver availability from PostgreSQL:', error);
             }
-        });
-        setActiveDrivers(counts);
-    }, [onlineDrivers, busyTransportDrivers, busyOrderDrivers]);
+        };
+
+        // Fetch inmediato + polling cada 10s
+        fetchAvailability();
+        const interval = setInterval(fetchAvailability, 10000);
+        return () => clearInterval(interval);
+    }, []);
 
     const [isFollowingUser, setIsFollowingUser] = useState(false);
     const watchIdRef = useRef<number | null>(null);
