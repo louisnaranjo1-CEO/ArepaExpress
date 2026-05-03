@@ -1091,7 +1091,7 @@ export default function OrdersRadar() {
                                 <div className="flex justify-between items-center mb-6 relative">
                                     <div className="flex items-center gap-2 px-3 py-1 bg-primary text-slate-900 rounded-full text-[10px] font-black uppercase tracking-wider shadow-lg shadow-primary/20">
                                         {req.type === 'food_delivery' ? <Bike className="w-3.5 h-3.5" /> : (req.type === 'package_delivery' ? <Package className="w-3.5 h-3.5" /> : (req.vehicleType === 'moto' ? <Bike className="w-3.5 h-3.5" /> : <Car className="w-3.5 h-3.5" />))}
-                                        {req.scheduled ? 'VIAJE PROGRAMADO' : (req.type === 'food_delivery' ? 'REPARTO COMIDA' : (req.type === 'package_delivery' ? 'ENVÍO DE PAQUETE' : 'SOLICITUD TAXI'))}
+                                        {req.scheduled ? 'VIAJE PROGRAMADO' : (req.type === 'food_delivery' ? 'REPARTO COMIDA' : (req.type === 'package_delivery' ? 'SOLICITUD ENVIO PAQUETE' : 'SOLICITUD TAXI'))}
                                     </div>
                                     <div className="text-2xl font-black text-emerald-600">${(req.price || 0).toFixed(2)}</div>
                                 </div>

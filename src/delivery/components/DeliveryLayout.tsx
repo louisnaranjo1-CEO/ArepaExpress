@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { NavLink } from 'react-router-dom';
-import { Compass, DollarSign, User } from 'lucide-react';
+import { Compass, DollarSign, User, Trophy } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { doc, onSnapshot } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
@@ -65,6 +65,7 @@ export default function DeliveryLayout({ children }: DeliveryLayoutProps) {
     const navItems = [
         { path: '/radar', icon: Compass, label: 'Radar' },
         { path: '/earnings', icon: DollarSign, label: 'Ganancias' },
+        { path: '/achievements', icon: Trophy, label: 'Logros' },
         { path: '/profile', icon: User, label: 'Perfil' },
     ];
 

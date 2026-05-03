@@ -2,7 +2,8 @@ import React, { useEffect, useState } from 'react';
 import { DollarSign, Activity, Calendar, ArrowUpRight, Star, ExternalLink, PackageCheck, AlertCircle, Ticket, Gift, Sparkles, Clock } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { db } from '../../lib/firebase';
-import { collection, query, where, onSnapshot, orderBy, doc, getDocs, updateDoc, increment, addDoc, serverTimestamp } from 'firebase/firestore';
+import { useNavigate } from 'react-router-dom';
+import { collection, query, where, onSnapshot, orderBy, doc, getDocs, updateDoc, increment, addDoc, serverTimestamp, writeBatch } from 'firebase/firestore';
 
 interface EarningsItem {
     id: string;
@@ -33,10 +34,12 @@ export default function Earnings() {
     const [earnings, setEarnings] = useState<EarningsItem[]>([]);
     const [loading, setLoading] = useState(true);
     const [activeTab, setActiveTab] = useState<'pending' | 'history'>('pending');
+    const navigate = useNavigate();
 
     const [activeRaffles, setActiveRaffles] = useState<DriverRaffle[]>([]);
     const [driverPoints, setDriverPoints] = useState<number>(0);
     const [processingRaffle, setProcessingRaffle] = useState<string | null>(null);
+    const [requestingPayment, setRequestingPayment] = useState(false);
 
     const [stats, setStats] = useState({
         today: 0,
@@ -225,6 +228,42 @@ export default function Earnings() {
         }
     };
 
+    const handleRequestPayment = async () => {
+        if (!user || !profile) return;
+        
+        // Validate if they have payment mobile configured
+        if (!profile.paymentMobile || !profile.paymentMobile.bank || !profile.paymentMobile.cedula || !profile.paymentMobile.phone) {
+            alert('No has configurado tu Pago Móvil. Por favor dirígete a tu Perfil -> Método de Pago y configúralo antes de solicitar el pago.');
+            navigate('/delivery/profile');
+            return;
+        }
+
+        const pendingItems = earnings.filter(o => !o.isPaid);
+        if (pendingItems.length === 0) {
+            alert('No tienes saldo disponible para cobro.');
+            return;
+        }
+
+        setRequestingPayment(true);
+        try {
+            const batch = writeBatch(db);
+            
+            pendingItems.forEach(item => {
+                const itemRef = doc(db, item.type === 'delivery' ? 'orders' : 'transport_requests', item.id);
+                batch.update(itemRef, { paymentRequested: true });
+            });
+
+            await batch.commit();
+
+            alert('Espera mientras tu pago se hace efectivo a tu pago móvil.');
+        } catch (error) {
+            console.error('Error requesting payment', error);
+            alert('Ocurrió un error al solicitar el pago.');
+        } finally {
+            setRequestingPayment(false);
+        }
+    };
+
     if (loading) {
         return (
             <div className="flex justify-center items-center py-20">
@@ -301,6 +340,21 @@ export default function Earnings() {
                     <div className="flex items-center gap-1.5 text-black/70 text-[10px] font-bold">
                         <PackageCheck className="w-3 h-3" /> {earnings.filter(o => !o.isPaid).length} servicios pendientes
                     </div>
+                    {stats.available > 0 && (
+                        <button
+                            onClick={handleRequestPayment}
+                            disabled={requestingPayment}
+                            className="mt-4 w-full bg-slate-900 text-primary py-3 rounded-xl font-black text-sm active:scale-95 transition-all shadow-xl shadow-slate-900/30 flex items-center justify-center gap-2"
+                        >
+                            {requestingPayment ? (
+                                <div className="w-5 h-5 border-2 border-primary border-t-transparent rounded-full animate-spin"></div>
+                            ) : (
+                                <>
+                                    <DollarSign className="w-4 h-4" /> SOLICITAR PAGO
+                                </>
+                            )}
+                        </button>
+                    )}
                 </div>
 
                 <div className="bg-white rounded-[28px] p-5 border border-slate-100 shadow-sm">

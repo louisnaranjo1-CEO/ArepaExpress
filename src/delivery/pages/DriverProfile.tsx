@@ -15,7 +15,7 @@ import { registerBiometric } from '../../utils/security';
 export default function DriverProfile() {
     const { user, userData } = useAuth();
     const navigate = useNavigate();
-    const [activeView, setActiveView] = useState<'profile' | 'settings' | 'update_data' | 'location'>('profile');
+    const [activeView, setActiveView] = useState<'profile' | 'settings' | 'update_data' | 'location' | 'payment_method'>('profile');
     const [driverProfile, setDriverProfile] = useState<any>(null);
     const [updatingNotifications, setUpdatingNotifications] = useState(false);
     const [updatingBiometrics, setUpdatingBiometrics] = useState(false);
@@ -35,12 +35,12 @@ export default function DriverProfile() {
                         coords: data.homeLocation.coords || null
                     });
                 }
+                setPaymentMobileForm(data.paymentMobile || { bank: '', cedula: '', phone: '' });
                 setUpdateForm(prev => ({
                     ...prev,
                     phone: data.phone || prev.phone,
                     vehiclePlate: prev.vehiclePlate || data.vehiclePlate || '',
                     vehicleType: prev.vehicleType === 'moto' && data.vehicleType ? data.vehicleType : prev.vehicleType,
-                    paymentMobile: data.paymentMobile || prev.paymentMobile
                 }));
             }
         });
@@ -56,12 +56,14 @@ export default function DriverProfile() {
     const [updateForm, setUpdateForm] = useState({
         phone: '',
         vehiclePlate: '',
-        vehicleType: 'moto',
-        paymentMobile: {
-            bank: '',
-            cedula: '',
-            phone: ''
-        }
+        vehicleType: 'moto'
+    });
+
+    // Payment Mobile State
+    const [paymentMobileForm, setPaymentMobileForm] = useState({
+        bank: '',
+        cedula: '',
+        phone: ''
     });
 
     const [locationForm, setLocationForm] = useState({
@@ -78,6 +80,28 @@ export default function DriverProfile() {
     const [licensePreview, setLicensePreview] = useState<string | null>(null);
     const [vehicleFile, setVehicleFile] = useState<File | null>(null);
     const [vehiclePreview, setVehiclePreview] = useState<string | null>(null);
+
+    const handleSavePaymentMobile = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!user || !paymentMobileForm.bank || !paymentMobileForm.cedula || !paymentMobileForm.phone) {
+            alert('Por favor completa todos los campos del método de pago.');
+            return;
+        }
+
+        setLoading(true);
+        try {
+            await updateDoc(doc(db, 'delivery_drivers', user.uid), {
+                paymentMobile: paymentMobileForm
+            });
+            alert('Método de pago guardado exitosamente. Ahora podrás recibir liquidaciones automáticamente.');
+            setActiveView('profile');
+        } catch (error) {
+            console.error(error);
+            alert('Error al guardar método de pago.');
+        } finally {
+            setLoading(false);
+        }
+    };
 
     const handleLogout = async () => {
         try {
@@ -583,72 +607,6 @@ export default function DriverProfile() {
                             </div>
                         </div>
 
-                        {/* Datos para Liquidación (Pago Móvil) */}
-                        <div className="bg-white rounded-[24px] p-6 border border-slate-100 shadow-sm space-y-6">
-                            <h3 className="text-xs font-black text-slate-400 uppercase tracking-[0.2em] flex items-center gap-2">
-                                <CreditCard className="w-4 h-4" /> Datos Bancarios (Pago Móvil)
-                            </h3>
-                            <p className="text-[10px] text-primary font-bold bg-primary/10 p-3 rounded-xl">
-                                Carga tus datos para recibir la liquidación de cobros automáticamente.
-                            </p>
-
-                            <div className="space-y-2">
-                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Banco</label>
-                                <select
-                                    required
-                                    value={updateForm.paymentMobile.bank}
-                                    onChange={e => setUpdateForm({ ...updateForm, paymentMobile: { ...updateForm.paymentMobile, bank: e.target.value }})}
-                                    className="w-full bg-slate-50 border border-slate-100 rounded-2xl p-4 font-bold text-slate-700 focus:bg-white focus:border-primary transition-all outline-none"
-                                >
-                                    <option value="">Selecciona un Banco</option>
-                                    <option value="0102">0102 - Banco de Venezuela</option>
-                                    <option value="0104">0104 - Banco Venezolano de Crédito</option>
-                                    <option value="0105">0105 - Banco Mercantil</option>
-                                    <option value="0108">0108 - Banco Provincial</option>
-                                    <option value="0114">0114 - Bancaribe</option>
-                                    <option value="0115">0115 - Banco Exterior</option>
-                                    <option value="0128">0128 - Banco Caroní</option>
-                                    <option value="0134">0134 - Banesco</option>
-                                    <option value="0138">0138 - Banco Plaza</option>
-                                    <option value="0151">0151 - BFC Banco Fondo Común</option>
-                                    <option value="0156">0156 - 100% Banco</option>
-                                    <option value="0157">0157 - Banco del Sur</option>
-                                    <option value="0163">0163 - Bancamiga</option>
-                                    <option value="0168">0168 - Bancrecer</option>
-                                    <option value="0169">0169 - Mi Banco</option>
-                                    <option value="0171">0171 - Banco Activo</option>
-                                    <option value="0172">0172 - Bancamiga</option>
-                                    <option value="0174">0174 - Banplus</option>
-                                    <option value="0175">0175 - Bicentenario</option>
-                                    <option value="0177">0177 - Banfanb</option>
-                                    <option value="0191">0191 - BNC Nacional de Crédito</option>
-                                </select>
-                            </div>
-
-                            <div className="space-y-2">
-                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Cédula del Titular</label>
-                                <input
-                                    type="text"
-                                    required
-                                    placeholder="Ej: V-12345678"
-                                    value={updateForm.paymentMobile.cedula}
-                                    onChange={e => setUpdateForm({ ...updateForm, paymentMobile: { ...updateForm.paymentMobile, cedula: e.target.value }})}
-                                    className="w-full bg-slate-50 border border-slate-100 rounded-2xl p-4 font-bold text-slate-700 focus:bg-white focus:border-primary transition-all outline-none"
-                                />
-                            </div>
-
-                            <div className="space-y-2">
-                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Teléfono Afiliado</label>
-                                <input
-                                    type="tel"
-                                    required
-                                    placeholder="Ej: 04141234567"
-                                    value={updateForm.paymentMobile.phone}
-                                    onChange={e => setUpdateForm({ ...updateForm, paymentMobile: { ...updateForm.paymentMobile, phone: e.target.value }})}
-                                    className="w-full bg-slate-50 border border-slate-100 rounded-2xl p-4 font-bold text-slate-700 focus:bg-white focus:border-primary transition-all outline-none"
-                                />
-                            </div>
-                        </div>
                     </div>
 
                     {/* Enhanced Visual Info */}
@@ -834,6 +792,95 @@ export default function DriverProfile() {
         );
     }
 
+    if (activeView === 'payment_method') {
+        return (
+            <div className="space-y-6 animate-fade-in pb-24 px-4">
+                <button onClick={() => setActiveView('profile')} className="flex items-center gap-2 text-slate-500 font-bold mb-4">
+                    <ArrowLeft className="w-5 h-5" /> Volver al Perfil
+                </button>
+                <div className="mb-6">
+                    <h2 className="text-2xl font-black text-slate-800 tracking-tight">Método de Pago</h2>
+                    <p className="text-sm text-slate-500 mt-2 font-medium leading-relaxed">
+                        Configura tus datos de Pago Móvil para recibir tus ganancias directamente.
+                    </p>
+                </div>
+
+                <form onSubmit={handleSavePaymentMobile} className="bg-white rounded-[24px] p-6 border border-slate-100 shadow-sm space-y-6">
+                    <h3 className="text-xs font-black text-slate-400 uppercase tracking-[0.2em] flex items-center gap-2">
+                        <CreditCard className="w-4 h-4" /> Datos Bancarios
+                    </h3>
+                    
+                    <div className="space-y-2">
+                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Banco</label>
+                        <select
+                            required
+                            value={paymentMobileForm.bank}
+                            onChange={e => setPaymentMobileForm({ ...paymentMobileForm, bank: e.target.value })}
+                            className="w-full bg-slate-50 border border-slate-100 rounded-2xl p-4 font-bold text-slate-700 focus:bg-white focus:border-primary transition-all outline-none"
+                        >
+                            <option value="">Selecciona un Banco</option>
+                            <option value="0102">0102 - Banco de Venezuela</option>
+                            <option value="0104">0104 - Banco Venezolano de Crédito</option>
+                            <option value="0105">0105 - Banco Mercantil</option>
+                            <option value="0108">0108 - Banco Provincial</option>
+                            <option value="0114">0114 - Bancaribe</option>
+                            <option value="0115">0115 - Banco Exterior</option>
+                            <option value="0128">0128 - Banco Caroní</option>
+                            <option value="0134">0134 - Banesco</option>
+                            <option value="0138">0138 - Banco Plaza</option>
+                            <option value="0151">0151 - BFC Banco Fondo Común</option>
+                            <option value="0156">0156 - 100% Banco</option>
+                            <option value="0157">0157 - Banco del Sur</option>
+                            <option value="0163">0163 - Bancamiga</option>
+                            <option value="0168">0168 - Bancrecer</option>
+                            <option value="0169">0169 - Mi Banco</option>
+                            <option value="0171">0171 - Banco Activo</option>
+                            <option value="0172">0172 - Bancamiga</option>
+                            <option value="0174">0174 - Banplus</option>
+                            <option value="0175">0175 - Bicentenario</option>
+                            <option value="0177">0177 - Banfanb</option>
+                            <option value="0191">0191 - BNC Nacional de Crédito</option>
+                        </select>
+                    </div>
+
+                    <div className="space-y-2">
+                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Cédula del Titular</label>
+                        <input
+                            type="text"
+                            required
+                            placeholder="Ej: V-12345678"
+                            value={paymentMobileForm.cedula}
+                            onChange={e => setPaymentMobileForm({ ...paymentMobileForm, cedula: e.target.value })}
+                            className="w-full bg-slate-50 border border-slate-100 rounded-2xl p-4 font-bold text-slate-700 focus:bg-white focus:border-primary transition-all outline-none"
+                        />
+                    </div>
+
+                    <div className="space-y-2">
+                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Teléfono Afiliado</label>
+                        <input
+                            type="tel"
+                            required
+                            placeholder="Ej: 04141234567"
+                            value={paymentMobileForm.phone}
+                            onChange={e => setPaymentMobileForm({ ...paymentMobileForm, phone: e.target.value })}
+                            className="w-full bg-slate-50 border border-slate-100 rounded-2xl p-4 font-bold text-slate-700 focus:bg-white focus:border-primary transition-all outline-none"
+                        />
+                    </div>
+
+                    <button disabled={loading} type="submit" className="w-full bg-primary hover:bg-primary text-slate-900 font-black py-4 rounded-2xl shadow-lg shadow-primary/30 flex items-center justify-center gap-3 active:scale-[0.98] transition-all mt-4">
+                        {loading ? (
+                            <div className="w-5 h-5 border-2 border-slate-900/30 border-t-slate-900 rounded-full animate-spin"></div>
+                        ) : (
+                            <>
+                                <Save className="w-5 h-5" /> Guardar Método de Pago
+                            </>
+                        )}
+                    </button>
+                </form>
+            </div>
+        );
+    }
+
     // Default Profile View
     return (
         <div className="space-y-6 animate-fade-in pb-24 px-4">
@@ -885,6 +932,19 @@ export default function DriverProfile() {
                         </div>
                     </div>
                     <ChevronRight className="w-5 h-5 text-slate-300 group-hover:text-emerald-600 transition-colors" />
+                </button>
+
+                <button onClick={() => setActiveView('payment_method')} className="w-full bg-white p-4 rounded-2xl flex items-center justify-between border border-slate-100 shadow-sm active:bg-slate-50 transition-colors group">
+                    <div className="flex items-center gap-4">
+                        <div className="w-10 h-10 bg-orange-50 text-orange-600 rounded-xl flex items-center justify-center shrink-0">
+                            <CreditCard className="w-5 h-5" />
+                        </div>
+                        <div className="text-left">
+                            <p className="font-bold text-slate-900">Método de Pago</p>
+                            <p className="text-xs font-medium text-slate-500">Configurar Pago Móvil</p>
+                        </div>
+                    </div>
+                    <ChevronRight className="w-5 h-5 text-slate-300 group-hover:text-orange-600 transition-colors" />
                 </button>
 
                 <button onClick={() => setActiveView('settings')} className="w-full bg-white p-4 rounded-2xl flex items-center justify-between border border-slate-100 shadow-sm active:bg-slate-50 transition-colors group">

@@ -10,6 +10,7 @@ import OrdersRadar from './pages/OrdersRadar';
 import Earnings from './pages/Earnings';
 import DriverProfile from './pages/DriverProfile';
 import PendingApproval from './pages/PendingApproval';
+import Achievements from './pages/Achievements';
 
 function DeliveryRoutes() {
     const { user, userData, loading: authLoading } = useAuth();
@@ -91,6 +92,7 @@ function DeliveryRoutes() {
                     <Route path="/radar" element={<OrdersRadar />} />
                     <Route path="/earnings" element={<Earnings />} />
                     <Route path="/profile" element={<DriverProfile />} />
+                    <Route path="/achievements" element={<Achievements />} />
                     <Route path="*" element={<Navigate to="/radar" replace />} />
                 </Routes>
             </DeliveryLayout>
