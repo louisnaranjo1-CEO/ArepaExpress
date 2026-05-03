@@ -96,18 +96,10 @@ export const registerDriver = async (
         console.error("Error registering driver in PostgreSQL:", apiErr);
     }
 
-    // Sanitize homeLocation: remove coords if undefined to avoid Firestore error
-    const homeLocation = data.homeLocation ? {
-        state: data.homeLocation.state,
-        city: data.homeLocation.city,
-        ...(data.homeLocation.coords ? { coords: data.homeLocation.coords } : {})
-    } : undefined;
-
     const driverData: DeliveryDriver = {
         id: uid,
         email,
         ...data,
-        ...(homeLocation ? { homeLocation } : {}),
         status: 'pending',
         isOnline: false,
         availability: 'offline',
@@ -120,11 +112,34 @@ export const registerDriver = async (
         updatedAt: serverTimestamp(),
     };
 
-    // Strip any undefined values before sending to Firestore
-    const firestoreData = JSON.parse(JSON.stringify(driverData));
+    // Safely sanitize homeLocation
+    if (data.homeLocation) {
+        const sanitizedHome: any = {
+            state: data.homeLocation.state,
+            city: data.homeLocation.city
+        };
+        if (data.homeLocation.coords && data.homeLocation.coords.lat !== undefined && data.homeLocation.coords.lng !== undefined) {
+            sanitizedHome.coords = data.homeLocation.coords;
+        }
+        driverData.homeLocation = sanitizedHome;
+    } else {
+        delete driverData.homeLocation;
+    }
 
-    // Also save to Firestore for auth-related features
-    await setDoc(doc(db, 'delivery_drivers', uid), firestoreData);
+    // Recursively remove any undefined properties to please Firestore
+    const removeUndefined = (obj: any) => {
+        Object.keys(obj).forEach(key => {
+            if (obj[key] === undefined) {
+                delete obj[key];
+            } else if (typeof obj[key] === 'object' && obj[key] !== null && !obj[key]._methodName) {
+                removeUndefined(obj[key]);
+            }
+        });
+    };
+    removeUndefined(driverData);
+
+    // Save to Firestore for auth-related features
+    await setDoc(doc(db, 'delivery_drivers', uid), driverData);
 
     const userRole = (data.vehicleType === 'carro' || data.vehicleType === 'ejecutivo') ? 'driver' : 'delivery';
 

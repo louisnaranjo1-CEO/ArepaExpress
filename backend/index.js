@@ -134,7 +134,7 @@ app.get('/api/drivers/:uid', async (req, res) => {
         current_heading, current_speed,
         location_updated_at,
         selfie_url, vehicle_url, license_url,
-        home_state, home_city,
+        home_state, home_city, home_coords_lat, home_coords_lng,
         status, created_at, updated_at
       FROM drivers 
       WHERE firebase_uid = $1;
@@ -145,6 +145,16 @@ app.get('/api/drivers/:uid', async (req, res) => {
     }
 
     const d = result.rows[0];
+    
+    // Build homeLocation safely
+    let homeLocation = null;
+    if (d.home_state) {
+        homeLocation = { state: d.home_state, city: d.home_city };
+        if (d.home_coords_lat != null && d.home_coords_lng != null) {
+            homeLocation.coords = { lat: d.home_coords_lat, lng: d.home_coords_lng };
+        }
+    }
+
     res.json({
       id: d.firebase_uid,
       email: d.email,
@@ -166,7 +176,7 @@ app.get('/api/drivers/:uid', async (req, res) => {
         vehicleUrl: d.vehicle_url || '',
         licenseUrl: d.license_url || '',
       },
-      homeLocation: d.home_state ? { state: d.home_state, city: d.home_city } : null,
+      homeLocation: homeLocation,
       status: d.status,
       createdAt: d.created_at,
       updatedAt: d.updated_at,
