@@ -80,107 +80,101 @@ export default function RestaurantsManager() {
                 </div>
             </div>
 
-            <div className="bg-white rounded-[40px] border border-slate-100 overflow-hidden shadow-xl shadow-slate-200/40">
-                <div className="overflow-x-auto">
-                    <table className="w-full text-left whitespace-nowrap">
-                        <thead className="bg-slate-50/50 text-slate-400 font-bold text-[10px] uppercase tracking-[0.2em] border-b border-slate-100">
-                            <tr>
-                                <th className="px-8 py-5">Restaurante</th>
-                                <th className="px-8 py-5">Categoría</th>
-                                <th className="px-8 py-5">Correo</th>
-                                <th className="px-8 py-5 text-center">Estado</th>
-                                <th className="px-8 py-5 text-center">Suscripción</th>
-                                <th className="px-8 py-5 text-right">Acción</th>
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-50">
-                            {restaurants.map((restaurant) => {
-                                const isActive = restaurant.isActive !== false;
-                                const logo = (restaurant as any).logoUrl || restaurant.image;
-                                
-                                const subEnd = (restaurant as any).subscriptionEnd ? new Date((restaurant as any).subscriptionEnd) : null;
-                                const hasActiveSub = subEnd && subEnd > new Date();
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 md:gap-6 pb-24">
+                {restaurants.map((restaurant) => {
+                    const isActive = restaurant.isActive !== false;
+                    const logo = (restaurant as any).logoUrl || restaurant.image;
+                    
+                    const subEnd = (restaurant as any).subscriptionEnd ? new Date((restaurant as any).subscriptionEnd) : null;
+                    const hasActiveSub = subEnd && subEnd > new Date();
 
-                                return (
-                                    <tr
-                                        key={restaurant.id}
-                                        onClick={() => handleRowClick(restaurant)}
-                                        className="group hover:bg-slate-50/80 transition-all cursor-pointer"
-                                    >
-                                        <td className="px-8 py-5">
-                                            <div className="flex items-center gap-4">
-                                                <div className="w-12 h-12 rounded-2xl bg-slate-100 overflow-hidden border border-slate-100 shrink-0">
-                                                    {logo ? (
-                                                        <img src={logo} alt={restaurant.name} className="w-full h-full object-cover" />
-                                                    ) : (
-                                                        <div className="w-full h-full flex items-center justify-center bg-slate-100">
-                                                            <Store className="w-6 h-6 text-slate-300" />
-                                                        </div>
-                                                    )}
-                                                </div>
-                                                <div>
-                                                    <div className="font-bold text-slate-900 group-hover:text-slate-900 transition-colors flex items-center gap-2">
-                                                        {restaurant.name}
-                                                        {restaurant.isMock && (
-                                                            <span className="px-2 py-0.5 bg-indigo-100 text-indigo-700 text-[9px] uppercase tracking-wider rounded-full font-black">
-                                                                MOCK
-                                                            </span>
-                                                        )}
-                                                    </div>
-                                                    <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">{restaurant.id.slice(0, 8)}...</div>
-                                                </div>
-                                            </div>
-                                        </td>
-                                        <td className="px-8 py-5">
-                                            <span className="text-sm font-medium text-slate-600">{restaurant.category}</span>
-                                        </td>
-                                        <td className="px-8 py-5">
-                                            <span className="text-sm text-slate-500">{(restaurant as any).email || 'No disponible'}</span>
-                                        </td>
-                                        <td className="px-8 py-5 text-center">
-                                            <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest ${!isActive ? 'bg-slate-100 text-slate-700' :
-                                                restaurant.status === 'busy' ? 'bg-amber-100 text-amber-700' :
-                                                    restaurant.status === 'unavailable' ? 'bg-red-100 text-red-700' :
-                                                        'bg-emerald-100 text-emerald-700'
-                                                }`}>
-                                                {!isActive ? <XCircle className="w-3.5 h-3.5" /> :
-                                                    restaurant.status === 'busy' ? <Store className="w-3.5 h-3.5" /> :
-                                                        restaurant.status === 'unavailable' ? <XCircle className="w-3.5 h-3.5" /> :
-                                                            <CheckCircle className="w-3.5 h-3.5" />}
-
-                                                {!isActive ? 'Suspendido' :
-                                                    restaurant.status === 'busy' ? 'Ocupado' :
-                                                        restaurant.status === 'unavailable' ? 'No Disponible' : 'Activo'}
+                    return (
+                        <div
+                            key={restaurant.id}
+                            onClick={() => handleRowClick(restaurant)}
+                            className="bg-white rounded-[32px] p-5 border border-slate-100 shadow-sm hover:shadow-xl hover:shadow-slate-200/40 hover:-translate-y-1 transition-all cursor-pointer flex flex-col gap-4 relative overflow-hidden group"
+                        >
+                            {/* Card Header: Logo, Name, ID, Category */}
+                            <div className="flex items-start gap-4">
+                                <div className="w-16 h-16 rounded-[20px] bg-slate-100 overflow-hidden border border-slate-100 shrink-0">
+                                    {logo ? (
+                                        <img src={logo} alt={restaurant.name} className="w-full h-full object-cover" />
+                                    ) : (
+                                        <div className="w-full h-full flex items-center justify-center bg-slate-100">
+                                            <Store className="w-8 h-8 text-slate-300" />
+                                        </div>
+                                    )}
+                                </div>
+                                <div className="flex-1 min-w-0 pr-6">
+                                    <div className="font-bold text-lg text-slate-900 truncate">
+                                        {restaurant.name}
+                                    </div>
+                                    <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-0.5 truncate">
+                                        {restaurant.id.slice(0, 8)}...
+                                    </div>
+                                    <div className="mt-1.5 flex flex-wrap gap-2">
+                                        <span className="text-[10px] font-bold text-slate-600 bg-slate-50 px-2.5 py-1 rounded-lg border border-slate-100 uppercase tracking-wider">
+                                            {restaurant.category}
+                                        </span>
+                                        {restaurant.isMock && (
+                                            <span className="px-2.5 py-1 bg-indigo-100 text-indigo-700 text-[10px] uppercase tracking-wider rounded-lg font-black">
+                                                MOCK
                                             </span>
-                                        </td>
-                                        <td className="px-8 py-5 text-center">
-                                            {hasActiveSub ? (
-                                                <div className="flex flex-col items-center">
-                                                    <span className="text-[10px] font-black text-emerald-600 bg-emerald-50 px-2 py-1 rounded-md uppercase mb-1">Activo</span>
-                                                    <span className="text-[9px] font-bold text-slate-400">Vence: {subEnd?.toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric' })}</span>
-                                                </div>
-                                            ) : (
-                                                <span className="text-[10px] font-black text-slate-400 bg-slate-100 px-2 py-1 rounded-md uppercase">Inactivo</span>
-                                            )}
-                                        </td>
-                                        <td className="px-8 py-5 text-right">
-                                            <div className="flex items-center justify-end gap-3">
-                                                <button
-                                                    onClick={(e) => toggleStatus(restaurant.id, restaurant.isActive, e)}
-                                                    className={`px-5 py-2.5 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all ${isActive ? 'bg-red-50 text-red-600 hover:bg-red-100' : 'bg-emerald-50 text-emerald-600 hover:bg-emerald-100'}`}
-                                                >
-                                                    {isActive ? 'Suspender' : 'Activar'}
-                                                </button>
-                                                <ChevronRight className="w-5 h-5 text-slate-200 group-hover:text-slate-400 transition-colors" />
-                                            </div>
-                                        </td>
-                                    </tr>
-                                );
-                            })}
+                                        )}
+                                    </div>
+                                </div>
+                                <ChevronRight className="w-5 h-5 text-slate-300 group-hover:text-slate-500 absolute top-5 right-5 transition-colors" />
+                            </div>
 
-                        </tbody>
-                    </table>
-                </div>
+                            {/* Divider */}
+                            <div className="h-px bg-slate-50 w-full"></div>
+
+                            {/* Info Grid */}
+                            <div className="grid grid-cols-2 gap-3">
+                                <div>
+                                    <p className="text-[9px] uppercase tracking-[0.2em] font-bold text-slate-400 mb-1.5">Estado</p>
+                                    <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-[10px] font-black uppercase tracking-widest ${
+                                        !isActive ? 'bg-slate-100 text-slate-700' :
+                                        restaurant.status === 'busy' ? 'bg-amber-100 text-amber-700' :
+                                        restaurant.status === 'unavailable' ? 'bg-red-100 text-red-700' :
+                                        'bg-emerald-100 text-emerald-700'
+                                    }`}>
+                                        {!isActive ? <XCircle className="w-3 h-3" /> :
+                                        restaurant.status === 'busy' ? <Store className="w-3 h-3" /> :
+                                        restaurant.status === 'unavailable' ? <XCircle className="w-3 h-3" /> :
+                                        <CheckCircle className="w-3 h-3" />}
+                                        {!isActive ? 'Suspendido' :
+                                        restaurant.status === 'busy' ? 'Ocupado' :
+                                        restaurant.status === 'unavailable' ? 'No Disponible' : 'Activo'}
+                                    </span>
+                                </div>
+                                <div>
+                                    <p className="text-[9px] uppercase tracking-[0.2em] font-bold text-slate-400 mb-1.5">Suscripción</p>
+                                    {hasActiveSub ? (
+                                        <div className="flex flex-col">
+                                            <span className="text-[11px] font-black text-emerald-600 bg-emerald-50 self-start px-2 py-0.5 rounded-lg">Activa</span>
+                                            <span className="text-[9px] font-bold text-slate-400 mt-1">Vence: {subEnd?.toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric' })}</span>
+                                        </div>
+                                    ) : (
+                                        <span className="text-[11px] font-black text-slate-400 bg-slate-50 self-start px-2 py-0.5 rounded-lg border border-slate-100">Inactiva</span>
+                                    )}
+                                </div>
+                            </div>
+
+                            {/* Actions */}
+                            <div className="mt-1 pt-3 border-t border-slate-50 flex justify-end">
+                                <button
+                                    onClick={(e) => toggleStatus(restaurant.id, restaurant.isActive, e)}
+                                    className={`w-full sm:w-auto px-5 py-2.5 rounded-2xl text-[11px] font-black uppercase tracking-widest transition-all ${
+                                        isActive ? 'bg-red-50 text-red-600 hover:bg-red-100' : 'bg-emerald-50 text-emerald-600 hover:bg-emerald-100'
+                                    }`}
+                                >
+                                    {isActive ? 'Suspender Restaurante' : 'Activar Restaurante'}
+                                </button>
+                            </div>
+                        </div>
+                    );
+                })}
             </div>
         </div>
     );

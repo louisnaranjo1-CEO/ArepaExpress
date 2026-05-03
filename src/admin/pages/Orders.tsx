@@ -9,6 +9,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import toast from 'react-hot-toast';
 import ComandaPreview from '../components/ComandaPreview';
 import OrderChatWindow from '../../components/chat/OrderChatWindow';
+import { useHaptics } from '../../hooks/useHaptics';
 
 interface OrderItem {
     id: string;
@@ -46,6 +47,8 @@ export default function Orders() {
     const [loading, setLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
     const [printingOrderId, setPrintingOrderId] = useState<string | null>(null);
+
+    const { vibrateSelection, vibrateSuccess, vibrateWarning } = useHaptics();
 
     // Modals State
     const [acceptModalOpen, setAcceptModalOpen] = useState(false);
@@ -445,6 +448,8 @@ export default function Orders() {
             
             const orderTemp = { ...selectedOrderForAccept, ...updates };
             
+            vibrateSuccess();
+
             setAcceptModalOpen(false);
             setSelectedOrderForAccept(null);
             
@@ -477,6 +482,8 @@ export default function Orders() {
             if (dispatchType === 'platform') {
                 setRadarOrderId(selectedOrderForDispatch.id);
             }
+
+            vibrateSelection();
 
             setDispatchModalOpen(false);
             setSelectedOrderForDispatch(null);
@@ -771,6 +778,10 @@ export default function Orders() {
                 }
             }
             await updateDoc(orderRef, updates);
+
+            if (newStatus === 'rejected') vibrateWarning();
+            else vibrateSelection();
+            
         } catch (error) {
             console.error("Error updating order status:", error);
         }
@@ -1469,8 +1480,9 @@ export default function Orders() {
 
             {/* Table Assignment Modal */}
             {showTableModal && selectedTable && (
-                <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/40 backdrop-blur-sm px-4">
-                    <div className="bg-white rounded-[40px] p-8 w-full max-w-lg shadow-2xl animate-in zoom-in-95 duration-200 flex flex-col max-h-[90vh]">
+                <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center bg-slate-900/40 backdrop-blur-sm sm:px-4">
+                    <div className="bg-white rounded-t-[40px] sm:rounded-[40px] p-8 w-full max-w-lg shadow-2xl animate-in slide-in-from-bottom sm:zoom-in-95 duration-200 flex flex-col max-h-[90vh]">
+                        <div className="w-12 h-1.5 bg-slate-200 rounded-full mx-auto mb-6 sm:hidden shrink-0"></div>
                         {(() => {
                             const activeOrder = orders.find(o => 
                                 ((o as any).tableId === selectedTable.id || (o as any).tableNumber === selectedTable.number || o.table === selectedTable.number) && 
@@ -1652,8 +1664,9 @@ export default function Orders() {
 
             {/* Acceptance Modal */}
             {acceptModalOpen && selectedOrderForAccept && (
-                <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/40 backdrop-blur-sm px-4">
-                    <div className="bg-white rounded-3xl p-6 w-full max-w-lg shadow-2xl animate-in zoom-in-95 duration-200 flex flex-col max-h-[90vh]">
+                <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center bg-slate-900/40 backdrop-blur-sm sm:px-4">
+                    <div className="bg-white rounded-t-[40px] sm:rounded-3xl p-6 w-full max-w-lg shadow-2xl animate-in slide-in-from-bottom sm:zoom-in-95 duration-200 flex flex-col max-h-[90vh]">
+                        <div className="w-12 h-1.5 bg-slate-200 rounded-full mx-auto mb-6 sm:hidden shrink-0"></div>
                         <div className="flex justify-between items-center mb-6 shrink-0">
                             <h3 className="text-xl font-black text-slate-900">
                                 {selectedOrderForAccept.status === 'pendiente_pago' ? 'Verificar y Procesar' : 'Aceptar Pedido'}
@@ -1746,9 +1759,10 @@ export default function Orders() {
 
             {/* Dispatch Order Modal */}
             {dispatchModalOpen && selectedOrderForDispatch && (
-                <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/40 backdrop-blur-sm px-4">
-                    <div className="bg-white rounded-3xl p-6 w-full max-w-sm shadow-2xl animate-in zoom-in-95 duration-200">
-                        <div className="flex justify-between items-center mb-6">
+                <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center bg-slate-900/40 backdrop-blur-sm sm:px-4">
+                    <div className="bg-white rounded-t-[40px] sm:rounded-3xl p-6 w-full max-w-sm shadow-2xl animate-in slide-in-from-bottom sm:zoom-in-95 duration-200 flex flex-col max-h-[90vh]">
+                        <div className="w-12 h-1.5 bg-slate-200 rounded-full mx-auto mb-6 sm:hidden shrink-0"></div>
+                        <div className="flex justify-between items-center mb-6 shrink-0">
                             <h3 className="text-xl font-black text-slate-900">Despachar Pedido</h3>
                             <button onClick={() => setDispatchModalOpen(false)} className="text-slate-400 hover:text-slate-600">
                                 <X className="w-6 h-6" />
@@ -1802,14 +1816,16 @@ export default function Orders() {
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
                         exit={{ opacity: 0 }}
-                        className="fixed inset-0 z-[150] flex items-center justify-center bg-slate-900/60 backdrop-blur-md px-4"
+                        className="fixed inset-0 z-[150] flex items-end sm:items-center justify-center bg-slate-900/60 backdrop-blur-md sm:px-4"
                     >
                         <motion.div 
-                            initial={{ scale: 0.9, y: 20 }}
-                            animate={{ scale: 1, y: 0 }}
-                            exit={{ scale: 0.9, y: 20 }}
-                            className="bg-white rounded-[40px] p-8 w-full max-w-lg shadow-2xl relative overflow-hidden"
+                            initial={{ y: "100%" }}
+                            animate={{ y: 0 }}
+                            exit={{ y: "100%" }}
+                            transition={{ type: "spring", bounce: 0, duration: 0.4 }}
+                            className="bg-white rounded-t-[40px] sm:rounded-[40px] p-8 w-full max-w-lg shadow-2xl relative overflow-hidden flex flex-col max-h-[90vh]"
                         >
+                            <div className="w-12 h-1.5 bg-slate-200 rounded-full mx-auto mb-6 sm:hidden shrink-0"></div>
                             {verificationSuccess ? (
                                 <div className="py-12 flex flex-col items-center justify-center text-center animate-in zoom-in-50 duration-500">
                                     <div className="w-24 h-24 bg-emerald-500 text-white rounded-full flex items-center justify-center mb-6 shadow-xl shadow-emerald-500/20">
@@ -1920,8 +1936,9 @@ export default function Orders() {
 
             {/* Edit Order Modal */}
             {editModalOpen && selectedOrderForEdit && (
-                <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/40 backdrop-blur-sm px-4">
-                    <div className="bg-white rounded-3xl p-6 w-full max-w-lg shadow-2xl animate-in zoom-in-95 duration-200 flex flex-col max-h-[90vh]">
+                <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center bg-slate-900/40 backdrop-blur-sm sm:px-4">
+                    <div className="bg-white rounded-t-[40px] sm:rounded-3xl p-6 w-full max-w-lg shadow-2xl animate-in slide-in-from-bottom sm:zoom-in-95 duration-200 flex flex-col max-h-[90vh]">
+                        <div className="w-12 h-1.5 bg-slate-200 rounded-full mx-auto mb-6 sm:hidden shrink-0"></div>
                         <div className="flex justify-between items-center mb-6 shrink-0">
                             <h3 className="text-xl font-black text-slate-900">Editar Pedido</h3>
                             <button onClick={() => setEditModalOpen(false)} className="text-slate-400 hover:text-slate-600">
@@ -2318,8 +2335,9 @@ export default function Orders() {
 
             {/* Buscando Radar Modal */}
             {radarOrderId && (
-                <div className="fixed inset-0 z-[110] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm px-4">
-                    <div className="bg-white rounded-3xl p-8 w-full max-w-sm shadow-2xl animate-in zoom-in-95 duration-200 flex flex-col items-center text-center">
+                <div className="fixed inset-0 z-[110] flex items-end sm:items-center justify-center bg-slate-900/60 backdrop-blur-sm sm:px-4">
+                    <div className="bg-white rounded-t-[40px] sm:rounded-3xl p-8 w-full max-w-sm shadow-2xl animate-in slide-in-from-bottom sm:zoom-in-95 duration-200 flex flex-col items-center text-center max-h-[90vh]">
+                        <div className="w-12 h-1.5 bg-slate-200 rounded-full mx-auto mb-6 sm:hidden shrink-0"></div>
                         {(() => {
                             const radarOrder = orders.find(o => o.id === radarOrderId);
                             const isFound = radarOrder && (radarOrder.status === 'delivering' || radarOrder.status as any === 'asignado');
@@ -2389,12 +2407,14 @@ export default function Orders() {
 
             {/* Product Selection Modal (Variants / Description) */}
             {selectionModalOpen && selectedProductForSelection && (
-                <div className="fixed inset-0 z-[110] flex items-center justify-center bg-slate-900/60 backdrop-blur-md px-4 p-4">
+                <div className="fixed inset-0 z-[110] flex items-end sm:items-center justify-center bg-slate-900/60 backdrop-blur-md sm:px-4 sm:p-4">
                     <motion.div 
-                        initial={{ opacity: 0, scale: 0.9, y: 20 }}
-                        animate={{ opacity: 1, scale: 1, y: 0 }}
-                        className="bg-white rounded-[2.5rem] w-full max-w-lg shadow-2xl overflow-hidden flex flex-col max-h-[90vh]"
+                        initial={{ y: "100%" }}
+                        animate={{ y: 0 }}
+                        transition={{ type: "spring", bounce: 0, duration: 0.4 }}
+                        className="bg-white rounded-t-[40px] sm:rounded-[2.5rem] w-full max-w-lg shadow-2xl overflow-hidden flex flex-col max-h-[90vh] relative"
                     >
+                        <div className="absolute top-3 left-1/2 -translate-x-1/2 w-12 h-1.5 bg-white/50 backdrop-blur-md rounded-full sm:hidden z-10"></div>
                         {/* Modal Header with Image */}
                         <div className="relative h-48 sm:h-64 bg-slate-100 shrink-0">
                             {selectedProductForSelection.image ? (

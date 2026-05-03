@@ -5,6 +5,7 @@ import { collection, query, where, onSnapshot } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import { UN2X3_LOGO } from '../../lib/env';
 import { useGlobalAudioAlerts } from '../../hooks/useGlobalAudioAlerts';
+import { useHaptics } from '../../hooks/useHaptics';
 
 interface CpanelLayoutProps {
     children: React.ReactNode;
@@ -16,6 +17,7 @@ export default function CpanelLayout({ children, onLogout }: CpanelLayoutProps) 
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
     const [pendingTransports, setPendingTransports] = useState(0);
     const [pendingTickets, setPendingTickets] = useState(0);
+    const { vibrateSelection } = useHaptics();
 
     useGlobalAudioAlerts('cpanel');
 
@@ -80,8 +82,8 @@ export default function CpanelLayout({ children, onLogout }: CpanelLayoutProps) 
             )}
 
             {/* Sidebar */}
-            <aside className={`fixed inset-y-0 left-0 w-72 bg-slate-900 border-r border-slate-800 z-50 transform transition-transform duration-300 ease-in-out md:relative md:translate-x-0 ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
-                <div className="flex flex-col h-full">
+            <aside className={`fixed inset-y-0 left-0 w-[85vw] max-w-sm bg-slate-900 border-r border-slate-800 z-50 transform transition-transform duration-300 ease-in-out md:relative md:w-72 md:translate-x-0 ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
+                <div className="flex flex-col h-full pt-safe">
                     {/* Sidebar Header */}
                     <div className="p-4 border-b border-slate-800 flex items-center justify-between">
                         <div className="flex items-center gap-3 cursor-pointer active:scale-95 transition-transform" onClick={() => window.location.href = 'https://deliexpress.app'}>
@@ -114,7 +116,7 @@ export default function CpanelLayout({ children, onLogout }: CpanelLayoutProps) 
                                         : 'text-slate-400 hover:bg-white/5 hover:text-white'
                                     }`
                                 }
-                                onClick={() => setIsSidebarOpen(false)}
+                                onClick={() => { vibrateSelection(); setIsSidebarOpen(false); }}
                             >
                                 <div className="flex items-center gap-3">
                                     <item.icon className="w-5 h-5" />
@@ -146,12 +148,12 @@ export default function CpanelLayout({ children, onLogout }: CpanelLayoutProps) 
             </aside>
 
             {/* Main Content */}
-            <main className="flex-1 flex flex-col min-w-0 overflow-hidden">
+            <main className="flex-1 flex flex-col min-w-0 overflow-hidden relative pb-[65px] md:pb-0">
                 {/* Top Header */}
-                <header className="h-20 bg-white border-b border-slate-200 px-6 flex items-center justify-between flex-shrink-0">
+                <header className="h-14 md:h-20 bg-white border-b border-slate-200 px-4 md:px-6 flex items-center justify-between flex-shrink-0 pt-safe">
                     <button
-                        className="md:hidden p-2 text-slate-500"
-                        onClick={() => setIsSidebarOpen(true)}
+                        className="md:hidden p-2 -ml-2 text-slate-500 active:scale-95 transition-transform"
+                        onClick={() => { vibrateSelection(); setIsSidebarOpen(true); }}
                     >
                         <Menu className="w-6 h-6" />
                     </button>
@@ -160,9 +162,50 @@ export default function CpanelLayout({ children, onLogout }: CpanelLayoutProps) 
                     </div>
                 </header>
 
-                <div className="flex-1 overflow-y-auto p-4 md:p-8 relative">
+                <div className="flex-1 overflow-y-auto p-2 md:p-8 relative custom-scrollbar">
                     {children}
                 </div>
+
+                {/* Mobile Bottom Navigation */}
+                <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 flex items-center justify-around pb-safe z-40 h-[65px] px-2 shadow-[0_-4px_20px_rgba(0,0,0,0.05)]">
+                    <NavLink
+                        to="/"
+                        onClick={() => vibrateSelection()}
+                        className={({ isActive }) => `flex flex-col items-center justify-center w-full h-full space-y-1 ${isActive ? 'text-primary' : 'text-slate-400'}`}
+                    >
+                        <LayoutDashboard className="w-5 h-5" />
+                        <span className="text-[10px] font-bold">Resumen</span>
+                    </NavLink>
+                    <NavLink
+                        to="/restaurants"
+                        onClick={() => vibrateSelection()}
+                        className={({ isActive }) => `flex flex-col items-center justify-center w-full h-full space-y-1 ${isActive ? 'text-primary' : 'text-slate-400'}`}
+                    >
+                        <Store className="w-5 h-5" />
+                        <span className="text-[10px] font-bold">Tiendas</span>
+                    </NavLink>
+                    <NavLink
+                        to="/transports"
+                        onClick={() => vibrateSelection()}
+                        className={({ isActive }) => `flex flex-col items-center justify-center w-full h-full space-y-1 relative ${isActive ? 'text-primary' : 'text-slate-400'}`}
+                    >
+                        <Car className="w-5 h-5" />
+                        {pendingTransports > 0 && (
+                            <span className="absolute top-1 right-2 w-2 h-2 bg-red-500 rounded-full"></span>
+                        )}
+                        <span className="text-[10px] font-bold">Taxis</span>
+                    </NavLink>
+                    <button
+                        onClick={() => { vibrateSelection(); setIsSidebarOpen(true); }}
+                        className="flex flex-col items-center justify-center w-full h-full space-y-1 text-slate-400 relative"
+                    >
+                        <Menu className="w-5 h-5" />
+                        {pendingTickets > 0 && (
+                            <span className="absolute top-1 right-2 w-2 h-2 bg-red-500 rounded-full"></span>
+                        )}
+                        <span className="text-[10px] font-bold">Más</span>
+                    </button>
+                </nav>
             </main>
         </div>
     );

@@ -130,6 +130,8 @@ body {
   overflow: hidden;
   margin: 0;
   padding: 0;
+  -webkit-tap-highlight-color: transparent;
+  overscroll-behavior-y: none;
 }
 
 body {
@@ -137,4 +139,19 @@ body {
   background-color: var(--color-background-light);
   color: #0f172a;
   height: 100dvh;
+  touch-action: pan-y;
+}
+
+/* Safe areas for Capacitor */
+.pb-safe {
+  padding-bottom: env(safe-area-inset-bottom, 16px);
+}
+.pt-safe {
+  padding-top: env(safe-area-inset-top, 16px);
+}
+.mb-safe {
+  margin-bottom: env(safe-area-inset-bottom, 16px);
+}
+.mt-safe {
+  margin-top: env(safe-area-inset-top, 16px);
 }
