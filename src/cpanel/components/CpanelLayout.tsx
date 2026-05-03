@@ -17,6 +17,7 @@ export default function CpanelLayout({ children, onLogout }: CpanelLayoutProps) 
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
     const [pendingTransports, setPendingTransports] = useState(0);
     const [pendingTickets, setPendingTickets] = useState(0);
+    const [pendingPayouts, setPendingPayouts] = useState(0);
     const { vibrateSelection } = useHaptics();
 
     useGlobalAudioAlerts('cpanel');
@@ -42,9 +43,28 @@ export default function CpanelLayout({ children, onLogout }: CpanelLayoutProps) 
             setPendingTickets(snapshot.size);
         });
 
+        // Listen to pending payout requests
+        const qPayoutOrders = query(collection(db, 'orders'), where('paymentRequested', '==', true), where('deliveryPaid', '==', false));
+        const qPayoutTransports = query(collection(db, 'transport_requests'), where('paymentRequested', '==', true), where('driverPaid', '==', false));
+
+        let ordersCount = 0;
+        let transportsCount = 0;
+
+        const unsubscribePayoutOrders = onSnapshot(qPayoutOrders, (snapshot) => {
+            ordersCount = snapshot.size;
+            setPendingPayouts(ordersCount + transportsCount);
+        });
+
+        const unsubscribePayoutTransports = onSnapshot(qPayoutTransports, (snapshot) => {
+            transportsCount = snapshot.size;
+            setPendingPayouts(ordersCount + transportsCount);
+        });
+
         return () => {
             unsubscribeTransports();
             unsubscribeTickets();
+            unsubscribePayoutOrders();
+            unsubscribePayoutTransports();
         };
     }, []);
 
@@ -63,7 +83,7 @@ export default function CpanelLayout({ children, onLogout }: CpanelLayoutProps) 
         { path: '/delivery', icon: Truck, label: 'Delivery Express' },
         { path: '/transports', icon: Car, label: 'Viajes (Taxis)', badge: pendingTransports },
         { path: '/finances', icon: Wallet, label: 'Finanzas' },
-        { path: '/liquidations', icon: Wallet, label: 'Liquidaciones' },
+        { path: '/liquidations', icon: Wallet, label: 'Liquidaciones', badge: pendingPayouts },
         { path: '/fidelization', icon: Gift, label: 'Fidelización' },
         { path: '/raffles', icon: Ticket, label: 'Sorteos y Rifas' },
         { path: '/achievements', icon: Trophy, label: 'Logros de Pilotos' },

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { collection, query, onSnapshot, orderBy, doc, updateDoc, addDoc, getDocs, where, writeBatch } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
-import { DollarSign, Search, CheckCircle, RefreshCw, AlertCircle, TrendingUp, History, User } from 'lucide-react';
+import { DollarSign, Search, CheckCircle, RefreshCw, AlertCircle, TrendingUp, History, User, Copy } from 'lucide-react';
 import toast from 'react-hot-toast';
 import DualPrice from '../../components/DualPrice';
 import { useCurrency } from '../../context/CurrencyContext';
@@ -51,7 +51,8 @@ export default function LiquidationsManager() {
                                 ...driver,
                                 unpaidOrders: driverOrders,
                                 unpaidTransports: driverTransports,
-                                totalUnpaid: deliverySum + transportSum
+                                totalUnpaid: deliverySum + transportSum,
+                                hasRequested: driverOrders.some(o => o.paymentRequested) || driverTransports.some(t => t.paymentRequested)
                             };
                         });
                         
@@ -142,6 +143,22 @@ export default function LiquidationsManager() {
             console.error("Error processing driver payout:", error);
             toast.error("Error al procesar el pago");
         }
+    };
+
+    const copyPaymentInfo = (driver: any) => {
+        if (!driver.paymentMobile) {
+            toast.error("El piloto no tiene datos de pago configurados");
+            return;
+        }
+        const bsAmount = (driver.totalUnpaid * bcvRate).toFixed(2);
+        const text = `Pago Móvil Arepa Express\nBanco: ${driver.paymentMobile.bank}\nCédula: ${driver.paymentMobile.cedula}\nTeléfono: ${driver.paymentMobile.phone}\nMonto: ${bsAmount} Bs`;
+        
+        navigator.clipboard.writeText(text).then(() => {
+            toast.success("Información copiada al portapapeles");
+        }).catch(err => {
+            console.error('Error copying text: ', err);
+            toast.error("Error al copiar información");
+        });
     };
 
     const filteredRestaurants = restaurants.filter(r => 
@@ -273,7 +290,14 @@ export default function LiquidationsManager() {
                                                 <User className="w-6 h-6 text-primary" />
                                             </div>
                                             <div>
-                                                <h3 className="font-bold text-slate-900">{driver.fullName}</h3>
+                                                <div className="flex items-center gap-2">
+                                                    <h3 className="font-bold text-slate-900">{driver.fullName}</h3>
+                                                    {driver.hasRequested && (
+                                                        <span className="px-2 py-0.5 bg-red-100 text-red-600 text-[10px] font-black rounded-full animate-pulse">
+                                                            PAGO SOLICITADO
+                                                        </span>
+                                                    )}
+                                                </div>
                                                 <p className="text-sm font-medium text-slate-500">{driver.phone || 'Sin teléfono'}</p>
                                             </div>
                                         </div>
@@ -295,7 +319,17 @@ export default function LiquidationsManager() {
                                     </div>
 
                                     <div className="p-4 bg-blue-50 text-blue-900 rounded-2xl border border-blue-100 mb-6">
-                                        <p className="text-xs uppercase font-bold tracking-wider mb-2">Datos Bancarios (Pago Móvil)</p>
+                                        <div className="flex justify-between items-center mb-2">
+                                            <p className="text-xs uppercase font-bold tracking-wider">Datos Bancarios (Pago Móvil)</p>
+                                            {driver.paymentMobile?.phone && (
+                                                <button 
+                                                    onClick={() => copyPaymentInfo(driver)}
+                                                    className="flex items-center gap-1.5 px-3 py-1.5 bg-white text-blue-700 border border-blue-200 rounded-lg text-[10px] font-black uppercase tracking-widest shadow-sm hover:bg-blue-50 active:scale-95 transition-all"
+                                                >
+                                                    <Copy className="w-3 h-3" /> Copiar Datos
+                                                </button>
+                                            )}
+                                        </div>
                                         {driver.paymentMobile?.phone ? (
                                             <div className="text-sm font-medium space-y-1">
                                                 <p><span className="font-bold">Banco:</span> {driver.paymentMobile.bank}</p>

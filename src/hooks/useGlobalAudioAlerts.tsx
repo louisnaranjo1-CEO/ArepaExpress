@@ -156,6 +156,33 @@ export function useGlobalAudioAlerts(role?: 'cpanel' | 'restaurant' | 'delivery'
           });
         })
       );
+
+      // 6. Solicitudes de pago pendientes
+      let initialPayoutsOrders = true;
+      unsubscribes.push(
+        onSnapshot(query(collection(db, 'orders'), where('paymentRequested', '==', true), where('deliveryPaid', '==', false)), (snapshot) => {
+          if (initialPayoutsOrders) {
+            initialPayoutsOrders = false;
+            return;
+          }
+          snapshot.docChanges().forEach(change => {
+            if (change.type === 'added' || (change.type === 'modified' && change.doc.data().paymentRequested === true)) playAlert();
+          });
+        })
+      );
+
+      let initialPayoutsTransports = true;
+      unsubscribes.push(
+        onSnapshot(query(collection(db, 'transport_requests'), where('paymentRequested', '==', true), where('driverPaid', '==', false)), (snapshot) => {
+          if (initialPayoutsTransports) {
+            initialPayoutsTransports = false;
+            return;
+          }
+          snapshot.docChanges().forEach(change => {
+            if (change.type === 'added' || (change.type === 'modified' && change.doc.data().paymentRequested === true)) playAlert();
+          });
+        })
+      );
     }
 
     if (role === 'restaurant' && userId) {

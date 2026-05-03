@@ -3,7 +3,8 @@ import { DollarSign, Activity, Calendar, ArrowUpRight, Star, ExternalLink, Packa
 import { useAuth } from '../../context/AuthContext';
 import { db } from '../../lib/firebase';
 import { useNavigate } from 'react-router-dom';
-import { collection, query, where, onSnapshot, orderBy, doc, getDocs, updateDoc, increment, addDoc, serverTimestamp, writeBatch } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, orderBy, doc, getDocs, updateDoc, increment, addDoc, serverTimestamp, writeBatch, getDoc } from 'firebase/firestore';
+import { useCurrency } from '../../context/CurrencyContext';
 
 interface EarningsItem {
     id: string;
@@ -14,6 +15,7 @@ interface EarningsItem {
     originName: string;
     destinationName: string;
     isPaid?: boolean;
+    paymentRequested?: boolean;
     rating?: number;
     comment?: string;
     distance?: string;
@@ -40,6 +42,7 @@ export default function Earnings() {
     const [driverPoints, setDriverPoints] = useState<number>(0);
     const [processingRaffle, setProcessingRaffle] = useState<string | null>(null);
     const [requestingPayment, setRequestingPayment] = useState(false);
+    const { bcvRate } = useCurrency();
 
     const [stats, setStats] = useState({
         today: 0,
@@ -81,6 +84,7 @@ export default function Earnings() {
                         originName: 'Restaurante Aliado',
                         destinationName: data.address?.name || 'Cliente',
                         isPaid: data.deliveryPaid,
+                        paymentRequested: data.paymentRequested,
                         rating: data.rating,
                         comment: data.comment,
                         distance: ((doc.id.length % 5) + 1.5).toFixed(1),
@@ -103,6 +107,7 @@ export default function Earnings() {
                         originName: data.origin?.address || 'Origen',
                         destinationName: data.destination?.address || 'Destino',
                         isPaid: data.driverPaid,
+                        paymentRequested: data.paymentRequested,
                         rating: data.rating,
                         comment: data.ratingComment,
                         distance: data.distance ? (parseFloat(String(data.distance)) / 1000).toFixed(1) : undefined,
@@ -247,15 +252,32 @@ export default function Earnings() {
         setRequestingPayment(true);
         try {
             const batch = writeBatch(db);
+            const totalAmount = pendingItems.reduce((sum, item) => sum + item.amount, 0);
+            const bsAmount = totalAmount * bcvRate;
             
             pendingItems.forEach(item => {
                 const itemRef = doc(db, item.type === 'delivery' ? 'orders' : 'transport_requests', item.id);
                 batch.update(itemRef, { paymentRequested: true });
             });
 
-            await batch.commit();
+            // Send notification to admin
+            const adminsSnap = await getDocs(query(collection(db, 'users'), where('role', '==', 'admin')));
+            adminsSnap.docs.forEach(adminDoc => {
+                const notifRef = doc(collection(db, 'notifications'));
+                batch.set(notifRef, {
+                    userId: adminDoc.id,
+                    title: '¡Nueva Solicitud de Pago!',
+                    body: `El piloto ${profile.name || 'Sin nombre'} ha solicitado el pago de $${totalAmount.toFixed(2)} (${bsAmount.toFixed(2)} Bs).`,
+                    type: 'payout_request',
+                    driverId: user.uid,
+                    amountUsd: totalAmount,
+                    amountBs: bsAmount,
+                    read: false,
+                    createdAt: serverTimestamp()
+                });
+            });
 
-            alert('Espera mientras tu pago se hace efectivo a tu pago móvil.');
+            await batch.commit();
         } catch (error) {
             console.error('Error requesting payment', error);
             alert('Ocurrió un error al solicitar el pago.');
@@ -340,21 +362,39 @@ export default function Earnings() {
                     <div className="flex items-center gap-1.5 text-black/70 text-[10px] font-bold">
                         <PackageCheck className="w-3 h-3" /> {earnings.filter(o => !o.isPaid).length} servicios pendientes
                     </div>
-                    {stats.available > 0 && (
-                        <button
-                            onClick={handleRequestPayment}
-                            disabled={requestingPayment}
-                            className="mt-4 w-full bg-slate-900 text-primary py-3 rounded-xl font-black text-sm active:scale-95 transition-all shadow-xl shadow-slate-900/30 flex items-center justify-center gap-2"
-                        >
-                            {requestingPayment ? (
-                                <div className="w-5 h-5 border-2 border-primary border-t-transparent rounded-full animate-spin"></div>
-                            ) : (
-                                <>
-                                    <DollarSign className="w-4 h-4" /> SOLICITAR PAGO
-                                </>
-                            )}
-                        </button>
-                    )}
+                    
+                    {(() => {
+                        const requestedItems = earnings.filter(o => !o.isPaid && o.paymentRequested);
+                        const hasRequested = requestedItems.length > 0;
+                        const requestedAmount = requestedItems.reduce((sum, o) => sum + o.amount, 0);
+
+                        if (hasRequested) {
+                            return (
+                                <div className="mt-4 bg-slate-900/10 backdrop-blur-sm border border-black/5 p-4 rounded-2xl">
+                                    <p className="text-black font-black text-sm text-center leading-tight">
+                                        Recibirás <span className="text-slate-900">${requestedAmount.toFixed(2)}</span> ({(requestedAmount * bcvRate).toFixed(2)} Bs)<br/>
+                                        <span className="text-[10px] opacity-70 font-bold uppercase tracking-widest mt-1 block">Por favor espera</span>
+                                    </p>
+                                </div>
+                            );
+                        }
+
+                        return stats.available > 0 && (
+                            <button
+                                onClick={handleRequestPayment}
+                                disabled={requestingPayment}
+                                className="mt-4 w-full bg-slate-900 text-primary py-3 rounded-xl font-black text-sm active:scale-95 transition-all shadow-xl shadow-slate-900/30 flex items-center justify-center gap-2"
+                            >
+                                {requestingPayment ? (
+                                    <div className="w-5 h-5 border-2 border-primary border-t-transparent rounded-full animate-spin"></div>
+                                ) : (
+                                    <>
+                                        <DollarSign className="w-4 h-4" /> SOLICITAR PAGO
+                                    </>
+                                )}
+                            </button>
+                        );
+                    })()}
                 </div>
 
                 <div className="bg-white rounded-[28px] p-5 border border-slate-100 shadow-sm">
