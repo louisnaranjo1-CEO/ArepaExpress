@@ -126,22 +126,98 @@ export default function Taxi() {
     }, [userData]);
     const [activeDrivers, setActiveDrivers] = useState<{ moto: number, carro: number, ejecutivo: number }>({ moto: 0, carro: 0, ejecutivo: 0 });
 
-    // PostgreSQL: Polling de disponibilidad de conductores (reemplaza 3 Firestore listeners)
+    // Disponibilidad de conductores: PostgreSQL primario, Firestore como fallback
     useEffect(() => {
-        const fetchAvailability = async () => {
+        let interval: ReturnType<typeof setInterval> | null = null;
+        let unsubDrivers: (() => void) | null = null;
+        let unsubTransport: (() => void) | null = null;
+        let unsubOrders: (() => void) | null = null;
+        let useFirestore = false;
+
+        // Datos para cálculo Firestore
+        let onlineDrivers: { id: string; vehicleType: string; availability: string }[] = [];
+        let busyTransport = new Set<string>();
+        let busyOrders = new Set<string>();
+
+        const recalcFirestore = () => {
+            const counts = { moto: 0, carro: 0, ejecutivo: 0 };
+            onlineDrivers.forEach(d => {
+                if (d.availability !== 'busy' && !busyTransport.has(d.id) && !busyOrders.has(d.id)) {
+                    const vt = d.vehicleType?.toLowerCase() as keyof typeof counts;
+                    if (vt in counts) counts[vt]++;
+                }
+            });
+            setActiveDrivers(counts);
+        };
+
+        const startFirestoreFallback = () => {
+            if (useFirestore) return; // Already listening
+            useFirestore = true;
+            console.log('Using Firestore fallback for driver availability');
+
+            // Online drivers
+            const qDrivers = query(collection(db, 'delivery_drivers'), where('isOnline', '==', true));
+            unsubDrivers = onSnapshot(qDrivers, (snap) => {
+                onlineDrivers = snap.docs.map(d => ({
+                    id: d.id,
+                    vehicleType: d.data().vehicleType,
+                    availability: d.data().availability || 'active'
+                }));
+                recalcFirestore();
+            });
+
+            // Busy in transport_requests
+            const qReq = query(collection(db, 'transport_requests'), where('status', 'in', ['accepted', 'arriving', 'in_progress']));
+            unsubTransport = onSnapshot(qReq, (snap) => {
+                busyTransport = new Set<string>();
+                snap.docs.forEach(d => { if (d.data().driverId) busyTransport.add(d.data().driverId); });
+                recalcFirestore();
+            });
+
+            // Busy in orders
+            const qOrd = query(collection(db, 'orders'), where('status', 'in', ['en_camino', 'in_transit']));
+            unsubOrders = onSnapshot(qOrd, (snap) => {
+                busyOrders = new Set<string>();
+                snap.docs.forEach(d => { if (d.data().deliveryDriverId) busyOrders.add(d.data().deliveryDriverId); });
+                recalcFirestore();
+            });
+        };
+
+        const fetchFromPostgres = async () => {
             try {
                 const { driversApi } = await import('../lib/api');
                 const counts = await driversApi.getAvailable();
-                setActiveDrivers(counts);
-            } catch (error) {
-                console.error('Error fetching driver availability from PostgreSQL:', error);
+                // Verificar si PostgreSQL tiene datos reales
+                if (counts.moto + counts.carro + counts.ejecutivo > 0) {
+                    setActiveDrivers(counts);
+                    return true; // PostgreSQL tiene datos
+                }
+                return false; // PostgreSQL vacío, usar fallback
+            } catch {
+                return false; // Backend no disponible
             }
         };
 
-        // Fetch inmediato + polling cada 10s
-        fetchAvailability();
-        const interval = setInterval(fetchAvailability, 10000);
-        return () => clearInterval(interval);
+        // Intentar PostgreSQL primero
+        fetchFromPostgres().then(hasData => {
+            if (hasData) {
+                // PostgreSQL funciona — polling cada 10s
+                interval = setInterval(async () => {
+                    const ok = await fetchFromPostgres();
+                    if (!ok) startFirestoreFallback();
+                }, 10000);
+            } else {
+                // Fallback inmediato a Firestore
+                startFirestoreFallback();
+            }
+        });
+
+        return () => {
+            if (interval) clearInterval(interval);
+            if (unsubDrivers) unsubDrivers();
+            if (unsubTransport) unsubTransport();
+            if (unsubOrders) unsubOrders();
+        };
     }, []);
 
     const [isFollowingUser, setIsFollowingUser] = useState(false);
