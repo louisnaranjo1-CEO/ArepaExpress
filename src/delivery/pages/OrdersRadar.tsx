@@ -4,7 +4,7 @@ import { ref, getDownloadURL } from 'firebase/storage';
 import { rtdb, storage, db } from '../../lib/firebase';
 import { ref as rtdbRef, onValue } from 'firebase/database';
 import { useAuth } from '../../context/AuthContext';
-import { Car, Bike, MapPin, Navigation, Phone, CheckCircle2, MessageSquare, Compass, Send, User as UserIcon, Star, MessageCircle, Clock, AlertTriangle, ArrowLeft } from 'lucide-react';
+import { Car, Bike, MapPin, Navigation, Phone, CheckCircle2, MessageSquare, Compass, Send, User as UserIcon, Star, MessageCircle, Clock, AlertTriangle, ArrowLeft, Package } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import toast from 'react-hot-toast';
 import RideChat from '../../components/RideChat';
@@ -584,11 +584,15 @@ export default function OrdersRadar() {
             <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="space-y-4">
                 <div className="bg-primary/5 border border-primary/10 p-5 rounded-[2.5rem] mb-4 flex items-center gap-4">
                     <div className="w-12 h-12 bg-primary/10 rounded-2xl flex items-center justify-center text-slate-900">
-                        <Navigation className="w-6 h-6 animate-pulse" />
+                        {activeTransport.type === 'package_delivery' ? <Package className="w-6 h-6 animate-pulse" /> : <Navigation className="w-6 h-6 animate-pulse" />}
                     </div>
                     <div>
-                        <div className="text-slate-900 font-black text-sm uppercase tracking-wider">Viaje en Curso</div>
-                        <p className="text-slate-500 text-[10px] font-bold">Lleva al pasajero de forma segura.</p>
+                        <div className="text-slate-900 font-black text-sm uppercase tracking-wider">
+                            {activeTransport.type === 'package_delivery' ? 'Entrega de Paquete' : 'Viaje en Curso'}
+                        </div>
+                        <p className="text-slate-500 text-[10px] font-bold">
+                            {activeTransport.type === 'package_delivery' ? 'Lleva el paquete a su destino de forma segura.' : 'Lleva al pasajero de forma segura.'}
+                        </p>
                     </div>
                 </div>
 
@@ -622,7 +626,9 @@ export default function OrdersRadar() {
                             </div>
                             <div className="flex-1 flex justify-between items-center gap-2">
                                 <div>
-                                    <h3 className="text-xs font-black text-blue-500 uppercase tracking-widest">{activeTransport.type === 'food_delivery' ? 'Pedido a nombre de:' : 'Pasajero:'}</h3>
+                                    <h3 className="text-xs font-black text-blue-500 uppercase tracking-widest">
+                                        {activeTransport.type === 'food_delivery' ? 'Pedido a nombre de:' : (activeTransport.type === 'package_delivery' ? 'Remitente:' : 'Pasajero:')}
+                                    </h3>
                                     <p className="font-bold text-slate-700 leading-tight mt-0.5">{activeTransport.userName || 'Usuario'}</p>
                                     {(activeTransport.userCedula) && (
                                         <div className="text-xs text-slate-500 font-medium mt-0.5 space-y-0.5 pb-2">
@@ -641,6 +647,21 @@ export default function OrdersRadar() {
                         </div>
 
                         <div className="w-px h-8 bg-dashed bg-slate-200 ml-6"></div>
+
+                        {activeTransport.type === 'package_delivery' && activeTransport.packageDescription && (
+                            <>
+                                <div className="flex gap-4">
+                                    <div className="w-12 h-12 bg-yellow-50 text-yellow-600 rounded-2xl flex items-center justify-center shrink-0 border border-yellow-100 shadow-inner">
+                                        <Package className="w-6" />
+                                    </div>
+                                    <div className="flex-1">
+                                        <h3 className="text-xs font-black text-yellow-600 uppercase tracking-widest">Contenido del Paquete:</h3>
+                                        <p className="font-bold text-slate-700 leading-tight mt-0.5">{activeTransport.packageDescription}</p>
+                                    </div>
+                                </div>
+                                <div className="w-px h-8 bg-dashed bg-slate-200 ml-6"></div>
+                            </>
+                        )}
 
                         <div className="flex gap-4">
                             <div className="w-12 h-12 bg-slate-50 text-slate-400 rounded-2xl flex items-center justify-center shrink-0 border border-slate-100 shadow-inner">
@@ -1069,8 +1090,8 @@ export default function OrdersRadar() {
 
                                 <div className="flex justify-between items-center mb-6 relative">
                                     <div className="flex items-center gap-2 px-3 py-1 bg-primary text-slate-900 rounded-full text-[10px] font-black uppercase tracking-wider shadow-lg shadow-primary/20">
-                                        {req.type === 'food_delivery' ? <Bike className="w-3.5 h-3.5" /> : (req.vehicleType === 'moto' ? <Bike className="w-3.5 h-3.5" /> : <Car className="w-3.5 h-3.5" />)}
-                                        {req.scheduled ? 'VIAJE PROGRAMADO' : (req.type === 'food_delivery' ? 'REPARTO COMIDA' : 'SOLICITUD TAXI')}
+                                        {req.type === 'food_delivery' ? <Bike className="w-3.5 h-3.5" /> : (req.type === 'package_delivery' ? <Package className="w-3.5 h-3.5" /> : (req.vehicleType === 'moto' ? <Bike className="w-3.5 h-3.5" /> : <Car className="w-3.5 h-3.5" />))}
+                                        {req.scheduled ? 'VIAJE PROGRAMADO' : (req.type === 'food_delivery' ? 'REPARTO COMIDA' : (req.type === 'package_delivery' ? 'ENVÍO DE PAQUETE' : 'SOLICITUD TAXI'))}
                                     </div>
                                     <div className="text-2xl font-black text-emerald-600">${(req.price || 0).toFixed(2)}</div>
                                 </div>
@@ -1115,6 +1136,12 @@ export default function OrdersRadar() {
                                             </p>
                                             <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-2">Destino:</p>
                                             <p className="font-bold text-slate-700 leading-tight mt-0.5 line-clamp-2">{req.destination?.address}</p>
+                                            {req.type === 'package_delivery' && req.packageDescription && (
+                                                <>
+                                                    <p className="text-[10px] font-black text-yellow-600 uppercase tracking-widest mt-2">Paquete:</p>
+                                                    <p className="font-bold text-slate-700 leading-tight mt-0.5 line-clamp-2">{req.packageDescription}</p>
+                                                </>
+                                            )}
                                         </div>
                                     </div>
                                 </div>

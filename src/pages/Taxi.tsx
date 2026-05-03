@@ -5,7 +5,7 @@ import { useAuth } from '../context/AuthContext';
 import { collection, addDoc, serverTimestamp, doc, getDoc, updateDoc, getDocs, query, where, writeBatch, onSnapshot, Timestamp } from 'firebase/firestore';
 import { db, storage } from '../lib/firebase';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { Car, Bike, MapPin, Navigation, ArrowRight, CheckCircle2, X, Heart, History, Star, Wallet, Upload, Copy, Check, Calendar, Clock as ClockIcon } from 'lucide-react';
+import { Car, Bike, MapPin, Navigation, ArrowRight, CheckCircle2, X, Heart, History, Star, Wallet, Upload, Copy, Check, Calendar, Clock as ClockIcon, Package } from 'lucide-react';
 import { GoogleMap, useJsApiLoader, Marker, DirectionsRenderer } from '@react-google-maps/api';
 import { UN2X3_LOGO } from '../lib/env';
 import toast from 'react-hot-toast';
@@ -70,7 +70,9 @@ export default function Taxi() {
     const [map, setMap] = useState<google.maps.Map | null>(null);
     const [directionsService, setDirectionsService] = useState<google.maps.DirectionsService | null>(null);
     const [directionsResponse, setDirectionsResponse] = useState<google.maps.DirectionsResult | null>(null);
-    const [step, setStep] = useState<'origin' | 'destination' | 'vehicle' | 'payment' | 'searching'>('origin');
+    const [step, setStep] = useState<'service_type' | 'package_details' | 'origin' | 'destination' | 'vehicle' | 'payment' | 'searching'>('service_type');
+    const [serviceCategory, setServiceCategory] = useState<'transport' | 'package'>('transport');
+    const [packageDescription, setPackageDescription] = useState('');
 
     const [origin, setOrigin] = useState<Location | null>(null);
     const [destination, setDestination] = useState<Location | null>(null);
@@ -595,6 +597,14 @@ export default function Taxi() {
 
         if (step === 'vehicle') {
             setStep('origin');
+        } else if (step === 'origin') {
+            if (serviceCategory === 'package') {
+                setStep('package_details');
+            } else {
+                setStep('service_type');
+            }
+        } else if (step === 'package_details') {
+            setStep('service_type');
         }
     };
 
@@ -709,7 +719,8 @@ export default function Taxi() {
             setStep('searching');
 
             const orderData = {
-                type: 'transport',
+                type: serviceCategory === 'package' ? 'package_delivery' : 'transport',
+                packageDescription: serviceCategory === 'package' ? packageDescription : null,
                 userId: user?.uid || 'guest_' + Date.now(),
                 userName: userData?.displayName || user?.displayName || user?.email || guestName || 'Usuario Invitado',
                 userPhone: userData?.phone || guestPhone || 'Sin número',
@@ -911,11 +922,70 @@ export default function Taxi() {
                     {/* Progress Indicator */}
                     <div className="w-12 h-1.5 bg-slate-200/60 rounded-full mx-auto mb-5 drop-shadow-sm"></div>
 
+                    {step === 'service_type' && (
+                        <div className="animate-in fade-in slide-in-from-bottom-4 flex flex-col h-full">
+                            <h2 className="text-xl font-black text-slate-900 mb-4 text-center">¿Qué necesitas hoy?</h2>
+                            <div className="grid gap-4">
+                                <button
+                                    onClick={() => { setServiceCategory('transport'); setStep('origin'); }}
+                                    className="p-6 bg-white border-2 border-slate-100 rounded-3xl flex items-center gap-4 hover:border-primary hover:bg-primary/5 transition-all shadow-sm active:scale-95"
+                                >
+                                    <div className="w-14 h-14 bg-blue-50 text-blue-500 rounded-full flex items-center justify-center">
+                                        <Car className="w-8 h-8" />
+                                    </div>
+                                    <div className="text-left">
+                                        <h3 className="font-black text-lg text-slate-800">Transporte</h3>
+                                        <p className="text-sm font-bold text-slate-400 leading-tight">Viaja cómodo y seguro a tu destino</p>
+                                    </div>
+                                </button>
+                                
+                                <button
+                                    onClick={() => { setServiceCategory('package'); setStep('package_details'); }}
+                                    className="p-6 bg-white border-2 border-slate-100 rounded-3xl flex items-center gap-4 hover:border-primary hover:bg-primary/5 transition-all shadow-sm active:scale-95"
+                                >
+                                    <div className="w-14 h-14 bg-emerald-50 text-emerald-500 rounded-full flex items-center justify-center">
+                                        <Package className="w-8 h-8" />
+                                    </div>
+                                    <div className="text-left">
+                                        <h3 className="font-black text-lg text-slate-800">Enviar Paquete</h3>
+                                        <p className="text-sm font-bold text-slate-400 leading-tight">Envíos rápidos a cualquier lugar</p>
+                                    </div>
+                                </button>
+                            </div>
+                        </div>
+                    )}
+
+                    {step === 'package_details' && (
+                        <div className="animate-in fade-in slide-in-from-right-4 flex flex-col h-full">
+                            <h2 className="text-xl font-black text-slate-900 mb-1">Detalles del Paquete</h2>
+                            <p className="text-sm font-medium text-slate-500 mb-4">¿Qué vamos a enviar?</p>
+                            
+                            <textarea
+                                value={packageDescription}
+                                onChange={(e) => setPackageDescription(e.target.value)}
+                                placeholder="Ej: Llaves, Documentos, Comida..."
+                                className="w-full bg-slate-50 border border-slate-200 p-4 rounded-2xl mb-4 focus:border-primary outline-none transition-all font-bold text-slate-700 min-h-[100px] resize-none"
+                            />
+                            
+                            <button
+                                disabled={!packageDescription.trim()}
+                                onClick={() => setStep('origin')}
+                                className="w-full bg-[#ffff00] text-black py-4 rounded-2xl font-black text-lg shadow-[0_6px_0_#ca8a04] active:shadow-[0_0px_0_#ca8a04] active:translate-y-[6px] transition-all disabled:opacity-50 disabled:translate-y-[6px] disabled:shadow-none uppercase tracking-wide flex justify-center items-center gap-2 border-2 border-slate-900"
+                            >
+                                Continuar
+                            </button>
+                        </div>
+                    )}
+
                     {/* MAIN VIEW: ORIGIN & MAP TAP */}
                     {step === 'origin' && (
                         <div className="animate-in fade-in slide-in-from-bottom-4 flex flex-col h-full">
-                            <h2 className="text-xl font-black text-slate-900 mb-1">¿A dónde vamos hoy?</h2>
-                            <p className="text-sm font-medium text-slate-500 mb-4">Toca en el mapa tu destino final para trazar la ruta.</p>
+                            <h2 className="text-xl font-black text-slate-900 mb-1">
+                                {serviceCategory === 'package' ? '¿A dónde va el paquete?' : '¿A dónde vamos hoy?'}
+                            </h2>
+                            <p className="text-sm font-medium text-slate-500 mb-4">
+                                {serviceCategory === 'package' ? 'Toca en el mapa el destino de entrega del paquete.' : 'Toca en el mapa tu destino final para trazar la ruta.'}
+                            </p>
 
                             <div
                                 className="flex items-center gap-4 p-4 rounded-3xl border transition-all mb-4 cursor-pointer bg-white/70 backdrop-blur-sm border-white/50 shadow-sm"
@@ -957,6 +1027,7 @@ export default function Taxi() {
                     {step === 'vehicle' && (
                         <div className="animate-in fade-in slide-in-from-bottom-4">
                             {/* RESERVE OPTION OVERLAY */}
+                            {serviceCategory === 'transport' && (
                             <div className="mb-4">
                                 <div className="bg-slate-50 p-1.5 rounded-2xl flex gap-2 mb-4 border border-slate-100">
                                     <button 
@@ -1000,6 +1071,7 @@ export default function Taxi() {
                                     </div>
                                 )}
                             </div>
+                            )}
 
                             <div className="flex items-center justify-between mb-4">
                                 <h2 className="text-xl font-black text-slate-900">Elige un vehículo</h2>
