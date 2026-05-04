@@ -5,6 +5,7 @@ import { db } from '../../lib/firebase';
 import { useNavigate } from 'react-router-dom';
 import { collection, query, where, onSnapshot, orderBy, doc, getDocs, updateDoc, increment, addDoc, serverTimestamp, writeBatch, getDoc } from 'firebase/firestore';
 import { useCurrency } from '../../context/CurrencyContext';
+import { toast } from 'react-hot-toast';
 
 interface EarningsItem {
     id: string;
@@ -233,54 +234,90 @@ export default function Earnings() {
         }
     };
 
-    const handleRequestPayment = async () => {
-        if (!user || !profile) return;
+    const handleCopyPaymentData = () => {
+        if (!profile?.paymentMobile) return;
         
+        const currentBcvRate = bcvRate || 1;
+        const totalAmount = earnings.filter(o => !o.isPaid && o.paymentRequested).reduce((sum, item) => sum + item.amount, 0);
+        const bsAmount = totalAmount * currentBcvRate;
+
+        const text = `*DATOS PARA PAGO MOVIL - AREPA EXPRESS*\n\n` +
+            `*Monto:* ${totalAmount.toFixed(2)}$ (${bsAmount.toFixed(2)} Bs)\n` +
+            `*Banco:* ${profile.paymentMobile.bank}\n` +
+            `*Teléfono:* ${profile.paymentMobile.phone}\n` +
+            `*Cédula:* ${profile.paymentMobile.cedula}\n` +
+            `*Nombre:* ${profile.fullName || profile.name || 'Piloto'}`;
+
+        navigator.clipboard.writeText(text).then(() => {
+            toast.success('Datos copiados al portapapeles');
+        }).catch(() => {
+            toast.error('Error al copiar los datos');
+        });
+    };
+
+    const handleRequestPayment = async () => {
+        if (!user || !profile) {
+            toast.error('Error de sesión. Intenta de nuevo.');
+            return;
+        }
+
         // Validate if they have payment mobile configured
         if (!profile.paymentMobile || !profile.paymentMobile.bank || !profile.paymentMobile.cedula || !profile.paymentMobile.phone) {
-            alert('No has configurado tu Pago Móvil. Por favor dirígete a tu Perfil -> Método de Pago y configúralo antes de solicitar el pago.');
+            toast.error('Por favor configura tu Pago Móvil primero.');
             navigate('/delivery/profile');
             return;
         }
 
-        const pendingItems = earnings.filter(o => !o.isPaid);
+        const pendingItems = earnings.filter(o => !o.isPaid && !o.paymentRequested);
         if (pendingItems.length === 0) {
-            alert('No tienes saldo disponible para cobro.');
+            toast.error('No tienes saldo disponible para cobro.');
             return;
         }
 
         setRequestingPayment(true);
+        const loadingToast = toast.loading('Procesando solicitud...');
+        
         try {
             const batch = writeBatch(db);
             const totalAmount = pendingItems.reduce((sum, item) => sum + item.amount, 0);
-            const bsAmount = totalAmount * bcvRate;
+            const currentBcvRate = bcvRate || 1;
+            const bsAmount = totalAmount * currentBcvRate;
             
+            // 1. Fetch admins first to ensure we have targets for notifications
+            const adminsSnap = await getDocs(query(collection(db, 'users'), where('role', '==', 'admin')));
+            
+            // 2. Mark items as requested
             pendingItems.forEach(item => {
                 const itemRef = doc(db, item.type === 'delivery' ? 'orders' : 'transport_requests', item.id);
                 batch.update(itemRef, { paymentRequested: true });
             });
 
-            // Send notification to admin
-            const adminsSnap = await getDocs(query(collection(db, 'users'), where('role', '==', 'admin')));
-            adminsSnap.docs.forEach(adminDoc => {
-                const notifRef = doc(collection(db, 'notifications'));
-                batch.set(notifRef, {
-                    userId: adminDoc.id,
-                    title: '¡Nueva Solicitud de Pago!',
-                    body: `El piloto ${profile.name || 'Sin nombre'} ha solicitado el pago de $${totalAmount.toFixed(2)} (${bsAmount.toFixed(2)} Bs).`,
-                    type: 'payout_request',
-                    driverId: user.uid,
-                    amountUsd: totalAmount,
-                    amountBs: bsAmount,
-                    read: false,
-                    createdAt: serverTimestamp()
+            // 3. Create notifications for all admins
+            if (!adminsSnap.empty) {
+                adminsSnap.docs.forEach(adminDoc => {
+                    const notifRef = doc(collection(db, 'notifications'));
+                    batch.set(notifRef, {
+                        userId: adminDoc.id,
+                        title: '¡Nueva Solicitud de Pago!',
+                        body: `El piloto ${profile.fullName || profile.name || 'Sin nombre'} ha solicitado el pago de $${totalAmount.toFixed(2)} (${bsAmount.toFixed(2)} Bs).`,
+                        type: 'payout_request',
+                        driverId: user.uid,
+                        amountUsd: totalAmount,
+                        amountBs: bsAmount,
+                        bankInfo: profile.paymentMobile,
+                        read: false,
+                        createdAt: serverTimestamp()
+                    });
                 });
-            });
+            } else {
+                console.warn('No admins found to notify');
+            }
 
             await batch.commit();
+            toast.success('Solicitud enviada exitosamente', { id: loadingToast });
         } catch (error) {
-            console.error('Error requesting payment', error);
-            alert('Ocurrió un error al solicitar el pago.');
+            console.error('Error requesting payment:', error);
+            toast.error('Ocurrió un error. Revisa tu conexión.', { id: loadingToast });
         } finally {
             setRequestingPayment(false);
         }
@@ -367,20 +404,30 @@ export default function Earnings() {
                         const requestedItems = earnings.filter(o => !o.isPaid && o.paymentRequested);
                         const hasRequested = requestedItems.length > 0;
                         const requestedAmount = requestedItems.reduce((sum, o) => sum + o.amount, 0);
+                        const currentBcvRate = bcvRate || 1;
 
                         if (hasRequested) {
                             return (
-                                <div className="mt-4 bg-slate-900/10 backdrop-blur-sm border border-black/5 p-4 rounded-2xl">
-                                    <p className="text-black font-black text-sm text-center leading-tight">
-                                        Recibirás <span className="text-slate-900">${requestedAmount.toFixed(2)}</span> ({(requestedAmount * bcvRate).toFixed(2)} Bs)<br/>
-                                        <span className="text-[10px] opacity-70 font-bold uppercase tracking-widest mt-1 block">Por favor espera</span>
-                                    </p>
+                                <div className="mt-4 space-y-3">
+                                    <div className="bg-white/40 backdrop-blur-md border border-white/40 p-4 rounded-2xl">
+                                        <p className="text-black font-black text-sm text-center leading-tight">
+                                            Recibirás <span className="text-slate-900">${requestedAmount.toFixed(2)}</span> ({(requestedAmount * currentBcvRate).toFixed(2)} Bs)<br/>
+                                            <span className="text-[10px] opacity-70 font-bold uppercase tracking-widest mt-1 block">Por favor espera</span>
+                                        </p>
+                                    </div>
+                                    <button
+                                        onClick={handleCopyPaymentData}
+                                        className="w-full bg-white/20 hover:bg-white/30 text-black py-2.5 rounded-xl font-bold text-[10px] uppercase tracking-widest transition-all flex items-center justify-center gap-2 border border-white/30"
+                                    >
+                                        <ExternalLink className="w-3 h-3" /> COPIAR MIS DATOS DE PAGO
+                                    </button>
                                 </div>
                             );
                         }
 
                         return stats.available > 0 && (
                             <button
+                                id="btn-request-payment"
                                 onClick={handleRequestPayment}
                                 disabled={requestingPayment}
                                 className="mt-4 w-full bg-slate-900 text-primary py-3 rounded-xl font-black text-sm active:scale-95 transition-all shadow-xl shadow-slate-900/30 flex items-center justify-center gap-2"
