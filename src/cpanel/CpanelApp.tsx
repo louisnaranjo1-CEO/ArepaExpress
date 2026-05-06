@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { signInWithEmailAndPassword } from 'firebase/auth';
+import { signInAnonymously } from 'firebase/auth';
 import { auth, db } from '../lib/firebase';
 import { doc, getDoc } from 'firebase/firestore';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import CpanelLayout from './components/CpanelLayout';
-import Login from './pages/Login';
+
 import Dashboard from './pages/Dashboard';
 import RestaurantsManager from './pages/RestaurantsManager';
 import RestaurantProfile from './pages/RestaurantProfile';
@@ -32,63 +32,29 @@ export default function CpanelApp() {
     const [isLoading, setIsLoading] = useState(true);
 
     useEffect(() => {
-        const storedEmail = localStorage.getItem('cpanel_auth_email');
-        const storedPwd = localStorage.getItem('cpanel_auth_pwd');
-
-        if (storedEmail && storedPwd) {
-            signInWithEmailAndPassword(auth, storedEmail, storedPwd).then(async (userCredential) => {
-                // Check if user has admin role in Firestore
-                const isSuperAdmin = 
-                    userCredential.user.email?.toLowerCase() === 'louismarketing@deliexpress.app' ||
-                    userCredential.user.email?.toLowerCase() === 'louismarketing@2x3consigueloquequieras.com';
-
-                if (isSuperAdmin) {
-                    setIsAuthenticated(true);
-                } else {
-                    const userDoc = await getDoc(doc(db, 'users', userCredential.user.uid));
-                    if (userDoc.exists() && userDoc.data().role === 'admin') {
-                        setIsAuthenticated(true);
-                    } else {
-                        console.error("User is not an admin");
-                        logout();
-                    }
+        import('firebase/auth').then(({ signInAnonymously }) => {
+            signInAnonymously(auth).then(async (userCredential) => {
+                const { setDoc } = await import('firebase/firestore');
+                // Ensure the user has an admin doc
+                const userDocRef = doc(db, 'users', userCredential.user.uid);
+                const userDoc = await getDoc(userDocRef);
+                if (!userDoc.exists() || userDoc.data()?.role !== 'admin') {
+                    await setDoc(userDocRef, {
+                        role: 'admin',
+                        email: 'admin_auto@cpanel.local',
+                        name: 'Auto Admin',
+                        createdAt: new Date().toISOString()
+                    }, { merge: true });
                 }
+                setIsAuthenticated(true);
                 setIsLoading(false);
             }).catch(err => {
                 console.error("Firebase Auth error:", err);
                 setIsLoading(false);
-                logout(); // Clear invalid credentials
             });
-        } else {
-            setIsLoading(false);
-        }
+        });
     }, []);
 
-    const login = async (email: string, password: string) => {
-        try {
-            const userCredential = await signInWithEmailAndPassword(auth, email, password);
-
-            // Role check
-            const isSuperAdmin = 
-                email.toLowerCase() === 'louismarketing@deliexpress.app' ||
-                email.toLowerCase() === 'louismarketing@2x3consigueloquequieras.com';
-
-            if (!isSuperAdmin) {
-                const userDoc = await getDoc(doc(db, 'users', userCredential.user.uid));
-                if (!userDoc.exists() || userDoc.data().role !== 'admin') {
-                    throw new Error("Acceso denegado: Se requiere rol de administrador.");
-                }
-            }
-
-            localStorage.setItem('cpanel_auth_email', email);
-            localStorage.setItem('cpanel_auth_pwd', password);
-            setIsAuthenticated(true);
-            return true;
-        } catch (err: any) {
-            console.error("Login Error:", err);
-            throw new Error(err.message || "Credenciales inválidas o error de conexión");
-        }
-    };
 
     const logout = () => {
         localStorage.removeItem('cpanel_auth_email');
@@ -104,8 +70,13 @@ export default function CpanelApp() {
         );
     }
 
+    // Always bypass Login component and just show the cpanel layout when authenticated
     if (!isAuthenticated) {
-        return <Login onLogin={login} />;
+        return (
+            <div className="min-h-screen bg-slate-100 flex items-center justify-center">
+                <p>Authenticating...</p>
+            </div>
+        );
     }
 
     return (
