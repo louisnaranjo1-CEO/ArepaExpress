@@ -4,13 +4,15 @@ import { User, Mail, MapPin, CreditCard, LogOut, ShoppingBag, Settings, ChevronR
 import { useNavigate } from 'react-router-dom';
 import { signOut, updateEmail, updatePassword, deleteUser } from 'firebase/auth';
 import { auth, db, storage } from '../../lib/firebase';
-import { collection, addDoc, serverTimestamp, doc, onSnapshot, updateDoc } from 'firebase/firestore';
+import { collection, addDoc, serverTimestamp, doc, onSnapshot, updateDoc, setDoc } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { Geolocation } from '@capacitor/geolocation';
 import { requestNotificationPermission, disableNotifications } from '../../lib/notifications';
 import { VENEZUELA_DATA, VENEZUELA_STATES } from '../../lib/venezuelaData';
 import AddressPicker from '../../components/AddressPicker';
 import { registerBiometric } from '../../utils/security';
+import { driversApi } from '../../lib/api';
+import { supabase } from '../../lib/supabase';
 
 export default function DriverProfile() {
     const { user, userData } = useAuth();
@@ -24,9 +26,14 @@ export default function DriverProfile() {
     // Fetch driver-specific profile
     React.useEffect(() => {
         if (!user) return;
-        const unsub = onSnapshot(doc(db, 'delivery_drivers', user.uid), (snap) => {
-            if (snap.exists()) {
-                const data = snap.data();
+        
+        let isMounted = true;
+
+        const fetchProfile = async () => {
+            try {
+                const data = await driversApi.getDriver(user.uid);
+                if (!isMounted) return;
+                
                 setDriverProfile(data);
                 if (data.homeLocation) {
                     setLocationForm({
@@ -35,16 +42,38 @@ export default function DriverProfile() {
                         coords: data.homeLocation.coords || null
                     });
                 }
-                setPaymentMobileForm(data.paymentMobile || { bank: '', cedula: '', phone: '' });
+                
+                if (data.paymentMobile) {
+                    setPaymentMobileForm(data.paymentMobile);
+                }
+
                 setUpdateForm(prev => ({
                     ...prev,
                     phone: data.phone || prev.phone,
                     vehiclePlate: prev.vehiclePlate || data.vehiclePlate || '',
                     vehicleType: prev.vehicleType === 'moto' && data.vehicleType ? data.vehicleType : prev.vehicleType,
                 }));
+            } catch (err) {
+                console.error("Error fetching driver profile from Supabase:", err);
             }
-        });
-        return () => unsub();
+        };
+        
+        fetchProfile();
+        
+        const channel = supabase.channel(`public:drivers:${user.uid}`)
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'drivers', filter: `id=eq.${user.uid}` }, async () => {
+                if (!isMounted) return;
+                try {
+                    const data = await driversApi.getDriver(user.uid);
+                    setDriverProfile(prev => ({ ...prev, ...data }));
+                } catch(e) {}
+            })
+            .subscribe();
+
+        return () => {
+            isMounted = false;
+            supabase.removeChannel(channel);
+        };
     }, [user]);
 
     // Forms state
@@ -90,9 +119,11 @@ export default function DriverProfile() {
 
         setLoading(true);
         try {
-            await updateDoc(doc(db, 'delivery_drivers', user.uid), {
-                paymentMobile: paymentMobileForm
-            });
+            const { error } = await supabase.from('drivers').update({
+                payment_mobile: paymentMobileForm
+            }).eq('id', user.uid);
+            if (error) throw error;
+            
             alert('Método de pago guardado exitosamente. Ahora podrás recibir liquidaciones automáticamente.');
             setActiveView('profile');
         } catch (error) {
@@ -228,12 +259,7 @@ export default function DriverProfile() {
 
             // Update phone immediately for quicker communication
             if (updateForm.phone && updateForm.phone !== driverProfile.phone) {
-                await updateDoc(doc(db, 'delivery_drivers', user.uid), {
-                    phone: updateForm.phone
-                });
-                await updateDoc(doc(db, 'users', user.uid), {
-                    phone: updateForm.phone
-                });
+                await supabase.from('profiles').update({ phone: updateForm.phone }).eq('id', user.uid);
             }
 
             alert('Solicitud enviada. Tu número de teléfono se actualizó. Otros datos se actualizarán una vez aprobados.');
@@ -262,14 +288,16 @@ export default function DriverProfile() {
 
         setLoading(true);
         try {
-            await setDoc(doc(db, 'delivery_drivers', user.uid), {
-                homeLocation: {
+            const { error } = await supabase.from('drivers').update({
+                home_location: {
                     state: locationForm.state,
                     city: locationForm.city,
                     coords: locationForm.coords || null
                 },
-                updatedAt: serverTimestamp()
-            }, { merge: true });
+                updated_at: new Date().toISOString()
+            }).eq('id', user.uid);
+            
+            if (error) throw error;
 
             alert('Ubicación base actualizada con éxito.');
             setActiveView('profile');
@@ -331,9 +359,10 @@ export default function DriverProfile() {
                                 setUpdatingNotifications(true);
                                 try {
                                     const newValue = !(driverProfile?.audioAlertsEnabled ?? true);
-                                    await updateDoc(doc(db, 'delivery_drivers', user.uid), {
-                                        audioAlertsEnabled: newValue
-                                    });
+                                    const { error } = await supabase.from('drivers').update({
+                                        audio_alerts_enabled: newValue
+                                    }).eq('id', user.uid);
+                                    if (error) throw error;
                                 } catch (err) {
                                     console.error("Error toggling audio alerts", err);
                                 } finally {

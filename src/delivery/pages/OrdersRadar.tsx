@@ -1,10 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { collection, query, where, onSnapshot, updateDoc, doc, serverTimestamp, getDoc, orderBy, limit, increment, runTransaction } from 'firebase/firestore';
 import { ref, getDownloadURL } from 'firebase/storage';
-import { rtdb, storage, db } from '../../lib/firebase';
+import { rtdb, storage } from '../../lib/firebase';
 import { ref as rtdbRef, onValue } from 'firebase/database';
 import { useAuth } from '../../context/AuthContext';
-import { Car, Bike, MapPin, Navigation, Phone, CheckCircle2, MessageSquare, Compass, Send, User as UserIcon, Star, MessageCircle, Clock, AlertTriangle, ArrowLeft, Package } from 'lucide-react';
+import { Car, Bike, MapPin, Navigation, Phone, CheckCircle2, MessageSquare, Send, User as UserIcon, Star, MessageCircle, Clock, AlertTriangle, ArrowLeft, Package } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import toast from 'react-hot-toast';
 import RideChat from '../../components/RideChat';
@@ -14,6 +13,9 @@ import { getCachedAudioUrl, NOTIFICATION_SOUND_URL } from '../../hooks/useGlobal
 import { updateDriverLocation } from '../../lib/delivery-service';
 import { calculateDistance } from '../../lib/geo';
 import InAppCall from '../../components/InAppCall';
+import { supabase } from '../../lib/supabase';
+import { driversApi } from '../../lib/api';
+
 
 export default function OrdersRadar() {
     const { user } = useAuth();
@@ -40,78 +42,113 @@ export default function OrdersRadar() {
     // 1. Fetch Driver Profile for vehicleType
     useEffect(() => {
         if (!user) return;
-        const unsub = onSnapshot(
-            doc(db, 'delivery_drivers', user.uid),
-            (docSnap) => {
-                if (docSnap.exists()) {
-                    setDriverProfile(docSnap.data());
+
+        const fetchProfile = async () => {
+            try {
+                const profile = await driversApi.getDriver(user.uid);
+                setDriverProfile(profile);
+            } catch (err) {
+                console.error("Error fetching radar profile:", err);
+            }
+        };
+
+        fetchProfile();
+
+        const channel = supabase.channel('radar_profile_changes')
+            .on(
+                'postgres_changes',
+                {
+                    event: '*',
+                    schema: 'public',
+                    table: 'drivers',
+                    filter: `id=eq.${user.uid}`
+                },
+                (payload) => {
+                    setDriverProfile(payload.new);
                 }
-            },
-            (err) => console.error("Error fetching radar profile:", err)
-        );
-        return () => unsub();
+            )
+            .subscribe();
+
+        return () => {
+            supabase.removeChannel(channel);
+        };
     }, [user]);
 
-    // 2. Escuchar órdenes de delivery y transporte activo
+    // 2. Escuchar órdenes de delivery y transporte activo (Supabase)
     useEffect(() => {
         if (!user) return;
 
-        // Escuchar orden activa del conductor
-        const activeQ = query(
-            collection(db, 'orders'),
-            where('deliveryDriverId', '==', user.uid),
-            where('status', 'in', ['en_camino', 'in_transit'])
-        );
-        const unsubActive = onSnapshot(activeQ, (snapshot) => {
-            if (!snapshot.empty) {
-                setActiveOrder({ id: snapshot.docs[0].id, ...snapshot.docs[0].data() });
+        let activeOrderChannel: any;
+        let activeTransportChannel: any;
+        let availableOrdersChannel: any;
+
+        const fetchActiveOrder = async () => {
+            const { data, error } = await supabase
+                .from('orders')
+                .select('*')
+                .eq('deliveryDriverId', user.uid)
+                .in('status', ['en_camino', 'in_transit'])
+                .limit(1);
+            if (data && data.length > 0) {
+                setActiveOrder(data[0]);
             } else {
                 setActiveOrder(null);
             }
-        });
+        };
 
-        // Escuchar transport activo y reservas programadas
-        const activeTransportQ = query(
-            collection(db, 'transport_requests'),
-            where('driverId', '==', user.uid),
-            where('status', 'in', ['accepted', 'arriving', 'in_progress'])
-        );
-        const unsubActiveTransport = onSnapshot(activeTransportQ, (snapshot) => {
-            if (!snapshot.empty) {
-                const allReqs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as any));
-                
-                // Mostrar en pantalla completa ("Viaje en Curso") si NO es programado (viaje normal), 
-                // O si es programado pero el transportista ya indicó que va en camino ('arriving') o en progreso ('in_progress').
-                const mainActive = allReqs.find((req: any) => !req.scheduled || req.status === 'arriving' || req.status === 'in_progress');
+        const fetchActiveTransport = async () => {
+            const { data, error } = await supabase
+                .from('transport_requests')
+                .select('*')
+                .eq('driverId', user.uid)
+                .in('status', ['accepted', 'arriving', 'in_progress']);
+            
+            if (data && data.length > 0) {
+                const mainActive = data.find((req: any) => !req.scheduled || req.status === 'arriving' || req.status === 'in_progress');
                 setActiveTransport(mainActive || null);
                 
-                // Las reservas que solo han sido aceptadas van a una lista especial para que el transportista pueda iniciarlas luego
-                const pendingReservations = allReqs.filter((req: any) => req.scheduled && req.status === 'accepted');
+                const pendingReservations = data.filter((req: any) => req.scheduled && req.status === 'accepted');
                 setMyReservations(pendingReservations);
             } else {
                 setActiveTransport(null);
                 setMyReservations([]);
             }
-        });
+        };
 
-        // Escuchar órdenes de comida disponibles
-        const availableQ = query(
-            collection(db, 'orders'),
-            where('status', '==', 'buscando_piloto'),
-            where('eligibleDrivers', 'array-contains', user.uid)
-        );
-        const unsubAvailable = onSnapshot(availableQ, (snapshot) => {
-            const orders = snapshot.docs.map(doc => {
-                const data = doc.data();
-                return { id: doc.id, ...data } as any;
-            });
-            setAvailableOrders(orders);
-        });
+        const fetchAvailableOrders = async () => {
+            const { data, error } = await supabase
+                .from('orders')
+                .select('*')
+                .eq('status', 'buscando_piloto')
+                .contains('eligibleDrivers', [user.uid]);
+            
+            if (data) {
+                setAvailableOrders(data);
+            } else {
+                setAvailableOrders([]);
+            }
+        };
+
+        fetchActiveOrder();
+        fetchActiveTransport();
+        fetchAvailableOrders();
+
+        activeOrderChannel = supabase.channel('active_order_changes')
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'orders', filter: `deliveryDriverId=eq.${user.uid}` }, fetchActiveOrder)
+            .subscribe();
+
+        activeTransportChannel = supabase.channel('active_transport_changes')
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'transport_requests', filter: `driverId=eq.${user.uid}` }, fetchActiveTransport)
+            .subscribe();
+
+        availableOrdersChannel = supabase.channel('available_orders_changes')
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'orders', filter: `status=eq.buscando_piloto` }, fetchAvailableOrders)
+            .subscribe();
 
         return () => {
-            unsubActive();
-            unsubActiveTransport();
-            unsubAvailable();
+            if (activeOrderChannel) supabase.removeChannel(activeOrderChannel);
+            if (activeTransportChannel) supabase.removeChannel(activeTransportChannel);
+            if (availableOrdersChannel) supabase.removeChannel(availableOrdersChannel);
         };
     }, [user, driverProfile]);
 
@@ -123,29 +160,35 @@ export default function OrdersRadar() {
             return;
         }
 
-        // Escuchar viajes disponibles
-        // Nota: Para delivery de comida, podríamos querer mostrarlo a todos los conductores activos 
-        // o filtrar también por tipo de vehículo si es necesario.
-        const transportQ = query(
-            collection(db, 'transport_requests'),
-            where('status', '==', 'searching')
-        );
+        let channel: any;
 
-        const unsub = onSnapshot(transportQ, (snapshot) => {
-            const reqs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as any))
-                .filter((req: any) => {
-                    // Si es taxi, filtrar por tipo de vehículo
+        const fetchAvailableTransport = async () => {
+            const { data, error } = await supabase
+                .from('transport_requests')
+                .select('*')
+                .eq('status', 'searching');
+            
+            if (data) {
+                const reqs = data.filter((req: any) => {
                     if (req.type !== 'food_delivery') {
                         return req.vehicleType === driverProfile.vehicleType;
                     }
-                    // Si es food_delivery, permitir que todos lo vean
                     return true;
                 });
-            setAvailableTransport(reqs);
+                setAvailableTransport(reqs);
+            }
             setLoading(false);
-        });
+        };
 
-        return () => unsub();
+        fetchAvailableTransport();
+
+        channel = supabase.channel('available_transport_changes')
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'transport_requests', filter: `status=eq.searching` }, fetchAvailableTransport)
+            .subscribe();
+
+        return () => {
+            if (channel) supabase.removeChannel(channel);
+        };
     }, [driverProfile]);
 
     // 3.1 Listen for incoming in-app calls when driver has an active transport
@@ -208,24 +251,31 @@ export default function OrdersRadar() {
     useEffect(() => {
         if (!user) return;
 
-        const feedbackQ = query(
-            collection(db, 'transport_requests'),
-            where('driverId', '==', user.uid),
-            where('status', '==', 'completed'),
-            orderBy('ratedAt', 'desc'),
-            limit(1)
-        );
+        let channel: any;
 
-        const unsub = onSnapshot(feedbackQ, (snapshot) => {
-            if (!snapshot.empty) {
-                const data = snapshot.docs[0].data();
-                if (data.rating) {
-                    setLatestFeedback({ id: snapshot.docs[0].id, ...data });
-                }
+        const fetchFeedback = async () => {
+            const { data, error } = await supabase
+                .from('transport_requests')
+                .select('*')
+                .eq('driverId', user.uid)
+                .eq('status', 'completed')
+                .order('ratedAt', { ascending: false })
+                .limit(1);
+            
+            if (data && data.length > 0 && data[0].rating) {
+                setLatestFeedback(data[0]);
             }
-        });
+        };
 
-        return () => unsub();
+        fetchFeedback();
+
+        channel = supabase.channel('feedback_changes')
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'transport_requests', filter: `driverId=eq.${user.uid}` }, fetchFeedback)
+            .subscribe();
+
+        return () => {
+            if (channel) supabase.removeChannel(channel);
+        };
     }, [user]);
 
     // 4. Geolocalización constante si hay una orden activa o viaje activo
@@ -267,25 +317,26 @@ export default function OrdersRadar() {
             return;
         }
 
-        const q = query(
-            collection(db, `transport_requests/${activeTransport.id}/messages`),
-            orderBy('createdAt', 'desc'),
-            limit(1)
-        );
+        let channel: any;
 
-        const unsub = onSnapshot(q, (snapshot) => {
-            if (!snapshot.empty) {
-                const latestMsg = snapshot.docs[0];
-                const data = latestMsg.data();
+        const fetchLatestMessage = async () => {
+            const { data, error } = await supabase
+                .from('order_messages')
+                .select('*')
+                .eq('order_id', activeTransport.id)
+                .order('created_at', { ascending: false })
+                .limit(1);
+
+            if (data && data.length > 0) {
+                const latestMsg = data[0];
                 
                 // Si es un mensaje nuevo y no es mío
                 if (lastChatIdSeen.current !== null && 
                     lastChatIdSeen.current !== latestMsg.id && 
-                    data.senderId !== user.uid) {
+                    latestMsg.user_id !== user.uid) {
                     
-                    // Solo sonar si es un mensaje de hace menos de 30 segundos (evitar sonar por viejos al reconectar)
                     const now = Date.now();
-                    const msgTime = data.createdAt?.toMillis() || now;
+                    const msgTime = new Date(latestMsg.created_at).getTime();
                     if (now - msgTime < 30000) {
                         // Play sound
                         if (notificationSoundUrl.current) {
@@ -301,7 +352,7 @@ export default function OrdersRadar() {
                                     Nuevo Mensaje
                                 </p>
                                 <p className="text-slate-500 text-xs font-bold leading-tight line-clamp-2">
-                                    {data.text || "Ha enviado un archivo o ubicación"}
+                                    {latestMsg.message || "Ha enviado un archivo o ubicación"}
                                 </p>
                             </div>
                         ), {
@@ -325,9 +376,17 @@ export default function OrdersRadar() {
             } else {
                 lastChatIdSeen.current = ""; // No hay mensajes
             }
-        });
+        };
 
-        return () => unsub();
+        fetchLatestMessage();
+
+        channel = supabase.channel('order_messages_changes')
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'order_messages', filter: `order_id=eq.${activeTransport.id}` }, fetchLatestMessage)
+            .subscribe();
+
+        return () => {
+            if (channel) supabase.removeChannel(channel);
+        };
     }, [activeTransport, user, showChat]);
 
     useEffect(() => {
@@ -338,29 +397,26 @@ export default function OrdersRadar() {
 
     const [processingAction, setProcessingAction] = useState<string | null>(null);
 
-    // --- ACCIONES DE COMIDA ---
+    // --- ACCIONES DE COMIDA (Supabase) ---
     const handleAcceptOrder = async (orderId: string) => {
         if (!user || activeOrder || activeTransport || processingAction) return;
         setProcessingAction(orderId);
         try {
-            const orderRef = doc(db, 'orders', orderId);
-            await runTransaction(db, async (transaction) => {
-                const orderDoc = await transaction.get(orderRef);
-                if (!orderDoc.exists()) {
-                    throw new Error("El pedido no existe.");
-                }
-
-                const data = orderDoc.data();
-                if (data.status === 'buscando_piloto' && !data.deliveryDriverId) {
-                    transaction.update(orderRef, {
-                        status: 'en_camino',
-                        deliveryDriverId: user.uid,
-                        driverAssignedAt: serverTimestamp()
-                    });
-                } else {
-                    throw new Error("ALREADY_TAKEN");
-                }
-            });
+            const { data, error } = await supabase
+                .from('orders')
+                .update({ 
+                    status: 'en_camino', 
+                    delivery_driver_id: user.uid, 
+                    driver_assigned_at: new Date().toISOString() 
+                })
+                .eq('id', orderId)
+                .eq('status', 'buscando_piloto')
+                .is('delivery_driver_id', null)
+                .select();
+                
+            if (error || !data || data.length === 0) {
+                throw new Error("ALREADY_TAKEN");
+            }
         } catch (error: any) {
             console.error("Error al aceptar orden:", error);
             if (error.message === "ALREADY_TAKEN") {
@@ -377,7 +433,7 @@ export default function OrdersRadar() {
         if (!activeOrder || processingAction) return;
         setProcessingAction('in_transit');
         try {
-            await updateDoc(doc(db, 'orders', activeOrder.id), { status: 'in_transit' });
+            await supabase.from('orders').update({ status: 'in_transit' }).eq('id', activeOrder.id);
         } finally {
             setProcessingAction(null);
         }
@@ -387,56 +443,41 @@ export default function OrdersRadar() {
         if (!activeOrder || processingAction) return;
         setProcessingAction('delivered');
         try {
-            // Calculate total service duration in seconds
             let durationSeconds = 0;
             if (activeOrder.driverAssignedAt) {
                 const start = activeOrder.driverAssignedAt.toDate().getTime();
                 durationSeconds = Math.floor((Date.now() - start) / 1000);
             }
 
-            await updateDoc(doc(db, 'orders', activeOrder.id), {
+            await supabase.from('orders').update({
                 status: 'delivered',
-                deliveredAt: serverTimestamp(),
-                totalServiceDuration: durationSeconds
-            });
+                delivered_at: new Date().toISOString(),
+                total_service_duration: durationSeconds
+            }).eq('id', activeOrder.id);
 
             if (activeOrder.restaurantId && activeOrder.deliveryFee) {
-                try {
-                    const restRef = doc(db, 'restaurants', activeOrder.restaurantId);
-                    await updateDoc(restRef, {
-                        deuda_delivery_acumulada: increment(activeOrder.deliveryFee)
-                    });
-                } catch (err) {
-                    console.error("Error sumando deuda al restaurante:", err);
-                }
-            }
-            // Puntos Globales por Delivery Fee (2 puntos por cada $)
-            if (activeOrder.userId && activeOrder.deliveryFee) {
-                try {
-                    const pointsToAdd = activeOrder.deliveryFee * 2;
-                    const userRef = doc(db, 'users', activeOrder.userId);
-                    await updateDoc(userRef, {
-                        points: increment(pointsToAdd)
-                    });
-                } catch (err) {
-                    console.error("Error sumando puntos globales al usuario:", err);
-                }
+                const { error: debtErr } = await supabase.rpc('increment_restaurant_debt', {
+                  p_restaurant_id: activeOrder.restaurantId,
+                  p_amount: activeOrder.deliveryFee
+                });
+                if(debtErr) console.error("Error updating debt", debtErr);
             }
 
-            // Puntos por Consumo de Restaurante (2.5 puntos por cada $) si no se han otorgado
             if (activeOrder.userId && activeOrder.userId !== 'pos_customer' && !activeOrder.pointsCredited) {
-                try {
-                    const pointsToAdd = (activeOrder.total || 0) * 2.5;
-                    const userRef = doc(db, 'users', activeOrder.userId);
-                    await updateDoc(userRef, {
-                        points: increment(pointsToAdd),
-                        [`restaurantPoints.${activeOrder.restaurantId}`]: increment(pointsToAdd)
-                    });
-                    await updateDoc(doc(db, 'orders', activeOrder.id), { pointsCredited: true });
-                    console.log(`Puntos de consumo otorgados por delivery: ${pointsToAdd}`);
-                } catch (err) {
-                    console.error("Error sumando puntos de consumo:", err);
-                }
+                const pointsToAdd = (activeOrder.total || 0) * 2.5;
+                const { error: ptsErr } = await supabase.rpc('increment_user_and_restaurant_points', {
+                    p_user_id: activeOrder.userId,
+                    p_restaurant_id: activeOrder.restaurantId,
+                    p_points: pointsToAdd
+                });
+                if(ptsErr) console.error("Error updating user points", ptsErr);
+                else await supabase.from('orders').update({ points_credited: true }).eq('id', activeOrder.id);
+            } else if (activeOrder.userId && activeOrder.deliveryFee) {
+                 const pointsToAdd = activeOrder.deliveryFee * 2;
+                 await supabase.rpc('increment_user_points', {
+                     p_user_id: activeOrder.userId,
+                     p_points: pointsToAdd
+                 });
             }
 
             setActiveOrder(null);
@@ -445,20 +486,23 @@ export default function OrdersRadar() {
         }
     };
 
-    // --- ACCIONES DE TRANSPORTE (TAXI) ---
+    // --- ACCIONES DE TRANSPORTE (TAXI) (Supabase) ---
     const handleAcceptTransport = async (reqId: string) => {
         if (!user || activeOrder || activeTransport || processingAction) return;
         setProcessingAction(reqId);
         try {
-            const reqRef = doc(db, 'transport_requests', reqId);
-            const reqSnap = await getDoc(reqRef);
-            if (reqSnap.exists() && reqSnap.data().status === 'searching') {
-                await updateDoc(reqRef, {
-                    status: 'accepted',
-                    driverId: user.uid,
-                    driverAssignedAt: serverTimestamp()
-                });
-            } else {
+            const { data, error } = await supabase
+                .from('transport_requests')
+                .update({ 
+                    status: 'accepted', 
+                    driver_id: user.uid, 
+                    driver_assigned_at: new Date().toISOString() 
+                })
+                .eq('id', reqId)
+                .eq('status', 'searching')
+                .select();
+                
+            if (error || !data || data.length === 0) {
                 alert("Este viaje ya fue tomado por otro conductor.");
             }
         } catch (error) {
@@ -472,18 +516,17 @@ export default function OrdersRadar() {
         if (!activeTransport || processingAction) return;
         setProcessingAction('arriving');
         try {
-            // Calculate arrival duration in seconds
             let durationSeconds = 0;
             if (activeTransport.driverAssignedAt) {
                 const start = activeTransport.driverAssignedAt.toDate().getTime();
                 durationSeconds = Math.floor((Date.now() - start) / 1000);
             }
 
-            await updateDoc(doc(db, 'transport_requests', activeTransport.id), { 
+            await supabase.from('transport_requests').update({ 
                 status: 'arriving', 
-                driverArrivedAt: serverTimestamp(),
-                arrivalDuration: durationSeconds
-            });
+                driver_arrived_at: new Date().toISOString(),
+                arrival_duration: durationSeconds
+            }).eq('id', activeTransport.id);
         } finally {
             setProcessingAction(null);
         }
@@ -493,7 +536,7 @@ export default function OrdersRadar() {
         if (!activeTransport || processingAction) return;
         setProcessingAction('start');
         try {
-            await updateDoc(doc(db, 'transport_requests', activeTransport.id), { status: 'in_progress' });
+            await supabase.from('transport_requests').update({ status: 'in_progress' }).eq('id', activeTransport.id);
         } finally {
             setProcessingAction(null);
         }
@@ -503,41 +546,36 @@ export default function OrdersRadar() {
         if (!activeTransport || processingAction) return;
         setProcessingAction('complete');
         try {
-            await updateDoc(doc(db, 'transport_requests', activeTransport.id), {
+            await supabase.from('transport_requests').update({
                 status: 'completed',
-                completedAt: serverTimestamp()
-            });
+                completed_at: new Date().toISOString()
+            }).eq('id', activeTransport.id);
 
-            // Si es un food_delivery, actualizar el estado de la orden original
             if (activeTransport.type === 'food_delivery' && activeTransport.id) {
                 try {
-                    await updateDoc(doc(db, 'orders', activeTransport.id), {
+                    await supabase.from('orders').update({
                         status: 'delivered',
-                        deliveredAt: serverTimestamp()
-                    });
+                        delivered_at: new Date().toISOString()
+                    }).eq('id', activeTransport.id);
                 } catch (orderError) {
                     console.error("Error al actualizar estado de orden:", orderError);
                 }
             }
 
-            // Si el viaje tiene usuario asociado y costo, sumar puntos al usuario (2.5 puntos por cada $)
+            // Puntos
             if (activeTransport.userId && activeTransport.price) {
-                try {
-                    const pointsToAdd = activeTransport.price * 2.5;
-                    const userRef = doc(db, 'users', activeTransport.userId);
-                    
-                    const updates: any = {
-                        points: increment(pointsToAdd)
-                    };
-
-                    // Si es un food_delivery, también sumar a puntos de restaurante
-                    if (activeTransport.type === 'food_delivery' && activeTransport.restaurantId) {
-                        updates[`restaurantPoints.${activeTransport.restaurantId}`] = increment(pointsToAdd);
-                    }
-
-                    await updateDoc(userRef, updates);
-                } catch (pointsError) {
-                    console.error("Error al sumar puntos de viaje:", pointsError);
+                const pointsToAdd = activeTransport.price * 2.5;
+                if (activeTransport.type === 'food_delivery' && activeTransport.restaurantId) {
+                    await supabase.rpc('increment_user_and_restaurant_points', {
+                        p_user_id: activeTransport.userId,
+                        p_restaurant_id: activeTransport.restaurantId,
+                        p_points: pointsToAdd
+                    });
+                } else {
+                    await supabase.rpc('increment_user_points', {
+                        p_user_id: activeTransport.userId,
+                        p_points: pointsToAdd
+                    });
                 }
             }
 

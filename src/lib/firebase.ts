@@ -5,6 +5,7 @@ import { getStorage } from "firebase/storage";
 import { getMessaging } from "firebase/messaging";
 import { getDatabase } from "firebase/database";
 import { initializeAppCheck, ReCaptchaV3Provider } from "firebase/app-check";
+import { Capacitor } from '@capacitor/core';
 
 const firebaseConfig = {
     apiKey: "AIzaSyCb1c-p1R6AZGetk8YzKiLuxjaxjmPqJX8",

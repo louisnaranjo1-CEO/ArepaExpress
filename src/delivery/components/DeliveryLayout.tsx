@@ -2,8 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { NavLink } from 'react-router-dom';
 import { Compass, DollarSign, User, Trophy } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
-import { doc, onSnapshot } from 'firebase/firestore';
-import { db } from '../../lib/firebase';
+import { driversApi } from '../../lib/api';
+import { supabase } from '../../lib/supabase';
 import { setDriverAvailability, AvailabilityStatus } from '../../lib/delivery-service';
 import { useGlobalAudioAlerts } from '../../hooks/useGlobalAudioAlerts';
 
@@ -20,14 +20,36 @@ export default function DeliveryLayout({ children }: DeliveryLayoutProps) {
     useGlobalAudioAlerts('delivery', user?.uid);
 
     useEffect(() => {
+        let isMounted = true;
         if (!user) return;
-        const unsub = onSnapshot(doc(db, 'delivery_drivers', user.uid), (snap) => {
-            if (snap.exists()) {
-                const data = snap.data();
-                setDriverStatus(data.availability || (data.isOnline ? 'active' : 'offline'));
+
+        const fetchStatus = async () => {
+            try {
+                const profile = await driversApi.getDriver(user.uid);
+                if (isMounted) {
+                    setDriverStatus((profile.availability as AvailabilityStatus) || (profile.isOnline ? 'active' : 'offline'));
+                }
+            } catch (error) {
+                console.error("Error fetching driver status:", error);
             }
-        });
-        return () => unsub();
+        };
+
+        fetchStatus();
+
+        const channel = supabase.channel(`public:drivers:status:${user.uid}`)
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'drivers', filter: `id=eq.${user.uid}` }, async () => {
+                if (!isMounted) return;
+                try {
+                    const profile = await driversApi.getDriver(user.uid);
+                    setDriverStatus((profile.availability as AvailabilityStatus) || (profile.isOnline ? 'active' : 'offline'));
+                } catch(e) {}
+            })
+            .subscribe();
+
+        return () => {
+            isMounted = false;
+            supabase.removeChannel(channel);
+        };
     }, [user]);
 
     const handleStatusUpdate = async (newStatus: AvailabilityStatus) => {

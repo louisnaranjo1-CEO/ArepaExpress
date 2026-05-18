@@ -134,7 +134,7 @@ export default function Fidelization() {
             let totalRestaurantOrdersValue = 0;
 
             ordersSnap.docs.forEach(orderDoc => {
-                const data = orderDoc.data();
+                const data = orderDoc.data() as any;
                 const userId = data.userId;
                 if (!userId) return;
 
@@ -262,7 +262,7 @@ export default function Fidelization() {
             let eligibleUserIds = new Set<string>();
 
             ordersSnap.docs.forEach(docSnap => {
-                const data = docSnap.data();
+                const data = docSnap.data() as any;
                 const userId = data.userId;
                 if (!userId) return;
 

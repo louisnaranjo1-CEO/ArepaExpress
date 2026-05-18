@@ -60,7 +60,7 @@ export default function Dashboard() {
                 try {
                     const recentSnap = await getDocs(queryToUse);
                     const items: any[] = [];
-                    recentSnap.forEach(d => items.push({ id: d.id, ...d.data() }));
+                    recentSnap.forEach(d => items.push({ id: d.id, ...(d.data() as object) }));
                     
                     if (isFallback) {
                         items.sort((a, b) => {

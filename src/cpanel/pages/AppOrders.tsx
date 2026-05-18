@@ -155,7 +155,14 @@ export default function AppOrders() {
                             </button>
                         </div>
                         <div className="flex-1 overflow-hidden">
-                            <OrderChatWindow order={selectedOrderForChat} />
+                            <OrderChatWindow 
+                                orderId={selectedOrderForChat.id} 
+                                currentUserRole="cpanel" 
+                                currentUserId="cpanel" 
+                                currentUserName="Administrador" 
+                                restaurantId={selectedOrderForChat.restaurantId} 
+                                orderInfo={selectedOrderForChat} 
+                            />
                         </div>
                     </div>
                 </div>

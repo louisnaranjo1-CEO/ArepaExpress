@@ -34,11 +34,11 @@ export default function LiquidationsManager() {
                 // Realtime unpaid orders
                 const qOrders = query(collection(db, 'orders'), where('status', '==', 'completed'));
                 const unsubOrders = onSnapshot(qOrders, (ordersSnap) => {
-                    const ordersData = ordersSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+                    const ordersData = ordersSnap.docs.map(d => ({ id: d.id, ...d.data() })) as any[];
                     
                     const qTransport = query(collection(db, 'transport_requests'), where('status', '==', 'completed'));
                     getDocs(qTransport).then((transportSnap) => {
-                        const transportData = transportSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+                        const transportData = transportSnap.docs.map(d => ({ id: d.id, ...d.data() })) as any[];
                         
                         const processedDrivers = driversData.map(driver => {
                             const driverOrders = ordersData.filter(o => o.deliveryDriverId === driver.id && !o.deliveryPaid);

@@ -14,6 +14,7 @@ import { GLOBAL_CATEGORIES, CATEGORY_SECTORS } from '../../lib/constants';
 import { updateDoc } from 'firebase/firestore';
 import RestaurantRewardsManager from '../components/RestaurantRewardsManager';
 import DualPrice from '../../components/DualPrice';
+import { motion, AnimatePresence } from 'motion/react';
 
 interface Category {
     id: string;

@@ -1,44 +1,28 @@
 import React, { createContext, useContext, useEffect, useState, useRef } from 'react';
-import { onAuthStateChanged, User } from 'firebase/auth';
-import { auth, db } from '../lib/firebase';
-import { doc, onSnapshot, updateDoc, serverTimestamp } from 'firebase/firestore';
+import { User } from '@supabase/supabase-js';
+import { supabase } from '../lib/supabase';
 import { Geolocation } from '@capacitor/geolocation';
 
 export interface UserAddress {
-    id: string; // Unique ID (could be timestamp)
-    name: string; // "Casa", "Trabajo", etc.
+    id: string;
+    name: string;
     lat: number;
     lng: number;
     reference: string;
     isDefault: boolean;
 }
 
-interface UserData {
-    address?: {
-        lat: number;
-        lng: number;
-        reference: string;
-    }; // Legacy field
+export interface UserData {
     addresses?: UserAddress[];
     role?: string;
     displayName?: string;
     email?: string;
     photoURL?: string;
-    notificationsEnabled?: boolean;
-    fcmTokens?: string[];
     phone?: string;
-    walletBalance?: number;
     points?: number;
-    restaurantPoints?: Record<string, number>;
-    cedula?: string;
-    lastLogin?: any;
-    lastSeen?: any;
-    totalUsageMinutes?: number;
-    gender?: 'masculine' | 'feminine';
-    managedRestaurantId?: string;
-    biometricLockEnabled?: boolean;
-    biometricCredentialId?: string;
+    total_referrals?: number;
     locationPermissionsAllowed?: boolean;
+    biometricLockEnabled?: boolean;
 }
 
 interface AuthContextType {
@@ -71,73 +55,74 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const locationWatchId = useRef<string | null>(null);
 
     useEffect(() => {
-        let unsubscribeDoc: (() => void) | null = null;
+        let channel: any = null;
 
-        const unsubscribeAuth = onAuthStateChanged(auth, (firebaseUser) => {
-            setUser(firebaseUser);
+        const fetchSession = async () => {
+            const { data: { session } } = await supabase.auth.getSession();
+            handleUser(session?.user ?? null);
+        };
 
-            if (firebaseUser) {
-                // Listen to Firestore user document
-                unsubscribeDoc = onSnapshot(doc(db, 'users', firebaseUser.uid), (docSnap) => {
-                    if (docSnap.exists()) {
-                        const data = docSnap.data() as UserData;
-                        // Migration logic: if old address exists but no addresses array, migrate it
-                        if (data.address && (!data.addresses || data.addresses.length === 0)) {
-                            const newAddress: UserAddress = {
-                                id: Date.now().toString(),
-                                name: "Casa",
-                                lat: data.address.lat,
-                                lng: data.address.lng,
-                                reference: data.address.reference,
-                                isDefault: true
-                            };
-                            // Optional: updateDoc(doc(db, 'users', firebaseUser.uid), { addresses: [newAddress] });
+        const handleUser = async (sbUser: User | null) => {
+            setUser(sbUser);
+            if (sbUser) {
+                // Fetch profile
+                const { data, error } = await supabase
+                    .from('profiles')
+                    .select('*')
+                    .eq('id', sbUser.id)
+                    .single();
+
+                if (!error && data) {
+                    setUserData({
+                        ...data,
+                        displayName: data.full_name,
+                        email: data.email,
+                        points: data.points,
+                    } as UserData);
+                }
+
+                // Subscribe to profile changes
+                channel = supabase.channel('public:profiles')
+                    .on(
+                        'postgres_changes',
+                        { event: 'UPDATE', schema: 'public', table: 'profiles', filter: `id=eq.${sbUser.id}` },
+                        (payload) => {
+                            const updated = payload.new as any;
+                            setUserData((prev) => ({
+                                ...prev,
+                                ...updated,
+                                displayName: updated.full_name,
+                                email: updated.email,
+                            }));
                         }
-                        setUserData(data);
-
-                        // Lógica de Bloqueo Inicial
-                        if (data.biometricLockEnabled && !sessionStorage.getItem('lock_unlocked')) {
-                            setIsUnlocked(false);
-                        } else {
-                            setIsUnlocked(true);
-                        }
-
-                        // Update lastLogin if it's a new session (roughly > 1 hour since last login)
-                        const now = new Date();
-                        const lastLogin = data.lastLogin?.toDate();
-                        if (!lastLogin || (now.getTime() - lastLogin.getTime() > 1000 * 60 * 60)) {
-                            updateDoc(doc(db, 'users', firebaseUser.uid), {
-                                lastLogin: serverTimestamp(),
-                                lastSeen: serverTimestamp()
-                            }).catch(console.error);
-                        }
-                    } else {
-                        setUserData(null);
-                    }
-                    setLoading(false);
-                }, (error) => {
-                    console.error("Firestore User Snapshot error:", error);
-                    setLoading(false);
-                });
+                    )
+                    .subscribe();
             } else {
                 setUserData(null);
-                if (unsubscribeDoc) unsubscribeDoc();
-                setLoading(false);
+                if (channel) supabase.removeChannel(channel);
             }
-        });
+            setLoading(false);
+        };
+
+        fetchSession();
+
+        const { data: authListener } = supabase.auth.onAuthStateChange(
+            async (event, session) => {
+                handleUser(session?.user ?? null);
+            }
+        );
 
         return () => {
-            unsubscribeAuth();
-            if (unsubscribeDoc) unsubscribeDoc();
+            authListener.subscription.unsubscribe();
+            if (channel) supabase.removeChannel(channel);
         };
     }, []);
 
     const [currentLocation, setCurrentLocation] = useState<{ lat: number, lng: number } | null>(null);
 
-    // Watch Geolocation based on user preference
+    // Watch Geolocation
     useEffect(() => {
         const startWatching = async () => {
-            // Clear existing watch if any
             if (locationWatchId.current) {
                 await Geolocation.clearWatch({ id: locationWatchId.current });
                 locationWatchId.current = null;
@@ -152,22 +137,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                     enableHighAccuracy: true,
                     timeout: 10000
                 }, (position, err) => {
-                    if (err) {
-                        console.error("Location watch error:", err);
-                        return;
-                    }
+                    if (err) return;
                     if (position) {
                         const newLoc = {
                             lat: position.coords.latitude,
                             lng: position.coords.longitude
                         };
                         setCurrentLocation(newLoc);
-
-                        // Also update Firestore lastSeen / location for drivers or active users
-                        updateDoc(doc(db, 'users', user.uid), {
-                            currentLocation: newLoc,
-                            lastSeen: serverTimestamp()
-                        }).catch(console.error);
                     }
                 });
                 locationWatchId.current = id;
@@ -186,7 +162,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         };
     }, [user, userData?.locationPermissionsAllowed]);
 
-
     const isProfileComplete = !!(userData?.displayName && userData?.phone);
 
     return (
@@ -195,4 +170,3 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         </AuthContext.Provider>
     );
 };
-

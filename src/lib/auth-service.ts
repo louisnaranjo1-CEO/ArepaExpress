@@ -1,249 +1,177 @@
-import { auth, db } from './firebase';
-import {
-    GoogleAuthProvider,
-    signInWithPopup,
-    User,
-    createUserWithEmailAndPassword,
-    signInWithEmailAndPassword,
-    signInWithCredential,
-    updateProfile,
-    updateEmail,
-    updatePassword,
-    reauthenticateWithCredential,
-    EmailAuthProvider
-} from 'firebase/auth';
-import { doc, getDoc, setDoc, updateDoc, serverTimestamp, collection, query, where, getDocs, increment, writeBatch } from 'firebase/firestore';
+import { supabase } from './supabase';
 import { Capacitor } from '@capacitor/core';
 import { FirebaseAuthentication } from '@capacitor-firebase/authentication';
 
 export const processReferralCode = async (newUserId: string, referralCode: string) => {
     if (!referralCode || typeof referralCode !== 'string') return false;
     try {
-        const usersRef = collection(db, 'users');
-        const q = query(usersRef, where('referralCode', '==', referralCode.toUpperCase().trim()));
-        const querySnapshot = await getDocs(q);
+        const { data, error } = await supabase.rpc('process_referral', {
+            referral_code: referralCode
+        });
 
-        if (!querySnapshot.empty) {
-            const referrerDoc = querySnapshot.docs[0];
-            const referrerId = referrerDoc.id;
-
-            // Usuario no puede referirse a sí mismo
-            if (referrerId === newUserId) return false;
-
-            // Obtener configuración de puntos desde CPanel
-            let pointsForReferrer = 200;
-            try {
-                const fidelizationDoc = await getDoc(doc(db, 'system_configs', 'fidelization'));
-                if (fidelizationDoc.exists() && fidelizationDoc.data().pointsPerReferral) {
-                    pointsForReferrer = fidelizationDoc.data().pointsPerReferral;
-                }
-            } catch (configError) {
-                console.error("Error fetching points config", configError);
-            }
-
-            const batch = writeBatch(db);
-
-            // Recompensa al Referidor (Configurable)
-            batch.update(doc(db, 'users', referrerId), {
-                points: increment(pointsForReferrer),
-                totalReferrals: increment(1)
-            });
-
-            // Recompensa al Nuevo Usuario (50 puntos fijos)
-            batch.update(doc(db, 'users', newUserId), {
-                points: increment(50),
-                referredBy: referrerId
-            });
-
-            await batch.commit();
-            return true;
+        if (error) {
+            console.error("Error processing referral code:", error);
+            return false;
         }
-        return false;
+        
+        return data === true;
     } catch (error) {
         console.error("Error processing referral code:", error);
         return false;
     }
 }
 
-const googleProvider = new GoogleAuthProvider();
-googleProvider.setCustomParameters({
-    prompt: 'select_account'
-});
-// Ensure we get the display name and email
-googleProvider.addScope('profile');
-googleProvider.addScope('email');
-
-export const signInWithGoogle = async (): Promise<{ user: User, isNewUser: boolean }> => {
+export const signInWithGoogle = async (): Promise<{ user: any, isNewUser: boolean }> => {
     try {
-        let user: User;
+        let user: any;
+        let isNewUser = false;
         
         if (Capacitor.isNativePlatform()) {
-            // Flujo nativo: usa el plugin de Capacitor
             const result = await FirebaseAuthentication.signInWithGoogle({
-                useCredentialManager: true // Restauramos a true ya que es el flujo óptimo
+                useCredentialManager: true
             });
             const idToken = result.credential?.idToken;
             if (!idToken) {
-                throw new Error("Login fallido. Resultado crudo: " + JSON.stringify(result));
+                throw new Error("Login fallido. No se obtuvo el ID Token.");
             }
 
-            const credential = GoogleAuthProvider.credential(idToken);
-            const userCredential = await signInWithCredential(auth, credential);
-            user = userCredential.user;
-        } else {
-            // Flujo web: usa el popup estándar
-            const result = await signInWithPopup(auth, googleProvider);
-            user = result.user;
-        }
-
-        // Check if user document already exists in Firestore
-        const userRef = doc(db, 'users', user.uid);
-        const userSnap = await getDoc(userRef);
-
-        let isNewUser = false;
-
-        if (!userSnap.exists()) {
-            isNewUser = true;
-            const autoReferralCode = user.uid.substring(0, 6).toUpperCase();
-
-            // Create a new user document
-            await setDoc(userRef, {
-                displayName: user.displayName,
-                email: user.email,
-                photoURL: user.photoURL,
-                createdAt: serverTimestamp(),
-                favorites: [], // Initialize empty favorites array
-                birthday: null, // Google doesn't provide birthday by default
-                role: 'user',
-                referralCode: autoReferralCode,
-                points: 0,
-                totalReferrals: 0
+            const { data, error } = await supabase.auth.signInWithIdToken({
+                provider: 'google',
+                token: idToken
             });
+            
+            if (error) throw error;
+            user = data.user;
+            
+            // Verificamos isNewUser basado en created_at
+            if (user && user.created_at && user.last_sign_in_at) {
+                const createdTime = new Date(user.created_at).getTime();
+                const signinTime = new Date(user.last_sign_in_at).getTime();
+                isNewUser = (signinTime - createdTime) < 5000;
+            }
+        } else {
+            const { data, error } = await supabase.auth.signInWithOAuth({
+                provider: 'google',
+                options: {
+                    redirectTo: window.location.origin
+                }
+            });
+            if (error) throw error;
+            // Al hacer redirect, esto no resolverá sincrónicamente, pero
+            // devuelvo un objeto para mantener compatibilidad si no hay error.
+            user = null; // En entorno web, la sesión se establece al redirigir
         }
 
-        localStorage.setItem('deliexpress_uid', user.uid);
+        if (user) {
+            localStorage.setItem('deliexpress_uid', user.id);
+        }
 
         return { user, isNewUser };
     } catch (error: any) {
-        console.error("Error signing in with Google:", error.code, error.message);
-        // Special case for unauthorized domains
-        if (error.code === 'auth/unauthorized-domain') {
-            throw new Error("Este dominio no está autorizado en Firebase Console (Authentication > Settings > Authorized Domains)");
-        }
+        console.error("Error signing in with Google:", error.message);
         throw error;
     }
 };
 
-export const signInWithEmail = async (email: string, pass: string): Promise<User> => {
+export const signInWithEmail = async (email: string, pass: string): Promise<any> => {
     try {
-        let user: User;
-
-        if (Capacitor.isNativePlatform()) {
-            const result = await FirebaseAuthentication.signInWithEmailAndPassword({ email, password: pass });
-            const credential = EmailAuthProvider.credential(email, pass);
-            const userCredential = await signInWithCredential(auth, credential);
-            user = userCredential.user;
-        } else {
-            const result = await signInWithEmailAndPassword(auth, email, pass);
-            user = result.user;
-        }
-
-        // Ensure UID is set in localStorage
-        localStorage.setItem('deliexpress_uid', user.uid);
-
-        return user;
-    } catch (error: any) {
-        console.error("Error signing in with email:", error.code, error.message);
-        if (error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password') {
-            throw new Error("Correo o contraseña incorrectos.");
-        }
-        if (error.code === 'auth/invalid-email') {
-            throw new Error("El correo electrónico no es válido.");
-        }
-        throw error;
-    }
-};
-
-export const signUpWithEmail = async (email: string, pass: string, name: string, referralCode?: string): Promise<User> => {
-    try {
-        let user: User;
-
-        if (Capacitor.isNativePlatform()) {
-            await FirebaseAuthentication.createUserWithEmailAndPassword({ email, password: pass });
-            const credential = EmailAuthProvider.credential(email, pass);
-            const userCredential = await signInWithCredential(auth, credential);
-            user = userCredential.user;
-        } else {
-            const result = await createUserWithEmailAndPassword(auth, email, pass);
-            user = result.user;
-        }
-
-        // Update profile with display name
-        await updateProfile(user, { displayName: name });
-
-        // Create user document in Firestore
-        const userRef = doc(db, 'users', user.uid);
-        const autoReferralCode = user.uid.substring(0, 6).toUpperCase();
-
-        await setDoc(userRef, {
-            displayName: name,
-            email: email,
-            photoURL: null,
-            createdAt: serverTimestamp(),
-            favorites: [],
-            birthday: null,
-            role: 'user',
-            referralCode: autoReferralCode,
-            points: 0,
-            totalReferrals: 0
+        const { data, error } = await supabase.auth.signInWithPassword({
+            email,
+            password: pass,
         });
 
-        if (referralCode) {
-            await processReferralCode(user.uid, referralCode);
+        if (error) {
+            if (error.message.includes("Invalid login credentials")) {
+                throw new Error("Correo o contraseña incorrectos.");
+            }
+            throw error;
         }
 
-        localStorage.setItem('deliexpress_uid', user.uid);
-
-        return user;
+        if (data.user) {
+            localStorage.setItem('deliexpress_uid', data.user.id);
+        }
+        return data.user;
     } catch (error: any) {
-        console.error("Error signing up with email:", error.code, error.message);
-        if (error.code === 'auth/email-already-in-use') {
-            throw new Error("El correo electrónico ya está en uso.");
-        }
-        if (error.code === 'auth/weak-password') {
-            throw new Error("La contraseña es muy débil (mínimo 6 caracteres).");
-        }
+        console.error("Error signing in with email:", error.message);
         throw error;
     }
 };
 
-export const registerRestaurant = async (email: string, pass: string, restaurantName: string, rif: string, businessType: 'restaurant' | 'hotel' = 'restaurant'): Promise<User> => {
+export const signUpWithEmail = async (email: string, pass: string, name: string, referralCode?: string): Promise<any> => {
     try {
-        const result = await createUserWithEmailAndPassword(auth, email, pass);
-        const user = result.user;
+        const { data, error } = await supabase.auth.signUp({
+            email,
+            password: pass,
+            options: {
+                data: {
+                    full_name: name
+                }
+            }
+        });
 
-        // Update profile with restaurant name for display
-        await updateProfile(user, { displayName: restaurantName });
+        if (error) {
+            if (error.message.includes("already registered")) {
+                throw new Error("El correo electrónico ya está en uso.");
+            }
+            if (error.message.includes("weak")) {
+                throw new Error("La contraseña es muy débil (mínimo 6 caracteres).");
+            }
+            throw error;
+        }
+
+        if (data.user) {
+            if (referralCode) {
+                // Not ideal synchronous handling without session wait, but best effort:
+                await processReferralCode(data.user.id, referralCode);
+            }
+            localStorage.setItem('deliexpress_uid', data.user.id);
+        }
+
+        return data.user;
+    } catch (error: any) {
+        console.error("Error signing up with email:", error.message);
+        throw error;
+    }
+};
+
+export const registerRestaurant = async (email: string, pass: string, restaurantName: string, rif: string, businessType: 'restaurant' | 'hotel' = 'restaurant'): Promise<any> => {
+    try {
+        const { data, error } = await supabase.auth.signUp({
+            email,
+            password: pass,
+            options: {
+                data: {
+                    full_name: restaurantName,
+                    role: 'aliado'
+                }
+            }
+        });
+
+        if (error) throw error;
+
+        const user = data.user;
+        if (!user) throw new Error("No se pudo crear el usuario");
 
         // Create the restaurant document
-        const restaurantRef = doc(db, 'restaurants', user.uid); // Using UID as ID for the main branch/owner
-        await setDoc(restaurantRef, {
+        const { error: dbError } = await supabase.from('comercios').insert({
+            id: user.id,
             name: restaurantName,
             rif: rif,
-            ownerUid: user.uid,
+            owner_uid: user.id,
             email: email,
-            businessType: businessType,
-            createdAt: serverTimestamp(),
-            locations: [], // Will be filled in RestaurantProfile
+            business_type: businessType,
+            locations: [],
             whatsapp: '',
-            ownDelivery: false,
-            isApproved: false, // Default to false until admin approval if needed
+            own_delivery: false,
+            is_approved: false,
             rating: 5.0,
-            image: '', // No default image, only what the restaurant uploads
-            deliveryTime: '30-45 min',
-            deliveryFee: 1.5,
+            image: '',
+            delivery_time: '30-45 min',
+            delivery_fee: 1.5,
             category: 'Varios'
         });
+
+        if (dbError) throw dbError;
 
         return user;
     } catch (error) {
@@ -252,89 +180,97 @@ export const registerRestaurant = async (email: string, pass: string, restaurant
     }
 };
 
-export const signInAdmin = async (email: string, pass: string): Promise<User> => {
+export const signInAdmin = async (email: string, pass: string): Promise<any> => {
     try {
-        const result = await signInWithEmailAndPassword(auth, email, pass);
-        return result.user;
+        const { data, error } = await supabase.auth.signInWithPassword({
+            email,
+            password: pass
+        });
+        if (error) throw error;
+        return data.user;
     } catch (error) {
         console.error("Error signing in as admin:", error);
         throw error;
     }
 };
-export const signInAdminWithGoogle = async (): Promise<User | null> => {
+
+export const signInAdminWithGoogle = async (): Promise<any> => {
     try {
-        let user: User;
+        let user: any;
 
         if (Capacitor.isNativePlatform()) {
-            const result = await FirebaseAuthentication.signInWithGoogle();
-            if (!result.idToken) throw new Error("No se pudo obtener el token de Google.");
-            
-            const credential = GoogleAuthProvider.credential(result.idToken);
-            const userCredential = await signInWithCredential(auth, credential);
-            user = userCredential.user;
-        } else {
-            const result = await signInWithPopup(auth, googleProvider);
-            user = result.user;
-        }
-
-        // Check if restaurant document already exists
-        const restaurantRef = doc(db, 'restaurants', user.uid);
-        const restaurantSnap = await getDoc(restaurantRef);
-
-        if (!restaurantSnap.exists()) {
-            // Create a placeholder restaurant document
-            await setDoc(restaurantRef, {
-                name: user.displayName || 'Mi Negocio',
-                rif: 'PROVISIONAL',
-                ownerUid: user.uid,
-                email: user.email,
-                businessType: 'restaurant',
-                createdAt: serverTimestamp(),
-                locations: [],
-                whatsapp: '',
-                ownDelivery: false,
-                isApproved: false,
-                rating: 5.0,
-                image: 'https://images.unsplash.com/photo-1513104890138-7c749659a591?auto=format&fit=crop&q=80',
-                deliveryTime: '30-45 min',
-                deliveryFee: 1.5,
-                category: 'Varios',
-                birthday: null // Added birthday placeholder
+            const result = await FirebaseAuthentication.signInWithGoogle({
+                useCredentialManager: true
             });
+            const idToken = result.credential?.idToken;
+            if (!idToken) throw new Error("No se pudo obtener el token de Google.");
+            
+            const { data, error } = await supabase.auth.signInWithIdToken({
+                provider: 'google',
+                token: idToken
+            });
+            if (error) throw error;
+            user = data.user;
+        } else {
+            const { data, error } = await supabase.auth.signInWithOAuth({
+                provider: 'google',
+                options: {
+                    redirectTo: window.location.origin
+                }
+            });
+            if (error) throw error;
+            user = null; // The redirect will handle session
         }
 
-        // Esta línea permite que el programa de PC "lea" quién eres
-        localStorage.setItem('deliexpress_uid', user.uid);
+        if (user) {
+            // Verifica si existe el comercio
+            const { data: comercio, error: fetchError } = await supabase
+                .from('comercios')
+                .select('id')
+                .eq('id', user.id)
+                .maybeSingle();
+
+            if (!comercio) {
+                await supabase.from('comercios').insert({
+                    id: user.id,
+                    name: user.user_metadata?.full_name || 'Mi Negocio',
+                    rif: 'PROVISIONAL',
+                    owner_uid: user.id,
+                    email: user.email,
+                    business_type: 'restaurant',
+                    locations: [],
+                    whatsapp: '',
+                    own_delivery: false,
+                    is_approved: false,
+                    rating: 5.0,
+                    image: 'https://images.unsplash.com/photo-1513104890138-7c749659a591?auto=format&fit=crop&q=80',
+                    delivery_time: '30-45 min',
+                    delivery_fee: 1.5,
+                    category: 'Varios'
+                });
+            }
+
+            localStorage.setItem('deliexpress_uid', user.id);
+        }
 
         return user;
     } catch (error: any) {
-        console.error("Error signing in admin with Google:", error.code, error.message);
-        if (error.code === 'auth/unauthorized-domain') {
-            throw new Error("Este dominio no está autorizado en Firebase Console (Authentication > Settings > Authorized Domains)");
-        }
+        console.error("Error signing in admin with Google:", error.message);
         throw error;
     }
 };
 
 export const updateUserEmail = async (newEmail: string): Promise<void> => {
-    const user = auth.currentUser;
-    if (!user) throw new Error("No user logged in");
-
     try {
-        await updateEmail(user, newEmail);
-
-        // Also update Firestore if the user is a restaurant
-        const restaurantRef = doc(db, 'restaurants', user.uid);
-        const restaurantSnap = await getDoc(restaurantRef);
-        if (restaurantSnap.exists()) {
-            await updateDoc(restaurantRef, { email: newEmail });
-        }
-
-        // Also update the 'users' collection if they exist there
-        const userRef = doc(db, 'users', user.uid);
-        const userSnap = await getDoc(userRef);
-        if (userSnap.exists()) {
-            await updateDoc(userRef, { email: newEmail });
+        const { error } = await supabase.auth.updateUser({ email: newEmail });
+        if (error) throw error;
+        // Since emails are updated, we don't necessarily have to update the `profiles` or `comercios` tables 
+        // if they depend on auth.users directly. However, we can update them to keep it in sync.
+        
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) {
+            await supabase.from('profiles').update({ email: newEmail }).eq('id', user.id);
+            await supabase.from('comercios').update({ email: newEmail }).eq('id', user.id);
         }
     } catch (error) {
         console.error("Error updating email:", error);
@@ -343,11 +279,9 @@ export const updateUserEmail = async (newEmail: string): Promise<void> => {
 };
 
 export const updateUserPassword = async (newPassword: string): Promise<void> => {
-    const user = auth.currentUser;
-    if (!user) throw new Error("No user logged in");
-
     try {
-        await updatePassword(user, newPassword);
+        const { error } = await supabase.auth.updateUser({ password: newPassword });
+        if (error) throw error;
     } catch (error) {
         console.error("Error updating password:", error);
         throw error;
@@ -356,7 +290,8 @@ export const updateUserPassword = async (newPassword: string): Promise<void> => 
 
 export const logout = async (): Promise<void> => {
     try {
-        await auth.signOut();
+        const { error } = await supabase.auth.signOut();
+        if (error) throw error;
         localStorage.removeItem('deliexpress_uid');
     } catch (error) {
         console.error("Error logging out:", error);

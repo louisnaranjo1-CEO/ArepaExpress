@@ -228,7 +228,7 @@ export default function Orders() {
         );
 
         const setupSnapshot = (currentQuery: any, isFallback = false) => {
-            return onSnapshot(currentQuery, (snapshot) => {
+            return onSnapshot(currentQuery, (snapshot: any) => {
                 const items: Order[] = [];
                 snapshot.forEach((doc) => {
                     items.push({ id: doc.id, ...doc.data() } as Order);

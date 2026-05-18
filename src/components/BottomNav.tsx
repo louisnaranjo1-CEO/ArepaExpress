@@ -4,7 +4,7 @@ import { useCart } from '../context/CartContext';
 import { useAuth } from '../context/AuthContext';
 import { vibrate } from '../utils/haptics';
 import LocationRequiredModal from './LocationRequiredModal';
-import { useState } from 'react';
+import React, { useState } from 'react';
 
 export default function BottomNav() {
   const location = useLocation();

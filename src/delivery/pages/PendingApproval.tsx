@@ -1,8 +1,7 @@
 import React, { useState } from 'react';
 import { Clock, LogOut, AlertCircle, XCircle } from 'lucide-react';
 import { logout } from '../../lib/auth-service';
-import { doc, deleteDoc } from 'firebase/firestore';
-import { db } from '../../lib/firebase';
+import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../context/AuthContext';
 
 interface PendingApprovalProps {
@@ -19,7 +18,8 @@ export default function PendingApproval({ status = 'pending' }: PendingApprovalP
 
         setResetting(true);
         try {
-            await deleteDoc(doc(db, 'delivery_drivers', user.uid));
+            const { error } = await supabase.from('drivers').delete().eq('id', user.uid);
+            if (error) throw error;
             // La redirección ocurrirá automáticamente por el listener en DeliveryApp.tsx
             window.location.href = '/delivery/onboarding';
         } catch (error) {

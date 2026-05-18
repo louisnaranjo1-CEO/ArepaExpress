@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { LogOut, DollarSign, CheckCircle, Clock, X, Loader2, Store, CreditCard, User, Plus, Edit, ClipboardList, MapPin, Instagram, Youtube, Music2, ExternalLink, Star, MessageSquare, Bike, Bell, Truck, Search, Utensils, ShoppingCart, Trash2, Minus, ChevronDown, Check, History, AlertCircle, Receipt } from 'lucide-react';
+import { LogOut, DollarSign, CheckCircle, Clock, X, Loader2, Store, CreditCard, User, Plus, Edit, ClipboardList, MapPin, Instagram, Youtube, Music2, ExternalLink, Star, MessageSquare, Bike, Bell, Truck, Search, Utensils, ShoppingCart, Trash2, Minus, ChevronDown, Check, History, AlertCircle, Receipt, Image as ImageIcon } from 'lucide-react';
 import { auth, db } from '../../lib/firebase';
 import { onAuthStateChanged } from 'firebase/auth';
 import { collection, query, where, onSnapshot, orderBy, doc, updateDoc, getDoc, getDocs, increment, addDoc, serverTimestamp } from 'firebase/firestore';

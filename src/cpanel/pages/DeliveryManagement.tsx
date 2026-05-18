@@ -1,9 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { collection, query, getDocs, doc, updateDoc, onSnapshot, where, writeBatch, setDoc, deleteDoc } from 'firebase/firestore';
+import { collection, query, getDocs, doc, updateDoc, onSnapshot, where, writeBatch, setDoc, deleteDoc, orderBy, limit } from 'firebase/firestore';
 import { db, storage } from '../../lib/firebase';
 import { ref, deleteObject } from 'firebase/storage';
 import { DeliveryDriver } from '../../lib/delivery-service';
-import { Truck, CheckCircle2, XCircle, FileText, User, DollarSign, ExternalLink, Plus, Trash2, Clock, Sun, Moon, Activity, MapPin, Map as MapIcon, Navigation } from 'lucide-react';
+import { driversApi } from '../../lib/api';
+import { supabase } from '../../lib/supabase';
+import { Truck, CheckCircle2, XCircle, FileText, User, DollarSign, ExternalLink, Plus, Trash2, Clock, Sun, Moon, Activity, MapPin, Map as MapIcon, Navigation, Search } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { GoogleMap, useJsApiLoader, Marker, InfoWindow } from '@react-google-maps/api';
 import DualPrice from '../../components/DualPrice';
@@ -97,12 +99,24 @@ _Enviado desde Deliexpress App_`
     });
 
     useEffect(() => {
-        const q = query(collection(db, 'delivery_drivers'));
-        const unsubscribe = onSnapshot(q, (snapshot) => {
-            const data = snapshot.docs.map(d => ({ id: d.id, ...d.data() })) as DeliveryDriver[];
-            setDrivers(data);
-            setLoading(false);
-        });
+        const fetchDrivers = async () => {
+            try {
+                const data = await driversApi.getAllDrivers();
+                setDrivers(data as unknown as DeliveryDriver[]);
+                setLoading(false);
+            } catch (err) {
+                console.error("Error fetching drivers", err);
+                setLoading(false);
+            }
+        };
+
+        fetchDrivers();
+
+        const driversChannel = supabase.channel('public:drivers')
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'drivers' }, () => {
+                fetchDrivers();
+            })
+            .subscribe();
 
         const qUpdates = query(collection(db, 'delivery_update_requests'), where('status', '==', 'pending'));
         const unsubscribeUpdates = onSnapshot(qUpdates, (snapshot) => {
@@ -129,7 +143,7 @@ _Enviado desde Deliexpress App_`
         });
 
         return () => {
-            unsubscribe();
+            supabase.removeChannel(driversChannel);
             unsubscribeUpdates();
             unsubscribeSettings();
             unsubscribeVerifications();
@@ -186,10 +200,12 @@ _Enviado desde Deliexpress App_`
                     await deleteDoc(docUpd.ref);
                 }
 
-                await deleteDoc(doc(db, 'delivery_drivers', id));
+                await supabase.from('drivers').delete().eq('id', id);
                 alert("Piloto rechazado. Se eliminó el perfil, solicitudes de actualización y documentos correctamente.");
             } else {
-                await updateDoc(doc(db, 'delivery_drivers', id), { status });
+                await driversApi.updateStatus(id, status === 'active', status === 'active' ? 'active' : 'offline');
+                // Also update the 'status' field in the 'drivers' table
+                await supabase.from('drivers').update({ status }).eq('id', id);
             }
             setSelectedDriver(null);
         } catch (error) {
@@ -203,10 +219,7 @@ _Enviado desde Deliexpress App_`
         if (!window.confirm(`¿Cambiar estado del piloto a ${labels[availability]}?`)) return;
 
         try {
-            await updateDoc(doc(db, 'delivery_drivers', id), {
-                availability,
-                isOnline: availability !== 'offline'
-            });
+            await driversApi.updateStatus(id, availability !== 'offline', availability);
         } catch (error) {
             console.error("Error updating availability:", error);
             alert("Error al actualizar disponibilidad");
@@ -217,16 +230,14 @@ _Enviado desde Deliexpress App_`
         if (!window.confirm(`¿Aprobar actualización de datos para ${request.driverName}?`)) return;
         try {
             const batch = writeBatch(db);
-            const driverRef = doc(db, 'delivery_drivers', request.driverId);
-            
             const driverUpdate: any = {};
             if (request.newData.cedula) driverUpdate.cedula = request.newData.cedula;
-            if (request.newData.vehicleType) driverUpdate.vehicleType = request.newData.vehicleType;
-            if (request.newData.vehiclePlate) driverUpdate.vehiclePlate = request.newData.vehiclePlate;
+            if (request.newData.vehicleType) driverUpdate.vehicle_type = request.newData.vehicleType;
+            if (request.newData.vehiclePlate) driverUpdate.vehicle_plate = request.newData.vehiclePlate;
             if (request.newData.documents) driverUpdate.documents = request.newData.documents;
 
             if (Object.keys(driverUpdate).length > 0) {
-                batch.update(driverRef, driverUpdate);
+                await supabase.from('drivers').update(driverUpdate).eq('id', request.driverId);
             }
 
             const requestRef = doc(db, 'delivery_update_requests', request.id);
@@ -304,9 +315,7 @@ _Enviado desde Deliexpress App_`
 
     const handlePayDriver = async () => {
         if (!selectedDriverFinance) return;
-        const driverPendingBalance = calculateDriverBalance(selectedDriverFinance.id);
-        const bsAmount = driverPendingBalance.total * bcvRate;
-        if (!window.confirm(`¿Confirmas el pago de $${driverPendingBalance.total.toFixed(2)} (${bsAmount.toFixed(2)} Bs) al repartidor ${selectedDriverFinance.fullName}?`)) return;
+        if (!window.confirm(`¿Confirmas el pago de $${driverPendingBalance.total.toFixed(2)} (${(driverPendingBalance.total * bcvRate).toFixed(2)} Bs) al repartidor ${selectedDriverFinance.fullName}?`)) return;
 
         setPayingDriver(true);
         try {

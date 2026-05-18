@@ -1,8 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { doc, onSnapshot } from 'firebase/firestore';
-import { db } from '../lib/firebase';
+import { driversApi } from '../lib/api';
+import { supabase } from '../lib/supabase';
 import DeliveryLayout from './components/DeliveryLayout';
 import Login from './pages/Login';
 import Onboarding from './pages/Onboarding';
@@ -21,28 +21,44 @@ function DeliveryRoutes() {
     const isDriverProfileComplete = !!(userData?.displayName && userData?.phone);
 
     useEffect(() => {
+        let isMounted = true;
         if (!user) {
             setLoadingDriver(false);
             return;
         }
 
-        const unsub = onSnapshot(
-            doc(db, 'delivery_drivers', user.uid),
-            (snap) => {
-                if (snap.exists()) {
-                    setDriverProfile(snap.data());
-                } else {
-                    setDriverProfile(null);
+        const fetchDriver = async () => {
+            try {
+                const profile = await driversApi.getDriver(user.uid);
+                if (isMounted) {
+                    setDriverProfile(profile);
+                    setLoadingDriver(false);
                 }
-                setLoadingDriver(false);
-            },
-            (error) => {
+            } catch (error) {
                 console.error("Error fetching driver profile:", error);
-                setLoadingDriver(false); // Stop loading even on error
+                if (isMounted) {
+                    setDriverProfile(null);
+                    setLoadingDriver(false);
+                }
             }
-        );
+        };
 
-        return () => unsub();
+        fetchDriver();
+
+        const channel = supabase.channel(`public:drivers:${user.uid}`)
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'drivers', filter: `id=eq.${user.uid}` }, async () => {
+                if (!isMounted) return;
+                try {
+                    const profile = await driversApi.getDriver(user.uid);
+                    setDriverProfile(profile);
+                } catch(e) {}
+            })
+            .subscribe();
+
+        return () => {
+            isMounted = false;
+            supabase.removeChannel(channel);
+        };
     }, [user]);
 
     if (authLoading || loadingDriver) {

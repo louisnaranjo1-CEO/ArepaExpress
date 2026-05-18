@@ -91,6 +91,7 @@ export interface Restaurant {
     hasTwoByThree?: boolean;
     twoByThreeInitial?: number;
     twoByThreeInstallments?: number;
+    isActive?: boolean;
 }
 
 const MOCK_RESTAURANTS: Restaurant[] = [
