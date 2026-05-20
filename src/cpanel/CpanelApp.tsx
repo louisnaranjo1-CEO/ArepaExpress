@@ -30,6 +30,7 @@ export default function CpanelApp() {
 
     const [isAuthenticated, setIsAuthenticated] = useState(false);
     const [isLoading, setIsLoading] = useState(true);
+    const [authError, setAuthError] = useState<string | null>(null);
 
     useEffect(() => {
         import('firebase/auth').then(({ signInAnonymously }) => {
@@ -50,6 +51,7 @@ export default function CpanelApp() {
                 setIsLoading(false);
             }).catch(err => {
                 console.error("Firebase Auth error:", err);
+                setAuthError(err.message || "Error de autenticación anónima");
                 setIsLoading(false);
             });
         });
@@ -72,9 +74,33 @@ export default function CpanelApp() {
 
     // Always bypass Login component and just show the cpanel layout when authenticated
     if (!isAuthenticated) {
+        if (authError) {
+            return (
+                <div className="min-h-screen bg-slate-100 flex flex-col items-center justify-center p-4">
+                    <div className="bg-white p-8 rounded-3xl shadow-xl max-w-md w-full border-t-4 border-red-500 text-center">
+                        <h2 className="text-xl font-black text-slate-900 mb-2">Error de Autenticación</h2>
+                        <p className="text-slate-600 mb-4 text-sm font-medium">{authError}</p>
+                        <div className="text-left bg-red-50 text-red-800 p-4 rounded-xl text-sm mb-6 border border-red-100">
+                            <strong>Solución para CPanel:</strong><br />
+                            Ve a la consola de Firebase &gt; Authentication &gt; Sign-in method, y asegúrate de habilitar el proveedor de inicio de sesión <b>"Anónimo" (Anonymous)</b>.
+                        </div>
+                        <button 
+                            onClick={() => { setAuthError(null); setIsAuthenticated(true); }}
+                            className="w-full bg-slate-900 text-white rounded-xl py-3 font-bold hover:bg-slate-800 transition-colors"
+                        >
+                            Ingresar de todos modos (Modo Visualización)
+                        </button>
+                    </div>
+                </div>
+            );
+        }
+
         return (
             <div className="min-h-screen bg-slate-100 flex items-center justify-center">
-                <p>Authenticating...</p>
+                <div className="flex flex-col items-center gap-4">
+                    <div className="w-10 h-10 border-4 border-primary border-t-transparent rounded-full animate-spin"></div>
+                    <p className="text-slate-500 font-bold uppercase tracking-widest text-xs">Autenticando...</p>
+                </div>
             </div>
         );
     }
