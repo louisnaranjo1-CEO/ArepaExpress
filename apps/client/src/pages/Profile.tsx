@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { User, Mail, MapPin, CreditCard, LogOut, ShoppingBag, Settings, ChevronRight, Clock, FileText, Bell, Navigation, X, Shield, UploadCloud, Star, Wallet, Gift, Award, MessageSquareWarning, Plus, Send, AlertCircle, CheckCircle, Store, Handshake, LifeBuoy, Fingerprint } from 'lucide-react';
+import { User, Mail, MapPin, CreditCard, LogOut, ShoppingBag, Settings, ChevronRight, Clock, FileText, Bell, Navigation, X, Shield, UploadCloud, Star, Wallet, Gift, Award, MessageSquareWarning, Plus, Send, AlertCircle, CheckCircle, Store, Handshake, LifeBuoy, Fingerprint, Calendar } from 'lucide-react';
 import { Geolocation } from '@capacitor/geolocation';
 import { isDemoMode } from '../lib/env';
 import DemoAlertModal from '../components/DemoAlertModal';
 import { requestNotificationPermission, disableNotifications } from '../lib/notifications';
 import { useAuth } from '../context/AuthContext';
 import { auth, db, storage } from '../lib/firebase';
+import { supabase } from '../lib/supabase';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { signInWithGoogle, signInWithEmail, signUpWithEmail, processReferralCode, sendPasswordResetEmail } from '../lib/auth-service';
@@ -97,10 +98,13 @@ export default function Profile() {
     // Profile completion form state
     const [profileForm, setProfileForm] = useState({
         displayName: '',
-        phone: '',
-        cedula: '',
+        phone: '', // 10 digits
+        nationality: 'V' as 'V' | 'E',
+        cedulaNumber: '',
+        birthdate: '',
         gender: '' as 'masculine' | 'feminine' | ''
     });
+    const [profileError, setProfileError] = useState<string | null>(null);
 
     // Email Login/Signup State
     const [showEmailModal, setShowEmailModal] = useState(false);
@@ -147,12 +151,31 @@ export default function Profile() {
     const [showCreditsModal, setShowCreditsModal] = useState(false);
 
     useEffect(() => {
-        if (userData) {
+        if (userData || user) {
+            let rawPhone = userData?.phone || '';
+            if (rawPhone.startsWith('+58')) {
+                rawPhone = rawPhone.substring(3);
+            } else if (rawPhone.startsWith('0')) {
+                rawPhone = rawPhone.substring(1);
+            }
+
+            let nat: 'V' | 'E' = 'V';
+            let cedNum = userData?.cedula || '';
+            if (cedNum.startsWith('V-') || cedNum.startsWith('v-')) {
+                nat = 'V';
+                cedNum = cedNum.substring(2);
+            } else if (cedNum.startsWith('E-') || cedNum.startsWith('e-')) {
+                nat = 'E';
+                cedNum = cedNum.substring(2);
+            }
+
             setProfileForm({
-                displayName: userData.displayName || user?.displayName || '',
-                phone: userData.phone || '',
-                cedula: userData.cedula || '',
-                gender: userData.gender || ''
+                displayName: userData?.displayName || (user as any)?.user_metadata?.full_name || user?.email?.split('@')[0] || '',
+                phone: rawPhone,
+                nationality: nat,
+                cedulaNumber: cedNum,
+                birthdate: userData?.birthdate || '',
+                gender: (userData as any)?.gender || ''
             });
         }
     }, [userData, user]);
@@ -550,45 +573,126 @@ export default function Profile() {
     const handleCompleteProfile = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!user) return;
-        if (!profileForm.displayName || !profileForm.phone || !profileForm.cedula) {
-            alert("Por favor completa todos los campos (Nombre, Celular y Cédula).");
+        setProfileError(null);
+
+        const cleanDisplayName = profileForm.displayName.trim();
+        if (!cleanDisplayName) {
+            setProfileError("Por favor ingresa tu nombre completo.");
+            return;
+        }
+
+        // Phone validation: strip leading zero, check exactly 10 digits
+        let cleanPhone = profileForm.phone.replace(/\D/g, '');
+        if (cleanPhone.startsWith('0')) {
+            cleanPhone = cleanPhone.substring(1);
+        }
+        if (cleanPhone.length !== 10) {
+            setProfileError("El número de celular debe tener exactamente 10 dígitos (ej: 412 1234567).");
+            return;
+        }
+        const fullPhone = `+58${cleanPhone}`;
+
+        // Cédula validation: numeric, between 6 and 9 digits
+        const cleanCedula = profileForm.cedulaNumber.replace(/\D/g, '');
+        if (cleanCedula.length < 6 || cleanCedula.length > 9) {
+            setProfileError("La cédula de identidad debe contener entre 6 y 9 dígitos.");
+            return;
+        }
+        const fullCedula = `${profileForm.nationality}-${cleanCedula}`;
+
+        // Birthdate validation
+        if (!profileForm.birthdate) {
+            setProfileError("Por favor ingresa tu fecha de cumpleaños.");
+            return;
+        }
+
+        const birthDateObj = new Date(profileForm.birthdate);
+        const today = new Date();
+        if (isNaN(birthDateObj.getTime()) || birthDateObj >= today) {
+            setProfileError("Por favor ingresa una fecha de nacimiento válida.");
             return;
         }
 
         setCompletingProfile(true);
         try {
-            let photoURL = user.photoURL;
+            // Check for duplicate phone in another account
+            const { data: existingPhone, error: phoneErr } = await supabase
+                .from('profiles')
+                .select('id')
+                .eq('phone', fullPhone)
+                .neq('id', user.id)
+                .maybeSingle();
+
+            if (phoneErr) console.warn("Phone check warning:", phoneErr);
+            if (existingPhone) {
+                setProfileError(`El número de celular +58 ${cleanPhone} ya está registrado en otra cuenta.`);
+                setCompletingProfile(false);
+                return;
+            }
+
+            // Check for duplicate cédula in another account
+            const { data: existingCedula, error: cedulaErr } = await supabase
+                .from('profiles')
+                .select('id')
+                .eq('cedula', fullCedula)
+                .neq('id', user.id)
+                .maybeSingle();
+
+            if (cedulaErr) console.warn("Cédula check warning:", cedulaErr);
+            if (existingCedula) {
+                setProfileError(`La cédula de identidad ${fullCedula} ya está registrada en otra cuenta.`);
+                setCompletingProfile(false);
+                return;
+            }
+
+            let photoURL = userData?.photoURL || (user as any)?.user_metadata?.avatar_url || '';
 
             if (logoFile) {
-                const storageRef = ref(storage, `users/${user.uid}/profile_${Date.now()}`);
-                const snapshot = await uploadBytes(storageRef, logoFile);
-                photoURL = await getDownloadURL(snapshot.ref);
+                const fileExt = logoFile.name.split('.').pop() || 'jpg';
+                const filePath = `${user.id}/avatar_${Date.now()}.${fileExt}`;
+                const { error: uploadError } = await supabase.storage
+                    .from('avatars')
+                    .upload(filePath, logoFile, { upsert: true });
 
-                // Update Firebase Auth profile
-                await updateProfile(user, { photoURL });
+                if (!uploadError) {
+                    const { data: { publicUrl } } = supabase.storage
+                        .from('avatars')
+                        .getPublicUrl(filePath);
+                    photoURL = publicUrl;
+                }
             }
 
-            const updateData: any = {
-                displayName: profileForm.displayName,
-                phone: profileForm.phone,
-                cedula: profileForm.cedula,
-                gender: profileForm.gender,
-                updatedAt: serverTimestamp()
-            };
+            const { error: updateError } = await supabase
+                .from('profiles')
+                .update({
+                    full_name: cleanDisplayName,
+                    phone: fullPhone,
+                    cedula: fullCedula,
+                    birthdate: profileForm.birthdate,
+                    photo_url: photoURL || null,
+                    updated_at: new Date().toISOString()
+                })
+                .eq('id', user.id);
 
-            if (photoURL) {
-                updateData.photoURL = photoURL;
+            if (updateError) {
+                if (updateError.code === '23505' || updateError.message?.includes('duplicate key')) {
+                    if (updateError.message?.includes('phone')) {
+                        throw new Error("El número de teléfono ya está registrado en otra cuenta.");
+                    }
+                    if (updateError.message?.includes('cedula')) {
+                        throw new Error("La cédula de identidad ya está registrada en otra cuenta.");
+                    }
+                }
+                throw updateError;
             }
 
-            await setDoc(doc(db, 'users', user.uid), updateData, { merge: true });
-
-            // If explicit update profile was triggered from modal, we might want to close it here
+            toast.success("¡Perfil completado exitosamente! 🚀");
             setShowEditProfileModal(false);
             setLogoFile(null);
             setLogoPreview(null);
-        } catch (e) {
+        } catch (e: any) {
             console.error("Error updating profile", e);
-            alert("Ocurrió un error al guardar tus datos.");
+            setProfileError(e.message || "Ocurrió un error al guardar tus datos.");
         } finally {
             setCompletingProfile(false);
         }
@@ -1036,6 +1140,13 @@ export default function Profile() {
                     Necesitamos estos datos para poder procesar tus pedidos correctamente.
                 </p>
 
+                {profileError && (
+                    <div className="w-full max-w-sm mb-4 p-4 bg-red-50 border border-red-200 text-red-600 rounded-2xl text-xs font-semibold flex items-center gap-3">
+                        <AlertCircle className="w-5 h-5 shrink-0 text-red-500" />
+                        <span>{profileError}</span>
+                    </div>
+                )}
+
                 <form onSubmit={handleCompleteProfile} className="w-full max-w-sm space-y-4">
                     <div className="space-y-1">
                         <label className="text-xs font-bold text-slate-500 uppercase tracking-wider ml-1">Nombre Completo</label>
@@ -1051,26 +1162,84 @@ export default function Profile() {
 
                     <div className="space-y-1">
                         <label className="text-xs font-bold text-slate-500 uppercase tracking-wider ml-1">Número de Celular</label>
-                        <input
-                            type="tel"
-                            required
-                            value={profileForm.phone}
-                            onChange={(e) => setProfileForm({ ...profileForm, phone: e.target.value })}
-                            className="w-full bg-slate-50 border-2 border-slate-100 focus:border-primary px-4 py-4 rounded-2xl outline-none font-bold text-slate-700 transition-all"
-                            placeholder="Ej. 04141234567"
-                        />
+                        <div className="flex rounded-2xl overflow-hidden border-2 border-slate-100 bg-slate-50 focus-within:border-primary transition-all">
+                            <div className="px-3.5 py-4 bg-slate-200/70 border-r border-slate-200 text-slate-700 font-black text-sm flex items-center gap-1.5 select-none shrink-0">
+                                <span>🇻🇪</span>
+                                <span>+58</span>
+                            </div>
+                            <input
+                                type="tel"
+                                required
+                                maxLength={10}
+                                value={profileForm.phone}
+                                onChange={(e) => {
+                                    let val = e.target.value.replace(/\D/g, '');
+                                    if (val.startsWith('0')) val = val.substring(1);
+                                    if (val.length <= 10) {
+                                        setProfileForm({ ...profileForm, phone: val });
+                                    }
+                                }}
+                                className="w-full bg-transparent px-4 py-4 outline-none font-bold text-slate-700 placeholder:text-slate-400 placeholder:font-normal"
+                                placeholder="412 1234567"
+                            />
+                        </div>
+                        <p className="text-[10px] text-slate-400 font-medium ml-1">Ingresa los 10 dígitos sin el cero inicial (ej: 412...)</p>
                     </div>
 
                     <div className="space-y-1">
                         <label className="text-xs font-bold text-slate-500 uppercase tracking-wider ml-1">Cédula de Identidad</label>
+                        <div className="flex rounded-2xl overflow-hidden border-2 border-slate-100 bg-slate-50 focus-within:border-primary transition-all">
+                            <div className="flex bg-slate-200/70 p-1 border-r border-slate-200 shrink-0">
+                                <button
+                                    type="button"
+                                    onClick={() => setProfileForm({ ...profileForm, nationality: 'V' })}
+                                    className={`px-3 py-2 rounded-xl text-xs font-black transition-all ${
+                                        profileForm.nationality === 'V' ? 'bg-primary text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-800'
+                                    }`}
+                                >
+                                    V
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setProfileForm({ ...profileForm, nationality: 'E' })}
+                                    className={`px-3 py-2 rounded-xl text-xs font-black transition-all ${
+                                        profileForm.nationality === 'E' ? 'bg-primary text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-800'
+                                    }`}
+                                >
+                                    E
+                                </button>
+                            </div>
+                            <input
+                                type="text"
+                                required
+                                maxLength={9}
+                                value={profileForm.cedulaNumber}
+                                onChange={(e) => {
+                                    const val = e.target.value.replace(/\D/g, '');
+                                    if (val.length <= 9) {
+                                        setProfileForm({ ...profileForm, cedulaNumber: val });
+                                    }
+                                }}
+                                className="w-full bg-transparent px-4 py-4 outline-none font-bold text-slate-700 placeholder:text-slate-400 placeholder:font-normal"
+                                placeholder="12345678"
+                            />
+                        </div>
+                        <p className="text-[10px] text-slate-400 font-medium ml-1">Selecciona V (Venezolano) o E (Extranjero)</p>
+                    </div>
+
+                    <div className="space-y-1">
+                        <label className="text-xs font-bold text-slate-500 uppercase tracking-wider ml-1 flex items-center gap-1.5">
+                            <Calendar className="w-3.5 h-3.5 text-primary" /> Fecha de Cumpleaños 🎂
+                        </label>
                         <input
-                            type="text"
+                            type="date"
                             required
-                            value={profileForm.cedula}
-                            onChange={(e) => setProfileForm({ ...profileForm, cedula: e.target.value })}
-                            className="w-full bg-slate-50 border-2 border-slate-100 focus:border-primary px-4 py-4 rounded-2xl outline-none font-bold text-slate-700 transition-all"
-                            placeholder="Ej. V-12345678"
+                            value={profileForm.birthdate}
+                            max={new Date().toISOString().split('T')[0]}
+                            onChange={(e) => setProfileForm({ ...profileForm, birthdate: e.target.value })}
+                            className="w-full bg-slate-50 border-2 border-slate-100 focus:border-primary px-4 py-4 rounded-2xl outline-none font-bold text-slate-700 transition-all cursor-pointer"
                         />
+                        <p className="text-[10px] text-slate-400 font-medium ml-1">¡Recibirás promociones y descuentos especiales en tu cumpleaños!</p>
                     </div>
 
                     <button
@@ -1079,7 +1248,7 @@ export default function Profile() {
                         className="w-full bg-primary text-slate-900 py-4 rounded-2xl font-bold shadow-lg shadow-primary/30 hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-70 mt-4 flex items-center justify-center gap-2"
                     >
                         {completingProfile ? (
-                            <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                            <div className="w-5 h-5 border-2 border-slate-900 border-t-transparent rounded-full animate-spin"></div>
                         ) : (
                             "Completar Mi Perfil"
                         )}
@@ -1952,6 +2121,13 @@ export default function Profile() {
                                             <UserIcon className="w-4 h-4" /> Información Básica
                                         </h3>
 
+                                        {profileError && (
+                                            <div className="p-4 bg-red-50 border border-red-200 text-red-600 rounded-2xl text-xs font-semibold flex items-center gap-3">
+                                                <AlertCircle className="w-5 h-5 shrink-0 text-red-500" />
+                                                <span>{profileError}</span>
+                                            </div>
+                                        )}
+
                                         <div className="space-y-2">
                                             <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Nombre Completo</label>
                                             <input
@@ -1966,32 +2142,83 @@ export default function Profile() {
 
                                         <div className="space-y-2">
                                             <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Número de Celular</label>
-                                            <div className="relative">
+                                            <div className="flex rounded-2xl overflow-hidden border border-slate-100 bg-slate-50 focus-within:bg-white focus-within:border-primary transition-all">
+                                                <div className="px-3.5 py-4 bg-slate-200/70 border-r border-slate-200 text-slate-700 font-black text-sm flex items-center gap-1.5 select-none shrink-0">
+                                                    <span>🇻🇪</span>
+                                                    <span>+58</span>
+                                                </div>
                                                 <input
                                                     type="tel"
                                                     required
+                                                    maxLength={10}
                                                     value={profileForm.phone}
-                                                    onChange={(e) => setProfileForm({ ...profileForm, phone: e.target.value })}
-                                                    className="w-full bg-slate-50 border border-slate-100 rounded-2xl p-4 pl-12 font-bold text-slate-700 focus:bg-white focus:border-primary transition-all outline-none"
-                                                    placeholder="Ej. 04141234567"
+                                                    onChange={(e) => {
+                                                        let val = e.target.value.replace(/\D/g, '');
+                                                        if (val.startsWith('0')) val = val.substring(1);
+                                                        if (val.length <= 10) {
+                                                            setProfileForm({ ...profileForm, phone: val });
+                                                        }
+                                                    }}
+                                                    className="w-full bg-transparent p-4 outline-none font-bold text-slate-700 placeholder:text-slate-400 placeholder:font-normal"
+                                                    placeholder="412 1234567"
                                                 />
-                                                <Smartphone className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-300" />
                                             </div>
+                                            <p className="text-[9px] text-slate-400 font-bold ml-2">10 dígitos sin el cero inicial</p>
                                         </div>
 
                                         <div className="space-y-2">
                                             <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Cédula de Identidad</label>
-                                            <div className="relative">
+                                            <div className="flex rounded-2xl overflow-hidden border border-slate-100 bg-slate-50 focus-within:bg-white focus-within:border-primary transition-all">
+                                                <div className="flex bg-slate-200/70 p-1 border-r border-slate-200 shrink-0">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setProfileForm({ ...profileForm, nationality: 'V' })}
+                                                        className={`px-3 py-2 rounded-xl text-xs font-black transition-all ${
+                                                            profileForm.nationality === 'V' ? 'bg-primary text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-800'
+                                                        }`}
+                                                    >
+                                                        V
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setProfileForm({ ...profileForm, nationality: 'E' })}
+                                                        className={`px-3 py-2 rounded-xl text-xs font-black transition-all ${
+                                                            profileForm.nationality === 'E' ? 'bg-primary text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-800'
+                                                        }`}
+                                                    >
+                                                        E
+                                                    </button>
+                                                </div>
                                                 <input
                                                     type="text"
                                                     required
-                                                    value={profileForm.cedula}
-                                                    onChange={(e) => setProfileForm({ ...profileForm, cedula: e.target.value })}
-                                                    className="w-full bg-slate-50 border border-slate-100 rounded-2xl p-4 pl-12 font-bold text-slate-700 focus:bg-white focus:border-primary transition-all outline-none"
-                                                    placeholder="Ej. V-12345678"
+                                                    maxLength={9}
+                                                    value={profileForm.cedulaNumber}
+                                                    onChange={(e) => {
+                                                        const val = e.target.value.replace(/\D/g, '');
+                                                        if (val.length <= 9) {
+                                                            setProfileForm({ ...profileForm, cedulaNumber: val });
+                                                        }
+                                                    }}
+                                                    className="w-full bg-transparent p-4 outline-none font-bold text-slate-700 placeholder:text-slate-400 placeholder:font-normal"
+                                                    placeholder="12345678"
                                                 />
-                                                <UserIcon className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-300" />
                                             </div>
+                                        </div>
+
+                                        <div className="space-y-2">
+                                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4 flex items-center gap-1.5">
+                                                <Calendar className="w-3.5 h-3.5 text-primary" /> Fecha de Cumpleaños 🎂
+                                            </label>
+                                            <input
+                                                type="date"
+                                                required
+                                                value={profileForm.birthdate}
+                                                max={new Date().toISOString().split('T')[0]}
+                                                onChange={(e) => setProfileForm({ ...profileForm, birthdate: e.target.value })}
+                                                className="w-full bg-slate-50 border border-slate-100 rounded-2xl p-4 font-bold text-slate-700 focus:bg-white focus:border-primary transition-all outline-none cursor-pointer"
+                                            />
+                                            <p className="text-[9px] text-slate-400 font-bold ml-2">Para promociones especiales en tu día</p>
                                         </div>
 
                                         <div className="space-y-2">

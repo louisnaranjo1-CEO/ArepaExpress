@@ -19,6 +19,9 @@ export interface UserData {
     email?: string;
     photoURL?: string;
     phone?: string;
+    cedula?: string;
+    birthdate?: string;
+    gender?: string;
     points?: number;
     total_referrals?: number;
     locationPermissionsAllowed?: boolean;
@@ -76,6 +79,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         };
 
         const handleUser = async (sbUser: User | null) => {
+            if (sbUser) {
+                (sbUser as any).uid = sbUser.id; // Compatibility for legacy references
+            }
             setUser(sbUser);
             if (sbUser) {
                 // Register/Update this device session
@@ -103,6 +109,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                         ...data,
                         displayName: data.full_name,
                         email: data.email,
+                        phone: data.phone,
+                        cedula: data.cedula,
+                        birthdate: data.birthdate,
+                        gender: data.gender,
+                        photoURL: data.photo_url,
                         points: data.points,
                     } as UserData);
                 }
@@ -129,6 +140,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                                 ...updated,
                                 displayName: updated.full_name,
                                 email: updated.email,
+                                phone: updated.phone,
+                                cedula: updated.cedula,
+                                birthdate: updated.birthdate,
+                                gender: updated.gender,
+                                photoURL: updated.photo_url,
+                                points: updated.points,
                             }));
                         }
                     )
@@ -204,7 +221,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         };
     }, [user, userData?.locationPermissionsAllowed]);
 
-    const isProfileComplete = !!(userData?.displayName && userData?.phone);
+    const isProfileComplete = !!(
+        userData?.displayName && 
+        userData?.phone && 
+        userData?.cedula && 
+        userData?.birthdate
+    );
 
     return (
         <AuthContext.Provider value={{ user, userData, loading, isProfileComplete, isUnlocked, setIsUnlocked, currentLocation }}>
