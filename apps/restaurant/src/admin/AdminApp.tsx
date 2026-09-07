@@ -37,7 +37,7 @@ function AdminRoutes() {
         return <AdminAuth />;
     }
 
-    const rid = userData?.managedRestaurantId || user?.uid;
+    const rid = userData?.managedRestaurantId || user?.uid || (user as any)?.id;
 
     return (
         <AdminLayout>
@@ -67,7 +67,7 @@ function AdminRoutes() {
 
 export default function AdminApp() {
     const isDevAdminPath = window.location.pathname.startsWith('/admin');
-    const isAdminSubdomain = window.location.hostname.startsWith('restaurante.');
+    const isAdminSubdomain = window.location.hostname.startsWith('restaurante.') || window.location.hostname.startsWith('negocios.');
 
     const basename = isDevAdminPath && !isAdminSubdomain ? '/admin' : '/';
 

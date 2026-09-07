@@ -4,7 +4,8 @@ import { LayoutDashboard, Store, UtensilsCrossed, ClipboardList, LogOut, Chevron
 import { auth, db } from '../../lib/firebase';
 import { useAuth } from '../../context/AuthContext';
 import { updateUserEmail, updateUserPassword } from '../../lib/auth-service';
-import { doc, getDoc, deleteDoc, collection, query, where, onSnapshot, updateDoc } from 'firebase/firestore';
+import { doc, getDoc, deleteDoc, collection, query, where, onSnapshot, updateDoc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { supabase } from '../../lib/supabase';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { useGlobalAudioAlerts } from '../../hooks/useGlobalAudioAlerts';
@@ -17,6 +18,7 @@ interface AdminLayoutProps {
 export default function AdminLayout({ children }: AdminLayoutProps) {
     const { user } = useAuth();
     const navigate = useNavigate();
+    const currentUid = user?.uid || (user as any)?.id;
     const [isSidebarOpen, setIsSidebarOpen] = React.useState(false);
     const [isProfileMenuOpen, setIsProfileMenuOpen] = React.useState(false);
     const [restaurantName, setRestaurantName] = React.useState('Mi Negocio');
@@ -34,28 +36,80 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
     const [supportPhone, setSupportPhone] = React.useState<string>('');
     const { vibrateSelection } = useHaptics();
 
-    useGlobalAudioAlerts('restaurant', user?.uid);
+    useGlobalAudioAlerts('restaurant', currentUid);
 
     React.useEffect(() => {
-        if (!user) return;
+        if (!currentUid) return;
         const fetchRestaurant = async () => {
-            const docRef = doc(db, 'restaurants', user.uid);
-            const docSnap = await getDoc(docRef);
-            if (docSnap.exists()) {
-                const data = docSnap.data();
-                setRestaurantName(data.name || 'Mi Negocio');
-                if (data.createdAt) {
-                    setCreatedAt(data.createdAt.toDate());
+            try {
+                const docRef = doc(db, 'restaurants', currentUid);
+                const docSnap = await getDoc(docRef);
+                if (docSnap.exists()) {
+                    const data = docSnap.data();
+                    setRestaurantName(data.name || 'Mi Negocio');
+                    if (data.createdAt) {
+                        setCreatedAt(data.createdAt.toDate());
+                    }
+                    if (data.billingDay && data.billingAmount) {
+                        calculateBilling(data.billingDay, data.billingAmount);
+                    }
+                    setAudioAlertsEnabled(data.audioAlertsEnabled ?? true);
+                    setIsActive(data.isActive !== false);
+                } else {
+                    // Auto-inicializar restaurante si es primera vez que entra con Google o Supabase
+                    const defaultName = user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'Mi Negocio';
+                    const defaultRest = {
+                        id: currentUid,
+                        name: defaultName,
+                        email: user?.email || '',
+                        rif: 'PROVISIONAL',
+                        owner_uid: currentUid,
+                        ownerEmail: user?.email || '',
+                        business_type: 'restaurant',
+                        isActive: true,
+                        isApproved: true,
+                        rating: 5.0,
+                        deliveryTime: '30-45 min',
+                        deliveryFee: 1.5,
+                        category: 'Varios',
+                        audioAlertsEnabled: true,
+                        createdAt: serverTimestamp(),
+                        updatedAt: serverTimestamp()
+                    };
+                    await setDoc(docRef, defaultRest, { merge: true });
+                    setRestaurantName(defaultRest.name);
+                    setIsActive(true);
+
+                    // Sincronizar en Supabase comercios
+                    try {
+                        const { data: cData } = await supabase.from('comercios').select('id').eq('id', currentUid).maybeSingle();
+                        if (!cData) {
+                            await supabase.from('comercios').insert({
+                                id: currentUid,
+                                name: defaultName,
+                                rif: 'PROVISIONAL',
+                                owner_uid: currentUid,
+                                email: user?.email || '',
+                                business_type: 'restaurant',
+                                locations: [],
+                                whatsapp: '',
+                                own_delivery: false,
+                                is_approved: true,
+                                rating: 5.0,
+                                delivery_time: '30-45 min',
+                                delivery_fee: 1.5,
+                                category: 'Varios'
+                            });
+                        }
+                    } catch (supErr) {
+                        console.warn("Comercios auto-init:", supErr);
+                    }
                 }
-                if (data.billingDay && data.billingAmount) {
-                    calculateBilling(data.billingDay, data.billingAmount);
-                }
-                setAudioAlertsEnabled(data.audioAlertsEnabled ?? true);
-                setIsActive(data.isActive !== false);
-            } else {
-                setIsActive(false);
+            } catch (err) {
+                console.error("Error cargando datos de negocio:", err);
+                setIsActive(true);
             }
-        }
+        };
         const fetchSupport = async () => {
             try {
                 const sRef = doc(db, 'settings', 'customer_service');
@@ -71,7 +125,7 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
         fetchSupport();
 
         // Listen for new orders
-        const q = query(collection(db, 'orders'), where('restaurantId', '==', user.uid));
+        const q = query(collection(db, 'orders'), where('restaurantId', '==', currentUid));
         let initialLoad = true;
 
         const unsubscribe = onSnapshot(q, (snapshot) => {
@@ -170,9 +224,9 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
     };
 
     const handleDeleteAccount = async () => {
-        if (!user) return;
+        if (!currentUid) return;
         try {
-            await deleteDoc(doc(db, 'restaurants', user.uid));
+            await deleteDoc(doc(db, 'restaurants', currentUid));
             // In a real app, we'd also delete the auth user, but for demo we just sign out
             await auth.signOut();
             navigate('/');
@@ -183,12 +237,12 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
     };
 
     const handleToggleAudio = async () => {
-        if (!user) return;
+        if (!currentUid) return;
         setIsUpdatingAudio(true);
         try {
             const newValue = !audioAlertsEnabled;
             setAudioAlertsEnabled(newValue);
-            await updateDoc(doc(db, 'restaurants', user.uid), {
+            await updateDoc(doc(db, 'restaurants', currentUid), {
                 audioAlertsEnabled: newValue
             });
         } catch (error) {
@@ -572,7 +626,7 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
                         </div>
 
                         <p className="text-xs text-slate-400 font-bold uppercase tracking-widest">
-                            ID del Negocio: {user?.uid}
+                            ID del Negocio: {currentUid}
                         </p>
                     </div>
                 </div>

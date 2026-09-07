@@ -25,8 +25,10 @@ export interface UserData {
     biometricLockEnabled?: boolean;
 }
 
+export type EnhancedUser = User & { uid: string };
+
 interface AuthContextType {
-    user: User | null;
+    user: EnhancedUser | null;
     userData: UserData | null;
     loading: boolean;
     isProfileComplete: boolean;
@@ -48,7 +50,7 @@ const AuthContext = createContext<AuthContextType>({
 export const useAuth = () => useContext(AuthContext);
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-    const [user, setUser] = useState<User | null>(null);
+    const [user, setUser] = useState<EnhancedUser | null>(null);
     const [userData, setUserData] = useState<UserData | null>(null);
     const [loading, setLoading] = useState(true);
     const [isUnlocked, setIsUnlocked] = useState(true);
@@ -76,8 +78,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         };
 
         const handleUser = async (sbUser: User | null) => {
-            setUser(sbUser);
             if (sbUser) {
+                // Ensure .uid is ALWAYS defined and equals .id for compatibility
+                const enhanced: EnhancedUser = Object.assign(sbUser, { uid: sbUser.id });
+                setUser(enhanced);
+
+                // Clean OAuth hash from URL if present (e.g. #access_token=... or #)
+                if (window.location.hash && (window.location.hash.includes('access_token') || window.location.hash === '#')) {
+                    try {
+                        window.history.replaceState(null, document.title, window.location.pathname + window.location.search);
+                    } catch (e) {
+                        console.warn("Could not clean url hash", e);
+                    }
+                }
+
                 // Register/Update this merchant device session
                 try {
                     await supabase
@@ -96,7 +110,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                     .from('profiles')
                     .select('*')
                     .eq('id', sbUser.id)
-                    .single();
+                    .maybeSingle();
 
                 if (!error && data) {
                     setUserData({
@@ -105,6 +119,26 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                         email: data.email,
                         points: data.points,
                     } as UserData);
+                } else if (!data) {
+                    // Auto-crear profile si no existe para usuario Google nuevo
+                    try {
+                        const initialProfile = {
+                            id: sbUser.id,
+                            email: sbUser.email || '',
+                            full_name: sbUser.user_metadata?.full_name || sbUser.email?.split('@')[0] || 'Comercio',
+                            role: 'aliado',
+                            active_device_session: currentDeviceId,
+                            last_active_at: new Date().toISOString()
+                        };
+                        await supabase.from('profiles').upsert(initialProfile);
+                        setUserData({
+                            displayName: initialProfile.full_name,
+                            email: initialProfile.email,
+                            role: 'aliado'
+                        } as UserData);
+                    } catch (pErr) {
+                        console.warn("Could not provision initial merchant profile:", pErr);
+                    }
                 }
 
                 // Subscribe to profile changes for single device enforcement
@@ -134,6 +168,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                     )
                     .subscribe();
             } else {
+                setUser(null);
                 setUserData(null);
                 if (channel) supabase.removeChannel(channel);
             }

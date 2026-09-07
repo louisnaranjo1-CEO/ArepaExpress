@@ -4,13 +4,16 @@ import App from './App.tsx';
 import './index.css';
 import { CurrencyProvider } from './context/CurrencyContext.tsx';
 import { AuthProvider } from './context/AuthContext';
+import ErrorBoundary from './components/ErrorBoundary';
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <AuthProvider>
-      <CurrencyProvider>
-        <App />
-      </CurrencyProvider>
-    </AuthProvider>
+    <ErrorBoundary>
+      <AuthProvider>
+        <CurrencyProvider>
+          <App />
+        </CurrencyProvider>
+      </AuthProvider>
+    </ErrorBoundary>
   </StrictMode>,
 );
