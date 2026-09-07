@@ -1,20 +1,23 @@
 import React, { useState, useEffect } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, Store, Users, Image as ImageIcon, LogOut, ChevronRight, Menu, X, Tag, Truck, Wallet, Car, Share2, Gift, Ticket, MessageSquareWarning, Megaphone, ShoppingBag, Trophy } from 'lucide-react';
+import { LayoutDashboard, Store, Users, Image as ImageIcon, LogOut, ChevronRight, Menu, X, Tag, Truck, Wallet, Car, Share2, Gift, Ticket, MessageSquareWarning, Megaphone, ShoppingBag, Trophy, Shield } from 'lucide-react';
 import { collection, query, where, onSnapshot } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import { UN2X3_LOGO } from '../../lib/env';
 import { useGlobalAudioAlerts } from '../../hooks/useGlobalAudioAlerts';
 import { useHaptics } from '../../hooks/useHaptics';
+import AuthorizedDevicesModal from './AuthorizedDevicesModal';
 
 interface CpanelLayoutProps {
     children: React.ReactNode;
     onLogout: () => void;
+    adminUser?: any;
 }
 
-export default function CpanelLayout({ children, onLogout }: CpanelLayoutProps) {
+export default function CpanelLayout({ children, onLogout, adminUser }: CpanelLayoutProps) {
     const navigate = useNavigate();
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+    const [showDevicesModal, setShowDevicesModal] = useState(false);
     const [pendingTransports, setPendingTransports] = useState(0);
     const [pendingTickets, setPendingTickets] = useState(0);
     const [pendingPayouts, setPendingPayouts] = useState(0);
@@ -172,20 +175,46 @@ export default function CpanelLayout({ children, onLogout }: CpanelLayoutProps) 
             <main className="flex-1 flex flex-col min-w-0 overflow-hidden relative pb-[65px] md:pb-0">
                 {/* Top Header */}
                 <header className="h-14 md:h-20 bg-white border-b border-slate-200 px-4 md:px-6 flex items-center justify-between flex-shrink-0 pt-safe">
-                    <button
-                        className="md:hidden p-2 -ml-2 text-slate-500 active:scale-95 transition-transform"
-                        onClick={() => { vibrateSelection(); setIsSidebarOpen(true); }}
-                    >
-                        <Menu className="w-6 h-6" />
-                    </button>
-                    <div className="flex items-center gap-4">
-                        <h2 className="text-xl font-black text-slate-900">Control Principal</h2>
+                    <div className="flex items-center gap-3">
+                        <button
+                            className="md:hidden p-2 -ml-2 text-slate-500 active:scale-95 transition-transform"
+                            onClick={() => { vibrateSelection(); setIsSidebarOpen(true); }}
+                        >
+                            <Menu className="w-6 h-6" />
+                        </button>
+                        <h2 className="text-lg md:text-xl font-black text-slate-900">Control Principal</h2>
+                    </div>
+
+                    <div className="flex items-center gap-2 md:gap-3">
+                        <button
+                            onClick={() => setShowDevicesModal(true)}
+                            className="flex items-center gap-2 px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-xl text-xs font-black transition-all shadow-sm border border-slate-200/60 active:scale-95"
+                            title="Administrar Dispositivos Autorizados"
+                        >
+                            <Shield className="w-4 h-4 text-emerald-600" />
+                            <span className="hidden sm:inline">Dispositivos</span>
+                        </button>
+
+                        <button
+                            onClick={handleLogout}
+                            className="flex items-center gap-2 px-3.5 py-2 bg-red-50 hover:bg-red-100 text-red-600 rounded-xl text-xs font-black transition-all border border-red-100 active:scale-95"
+                            title="Cerrar Sesión"
+                        >
+                            <LogOut className="w-4 h-4" />
+                            <span className="hidden md:inline">Salir</span>
+                        </button>
                     </div>
                 </header>
 
                 <div className="flex-1 overflow-y-auto p-2 md:p-8 relative custom-scrollbar">
                     {children}
                 </div>
+
+                <AuthorizedDevicesModal
+                    isOpen={showDevicesModal}
+                    onClose={() => setShowDevicesModal(false)}
+                    userId={adminUser?.id || ''}
+                />
 
                 {/* Mobile Bottom Navigation */}
                 <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 flex items-center justify-around pb-safe z-40 h-[65px] px-2 shadow-[0_-4px_20px_rgba(0,0,0,0.05)]">
