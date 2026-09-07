@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { collection, getDocs, doc, updateDoc, query, where } from 'firebase/firestore';
-import { db } from '../../lib/firebase';
+import { supabase } from '../../lib/supabase';
 import { Store, CheckCircle, XCircle, ChevronRight, X, Phone, MapPin, Tag, Box, Star, Users, ShoppingBag, Database } from 'lucide-react';
 import { Restaurant, seedDatabase, clearMockDatabase } from '../../lib/seed';
 import { useNavigate } from 'react-router-dom';
@@ -23,12 +22,19 @@ export default function RestaurantsManager() {
 
     const fetchRestaurants = async () => {
         try {
-            const querySnapshot = await getDocs(collection(db, 'restaurants'));
-            const data = querySnapshot.docs.map(doc => ({
-                id: doc.id,
-                ...doc.data()
+            const { data, error } = await supabase
+                .from('comercios')
+                .select('*')
+                .order('name', { ascending: true });
+
+            if (error) throw error;
+            const mapped = (data || []).map(r => ({
+                ...r,
+                isActive: r.is_active !== undefined ? r.is_active : (r.isActive !== false),
+                logoUrl: r.logo_url || r.logoUrl || r.image,
+                subscriptionEnd: r.subscription_end || r.subscriptionEnd
             })) as RestaurantDetail[];
-            setRestaurants(data);
+            setRestaurants(mapped);
         } catch (error) {
             console.error("Error fetching restaurants: ", error);
         } finally {
@@ -45,9 +51,12 @@ export default function RestaurantsManager() {
         e.stopPropagation(); // Don't trigger row click
         try {
             const newStatus = currentStatus === undefined ? false : !currentStatus;
-            await updateDoc(doc(db, 'restaurants', id), {
-                isActive: newStatus
-            });
+            const { error } = await supabase
+                .from('comercios')
+                .update({ is_active: newStatus })
+                .eq('id', id);
+
+            if (error) throw error;
             setRestaurants(prev => prev.map(r => r.id === id ? { ...r, isActive: newStatus } : r));
         } catch (error) {
             console.error("Error updating restaurant status:", error);

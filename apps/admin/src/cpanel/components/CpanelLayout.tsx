@@ -1,8 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import { LayoutDashboard, Store, Users, Image as ImageIcon, LogOut, ChevronRight, Menu, X, Tag, Truck, Wallet, Car, Share2, Gift, Ticket, MessageSquareWarning, Megaphone, ShoppingBag, Trophy, Shield, Palette } from 'lucide-react';
-import { collection, query, where, onSnapshot } from 'firebase/firestore';
-import { db } from '../../lib/firebase';
+import { supabase } from '../../lib/supabase';
 import { UN2X3_LOGO } from '../../lib/env';
 import { useGlobalAudioAlerts } from '../../hooks/useGlobalAudioAlerts';
 import { useHaptics } from '../../hooks/useHaptics';
@@ -26,48 +25,49 @@ export default function CpanelLayout({ children, onLogout, adminUser }: CpanelLa
     useGlobalAudioAlerts('cpanel');
 
     useEffect(() => {
-        // Listen to pending transport requests that need admin payment verification
-        const qTransports = query(
-            collection(db, 'transport_requests'),
-            where('status', '==', 'verifying_payment')
-        );
+        const fetchCounts = async () => {
+            try {
+                const { count: transCount } = await supabase
+                    .from('transport_requests')
+                    .select('*', { count: 'exact', head: true })
+                    .eq('status', 'verifying_payment');
+                setPendingTransports(transCount || 0);
 
-        const unsubscribeTransports = onSnapshot(qTransports, (snapshot) => {
-            setPendingTransports(snapshot.size);
-        });
-        
-        // Listen to open support tickets
-        const qTickets = query(
-            collection(db, 'support_tickets'),
-            where('status', '==', 'open')
-        );
+                const { count: tickCount } = await supabase
+                    .from('support_tickets')
+                    .select('*', { count: 'exact', head: true })
+                    .eq('status', 'open');
+                setPendingTickets(tickCount || 0);
 
-        const unsubscribeTickets = onSnapshot(qTickets, (snapshot) => {
-            setPendingTickets(snapshot.size);
-        });
+                const { count: ordPayCount } = await supabase
+                    .from('orders')
+                    .select('*', { count: 'exact', head: true })
+                    .eq('payment_requested', true)
+                    .eq('delivery_paid', false);
 
-        // Listen to pending payout requests
-        const qPayoutOrders = query(collection(db, 'orders'), where('paymentRequested', '==', true), where('deliveryPaid', '==', false));
-        const qPayoutTransports = query(collection(db, 'transport_requests'), where('paymentRequested', '==', true), where('driverPaid', '==', false));
+                const { count: transPayCount } = await supabase
+                    .from('transport_requests')
+                    .select('*', { count: 'exact', head: true })
+                    .eq('payment_requested', true)
+                    .eq('driver_paid', false);
 
-        let ordersCount = 0;
-        let transportsCount = 0;
+                setPendingPayouts((ordPayCount || 0) + (transPayCount || 0));
+            } catch (err) {
+                console.error("Error fetching cpanel counts:", err);
+            }
+        };
 
-        const unsubscribePayoutOrders = onSnapshot(qPayoutOrders, (snapshot) => {
-            ordersCount = snapshot.size;
-            setPendingPayouts(ordersCount + transportsCount);
-        });
+        fetchCounts();
 
-        const unsubscribePayoutTransports = onSnapshot(qPayoutTransports, (snapshot) => {
-            transportsCount = snapshot.size;
-            setPendingPayouts(ordersCount + transportsCount);
-        });
+        const channel = supabase
+            .channel('cpanel_layout_badges')
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'transport_requests' }, fetchCounts)
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'support_tickets' }, fetchCounts)
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, fetchCounts)
+            .subscribe();
 
         return () => {
-            unsubscribeTransports();
-            unsubscribeTickets();
-            unsubscribePayoutOrders();
-            unsubscribePayoutTransports();
+            supabase.removeChannel(channel);
         };
     }, []);
 

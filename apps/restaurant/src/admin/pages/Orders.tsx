@@ -1,10 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { Search, Filter, Clock, MapPin, ChevronRight, Bike, Truck, CheckCircle, Loader2, Bell, ExternalLink, X, ShoppingCart, Plus, Minus, Trash2, User, CreditCard, Store, ShoppingBag, Users, Upload, Image as ImageIcon, DollarSign, Edit } from 'lucide-react';
-import { db } from '../../lib/firebase';
-import { collection, query, where, onSnapshot, orderBy, doc, updateDoc, getDocs, increment, addDoc, serverTimestamp, getDoc } from 'firebase/firestore';
+import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../context/AuthContext';
 import { printToUsbDevice, formatTicket, PrintOrder } from '../../lib/usb-printer';
-import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { motion, AnimatePresence } from 'motion/react';
 import toast from 'react-hot-toast';
 import ComandaPreview from '../components/ComandaPreview';
@@ -97,13 +95,15 @@ export default function Orders() {
         if (!selectedOrderForClose) return;
         setIsAccepting(true);
         try {
+            const finalTotal = (selectedOrderForClose.subtotal || selectedOrderForClose.total || 0) + ((selectedOrderForClose as any).deliveryFee || 0) + closeTip;
             const updates: any = {
-                paymentMethod: paymentMethod,
-                paymentStatus: 'sold',
+                payment_method: paymentMethod,
+                payment_status: 'sold',
                 tip: closeTip,
-                total: selectedOrderForClose.subtotal + ((selectedOrderForClose as any).deliveryFee || 0) + closeTip
+                total: finalTotal,
+                updated_at: new Date().toISOString()
             };
-            await updateDoc(doc(db, 'orders', selectedOrderForClose.id), updates);
+            await supabase.from('orders').update(updates).eq('id', selectedOrderForClose.id);
             setCloseSaleModalOpen(false);
             setSelectedOrderForClose(null);
             setCloseTip(0);
@@ -117,47 +117,57 @@ export default function Orders() {
 
     useEffect(() => {
         const fetchDrivers = async () => {
-             const usersRef = collection(db, 'users');
-             const q = query(usersRef, where('role', '==', 'delivery'));
-             const snap = await getDocs(q);
-             setDrivers(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+            const { data } = await supabase.from('profiles').select('*').eq('role', 'delivery');
+            setDrivers(data || []);
         };
         fetchDrivers();
 
         if (user && rid) {
-            // Real-time Tables for Admin
-            const tablesRef = collection(db, 'restaurants', rid, 'tables');
-            const unsubscribeTables = onSnapshot(tablesRef, (snapshot) => {
-                const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-                data.sort((a: any, b: any) => {
+            const fetchTables = async () => {
+                const { data } = await supabase.from('restaurant_tables').select('*').eq('restaurant_id', rid);
+                const sorted = (data || []).map((t: any) => ({
+                    id: t.id,
+                    number: t.table_number || t.number || '',
+                    capacity: t.capacity || 4,
+                    status: t.status || 'available',
+                    currentOrderId: t.current_order_id
+                }));
+                sorted.sort((a: any, b: any) => {
                     const numA = parseInt(a.number, 10);
                     const numB = parseInt(b.number, 10);
                     if (!isNaN(numA) && !isNaN(numB)) return numA - numB;
                     return (a.number || '').localeCompare(b.number || '');
                 });
-                setTables(data);
-            });
+                setTables(sorted);
+            };
+            fetchTables();
 
-            // Fetch Waiters
+            const tableChannel = supabase
+                .channel(`orders_tables_${rid}`)
+                .on('postgres_changes', { event: '*', schema: 'public', table: 'restaurant_tables', filter: `restaurant_id=eq.${rid}` }, () => {
+                    fetchTables();
+                })
+                .subscribe();
+
             const fetchWaiters = async () => {
-                const waitersRef = collection(db, 'restaurants', rid, 'waiters');
-                const snap = await getDocs(waitersRef);
-                setWaiters(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+                const { data } = await supabase.from('waiters').select('*').eq('restaurant_id', rid);
+                setWaiters(data || []);
             };
             fetchWaiters();
 
-            return () => unsubscribeTables();
+            return () => {
+                supabase.removeChannel(tableChannel);
+            };
         }
-    }, [user]);
+    }, [user, rid]);
 
     const [restaurantConfig, setRestaurantConfig] = useState<any>(null);
 
     useEffect(() => {
         if (!user || !rid) return;
         const fetchConfig = async () => {
-            const docRef = doc(db, 'restaurants', rid);
-            const snap = await getDoc(docRef);
-            if (snap.exists()) setRestaurantConfig(snap.data());
+            const { data } = await supabase.from('comercios').select('*').eq('id', rid).single();
+            if (data) setRestaurantConfig(data);
         };
         fetchConfig();
     }, [user, rid]);
@@ -198,16 +208,24 @@ export default function Orders() {
     useEffect(() => {
         if (!user || !showPOS || !rid) return;
         const fetchPosProducts = async () => {
-            const productsRef = collection(db, 'restaurants', rid, 'products');
-            const q = query(productsRef);
-            const snapshot = await getDocs(q);
+            const { data } = await supabase.from('products').select('*').eq('restaurant_id', rid);
             const items: any[] = [];
             const cats = new Set<string>();
-            snapshot.forEach(doc => {
-                const data = doc.data();
-                if (data.isActive !== false) {
-                    items.push({ id: doc.id, ...data });
-                    if (data.category) cats.add(data.category);
+            (data || []).forEach((p: any) => {
+                if (p.is_active !== false) {
+                    const prod = {
+                        id: p.id,
+                        name: p.name,
+                        price: Number(p.price) || 0,
+                        promoPrice: Number(p.promo_price) || 0,
+                        category: p.category_name || p.category || '',
+                        image: p.image_url || p.image || '',
+                        variants: p.variants || [],
+                        modifiers: p.modifiers || [],
+                        isActive: p.is_active
+                    };
+                    items.push(prod);
+                    if (prod.category) cats.add(prod.category);
                 }
             });
             setPosProducts(items);
@@ -215,73 +233,91 @@ export default function Orders() {
         };
 
         fetchPosProducts();
-    }, [user, showPOS]);
+    }, [user, showPOS, rid]);
+
+    const fetchOrders = async () => {
+        if (!rid) return;
+        try {
+            const { data, error } = await supabase
+                .from('orders')
+                .select('*')
+                .eq('restaurant_id', rid)
+                .order('created_at', { ascending: false });
+
+            if (error) {
+                console.error("Error fetching orders:", error);
+                return;
+            }
+
+            const items: Order[] = (data || []).map((o: any) => ({
+                id: o.id,
+                userId: o.user_id,
+                items: o.items || [],
+                total: Number(o.total) || 0,
+                subtotal: Number(o.subtotal) || Number(o.total) || 0,
+                deliveryFee: Number(o.delivery_fee) || 0,
+                tip: Number(o.tip) || 0,
+                status: o.status,
+                paymentStatus: o.payment_status || 'not_sold',
+                createdAt: o.created_at ? { toDate: () => new Date(o.created_at) } : { toDate: () => new Date() },
+                deliveryAddress: o.delivery_address || (typeof o.shipping_address === 'string' ? o.shipping_address : o.shipping_address?.address || ''),
+                paymentMethod: o.payment_method || '',
+                paymentReference: o.payment_reference || '',
+                paymentProofUrl: o.payment_proof_url || '',
+                userName: o.user_name || '',
+                source: o.source || '',
+                waiterId: o.waiter_id || '',
+                waiterName: o.waiter_name || '',
+                tableNumber: o.table_number || '',
+                orderType: o.order_type || '',
+                notes: o.notes || '',
+                clientDNI: o.client_dni || o.user_cedula || ''
+            }));
+
+            // Sound on new pending order
+            const hasNewPending = items.some(o => (o.status === 'pending' || o.status === 'pendiente_pago') && (!orders.find(prev => prev.id === o.id)));
+            if (hasNewPending && orders.length > 0) {
+                const audio = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3');
+                audio.play().catch(e => console.log("Audio play blocked"));
+            }
+
+            setOrders(items);
+        } catch (err) {
+            console.error("Error in fetchOrders:", err);
+        } finally {
+            setLoading(false);
+        }
+    };
 
     useEffect(() => {
         if (!user || !rid) return;
+        fetchOrders();
 
-        const ordersRef = collection(db, 'orders');
-        const q = query(
-            ordersRef,
-            where('restaurantId', '==', rid),
-            orderBy('createdAt', 'desc')
-        );
+        const channel = supabase
+            .channel(`orders_page_${rid}`)
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'orders', filter: `restaurant_id=eq.${rid}` }, () => {
+                fetchOrders();
+            })
+            .subscribe();
 
-        const setupSnapshot = (currentQuery: any, isFallback = false) => {
-            return onSnapshot(currentQuery, (snapshot: any) => {
-                const items: Order[] = [];
-                snapshot.forEach((doc) => {
-                    items.push({ id: doc.id, ...doc.data() } as Order);
-                });
-
-                // Manual sort if fallback
-                if (isFallback) {
-                    items.sort((a, b) => {
-                        const timeA = a.createdAt?.toMillis() || 0;
-                        const timeB = b.createdAt?.toMillis() || 0;
-                        return timeB - timeA;
-                    });
-                }
-
-                // Check for new pending orders for sound
-                const hasNewPending = items.some(o => (o.status === 'pending' || o.status === 'pendiente_pago') && (!orders.find(prev => prev.id === o.id)));
-                if (hasNewPending && orders.length > 0) {
-                    const audio = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3');
-                    audio.play().catch(e => console.log("Audio play blocked"));
-                }
-
-                setOrders(items);
-                setLoading(false);
-            }, (error: any) => {
-                console.error(`Error listening to orders ${isFallback ? '(fallback)' : '(primary)'}:`, error);
-                
-                // If primary query fails due to missing index, try fallback without sort
-                if (!isFallback && error.code === 'failed-precondition') {
-                    console.warn("Retrying without sort - likely missing index");
-                    const fallbackQ = query(
-                        ordersRef,
-                        where('restaurantId', '==', rid)
-                    );
-                    setupSnapshot(fallbackQ, true);
-                } else {
-                    setLoading(false);
-                }
-            });
+        return () => {
+            supabase.removeChannel(channel);
         };
-
-        const unsubscribe = setupSnapshot(q);
-
-        return () => unsubscribe();
-    }, [user, orders.length]);
+    }, [user, rid]);
 
     const handlePrintOrder = async (orderId: string, orderData: Order) => {
         if (!user || !rid) return;
         setPrintingOrderId(orderId);
         try {
-            // Obtener todas las impresoras configuradas
-            const printersRef = collection(db, 'restaurants', rid, 'printers');
-            const snapshot = await getDocs(printersRef);
-            const printers = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() as any }));
+            const { data: printersData } = await supabase.from('printers').select('*').eq('restaurant_id', rid);
+            const printers = (printersData || []).map((p: any) => ({
+                id: p.id,
+                name: p.name,
+                categories: p.categories || [],
+                isActive: p.is_active ?? true,
+                vendorId: p.vendor_id,
+                productId: p.product_id
+            }));
 
             // Promesas de impresión
             const printPromises: Promise<boolean>[] = [];
@@ -374,77 +410,42 @@ export default function Orders() {
         try {
             const updates: any = { 
                 status: 'preparing', 
-                paymentMethod: paymentMethod,
-                paymentStatus: (paymentMethod === 'Crédito (2x3)') ? 'pending' : 'sold'
+                payment_method: paymentMethod,
+                payment_status: (paymentMethod === 'Crédito (2x3)') ? 'pending' : 'sold',
+                updated_at: new Date().toISOString()
             };
 
             // Process optional Pago Móvil reference and screenshot
             if (paymentMethod === 'Pago Móvil') {
                 const refVal = referenceInputs[selectedOrderForAccept.id];
                 const file = proofUploadFiles[selectedOrderForAccept.id];
-                if (refVal) updates.paymentReference = refVal;
+                if (refVal) updates.payment_reference = refVal;
                 
                 if (file) {
-                    const storage = getStorage();
-                    const fileRef = ref(storage, `payment_proofs/${selectedOrderForAccept.id}_${Date.now()}`);
-                    await uploadBytes(fileRef, file);
-                    const url = await getDownloadURL(fileRef);
-                    updates.paymentProofUrl = url;
+                    const ext = file.name.split('.').pop() || 'png';
+                    const filePath = `payment_proofs/${selectedOrderForAccept.id}_${Date.now()}.${ext}`;
+                    const { error: upErr } = await supabase.storage.from('store_assets').upload(filePath, file, { upsert: true });
+                    if (!upErr) {
+                        const { data: urlData } = supabase.storage.from('store_assets').getPublicUrl(filePath);
+                        updates.payment_proof_url = urlData.publicUrl;
+                    }
                 }
             }
 
-            // 2x3 Logic
-            if (paymentMethod === 'Crédito (2x3)' && restaurantConfig?.hasTwoByThree) {
-                const total = selectedOrderForAccept.total;
-                const initialPct = restaurantConfig.twoByThreeInitial || 50;
-                const installmentsCount = restaurantConfig.twoByThreeInstallments || 2;
-                
-                const initialAmount = total * (initialPct / 100);
-                const remaining = total - initialAmount;
-                const installmentAmount = remaining / installmentsCount;
-
-                const installments = [];
-                // Cuota Inicial
-                installments.push({
-                    id: 'init_' + Date.now(),
-                    amount: initialAmount,
-                    status: 'pending',
-                    dueDate: new Date().toISOString(),
-                    type: 'initial'
-                });
-
-                // Cuotas restantes
-                let nextDate = new Date();
-                for (let i = 0; i < installmentsCount; i++) {
-                    nextDate = new Date(nextDate.getTime() + 15 * 24 * 60 * 60 * 1000); // 15 días (quincenal)
-                    installments.push({
-                        id: `inst_${i}_` + Date.now(),
-                        amount: installmentAmount,
-                        status: 'pending',
-                        dueDate: nextDate.toISOString(),
-                        type: 'installment',
-                        number: i + 1
-                    });
-                }
-                updates.installments = installments;
-                updates.isTwoByThree = true;
-            }
-
-            const orderRef = doc(db, 'orders', selectedOrderForAccept.id);
-            
             // Si el pago ya es exitoso (sold), otorgar puntos
-            if (updates.paymentStatus === 'sold' && selectedOrderForAccept.userId && selectedOrderForAccept.userId !== 'pos_customer') {
-                const pointsToAdd = selectedOrderForAccept.total * 2.5;
-                const userRef = doc(db, 'users', selectedOrderForAccept.userId);
-                await updateDoc(userRef, {
-                    points: increment(pointsToAdd),
-                    [`restaurantPoints.${rid}`]: increment(pointsToAdd)
-                });
-                updates.pointsCredited = true;
-                console.log(`Puntos otorgados al aceptar: ${pointsToAdd}`);
+            if (updates.payment_status === 'sold' && selectedOrderForAccept.userId && selectedOrderForAccept.userId !== 'pos_customer') {
+                const pointsToAdd = Math.round(selectedOrderForAccept.total * 2.5);
+                try {
+                    const { data: prof } = await supabase.from('profiles').select('points').eq('id', selectedOrderForAccept.userId).single();
+                    const currentPoints = prof?.points || 0;
+                    await supabase.from('profiles').update({ points: currentPoints + pointsToAdd }).eq('id', selectedOrderForAccept.userId);
+                    updates.points_credited = true;
+                } catch (pErr) {
+                    console.warn("Points update note:", pErr);
+                }
             }
 
-            await updateDoc(orderRef, updates);
+            await supabase.from('orders').update(updates).eq('id', selectedOrderForAccept.id);
             
             const orderTemp = { ...selectedOrderForAccept, ...updates };
             
@@ -453,9 +454,9 @@ export default function Orders() {
             setAcceptModalOpen(false);
             setSelectedOrderForAccept(null);
             
-            // Mostrar modal de vista previa de comanda en lugar de imprimir directo
+            // Mostrar modal de vista previa de comanda
             setSelectedOrderForComanda(orderTemp as Order);
-            
+            fetchOrders();
         } catch (error) {
             console.error("Error setting preparing status:", error);
             alert("Error al procesar el pedido.");
@@ -468,16 +469,12 @@ export default function Orders() {
         if (!selectedOrderForDispatch) return;
         setIsAccepting(true);
         try {
-            const updates: any = {};
-            if (dispatchType === 'platform') {
-                updates.status = 'buscando_piloto';
-                // Trigger backend search
-            } else {
-                updates.status = 'delivering';
-            }
+            const updates: any = {
+                status: dispatchType === 'platform' ? 'buscando_piloto' : 'delivering',
+                updated_at: new Date().toISOString()
+            };
 
-            const orderRef = doc(db, 'orders', selectedOrderForDispatch.id);
-            await updateDoc(orderRef, updates);
+            await supabase.from('orders').update(updates).eq('id', selectedOrderForDispatch.id);
             
             if (dispatchType === 'platform') {
                 setRadarOrderId(selectedOrderForDispatch.id);
@@ -489,6 +486,7 @@ export default function Orders() {
             setSelectedOrderForDispatch(null);
             setDispatchType('own');
             setSelectedDriver('');
+            fetchOrders();
         } catch (error) {
             console.error("Error setting delivering status:", error);
             alert("Error al despachar.");
@@ -505,18 +503,20 @@ export default function Orders() {
 
         setIsUploadingProof(prev => ({...prev, [orderId]: true}));
         try {
-            const updates: any = {};
-            if (refVal) updates.paymentReference = refVal;
+            const updates: any = { updated_at: new Date().toISOString() };
+            if (refVal) updates.payment_reference = refVal;
             
             if (file) {
-                const storage = getStorage();
-                const fileRef = ref(storage, `payment_proofs/${orderId}_${Date.now()}`);
-                await uploadBytes(fileRef, file);
-                const url = await getDownloadURL(fileRef);
-                updates.paymentProofUrl = url;
+                const ext = file.name.split('.').pop() || 'png';
+                const filePath = `payment_proofs/${orderId}_${Date.now()}.${ext}`;
+                const { error: upErr } = await supabase.storage.from('store_assets').upload(filePath, file, { upsert: true });
+                if (!upErr) {
+                    const { data: urlData } = supabase.storage.from('store_assets').getPublicUrl(filePath);
+                    updates.payment_proof_url = urlData.publicUrl;
+                }
             }
             
-            await updateDoc(doc(db, 'orders', orderId), updates);
+            await supabase.from('orders').update(updates).eq('id', orderId);
             
             setReferenceInputs(prev => ({...prev, [orderId]: ''}));
             setProofUploadFiles(prev => {
@@ -524,6 +524,7 @@ export default function Orders() {
                 delete next[orderId];
                 return next;
             });
+            fetchOrders();
             alert("Comprobante guardado exitosamente");
         } catch(e) {
             console.error(e);
@@ -541,12 +542,15 @@ export default function Orders() {
             const fee = (selectedOrderForEdit as any).deliveryFee || 0;
             const updates = {
                 items: editOrderItems,
+                subtotal: newTotal,
                 total: newTotal + fee,
-                orderNote: editOrderNote
+                notes: editOrderNote,
+                updated_at: new Date().toISOString()
             };
-            await updateDoc(doc(db, 'orders', selectedOrderForEdit.id), updates);
+            await supabase.from('orders').update(updates).eq('id', selectedOrderForEdit.id);
             setEditModalOpen(false);
             setSelectedOrderForEdit(null);
+            fetchOrders();
         } catch(e) {
             console.error(e);
             alert("Error al editar");
@@ -619,16 +623,13 @@ export default function Orders() {
 
     const handleConfirmStock = async (orderId: string) => {
         try {
-            const orderRef = doc(db, 'orders', orderId);
             const missing = missingItemsByOrder[orderId] || [];
             
             if (missing.length > 0) {
-                // Hay items faltantes, pasar a action_required
-                await updateDoc(orderRef, { 
+                await supabase.from('orders').update({ 
                     status: 'action_required', 
-                    missingItems: missing,
-                    stockConfirmed: true 
-                });
+                    updated_at: new Date().toISOString()
+                }).eq('id', orderId);
                 
                 const orderTemp = orders.find(o => o.id === orderId);
                 const missingNames = orderTemp?.items
@@ -636,30 +637,27 @@ export default function Orders() {
                     .map(i => i.name)
                     .join(', ');
 
-                await addDoc(collection(db, `orders/${orderId}/messages`), {
+                await supabase.from('messages').insert({
+                    order_id: orderId,
                     text: `⚠️ *Atención:* Lamentablemente no contamos con stock de: *${missingNames}*. Por favor, selecciona una opción en tu pantalla para continuar con el pedido.`,
-                    senderId: user.uid,
-                    senderName: 'Restaurante',
-                    senderRole: 'restaurant',
-                    createdAt: serverTimestamp()
+                    sender_id: user?.uid,
+                    sender_name: 'Restaurante',
+                    sender_role: 'restaurant',
+                    created_at: new Date().toISOString()
                 });
                 
                 toast.success("Pedido marcado con falta de stock. El cliente ha sido notificado.");
             } else {
-                // Stock completo, permitir pago
-                await updateDoc(orderRef, { 
+                await supabase.from('orders').update({ 
                     status: 'awaiting_payment',
-                    stockConfirmed: true 
-                });
+                    updated_at: new Date().toISOString()
+                }).eq('id', orderId);
 
                 // Enviar mensaje de pago
-                const restaurantRef = doc(db, 'restaurants', rid);
-                const restaurantSnap = await getDoc(restaurantRef);
+                const { data: restaurantData } = await supabase.from('comercios').select('*').eq('id', rid).single();
                 
-                if (restaurantSnap.exists()) {
-                    const restaurantData = restaurantSnap.data();
-                    const methods = restaurantData.paymentMethods || [];
-                    
+                if (restaurantData) {
+                    const methods = restaurantData.payment_methods || [];
                     let paymentMsg = "✅ *Stock confirmado.* Ya puedes realizar tu pago:\n\n";
                     if (methods.length > 0) {
                         methods.forEach((m: any) => {
@@ -670,16 +668,18 @@ export default function Orders() {
                         paymentMsg += "Por favor contacta con el restaurante para los métodos de pago.";
                     }
 
-                    await addDoc(collection(db, `orders/${orderId}/messages`), {
+                    await supabase.from('messages').insert({
+                        order_id: orderId,
                         text: paymentMsg,
-                        senderId: user.uid,
-                        senderName: 'Restaurante',
-                        senderRole: 'restaurant',
-                        createdAt: serverTimestamp()
+                        sender_id: user?.uid,
+                        sender_name: 'Restaurante',
+                        sender_role: 'restaurant',
+                        created_at: new Date().toISOString()
                     });
                 }
                 toast.success("Stock confirmado. El cliente ahora puede pagar.");
             }
+            fetchOrders();
         } catch (error) {
             console.error("Error confirming stock:", error);
             toast.error("Error al confirmar stock");
@@ -698,30 +698,27 @@ export default function Orders() {
         if (!selectedOrderForVerify) return;
         setIsVerifying(true);
         try {
-            const orderRef = doc(db, 'orders', selectedOrderForVerify.id);
-            
-            // Verificación de Pago de RESTAURANTE (La del delivery se hace en C-Panel)
-            const nextStatus = (selectedOrderForVerify.source !== 'waiter' && selectedOrderForVerify.deliveryAddress !== 'PickUp' && selectedOrderForVerify.type !== 'takeout') 
+            const nextStatus = (selectedOrderForVerify.source !== 'waiter' && selectedOrderForVerify.deliveryAddress !== 'PickUp' && (selectedOrderForVerify as any).type !== 'takeout') 
                 ? 'awaiting_delivery_payment' 
                 : 'preparing';
 
-            await updateDoc(orderRef, { 
+            await supabase.from('orders').update({ 
                 status: nextStatus,
-                paymentStatus: 'paid',
-                restaurantPaymentStatus: 'paid',
-                restaurantPaid: true, // Flag para UI de "Pago Acreditado"
-                verifiedAt: serverTimestamp()
-            });
+                payment_status: 'paid',
+                updated_at: new Date().toISOString()
+            }).eq('id', selectedOrderForVerify.id);
 
             // Otorgar puntos por consumo (2.5 por cada $) si no se han otorgado
             if (selectedOrderForVerify.userId && selectedOrderForVerify.userId !== 'pos_customer' && !(selectedOrderForVerify as any).pointsCredited) {
-                const pointsToAdd = selectedOrderForVerify.total * 2.5;
-                const userRef = doc(db, 'users', selectedOrderForVerify.userId);
-                await updateDoc(userRef, {
-                    points: increment(pointsToAdd),
-                    [`restaurantPoints.${rid}`]: increment(pointsToAdd)
-                });
-                await updateDoc(orderRef, { pointsCredited: true });
+                const pointsToAdd = Math.round(selectedOrderForVerify.total * 2.5);
+                try {
+                    const { data: prof } = await supabase.from('profiles').select('points').eq('id', selectedOrderForVerify.userId).single();
+                    const currentPoints = prof?.points || 0;
+                    await supabase.from('profiles').update({ points: currentPoints + pointsToAdd }).eq('id', selectedOrderForVerify.userId);
+                    await supabase.from('orders').update({ points_credited: true }).eq('id', selectedOrderForVerify.id);
+                } catch (pErr) {
+                    console.warn("Points note:", pErr);
+                }
             }
 
             if (nextStatus === 'preparing') {
@@ -729,10 +726,9 @@ export default function Orders() {
             }
 
             toast.success("Pago de restaurante acreditado.");
-
             setVerificationSuccess(true);
+            fetchOrders();
             
-            // Cerrar modal automáticamente tras 2 segundos
             setTimeout(() => {
                 setVerifyModalOpen(false);
                 setSelectedOrderForVerify(null);
@@ -749,46 +745,40 @@ export default function Orders() {
 
     const updateStatus = async (orderId: string, newStatus: string, paymentStatus?: string) => {
         try {
-            const orderRef = doc(db, 'orders', orderId);
             const orderTemp = orders.find(o => o.id === orderId);
 
-            // Si pasa a preprando, imprimimos los tickets correspondientes
             if (newStatus === 'preparing' && orderTemp) {
                 await handlePrintOrder(orderId, orderTemp);
             }
 
-            const updates: any = { status: newStatus };
+            const updates: any = { status: newStatus, updated_at: new Date().toISOString() };
             if (paymentStatus) {
-                updates.paymentStatus = paymentStatus;
+                updates.payment_status = paymentStatus;
 
-                // Si la venta es exitosa, se otorgan puntos al usuario (2.5 puntos por cada $)
                 if (paymentStatus === 'sold' && orderTemp?.userId && orderTemp.userId !== 'pos_customer' && !(orderTemp as any).pointsCredited) {
                     try {
-                        const pointsToAdd = orderTemp.total * 2.5;
-                        const userRef = doc(db, 'users', orderTemp.userId);
-                        await updateDoc(userRef, {
-                            points: increment(pointsToAdd),
-                            [`restaurantPoints.${rid}`]: increment(pointsToAdd)
-                        });
-                        updates.pointsCredited = true;
-                        console.log(`Se sumaron ${pointsToAdd} puntos al usuario ${orderTemp.userId}`);
+                        const pointsToAdd = Math.round(orderTemp.total * 2.5);
+                        const { data: prof } = await supabase.from('profiles').select('points').eq('id', orderTemp.userId).single();
+                        const currentPoints = prof?.points || 0;
+                        await supabase.from('profiles').update({ points: currentPoints + pointsToAdd }).eq('id', orderTemp.userId);
+                        updates.points_credited = true;
                     } catch (pointsError) {
                         console.error("Error al sumar puntos al usuario:", pointsError);
                     }
                 }
             }
-            await updateDoc(orderRef, updates);
+            await supabase.from('orders').update(updates).eq('id', orderId);
 
             if (newStatus === 'rejected') vibrateWarning();
             else vibrateSelection();
-            
+            fetchOrders();
         } catch (error) {
             console.error("Error updating order status:", error);
         }
     };
 
     const handleCreatePOSOrder = async () => {
-        if (!user) return;
+        if (!user || !rid) return;
         if (posCart.length === 0) return alert("El carrito está vacío");
         if (posOrderType === 'delivery' && !posDeliveryAddress) return alert("Ingresa la dirección de envío");
 
@@ -806,61 +796,57 @@ export default function Orders() {
             const total = subtotal + posDeliveryFee;
 
             let deliveryAddressStr = posOrderType === 'local' ? 'Consumo Local' : posOrderType === 'takeout' ? 'Para Llevar' : posDeliveryAddress;
-
             let targetOrderRefId = '';
 
             if (posEditingOrderId) {
-                // Update existing order
-                const orderRef = doc(db, 'orders', posEditingOrderId);
-                await updateDoc(orderRef, {
+                const orderPayload: any = {
                     items,
+                    subtotal,
                     total,
-                    userName: posClientName || 'Cliente en mostrador',
-                    clientId: posClientDNI || '',
-                    deliveryAddress: deliveryAddressStr,
-                    deliveryFee: posDeliveryFee,
-                    waiterId: selectedWaiter?.id || '',
-                    waiterName: selectedWaiter?.name || '',
-                    tableId: posOrderType === 'local' ? (selectedTable?.id || '') : '',
-                    tableNumber: posOrderType === 'local' ? (selectedTable?.number || '') : '',
-                    updatedAt: serverTimestamp()
-                });
+                    user_name: posClientName || 'Cliente en mostrador',
+                    client_dni: posClientDNI || '',
+                    delivery_address: deliveryAddressStr,
+                    delivery_fee: posDeliveryFee,
+                    waiter_id: selectedWaiter?.id || '',
+                    waiter_name: selectedWaiter?.name || '',
+                    table_number: posOrderType === 'local' ? (selectedTable?.number || '') : '',
+                    updated_at: new Date().toISOString()
+                };
+                await supabase.from('orders').update(orderPayload).eq('id', posEditingOrderId);
                 targetOrderRefId = posEditingOrderId;
                 toast.success("Pedido actualizado");
             } else {
-                // Create new order
-                const newOrderRef = await addDoc(collection(db, 'orders'), {
-                    restaurantId: rid,
-                    userId: 'pos_customer',
-                    userName: posClientName || 'Cliente en mostrador',
-                    clientId: posClientDNI || '',
+                const newOrderPayload: any = {
+                    restaurant_id: rid,
+                    user_id: null,
+                    user_name: posClientName || 'Cliente en mostrador',
+                    client_dni: posClientDNI || '',
                     items,
+                    subtotal,
                     total,
                     status: 'preparing',
-                    paymentStatus: posOrderType === 'local' ? 'paid' : 'sold', // Local needs to stay active for table status
-                    createdAt: serverTimestamp(),
-                    deliveryAddress: deliveryAddressStr,
+                    payment_status: posOrderType === 'local' ? 'paid' : 'sold',
+                    delivery_address: deliveryAddressStr,
                     source: 'pos',
-                    type: posOrderType,
-                    deliveryFee: posDeliveryFee,
-                    waiterId: selectedWaiter?.id || '',
-                    waiterName: selectedWaiter?.name || '',
-                    tableId: posOrderType === 'local' ? (selectedTable?.id || '') : '',
-                    tableNumber: posOrderType === 'local' ? (selectedTable?.number || '') : '',
-                });
-                targetOrderRefId = newOrderRef.id;
+                    order_type: posOrderType,
+                    delivery_fee: posDeliveryFee,
+                    waiter_id: selectedWaiter?.id || '',
+                    waiter_name: selectedWaiter?.name || '',
+                    table_number: posOrderType === 'local' ? (selectedTable?.number || '') : '',
+                    created_at: new Date().toISOString()
+                };
+                const { data: insData, error: insErr } = await supabase.from('orders').insert(newOrderPayload).select().single();
+                if (insErr) throw insErr;
+                targetOrderRefId = insData?.id || '';
                 toast.success("Pedido creado");
             }
 
             // Update Table Status if local
             if (posOrderType === 'local' && selectedTable) {
-                const tableRef = doc(db, 'restaurants', rid, 'tables', selectedTable.id);
-                await updateDoc(tableRef, {
+                await supabase.from('restaurant_tables').update({
                     status: 'occupied',
-                    lastOrderId: targetOrderRefId,
-                    waiterId: selectedWaiter?.id || '',
-                    waiterName: selectedWaiter?.name || ''
-                });
+                    current_order_id: targetOrderRefId
+                }).eq('id', selectedTable.id);
             }
 
             const printData = {
@@ -890,9 +876,8 @@ export default function Orders() {
             setWaiterSearch('');
             setTableSearch('');
 
-            // Mostramos la vista previa antes de mandar a la impresora
             setSelectedOrderForComanda(printData);
-
+            fetchOrders();
         } catch (error) {
             console.error("Error creando orden POS:", error);
             alert("Error al procesar la venta");
@@ -976,26 +961,23 @@ export default function Orders() {
     const [showTableModal, setShowTableModal] = useState(false);
 
     const handleAssignWaiter = async (tableId: string, waiter: { id: string, name: string } | null) => {
-        if (!user) return;
+        if (!user || !rid) return;
         try {
-            const tableRef = doc(db, 'restaurants', rid as string, 'tables', tableId);
-            await updateDoc(tableRef, {
-                waiterId: waiter ? waiter.id : '',
-                waiterName: waiter ? waiter.name : '',
-                status: waiter ? 'occupied' : 'free'
-            });
+            await supabase.from('restaurant_tables').update({
+                status: waiter ? 'occupied' : 'available'
+            }).eq('id', tableId);
 
-            // Si hay una orden activa en esta mesa, actualizarla también
-            const activeOrder = orders.find(o => o.tableId === tableId && (o.status === 'occupied' || o.status === 'calling' || o.status === 'preparing'));
+            const activeOrder = orders.find(o => (o as any).tableId === tableId && (o.status === 'occupied' || o.status === 'calling' || o.status === 'preparing'));
             if (activeOrder) {
-                await updateDoc(doc(db, 'orders', activeOrder.id), {
-                    waiterId: waiter ? waiter.id : '',
-                    waiterName: waiter ? waiter.name : ''
-                });
+                await supabase.from('orders').update({
+                    waiter_id: waiter ? waiter.id : '',
+                    waiter_name: waiter ? waiter.name : ''
+                }).eq('id', activeOrder.id);
             }
 
             setShowTableModal(false);
             setSelectedTable(null);
+            fetchOrders();
         } catch (error) {
             console.error("Error assigning waiter:", error);
             alert("Error al asignar mesero");

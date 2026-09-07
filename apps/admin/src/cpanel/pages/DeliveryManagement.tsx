@@ -1,7 +1,4 @@
 import React, { useState, useEffect } from 'react';
-import { collection, query, getDocs, doc, updateDoc, onSnapshot, where, writeBatch, setDoc, deleteDoc, orderBy, limit } from 'firebase/firestore';
-import { db, storage } from '../../lib/firebase';
-import { ref, deleteObject } from 'firebase/storage';
 import { DeliveryDriver } from '../../lib/delivery-service';
 import { driversApi } from '../../lib/api';
 import { supabase } from '../../lib/supabase';
@@ -24,18 +21,34 @@ export default function DeliveryManagement() {
     useEffect(() => {
         if (activeTab === 'history') {
             setLoadingHistory(true);
-            const q = query(
-                collection(db, 'orders'),
-                where('status', '==', 'completed'),
-                orderBy('createdAt', 'desc'),
-                limit(100)
-            );
-            const unsubscribe = onSnapshot(q, (snapshot) => {
-                const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-                setCompletedOrders(data);
+            const fetchHistory = async () => {
+                const { data, error } = await supabase
+                    .from('orders')
+                    .select('*')
+                    .eq('status', 'completed')
+                    .order('created_at', { ascending: false })
+                    .limit(100);
+                if (!error && data) {
+                    setCompletedOrders(data.map(d => ({
+                        ...d,
+                        createdAt: d.created_at,
+                        deliveryDriverId: d.delivery_driver_id || d.deliveryDriverId,
+                        deliveryFee: d.delivery_fee || d.deliveryFee,
+                        driverPayout: d.driver_payout || d.driverPayout,
+                        deliveryPaid: d.delivery_paid !== undefined ? d.delivery_paid : d.deliveryPaid
+                    })));
+                }
                 setLoadingHistory(false);
-            });
-            return () => unsubscribe();
+            };
+            fetchHistory();
+            const ch = supabase.channel('completed_orders_history')
+                .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, () => {
+                    fetchHistory();
+                })
+                .subscribe();
+            return () => {
+                supabase.removeChannel(ch);
+            };
         }
     }, [activeTab]);
 
@@ -118,35 +131,58 @@ _Enviado desde Deliexpress App_`
             })
             .subscribe();
 
-        const qUpdates = query(collection(db, 'delivery_update_requests'), where('status', '==', 'pending'));
-        const unsubscribeUpdates = onSnapshot(qUpdates, (snapshot) => {
-            const data = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
-            setUpdateRequests(data);
-        });
+        const fetchUpdates = async () => {
+            const { data } = await supabase
+                .from('delivery_update_requests')
+                .select('*')
+                .eq('status', 'pending');
+            if (data) {
+                setUpdateRequests(data.map(d => ({
+                    ...d,
+                    driverId: d.driver_id || d.driverId,
+                    driverName: d.driver_name || d.driverName,
+                    newData: d.new_data || d.newData
+                })));
+            }
+        };
+        fetchUpdates();
 
-        const qVerifications = query(collection(db, 'orders'), where('status', '==', 'verificando_pago_delivery'));
-        const unsubscribeVerifications = onSnapshot(qVerifications, (snapshot) => {
-            const data = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
-            setVerifyingOrders(data);
-        });
+        const fetchVerifications = async () => {
+            const { data } = await supabase
+                .from('orders')
+                .select('*')
+                .eq('status', 'verificando_pago_delivery');
+            if (data) {
+                setVerifyingOrders(data);
+            }
+        };
+        fetchVerifications();
 
-        const qSettings = doc(db, 'delivery_settings', 'settings');
-        const unsubscribeSettings = onSnapshot(qSettings, (docSnap) => {
-            if (docSnap.exists()) {
-                const data = docSnap.data();
+        const fetchSettings = async () => {
+            const { data } = await supabase
+                .from('app_settings')
+                .select('*')
+                .eq('id', 'delivery_settings')
+                .maybeSingle();
+            if (data && data.data) {
                 setSettings((prev: any) => ({
                     ...prev,
-                    ...data,
-                    transportRates: data.transportRates || prev.transportRates
+                    ...data.data,
+                    transportRates: data.data.transportRates || prev.transportRates
                 }));
             }
-        });
+        };
+        fetchSettings();
+
+        const subChannel = supabase.channel('admin_delivery_mgmt')
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'delivery_update_requests' }, () => fetchUpdates())
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, () => fetchVerifications())
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'app_settings' }, () => fetchSettings())
+            .subscribe();
 
         return () => {
             supabase.removeChannel(driversChannel);
-            unsubscribeUpdates();
-            unsubscribeSettings();
-            unsubscribeVerifications();
+            supabase.removeChannel(subChannel);
         };
     }, []);
 
@@ -167,14 +203,15 @@ _Enviado desde Deliexpress App_`
                     const urls = [
                         driver.documents.selfieUrl,
                         driver.documents.vehicleUrl,
-                        (driver.documents as any).vehicleImageUrl, // Checking both for consistency
+                        (driver.documents as any).vehicleImageUrl,
                         driver.documents.licenseUrl
                     ].filter(Boolean);
 
                     for (const url of urls) {
                         try {
-                            const fileRef = ref(storage, url);
-                            await deleteObject(fileRef);
+                            const path = url.split('/documents/')[1] || url.split('/store_assets/')[1] || url;
+                            await supabase.storage.from('store_assets').remove([path]);
+                            await supabase.storage.from('documents').remove([path]);
                         } catch (err) {
                             console.error("Error deleting file during rejection:", url, err);
                         }
@@ -182,24 +219,7 @@ _Enviado desde Deliexpress App_`
                 }
 
                 // Delete update requests for this driver
-                const qUpdates = query(collection(db, 'delivery_update_requests'), where('driverId', '==', id));
-                const updateSnaps = await getDocs(qUpdates);
-                for (const docUpd of updateSnaps.docs) {
-                    // Try to delete files in update request too if they exist
-                    const updData = docUpd.data();
-                    if (updData.newData && updData.newData.documents) {
-                        const updUrls = [
-                            updData.newData.documents.selfieUrl,
-                            updData.newData.documents.vehicleUrl,
-                            updData.newData.documents.licenseUrl
-                        ].filter(Boolean);
-                        for (const u of updUrls) {
-                            try { await deleteObject(ref(storage, u)); } catch (e) { }
-                        }
-                    }
-                    await deleteDoc(docUpd.ref);
-                }
-
+                await supabase.from('delivery_update_requests').delete().eq('driver_id', id);
                 await supabase.from('drivers').delete().eq('id', id);
                 alert("Piloto rechazado. Se eliminó el perfil, solicitudes de actualización y documentos correctamente.");
             } else {
@@ -229,21 +249,17 @@ _Enviado desde Deliexpress App_`
     const handleApproveUpdateRequest = async (request: any) => {
         if (!window.confirm(`¿Aprobar actualización de datos para ${request.driverName}?`)) return;
         try {
-            const batch = writeBatch(db);
             const driverUpdate: any = {};
-            if (request.newData.cedula) driverUpdate.cedula = request.newData.cedula;
-            if (request.newData.vehicleType) driverUpdate.vehicle_type = request.newData.vehicleType;
-            if (request.newData.vehiclePlate) driverUpdate.vehicle_plate = request.newData.vehiclePlate;
-            if (request.newData.documents) driverUpdate.documents = request.newData.documents;
+            if (request.newData?.cedula) driverUpdate.cedula = request.newData.cedula;
+            if (request.newData?.vehicleType) driverUpdate.vehicle_type = request.newData.vehicleType;
+            if (request.newData?.vehiclePlate) driverUpdate.vehicle_plate = request.newData.vehiclePlate;
+            if (request.newData?.documents) driverUpdate.documents = request.newData.documents;
 
             if (Object.keys(driverUpdate).length > 0) {
                 await supabase.from('drivers').update(driverUpdate).eq('id', request.driverId);
             }
 
-            const requestRef = doc(db, 'delivery_update_requests', request.id);
-            batch.update(requestRef, { status: 'approved' });
-
-            await batch.commit();
+            await supabase.from('delivery_update_requests').update({ status: 'approved' }).eq('id', request.id);
             alert('Datos actualizados correctamente.');
         } catch (error) {
             console.error(error);
@@ -254,7 +270,7 @@ _Enviado desde Deliexpress App_`
     const handleRejectUpdateRequest = async (requestId: string) => {
         if (!window.confirm('¿Rechazar esta solicitud de actualización?')) return;
         try {
-            await updateDoc(doc(db, 'delivery_update_requests', requestId), { status: 'rejected' });
+            await supabase.from('delivery_update_requests').update({ status: 'rejected' }).eq('id', requestId);
         } catch (error) {
             console.error(error);
         }
@@ -263,10 +279,11 @@ _Enviado desde Deliexpress App_`
     const handleApproveDeliveryPayment = async (orderId: string) => {
         if (!window.confirm('¿Aprobar el pago de este delivery? La orden pasará a estado de búsqueda de piloto.')) return;
         try {
-            await updateDoc(doc(db, 'orders', orderId), {
+            await supabase.from('orders').update({
                 status: 'buscando_piloto',
+                delivery_payment_status: 'approved',
                 deliveryPaymentStatus: 'approved'
-            });
+            }).eq('id', orderId);
             alert('Pago aprobado. Buscando pilotos.');
         } catch (error) {
             console.error('Error processing delivery payment', error);
@@ -277,12 +294,15 @@ _Enviado desde Deliexpress App_`
     const handleRejectDeliveryPayment = async (orderId: string) => {
         if (!window.confirm('¿Rechazar este pago? La orden regresará a estado de pago pendiente.')) return;
         try {
-            await updateDoc(doc(db, 'orders', orderId), {
+            await supabase.from('orders').update({
                 status: 'pendiente_pago',
+                delivery_payment_status: 'rejected',
                 deliveryPaymentStatus: 'rejected',
+                delivery_payment_ref: null,
                 deliveryPaymentRef: null,
+                delivery_payment_image: null,
                 deliveryPaymentImage: null
-            });
+            }).eq('id', orderId);
             alert('Pago rechazado.');
         } catch (error) {
             console.error('Error rejecting delivery payment', error);
@@ -295,17 +315,16 @@ _Enviado desde Deliexpress App_`
         setDriverPendingBalance({ total: 0, count: 0 }); // Reset while loading
 
         try {
-            const q = query(
-                collection(db, 'orders'),
-                where('deliveryDriverId', '==', driver.id),
-                where('status', '==', 'completed')
-            );
-            const snapshot = await getDocs(q);
-            const pending = snapshot.docs.filter(doc => !doc.data().deliveryPaid);
+            const { data: snapshot } = await supabase
+                .from('orders')
+                .select('*')
+                .eq('delivery_driver_id', driver.id)
+                .eq('status', 'completed');
 
-            const total = pending.reduce((sum, doc) => {
-                const data = doc.data();
-                return sum + (data.driverPayout || (data.deliveryFee ? data.deliveryFee * 0.8 : 0));
+            const pending = (snapshot || []).filter(doc => !doc.delivery_paid && !doc.deliveryPaid);
+
+            const total = pending.reduce((sum: number, doc: any) => {
+                return sum + (doc.driver_payout || doc.driverPayout || ((doc.delivery_fee || doc.deliveryFee) ? (doc.delivery_fee || doc.deliveryFee) * 0.8 : 0));
             }, 0);
             setDriverPendingBalance({ total, count: pending.length });
         } catch (error) {
@@ -319,21 +338,12 @@ _Enviado desde Deliexpress App_`
 
         setPayingDriver(true);
         try {
-            // Find all pending orders for this driver again just to be safe
-            const q = query(
-                collection(db, 'orders'),
-                where('deliveryDriverId', '==', selectedDriverFinance.id),
-                where('status', '==', 'completed')
-            );
-            const snapshot = await getDocs(q);
-            const pendingDocs = snapshot.docs.filter(doc => !doc.data().deliveryPaid);
+            await supabase
+                .from('orders')
+                .update({ delivery_paid: true, deliveryPaid: true })
+                .eq('delivery_driver_id', selectedDriverFinance.id)
+                .eq('status', 'completed');
 
-            const batch = writeBatch(db);
-            pendingDocs.forEach(d => {
-                batch.update(d.ref, { deliveryPaid: true });
-            });
-
-            await batch.commit();
             alert('¡Pago registrado con éxito! El historial del piloto ha sido actualizado.');
             setSelectedDriverFinance(null);
         } catch (error) {
@@ -347,7 +357,14 @@ _Enviado desde Deliexpress App_`
     const handleSaveSettings = async () => {
         setSavingSettings(true);
         try {
-            await setDoc(doc(db, 'delivery_settings', 'settings'), settings, { merge: true });
+            const { error } = await supabase
+                .from('app_settings')
+                .upsert({
+                    id: 'delivery_settings',
+                    data: settings,
+                    updated_at: new Date().toISOString()
+                });
+            if (error) throw error;
             alert('Configuraciones guardadas correctamente.');
         } catch (error) {
             console.error("Error saving settings:", error);

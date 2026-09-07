@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { collection, query, orderBy, onSnapshot, addDoc, serverTimestamp } from 'firebase/firestore';
-import { db } from '../lib/firebase';
+import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import { Send, ArrowLeft } from 'lucide-react';
 
@@ -18,28 +17,59 @@ export default function RideChat({ requestId, onClose, readOnly = false }: ChatP
     const [errorMsg, setErrorMsg] = useState('');
     const messagesEndRef = useRef<HTMLDivElement>(null);
 
+    const chatPath = `transport_requests/${requestId}`;
+
     useEffect(() => {
         if (!requestId) return;
 
-        const q = query(
-            collection(db, `transport_requests/${requestId}/messages`),
-            orderBy('createdAt', 'asc')
-        );
+        const fetchMessages = async () => {
+            try {
+                const { data, error } = await supabase
+                    .from('messages')
+                    .select('*')
+                    .or(`chat_path.eq.${chatPath},order_id.eq.${requestId}`)
+                    .order('created_at', { ascending: true });
 
-        const unsubscribe = onSnapshot(q, (snapshot) => {
-            const msgs = snapshot.docs.map(doc => ({
-                id: doc.id,
-                ...doc.data()
-            }));
-            setMessages(msgs);
-            setErrorMsg('');
-        }, (err) => {
-            console.error("Error fetching messages:", err);
-            setErrorMsg('Permiso denegado al leer mensajes.');
-        });
+                if (error) throw error;
+                if (data) {
+                    setMessages(data.map((d: any) => {
+                        const cDate = d.created_at ? new Date(d.created_at) : new Date();
+                        return {
+                            id: d.id,
+                            text: d.text,
+                            senderId: d.sender_id || d.senderId,
+                            createdAt: {
+                                toDate: () => cDate,
+                                toLocaleTimeString: (...args: any[]) => cDate.toLocaleTimeString(...args)
+                            }
+                        };
+                    }));
+                    setErrorMsg('');
+                }
+            } catch (err: any) {
+                console.error("Error fetching messages:", err);
+                setErrorMsg('Error al leer mensajes.');
+            }
+        };
 
-        return () => unsubscribe();
-    }, [requestId]);
+        fetchMessages();
+
+        const channel = supabase
+            .channel(`ride_chat_${requestId}`)
+            .on('postgres_changes', {
+                event: '*',
+                schema: 'public',
+                table: 'messages',
+                filter: `chat_path=eq.${chatPath}`
+            }, () => {
+                fetchMessages();
+            })
+            .subscribe();
+
+        return () => {
+            supabase.removeChannel(channel);
+        };
+    }, [requestId, chatPath]);
 
     useEffect(() => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -52,11 +82,17 @@ export default function RideChat({ requestId, onClose, readOnly = false }: ChatP
         setSending(true);
         setErrorMsg('');
         try {
-            await addDoc(collection(db, `transport_requests/${requestId}/messages`), {
-                text: newMessage,
-                senderId: user.uid,
-                createdAt: serverTimestamp()
+            const { error } = await supabase.from('messages').insert({
+                chat_path: chatPath,
+                order_id: requestId,
+                text: newMessage.trim(),
+                sender_id: user.uid,
+                sender_name: user.displayName || 'Piloto',
+                sender_role: 'delivery',
+                created_at: new Date().toISOString()
             });
+
+            if (error) throw error;
             setNewMessage('');
         } catch (error: any) {
             console.error("Error sending message:", error);

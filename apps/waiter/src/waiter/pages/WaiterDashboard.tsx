@@ -5,8 +5,8 @@ import { motion, AnimatePresence } from 'motion/react';
 import TableOptionsModal from '../components/TableOptionsModal';
 import MergeTransferModal from '../components/MergeTransferModal';
 import SplitBillModal from '../components/SplitBillModal';
-import { collection, query, onSnapshot, orderBy, where, doc, updateDoc, writeBatch, serverTimestamp, getDoc, addDoc } from 'firebase/firestore';
-import { db } from '../../lib/firebase';
+import { supabase } from '../../lib/supabase';
+import { UN2X3_LOGO } from '../../lib/env';
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 
@@ -16,6 +16,8 @@ interface Table {
     status: 'available' | 'occupied' | 'calling' | 'billing';
     timeLabel?: string;
     derivedStatus?: 'available' | 'occupied' | 'calling' | 'billing';
+    waiterId?: string;
+    waiterName?: string;
 }
 
 interface TableCardProps {
@@ -79,55 +81,131 @@ export default function WaiterDashboard() {
         };
         document.addEventListener("mousedown", handleClickOutside);
 
-        const tablesQ = query(
-            collection(db, 'restaurants', restaurantId, 'tables')
-        );
+        const fetchTables = async () => {
+            try {
+                const { data, error } = await supabase
+                    .from('restaurant_tables')
+                    .select('*')
+                    .eq('restaurant_id', restaurantId);
 
-        const unsubscribeTables = onSnapshot(tablesQ, (snapshot) => {
-            const fetchedTables = snapshot.docs.map(doc => ({
-                id: doc.id,
-                ...doc.data()
-            })) as Table[];
+                if (error) {
+                    console.error("Error fetching tables:", error);
+                    return;
+                }
 
-            // Sort logically by number
-            fetchedTables.sort((a, b) => {
-                const numA = parseInt(a.number, 10);
-                const numB = parseInt(b.number, 10);
-                if (!isNaN(numA) && !isNaN(numB)) return numA - numB;
-                return a.number.localeCompare(b.number);
-            });
+                const fetchedTables = (data || []).map((t: any) => ({
+                    id: t.id,
+                    number: t.number?.toString() || '',
+                    status: t.status || 'available',
+                    waiterId: t.waiter_id,
+                    waiterName: t.waiter_name,
+                    ...t
+                })) as Table[];
 
-            setTables(fetchedTables);
-            setLoading(false);
-        });
+                // Sort logically by number
+                fetchedTables.sort((a, b) => {
+                    const numA = parseInt(a.number, 10);
+                    const numB = parseInt(b.number, 10);
+                    if (!isNaN(numA) && !isNaN(numB)) return numA - numB;
+                    return a.number.localeCompare(b.number);
+                });
 
-        const ordersQ = query(
-            collection(db, 'orders'),
-            where('restaurantId', '==', restaurantId)
-        );
+                setTables(fetchedTables);
+            } catch (err) {
+                console.error("Error loading tables:", err);
+            } finally {
+                setLoading(false);
+            }
+        };
 
-        const unsubscribeOrders = onSnapshot(ordersQ, (snapshot) => {
-            const fetchedOrders = snapshot.docs.map(doc => ({
-                id: doc.id,
-                ...doc.data()
-            }));
-            setOrders(fetchedOrders);
+        const fetchOrders = async () => {
+            try {
+                const { data, error } = await supabase
+                    .from('orders')
+                    .select('*')
+                    .eq('restaurant_id', restaurantId)
+                    .order('created_at', { ascending: false });
 
-            // Extract notifications from calling tables or prepared orders
-            const tableCalls = (fetchedOrders as any[]).filter(o => o.status === 'calling');
-            const preparedOrders = (fetchedOrders as any[]).filter(o => o.status === 'delivering' && o.source === 'waiter');
+                if (error) {
+                    console.error("Error fetching orders:", error);
+                    return;
+                }
 
-            const newNotifications = [
-                ...tableCalls.map(o => ({ id: `call-${o.id}`, type: 'call', title: `Mesa ${o.table} llama`, time: o.createdAt, original: o })),
-                ...preparedOrders.map(o => ({ id: `prep-${o.id}`, type: 'prep', title: `Mesa ${o.table} lista`, time: o.updatedAt, original: o }))
-            ].sort((a, b) => (b.time?.seconds || 0) - (a.time?.seconds || 0));
+                const fetchedOrders = (data || []).map((o: any) => {
+                    const cDate = o.created_at ? new Date(o.created_at) : new Date();
+                    const uDate = o.updated_at ? new Date(o.updated_at) : new Date();
+                    return {
+                        id: o.id,
+                        table: o.table_number || o.table || '',
+                        tableNumber: o.table_number || o.table || '',
+                        tableId: o.table_id || o.tableId || '',
+                        status: o.status,
+                        paymentStatus: o.payment_status || o.paymentStatus || 'pending',
+                        source: o.source || 'waiter',
+                        waiterName: o.waiter_name || o.waiterName || '',
+                        waiterId: o.waiter_id || o.waiterId || '',
+                        restaurantId: o.restaurant_id || o.restaurantId,
+                        items: o.items || [],
+                        subtotal: o.subtotal || o.total || 0,
+                        total: o.total || 0,
+                        createdAt: {
+                            seconds: Math.floor(cDate.getTime() / 1000),
+                            toDate: () => cDate,
+                            toMillis: () => cDate.getTime(),
+                            toISOString: () => cDate.toISOString(),
+                        },
+                        updatedAt: {
+                            seconds: Math.floor(uDate.getTime() / 1000),
+                            toDate: () => uDate,
+                            toMillis: () => uDate.getTime(),
+                            toISOString: () => uDate.toISOString(),
+                        },
+                        ...o
+                    };
+                });
 
-            setNotifications(newNotifications);
-        });
+                setOrders(fetchedOrders);
+
+                // Extract notifications from calling tables or prepared orders
+                const tableCalls = fetchedOrders.filter((o: any) => o.status === 'calling');
+                const preparedOrders = fetchedOrders.filter((o: any) => o.status === 'delivering' && o.source === 'waiter');
+
+                const newNotifications = [
+                    ...tableCalls.map((o: any) => ({ id: `call-${o.id}`, type: 'call', title: `Mesa ${o.table} llama`, time: o.createdAt, original: o })),
+                    ...preparedOrders.map((o: any) => ({ id: `prep-${o.id}`, type: 'prep', title: `Mesa ${o.table} lista`, time: o.updatedAt, original: o }))
+                ].sort((a, b) => (b.time?.seconds || 0) - (a.time?.seconds || 0));
+
+                setNotifications(newNotifications);
+            } catch (err) {
+                console.error("Error loading orders:", err);
+            }
+        };
+
+        fetchTables();
+        fetchOrders();
+
+        const channel = supabase
+            .channel(`waiter_dashboard_${restaurantId}`)
+            .on('postgres_changes', {
+                event: '*',
+                schema: 'public',
+                table: 'restaurant_tables',
+                filter: `restaurant_id=eq.${restaurantId}`
+            }, () => {
+                fetchTables();
+            })
+            .on('postgres_changes', {
+                event: '*',
+                schema: 'public',
+                table: 'orders',
+                filter: `restaurant_id=eq.${restaurantId}`
+            }, () => {
+                fetchOrders();
+            })
+            .subscribe();
 
         return () => {
-            unsubscribeTables();
-            unsubscribeOrders();
+            supabase.removeChannel(channel);
             document.removeEventListener("mousedown", handleClickOutside);
         };
     }, []);
@@ -144,16 +222,20 @@ export default function WaiterDashboard() {
         if (!restaurantId || !waiterInfo.id) return;
 
         try {
-            await updateDoc(doc(db, 'restaurants', restaurantId, 'waiters', waiterInfo.id), {
-                availability: status,
-                updatedAt: serverTimestamp()
-            });
+            await supabase
+                .from('waiters')
+                .update({
+                    availability: status,
+                    updated_at: new Date().toISOString()
+                })
+                .eq('id', waiterInfo.id);
+
             const updated = { ...waiterInfo, availability: status };
             setWaiterInfo(updated);
             localStorage.setItem('waiterData', JSON.stringify(updated));
             setShowProfileMenu(false);
         } catch (e) {
-            console.error(e);
+            console.error("Error updating status:", e);
         }
     };
 
@@ -172,17 +254,24 @@ export default function WaiterDashboard() {
 
         if (activeOrders.length === 0) return;
 
-        const batch = writeBatch(db);
-        activeOrders.forEach(order => {
-            batch.update(doc(db, 'orders', order.id), {
-                table: targetTableNumber,
-                updatedAt: serverTimestamp(),
-            });
-        });
+        const orderIds = activeOrders.map(o => o.id);
+        const { error } = await supabase
+            .from('orders')
+            .update({
+                table_number: targetTableNumber,
+                updated_at: new Date().toISOString()
+            })
+            .in('id', orderIds);
 
-        await batch.commit();
+        if (error) {
+            console.error("Error transferring table orders:", error);
+            toast.error("Error al transferir comanda");
+            return;
+        }
+
         setShowMergeTransferModal(false);
         setSelectedTable(null);
+        toast.success(`Comandas transferidas a mesa ${targetTableNumber}`);
     };
 
     const handleTableAction = async (table: Table & { derivedStatus: string }) => {
@@ -197,11 +286,13 @@ export default function WaiterDashboard() {
             case 'calling':
                 // Clear all calling orders for this table
                 const callingOrders = orders.filter((o) => o.table === table.number && o.status === 'calling');
-                const batch = writeBatch(db);
-                callingOrders.forEach((o) => {
-                    batch.update(doc(db, 'orders', o.id), { status: 'occupied', updatedAt: serverTimestamp() });
-                });
-                await batch.commit();
+                const callingIds = callingOrders.map(o => o.id);
+                if (callingIds.length > 0) {
+                    await supabase
+                        .from('orders')
+                        .update({ status: 'occupied', updated_at: new Date().toISOString() })
+                        .in('id', callingIds);
+                }
                 setSelectedTable(table);
                 setShowOptionsModal(true);
                 break;
@@ -256,6 +347,7 @@ export default function WaiterDashboard() {
 
         return { ...table, derivedStatus, timeLabel };
     });
+
     const selectedTableActiveOrders = useMemo(() => {
         if (!selectedTable) return [];
         return orders.filter(o => 
@@ -313,40 +405,52 @@ export default function WaiterDashboard() {
             
             const subtotal = consolidatedItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
             
-            // 2. Create the merged order
-            const mergedOrderRef = doc(collection(db, 'orders'));
-            const mergedOrderData = {
-                items: consolidatedItems,
-                table: selectedTable.number,
-                tableId: selectedTable.id,
-                status: 'delivered', // Delivered to effectively remove it from kitchen displays
-                paymentStatus: 'not_sold', // Needs payment 
-                source: 'waiter',
-                waiterName: waiterInfo?.name || selectedTable.waiterName || 'Mesero',
-                waiterId: waiterInfo?.id || selectedTable.waiterId || '',
-                restaurantId,
-                createdAt: serverTimestamp(),
-                subtotal: subtotal,
-                total: subtotal
-            };
+            const newOrderId = (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : `order_${Date.now()}`;
+
+            // 2. Create the merged order in Supabase
+            const { error: insertErr } = await supabase
+                .from('orders')
+                .insert({
+                    id: newOrderId,
+                    items: consolidatedItems,
+                    table_number: selectedTable.number,
+                    table_id: selectedTable.id,
+                    status: 'delivered', // Delivered to effectively remove it from kitchen displays
+                    payment_status: 'not_sold', // Needs payment 
+                    source: 'waiter',
+                    waiter_name: waiterInfo?.name || selectedTable.waiterName || 'Mesero',
+                    waiter_id: waiterInfo?.id || selectedTable.waiterId || '',
+                    restaurant_id: restaurantId,
+                    created_at: new Date().toISOString(),
+                    subtotal: subtotal,
+                    total: subtotal
+                });
+
+            if (insertErr) throw insertErr;
             
             // 3. Mark old orders as merged/sold
-            const batch = writeBatch(db);
-            selectedTableActiveOrders.forEach(o => {
-                batch.update(doc(db, 'orders', o.id), {
-                    status: 'delivered', 
-                    paymentStatus: 'merged', 
-                });
-            });
-            batch.set(mergedOrderRef, mergedOrderData);
+            const oldIds = selectedTableActiveOrders.map(o => o.id);
+            if (oldIds.length > 0) {
+                await supabase
+                    .from('orders')
+                    .update({
+                        status: 'delivered', 
+                        payment_status: 'merged',
+                        updated_at: new Date().toISOString()
+                    })
+                    .in('id', oldIds);
+            }
 
             // 4. Update table status to billing
-            batch.update(doc(db, 'restaurants', restaurantId, 'tables', selectedTable.id), {
-                status: 'billing',
-                lastOrderId: mergedOrderRef.id
-            });
+            await supabase
+                .from('restaurant_tables')
+                .update({
+                    status: 'billing',
+                    current_order_id: newOrderId,
+                    updated_at: new Date().toISOString()
+                })
+                .eq('id', selectedTable.id);
             
-            await batch.commit();            
             toast.success('Cuenta solicitada a caja', { id: toastId });
         } catch (error) {
             console.error('Error in checkout:', error);
@@ -376,8 +480,8 @@ export default function WaiterDashboard() {
                         >
                             <div className="flex items-center justify-between mb-10">
                                 <div className="flex items-center gap-3">
-                                    <div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center shadow-sm p-2">
-                                        <img src="https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/logo.png?alt=media&v=1.1" alt="Logo" className="w-full h-full object-contain" />
+                                    <div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center shadow-sm p-2 overflow-hidden">
+                                        <img src={UN2X3_LOGO} alt="Logo" className="w-full h-full object-contain" onError={(e: any) => { e.target.src = '/icon-192.png'; }} />
                                     </div>
                                     <span className="font-black text-slate-800 text-xl">Deliexpress</span>
                                 </div>
@@ -408,7 +512,10 @@ export default function WaiterDashboard() {
                             </nav>
 
                             <div className="mt-auto pt-6 border-t border-slate-50">
-                                <button onClick={handleLogout} className="w-full flex items-center gap-4 p-4 rounded-2xl text-rose-500 font-bold hover:bg-rose-50 transition-all">
+                                <button
+                                    onClick={handleLogout}
+                                    className="w-full flex items-center gap-4 p-4 rounded-2xl text-rose-500 font-bold hover:bg-rose-50 transition-colors"
+                                >
                                     <LogOut className="w-5 h-5" />
                                     Cerrar Sesión
                                 </button>
@@ -419,54 +526,67 @@ export default function WaiterDashboard() {
             </AnimatePresence>
 
             {/* Header */}
-            <header className="px-5 py-6 flex items-center justify-between sticky top-0 bg-slate-50/80 backdrop-blur-md z-[60]">
+            <header className="px-5 py-6 bg-white sticky top-0 z-30 flex items-center justify-between border-b border-slate-50">
                 <div className="flex items-center gap-4">
                     <button
                         onClick={() => setShowSidebar(true)}
-                        className="p-2 rounded-xl bg-white shadow-sm border border-slate-100 active:scale-95 transition-transform"
+                        className="w-12 h-12 rounded-2xl bg-slate-50 flex items-center justify-center text-slate-700 hover:bg-slate-100 transition-colors active:scale-95"
                     >
-                        <Menu className="w-6 h-6 text-slate-700" />
+                        <Menu className="w-6 h-6" />
                     </button>
-                    <h1 className="text-xl font-black text-slate-800 tracking-tight">Tablero</h1>
+                    <div>
+                        <div className="flex items-center gap-2">
+                            <h1 className="text-xl font-black text-slate-800">Mesas</h1>
+                            <span className="bg-primary/20 text-slate-900 text-[10px] font-black px-2 py-0.5 rounded-full uppercase">
+                                En Vivo
+                            </span>
+                        </div>
+                        <p className="text-xs font-bold text-slate-400">Panel de Control</p>
+                    </div>
                 </div>
-                <div className="relative" ref={notificationRef}>
+
+                <div className="flex items-center gap-2">
                     <button
                         onClick={() => setShowNotifications(!showNotifications)}
-                        className={`p-2.5 rounded-full shadow-sm border relative transition-all active:scale-90 ${notifications.length > 0 ? 'bg-primary text-slate-900 border-primary/20 shadow-lg shadow-primary/20' : 'bg-white text-slate-400 border-slate-100'}`}
+                        className="relative w-12 h-12 rounded-2xl bg-slate-50 flex items-center justify-center text-slate-700 hover:bg-slate-100 transition-colors active:scale-95"
                     >
-                        <Bell className={`w-6 h-6 ${notifications.length > 0 ? 'animate-[bell_1s_infinite]' : ''}`} />
+                        <Bell className="w-6 h-6" />
                         {notifications.length > 0 && (
-                            <span className="absolute top-2 right-2 w-2.5 h-2.5 bg-rose-500 rounded-full border-2 border-white"></span>
+                            <span className="absolute top-3 right-3 w-2.5 h-2.5 bg-rose-500 rounded-full ring-2 ring-white animate-pulse" />
                         )}
                     </button>
 
+                    {/* Notifications Dropdown */}
                     <AnimatePresence>
                         {showNotifications && (
                             <motion.div
+                                ref={notificationRef}
                                 initial={{ opacity: 0, y: 10, scale: 0.95 }}
                                 animate={{ opacity: 1, y: 0, scale: 1 }}
                                 exit={{ opacity: 0, y: 10, scale: 0.95 }}
-                                className="absolute right-0 mt-3 w-72 bg-white rounded-[2rem] shadow-2xl border border-slate-100 overflow-hidden z-20"
+                                className="absolute top-20 right-5 w-80 bg-white rounded-3xl shadow-2xl border border-slate-100 p-4 z-50 overflow-hidden"
                             >
-                                <div className="p-5 border-b border-slate-50 flex items-center justify-between bg-slate-50/50">
-                                    <h4 className="text-xs font-black text-slate-500 uppercase tracking-widest">Notificaciones</h4>
-                                    <span className="px-2 py-0.5 bg-orange-100 text-orange-600 rounded-full text-[10px] font-black">{notifications.length}</span>
+                                <div className="flex items-center justify-between pb-3 border-b border-slate-50">
+                                    <h3 className="font-black text-sm text-slate-800">Notificaciones</h3>
+                                    <span className="text-[10px] font-bold bg-slate-100 text-slate-500 px-2 py-0.5 rounded-full">
+                                        {notifications.length} nuevas
+                                    </span>
                                 </div>
-                                <div className="max-h-80 overflow-y-auto overflow-x-hidden">
+                                <div className="max-h-60 overflow-y-auto divide-y divide-slate-50 mt-2">
                                     {notifications.length > 0 ? (
                                         notifications.map((n) => (
-                                            <div key={n.id} className="p-4 border-b border-slate-50 hover:bg-slate-50 transition-colors flex items-center gap-3 group cursor-pointer">
-                                                <div className={`w-10 h-10 rounded-2xl flex items-center justify-center shrink-0 ${n.type === 'call' ? 'bg-rose-50 text-rose-500' : 'bg-emerald-50 text-emerald-500'}`}>
-                                                    {n.type === 'call' ? <Bell className="w-5 h-5" /> : <CheckCircle className="w-5 h-5" />}
+                                            <div key={n.id} className="py-3 flex items-start gap-3">
+                                                <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${n.type === 'call' ? 'bg-rose-50 text-rose-500' : 'bg-primary/20 text-slate-900'}`}>
+                                                    {n.type === 'call' ? <AlertCircle className="w-4 h-4" /> : <Clock className="w-4 h-4" />}
                                                 </div>
-                                                <div className="flex-1">
-                                                    <p className="text-sm font-bold text-slate-800">{n.title}</p>
-                                                    <p className="text-[10px] text-slate-400 font-medium">Hace unos momentos</p>
+                                                <div className="flex-1 min-w-0">
+                                                    <p className="text-xs font-black text-slate-800 truncate">{n.title}</p>
+                                                    <p className="text-[10px] font-bold text-slate-400">Hace unos momentos</p>
                                                 </div>
                                             </div>
                                         ))
                                     ) : (
-                                        <div className="p-8 text-center">
+                                        <div className="py-8 text-center">
                                             <div className="w-12 h-12 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-3">
                                                 <Bell className="w-6 h-6 text-slate-200" />
                                             </div>
@@ -490,9 +610,10 @@ export default function WaiterDashboard() {
                         <div className="flex items-center gap-4">
                             <div className="relative">
                                 <img
-                                    src={waiterInfo.photo || "https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/logo.png?alt=media&v=1.1"}
+                                    src={waiterInfo.photo || UN2X3_LOGO}
                                     alt={waiterInfo.name}
                                     className="w-16 h-16 rounded-full object-cover border-4 border-slate-50 bg-white"
+                                    onError={(e: any) => { e.target.src = '/icon-192.png'; }}
                                 />
                                 <div className={`absolute bottom-0 right-0 w-4 h-4 rounded-full border-2 border-white ${waiterInfo.availability === 'offline' ? 'bg-slate-400' : 'bg-emerald-500'}`}></div>
                             </div>
@@ -519,30 +640,37 @@ export default function WaiterDashboard() {
                                 exit={{ opacity: 0, y: -20, scale: 0.95 }}
                                 className="absolute top-full left-0 w-full mt-3 bg-white rounded-[2.5rem] shadow-2xl border border-slate-100 overflow-hidden z-20"
                             >
-                                <div className="p-3 grid grid-cols-1 gap-1">
-                                    {[
-                                        { id: 'active', label: 'Estar Activo', icon: Check, color: 'text-emerald-500' },
-                                        { id: 'offline', label: 'Desconectarse', icon: Clock, color: 'text-slate-400' },
-                                    ].map((s) => (
-                                        <button
-                                            key={s.id}
-                                            onClick={() => handleStatusUpdate(s.id)}
-                                            className="flex items-center justify-between p-4 hover:bg-slate-50 rounded-2xl transition-colors group"
-                                        >
-                                            <div className="flex items-center gap-3">
-                                                <s.icon className={`w-5 h-5 ${s.color}`} />
-                                                <span className="font-bold text-slate-700">{s.label}</span>
-                                            </div>
-                                            {waiterInfo.availability === s.id && <Check className="w-4 h-4 text-slate-900" />}
-                                        </button>
-                                    ))}
-                                    <div className="h-px bg-slate-50 my-1 mx-4"></div>
+                                <div className="p-3 space-y-1">
+                                    <button
+                                        onClick={() => handleStatusUpdate('active')}
+                                        className="w-full flex items-center justify-between p-4 rounded-2xl hover:bg-slate-50 transition-colors"
+                                    >
+                                        <div className="flex items-center gap-3">
+                                            <div className="w-3 h-3 rounded-full bg-emerald-500"></div>
+                                            <span className="font-bold text-sm text-slate-700">Disponible</span>
+                                        </div>
+                                        {waiterInfo.availability !== 'offline' && <Check className="w-4 h-4 text-emerald-500" />}
+                                    </button>
+
+                                    <button
+                                        onClick={() => handleStatusUpdate('offline')}
+                                        className="w-full flex items-center justify-between p-4 rounded-2xl hover:bg-slate-50 transition-colors"
+                                    >
+                                        <div className="flex items-center gap-3">
+                                            <div className="w-3 h-3 rounded-full bg-slate-400"></div>
+                                            <span className="font-bold text-sm text-slate-700">Desconectado</span>
+                                        </div>
+                                        {waiterInfo.availability === 'offline' && <Check className="w-4 h-4 text-slate-400" />}
+                                    </button>
+
+                                    <div className="h-px bg-slate-50 my-1"></div>
+
                                     <button
                                         onClick={handleLogout}
-                                        className="flex items-center gap-3 p-4 hover:bg-rose-50 text-rose-500 rounded-2xl transition-colors w-full"
+                                        className="w-full flex items-center gap-3 p-4 rounded-2xl text-rose-500 hover:bg-rose-50 transition-colors font-bold text-sm"
                                     >
-                                        <LogOut className="w-5 h-5" />
-                                        <span className="font-bold">Cerrar Sesión</span>
+                                        <LogOut className="w-4 h-4" />
+                                        Cerrar Sesión
                                     </button>
                                 </div>
                             </motion.div>
@@ -550,51 +678,44 @@ export default function WaiterDashboard() {
                     </AnimatePresence>
                 </section>
 
-                {/* Search Bar */}
-                <div className="relative">
-                    <Search className="absolute left-5 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-300" />
-                    <input
-                        type="text"
-                        placeholder="Buscar mesa (ej: 5)..."
-                        value={searchQuery}
-                        onChange={(e) => setSearchQuery(e.target.value)}
-                        className="w-full bg-white border border-slate-100 py-4 pl-14 pr-6 rounded-3xl outline-none focus:ring-4 focus:ring-primary/5 transition-all font-bold text-slate-700 shadow-sm"
-                    />
-                </div>
-
-                {/* Assigned Tables Section */}
-                <section className="space-y-6">
-                    <div className="flex items-center justify-between">
-                        <h3 className="text-xl font-black text-slate-900 ml-1">Mesas</h3>
-                        <span className="text-xs font-bold text-slate-400 px-3 py-1 bg-slate-100 rounded-full">{filteredTables.length} mesas</span>
-                    </div>
-
-                    {/* Filters Horizontal Scroll */}
-                    <div className="flex gap-3 overflow-x-auto hide-scrollbar pb-2 -mx-5 px-5">
+                {/* Filters */}
+                <section className="space-y-4">
+                    <div className="flex gap-2 overflow-x-auto pb-2 -mx-5 px-5 scrollbar-none">
                         {filters.map((filter) => (
                             <button
                                 key={filter.name}
                                 onClick={() => setActiveFilter(filter.name)}
-                                className={`flex items-center gap-2 px-6 py-2.5 rounded-2xl whitespace-nowrap transition-all duration-300 font-black text-sm ${activeFilter === filter.name
-                                    ? `${filter.color} text-${filter.color === 'bg-primary' ? 'slate-900' : 'white'} shadow-lg scale-105`
-                                    : 'bg-white text-slate-500 border border-slate-100'
+                                className={`px-5 py-3 rounded-2xl font-black text-xs transition-all shrink-0 flex items-center gap-2 ${activeFilter === filter.name
+                                    ? 'bg-slate-900 text-white shadow-lg shadow-slate-900/20 scale-105'
+                                    : 'bg-white text-slate-400 border border-slate-100 hover:bg-slate-50'
                                     }`}
                             >
-                                {filter.name !== 'Todos' && (
-                                    <div className={`w-2 h-2 rounded-full ${filter.color.replace('bg-', 'bg-')}`}></div>
-                                )}
+                                <span className={`w-2 h-2 rounded-full ${filter.color}`} />
                                 {filter.name}
                             </button>
                         ))}
                     </div>
 
-                    {/* Tables Grid */}
+                    <div className="relative">
+                        <Search className="w-5 h-5 text-slate-300 absolute left-5 top-1/2 -translate-y-1/2" />
+                        <input
+                            type="text"
+                            placeholder="Buscar número de mesa..."
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery(e.target.value)}
+                            className="w-full bg-white border border-slate-100 rounded-2xl py-4 pl-14 pr-5 text-sm font-bold text-slate-700 placeholder:text-slate-300 outline-none focus:border-primary transition-all shadow-sm"
+                        />
+                    </div>
+                </section>
+
+                {/* Tables Grid */}
+                <section>
                     {loading ? (
-                        <div className="flex justify-center py-10">
+                        <div className="flex justify-center py-20">
                             <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin"></div>
                         </div>
                     ) : filteredTables.length > 0 ? (
-                        <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
+                        <div className="grid grid-cols-2 gap-4">
                             {filteredTables.map((table) => (
                                 <TableCard
                                     key={table.id}
@@ -604,27 +725,15 @@ export default function WaiterDashboard() {
                             ))}
                         </div>
                     ) : (
-                        <div className="bg-slate-50 border border-slate-100 p-10 rounded-[2.5rem] text-center text-slate-400">
-                            <Search className="w-10 h-10 mx-auto mb-3 opacity-20" />
-                            <p className="font-bold">No se encontraron mesas</p>
+                        <div className="text-center py-20">
+                            <p className="text-slate-400 font-bold text-sm">No se encontraron mesas</p>
                         </div>
                     )}
                 </section>
             </main>
 
-            {/* Floating Action Button */}
-            <button
-                onClick={() => {
-                    const restaurantId = localStorage.getItem('waiterRestaurantId');
-                    if (restaurantId) navigate(`/restaurant/${restaurantId}`);
-                }}
-                className="fixed bottom-24 right-5 w-16 h-16 bg-primary rounded-full shadow-2xl shadow-primary/40 flex items-center justify-center text-slate-900 active:scale-95 transition-transform z-40 border-4 border-white hover:rotate-90 group"
-            >
-                <Plus className="w-8 h-8 group-hover:scale-110" />
-            </button>
-
-            {/* Modals */}
-            <TableOptionsModal 
+            {/* Modal de Opciones de Mesa */}
+            <TableOptionsModal
                 isOpen={showOptionsModal}
                 onClose={() => {
                     setShowOptionsModal(false);
@@ -634,7 +743,7 @@ export default function WaiterDashboard() {
                 activeOrders={selectedTableActiveOrders}
                 onAddOrder={() => {
                     setShowOptionsModal(false);
-                    if (selectedTable) navigate(`/menu?table=${selectedTable.number}&tableId=${selectedTable.id}`);
+                    navigate(`/menu?table=${selectedTable.number}&tableId=${selectedTable.id}`);
                 }}
                 onJoinTable={() => {
                     setShowOptionsModal(false);
@@ -653,6 +762,7 @@ export default function WaiterDashboard() {
                 onCheckout={handleCheckout}
             />
 
+            {/* Modal de Unir / Transferir Mesa */}
             <MergeTransferModal
                 isOpen={showMergeTransferModal}
                 onClose={() => {
@@ -665,6 +775,7 @@ export default function WaiterDashboard() {
                 onConfirm={handleConfirmMergeTransfer}
             />
 
+            {/* Modal de Dividir Cuenta */}
             <SplitBillModal
                 isOpen={showSplitBillModal}
                 onClose={() => {
@@ -679,83 +790,61 @@ export default function WaiterDashboard() {
 }
 
 function TableCard({ table, onAction }: TableCardProps) {
-    const navigate = useNavigate(); // Assuming navigate is available here or passed as prop
-
-    const getStatusStyles = () => {
-        switch (table.derivedStatus) {
-            case 'calling':
-                return {
-                    bg: 'bg-rose-50/50',
-                    border: 'border-rose-100',
-                    text: 'text-rose-600',
-                    badge: 'bg-rose-100',
-                    btn: 'bg-rose-500 text-white shadow-rose-500/20',
-                    title: 'Llamando',
-                    accent: 'ring-rose-500'
-                };
-            case 'occupied':
-                return {
-                    bg: 'bg-primary',
-                    border: 'border-primary/20',
-                    text: 'text-slate-900',
-                    badge: 'bg-white/20',
-                    btn: 'bg-slate-900 text-white shadow-slate-900/20',
-                    title: 'Ocupado',
-                    accent: 'ring-primary'
-                };
-            case 'billing':
-                return {
-                    bg: 'bg-emerald-500',
-                    border: 'border-emerald-600/20',
-                    text: 'text-slate-900',
-                    badge: 'bg-white/20',
-                    btn: 'bg-slate-900 text-white shadow-slate-900/20',
-                    title: 'Cobrando',
-                    accent: 'ring-emerald-500'
-                };
-            default:
-                return {
-                    bg: 'bg-white',
-                    border: 'border-slate-100',
-                    text: 'text-emerald-600',
-                    badge: 'bg-emerald-100',
-                    btn: 'bg-slate-50 text-slate-600 border border-slate-100',
-                    title: 'Disponible',
-                    accent: 'ring-emerald-500'
-                };
-        }
-    };
-
-    const styles = getStatusStyles();
-    const btnLabel = table.derivedStatus === 'calling' ? 'Atender' : table.derivedStatus === 'occupied' ? 'Ver Orden' : table.derivedStatus === 'billing' ? 'Cobrar' : 'Asignar';
+    const isOccupied = table.derivedStatus === 'occupied';
+    const isCalling = table.derivedStatus === 'calling';
+    const isBilling = table.derivedStatus === 'billing';
 
     return (
         <motion.div
-            whileTap={{ scale: 0.97 }}
-            className={`${styles.bg} ${styles.border} border-2 p-5 rounded-[2.5rem] flex flex-col items-center gap-3 relative overflow-hidden shadow-sm group cursor-pointer`}
-            onClick={() => onAction()}
+            layout
+            whileTap={{ scale: 0.96 }}
+            onClick={onAction}
+            className={`p-6 rounded-[2.5rem] border flex flex-col justify-between h-52 relative overflow-hidden cursor-pointer transition-all shadow-sm ${isCalling
+                ? 'bg-rose-50/50 border-rose-200 shadow-rose-500/10'
+                : isOccupied
+                    ? 'bg-amber-50/30 border-amber-200 shadow-amber-500/5'
+                    : isBilling
+                        ? 'bg-emerald-50/30 border-emerald-200 shadow-emerald-500/5'
+                        : 'bg-white border-slate-100 hover:border-slate-200'
+                }`}
         >
-            <div className="absolute top-0 right-0 w-16 h-16 bg-slate-50/10 rounded-full -mr-8 -mt-8"></div>
+            {/* Top Status */}
+            <div className="flex items-start justify-between">
+                <span className={`text-[10px] font-black uppercase tracking-widest px-3 py-1 rounded-full ${isCalling
+                    ? 'bg-rose-500 text-white animate-bounce'
+                    : isOccupied
+                        ? 'bg-amber-500 text-white'
+                        : isBilling
+                            ? 'bg-emerald-600 text-white'
+                            : 'bg-slate-100 text-slate-400'
+                    }`}>
+                    {table.derivedStatus === 'available' ? 'Libre' :
+                        table.derivedStatus === 'occupied' ? 'Ocupado' :
+                            table.derivedStatus === 'calling' ? 'Llamando' : 'Cobrando'}
+                </span>
 
-            {table.derivedStatus === 'calling' && (
-                <div className="absolute top-3 right-3 text-rose-500 drop-shadow-sm">
-                    <Bell className="w-6 h-6 animate-[bell_1s_infinite]" />
+                {isOccupied && (
+                    <div className="w-2 h-2 rounded-full bg-primary animate-ping" />
+                )}
+            </div>
+
+            {/* Table Number */}
+            <div>
+                <p className="text-[10px] font-black text-slate-300 uppercase tracking-[0.2em]">Mesa</p>
+                <h3 className="text-4xl font-black text-slate-800 tracking-tight">{table.number}</h3>
+            </div>
+
+            {/* Bottom Info */}
+            <div className="flex items-center justify-between pt-4 border-t border-slate-50/50">
+                <span className="text-[10px] font-bold text-slate-400 flex items-center gap-1">
+                    <Clock className="w-3 h-3" />
+                    {table.timeLabel}
+                </span>
+
+                <div className={`w-8 h-8 rounded-full flex items-center justify-center ${table.derivedStatus === 'available' ? 'bg-slate-50 text-slate-400' : 'bg-white shadow-sm text-slate-800'
+                    }`}>
+                    <Plus className="w-4 h-4" />
                 </div>
-            )}
-
-            <div className={`w-14 h-14 rounded-full flex items-center justify-center border-2 border-slate-50 shadow-inner bg-slate-100/50 group-hover:scale-110 transition-transform`}>
-                <span className={`text-2xl font-black ${table.derivedStatus === 'calling' ? 'text-rose-500' : 'text-slate-700'}`}>{table.number}</span>
-            </div>
-
-            <div className="text-center space-y-0.5">
-                <p className={`text-sm font-black uppercase tracking-tight ${styles.text}`}>{styles.title}</p>
-                <p className="text-[10px] font-bold text-slate-400 italic">{table.timeLabel}</p>
-            </div>
-
-            <div
-                className={`w-full py-2.5 rounded-2xl text-[11px] font-black uppercase tracking-wider transition-all ${styles.btn} shadow-lg mt-1 group-hover:scale-105 text-center`}
-            >
-                {btnLabel}
             </div>
         </motion.div>
     );

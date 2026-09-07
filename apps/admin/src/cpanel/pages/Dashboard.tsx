@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Users, Store, TrendingUp, ShoppingBag, ArrowUpRight, Award, BarChart3, Activity } from 'lucide-react';
-import { collection, getDocs } from 'firebase/firestore';
-import { db } from '../../lib/firebase';
+import { supabase } from '../../lib/supabase';
 import DualPrice from '../../components/DualPrice';
 
 interface TopRestaurant {
@@ -27,59 +26,56 @@ export default function Dashboard() {
         const fetchDashboardData = async () => {
             try {
                 // Fetch users
-                const usersSnap = await getDocs(collection(db, 'users'));
-                const usersCount = usersSnap.size;
+                const { data: usersData } = await supabase.from('profiles').select('id, created_at');
+                const usersCount = (usersData || []).length;
 
-                // Simple "New Today" (based on createdAt if available)
+                // Simple "New Today"
                 const today = new Date();
                 today.setHours(0, 0, 0, 0);
                 let newToday = 0;
-                usersSnap.forEach(doc => {
-                    const data = doc.data();
-                    if (data.createdAt && data.createdAt.toDate() >= today) {
+                (usersData || []).forEach((u: any) => {
+                    if (u.created_at && new Date(u.created_at) >= today) {
                         newToday++;
                     }
                 });
 
                 // Fetch restaurants
-                const restaurantsSnap = await getDocs(collection(db, 'restaurants'));
-                const restaurantsCount = restaurantsSnap.size;
+                const { data: restaurantsData } = await supabase.from('comercios').select('id, name, logo_url, image_url');
+                const restaurantsCount = (restaurantsData || []).length;
                 const restaurantMap: Record<string, { name: string, logo: string }> = {};
-                restaurantsSnap.forEach(doc => {
-                    const data = doc.data();
-                    restaurantMap[doc.id] = {
-                        name: data.name,
-                        logo: data.logoUrl || data.image
+                (restaurantsData || []).forEach((r: any) => {
+                    restaurantMap[r.id] = {
+                        name: r.name,
+                        logo: r.logo_url || r.image_url
                     };
                 });
 
-                // Fetch orders
-                const ordersSnap = await getDocs(collection(db, 'orders'));
-                const transportSnap = await getDocs(collection(db, 'transport_requests'));
+                // Fetch orders & transport
+                const { data: ordersData } = await supabase.from('orders').select('id, total, status, restaurant_id');
+                const { data: transportData } = await supabase.from('transport_requests').select('id, total, price, status');
 
                 let totalRevenue = 0;
                 const revenueByRestaurant: Record<string, { sales: number, count: number }> = {};
 
-                ordersSnap.forEach(doc => {
-                    const data = doc.data();
+                (ordersData || []).forEach((data: any) => {
                     if (data.status === 'completed' || data.status === 'confirmed' || data.status === 'delivered') {
-                        totalRevenue += (data.total || 0);
+                        totalRevenue += Number(data.total || 0);
 
-                        if (data.restaurantId) {
-                            if (!revenueByRestaurant[data.restaurantId]) {
-                                revenueByRestaurant[data.restaurantId] = { sales: 0, count: 0 };
+                        const restId = data.restaurant_id || data.restaurantId;
+                        if (restId) {
+                            if (!revenueByRestaurant[restId]) {
+                                revenueByRestaurant[restId] = { sales: 0, count: 0 };
                             }
-                            revenueByRestaurant[data.restaurantId].sales += (data.total || 0);
-                            revenueByRestaurant[data.restaurantId].count += 1;
+                            revenueByRestaurant[restId].sales += Number(data.total || 0);
+                            revenueByRestaurant[restId].count += 1;
                         }
                     }
                 });
 
                 // Include transport revenue
-                transportSnap.forEach(doc => {
-                    const data = doc.data();
+                (transportData || []).forEach((data: any) => {
                     if (data.status === 'completed') {
-                        totalRevenue += (data.total || data.price || 0);
+                        totalRevenue += Number(data.total || data.price || 0);
                     }
                 });
 
@@ -99,7 +95,7 @@ export default function Dashboard() {
                 setStats({
                     users: usersCount,
                     restaurants: restaurantsCount,
-                    orders: ordersSnap.size + transportSnap.size,
+                    orders: (ordersData || []).length + (transportData || []).length,
                     revenue: totalRevenue,
                     newUsersToday: newToday
                 });

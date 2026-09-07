@@ -1,9 +1,8 @@
 import React, { useState } from 'react';
-import { Shield, X } from 'lucide-react';
+import { Shield } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
-import { db, auth } from '../../lib/firebase';
-import { signInAnonymously } from 'firebase/auth';
+import { supabase } from '../../lib/supabase';
+import { UN2X3_LOGO } from '../../lib/env';
 import { useNavigate } from 'react-router-dom';
 
 export default function WaiterLogin() {
@@ -20,34 +19,22 @@ export default function WaiterLogin() {
         try {
             console.log("Attempting waiter login for:", waiterEmail);
             
-            // Sign in anonymously first so we have a valid auth session to read collections
-            const authResult = await signInAnonymously(auth);
-            const currentUid = authResult.user.uid;
+            const cleanEmail = waiterEmail.toLowerCase().trim();
 
-            // Look up in the index instead of collectionGroup to avoid missing index error
-            const indexSnap = await getDoc(doc(db, 'waiter_index', waiterEmail.toLowerCase()));
+            const { data: waiter, error: waiterErr } = await supabase
+                .from('waiters')
+                .select('*')
+                .ilike('email', cleanEmail)
+                .maybeSingle();
 
-            if (!indexSnap.exists()) {
+            if (waiterErr || !waiter) {
+                console.error("Waiter fetch error:", waiterErr);
                 setError("Credenciales incorrectas (Usuario).");
                 setIsWaiterSigningIn(false);
                 return;
             }
 
-            const { restaurantId, waiterId } = indexSnap.data();
-
-            // Fetch the actual waiter document
-            const waiterDoc = await getDoc(doc(db, 'restaurants', restaurantId, 'waiters', waiterId));
-
-            if (!waiterDoc.exists()) {
-                setError("No se encontraron los datos del mesero.");
-                setIsWaiterSigningIn(false);
-                return;
-            }
-
-            const data = waiterDoc.data();
-            console.log("Waiter data found:", data.name);
-
-            if (data.password !== waiterPassword) {
+            if (waiter.password !== waiterPassword) {
                 console.log("Password mismatch for waiter:", waiterEmail);
                 setError("Credenciales incorrectas (Contraseña).");
                 setIsWaiterSigningIn(false);
@@ -55,22 +42,17 @@ export default function WaiterLogin() {
             }
 
             const waiterData = {
-                id: waiterDoc.id,
-                ...data
+                id: waiter.id,
+                restaurantId: waiter.restaurant_id,
+                name: waiter.name,
+                email: waiter.email,
+                phone: waiter.phone,
+                role: waiter.role || 'waiter',
+                photo: waiter.photo_url || ''
             };
 
-            // Register session in top-level sessions collection for rules to validate
-            await setDoc(doc(db, 'sessions', currentUid), {
-                    restaurantId: restaurantId,
-                    role: 'waiter',
-                    userId: waiterId,
-                    createdAt: new Date().toISOString()
-                });
-                
-            console.log("Waiter authenticated and session registered with UID:", currentUid);
-
             localStorage.setItem('waiterData', JSON.stringify(waiterData));
-            localStorage.setItem('waiterRestaurantId', restaurantId);
+            localStorage.setItem('waiterRestaurantId', waiter.restaurant_id);
             localStorage.setItem('isWaiter', 'true');
 
             // Redirect to Waiter Dashboard
@@ -89,8 +71,8 @@ export default function WaiterLogin() {
 
             <div className="w-full max-w-sm mx-auto z-10">
                 <div className="text-center mb-10 mt-safe">
-                    <div className="w-20 h-20 bg-white rounded-3xl mx-auto flex items-center justify-center shadow-xl shadow-slate-200/50 rotate-3 mb-6">
-                        <img src="https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/logo.png?alt=media&v=1.1" alt="Deliexpress" className="w-16 h-16 object-contain" />
+                    <div className="w-20 h-20 bg-white rounded-3xl mx-auto flex items-center justify-center shadow-xl shadow-slate-200/50 rotate-3 mb-6 overflow-hidden">
+                        <img src={UN2X3_LOGO} alt="Deliexpress" className="w-16 h-16 object-contain" onError={(e: any) => { e.target.src = '/icon-192.png'; }} />
                         {/* Fallback pattern if logo fails */}
                         <div className="absolute inset-0 flex items-center justify-center -rotate-3 -z-10 bg-slate-100 rounded-3xl overflow-hidden">
                             <span className="font-black text-2xl text-slate-300">DE</span>

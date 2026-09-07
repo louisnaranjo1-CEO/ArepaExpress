@@ -1,9 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { DollarSign, Activity, Calendar, ArrowUpRight, Star, ExternalLink, PackageCheck, AlertCircle, Ticket, Gift, Sparkles, Clock } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
-import { db } from '../../lib/firebase';
+import { supabase } from '../../lib/supabase';
 import { useNavigate } from 'react-router-dom';
-import { collection, query, where, onSnapshot, orderBy, doc, getDocs, updateDoc, increment, addDoc, serverTimestamp, writeBatch, getDoc } from 'firebase/firestore';
 import { useCurrency } from '../../context/CurrencyContext';
 import { toast } from 'react-hot-toast';
 
@@ -55,124 +54,149 @@ export default function Earnings() {
     useEffect(() => {
         if (!user) return;
 
-        // Query for Delivery Orders
-        const qOrders = query(
-            collection(db, 'orders'),
-            where('deliveryDriverId', '==', user.uid),
-            where('status', '==', 'completed')
-        );
+        const fetchEarnings = async () => {
+            try {
+                // Query for Delivery Orders
+                const { data: ordersData } = await supabase
+                    .from('orders')
+                    .select('*')
+                    .eq('delivery_driver_id', user.uid)
+                    .eq('status', 'completed');
 
-        // Query for Transport Requests
-        const qTransport = query(
-            collection(db, 'transport_requests'),
-            where('driverId', '==', user.uid),
-            where('status', '==', 'completed')
-        );
-
-        let unsubOrders = () => { };
-        let unsubTransport = () => { };
-
-        const fetchAll = () => {
-            unsubOrders = onSnapshot(qOrders, (snapshot) => {
-                const deliveryItems: EarningsItem[] = snapshot.docs.map(doc => {
-                    const data = doc.data();
+                const deliveryItems: EarningsItem[] = (ordersData || []).map((data: any) => {
+                    const cDate = data.created_at ? new Date(data.created_at) : new Date();
                     return {
-                        id: doc.id,
-                        amount: Number(data.deliveryFee || 0) || 0,
+                        id: data.id,
+                        amount: Number(data.delivery_fee || data.deliveryFee || 0) || 0,
                         type: 'delivery',
                         status: data.status,
-                        createdAt: data.createdAt,
+                        createdAt: {
+                            seconds: Math.floor(cDate.getTime() / 1000),
+                            toDate: () => cDate,
+                            toMillis: () => cDate.getTime(),
+                            toISOString: () => cDate.toISOString()
+                        },
                         originName: 'Restaurante Aliado',
-                        destinationName: data.address?.name || 'Cliente',
-                        isPaid: data.deliveryPaid,
-                        paymentRequested: data.paymentRequested,
+                        destinationName: data.delivery_address || data.address?.name || 'Cliente',
+                        isPaid: data.delivery_paid ?? data.deliveryPaid,
+                        paymentRequested: data.payment_requested ?? data.paymentRequested,
                         rating: data.rating,
                         comment: data.comment,
-                        distance: ((doc.id.length % 5) + 1.5).toFixed(1),
-                        duration: data.totalServiceDuration
+                        distance: ((data.id.length % 5) + 1.5).toFixed(1),
+                        duration: data.total_service_duration || data.totalServiceDuration
                     };
                 });
 
-                updateCombinedEarnings(deliveryItems, 'delivery');
-            });
+                // Query for Transport Requests
+                const { data: transportData } = await supabase
+                    .from('transport_requests')
+                    .select('*')
+                    .eq('driver_id', user.uid)
+                    .eq('status', 'completed');
 
-            unsubTransport = onSnapshot(qTransport, (snapshot) => {
-                const transportItems: EarningsItem[] = snapshot.docs.map(doc => {
-                    const data = doc.data();
+                const transportItems: EarningsItem[] = (transportData || []).map((data: any) => {
+                    const cDate = data.created_at ? new Date(data.created_at) : new Date();
                     return {
-                        id: doc.id,
-                        amount: parseFloat(String(data.driverPayout || data.price || 0)) || 0,
+                        id: data.id,
+                        amount: parseFloat(String(data.driver_payout || data.driverPayout || data.price || 0)) || 0,
                         type: 'transport',
                         status: data.status,
-                        createdAt: data.createdAt,
-                        originName: data.origin?.address || 'Origen',
-                        destinationName: data.destination?.address || 'Destino',
-                        isPaid: data.driverPaid,
-                        paymentRequested: data.paymentRequested,
+                        createdAt: {
+                            seconds: Math.floor(cDate.getTime() / 1000),
+                            toDate: () => cDate,
+                            toMillis: () => cDate.getTime(),
+                            toISOString: () => cDate.toISOString()
+                        },
+                        originName: data.origin_address || data.origin?.address || 'Origen',
+                        destinationName: data.destination_address || data.destination?.address || 'Destino',
+                        isPaid: data.driver_paid ?? data.driverPaid,
+                        paymentRequested: data.payment_requested ?? data.paymentRequested,
                         rating: data.rating,
-                        comment: data.ratingComment,
+                        comment: data.rating_comment || data.ratingComment,
                         distance: data.distance ? (parseFloat(String(data.distance)) / 1000).toFixed(1) : undefined,
-                        duration: data.arrivalDuration
+                        duration: data.arrival_duration || data.arrivalDuration
                     };
                 });
 
-                updateCombinedEarnings(transportItems, 'transport');
-            });
-        };
-
-        const updateCombinedEarnings = (items: EarningsItem[], type: 'delivery' | 'transport') => {
-            setEarnings(prev => {
-                const otherItems = prev.filter(i => i.type !== type);
-                const combined = [...otherItems, ...items].sort((a, b) => {
+                const combined = [...deliveryItems, ...transportItems].sort((a, b) => {
                     const dateA = a.createdAt?.seconds || 0;
                     const dateB = b.createdAt?.seconds || 0;
                     return dateB - dateA;
                 });
-                return combined;
-            });
-            setLoading(false);
+
+                setEarnings(combined);
+            } catch (err) {
+                console.error("Error fetching driver earnings:", err);
+            } finally {
+                setLoading(false);
+            }
         };
 
-        fetchAll();
+        const fetchRafflesAndUser = async () => {
+            try {
+                const { data: raffles } = await supabase
+                    .from('driver_raffles')
+                    .select('*')
+                    .eq('status', 'active');
 
-        const unsubRaffles = onSnapshot(query(collection(db, 'driver_raffles'), where('status', '==', 'active')), (snapshot) => {
-            const active = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as DriverRaffle));
-            setActiveRaffles(active);
-        });
+                if (raffles) {
+                    setActiveRaffles(raffles.map((d: any) => ({
+                        id: d.id,
+                        title: d.title,
+                        description: d.description,
+                        pointsCost: Number(d.points_cost ?? d.pointsCost) || 0,
+                        bannerUrl: d.banner_url || d.bannerUrl,
+                        status: d.status
+                    })));
+                }
 
-        const unsubUser = onSnapshot(doc(db, 'users', user.uid), (docInfo) => {
-            if (docInfo.exists()) {
-                setDriverPoints(docInfo.data().points || 0);
+                const { data: profileDoc } = await supabase
+                    .from('profiles')
+                    .select('points')
+                    .eq('id', user.uid)
+                    .maybeSingle();
+
+                if (profileDoc) {
+                    setDriverPoints(Number(profileDoc.points) || 0);
+                }
+            } catch (e) {
+                console.error(e);
             }
-        });
+        };
+
+        fetchEarnings();
+        fetchRafflesAndUser();
+
+        const channel = supabase
+            .channel(`earnings_${user.uid}`)
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'orders', filter: `delivery_driver_id=eq.${user.uid}` }, () => {
+                fetchEarnings();
+            })
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'transport_requests', filter: `driver_id=eq.${user.uid}` }, () => {
+                fetchEarnings();
+            })
+            .subscribe();
 
         return () => {
-            unsubOrders();
-            unsubTransport();
-            unsubRaffles();
-            unsubUser();
+            supabase.removeChannel(channel);
         };
     }, [user]);
 
     useEffect(() => {
-        if (!earnings.length) return;
-
         const now = new Date();
         const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
-
-        const d = new Date(now);
-        const day = d.getDay();
-        const diff = d.getDate() - day; // 0 for Sunday
-        const startOfWeek = new Date(d.setDate(diff)).setHours(0, 0, 0, 0);
+        const oneWeekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
 
         const todayItems = earnings.filter(o => {
-            const time = o.createdAt?.seconds ? o.createdAt.seconds * 1000 : (typeof o.createdAt === 'string' ? new Date(o.createdAt).getTime() : 0);
+            const time = o.createdAt?.toMillis ? o.createdAt.toMillis() : (o.createdAt?.seconds ? o.createdAt.seconds * 1000 : 0);
             return time >= startOfToday;
         });
+
         const weekItems = earnings.filter(o => {
-            const time = o.createdAt?.seconds ? o.createdAt.seconds * 1000 : (typeof o.createdAt === 'string' ? new Date(o.createdAt).getTime() : 0);
-            return time >= startOfWeek;
+            const time = o.createdAt?.toMillis ? o.createdAt.toMillis() : (o.createdAt?.seconds ? o.createdAt.seconds * 1000 : 0);
+            return time >= oneWeekAgo;
         });
+
         const pendingItems = earnings.filter(o => !o.isPaid);
 
         setStats({
@@ -205,29 +229,33 @@ export default function Earnings() {
 
         setProcessingRaffle(raffle.id);
         try {
-            const ticketRef = collection(db, 'driver_raffle_tickets');
-            const qTickets = query(ticketRef, where('raffleId', '==', raffle.id));
-            const snapshot = await getDocs(qTickets);
-            const nextTicketNumber = snapshot.size + 1;
+            const { count } = await supabase
+                .from('driver_raffle_tickets')
+                .select('*', { count: 'exact', head: true })
+                .eq('raffle_id', raffle.id);
+
+            const nextTicketNumber = (count || 0) + 1;
             const ticketStr = `Ticket #${String(nextTicketNumber).padStart(3, '0')}`;
 
-            await addDoc(ticketRef, {
-                raffleId: raffle.id,
-                raffleTitle: raffle.title,
-                driverId: user.uid,
-                driverName: profile?.name || 'Piloto',
-                ticketNumber: ticketStr,
-                pointsCost: raffle.pointsCost,
-                createdAt: serverTimestamp()
+            await supabase.from('driver_raffle_tickets').insert({
+                raffle_id: raffle.id,
+                raffle_title: raffle.title,
+                driver_id: user.uid,
+                driver_name: profile?.name || 'Piloto',
+                ticket_number: ticketStr,
+                points_cost: raffle.pointsCost,
+                created_at: new Date().toISOString()
             });
 
-            await updateDoc(doc(db, 'users', user.uid), {
-                points: increment(-raffle.pointsCost)
-            });
-            
+            const newPoints = Math.max(0, driverPoints - raffle.pointsCost);
+            await supabase.from('profiles').update({
+                points: newPoints
+            }).eq('id', user.uid);
+
+            setDriverPoints(newPoints);
             alert(`¡Ticket adquirido! Tu número es ${ticketStr}`);
         } catch (error) {
-            console.error('Error cangando puntos:', error);
+            console.error('Error canjeando puntos:', error);
             alert('Oh no, hubo un error procesando el canje.');
         } finally {
             setProcessingRaffle(null);
@@ -278,43 +306,47 @@ export default function Earnings() {
         const loadingToast = toast.loading('Procesando solicitud...');
         
         try {
-            const batch = writeBatch(db);
             const totalAmount = pendingItems.reduce((sum, item) => sum + item.amount, 0);
             const currentBcvRate = bcvRate || 1;
             const bsAmount = totalAmount * currentBcvRate;
             
-            // 1. Fetch admins first to ensure we have targets for notifications
-            const adminsSnap = await getDocs(query(collection(db, 'users'), where('role', '==', 'admin')));
-            
-            // 2. Mark items as requested
-            pendingItems.forEach(item => {
-                const itemRef = doc(db, item.type === 'delivery' ? 'orders' : 'transport_requests', item.id);
-                batch.update(itemRef, { paymentRequested: true });
-            });
+            const deliveryIds = pendingItems.filter(i => i.type === 'delivery').map(i => i.id);
+            const transportIds = pendingItems.filter(i => i.type === 'transport').map(i => i.id);
 
-            // 3. Create notifications for all admins
-            if (!adminsSnap.empty) {
-                adminsSnap.docs.forEach(adminDoc => {
-                    const notifRef = doc(collection(db, 'notifications'));
-                    batch.set(notifRef, {
-                        userId: adminDoc.id,
-                        title: '¡Nueva Solicitud de Pago!',
-                        body: `El piloto ${profile.fullName || profile.name || 'Sin nombre'} ha solicitado el pago de $${totalAmount.toFixed(2)} (${bsAmount.toFixed(2)} Bs).`,
-                        type: 'payout_request',
-                        driverId: user.uid,
-                        amountUsd: totalAmount,
-                        amountBs: bsAmount,
-                        bankInfo: profile.paymentMobile,
-                        read: false,
-                        createdAt: serverTimestamp()
-                    });
-                });
-            } else {
-                console.warn('No admins found to notify');
+            if (deliveryIds.length > 0) {
+                await supabase
+                    .from('orders')
+                    .update({ payment_requested: true, updated_at: new Date().toISOString() })
+                    .in('id', deliveryIds);
             }
 
-            await batch.commit();
+            if (transportIds.length > 0) {
+                await supabase
+                    .from('transport_requests')
+                    .update({ payment_requested: true, updated_at: new Date().toISOString() })
+                    .in('id', transportIds);
+            }
+
+            // Create notification
+            await supabase.from('notifications').insert({
+                title: '¡Nueva Solicitud de Pago!',
+                body: `El piloto ${profile.fullName || profile.name || 'Sin nombre'} ha solicitado el pago de $${totalAmount.toFixed(2)} (${bsAmount.toFixed(2)} Bs).`,
+                type: 'payout_request',
+                driver_id: user.uid,
+                amount_usd: totalAmount,
+                amount_bs: bsAmount,
+                bank_info: profile.paymentMobile,
+                read: false,
+                created_at: new Date().toISOString()
+            });
+
             toast.success('Solicitud enviada exitosamente', { id: loadingToast });
+            setEarnings(prev => prev.map(item => {
+                if (!item.isPaid && !item.paymentRequested) {
+                    return { ...item, paymentRequested: true };
+                }
+                return item;
+            }));
         } catch (error) {
             console.error('Error requesting payment:', error);
             toast.error('Ocurrió un error. Revisa tu conexión.', { id: loadingToast });
@@ -338,230 +370,196 @@ export default function Earnings() {
                 <p className="text-slate-500 font-medium mt-1">Supervisa tus ingresos por delivery y transporte</p>
             </div>
 
-            {/* Banners Promocionales de Rifas */}
-            {activeRaffles.map(raffle => (
-                <div key={raffle.id} className="mx-4 bg-gradient-to-br from-indigo-900 to-violet-900 rounded-[32px] p-1 shadow-xl shadow-indigo-900/30">
-                    <div className="bg-gradient-to-bl from-indigo-700 to-violet-800 rounded-[28px] overflow-hidden relative">
-                        <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 blur-3xl -mr-16 -mt-16 rounded-full pointer-events-none"></div>
-                        <div className="absolute bottom-0 left-0 w-24 h-24 bg-white/5 blur-2xl -ml-12 -mb-12 rounded-full pointer-events-none"></div>
-                        
-                        {raffle.bannerUrl && (
-                            <img src={raffle.bannerUrl} alt={raffle.title} className="w-full h-32 object-cover opacity-80" />
-                        )}
+            {/* Cards Stats */}
+            <div className="grid grid-cols-2 gap-4 px-4">
+                <div className="bg-white p-5 rounded-3xl border border-slate-100 shadow-sm flex flex-col justify-between">
+                    <div className="flex items-center justify-between text-slate-400 mb-2">
+                        <span className="text-xs font-bold uppercase tracking-wider">Hoy</span>
+                        <div className="w-8 h-8 rounded-full bg-emerald-50 text-emerald-500 flex items-center justify-center">
+                            <Activity className="w-4 h-4" />
+                        </div>
+                    </div>
+                    <div>
+                        <span className="text-2xl font-black text-slate-800">${stats.today.toFixed(2)}</span>
+                        <p className="text-[11px] text-slate-400 font-bold mt-0.5">{stats.todayCount} servicios</p>
+                    </div>
+                </div>
 
-                        <div className="p-5 relative z-10">
-                            <div className="flex items-center gap-2 mb-2">
-                                <Gift className="w-5 h-5 text-yellow-300 animate-pulse" />
-                                <span className="text-yellow-300 text-[10px] uppercase font-black tracking-widest bg-yellow-300/10 px-2 py-0.5 rounded-full border border-yellow-300/20">Sorteo Especial Activo</span>
-                            </div>
-                            <h3 className="text-2xl font-black text-white leading-tight">{raffle.title}</h3>
-                            <p className="text-indigo-200 text-xs font-medium mt-1">{raffle.description}</p>
-                            
-                            <div className="flex items-center justify-between mt-4 bg-black/20 rounded-2xl p-3 border border-indigo-500/30">
-                                <div>
-                                    <p className="text-indigo-200 text-[10px] uppercase font-black tracking-widest mb-0.5">Tus Puntos</p>
-                                    <p className="text-white font-black text-xl flex items-center gap-1">
-                                        <Sparkles className="w-4 h-4 text-emerald-400" />
-                                        {driverPoints}
-                                    </p>
-                                </div>
-                                <div className="text-right">
-                                    <p className="text-indigo-200 text-[10px] uppercase font-black tracking-widest mb-0.5">Costo por Ticket</p>
-                                    <p className="text-yellow-300 font-black text-lg">{raffle.pointsCost} pts</p>
-                                </div>
-                            </div>
+                <div className="bg-white p-5 rounded-3xl border border-slate-100 shadow-sm flex flex-col justify-between">
+                    <div className="flex items-center justify-between text-slate-400 mb-2">
+                        <span className="text-xs font-bold uppercase tracking-wider">Semana</span>
+                        <div className="w-8 h-8 rounded-full bg-primary/10 text-slate-900 flex items-center justify-center">
+                            <Calendar className="w-4 h-4" />
+                        </div>
+                    </div>
+                    <div>
+                        <span className="text-2xl font-black text-slate-800">${stats.week.toFixed(2)}</span>
+                        <p className="text-[11px] text-slate-400 font-bold mt-0.5">Últimos 7 días</p>
+                    </div>
+                </div>
+            </div>
 
-                            <button 
-                                onClick={() => handleExchangePoints(raffle)}
-                                disabled={processingRaffle === raffle.id}
-                                className="w-full mt-4 bg-gradient-to-r from-yellow-400 to-amber-500 hover:from-yellow-300 hover:to-amber-400 text-slate-900 font-black py-3 rounded-xl shadow-lg shadow-amber-500/20 active:scale-95 transition-all text-sm flex items-center justify-center gap-2 disabled:opacity-70 disabled:active:scale-100"
+            {/* Saldo Disponible & Cobro */}
+            <div className="px-4">
+                <div className="bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-900 rounded-[32px] p-6 text-white shadow-xl shadow-indigo-950/20 relative overflow-hidden">
+                    <div className="absolute top-0 right-0 w-32 h-32 bg-primary/10 rounded-full blur-2xl -mr-10 -mt-10"></div>
+                    <div className="relative z-10 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                        <div>
+                            <span className="text-xs font-bold uppercase tracking-widest text-indigo-300">Saldo Pendiente por Liquidar</span>
+                            <div className="flex items-baseline gap-2 mt-1">
+                                <span className="text-4xl font-black tracking-tight">${stats.available.toFixed(2)}</span>
+                                <span className="text-sm font-bold text-slate-400">USD</span>
+                            </div>
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                            {earnings.some(o => !o.isPaid && o.paymentRequested) && (
+                                <button
+                                    onClick={handleCopyPaymentData}
+                                    className="px-4 py-3.5 bg-white/10 hover:bg-white/20 active:scale-95 text-white text-xs font-bold rounded-2xl transition-all border border-white/10"
+                                    title="Copiar datos para pago móvil"
+                                >
+                                    Copiar Datos
+                                </button>
+                            )}
+
+                            <button
+                                onClick={handleRequestPayment}
+                                disabled={requestingPayment || stats.available <= 0}
+                                className="flex-1 sm:flex-initial px-6 py-3.5 bg-emerald-500 hover:bg-emerald-600 disabled:bg-slate-700 disabled:opacity-50 active:scale-95 text-white text-sm font-black rounded-2xl transition-all shadow-lg shadow-emerald-500/25 flex items-center justify-center gap-2"
                             >
-                                {processingRaffle === raffle.id ? (
-                                    <div className="w-5 h-5 border-2 border-slate-900 border-t-transparent rounded-full animate-spin"></div>
-                                ) : (
-                                    <>
-                                        <Ticket className="w-5 h-5" />
-                                        CANJEAR TICKET AHORA
-                                    </>
-                                )}
+                                <DollarSign className="w-4 h-4" />
+                                {requestingPayment ? 'Solicitando...' : 'Cobrar Ganancias'}
                             </button>
                         </div>
                     </div>
                 </div>
-            ))}
-
-            {/* Main Stats Grid */}
-            <div className="px-4 grid grid-cols-2 gap-4">
-                <div className="bg-primary rounded-[32px] p-5 text-black shadow-lg shadow-primary/20 relative overflow-hidden col-span-2">
-                    <div className="absolute top-0 right-0 w-24 h-24 bg-white/10 rounded-full blur-2xl -mr-8 -mt-8"></div>
-                    <p className="text-black font-black uppercase tracking-widest text-[10px] opacity-80">Disponible para Cobro</p>
-                    <h3 className="text-4xl font-black mb-1">${stats.available.toFixed(2)}</h3>
-                    <div className="flex items-center gap-1.5 text-black/70 text-[10px] font-bold">
-                        <PackageCheck className="w-3 h-3" /> {earnings.filter(o => !o.isPaid).length} servicios pendientes
-                    </div>
-                    
-                    {(() => {
-                        const requestedItems = earnings.filter(o => !o.isPaid && o.paymentRequested);
-                        const hasRequested = requestedItems.length > 0;
-                        const requestedAmount = requestedItems.reduce((sum, o) => sum + o.amount, 0);
-                        const currentBcvRate = bcvRate || 1;
-
-                        if (hasRequested) {
-                            return (
-                                <div className="mt-4 space-y-3">
-                                    <div className="bg-white/40 backdrop-blur-md border border-white/40 p-4 rounded-2xl">
-                                        <p className="text-black font-black text-sm text-center leading-tight">
-                                            Recibirás <span className="text-slate-900">${requestedAmount.toFixed(2)}</span> ({(requestedAmount * currentBcvRate).toFixed(2)} Bs)<br/>
-                                            <span className="text-[10px] opacity-70 font-bold uppercase tracking-widest mt-1 block">Por favor espera</span>
-                                        </p>
-                                    </div>
-                                    <button
-                                        onClick={handleCopyPaymentData}
-                                        className="w-full bg-white/20 hover:bg-white/30 text-black py-2.5 rounded-xl font-bold text-[10px] uppercase tracking-widest transition-all flex items-center justify-center gap-2 border border-white/30"
-                                    >
-                                        <ExternalLink className="w-3 h-3" /> COPIAR MIS DATOS DE PAGO
-                                    </button>
-                                </div>
-                            );
-                        }
-
-                        return stats.available > 0 && (
-                            <button
-                                id="btn-request-payment"
-                                onClick={handleRequestPayment}
-                                disabled={requestingPayment}
-                                className="mt-4 w-full bg-slate-900 text-primary py-3 rounded-xl font-black text-sm active:scale-95 transition-all shadow-xl shadow-slate-900/30 flex items-center justify-center gap-2"
-                            >
-                                {requestingPayment ? (
-                                    <div className="w-5 h-5 border-2 border-primary border-t-transparent rounded-full animate-spin"></div>
-                                ) : (
-                                    <>
-                                        <DollarSign className="w-4 h-4" /> SOLICITAR PAGO
-                                    </>
-                                )}
-                            </button>
-                        );
-                    })()}
-                </div>
-
-                <div className="bg-white rounded-[28px] p-5 border border-slate-100 shadow-sm">
-                    <p className="text-slate-400 font-black uppercase tracking-widest text-[9px] mb-1">Hoy</p>
-                    <h4 className="text-xl font-black text-slate-900">${stats.today.toFixed(2)}</h4>
-                    <p className="text-[10px] font-bold text-slate-500">{stats.todayCount} entregas</p>
-                </div>
-
-                <div className="bg-white rounded-[28px] p-5 border border-slate-100 shadow-sm">
-                    <p className="text-slate-400 font-black uppercase tracking-widest text-[9px] mb-1">Esta Semana</p>
-                    <h4 className="text-xl font-black text-slate-900">${stats.week.toFixed(2)}</h4>
-                    <p className="text-[10px] font-bold text-slate-500">Acumulado</p>
-                </div>
             </div>
 
-            {/* Tabs */}
-            <div className="px-4 flex gap-2">
-                <button
-                    onClick={() => setActiveTab('pending')}
-                    className={`flex-1 py-3 px-4 rounded-2xl font-bold text-sm transition-all ${activeTab === 'pending' ? 'bg-primary text-slate-900 shadow-md shadow-indigo-200' : 'bg-slate-200 text-slate-500 hover:bg-slate-300'}`}
-                >
-                    Pendientes
-                </button>
-                <button
-                    onClick={() => setActiveTab('history')}
-                    className={`flex-1 py-3 px-4 rounded-2xl font-bold text-sm transition-all ${activeTab === 'history' ? 'bg-slate-800 text-white shadow-md shadow-slate-300' : 'bg-slate-200 text-slate-500 hover:bg-slate-300'}`}
-                >
-                    Historial Pagado
-                </button>
-            </div>
-
-            {/* Transactions List */}
-            <div className="space-y-4 px-4">
-                {displayItems.length === 0 ? (
-                    <div className="text-center py-10 bg-slate-100 rounded-3xl border-2 border-dashed border-slate-200">
-                        <Activity className="w-10 h-10 text-slate-300 mx-auto mb-3" />
-                        <h3 className="font-bold text-slate-700">No hay movimientos</h3>
-                        <p className="text-sm text-slate-500 mt-1">Aún no tienes ingresos en esta sección.</p>
+            {/* Sorteos / Premios para Pilotos */}
+            {activeRaffles.length > 0 && (
+                <div className="px-4 space-y-3">
+                    <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                            <Sparkles className="w-4 h-4 text-amber-500" />
+                            <h3 className="font-black text-slate-800 text-sm uppercase tracking-wider">Sorteos de Pilotos</h3>
+                        </div>
+                        <span className="text-xs font-black text-amber-600 bg-amber-50 px-2.5 py-1 rounded-full border border-amber-200">
+                            {driverPoints} Puntos
+                        </span>
                     </div>
-                ) : (
-                    displayItems.map((item) => (
-                        <div key={item.id} className="bg-white rounded-3xl p-5 border border-slate-100 shadow-sm space-y-4 relative overflow-hidden">
-                            {/* Header */}
-                            <div className="flex justify-between items-start">
-                                <div>
-                                    <p className="text-xs font-bold text-slate-400 mb-1 flex items-center gap-1">
-                                        <Calendar className="w-3 h-3" />
-                                        {item.createdAt?.seconds
-                                            ? new Date(item.createdAt.seconds * 1000).toLocaleDateString('es-ES', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
-                                            : 'Fecha reciente'}
-                                    </p>
-                                    <h3 className="font-black text-slate-900 leading-tight">
-                                        {item.type === 'delivery' ? 'Delivery Completado' : 'Transporte Taxi Completado'}
-                                    </h3>
-                                </div>
-                                <div className="text-right">
-                                    <span className="font-black text-primary text-xl">+${item.amount.toFixed(2)}</span>
-                                </div>
-                            </div>
 
-                            {/* Details Route */}
-                            <div className="bg-slate-50 rounded-2xl p-3 text-sm">
-                                <div className="flex items-start gap-3 relative pb-4">
-                                    <div className="absolute top-2.5 left-2 w-0.5 h-full bg-slate-200 -z-0"></div>
-                                    <div className="w-4 h-4 rounded-full bg-slate-800 border-2 border-white relative z-10 shrink-0 mt-1"></div>
-                                    <div className="flex-1">
-                                        <p className="font-bold text-slate-700 text-xs uppercase tracking-tighter opacity-60">Origen</p>
-                                        <p className="font-bold text-slate-700">{item.originName}</p>
-                                    </div>
-                                </div>
-                                <div className="flex items-start gap-3 relative">
-                                    <div className="w-4 h-4 rounded-full bg-primary border-2 border-white relative z-10 shrink-0 mt-1"></div>
-                                    <div className="flex-1">
-                                        <p className="font-bold text-primary text-xs uppercase tracking-tighter opacity-60">Destino</p>
-                                        <p className="font-bold text-slate-700">{item.destinationName}</p>
-                                    </div>
-                                    {item.distance && (
-                                        <div className="text-right shrink-0">
-                                            <span className="bg-white border border-slate-200 text-slate-600 text-[10px] font-black px-2 py-1 rounded-lg">
-                                                {item.distance} km
-                                            </span>
-                                        </div>
-                                    )}
-                                </div>
-                                
-                                {item.duration !== undefined && (
-                                    <div className="mt-3 flex items-center gap-2 px-3 py-2 bg-white/50 border border-slate-100 rounded-xl">
-                                        <Clock className="w-3.5 h-3.5 text-primary" />
-                                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none">
-                                            {item.type === 'delivery' ? 'Tiempo Total: ' : 'Tiempo de LLegada: '}
-                                            <span className="text-slate-700 font-black">{formatDuration(item.duration)}</span>
-                                        </span>
-                                    </div>
-                                )}
-                            </div>
-
-                            {/* Rating / Review from Client */}
-                            {item.rating ? (
-                                <div className="bg-orange-50/50 rounded-2xl p-3 border border-orange-100 flex items-start gap-3">
-                                    <div className="flex items-center gap-0.5 text-orange-500 shrink-0 mt-0.5">
-                                        <Star className="w-4 h-4 fill-current" />
-                                        <span className="font-black text-sm ml-1">{item.rating}</span>
+                    <div className="grid grid-cols-1 gap-3">
+                        {activeRaffles.map(raffle => (
+                            <div key={raffle.id} className="bg-white rounded-3xl p-4 border border-slate-100 shadow-sm flex items-center justify-between gap-3">
+                                <div className="flex items-center gap-3">
+                                    <div className="w-12 h-12 rounded-2xl bg-amber-50 text-amber-500 flex items-center justify-center shrink-0">
+                                        <Ticket className="w-6 h-6" />
                                     </div>
                                     <div>
-                                        {item.comment ? (
-                                            <p className="text-xs text-slate-700 italic font-medium">"{item.comment}"</p>
-                                        ) : (
-                                            <p className="text-xs text-slate-500 font-medium">El cliente dejó una calificación sin comentarios.</p>
-                                        )}
+                                        <h4 className="font-bold text-slate-800 text-sm">{raffle.title}</h4>
+                                        <p className="text-xs text-slate-400 line-clamp-1">{raffle.description}</p>
+                                        <span className="text-[10px] font-black text-amber-600 uppercase tracking-wider mt-1 block">
+                                            {raffle.pointsCost} pts por ticket
+                                        </span>
                                     </div>
                                 </div>
-                            ) : (
-                                <div className="flex items-center gap-2 text-slate-400 text-xs font-medium">
-                                    <AlertCircle className="w-3 h-3" />
-                                    {item.type === 'delivery' ? 'Sin calificación del pedido aún.' : 'Sin calificación del viaje aún.'}
-                                </div>
-                            )}
+
+                                <button
+                                    onClick={() => handleExchangePoints(raffle)}
+                                    disabled={processingRaffle === raffle.id || driverPoints < raffle.pointsCost}
+                                    className="px-4 py-2 bg-slate-900 text-white text-xs font-black rounded-xl hover:bg-slate-800 disabled:opacity-40 disabled:hover:bg-slate-900 transition-all shrink-0"
+                                >
+                                    {processingRaffle === raffle.id ? 'Canjeando...' : 'Canjear'}
+                                </button>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
+
+            {/* Tabs: Pendientes vs Historial */}
+            <div className="px-4 space-y-4">
+                <div className="flex bg-slate-200/60 p-1.5 rounded-2xl">
+                    <button
+                        onClick={() => setActiveTab('pending')}
+                        className={`flex-1 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all ${
+                            activeTab === 'pending'
+                                ? 'bg-white text-slate-800 shadow-sm'
+                                : 'text-slate-500 hover:text-slate-700'
+                        }`}
+                    >
+                        Pendientes ({earnings.filter(o => !o.isPaid).length})
+                    </button>
+                    <button
+                        onClick={() => setActiveTab('history')}
+                        className={`flex-1 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all ${
+                            activeTab === 'history'
+                                ? 'bg-white text-slate-800 shadow-sm'
+                                : 'text-slate-500 hover:text-slate-700'
+                        }`}
+                    >
+                        Historial Pagado ({historyItems.length})
+                    </button>
+                </div>
+
+                {/* List */}
+                <div className="space-y-3">
+                    {displayItems.length === 0 ? (
+                        <div className="bg-white rounded-3xl p-8 text-center border border-slate-100">
+                            <PackageCheck className="w-12 h-12 text-slate-300 mx-auto mb-2" />
+                            <p className="font-bold text-slate-700">Sin registros</p>
+                            <p className="text-xs text-slate-400 mt-1">
+                                {activeTab === 'pending' ? 'No tienes servicios pendientes por cobrar.' : 'No tienes servicios liquidados anteriormente.'}
+                            </p>
                         </div>
-                    ))
-                )}
+                    ) : (
+                        displayItems.map((item) => (
+                            <div key={`${item.type}-${item.id}`} className="bg-white p-4 rounded-3xl border border-slate-100 shadow-sm flex items-center justify-between gap-3">
+                                <div className="flex items-center gap-3">
+                                    <div className={`w-10 h-10 rounded-2xl flex items-center justify-center shrink-0 ${
+                                        item.type === 'delivery' ? 'bg-orange-50 text-orange-500' : 'bg-blue-50 text-blue-500'
+                                    }`}>
+                                        <ArrowUpRight className="w-5 h-5" />
+                                    </div>
+                                    <div>
+                                        <div className="flex items-center gap-1.5">
+                                            <span className="font-bold text-slate-800 text-sm capitalize">{item.type === 'delivery' ? 'Delivery' : 'Viaje'}</span>
+                                            {item.paymentRequested && !item.isPaid && (
+                                                <span className="text-[9px] font-black uppercase bg-amber-50 text-amber-600 border border-amber-200 px-1.5 py-0.5 rounded-md">
+                                                    Cobro Solicitado
+                                                </span>
+                                            )}
+                                        </div>
+                                        <p className="text-xs text-slate-400 line-clamp-1 mt-0.5">
+                                            {item.destinationName}
+                                        </p>
+                                        <div className="flex items-center gap-2 mt-1 text-[10px] text-slate-400 font-bold">
+                                            {item.distance && <span>{item.distance} km</span>}
+                                            {item.duration && <span>• {formatDuration(item.duration)}</span>}
+                                            {item.rating && (
+                                                <span className="flex items-center text-amber-500">
+                                                    • {item.rating} <Star className="w-2.5 h-2.5 fill-amber-500 ml-0.5" />
+                                                </span>
+                                            )}
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="text-right shrink-0">
+                                    <span className="text-base font-black text-slate-800">
+                                        +${item.amount.toFixed(2)}
+                                    </span>
+                                    <span className={`block text-[10px] font-black uppercase tracking-wider mt-0.5 ${
+                                        item.isPaid ? 'text-emerald-500' : item.paymentRequested ? 'text-amber-500' : 'text-slate-400'
+                                    }`}>
+                                        {item.isPaid ? 'Pagado' : item.paymentRequested ? 'En Proceso' : 'Pendiente'}
+                                    </span>
+                                </div>
+                            </div>
+                        ))
+                    )}
+                </div>
             </div>
         </div>
     );

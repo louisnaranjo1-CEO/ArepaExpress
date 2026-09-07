@@ -1,8 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
 import { Handshake, AlertTriangle, Plus, Search, CheckCircle, Clock, X, Save, TrendingUp, Users } from 'lucide-react';
-import { db } from '../../lib/firebase';
-import { collection, doc, query, onSnapshot, addDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
+import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../context/AuthContext';
 
 interface Installment {
@@ -44,17 +43,46 @@ export default function ResuelveManager() {
 
     useEffect(() => {
         if (!rid) return;
-        const q = query(collection(db, 'restaurants', rid, 'credits'));
-        const unsub = onSnapshot(q, (snap) => {
-            const data = snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Credit));
-            setCredits(data.sort((a,b) => b.createdAt - a.createdAt));
-        });
-        return () => unsub();
+        const fetchCredits = async () => {
+            const { data, error } = await supabase
+                .from('restaurant_credits')
+                .select('*')
+                .eq('restaurant_id', rid)
+                .order('created_at', { ascending: false });
+
+            if (data) {
+                setCredits(data.map(d => ({
+                    id: d.id,
+                    userEmail: d.user_email,
+                    totalAmount: Number(d.total_amount || 0),
+                    initialPayment: Number(d.initial_payment || 0),
+                    status: d.status,
+                    installments: d.installments || [],
+                    createdAt: d.created_at ? new Date(d.created_at).getTime() : Date.now()
+                })));
+            }
+        };
+        fetchCredits();
+
+        const channel = supabase.channel(`restaurant_credits:${rid}`)
+            .on('postgres_changes', {
+                event: '*',
+                schema: 'public',
+                table: 'restaurant_credits',
+                filter: `restaurant_id=eq.${rid}`
+            }, () => {
+                fetchCredits();
+            })
+            .subscribe();
+
+        return () => {
+            supabase.removeChannel(channel);
+        };
     }, [rid]);
 
     const handleCreateCredit = async (e: React.FormEvent) => {
         e.preventDefault();
-        if(!user) return;
+        if(!user || !rid) return;
         
         try {
             const tAmount = parseFloat(totalAmount);
@@ -80,15 +108,17 @@ export default function ResuelveManager() {
             }
 
             const newCredit = {
-                userEmail,
-                totalAmount: tAmount,
-                initialPayment: initPayment,
+                restaurant_id: rid,
+                user_email: userEmail,
+                total_amount: tAmount,
+                initial_payment: initPayment,
                 installments,
-                status: 'active',
-                createdAt: Date.now()
+                status: 'active'
             };
 
-            await addDoc(collection(db, 'restaurants', rid, 'credits'), newCredit);
+            const { error } = await supabase.from('restaurant_credits').insert(newCredit);
+            if (error) throw error;
+
             setIsAdding(false);
             
             // Reset
@@ -115,10 +145,15 @@ export default function ResuelveManager() {
             const allPaid = updatedInstallments.every(i => i.status === 'paid');
             const newStatus = allPaid ? 'completed' : 'active';
 
-            await updateDoc(doc(db, 'restaurants', rid, 'credits', creditId), {
-                installments: updatedInstallments,
-                status: newStatus
-            });
+            const { error } = await supabase
+                .from('restaurant_credits')
+                .update({
+                    installments: updatedInstallments,
+                    status: newStatus
+                })
+                .eq('id', creditId);
+
+            if (error) throw error;
         } catch (error) {
             console.error("Error updating installment", error);
         }

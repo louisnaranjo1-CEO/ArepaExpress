@@ -1,32 +1,39 @@
 import React, { useState, useEffect } from 'react';
-import { collection, getDocs, query, orderBy, where, doc, getDoc, setDoc, updateDoc, onSnapshot, writeBatch, collectionGroup } from 'firebase/firestore';
-import { db } from '../../lib/firebase';
+import { supabase } from '../../lib/supabase';
 import { User, ChevronRight, Mail, Phone, Calendar, ShoppingBag, Heart, X, MapPin, Wallet, CheckCircle, XCircle, Search, Filter, Image as ImageIcon, Activity, Clock, ExternalLink, Gift, Users } from 'lucide-react';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import DualPrice from '../../components/DualPrice';
+import toast from 'react-hot-toast';
 
 interface UserProfile {
     id: string;
     displayName?: string;
-    name?: string; // Legacy field
+    name?: string;
     email?: string;
     phone?: string;
-    createdAt?: any; // Firebase Timestamp
+    createdAt?: any;
     role?: string;
     photoURL?: string;
     walletBalance?: number;
     favorites?: any[];
     address?: string;
-    lastSeen?: any; // Firebase Timestamp
+    lastSeen?: any;
     totalUsageMinutes?: number;
-    lastLogin?: any; // Firebase Timestamp
+    lastLogin?: any;
     totalReferrals?: number;
     points?: number;
     restaurantPoints?: Record<string, number>;
     lastCity?: string;
     lastState?: string;
 }
+
+const parseDate = (d: any): Date | null => {
+    if (!d) return null;
+    if (typeof d.toDate === 'function') return d.toDate();
+    const parsed = new Date(d);
+    return isNaN(parsed.getTime()) ? null : parsed;
+};
 
 export default function UsersManager() {
     const [activeTab, setActiveTab] = useState<'users' | 'funds'>('users');
@@ -49,9 +56,13 @@ export default function UsersManager() {
     useEffect(() => {
         const fetchSystemConfig = async () => {
             try {
-                const configSnap = await getDoc(doc(db, 'system_configs', 'fidelization'));
-                if (configSnap.exists()) {
-                    const data = configSnap.data();
+                const { data } = await supabase
+                    .from('system_configs')
+                    .select('*')
+                    .eq('id', 'fidelization')
+                    .maybeSingle();
+
+                if (data) {
                     if (data.shareMessage) setShareMessage(data.shareMessage);
                     if (data.shareUrl) setShareUrl(data.shareUrl);
                 }
@@ -65,20 +76,92 @@ export default function UsersManager() {
     const handleSaveShareConfig = async () => {
         setSavingConfig(true);
         try {
-            await setDoc(doc(db, 'system_configs', 'fidelization'), {
+            const { error } = await supabase.from('system_configs').upsert({
+                id: 'fidelization',
                 shareMessage,
                 shareUrl,
-                updatedAt: new Date()
-            }, { merge: true });
+                updatedAt: new Date().toISOString()
+            });
+            if (error) throw error;
             setShowShareLinkModal(false);
-            alert("Configuración de referidos guardada con éxito.");
+            toast.success("Configuración de referidos guardada con éxito.");
         } catch (error) {
             console.error(error);
-            alert("Error al guardar la configuración.");
+            toast.error("Error al guardar la configuración.");
         } finally {
             setSavingConfig(false);
         }
     };
+
+    const fetchUsers = async () => {
+        try {
+            const { data, error } = await supabase
+                .from('profiles')
+                .select('*')
+                .order('created_at', { ascending: false });
+
+            if (error) throw error;
+
+            const mapped: UserProfile[] = (data || []).map((p: any) => ({
+                id: p.id,
+                displayName: p.full_name || p.name || p.displayName,
+                name: p.full_name || p.name,
+                email: p.email,
+                phone: p.phone,
+                role: p.role || 'client',
+                photoURL: p.avatar_url || p.photo_url || p.photoURL,
+                walletBalance: p.wallet_balance ?? p.walletBalance ?? 0,
+                createdAt: p.created_at || p.createdAt,
+                lastSeen: p.last_seen || p.lastSeen,
+                totalUsageMinutes: p.total_usage_minutes ?? p.totalUsageMinutes ?? 0,
+                lastLogin: p.last_login || p.lastLogin || p.updated_at,
+                totalReferrals: p.total_referrals ?? p.totalReferrals ?? 0,
+                points: p.points ?? 0,
+                restaurantPoints: p.restaurant_points || p.restaurantPoints || {},
+                lastCity: p.last_city || p.lastCity,
+                lastState: p.last_state || p.lastState,
+                address: p.address
+            }));
+            setUsers(mapped);
+        } catch (error) {
+            console.error("Error fetching users: ", error);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const fetchRecharges = async () => {
+        try {
+            const { data, error } = await supabase
+                .from('wallet_recharges')
+                .select('*')
+                .order('created_at', { ascending: false });
+
+            if (error) throw error;
+            setRecharges(data || []);
+        } catch (error) {
+            console.error("Error fetching wallet recharges: ", error);
+        }
+    };
+
+    useEffect(() => {
+        fetchUsers();
+        fetchRecharges();
+
+        const channel = supabase
+            .channel('users_manager_realtime')
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'wallet_recharges' }, () => {
+                fetchRecharges();
+            })
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, () => {
+                fetchUsers();
+            })
+            .subscribe();
+
+        return () => {
+            supabase.removeChannel(channel);
+        };
+    }, []);
 
     const filteredUsers = users.filter(user => {
         const userName = user.displayName || user.name || '';
@@ -96,14 +179,15 @@ export default function UsersManager() {
             const bRefs = (b as any).totalReferrals || 0;
             return bRefs - aRefs;
         }
-        return 0; // maintain original `createdAt` desc sort
+        return 0;
     });
 
     const isOnline = (lastSeen: any) => {
         if (!lastSeen) return false;
         try {
             const now = new Date().getTime();
-            const seen = lastSeen.toDate().getTime();
+            const seen = parseDate(lastSeen)?.getTime();
+            if (!seen) return false;
             return (now - seen) < 120000; // 2 minutes threshold
         } catch (e) {
             return false;
@@ -117,40 +201,6 @@ export default function UsersManager() {
         return `${hours}h ${mins}m`;
     };
 
-    useEffect(() => {
-        const fetchUsers = async () => {
-            try {
-                const querySnapshot = await getDocs(query(collection(db, 'users'), orderBy('createdAt', 'desc')));
-                const data = querySnapshot.docs.map(doc => ({
-                    id: doc.id,
-                    ...doc.data()
-                }));
-                setUsers(data as UserProfile[]);
-            } catch (error) {
-                console.error("Error fetching users: ", error);
-            } finally {
-                setLoading(false);
-            }
-        };
-
-        const unsubscribeRecharges = onSnapshot(
-            query(collection(db, 'wallet_recharges'), orderBy('createdAt', 'desc')),
-            (snapshot) => {
-                const data = snapshot.docs.map(doc => ({
-                    id: doc.id,
-                    ...doc.data()
-                }));
-                setRecharges(data);
-            },
-            (error) => {
-                console.error("Error fetching wallet recharges: ", error);
-            }
-        );
-
-        fetchUsers();
-        return () => unsubscribeRecharges();
-    }, []);
-
     const [selectedDriverData, setSelectedDriverData] = useState<any | null>(null);
 
     const handleUserClick = async (user: UserProfile) => {
@@ -161,31 +211,40 @@ export default function UsersManager() {
         setSelectedDriverData(null);
 
         try {
-            const ordersSnap = await getDocs(query(collectionGroup(db, 'orders'), where('userId', '==', user.id)));
-            const ordersData = ordersSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-            setUserOrders(ordersData);
+            const { data: ordersData } = await supabase
+                .from('orders')
+                .select('*')
+                .or(`user_id.eq.${user.id},userId.eq.${user.id}`);
+            setUserOrders(ordersData || []);
 
             // Fetch driver data if applicable
             if (user.role === 'driver' || user.role === 'delivery') {
-                const driverSnap = await getDoc(doc(db, 'delivery_drivers', user.id));
-                if (driverSnap.exists()) {
-                    setSelectedDriverData(driverSnap.data());
+                const { data: driverData } = await supabase
+                    .from('drivers')
+                    .select('*')
+                    .or(`id.eq.${user.id},user_id.eq.${user.id},userId.eq.${user.id}`)
+                    .maybeSingle();
+
+                if (driverData) {
+                    setSelectedDriverData(driverData);
                 }
             }
             // Fetch restaurant names for points if needed
             if (user.restaurantPoints) {
                 const namesToFetch = Object.keys(user.restaurantPoints).filter(id => !restaurantNames[id]);
                 if (namesToFetch.length > 0) {
-                    const names: Record<string, string> = { ...restaurantNames };
-                    await Promise.all(namesToFetch.map(async (id) => {
-                        const rDoc = await getDoc(doc(db, 'restaurants', id));
-                        if (rDoc.exists()) {
-                            names[id] = rDoc.data().name;
-                        } else {
-                            names[id] = 'Local Desconocido';
-                        }
-                    }));
-                    setRestaurantNames(names);
+                    const { data: rests } = await supabase
+                        .from('comercios')
+                        .select('id, name')
+                        .in('id', namesToFetch);
+
+                    if (rests) {
+                        const names: Record<string, string> = { ...restaurantNames };
+                        rests.forEach((r: any) => {
+                            names[r.id] = r.name;
+                        });
+                        setRestaurantNames(names);
+                    }
                 }
             }
         } catch (error) {
@@ -199,23 +258,32 @@ export default function UsersManager() {
         if (!window.confirm(`¿Aprobar recarga de $${amount} para este usuario?`)) return;
 
         try {
-            const userRef = doc(db, 'users', userId);
-            const userSnap = await getDoc(userRef);
+            const { data: userProfile } = await supabase
+                .from('profiles')
+                .select('wallet_balance, walletBalance')
+                .eq('id', userId)
+                .maybeSingle();
 
-            if (userSnap.exists()) {
-                const currentBalance = userSnap.data().walletBalance || 0;
-                const newBalance = currentBalance + amount;
+            const currentBalance = (userProfile?.wallet_balance ?? userProfile?.walletBalance ?? 0) as number;
+            const newBalance = Number(currentBalance) + Number(amount);
 
-                const batch = writeBatch(db);
-                batch.update(doc(db, 'wallet_recharges', rechargeId), { status: 'approved', reviewDate: new Date() });
-                batch.update(userRef, { walletBalance: newBalance });
+            await supabase.from('wallet_recharges').update({
+                status: 'approved',
+                review_date: new Date().toISOString(),
+                reviewDate: new Date().toISOString()
+            }).eq('id', rechargeId);
 
-                await batch.commit();
-            } else {
-                console.error("User not found!");
-            }
+            await supabase.from('profiles').update({
+                wallet_balance: newBalance,
+                walletBalance: newBalance
+            }).eq('id', userId);
+
+            toast.success("Recarga aprobada con éxito");
+            fetchUsers();
+            fetchRecharges();
         } catch (error) {
             console.error("Error approving recharge:", error);
+            toast.error("Error al procesar la aprobación");
         }
     };
 
@@ -223,12 +291,17 @@ export default function UsersManager() {
         if (!window.confirm("¿Rechazar esta recarga?")) return;
 
         try {
-            await updateDoc(doc(db, 'wallet_recharges', rechargeId), {
+            await supabase.from('wallet_recharges').update({
                 status: 'rejected',
-                reviewDate: new Date()
-            });
+                review_date: new Date().toISOString(),
+                reviewDate: new Date().toISOString()
+            }).eq('id', rechargeId);
+
+            toast.success("Recarga rechazada");
+            fetchRecharges();
         } catch (error) {
             console.error("Error rejecting recharge:", error);
+            toast.error("Error al procesar el rechazo");
         }
     };
 
@@ -388,7 +461,7 @@ export default function UsersManager() {
                                                         <Clock className="w-3 h-3 text-slate-300" /> {formatUsage(user.totalUsageMinutes)}
                                                     </div>
                                                     <div className="text-[10px] font-bold text-slate-400">
-                                                        {user.lastLogin ? `Ult. vez: ${format(user.lastLogin.toDate(), 'dd/MM HH:mm')}` : 'Sin ingresos'}
+                                                        {user.lastLogin && parseDate(user.lastLogin) ? `Ult. vez: ${format(parseDate(user.lastLogin)!, 'dd/MM HH:mm')}` : 'Sin ingresos'}
                                                     </div>
                                                 </div>
                                             </td>
@@ -439,6 +512,8 @@ export default function UsersManager() {
                                     rejected: 'Rechazada'
                                 };
 
+                                const rechargeDate = parseDate(recharge.created_at || recharge.createdAt);
+
                                 return (
                                     <div key={recharge.id} className="bg-white border-2 border-slate-100 rounded-3xl p-5 hover:border-slate-200 transition-all flex flex-col">
                                         <div className="flex justify-between items-start mb-4">
@@ -446,27 +521,27 @@ export default function UsersManager() {
                                                 {statusLabels[recharge.status as keyof typeof statusLabels] || recharge.status}
                                             </span>
                                             <span className="text-xs font-bold text-slate-400">
-                                                {recharge.createdAt ? new Date(recharge.createdAt.toDate()).toLocaleDateString() : '-'}
+                                                {rechargeDate ? rechargeDate.toLocaleDateString() : '-'}
                                             </span>
                                         </div>
 
                                         <div className="mb-4">
                                             <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Monto Solicitado</p>
-                                            <DualPrice usdAmount={parseFloat(recharge.amount)} usdClassName="text-3xl font-black text-slate-900" showDivider={false} className="flex flex-col" />
+                                            <DualPrice usdAmount={parseFloat(recharge.amount || 0)} usdClassName="text-3xl font-black text-slate-900" showDivider={false} className="flex flex-col" />
                                         </div>
 
                                         <div className="space-y-3 mb-6 bg-slate-50 p-4 rounded-2xl">
                                             <div>
                                                 <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-0.5">Usuario</p>
-                                                <p className="font-bold text-slate-700">{recharge.userName || 'Usuario Desconocido'}</p>
-                                                <p className="text-xs text-slate-500">{recharge.userEmail}</p>
+                                                <p className="font-bold text-slate-700">{recharge.userName || recharge.user_name || 'Usuario Desconocido'}</p>
+                                                <p className="text-xs text-slate-500">{recharge.userEmail || recharge.user_email}</p>
                                             </div>
                                             <div>
                                                 <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-0.5">Referencia</p>
                                                 <p className="font-medium text-slate-600 bg-white px-2 py-1 rounded border border-slate-200 font-mono text-sm">{recharge.reference}</p>
                                             </div>
-                                            {recharge.proofUrl && (
-                                                <a href={recharge.proofUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 text-slate-900 text-xs font-bold hover:underline bg-primary/5 px-3 py-1.5 rounded-lg mt-2 transition-colors">
+                                            {(recharge.proofUrl || recharge.proof_url) && (
+                                                <a href={recharge.proofUrl || recharge.proof_url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 text-slate-900 text-xs font-bold hover:underline bg-primary/5 px-3 py-1.5 rounded-lg mt-2 transition-colors">
                                                     <ImageIcon className="w-3.5 h-3.5" />
                                                     Ver Comprobante
                                                 </a>
@@ -483,7 +558,7 @@ export default function UsersManager() {
                                                         <XCircle className="w-4 h-4" /> Rechazar
                                                     </button>
                                                     <button
-                                                        onClick={() => handleApproveRecharge(recharge.id, recharge.userId, parseFloat(recharge.amount))}
+                                                        onClick={() => handleApproveRecharge(recharge.id, recharge.userId || recharge.user_id, parseFloat(recharge.amount || 0))}
                                                         className="flex-1 py-3 bg-emerald-500 text-white rounded-xl font-bold text-xs uppercase tracking-widest shadow-lg shadow-emerald-500/30 hover:bg-emerald-600 transition-colors flex items-center justify-center gap-1"
                                                     >
                                                         <CheckCircle className="w-4 h-4" /> Aprobar
@@ -649,7 +724,10 @@ export default function UsersManager() {
                                     <div className="space-y-4">
                                         <InfoItem icon={Mail} label="Correo" value={selectedUser.email || 'No proporcionado'} />
                                         <InfoItem icon={Phone} label="Teléfono" value={selectedUser.phone || 'No proporcionado'} />
-                                        <InfoItem icon={Calendar} label="Registro" value={selectedUser.createdAt ? format(selectedUser.createdAt.toDate(), 'PPP', { locale: es }) : 'N/A'} />
+                                        <InfoItem icon={Calendar} label="Registro" value={(() => {
+                                            const d = parseDate(selectedUser.createdAt);
+                                            return d ? format(d, 'PPP', { locale: es }) : 'N/A';
+                                        })()} />
                                         <InfoItem 
                                             icon={MapPin} 
                                             label="Última Ubicación" 
@@ -711,7 +789,10 @@ export default function UsersManager() {
                                         <div>
                                             <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-0.5">Último Ingreso</p>
                                             <p className="text-xs font-bold text-slate-700">
-                                                {selectedUser.lastLogin ? format(selectedUser.lastLogin.toDate(), 'dd/MM/yyyy HH:mm') : 'No registrado'}
+                                                {(() => {
+                                                    const d = parseDate(selectedUser.lastLogin);
+                                                    return d ? format(d, 'dd/MM/yyyy HH:mm') : 'No registrado';
+                                                })()}
                                             </p>
                                         </div>
                                         <Activity className={`w-5 h-5 ${isOnline(selectedUser.lastSeen) ? 'text-green-500 animate-pulse' : 'text-slate-300'}`} />
@@ -739,14 +820,28 @@ export default function UsersManager() {
                                         const cleanPhone = selectedUser.phone.replace(/\D/g, '');
                                         window.open(`https://wa.me/${cleanPhone.startsWith('58') ? cleanPhone : `58${cleanPhone}`}`, '_blank');
                                     } else {
-                                        alert("El usuario no tiene un número de teléfono registrado.");
+                                        toast.error("El usuario no tiene un número de teléfono registrado.");
                                     }
                                 }}
                                 className="flex-1 py-4 bg-slate-900 text-white rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl shadow-slate-900/20 hover:bg-slate-800 transition-all flex items-center justify-center gap-2"
                             >
                                 <Phone className="w-4 h-4" /> CONTACTAR POR WHATSAPP
                             </button>
-                            <button className="flex-1 py-4 bg-white border border-slate-200 text-red-600 rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-red-50 transition-colors">
+                            <button 
+                                onClick={async () => {
+                                    if (window.confirm(`¿Seguro que deseas suspender la cuenta de ${selectedUser.displayName || selectedUser.name || 'este usuario'}?`)) {
+                                        try {
+                                            await supabase.from('profiles').update({ role: 'suspended', is_suspended: true }).eq('id', selectedUser.id);
+                                            toast.success("Cuenta suspendida");
+                                            setIsModalOpen(false);
+                                            fetchUsers();
+                                        } catch (e) {
+                                            toast.error("Error al suspender cuenta");
+                                        }
+                                    }
+                                }}
+                                className="flex-1 py-4 bg-white border border-slate-200 text-red-600 rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-red-50 transition-colors"
+                            >
                                 SUSPENDER CUENTA
                             </button>
                         </div>
@@ -805,4 +900,3 @@ function DocCard({ label, url, details }: { label: string, url?: string, details
         </a>
     );
 }
-

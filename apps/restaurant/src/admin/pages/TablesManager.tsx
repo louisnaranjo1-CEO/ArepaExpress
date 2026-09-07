@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { collection, query, getDocs, doc, setDoc, deleteDoc, serverTimestamp } from 'firebase/firestore';
-import { db } from '../../lib/firebase';
+import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../context/AuthContext';
 import { LayoutGrid, Plus, Edit2, Trash2, X, Users as UsersIcon } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
@@ -29,6 +28,17 @@ export default function TablesManager() {
     useEffect(() => {
         if (user && rid) {
             fetchTables();
+
+            const channel = supabase
+                .channel(`tables_${rid}`)
+                .on('postgres_changes', { event: '*', schema: 'public', table: 'restaurant_tables', filter: `restaurant_id=eq.${rid}` }, () => {
+                    fetchTables();
+                })
+                .subscribe();
+
+            return () => {
+                supabase.removeChannel(channel);
+            };
         }
     }, [user, rid]);
 
@@ -36,15 +46,23 @@ export default function TablesManager() {
         if (!user || !rid) return;
         setLoading(true);
         try {
-            const q = query(collection(db, 'restaurants', rid, 'tables'));
-            const snapshot = await getDocs(q);
-            const data = snapshot.docs.map(doc => ({
-                id: doc.id,
-                ...doc.data()
-            })) as Table[];
+            const { data, error } = await supabase
+                .from('restaurant_tables')
+                .select('*')
+                .eq('restaurant_id', rid);
+
+            if (error) throw error;
+
+            const mapped: Table[] = (data || []).map((d: any) => ({
+                id: d.id,
+                number: d.table_number || d.number || '',
+                capacity: d.capacity || 4,
+                status: d.status || 'available',
+                createdAt: d.created_at
+            }));
 
             // Sort by table number (numeric sort if possible)
-            data.sort((a, b) => {
+            mapped.sort((a, b) => {
                 const numA = parseInt(a.number, 10);
                 const numB = parseInt(b.number, 10);
                 if (!isNaN(numA) && !isNaN(numB)) {
@@ -53,7 +71,7 @@ export default function TablesManager() {
                 return a.number.localeCompare(b.number);
             });
 
-            setTables(data);
+            setTables(mapped);
         } catch (error) {
             console.error("Error fetching tables:", error);
         } finally {
@@ -85,21 +103,28 @@ export default function TablesManager() {
 
         setSaving(true);
         try {
-            const tableId = editingTable ? editingTable.id : Date.now().toString();
-            const tableRef = doc(db, 'restaurants', rid, 'tables', tableId);
-
             const tableData: any = {
+                restaurant_id: rid,
+                table_number: number.trim(),
                 number: number.trim(),
                 capacity: Number(capacity),
-                updatedAt: serverTimestamp()
+                updated_at: new Date().toISOString()
             };
 
-            if (!editingTable) {
-                tableData.createdAt = serverTimestamp();
-                tableData.status = 'available'; // Default status
+            if (editingTable) {
+                const { error } = await supabase
+                    .from('restaurant_tables')
+                    .update(tableData)
+                    .eq('id', editingTable.id);
+                if (error) throw error;
+            } else {
+                tableData.status = 'available';
+                tableData.created_at = new Date().toISOString();
+                const { error } = await supabase
+                    .from('restaurant_tables')
+                    .insert(tableData);
+                if (error) throw error;
             }
-
-            await setDoc(tableRef, tableData, { merge: true });
 
             await fetchTables();
             handleCloseForm();
@@ -115,7 +140,11 @@ export default function TablesManager() {
         if (!user || !rid || !window.confirm('¿Estás seguro de que deseas eliminar esta mesa?')) return;
 
         try {
-            await deleteDoc(doc(db, 'restaurants', rid, 'tables', tableId));
+            const { error } = await supabase
+                .from('restaurant_tables')
+                .delete()
+                .eq('id', tableId);
+            if (error) throw error;
             await fetchTables();
         } catch (error) {
             console.error("Error deleting table:", error);

@@ -1,9 +1,6 @@
-// v1.0.2 - Fixed catch syntax error
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Shield, Plus, X, Search, User, Key, Building2, Eye, Edit2, Trash2, CheckCircle, Loader2, Upload, ImageIcon } from 'lucide-react';
-import { db } from '../../lib/firebase';
-import { collection, query, onSnapshot, doc, setDoc, deleteDoc, getDoc } from 'firebase/firestore';
-import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../context/AuthContext';
 
 interface Cashier {
@@ -36,15 +33,48 @@ export default function CashiersManager() {
         isActive: true
     });
 
+    const fetchCashiers = useCallback(async () => {
+        if (!user || !rid) return;
+        try {
+            const { data } = await supabase
+                .from('cashiers')
+                .select('*')
+                .eq('restaurant_id', rid)
+                .order('created_at', { ascending: false });
+
+            if (data) {
+                setCashiers(data.map((d: any) => ({
+                    id: d.id,
+                    name: d.name,
+                    email: d.email || d.username || '',
+                    phone: d.phone || '',
+                    isActive: d.is_active ?? true,
+                    passcode: d.passcode || d.pin_hash || '',
+                    permissions: d.permissions || ['pos', 'orders', 'tables'],
+                    createdAt: d.created_at ? new Date(d.created_at).getTime() : Date.now(),
+                    photo: d.photo || ''
+                })));
+            }
+        } catch (err) {
+            console.error("Error fetching cashiers:", err);
+        }
+    }, [user, rid]);
+
     useEffect(() => {
         if (!user || !rid) return;
-        const q = query(collection(db, 'restaurants', rid, 'cashiers'));
-        const unsubscribe = onSnapshot(q, (snapshot) => {
-            const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Cashier));
-            setCashiers(data);
-        });
-        return unsubscribe;
-    }, [user, rid]);
+        fetchCashiers();
+
+        const channel = supabase
+            .channel(`cashiers_${rid}`)
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'cashiers', filter: `restaurant_id=eq.${rid}` }, () => {
+                fetchCashiers();
+            })
+            .subscribe();
+
+        return () => {
+            supabase.removeChannel(channel);
+        };
+    }, [user, rid, fetchCashiers]);
 
     const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         if (e.target.files && e.target.files[0]) {
@@ -60,45 +90,56 @@ export default function CashiersManager() {
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!user) return;
+        if (!user || !rid) return;
         setIsSubmitting(true);
 
         try {
-            // Check if email is already in use
-            const emailKey = formData.email.toLowerCase();
-            const indexDoc = await getDoc(doc(db, 'cashier_index', emailKey));
-            if (indexDoc.exists()) {
+            const emailKey = formData.email.toLowerCase().trim();
+            const { data: existing } = await supabase
+                .from('cashiers')
+                .select('id')
+                .eq('email', emailKey)
+                .maybeSingle();
+
+            if (existing) {
                 alert("Este correo ya está registrado en el sistema.");
                 setIsSubmitting(false);
                 return;
             }
+
             let photoUrl = '';
             if (photoFile) {
-                const storageRef = ref(getStorage(), `restaurants/${rid}/cashiers/${Date.now()}_photo`);
-                const snapshot = await uploadBytes(storageRef, photoFile);
-                photoUrl = await getDownloadURL(snapshot.ref);
+                const ext = photoFile.name.split('.').pop() || 'png';
+                const filePath = `${rid}/cashiers/${Date.now()}.${ext}`;
+                const { error: upErr } = await supabase.storage.from('store_assets').upload(filePath, photoFile, { upsert: true });
+                if (!upErr) {
+                    const { data: urlData } = supabase.storage.from('store_assets').getPublicUrl(filePath);
+                    photoUrl = urlData.publicUrl;
+                }
             }
 
             const cashierData = {
-                ...formData,
+                restaurant_id: rid,
+                name: formData.name,
+                email: emailKey,
+                username: emailKey,
+                phone: formData.phone,
+                passcode: formData.passcode,
+                pin_hash: formData.passcode,
                 photo: photoUrl || '',
-                createdAt: Date.now(),
-                permissions: ['pos', 'orders', 'tables'] // Default permissions
+                is_active: formData.isActive,
+                permissions: ['pos', 'orders', 'tables'],
+                created_at: new Date().toISOString()
             };
 
-            await setDoc(doc(db, 'restaurants', rid, 'cashiers', formData.email.toLowerCase()), cashierData);
-            
-            // Add to cashier index for global login
-            await setDoc(doc(db, 'cashier_index', formData.email.toLowerCase()), {
-                restaurantId: rid,
-                cashierId: formData.email.toLowerCase(),
-                email: formData.email.toLowerCase()
-            });
+            const { error: insErr } = await supabase.from('cashiers').insert(cashierData);
+            if (insErr) throw insErr;
 
             setIsAddModalOpen(false);
             setFormData({ name: '', email: '', phone: '', passcode: '', isActive: true });
             setPhotoFile(null);
             setPhotoPreview(null);
+            fetchCashiers();
             alert("Cajera creada exitosamente");
         } catch (error) {
             console.error("Error adding cashier:", error);
@@ -108,11 +149,11 @@ export default function CashiersManager() {
         }
     };
 
-    const handleDelete = async (email: string) => {
+    const handleDelete = async (idOrEmail: string) => {
         if (!rid || !window.confirm('¿Estás seguro de eliminar este cajero?')) return;
         try {
-            await deleteDoc(doc(db, 'restaurants', rid, 'cashiers', email));
-            await deleteDoc(doc(db, 'cashier_index', email));
+            await supabase.from('cashiers').delete().or(`id.eq.${idOrEmail},email.eq.${idOrEmail}`);
+            fetchCashiers();
         } catch (error) {
             console.error("Error deleting cashier:", error);
             alert("Error al eliminar");

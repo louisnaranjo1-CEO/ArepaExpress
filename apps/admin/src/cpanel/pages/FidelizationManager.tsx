@@ -1,8 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Gift, Plus, Trash2, Edit2, Share2, Users, Target, Save, X, Upload, AlertCircle, Image as ImageIcon } from 'lucide-react';
-import { db, storage } from '../../lib/firebase';
-import { collection, addDoc, getDocs, deleteDoc, doc, updateDoc, serverTimestamp, setDoc, getDoc } from 'firebase/firestore';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { supabase } from '../../lib/supabase';
 import { toast } from 'react-hot-toast';
 
 interface ReferralContest {
@@ -60,18 +58,36 @@ export default function FidelizationManager() {
     const fetchData = async () => {
         setLoading(true);
         try {
-            const [contestsSnap, prizesSnap, configSnap] = await Promise.all([
-                getDocs(collection(db, 'referral_contests')),
-                getDocs(collection(db, 'global_prizes')),
-                getDoc(doc(db, 'system_configs', 'fidelization'))
+            const [contestsRes, prizesRes, configRes] = await Promise.all([
+                supabase.from('referral_contests').select('*').order('created_at', { ascending: false }),
+                supabase.from('global_prizes').select('*').order('created_at', { ascending: false }),
+                supabase.from('app_settings').select('*').eq('id', 'fidelization').maybeSingle()
             ]);
-            
-            if (configSnap.exists() && configSnap.data().pointsPerReferral !== undefined) {
-                setPointsPerReferral(configSnap.data().pointsPerReferral);
+
+            if (configRes.data?.data?.pointsPerReferral !== undefined) {
+                setPointsPerReferral(configRes.data.data.pointsPerReferral);
             }
-            
-            setContests(contestsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as ReferralContest)));
-            setPrizes(prizesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as GlobalPrize)));
+
+            setContests((contestsRes.data || []).map(c => ({
+                id: c.id,
+                title: c.title,
+                description: c.description,
+                type: c.type,
+                targetCount: c.target_count || c.targetCount,
+                prize: c.prize,
+                isActive: c.is_active !== undefined ? c.is_active : c.isActive,
+                createdAt: c.created_at
+            })));
+
+            setPrizes((prizesRes.data || []).map(p => ({
+                id: p.id,
+                title: p.title,
+                description: p.description,
+                pointsRequired: p.points_required || p.pointsRequired,
+                imageUrl: p.image_url || p.imageUrl,
+                isActive: p.is_active !== undefined ? p.is_active : p.isActive,
+                createdAt: p.created_at
+            })));
         } catch (error) {
             console.error("Error fetching data:", error);
             toast.error("Error al cargar datos");
@@ -83,9 +99,12 @@ export default function FidelizationManager() {
     const handleSavePoints = async () => {
         setSavingPoints(true);
         try {
-            await setDoc(doc(db, 'system_configs', 'fidelization'), {
-                pointsPerReferral
-            }, { merge: true });
+            const { error } = await supabase.from('app_settings').upsert({
+                id: 'fidelization',
+                data: { pointsPerReferral },
+                updated_at: new Date().toISOString()
+            });
+            if (error) throw error;
             toast.success("Puntos de referido actualizados");
         } catch (error) {
             console.error(error);
@@ -101,10 +120,11 @@ export default function FidelizationManager() {
 
         setUploadingImage(true);
         try {
-            const fileRef = ref(storage, `global_prizes/${Date.now()}_${file.name}`);
-            await uploadBytes(fileRef, file);
-            const url = await getDownloadURL(fileRef);
-            setNewPrize({ ...newPrize, imageUrl: url });
+            const filePath = `global_prizes/${Date.now()}_${file.name.replace(/[^a-zA-Z0-9.-]/g, '_')}`;
+            const { error: upErr } = await supabase.storage.from('store_assets').upload(filePath, file, { upsert: true });
+            if (upErr) throw upErr;
+            const { data: pubData } = supabase.storage.from('store_assets').getPublicUrl(filePath);
+            setNewPrize({ ...newPrize, imageUrl: pubData.publicUrl });
             toast.success('Imagen subida correctamente');
         } catch (error) {
             console.error('Error uploading image', error);
@@ -121,10 +141,16 @@ export default function FidelizationManager() {
         }
 
         try {
-            await addDoc(collection(db, 'referral_contests'), {
-                ...newContest,
-                createdAt: serverTimestamp()
-            });
+            const { error } = await supabase.from('referral_contests').insert([{
+                title: newContest.title,
+                description: newContest.description,
+                type: newContest.type,
+                target_count: newContest.targetCount,
+                prize: newContest.prize,
+                is_active: newContest.isActive !== false,
+                created_at: new Date().toISOString()
+            }]);
+            if (error) throw error;
             toast.success("Concurso creado");
             setShowAddModal(false);
             fetchData();
@@ -141,10 +167,15 @@ export default function FidelizationManager() {
         }
 
         try {
-            await addDoc(collection(db, 'global_prizes'), {
-                ...newPrize,
-                createdAt: serverTimestamp()
-            });
+            const { error } = await supabase.from('global_prizes').insert([{
+                title: newPrize.title,
+                description: newPrize.description,
+                points_required: newPrize.pointsRequired,
+                image_url: newPrize.imageUrl,
+                is_active: newPrize.isActive !== false,
+                created_at: new Date().toISOString()
+            }]);
+            if (error) throw error;
             toast.success("Premio global creado");
             setShowAddPrizeModal(false);
             setNewPrize({
@@ -164,7 +195,8 @@ export default function FidelizationManager() {
     const handleDeleteContest = async (id: string) => {
         if (!window.confirm("¿Seguro que quieres eliminar este concurso?")) return;
         try {
-            await deleteDoc(doc(db, 'referral_contests', id));
+            const { error } = await supabase.from('referral_contests').delete().eq('id', id);
+            if (error) throw error;
             toast.success("Eliminado");
             fetchData();
         } catch (error) {
@@ -175,7 +207,8 @@ export default function FidelizationManager() {
     const handleDeletePrize = async (id: string) => {
         if (!window.confirm("¿Seguro que quieres eliminar este premio?")) return;
         try {
-            await deleteDoc(doc(db, 'global_prizes', id));
+            const { error } = await supabase.from('global_prizes').delete().eq('id', id);
+            if (error) throw error;
             toast.success("Premio eliminado");
             fetchData();
         } catch (error) {
@@ -185,9 +218,10 @@ export default function FidelizationManager() {
 
     const toggleContestStatus = async (contest: ReferralContest) => {
         try {
-            await updateDoc(doc(db, 'referral_contests', contest.id), {
-                isActive: !contest.isActive
-            });
+            const { error } = await supabase.from('referral_contests').update({
+                is_active: !contest.isActive
+            }).eq('id', contest.id);
+            if (error) throw error;
             fetchData();
         } catch (error) {
             toast.error("Error al actualizar");
@@ -196,9 +230,10 @@ export default function FidelizationManager() {
 
     const togglePrizeStatus = async (prize: GlobalPrize) => {
         try {
-            await updateDoc(doc(db, 'global_prizes', prize.id), {
-                isActive: !prize.isActive
-            });
+            const { error } = await supabase.from('global_prizes').update({
+                is_active: !prize.isActive
+            }).eq('id', prize.id);
+            if (error) throw error;
             fetchData();
         } catch (error) {
             toast.error("Error al actualizar");

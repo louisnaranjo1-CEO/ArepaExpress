@@ -1,9 +1,8 @@
 import React, { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { X, Users, ListFilter, Plus, Minus, Receipt, CheckCircle } from 'lucide-react';
-import { db } from '../../lib/firebase';
+import { supabase } from '../../lib/supabase';
 import DualPrice from '../../components/DualPrice';
-import { collection, addDoc, doc, writeBatch, serverTimestamp, deleteDoc } from 'firebase/firestore';
 
 interface OrderItem {
     id: string;
@@ -40,12 +39,12 @@ export default function SplitBillModal({
     const allItems = useMemo(() => {
         let items: any[] = [];
         activeOrders.forEach(order => {
-            order.items.forEach((item: any) => {
+            (order.items || []).forEach((item: any) => {
                 // To make splitting quantities easier, we split items with quantity > 1 into individual items of quantity 1
-                for (let i = 0; i < item.quantity; i++) {
+                for (let i = 0; i < (item.quantity || 1); i++) {
                     items.push({
                         ...item,
-                        uniqueId: `${order.id}-${item.id}-${i}`,
+                        uniqueId: `${order.id}-${item.id || item.name}-${i}`,
                         quantity: 1,
                         originalOrderId: order.id
                     });
@@ -77,25 +76,23 @@ export default function SplitBillModal({
         }
 
         try {
-            const batch = writeBatch(db);
-            
             // Delete original orders since we are splitting them into new ones
-            activeOrders.forEach(order => {
-                const orderRef = doc(db, 'orders', order.id);
-                // Instead of deleting, we could mark them as 'split' or just delete them to replace with the split parts
-                // Deleting is cleaner for the cashier POS to not show duplicates
-                batch.delete(orderRef);
-            });
+            const activeIds = activeOrders.map(o => o.id);
+            if (activeIds.length > 0) {
+                await supabase.from('orders').delete().in('id', activeIds);
+            }
 
             if (splitMode === 'equal') {
                 const splitTotal = grandTotal / numParts;
+                const newOrders = [];
                 for (let i = 0; i < numParts; i++) {
-                    const newOrderRef = doc(collection(db, 'orders'));
-                    batch.set(newOrderRef, {
-                        restaurantId,
-                        table: `${table.number}-${i + 1}`,
+                    const newOrderId = (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : `split_${Date.now()}_${i}`;
+                    newOrders.push({
+                        id: newOrderId,
+                        restaurant_id: restaurantId,
+                        table_number: `${table.number}-${i + 1}`,
                         status: 'billing', // Send directly to cashier
-                        paymentStatus: 'pending',
+                        payment_status: 'pending',
                         subtotal: splitTotal,
                         total: splitTotal,
                         items: [{
@@ -104,56 +101,63 @@ export default function SplitBillModal({
                             price: splitTotal,
                             quantity: 1
                         }],
-                        createdAt: serverTimestamp(),
-                        updatedAt: serverTimestamp(),
-                        waiterId: activeOrders[0]?.waiterId || 'unknown',
-                        isSplit: true,
-                        originalTable: table.number
+                        created_at: new Date().toISOString(),
+                        updated_at: new Date().toISOString(),
+                        waiter_id: activeOrders[0]?.waiterId || activeOrders[0]?.waiter_id || 'unknown',
+                        is_split: true,
+                        original_table: table.number
                     });
                 }
+                const { error: insErr } = await supabase.from('orders').insert(newOrders);
+                if (insErr) throw insErr;
             } else {
                 // Itemized
-                // Ensure all items are assigned, if not assign to account 1? Or throw error
                 if (unassignedItems.length > 0) {
                     alert('Debe asignar todos los productos a una cuenta antes de continuar.');
                     setIsProcessing(false);
                     return;
                 }
 
+                const newOrders: any[] = [];
                 accounts.forEach((acc, i) => {
                     if (acc.items.length === 0) return; // Skip empty accounts
                     
                     const subtotal = (acc.items || []).reduce((sum, item) => sum + (item?.price || 0), 0);
-                    // Add logic to group items back by ID to reduce array size
+                    // Group items back by ID to reduce array size
                     const groupedItems = (acc.items || []).reduce((accArr: any[], currentItem: any) => {
-                        const existing = accArr.find(i => i.id === currentItem.id && JSON.stringify(i.variant) === JSON.stringify(currentItem.variant));
+                        const existing = accArr.find(it => it.id === currentItem.id && JSON.stringify(it.variant) === JSON.stringify(currentItem.variant));
                         if (existing) {
                             existing.quantity += 1;
                         } else {
-                            accArr.push({ ...currentItem }); // already has quantity 1
+                            accArr.push({ ...currentItem });
                         }
                         return accArr;
                     }, []);
 
-                    const newOrderRef = doc(collection(db, 'orders'));
-                    batch.set(newOrderRef, {
-                        restaurantId,
-                        table: `${table.number}-${i + 1}`,
+                    const newOrderId = (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : `split_${Date.now()}_${i}`;
+                    newOrders.push({
+                        id: newOrderId,
+                        restaurant_id: restaurantId,
+                        table_number: `${table.number}-${i + 1}`,
                         status: 'billing',
-                        paymentStatus: 'pending',
+                        payment_status: 'pending',
                         subtotal: subtotal,
                         total: subtotal,
                         items: groupedItems,
-                        createdAt: serverTimestamp(),
-                        updatedAt: serverTimestamp(),
-                        waiterId: activeOrders[0]?.waiterId || 'unknown',
-                        isSplit: true,
-                        originalTable: table.number
+                        created_at: new Date().toISOString(),
+                        updated_at: new Date().toISOString(),
+                        waiter_id: activeOrders[0]?.waiterId || activeOrders[0]?.waiter_id || 'unknown',
+                        is_split: true,
+                        original_table: table.number
                     });
                 });
+
+                if (newOrders.length > 0) {
+                    const { error: insErr } = await supabase.from('orders').insert(newOrders);
+                    if (insErr) throw insErr;
+                }
             }
 
-            await batch.commit();
             onClose();
         } catch (error) {
             console.error('Error splitting bill:', error);

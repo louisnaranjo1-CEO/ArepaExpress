@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { collection, query, orderBy, limit, onSnapshot, updateDoc, doc, where } from 'firebase/firestore';
-import { db } from '../../lib/firebase';
+import { supabase } from '../../lib/supabase';
 import { ShoppingBag, Clock, MapPin, Truck, Check, X, ShieldAlert, Phone, MessageCircle } from 'lucide-react';
 import DualPrice from '../../components/DualPrice';
 import OrderChatWindow from '../../components/chat/OrderChatWindow';
@@ -11,30 +10,56 @@ export default function AppOrders() {
     const [selectedOrderForChat, setSelectedOrderForChat] = useState<any | null>(null);
 
     useEffect(() => {
-        // We query by source = client and order by createdAt desc
-        // If an index is missing, we fallback to just order by createdAt desc and filter in JS
-        const q = query(
-            collection(db, 'orders'),
-            where('source', '==', 'client'),
-            // orderBy('createdAt', 'desc'),
-            limit(100)
-        );
+        const fetchOrders = async () => {
+            try {
+                const { data, error } = await supabase
+                    .from('orders')
+                    .select('*')
+                    .eq('source', 'client')
+                    .order('created_at', { ascending: false })
+                    .limit(100);
 
-        const unsubscribe = onSnapshot(q, (snapshot) => {
-            let fetchedOrders = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as any));
-            fetchedOrders.sort((a, b) => {
-                const dateA = a.createdAt?.toDate ? a.createdAt.toDate().getTime() : 0;
-                const dateB = b.createdAt?.toDate ? b.createdAt.toDate().getTime() : 0;
-                return dateB - dateA;
-            });
-            setOrders(fetchedOrders);
-            setIsLoading(false);
-        }, (error) => {
-            console.error("Error fetching app orders:", error);
-            setIsLoading(false);
-        });
+                if (error) throw error;
+                if (data) {
+                    setOrders(data.map((d: any) => {
+                        const cDate = d.created_at ? new Date(d.created_at) : new Date();
+                        return {
+                            id: d.id,
+                            userName: d.user_name || d.userName,
+                            restaurantName: d.restaurant_name || d.restaurantName,
+                            restaurantId: d.restaurant_id || d.restaurantId,
+                            deliveryMethod: d.delivery_method || d.deliveryMethod,
+                            deliveryAddress: d.delivery_address || d.deliveryAddress,
+                            phone: d.user_phone || d.phone,
+                            status: d.status,
+                            total: d.total,
+                            deliveryPaymentReceipt: d.delivery_payment_receipt || d.deliveryPaymentReceipt,
+                            createdAt: {
+                                toDate: () => cDate
+                            },
+                            ...d
+                        };
+                    }));
+                }
+            } catch (err) {
+                console.error("Error fetching app orders:", err);
+            } finally {
+                setIsLoading(false);
+            }
+        };
 
-        return () => unsubscribe();
+        fetchOrders();
+
+        const channel = supabase
+            .channel('cpanel_app_orders')
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'orders', filter: 'source=eq.client' }, () => {
+                fetchOrders();
+            })
+            .subscribe();
+
+        return () => {
+            supabase.removeChannel(channel);
+        };
     }, []);
 
     const getStatusBadge = (status: string) => {

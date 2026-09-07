@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { collection, query, orderBy, onSnapshot, addDoc, serverTimestamp, doc, updateDoc } from 'firebase/firestore';
-import { db } from '../../lib/firebase';
+import { supabase } from '../../lib/supabase';
 import { Send, Image as ImageIcon, CheckCircle, Receipt, Clock, CreditCard, Gift, Phone, Store, Bike } from 'lucide-react';
 import toast from 'react-hot-toast';
 
@@ -22,7 +21,7 @@ interface OrderChatWindowProps {
   currentUserName: string;
   restaurantId: string;
   orderInfo: any;
-  customCollectionPath?: string; // Optional path like 'transport_requests/XYZ/messages'
+  customCollectionPath?: string;
 }
 
 export default function OrderChatWindow({
@@ -45,10 +44,14 @@ export default function OrderChatWindow({
     const fetchRestaurantData = async () => {
       if (!restaurantId) return;
       try {
-        const { getDoc, doc } = await import('firebase/firestore');
-        const resSnap = await getDoc(doc(db, 'restaurants', restaurantId));
-        if (resSnap.exists() && resSnap.data().casheaQrUrl) {
-          setCasheaQrUrl(resSnap.data().casheaQrUrl);
+        const { data: resDoc } = await supabase
+          .from('comercios')
+          .select('cashea_qr_url, casheaQrUrl')
+          .eq('id', restaurantId)
+          .maybeSingle();
+
+        if (resDoc && (resDoc.cashea_qr_url || resDoc.casheaQrUrl)) {
+          setCasheaQrUrl(resDoc.cashea_qr_url || resDoc.casheaQrUrl);
         }
       } catch (e) { console.error("Error fetching cashea QR", e); }
     };
@@ -56,38 +59,76 @@ export default function OrderChatWindow({
   }, [restaurantId]);
 
   useEffect(() => {
-    const chatPath = customCollectionPath || `orders/${orderId}/messages`;
-    const q = query(
-      collection(db, chatPath),
-      orderBy('createdAt', 'asc')
-    );
+    const fetchMessages = async () => {
+      try {
+        let queryBuilder = supabase
+          .from('messages')
+          .select('*')
+          .order('created_at', { ascending: true });
 
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const msgs = snapshot.docs.map(d => ({
-        id: d.id,
-        ...d.data()
-      })) as Message[];
-      setMessages(msgs);
-      setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 100);
-    });
+        if (customCollectionPath) {
+          queryBuilder = queryBuilder.eq('chat_path', customCollectionPath);
+        } else {
+          queryBuilder = queryBuilder.eq('order_id', orderId);
+        }
 
-    return () => unsubscribe();
-  }, [orderId]);
+        const { data, error } = await queryBuilder;
+        if (error) throw error;
+        if (data) {
+          setMessages(data.map((d: any) => ({
+            id: d.id,
+            text: d.text,
+            imageUrl: d.image_url || d.imageUrl,
+            senderId: d.sender_id || d.senderId,
+            senderName: d.sender_name || d.senderName,
+            senderRole: d.sender_role || d.senderRole,
+            createdAt: d.created_at,
+            action: d.action
+          })));
+          setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 100);
+        }
+      } catch (err) {
+        console.error("Error loading chat messages:", err);
+      }
+    };
+
+    fetchMessages();
+
+    const channelName = `chat_${orderId || customCollectionPath || 'default'}`;
+    const filterField = customCollectionPath ? 'chat_path' : 'order_id';
+    const filterVal = customCollectionPath || orderId;
+
+    const channel = supabase.channel(channelName)
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'messages',
+        filter: `${filterField}=eq.${filterVal}`
+      }, () => {
+        fetchMessages();
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [orderId, customCollectionPath]);
 
   const handleSendMessage = async (text: string, actionUrl?: string, actionType?: 'payment_confirmed' | 'payment_reminder') => {
     if ((!text.trim() && !actionUrl && !actionType) || sending) return;
     setSending(true);
 
-    const chatPath = customCollectionPath || `orders/${orderId}/messages`;
     try {
-      await addDoc(collection(db, chatPath), {
+      await supabase.from('messages').insert({
+        order_id: orderId,
+        chat_path: customCollectionPath || null,
         text: text.trim(),
-        imageUrl: actionUrl || null,
+        image_url: actionUrl || null,
         action: actionType || null,
-        senderId: currentUserId,
-        senderName: currentUserName,
-        senderRole: currentUserRole,
-        createdAt: serverTimestamp()
+        sender_id: currentUserId,
+        sender_name: currentUserName,
+        sender_role: currentUserRole,
+        created_at: new Date().toISOString()
       });
       setNewMessage('');
     } catch (error) {
@@ -100,10 +141,10 @@ export default function OrderChatWindow({
 
   const updateOrderStatus = async (newStatus: string, messageText: string) => {
     try {
-      await updateDoc(doc(db, 'orders', orderId), {
+      await supabase.from('orders').update({
         status: newStatus,
-        updatedAt: serverTimestamp()
-      });
+        updated_at: new Date().toISOString()
+      }).eq('id', orderId);
       await handleSendMessage(messageText);
       toast.success(`Estado del pedido actualizado a: ${newStatus}`);
     } catch (e) {
@@ -120,10 +161,12 @@ export default function OrderChatWindow({
     
     // Update the order document
     try {
-      await updateDoc(doc(db, 'orders', orderId), {
+      await supabase.from('orders').update({
+        restaurant_payment_client_confirmed: true,
         restaurantPaymentClientConfirmed: true,
-        status: 'preparing' // advances the order
-      });
+        status: 'preparing',
+        updated_at: new Date().toISOString()
+      }).eq('id', orderId);
       toast.success('Pago confirmado. Orden avanzando a preparación.');
     } catch(e) {
       console.error(e);

@@ -1,13 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
-import { rtdb } from '../lib/firebase';
-import {
-    ref as rtdbRef,
-    set,
-    onValue,
-    push,
-    remove,
-    get,
-} from 'firebase/database';
+import { supabase } from '../lib/supabase';
 
 export type CallStatus = 'idle' | 'calling' | 'ringing' | 'connected' | 'ended';
 
@@ -34,8 +26,8 @@ export function useWebRTCCall({ requestId, myId, remoteId, role, onCallEnded }: 
     const pcRef = useRef<RTCPeerConnection | null>(null);
     const localStreamRef = useRef<MediaStream | null>(null);
     const remoteAudioRef = useRef<HTMLAudioElement | null>(null);
-    const timerRef = useRef<NodeJS.Timeout | null>(null);
-    const callNodeRef = useRef(rtdbRef(rtdb, `calls/${requestId}`));
+    const timerRef = useRef<any>(null);
+    const channelRef = useRef<any>(null);
 
     // Cleanup everything
     const cleanup = useCallback(async () => {
@@ -51,8 +43,6 @@ export function useWebRTCCall({ requestId, myId, remoteId, role, onCallEnded }: 
         if (remoteAudioRef.current) {
             remoteAudioRef.current.srcObject = null;
         }
-        // Remove RTDB node so no stale data remains
-        try { await remove(callNodeRef.current); } catch { /* ignore */ }
         setCallStatus('ended');
         setDuration(0);
         onCallEnded?.();
@@ -98,15 +88,58 @@ export function useWebRTCCall({ requestId, myId, remoteId, role, onCallEnded }: 
         return pc;
     }, [cleanup, startTimer]);
 
+    useEffect(() => {
+        if (!requestId) return;
+
+        const channel = supabase.channel(`call_${requestId}`, {
+            config: { broadcast: { self: false } }
+        });
+
+        channel
+            .on('broadcast', { event: 'signal' }, async ({ payload }) => {
+                if (!payload || payload.from === myId) return;
+
+                if (payload.type === 'offer' && role === 'receiver') {
+                    setCallStatus('ringing');
+                    (channelRef.current as any)._pendingOffer = payload.offer;
+                } else if (payload.type === 'answer' && role === 'caller') {
+                    if (pcRef.current && !pcRef.current.remoteDescription) {
+                        await pcRef.current.setRemoteDescription(new RTCSessionDescription(payload.answer));
+                    }
+                } else if (payload.type === 'candidate') {
+                    if (pcRef.current && payload.candidate) {
+                        pcRef.current.addIceCandidate(new RTCIceCandidate(payload.candidate)).catch(() => {});
+                    }
+                } else if (payload.type === 'status') {
+                    if (payload.status === 'ended') {
+                        cleanup();
+                    } else if (payload.status === 'calling' && role === 'receiver') {
+                        setCallStatus('ringing');
+                    }
+                }
+            })
+            .subscribe();
+
+        channelRef.current = channel;
+
+        return () => {
+            supabase.removeChannel(channel);
+        };
+    }, [requestId, myId, role, cleanup]);
+
     /** CALLER: start the call */
     const startCall = useCallback(async () => {
         setCallStatus('calling');
         const pc = await createPC();
 
-        // Write ICE candidates as they are generated
-        pc.onicecandidate = async (event) => {
-            if (event.candidate) {
-                await push(rtdbRef(rtdb, `calls/${requestId}/offerCandidates`), event.candidate.toJSON());
+        // Broadcast ICE candidates as they are generated
+        pc.onicecandidate = (event) => {
+            if (event.candidate && channelRef.current) {
+                channelRef.current.send({
+                    type: 'broadcast',
+                    event: 'signal',
+                    payload: { type: 'candidate', candidate: event.candidate.toJSON(), from: myId }
+                });
             }
         };
 
@@ -114,94 +147,70 @@ export function useWebRTCCall({ requestId, myId, remoteId, role, onCallEnded }: 
         const offer = await pc.createOffer();
         await pc.setLocalDescription(offer);
 
-        // Write offer + status + who is calling
-        await set(callNodeRef.current, {
-            offer: { type: offer.type, sdp: offer.sdp },
-            status: 'calling',
-            initiatorId: myId,
-        });
-
-        // Listen for answer
-        const answerUnsub = onValue(rtdbRef(rtdb, `calls/${requestId}/answer`), async (snap) => {
-            if (snap.exists() && !pc.remoteDescription) {
-                const answer = snap.val();
-                await pc.setRemoteDescription(new RTCSessionDescription(answer));
-            }
-        });
-
-        // Listen for remote ICE candidates
-        const remCandUnsub = onValue(rtdbRef(rtdb, `calls/${requestId}/answerCandidates`), (snap) => {
-            if (snap.exists()) {
-                snap.forEach((child) => {
-                    pc.addIceCandidate(new RTCIceCandidate(child.val())).catch(() => { });
-                });
-            }
-        });
-
-        // Store unsubscribers for cleanup
-        (pc as any)._unsubscribers = [answerUnsub, remCandUnsub];
-    }, [createPC, myId, requestId]);
+        if (channelRef.current) {
+            channelRef.current.send({
+                type: 'broadcast',
+                event: 'signal',
+                payload: {
+                    type: 'offer',
+                    offer: { type: offer.type, sdp: offer.sdp },
+                    from: myId
+                }
+            });
+        }
+    }, [createPC, myId]);
 
     /** RECEIVER: answer the call */
     const answerCall = useCallback(async () => {
         setCallStatus('connected');
         const pc = await createPC();
 
-        // Write ICE candidates
-        pc.onicecandidate = async (event) => {
-            if (event.candidate) {
-                await push(rtdbRef(rtdb, `calls/${requestId}/answerCandidates`), event.candidate.toJSON());
+        // Broadcast ICE candidates
+        pc.onicecandidate = (event) => {
+            if (event.candidate && channelRef.current) {
+                channelRef.current.send({
+                    type: 'broadcast',
+                    event: 'signal',
+                    payload: { type: 'candidate', candidate: event.candidate.toJSON(), from: myId }
+                });
             }
         };
 
-        // Get the existing offer
-        const offerSnap = await get(rtdbRef(rtdb, `calls/${requestId}/offer`));
-        if (!offerSnap.exists()) return;
-        const offerData = offerSnap.val();
-        await pc.setRemoteDescription(new RTCSessionDescription(offerData));
+        const pendingOffer = (channelRef.current as any)?._pendingOffer;
+        if (pendingOffer) {
+            await pc.setRemoteDescription(new RTCSessionDescription(pendingOffer));
+        }
 
-        // Listen for remote ICE candidates
-        const remCandUnsub = onValue(rtdbRef(rtdb, `calls/${requestId}/offerCandidates`), (snap) => {
-            if (snap.exists()) {
-                snap.forEach((child) => {
-                    pc.addIceCandidate(new RTCIceCandidate(child.val())).catch(() => { });
-                });
-            }
-        });
-
-        // Create & write answer
+        // Create & send answer
         const answer = await pc.createAnswer();
         await pc.setLocalDescription(answer);
-        await set(rtdbRef(rtdb, `calls/${requestId}/answer`), {
-            type: answer.type,
-            sdp: answer.sdp,
-        });
-        await set(rtdbRef(rtdb, `calls/${requestId}/status`), 'connected');
+
+        if (channelRef.current) {
+            channelRef.current.send({
+                type: 'broadcast',
+                event: 'signal',
+                payload: {
+                    type: 'answer',
+                    answer: { type: answer.type, sdp: answer.sdp },
+                    from: myId
+                }
+            });
+        }
 
         startTimer();
-        (pc as any)._unsubscribers = [remCandUnsub];
-    }, [createPC, requestId, startTimer]);
+    }, [createPC, myId, startTimer]);
 
     /** Hang up from either side */
     const hangUp = useCallback(async () => {
-        await set(rtdbRef(rtdb, `calls/${requestId}/status`), 'ended');
+        if (channelRef.current) {
+            channelRef.current.send({
+                type: 'broadcast',
+                event: 'signal',
+                payload: { type: 'status', status: 'ended', from: myId }
+            });
+        }
         await cleanup();
-    }, [cleanup, requestId]);
-
-    // Listen for the other party hanging up or calling
-    useEffect(() => {
-        const unsub = onValue(rtdbRef(rtdb, `calls/${requestId}/status`), (snap) => {
-            if (!snap.exists()) return;
-            const status = snap.val();
-            if (status === 'ended' && callStatus !== 'idle') {
-                cleanup();
-            }
-            if (status === 'calling' && role === 'receiver' && callStatus === 'idle') {
-                setCallStatus('ringing');
-            }
-        });
-        return () => unsub();
-    }, [requestId, callStatus, role, cleanup]);
+    }, [cleanup, myId]);
 
     return { callStatus, duration, startCall, answerCall, hangUp };
 }

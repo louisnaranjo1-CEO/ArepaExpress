@@ -1,9 +1,7 @@
 import React, { useState } from 'react';
 import { Shield } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { doc, getDoc, updateDoc } from 'firebase/firestore';
-import { db, auth } from '../../lib/firebase';
-import { signInAnonymously } from 'firebase/auth';
+import { supabase } from '../../lib/supabase';
 import { useNavigate } from 'react-router-dom';
 
 export default function CashierLogin() {
@@ -18,69 +16,50 @@ export default function CashierLogin() {
         setIsSigningIn(true);
         setError(null);
         try {
-            // Sign in anonymously first so we have a valid auth session to read collections
-            const authResult = await signInAnonymously(auth);
-            const currentUid = authResult.user.uid;
+            const { data: cashier, error: fetchErr } = await supabase
+                .from('cashiers')
+                .select('*')
+                .ilike('email', cashierEmail.trim())
+                .maybeSingle();
 
-            const indexSnap = await getDoc(doc(db, 'cashier_index', cashierEmail.toLowerCase()));
-
-            if (!indexSnap.exists()) {
+            if (fetchErr || !cashier) {
                 setError("Credenciales incorrectas (Usuario).");
                 setIsSigningIn(false);
                 return;
             }
 
-            const { restaurantId, cashierId } = indexSnap.data();
-
-            const cashierDoc = await getDoc(doc(db, 'restaurants', restaurantId, 'cashiers', cashierId));
-
-            if (!cashierDoc.exists()) {
-                setError("No se encontraron los datos de la cajera.");
-                setIsSigningIn(false);
-                return;
-            }
-
-            const data = cashierDoc.data();
-
-            if (data.passcode !== cashierPassword) {
+            if (cashier.passcode !== cashierPassword.trim()) {
                 setError("Credenciales incorrectas (Contraseña).");
                 setIsSigningIn(false);
                 return;
             }
 
-            if (!data.isActive) {
+            if (cashier.is_active === false) {
                 setError("Esta cuenta de cajera está inactiva. Contacte al administrador.");
                 setIsSigningIn(false);
                 return;
             }
 
             const cashierData = {
-                id: cashierDoc.id,
-                ...data
+                id: cashier.id,
+                name: cashier.name,
+                email: cashier.email,
+                phone: cashier.phone,
+                permissions: cashier.permissions || [],
+                restaurantId: cashier.restaurant_id
             };
 
-            // Link this session UID to the cashier document
-            await updateDoc(doc(db, 'restaurants', restaurantId, 'cashiers', cashierId), {
-                    currentSessionUid: currentUid,
-                    lastLogin: new Date().toISOString()
-                });
-                
-                // Register session in top-level sessions collection for rules to validate
-                const { setDoc } = await import('firebase/firestore');
-                await setDoc(doc(db, 'sessions', currentUid), {
-                    restaurantId: restaurantId,
-                    role: 'cashier',
-                    userId: cashierId,
-                    createdAt: new Date().toISOString()
-                });
-                
-                console.log("Cashier authenticated with UID:", currentUid);
+            // Update last login
+            await supabase
+                .from('cashiers')
+                .update({ last_active_at: new Date().toISOString() })
+                .eq('id', cashier.id);
 
-                localStorage.setItem('cashierData', JSON.stringify(cashierData));
-                localStorage.setItem('cashierRestaurantId', restaurantId);
-                localStorage.setItem('isCashier', 'true');
+            localStorage.setItem('cashierData', JSON.stringify(cashierData));
+            localStorage.setItem('cashierRestaurantId', cashier.restaurant_id);
+            localStorage.setItem('isCashier', 'true');
 
-                navigate('/');
+            navigate('/');
         } catch (err: any) {
             console.error("Failed to sign in as cashier", err);
             setError(err.message || "Error al iniciar sesión. Intenta de nuevo.");
@@ -88,6 +67,7 @@ export default function CashierLogin() {
             setIsSigningIn(false);
         }
     };
+
 
     return (
         <div className="min-h-screen bg-slate-50 flex flex-col justify-center p-6 relative">

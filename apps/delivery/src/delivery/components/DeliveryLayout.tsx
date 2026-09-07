@@ -6,6 +6,7 @@ import { driversApi } from '../../lib/api';
 import { supabase } from '../../lib/supabase';
 import { setDriverAvailability, AvailabilityStatus } from '../../lib/delivery-service';
 import { useGlobalAudioAlerts } from '../../hooks/useGlobalAudioAlerts';
+import { UN2X3_LOGO } from '../../lib/env';
 
 interface DeliveryLayoutProps {
     children: React.ReactNode;
@@ -97,9 +98,10 @@ export default function DeliveryLayout({ children }: DeliveryLayoutProps) {
             <header className="bg-secondary text-white px-4 py-4 flex items-center justify-between shadow-md z-[60] shrink-0">
                 <div className="flex items-center gap-2">
                     <img
-                        src="https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/logo.png?alt=media&v=1.1"
+                        src={UN2X3_LOGO}
                         alt="Deliexpress"
                         className="w-10 h-10 object-contain"
+                        onError={(e: any) => { e.target.src = '/icon-192.png'; }}
                     />
                     <div>
                         <h1 className="font-black text-lg tracking-tighter leading-none">Centro de comandas</h1>

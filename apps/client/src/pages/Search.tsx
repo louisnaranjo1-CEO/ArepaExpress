@@ -1,7 +1,6 @@
 import { Search as SearchIcon, SlidersHorizontal, MapPin, Star, Clock, Store, Zap, X } from 'lucide-react';
 import { useState, useEffect, useMemo } from 'react';
-import { collection, getDocs, doc, updateDoc, increment } from 'firebase/firestore';
-import { db } from '../lib/firebase';
+import { supabase } from '../lib/supabase';
 import { Restaurant, Product } from '../lib/seed';
 import { Link, useLocation } from 'react-router-dom';
 import FilterModal, { FilterState } from '../components/FilterModal';
@@ -42,10 +41,16 @@ export default function Search() {
     useEffect(() => {
         const fetchCategories = async () => {
             try {
-                const querySnapshot = await getDocs(collection(db, 'global_categories'));
-                const fetchedCategories = querySnapshot.docs.map(doc => ({
-                    id: doc.id,
-                    ...doc.data()
+                const { data, error } = await supabase.from('global_categories').select('*');
+                if (error) throw error;
+                const fetchedCategories = (data || []).map((c: any) => ({
+                    id: c.id,
+                    name: c.name,
+                    icon: c.icon,
+                    imageUrl: c.image_url || c.imageUrl,
+                    isFeatured: c.is_featured ?? c.isFeatured,
+                    isActive: c.is_active ?? c.isActive ?? true,
+                    parentId: c.parent_id || c.parentId
                 })) as Category[];
                 setCategories(fetchedCategories.filter(c => c.isActive));
             } catch (error) {
@@ -60,23 +65,48 @@ export default function Search() {
                     setLoading(false);
                     return;
                 }
-                const querySnapshot = await getDocs(collection(db, 'restaurants'));
-                const fetched = await Promise.all(querySnapshot.docs.map(async (docSnap) => {
-                    const data = docSnap.data();
+                const { data: restsData, error: restsErr } = await supabase.from('comercios').select('*');
+                if (restsErr) throw restsErr;
 
-                    // Fetch products to support filtering by price/promotions
-                    const productsSnapshot = await getDocs(collection(db, 'restaurants', docSnap.id, 'products'));
-                    const products = productsSnapshot.docs.map(p => p.data() as Product);
+                const { data: prodsData } = await supabase.from('products').select('*');
+
+                const fetched: Restaurant[] = (restsData || []).map((r: any) => {
+                    const resProds = (prodsData || [])
+                        .filter((p: any) => p.comercio_id === r.id || p.comercioId === r.id)
+                        .map((p: any) => ({
+                            id: p.id,
+                            name: p.name,
+                            description: p.description,
+                            price: Number(p.price || 0),
+                            pointsPrice: p.points_price ?? p.pointsPrice,
+                            image: p.image || p.image_url || p.imageUrl,
+                            category: p.category,
+                            popular: p.popular,
+                            promoPrice: p.promo_price ?? p.promoPrice,
+                            isAvailable: p.is_available ?? p.isAvailable ?? true
+                        }));
 
                     return {
-                        id: docSnap.id,
-                        ...data,
-                        products
+                        id: r.id,
+                        name: r.name,
+                        category: r.category,
+                        businessType: r.business_type || r.businessType,
+                        rating: r.rating || 5.0,
+                        reviews: r.reviews || 0,
+                        deliveryTime: r.delivery_time || r.deliveryTime || '30 min',
+                        distance: r.distance || '1.0 km',
+                        image: r.image || r.logo_url || r.logoUrl,
+                        logoUrl: r.logo_url || r.logoUrl,
+                        coverUrl: r.cover_url || r.coverUrl,
+                        hasCashea: r.has_cashea ?? r.hasCashea,
+                        hasTwoByThree: r.has_two_by_three ?? r.hasTwoByThree,
+                        isActive: r.is_active ?? r.isActive ?? true,
+                        location: r.location,
+                        products: resProds
                     } as Restaurant;
-                }));
-                // Filter inactive restaurants
+                });
+
                 const fetchedResults = fetched.filter(r => r.isActive !== false);
-                // Shuffle to make 'Explorar' random
                 const shuffled = fetchedResults.sort(() => Math.random() - 0.5);
                 setRestaurants(shuffled);
             } catch (error) {
@@ -86,17 +116,15 @@ export default function Search() {
             }
         };
 
-        // Use official Cashea logo from global_icons
         const fetchCasheaIcon = async () => {
             try {
-                const iconsSnap = await getDocs(collection(db, 'global_icons'));
-                const icons = iconsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })) as any[];
-                const cashea = icons.find(icon => icon.name?.toLowerCase() === 'cashea');
+                const { data: icons } = await supabase.from('global_icons').select('*');
+                const cashea = (icons || []).find((icon: any) => icon.name?.toLowerCase() === 'cashea');
 
                 if (cashea) {
-                    setCasheaIcon(cashea.imageUrl || cashea.url);
+                    setCasheaIcon(cashea.image_url || cashea.imageUrl || cashea.url);
                 } else {
-                    setCasheaIcon("https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/logo%20cashea.png?alt=media&token=5b266100-3323-41bb-a5a4-23957ce678a1");
+                    setCasheaIcon("https://xfialzrbbsdzzcjtefqo.supabase.co/storage/v1/object/public/store_assets/logo_cashea.png");
                 }
             } catch (err) {
                 console.error("Error fetching cashea icon:", err);
@@ -355,7 +383,7 @@ export default function Search() {
                                             {(res as any).hasCashea && (
                                                 <div className="absolute top-4 right-4 z-20 w-10 h-10 bg-yellow-400 backdrop-blur rounded-xl p-1.5 shadow-xl border border-white/20 flex items-center justify-center animate-in zoom-in duration-500 hover:scale-110 transition-transform">
                                                     <img
-                                                        src={casheaIcon || "https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/logo%20cashea.png?alt=media&token=5b266100-3323-41bb-a5a4-23957ce678a1"}
+                                                        src={casheaIcon || "https://xfialzrbbsdzzcjtefqo.supabase.co/storage/v1/object/public/store_assets/logo_cashea.png"}
                                                         alt="Cashea"
                                                         className="w-full h-full object-contain"
                                                     />

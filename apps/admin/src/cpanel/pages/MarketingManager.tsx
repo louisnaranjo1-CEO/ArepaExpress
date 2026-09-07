@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { collection, query, onSnapshot, doc, getDoc, setDoc, updateDoc } from 'firebase/firestore';
-import { db } from '../../lib/firebase';
+import { supabase } from '../../lib/supabase';
 import { Megaphone, Settings, CheckCircle, XCircle, Image as ImageIcon } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 
@@ -14,49 +13,89 @@ export default function MarketingManager() {
     const [priceNational, setPriceNational] = useState(20);
     const [isSavingSettings, setIsSavingSettings] = useState(false);
 
+    const fetchCampaigns = async () => {
+        try {
+            const { data, error } = await supabase
+                .from('push_campaigns')
+                .select('*')
+                .order('created_at', { ascending: false });
+
+            if (!error && data) {
+                const mapped = data.map(d => ({
+                    ...d,
+                    restaurantId: d.restaurant_id || d.restaurantId,
+                    restaurantName: d.restaurant_name || d.restaurantName,
+                    locationLevel: d.location_level || d.locationLevel,
+                    selectedStates: d.selected_states || d.selectedStates || [],
+                    selectedCities: d.selected_cities || d.selectedCities || [],
+                    minAge: d.min_age !== undefined ? d.min_age : d.minAge,
+                    maxAge: d.max_age !== undefined ? d.max_age : d.maxAge,
+                    bannerUrl: d.banner_url || d.bannerUrl,
+                    paymentRef: d.payment_ref || d.paymentRef,
+                    paymentImageUrl: d.payment_image_url || d.paymentImageUrl,
+                    scheduledAt: d.scheduled_at || d.scheduledAt,
+                    createdAt: d.created_at || d.createdAt,
+                    activatedAt: d.activated_at || d.activatedAt
+                }));
+
+                mapped.sort((a, b) => {
+                    if (a.status === 'verifying_payment' && b.status !== 'verifying_payment') return -1;
+                    if (a.status !== 'verifying_payment' && b.status === 'verifying_payment') return 1;
+                    return new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime();
+                });
+                setCampaigns(mapped);
+            }
+        } catch (err) {
+            console.error("Error fetching campaigns", err);
+        }
+    };
+
     useEffect(() => {
         // Load settings
         const loadSettings = async () => {
             try {
-                const settingsDoc = await getDoc(doc(db, 'system_settings', 'marketing'));
-                if (settingsDoc.exists()) {
-                    const data = settingsDoc.data();
-                    if (data.pushPriceCity !== undefined) setPriceCity(data.pushPriceCity);
-                    if (data.pushPriceState !== undefined) setPriceState(data.pushPriceState);
-                    if (data.pushPriceNational !== undefined) setPriceNational(data.pushPriceNational);
+                const { data } = await supabase
+                    .from('app_settings')
+                    .select('*')
+                    .eq('id', 'marketing')
+                    .maybeSingle();
+
+                if (data?.data) {
+                    if (data.data.pushPriceCity !== undefined) setPriceCity(data.data.pushPriceCity);
+                    if (data.data.pushPriceState !== undefined) setPriceState(data.data.pushPriceState);
+                    if (data.data.pushPriceNational !== undefined) setPriceNational(data.data.pushPriceNational);
                 }
             } catch (err) {
                 console.error("Error loading settings", err);
             }
         };
         loadSettings();
+        fetchCampaigns();
 
-        // Listen to campaigns
-        const q = query(collection(db, 'push_campaigns'));
-        const unsubscribe = onSnapshot(q, (snap) => {
-            const data: any[] = [];
-            snap.forEach(doc => data.push({ id: doc.id, ...doc.data() }));
-            // Order by nearest to furthest or just status
-            data.sort((a, b) => {
-                if (a.status === 'verifying_payment' && b.status !== 'verifying_payment') return -1;
-                if (a.status !== 'verifying_payment' && b.status === 'verifying_payment') return 1;
-                return (b.createdAt?.toMillis() || 0) - (a.createdAt?.toMillis() || 0);
-            });
-            setCampaigns(data);
-        });
+        const channel = supabase.channel('push_campaigns_realtime')
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'push_campaigns' }, () => {
+                fetchCampaigns();
+            })
+            .subscribe();
 
-        return () => unsubscribe();
+        return () => {
+            supabase.removeChannel(channel);
+        };
     }, []);
 
     const saveSettings = async () => {
         setIsSavingSettings(true);
         try {
-            await setDoc(doc(db, 'system_settings', 'marketing'), {
-                pushPriceCity: priceCity,
-                pushPriceState: priceState,
-                pushPriceNational: priceNational,
-                updatedAt: new Date()
-            }, { merge: true });
+            const { error } = await supabase.from('app_settings').upsert({
+                id: 'marketing',
+                data: {
+                    pushPriceCity: priceCity,
+                    pushPriceState: priceState,
+                    pushPriceNational: priceNational
+                },
+                updated_at: new Date().toISOString()
+            });
+            if (error) throw error;
             toast.success("Tarifas de Marketing actualizadas correctamente");
         } catch (error) {
             toast.error("Error al guardar tarifas");
@@ -68,13 +107,13 @@ export default function MarketingManager() {
         if (!confirm("¿Estás seguro de que deseas APROBAR y enviar esta campaña masiva a los usuarios? Esto generará notificaciones y sonidos que llegarán a los dispositivos elegibles al instante conforme su diseño.")) return;
         
         try {
-            // First we approve the payment and set status to active.
-            // When we do this, the ClientApp listeners will catch it and reproduce the push notification.
-            await updateDoc(doc(db, 'push_campaigns', campaignId), {
+            const { error } = await supabase.from('push_campaigns').update({
                 status: 'active',
-                activatedAt: new Date()
-            });
+                activated_at: new Date().toISOString()
+            }).eq('id', campaignId);
+            if (error) throw error;
             toast.success("¡Campaña validada y Activada!");
+            fetchCampaigns();
         } catch(error) {
             toast.error("Error al activar");
         }
@@ -87,11 +126,13 @@ export default function MarketingManager() {
         if (!confirm(`¿Deseas ${actionText} esta campaña individualmente ahora mismo?`)) return;
         
         try {
-            await updateDoc(doc(db, 'push_campaigns', campaignId), {
+            const { error } = await supabase.from('push_campaigns').update({
                 status: newStatus,
-                ...(newStatus === 'active' ? { activatedAt: new Date() } : {})
-            });
+                ...(newStatus === 'active' ? { activated_at: new Date().toISOString() } : {})
+            }).eq('id', campaignId);
+            if (error) throw error;
             toast.success(`Campaña ${newStatus === 'active' ? 'activada' : 'desactivada'} correctamente`);
+            fetchCampaigns();
         } catch(error) {
             toast.error("Error al cambiar estado");
         }
@@ -100,10 +141,12 @@ export default function MarketingManager() {
     const handleRejectCampaign = async (campaignId: string) => {
         if (!confirm("¿Rechazar esta campaña por pago inválido?")) return;
         try {
-            await updateDoc(doc(db, 'push_campaigns', campaignId), {
+            const { error } = await supabase.from('push_campaigns').update({
                 status: 'rejected_payment'
-            });
+            }).eq('id', campaignId);
+            if (error) throw error;
             toast.success("Campaña rechazada");
+            fetchCampaigns();
         } catch(error) {
             toast.error("Error al rechazar");
         }

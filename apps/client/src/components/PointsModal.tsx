@@ -1,8 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { X, Star, Gift, Store, Tag, AlertCircle } from 'lucide-react';
-import { db } from '../lib/firebase';
-import { collection, getDocs, doc, getDoc, query, where } from 'firebase/firestore';
+import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 
 interface GlobalPrize {
@@ -48,9 +47,22 @@ export default function PointsModal({ isOpen, onClose }: PointsModalProps) {
         const fetchPrizes = async () => {
             setLoadingPrizes(true);
             try {
-                const snapshot = await getDocs(query(collection(db, 'global_prizes'), where('isActive', '==', true)));
-                const prizes = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as GlobalPrize));
-                // Sort by points required ascending
+                const { data, error } = await supabase
+                    .from('global_prizes')
+                    .select('*')
+                    .or('is_active.eq.true,isActive.eq.true');
+
+                if (error) throw error;
+
+                const prizes: GlobalPrize[] = (data || []).map((p: any) => ({
+                    id: p.id,
+                    title: p.title,
+                    description: p.description,
+                    pointsRequired: Number(p.points_required ?? p.pointsRequired ?? 0),
+                    imageUrl: p.image_url || p.imageUrl,
+                    isActive: p.is_active ?? p.isActive ?? true
+                }));
+
                 prizes.sort((a, b) => a.pointsRequired - b.pointsRequired);
                 setGlobalPrizes(prizes);
             } catch (error) {
@@ -61,28 +73,52 @@ export default function PointsModal({ isOpen, onClose }: PointsModalProps) {
         };
 
         const fetchRestaurantData = async () => {
-            if (!userData?.restaurantPoints) return;
+            if (!(userData as any)?.restaurantPoints) return;
             
             setLoadingRestaurants(true);
             try {
                 const info: Record<string, { data: RestaurantData, products: RedeemableProduct[] }> = {};
-                
-                for (const [restId, points] of Object.entries(userData.restaurantPoints)) {
-                    if ((points as number) <= 0) continue;
-                    
-                    // Fetch restaurant details
-                    const restDoc = await getDoc(doc(db, 'restaurants', restId));
-                    if (!restDoc.exists()) continue;
-                    
-                    const restData = { id: restDoc.id, ...restDoc.data() } as RestaurantData;
-                    
-                    // Fetch redeemable products
-                    const prodSnap = await getDocs(query(collection(db, `restaurants/${restId}/products`), where('pointsPrice', '>', 0)));
-                    const products = prodSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as RedeemableProduct));
-                    
-                    // Only add if they have points > 0
-                    info[restId] = { data: restData, products };
+                const validRestIds = Object.entries((userData as any).restaurantPoints)
+                    .filter(([_, pts]) => (pts as number) > 0)
+                    .map(([id]) => id);
+
+                if (validRestIds.length === 0) {
+                    setRestaurantInfo({});
+                    setLoadingRestaurants(false);
+                    return;
                 }
+
+                const { data: rests } = await supabase
+                    .from('comercios')
+                    .select('id, name, logo_url, logoUrl')
+                    .in('id', validRestIds);
+
+                const { data: prods } = await supabase
+                    .from('products')
+                    .select('*')
+                    .in('comercio_id', validRestIds)
+                    .or('points_price.gt.0,pointsPrice.gt.0');
+
+                (rests || []).forEach((r: any) => {
+                    const rProducts = (prods || [])
+                        .filter((p: any) => (p.comercio_id === r.id || p.comercioId === r.id))
+                        .map((p: any) => ({
+                            id: p.id,
+                            name: p.name,
+                            description: p.description,
+                            pointsPrice: Number(p.points_price ?? p.pointsPrice ?? 0),
+                            image: p.image || p.image_url || p.imageUrl
+                        }));
+
+                    info[r.id] = {
+                        data: {
+                            id: r.id,
+                            name: r.name,
+                            logoUrl: r.logo_url || r.logoUrl
+                        },
+                        products: rProducts
+                    };
+                });
                 
                 setRestaurantInfo(info);
             } catch (error) {
@@ -99,7 +135,7 @@ export default function PointsModal({ isOpen, onClose }: PointsModalProps) {
     if (!isOpen) return null;
 
     const globalPoints = userData?.points || 0;
-    const hasRestaurantPoints = userData?.restaurantPoints && Object.values(userData.restaurantPoints).some(p => (p as number) > 0);
+    const hasRestaurantPoints = (userData as any)?.restaurantPoints && Object.values((userData as any).restaurantPoints).some((p: any) => (p as number) > 0);
 
     return (
         <AnimatePresence>
@@ -218,7 +254,7 @@ export default function PointsModal({ isOpen, onClose }: PointsModalProps) {
                                 <div className="space-y-4">
                                     {Object.entries(restaurantInfo).map(([restId, info]) => {
                                         const rInfo = info as { data: RestaurantData, products: RedeemableProduct[] };
-                                        const pts = (userData?.restaurantPoints?.[restId] as number) || 0;
+                                        const pts = ((userData as any)?.restaurantPoints?.[restId] as number) || 0;
                                         if (pts <= 0) return null;
 
                                         return (

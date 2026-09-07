@@ -1,7 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { collection, query, orderBy, onSnapshot, doc, updateDoc, deleteDoc, writeBatch, getDocs, where, serverTimestamp, limit } from 'firebase/firestore';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { db, storage } from '../../lib/firebase';
+import { supabase } from '../../lib/supabase';
 import { Car, Bike, Clock, CheckCircle2, XCircle, Search, Calendar, DollarSign, MapPin, User, ShieldCheck, Upload, Image as ImageIcon, MessageSquare, Star, Phone, MessageCircle, ShoppingBag, Store, Navigation, Map } from 'lucide-react';
 import { GoogleMap, useJsApiLoader, Marker } from '@react-google-maps/api';
 import { motion, AnimatePresence } from 'motion/react';
@@ -53,107 +51,96 @@ export default function TransportRequests() {
         googleMapsApiKey: "AIzaSyCb1c-p1R6AZGetk8YzKiLuxjaxjmPqJX8"
     });
 
-    // Notification sound
-    const notificationSoundUrl = useRef<string | null>(null);
     const lastRequestTimestamp = useRef<number>(Date.now());
 
-    useEffect(() => {
-        const q = query(
-            collection(db, 'transport_requests'),
-            orderBy('createdAt', 'desc')
-        );
+    const fetchRequests = async () => {
+        try {
+            const { data, error } = await supabase
+                .from('transport_requests')
+                .select('*')
+                .order('created_at', { ascending: false });
 
-        const unsubscribe = onSnapshot(q, (snapshot) => {
-            const reqsData = snapshot.docs.map(doc => ({
-                id: doc.id,
-                ...doc.data()
-            }));
-            setRequests(reqsData);
-            setLoading(false);
-        });
-
-        return () => unsubscribe();
-    }, []);
-
-    // Fetch sound and listen for new requests
-    useEffect(() => {
-        const fetchSound = async () => {
-            try {
-                const soundRef = ref(storage, 'Digital_Cascade_01.mp3');
-                const url = await getDownloadURL(soundRef);
-                notificationSoundUrl.current = url;
-            } catch (err) {
-                console.error("No se pudo cargar el sonido de notificación:", err);
+            if (!error && data) {
+                const mapped = data.map(d => ({
+                    ...d,
+                    id: d.id,
+                    createdAt: d.created_at,
+                    orderId: d.order_id || d.orderId,
+                    driverId: d.driver_id || d.driverId,
+                    driverName: d.driver_name || d.driverName,
+                    driverPayout: d.driver_payout || d.driverPayout,
+                    driverPaid: d.driver_paid !== undefined ? d.driver_paid : d.driverPaid,
+                    paymentProof: d.payment_proof || d.paymentProof,
+                    paymentProofUrl: d.payment_proof_url || d.paymentProofUrl
+                }));
+                setRequests(mapped);
             }
-        };
-        fetchSound();
+        } catch (err) {
+            console.error(err);
+        } finally {
+            setLoading(false);
+        }
+    };
 
-        // Listen for new requests specifically for sound notification
-        const q = query(
-            collection(db, 'transport_requests'),
-            where('status', 'in', ['verifying_payment', 'searching']),
-            orderBy('createdAt', 'desc'),
-            limit(1)
-        );
+    useEffect(() => {
+        fetchRequests();
 
-        const unsub = onSnapshot(q, (snapshot) => {
-            if (!snapshot.empty) {
-                const latestDoc = snapshot.docs[0];
-                const data = latestDoc.data();
-                const createdAt = data.createdAt?.toMillis() || Date.now();
-                
-                // Si es un documento nuevo (creado después de que se cargó el panel)
-                if (createdAt > lastRequestTimestamp.current) {
-                    if (notificationSoundUrl.current) {
-                        const audio = new Audio(notificationSoundUrl.current);
-                        audio.play().catch(e => console.error("Error playing audio:", e));
-                        
-                        // Alerta visual de nuevo pedido
-                        toast.success(`¡Nuevo ${data.serviceType || 'servicio'} solicitado!`, {
+        const channel = supabase.channel('transport_requests_realtime')
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'transport_requests' }, (payload) => {
+                fetchRequests();
+                if (payload.eventType === 'INSERT') {
+                    const newReq = payload.new;
+                    if (newReq?.status === 'verifying_payment' || newReq?.status === 'searching') {
+                        try {
+                            const audio = new Audio('/Digital_Cascade_01.mp3');
+                            audio.play().catch(e => console.error("Error playing audio:", e));
+                        } catch (e) {}
+                        toast.success(`¡Nuevo ${newReq.service_type || 'servicio'} solicitado!`, {
                             duration: 5000,
                             icon: '🔔'
                         });
                     }
-                    lastRequestTimestamp.current = createdAt;
                 }
-            }
-        });
+            })
+            .subscribe();
 
-        return () => unsub();
+        return () => {
+            supabase.removeChannel(channel);
+        };
     }, []);
 
     const handleVerifyPayment = async (req: any, isApproved: boolean) => {
         const id = req.id;
         try {
-            await updateDoc(doc(db, 'transport_requests', id), {
-                status: isApproved ? 'searching' : 'cancelled'
-            });
+            await supabase.from('transport_requests').update({
+                status: isApproved ? 'searching' : 'cancelled',
+                updated_at: new Date().toISOString()
+            }).eq('id', id);
 
             // If it's linked to an order, update the order as well
             if (req.orderId) {
-                await updateDoc(doc(db, 'orders', req.orderId), {
+                await supabase.from('orders').update({
                     status: isApproved ? 'buscando_piloto' : 'pendiente_pago_delivery',
-                    deliveryPaymentStatus: isApproved ? 'approved' : 'rejected'
-                });
+                    delivery_payment_status: isApproved ? 'approved' : 'rejected'
+                }).eq('id', req.orderId);
             }
 
             if (isApproved) {
-                const driversSnap = await getDocs(query(collection(db, 'users'), where('role', 'in', ['delivery', 'driver'])));
-                const batch = writeBatch(db);
-                driversSnap.docs.forEach(driverDoc => {
-                    const notifRef = doc(collection(db, 'notifications'));
-                    batch.set(notifRef, {
-                        userId: driverDoc.id,
+                const { data: drivers } = await supabase.from('profiles').select('id').in('role', ['delivery', 'driver']);
+                if (drivers && drivers.length > 0) {
+                    const notifs = drivers.map(driverDoc => ({
+                        user_id: driverDoc.id,
                         title: '¡Nuevo Servicio de Taxi Disponible!',
                         body: 'Un administrador ha verificado el pago. ¡Hay una solicitud esperándote!',
                         read: false,
-                        createdAt: serverTimestamp()
-                    });
-                });
-                await batch.commit();
+                        created_at: new Date().toISOString()
+                    }));
+                    await supabase.from('notifications').insert(notifs);
+                }
             }
 
             toast.success(isApproved ? 'Pago verificado. Buscando conductor...' : 'Solicitud cancelada');
+            fetchRequests();
         } catch (error) {
             console.error("Error updating status:", error);
             toast.error("Hubo un error al actualizar la solicitud");
@@ -163,8 +150,10 @@ export default function TransportRequests() {
     const handleDelete = async (id: string) => {
         if (window.confirm("¿Estás seguro de que deseas eliminar este registro histórico?")) {
             try {
-                await deleteDoc(doc(db, 'transport_requests', id));
+                const { error } = await supabase.from('transport_requests').delete().eq('id', id);
+                if (error) throw error;
                 toast.success('Registro eliminado');
+                fetchRequests();
             } catch (error) {
                 console.error("Error deleting record:", error);
                 toast.error("Error al eliminar el registro");
@@ -178,23 +167,23 @@ export default function TransportRequests() {
         try {
             const proofUrl = req.paymentProofUrl || req.paymentProof;
             if (proofUrl) {
-                // In v9, `ref()` can take an HTTP URL directly if it matches the storage bucket
-                const fileRef = ref(storage, proofUrl);
+                const path = proofUrl.split('/store_assets/')[1] || proofUrl.split('/documents/')[1] || proofUrl;
                 try {
-                    // Import deleteObject on the fly or just use the global storage reference
-                    const { deleteObject } = await import('firebase/storage');
-                    await deleteObject(fileRef);
+                    await supabase.storage.from('store_assets').remove([path]);
+                    await supabase.storage.from('documents').remove([path]);
                 } catch (e) {
-                    console.error("Warning: Error deleting physical file, maybe already deleted", e);
+                    console.error("Warning: Error deleting physical file", e);
                 }
             }
             
             // Remove the reference from the document
-            await updateDoc(doc(db, 'transport_requests', req.id), {
-                paymentProof: null,
-                paymentProofUrl: null
-            });
+            await supabase.from('transport_requests').update({
+                payment_proof: null,
+                payment_proof_url: null
+            }).eq('id', req.id);
+
             toast.success("Comprobante eliminado");
+            fetchRequests();
         } catch (error) {
             console.error("Error deleting proof:", error);
             toast.error("Error al actualizar la solicitud");
@@ -291,39 +280,55 @@ export default function TransportRequests() {
         setPayoutLoading(true);
         try {
             // Upload receipt
-            const receiptRef = ref(storage, `payout_receipts/${selectedDriver.driverId}_${Date.now()}`);
-            await uploadBytes(receiptRef, payoutReceipt);
-            const receiptUrl = await getDownloadURL(receiptRef);
+            const ext = payoutReceipt.name.split('.').pop() || 'jpg';
+            const filePath = `payout_receipts/${selectedDriver.driverId}_${Date.now()}.${ext}`;
+            const { error: uploadError } = await supabase.storage
+                .from('store_assets')
+                .upload(filePath, payoutReceipt, { upsert: true });
+
+            if (uploadError) throw uploadError;
+
+            const { data: { publicUrl: receiptUrl } } = supabase.storage
+                .from('store_assets')
+                .getPublicUrl(filePath);
 
             // Update all unpaid trips
-            const batch = writeBatch(db);
-            selectedDriver.unpaidTrips.forEach((trip: any) => {
-                const tripRef = doc(db, 'transport_requests', trip.id);
-                batch.update(tripRef, {
-                    driverPaid: true,
-                    payoutReceiptUrl: receiptUrl,
-                    payoutDate: new Date()
-                });
-            });
+            const tripIds = selectedDriver.unpaidTrips.map((trip: any) => trip.id);
+            if (tripIds.length > 0) {
+                const { error: updateError } = await supabase
+                    .from('transport_requests')
+                    .update({
+                        driver_paid: true,
+                        driverPaid: true,
+                        payout_receipt_url: receiptUrl,
+                        payoutReceiptUrl: receiptUrl,
+                        payout_date: new Date().toISOString(),
+                        payoutDate: new Date().toISOString()
+                    })
+                    .in('id', tripIds);
+
+                if (updateError) throw updateError;
+            }
 
             // Notify driver
-            const notifRef = doc(collection(db, 'notifications'));
             const bsAmount = selectedDriver.weeklyDebt * bcvRate;
-            batch.set(notifRef, {
+            await supabase.from('notifications').insert([{
+                user_id: selectedDriver.driverId,
                 userId: selectedDriver.driverId,
                 title: '¡Pago Recibido!',
                 body: `Se ha procesado tu pago de $${selectedDriver.weeklyDebt.toFixed(2)} (${bsAmount.toFixed(2)} Bs). Revisa el comprobante en tu historial.`,
                 read: false,
-                createdAt: serverTimestamp(),
+                created_at: new Date().toISOString(),
+                createdAt: new Date().toISOString(),
+                payout_receipt_url: receiptUrl,
                 payoutReceiptUrl: receiptUrl
-            });
-
-            await batch.commit();
+            }]);
 
             toast.success(`Pago procesado con éxito para ${selectedDriver.driverName}`);
             setShowPayoutModal(false);
             setSelectedDriver(null);
             setPayoutReceipt(null);
+            fetchRequests();
         } catch (error) {
             console.error("Error processing payout:", error);
             toast.error("Hubo un error al procesar el pago");
@@ -499,14 +504,16 @@ export default function TransportRequests() {
                                                             <Calendar className="w-4 h-4" /> 
                                                             {req.scheduled ? (
                                                                 <span className="text-primary font-black">
-                                                                    Para: {req.scheduledAt && typeof req.scheduledAt.toDate === 'function' 
-                                                                        ? req.scheduledAt.toDate().toLocaleString('es-VE') 
-                                                                        : 'Fecha pendiente'}
+                                                                    Para: {(() => {
+                                                                        const d = req.scheduledAt?.toDate ? req.scheduledAt.toDate() : (req.scheduledAt ? new Date(req.scheduledAt) : null);
+                                                                        return d && !isNaN(d.getTime()) ? d.toLocaleString('es-VE') : 'Fecha pendiente';
+                                                                    })()}
                                                                 </span>
                                                             ) : (
-                                                                req.createdAt && typeof req.createdAt.toDate === 'function' 
-                                                                    ? req.createdAt.toDate().toLocaleString('es-VE') 
-                                                                    : 'Fecha desconocida'
+                                                                (() => {
+                                                                    const d = req.createdAt?.toDate ? req.createdAt.toDate() : (req.createdAt ? new Date(req.createdAt) : null);
+                                                                    return d && !isNaN(d.getTime()) ? d.toLocaleString('es-VE') : 'Fecha desconocida';
+                                                                })()
                                                             )}
                                                         </span>
                                                         {((req.driverAssignedAt && req.driverArrivedAt) || req.arrivalDuration !== undefined) && (
@@ -514,9 +521,11 @@ export default function TransportRequests() {
                                                                 <Clock className="w-4 h-4" /> 
                                                                 Llegó en: {req.arrivalDuration !== undefined ? (
                                                                     formatDuration(req.arrivalDuration)
-                                                                ) : (req.driverArrivedAt && req.driverAssignedAt && typeof req.driverArrivedAt.toDate === 'function' && typeof req.driverAssignedAt.toDate === 'function') ? (
-                                                                    `${Math.max(1, Math.round((req.driverArrivedAt.toDate().getTime() - req.driverAssignedAt.toDate().getTime()) / 60000))} min`
-                                                                ) : '--'}
+                                                                ) : (() => {
+                                                                    const arr = req.driverArrivedAt?.toDate ? req.driverArrivedAt.toDate().getTime() : (req.driverArrivedAt ? new Date(req.driverArrivedAt).getTime() : 0);
+                                                                    const ass = req.driverAssignedAt?.toDate ? req.driverAssignedAt.toDate().getTime() : (req.driverAssignedAt ? new Date(req.driverAssignedAt).getTime() : 0);
+                                                                    return (arr && ass) ? `${Math.max(1, Math.round((arr - ass) / 60000))} min` : '--';
+                                                                })()}
                                                             </span>
                                                         )}
                                                     </div>
@@ -766,7 +775,7 @@ export default function TransportRequests() {
                 <div className="space-y-6">
                     <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
                         <h2 className="text-xl font-black text-slate-900 mb-2">Galería de Comprobantes Históricos</h2>
-                        <p className="text-slate-500 text-sm">Aquí puedes revisar todas las capturas de pantalla de los pagos móviles enviados por clientes y eliminarlas para ahorrar espacio en el servidor de Firebase.</p>
+                        <p className="text-slate-500 text-sm">Aquí puedes revisar todas las capturas de pantalla de los pagos móviles enviados por clientes y eliminarlas para ahorrar espacio en el servidor.</p>
                     </div>
                     
                     <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
@@ -793,7 +802,12 @@ export default function TransportRequests() {
                                     <div className="p-3 bg-white flex flex-col gap-2">
                                         <div>
                                             <div className="text-xs font-black text-slate-800 truncate mb-0.5">{req.userName}</div>
-                                            <div className="text-[10px] text-slate-500 font-medium">{req.createdAt?.toDate().toLocaleDateString()}</div>
+                                            <div className="text-[10px] text-slate-500 font-medium">
+                                                {(() => {
+                                                    const d = req.createdAt?.toDate ? req.createdAt.toDate() : (req.createdAt ? new Date(req.createdAt) : null);
+                                                    return d && !isNaN(d.getTime()) ? d.toLocaleDateString() : '';
+                                                })()}
+                                            </div>
                                         </div>
                                         <button
                                             onClick={() => handleDeleteProof(req)}

@@ -1,8 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { UtensilsCrossed, Plus, Search, Filter, Edit2, Trash2, Image as ImageIcon, Check, ChevronDown, X, Loader2, DollarSign, Tag, TrendingUp, Instagram, Youtube, Music2, LayoutGrid, List } from 'lucide-react';
-import { db, storage } from '../../lib/firebase';
-import { collection, query, getDocs, doc, deleteDoc, updateDoc, addDoc, getDoc, writeBatch } from 'firebase/firestore';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../context/AuthContext';
 import { GLOBAL_CATEGORIES, CATEGORY_SECTORS, DEVELOPER_WHATSAPP } from '../../lib/constants';
 import { ProductModifier, ModifierType } from '../../lib/seed';
@@ -83,11 +81,13 @@ export default function ProductManagement() {
     const fetchRestaurantLogo = async () => {
         if (!rid) return;
         try {
-            const docRef = doc(db, 'restaurants', rid);
-            const docSnap = await getDoc(docRef);
-            if (docSnap.exists()) {
-                const data = docSnap.data();
-                setRestaurantLogo(data.logoUrl || data.image || '');
+            const { data } = await supabase
+                .from('comercios')
+                .select('logo_url, image')
+                .eq('id', rid)
+                .single();
+            if (data) {
+                setRestaurantLogo(data.logo_url || data.image || '');
             }
         } catch (error) {
             console.error("Error fetching restaurant logo:", error);
@@ -97,10 +97,13 @@ export default function ProductManagement() {
     const fetchStations = async () => {
         if (!rid) return;
         try {
-            const stationsRef = collection(db, 'restaurants', rid, 'printers');
-            const snapshot = await getDocs(stationsRef);
-            const items = snapshot.docs.map(doc => ({ id: doc.id, name: doc.data().name }));
-            setStations(items);
+            const { data } = await supabase
+                .from('printers')
+                .select('id, name')
+                .eq('restaurant_id', rid);
+            if (data) {
+                setStations(data);
+            }
         } catch (error) {
             console.error("Error fetching stations:", error);
         }
@@ -109,14 +112,39 @@ export default function ProductManagement() {
     const fetchProducts = async () => {
         if (!rid) return;
         try {
-            const productsRef = collection(db, 'restaurants', rid, 'products');
-            const q = query(productsRef);
-            const querySnapshot = await getDocs(q);
-            const items: Product[] = [];
-            querySnapshot.forEach((doc) => {
-                items.push({ id: doc.id, ...doc.data() } as Product);
-            });
-            setProducts(items);
+            const { data, error } = await supabase
+                .from('products')
+                .select('*')
+                .eq('restaurant_id', rid)
+                .order('created_at', { ascending: false });
+
+            if (error) {
+                console.error("Error fetching products:", error);
+            } else if (data) {
+                const items: Product[] = data.map((p: any) => ({
+                    id: p.id,
+                    name: p.name,
+                    description: p.description || '',
+                    price: Number(p.price) || 0,
+                    promoPrice: Number(p.promo_price) || 0,
+                    category: p.category_name || p.category || '',
+                    subcategory: p.subcategory || '',
+                    image: p.image_url || p.image || '',
+                    images: Array.isArray(p.images) ? p.images : (p.image_url ? [p.image_url] : []),
+                    isActive: p.is_active ?? true,
+                    isAvailable: p.is_available ?? true,
+                    investment: Number(p.investment) || 0,
+                    variants: p.variants || [],
+                    modifiers: p.modifiers || [],
+                    printerId: p.printer_id || '',
+                    consultPrice: p.consult_price ?? false,
+                    pointsPrice: Number(p.points_price) || 0,
+                    socialMediaLink: p.social_media_link || '',
+                    tiktokLink: p.tiktok_link || '',
+                    youtubeLink: p.youtube_link || ''
+                }));
+                setProducts(items);
+            }
         } catch (error) {
             console.error("Error fetching products:", error);
         } finally {
@@ -181,17 +209,16 @@ export default function ProductManagement() {
         setSubmitting(true);
 
         try {
-            // 1. Upload new images if any
+            // 1. Upload new images if any to Supabase Storage
             const uploadedUrls: string[] = [];
             for (const file of newImageFiles) {
                 try {
-                    console.log(`Uploading file: ${file.name}`);
                     const sanitizedName = file.name.replace(/[^a-z0-9.]/gi, '_').toLowerCase();
-                    const storageRef = ref(storage, `restaurants/${rid}/products/${Date.now()}_${sanitizedName}`);
-                    const snapshot = await uploadBytes(storageRef, file);
-                    const url = await getDownloadURL(snapshot.ref);
-                    uploadedUrls.push(url);
-                    console.log(`File uploaded: ${url}`);
+                    const filePath = `${rid}/products/${Date.now()}_${sanitizedName}`;
+                    const { error: upErr } = await supabase.storage.from('store_assets').upload(filePath, file, { upsert: true });
+                    if (upErr) throw upErr;
+                    const { data: urlData } = supabase.storage.from('store_assets').getPublicUrl(filePath);
+                    uploadedUrls.push(urlData.publicUrl);
                 } catch (uploadError) {
                     console.error(`Error uploading ${file.name}:`, uploadError);
                     throw new Error(`Error al subir la imagen ${file.name}`);
@@ -218,53 +245,65 @@ export default function ProductManagement() {
             if (editingProduct && !isNaN(newPriceInput)) {
                 const oldBasePrice = editingProduct.price;
                 if (newPriceInput < oldBasePrice && newPriceInput > 0) {
-                    // It's a discount
                     finalPrice = oldBasePrice;
                     finalPromoPrice = newPriceInput;
                 } else {
-                    // It's a new normal price or higher
                     finalPrice = newPriceInput;
                     finalPromoPrice = 0;
                 }
             } else if (!editingProduct && !isNaN(newPriceInput)) {
-                // New product, price is base
                 finalPrice = newPriceInput;
                 finalPromoPrice = 0;
             }
 
             const pointsPriceValue = formData.pointsPrice ? parseFloat(formData.pointsPrice) : 0;
 
-            const productData = {
-                ...formData,
+            const productData: any = {
+                restaurant_id: rid,
+                name: formData.name,
+                description: formData.description,
                 price: formData.consultPrice ? 0 : finalPrice,
+                promo_price: formData.consultPrice ? 0 : finalPromoPrice,
+                category_name: formData.category,
+                subcategory: formData.subcategory || '',
                 investment,
-                promoPrice: formData.consultPrice ? 0 : finalPromoPrice,
-                pointsPrice: pointsPriceValue,
+                is_active: formData.isActive,
+                is_available: formData.isAvailable,
+                social_media_link: formData.socialMediaLink || '',
+                tiktok_link: formData.tiktokLink || '',
+                youtube_link: formData.youtubeLink || '',
+                variants: formData.variants || [],
+                modifiers: formData.modifiers || [],
+                printer_id: formData.printerId || null,
+                consult_price: formData.consultPrice,
+                points_price: pointsPriceValue,
                 images: allImages.length > 0 ? allImages : (restaurantLogo ? [restaurantLogo] : []),
-                image: allImages[0] || restaurantLogo || '', // Principal image
-                updatedAt: new Date()
+                image_url: allImages[0] || restaurantLogo || '',
+                updated_at: new Date().toISOString()
             };
 
-            console.log("Saving product data:", productData);
+            console.log("Saving product data to Supabase:", productData);
 
             if (editingProduct) {
-                const productRef = doc(db, 'restaurants', rid, 'products', editingProduct.id);
-                await updateDoc(productRef, productData);
+                const { error: updErr } = await supabase
+                    .from('products')
+                    .update(productData)
+                    .eq('id', editingProduct.id);
+                if (updErr) throw updErr;
 
                 // Notification for price drop
-                if (productData.promoPrice && productData.promoPrice > 0 &&
-                    (!editingProduct.promoPrice || productData.promoPrice < editingProduct.promoPrice)) {
+                if (finalPromoPrice > 0 && (!editingProduct.promoPrice || finalPromoPrice < editingProduct.promoPrice)) {
                     notifyFollowers(
                         "¡Bajó de precio!",
-                        `El producto "${productData.name}" ahora está en oferta por solo $${productData.promoPrice.toFixed(2)}.`
+                        `El producto "${productData.name}" ahora está en oferta por solo $${finalPromoPrice.toFixed(2)}.`
                     );
                 }
             } else {
-                const productsRef = collection(db, 'restaurants', rid, 'products');
-                await addDoc(productsRef, {
-                    ...productData,
-                    createdAt: new Date()
-                });
+                productData.created_at = new Date().toISOString();
+                const { error: insErr } = await supabase
+                    .from('products')
+                    .insert(productData);
+                if (insErr) throw insErr;
 
                 // Notification for new product
                 notifyFollowers(
@@ -273,7 +312,7 @@ export default function ProductManagement() {
                 );
             }
 
-            console.log("Product saved successfully");
+            console.log("Product saved successfully in Supabase");
             setIsModalOpen(false);
             setEditingProduct(null);
             setFormData({
@@ -308,7 +347,8 @@ export default function ProductManagement() {
     const handleDelete = async (id: string) => {
         if (!user || !rid || !window.confirm('¿Estás seguro de eliminar este producto?')) return;
         try {
-            await deleteDoc(doc(db, 'restaurants', rid, 'products', id));
+            const { error } = await supabase.from('products').delete().eq('id', id);
+            if (error) throw error;
             fetchProducts();
         } catch (error) {
             console.error("Error deleting product:", error);
@@ -318,8 +358,11 @@ export default function ProductManagement() {
     const toggleAvailability = async (product: Product) => {
         if (!user || !rid) return;
         try {
-            const productRef = doc(db, 'restaurants', rid, 'products', product.id);
-            await updateDoc(productRef, { isAvailable: !product.isAvailable });
+            const { error } = await supabase
+                .from('products')
+                .update({ is_available: !product.isAvailable })
+                .eq('id', product.id);
+            if (error) throw error;
             fetchProducts();
         } catch (error) {
             console.error("Error toggling availability:", error);
@@ -426,29 +469,31 @@ export default function ProductManagement() {
         if (!user || !rid) return;
         try {
             // Fetch restaurant name
-            const resSnap = await getDoc(doc(db, 'restaurants', rid));
-            const restaurantName = resSnap.data()?.name || 'Un restaurante que sigues';
+            const { data: resData } = await supabase
+                .from('comercios')
+                .select('name')
+                .eq('id', rid)
+                .single();
+            const restaurantName = resData?.name || 'Un restaurante que sigues';
 
-            const followersRef = collection(db, 'restaurants', rid, 'followers');
-            const followersSnap = await getDocs(followersRef);
+            const { data: followers } = await supabase
+                .from('restaurant_followers')
+                .select('user_id')
+                .eq('restaurant_id', rid);
 
-            if (followersSnap.empty) return;
+            if (!followers || followers.length === 0) return;
 
-            const batch = writeBatch(db);
-            followersSnap.docs.forEach(followerDoc => {
-                const userId = followerDoc.id;
-                const notifRef = doc(collection(db, 'notifications'));
-                batch.set(notifRef, {
-                    userId,
-                    restaurantId: rid,
-                    restaurantName,
-                    title,
-                    body,
-                    read: false,
-                    createdAt: new Date()
-                });
-            });
-            await batch.commit();
+            const notifs = followers.map(follower => ({
+                user_id: follower.user_id,
+                restaurant_id: rid,
+                restaurant_name: restaurantName,
+                title,
+                body,
+                read: false,
+                created_at: new Date().toISOString()
+            }));
+
+            await supabase.from('notifications').insert(notifs);
         } catch (e) {
             console.error("Error notifying followers:", e);
         }

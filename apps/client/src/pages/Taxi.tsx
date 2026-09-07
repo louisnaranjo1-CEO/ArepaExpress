@@ -2,9 +2,7 @@ import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { motion, AnimatePresence } from 'motion/react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { collection, addDoc, serverTimestamp, doc, getDoc, updateDoc, getDocs, query, where, writeBatch, onSnapshot, Timestamp } from 'firebase/firestore';
-import { db, storage } from '../lib/firebase';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { supabase } from '../lib/supabase';
 import { Car, Bike, MapPin, Navigation, ArrowRight, CheckCircle2, X, Heart, History, Star, Wallet, Upload, Copy, Check, Calendar, Clock as ClockIcon, Package } from 'lucide-react';
 import { GoogleMap, useJsApiLoader, Marker, DirectionsRenderer } from '@react-google-maps/api';
 import { UN2X3_LOGO } from '../lib/env';
@@ -130,98 +128,52 @@ export default function Taxi() {
     }, [userData]);
     const [activeDrivers, setActiveDrivers] = useState<{ moto: number, carro: number, ejecutivo: number }>({ moto: 0, carro: 0, ejecutivo: 0 });
 
-    // Disponibilidad de conductores: PostgreSQL primario, Firestore como fallback
+    // Disponibilidad de conductores: Supabase
     useEffect(() => {
-        let interval: ReturnType<typeof setInterval> | null = null;
-        let unsubDrivers: (() => void) | null = null;
-        let unsubTransport: (() => void) | null = null;
-        let unsubOrders: (() => void) | null = null;
-        let useFirestore = false;
-
-        // Datos para cálculo Firestore
-        let onlineDrivers: { id: string; vehicleType: string; availability: string }[] = [];
-        let busyTransport = new Set<string>();
-        let busyOrders = new Set<string>();
-
-        const recalcFirestore = () => {
-            const counts = { moto: 0, carro: 0, ejecutivo: 0 };
-            onlineDrivers.forEach(d => {
-                if (d.availability !== 'busy' && !busyTransport.has(d.id) && !busyOrders.has(d.id)) {
-                    const vt = d.vehicleType?.toLowerCase() as keyof typeof counts;
-                    if (vt in counts) counts[vt]++;
-                }
-            });
-            setActiveDrivers(counts);
-        };
-
-        const startFirestoreFallback = () => {
-            if (useFirestore) return; // Already listening
-            useFirestore = true;
-            console.log('Using Firestore fallback for driver availability');
-
-            // Online drivers
-            const qDrivers = query(collection(db, 'delivery_drivers'), where('isOnline', '==', true));
-            unsubDrivers = onSnapshot(qDrivers, (snap) => {
-                onlineDrivers = snap.docs.map(d => ({
-                    id: d.id,
-                    vehicleType: d.data().vehicleType,
-                    availability: d.data().availability || 'active'
-                }));
-                recalcFirestore();
-            });
-
-            // Busy in transport_requests
-            const qReq = query(collection(db, 'transport_requests'), where('status', 'in', ['accepted', 'arriving', 'in_progress']));
-            unsubTransport = onSnapshot(qReq, (snap) => {
-                busyTransport = new Set<string>();
-                snap.docs.forEach(d => { if (d.data().driverId) busyTransport.add(d.data().driverId); });
-                recalcFirestore();
-            });
-
-            // Busy in orders
-            const qOrd = query(collection(db, 'orders'), where('status', 'in', ['en_camino', 'in_transit']));
-            unsubOrders = onSnapshot(qOrd, (snap) => {
-                busyOrders = new Set<string>();
-                snap.docs.forEach(d => { if (d.data().deliveryDriverId) busyOrders.add(d.data().deliveryDriverId); });
-                recalcFirestore();
-            });
-        };
-
-        const fetchFromPostgres = async () => {
+        const fetchAvailability = async () => {
             try {
-                const { driversApi } = await import('../lib/api');
-                const counts = await driversApi.getAvailable();
-                // Verificar si PostgreSQL tiene datos reales
-                if (counts.moto + counts.carro + counts.ejecutivo > 0) {
-                    setActiveDrivers(counts);
-                    return true; // PostgreSQL tiene datos
-                }
-                return false; // PostgreSQL vacío, usar fallback
-            } catch {
-                return false; // Backend no disponible
+                // Online drivers from delivery_drivers
+                const { data: drivers } = await supabase
+                    .from('delivery_drivers')
+                    .select('id, vehicle_type, vehicleType, availability')
+                    .eq('is_online', true);
+
+                const { data: reqs } = await supabase
+                    .from('transport_requests')
+                    .select('driver_id, driverId')
+                    .in('status', ['accepted', 'arriving', 'in_progress']);
+
+                const { data: ords } = await supabase
+                    .from('orders')
+                    .select('delivery_driver_id, deliveryDriverId')
+                    .in('status', ['en_camino', 'in_transit']);
+
+                const busy = new Set<string>();
+                (reqs || []).forEach((r: any) => {
+                    const d = r.driver_id || r.driverId;
+                    if (d) busy.add(d);
+                });
+                (ords || []).forEach((o: any) => {
+                    const d = o.delivery_driver_id || o.deliveryDriverId;
+                    if (d) busy.add(d);
+                });
+
+                const counts = { moto: 0, carro: 0, ejecutivo: 0 };
+                (drivers || []).forEach((d: any) => {
+                    if (d.availability !== 'busy' && !busy.has(d.id)) {
+                        const vt = (d.vehicle_type || d.vehicleType || '').toLowerCase() as keyof typeof counts;
+                        if (vt in counts) counts[vt]++;
+                    }
+                });
+                setActiveDrivers(counts);
+            } catch (err) {
+                console.error("Error fetching driver availability:", err);
             }
         };
 
-        // Intentar PostgreSQL primero
-        fetchFromPostgres().then(hasData => {
-            if (hasData) {
-                // PostgreSQL funciona — polling cada 10s
-                interval = setInterval(async () => {
-                    const ok = await fetchFromPostgres();
-                    if (!ok) startFirestoreFallback();
-                }, 10000);
-            } else {
-                // Fallback inmediato a Firestore
-                startFirestoreFallback();
-            }
-        });
-
-        return () => {
-            if (interval) clearInterval(interval);
-            if (unsubDrivers) unsubDrivers();
-            if (unsubTransport) unsubTransport();
-            if (unsubOrders) unsubOrders();
-        };
+        fetchAvailability();
+        const interval = setInterval(fetchAvailability, 10000);
+        return () => clearInterval(interval);
     }, []);
 
     const [isFollowingUser, setIsFollowingUser] = useState(false);
@@ -234,49 +186,58 @@ export default function Taxi() {
     // 0. Check for active transport request
     useEffect(() => {
         if (!user) return;
-        const q = query(
-            collection(db, 'transport_requests'),
-            where('userId', '==', user.uid),
-            where('status', 'in', ['searching', 'verifying_payment', 'accepted', 'arriving', 'in_progress'])
-        );
-        const unsubscribe = onSnapshot(q, (snapshot) => {
-            if (!snapshot.empty) {
-                const reqs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as any));
-                
-                // Rides that should force redirect to Tracker: 
-                // Immediate rides, OR scheduled rides already executing
+        const uid = user.id || user.uid;
+
+        const checkActive = async () => {
+            const { data: reqs } = await supabase
+                .from('transport_requests')
+                .select('*')
+                .or(`user_id.eq.${uid},userId.eq.${uid}`)
+                .in('status', ['searching', 'verifying_payment', 'accepted', 'arriving', 'in_progress']);
+
+            if (reqs && reqs.length > 0) {
                 const mainActive = reqs.find((r: any) => !r.scheduled || ['arriving', 'in_progress'].includes(r.status));
-                
                 if (mainActive) {
-                    // Si apenas acabo de reservar y estoy en 'searching', el flujo normal 
-                    // de submit hara navigate. Pero aqui no queremos forzar el navigate a menos
-                    // que sea un viaje normal o uno iniciado.
                     navigate(`/taxi/track/${mainActive.id}`);
                 }
-                
                 const pendingSchedules = reqs.filter((r: any) => r.scheduled && ['searching', 'verifying_payment', 'accepted'].includes(r.status));
                 setActiveReservations(pendingSchedules);
             } else {
                 setActiveReservations([]);
             }
-        });
-        return () => unsubscribe();
+        };
+
+        checkActive();
+
+        const channel = supabase
+            .channel(`taxi_active_${uid}`)
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'transport_requests' }, () => {
+                checkActive();
+            })
+            .subscribe();
+
+        return () => {
+            supabase.removeChannel(channel);
+        };
     }, [user, navigate]);
 
     // 1. Fetch Admin Rates and Settings
     useEffect(() => {
         const fetchConfigs = async () => {
             try {
-                const docSnap = await getDoc(doc(db, 'delivery_settings', 'settings'));
-                if (docSnap.exists()) {
-                    const data = docSnap.data();
+                const { data: docSnap } = await supabase
+                    .from('app_settings')
+                    .select('*')
+                    .eq('id', 'delivery_settings')
+                    .maybeSingle();
+                if (docSnap) {
+                    const data = docSnap.value || docSnap;
                     setAdminRates(data.transportRates || {});
                     setServiceHours({
                         day: data.dayShift || { start: "08:00", end: "20:00" },
                         night: data.nightShift || { start: "20:01", end: "07:59" }
                     });
                 } else {
-                    // Initialize empty but not null to prevent infinite loading
                     setAdminRates({});
                     setServiceHours({
                         day: { start: "08:00", end: "20:00" },
@@ -284,11 +245,14 @@ export default function Taxi() {
                     });
                 }
 
-                const financeSnap = await getDoc(doc(db, 'system_configs', 'finances'));
-                if (financeSnap.exists()) {
-                    setPaymentMethods(financeSnap.data().paymentMethods);
+                const { data: financeSnap } = await supabase
+                    .from('system_configs')
+                    .select('*')
+                    .eq('id', 'finances')
+                    .maybeSingle();
+                if (financeSnap) {
+                    setPaymentMethods(financeSnap.data?.paymentMethods || financeSnap.paymentMethods);
                 } else {
-                    // Fallback to basic payment methods if config is missing
                     setPaymentMethods({
                         cash: { active: true, logoUrl: '' },
                         pagoMovil: { active: false, bank: '', phone: '', idf: '', logoUrl: '' }
@@ -699,13 +663,18 @@ export default function Taxi() {
         try {
             setIsUploading(true);
             let proofUrl = '';
+            const uid = user?.id || user?.uid || 'guest_' + Date.now();
 
             if (selectedPaymentMethod === 'wallet') {
                 // Wallet has no proof to upload
             } else if (paymentProof && selectedPaymentMethod !== 'cash') {
-                const storageRef = ref(storage, `taxi_proofs/${user?.uid || 'guest_' + Date.now()}/${Date.now()}_${paymentProof.name}`);
-                const snapshot = await uploadBytes(storageRef, paymentProof);
-                proofUrl = await getDownloadURL(snapshot.ref);
+                const ext = paymentProof.name.split('.').pop() || 'jpg';
+                const path = `taxi_proofs/${uid}/${Date.now()}.${ext}`;
+                const { error: upErr } = await supabase.storage.from('store_assets').upload(path, paymentProof, { upsert: true });
+                if (!upErr) {
+                    const { data: { publicUrl } } = supabase.storage.from('store_assets').getPublicUrl(path);
+                    proofUrl = publicUrl;
+                }
             } else if (selectedPaymentMethod !== 'cash' && !paymentRef) {
                 // Double check validation before proceeding
                 toast.error("Debes adjuntar un comprobante o número de referencia");
@@ -718,75 +687,66 @@ export default function Taxi() {
 
             setStep('searching');
 
+            const newReqId = (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : `taxi_${Date.now()}`;
+
             const orderData = {
+                id: newReqId,
                 type: serviceCategory === 'package' ? 'package_delivery' : 'transport',
                 packageDescription: serviceCategory === 'package' ? packageDescription : null,
-                userId: user?.uid || 'guest_' + Date.now(),
+                package_description: serviceCategory === 'package' ? packageDescription : null,
+                userId: uid,
+                user_id: uid,
                 userName: userData?.displayName || user?.displayName || user?.email || guestName || 'Usuario Invitado',
+                user_name: userData?.displayName || user?.displayName || user?.email || guestName || 'Usuario Invitado',
                 userPhone: userData?.phone || guestPhone || 'Sin número',
+                user_phone: userData?.phone || guestPhone || 'Sin número',
                 userCedula: userData?.cedula || guestCedula || 'N/A',
+                user_cedula: userData?.cedula || guestCedula || 'N/A',
                 origin,
                 destination,
                 vehicleType,
+                vehicle_type: vehicleType,
                 route: routeInfo,
                 total: parseFloat(clientTotal as string),
                 price: parseFloat(clientTotal as string),
                 driverPayout: parseFloat(driverPayout as string),
+                driver_payout: parseFloat(driverPayout as string),
                 driverId: null, // Ensuring it's explicit
+                driver_id: null,
                 driverPaid: false, // For earnings tracking
+                driver_paid: false,
                 status: initialStatus,
                 paymentMethod: selectedPaymentMethod,
+                payment_method: selectedPaymentMethod,
                 paymentRef: paymentRef || '',
+                payment_ref: paymentRef || '',
                 paymentProofUrl: proofUrl,
+                payment_proof_url: proofUrl,
                 scheduled: isScheduled,
-                scheduledAt: isScheduled && scheduledDateTime ? Timestamp.fromDate(new Date(scheduledDateTime)) : null,
-                createdAt: serverTimestamp(),
+                scheduledAt: isScheduled && scheduledDateTime ? new Date(scheduledDateTime).toISOString() : null,
+                scheduled_at: isScheduled && scheduledDateTime ? new Date(scheduledDateTime).toISOString() : null,
+                createdAt: new Date().toISOString(),
+                created_at: new Date().toISOString(),
             };
 
-            const requestRef = await addDoc(collection(db, 'transport_requests'), orderData);
+            const { error: insErr } = await supabase.from('transport_requests').insert(orderData);
+            if (insErr) throw insErr;
 
             if (selectedPaymentMethod === 'wallet' && user) {
                 // Deduct from wallet
                 const newBalance = (userData?.walletBalance || 0) - parseFloat(clientTotal as string);
-                await updateDoc(doc(db, 'users', user.uid), {
-                    walletBalance: newBalance
-                });
+                await supabase.from('profiles').update({
+                    walletBalance: newBalance,
+                    wallet_balance: newBalance,
+                    updated_at: new Date().toISOString()
+                }).eq('id', user.id || user.uid);
             }
 
-            if (initialStatus === 'searching') {
-                try {
-                    const driversSnap = await getDocs(query(collection(db, 'users'), where('role', 'in', ['delivery', 'driver'])));
-                    const batch = writeBatch(db);
-                    driversSnap.docs.forEach(driverDoc => {
-                        const notifRef = doc(collection(db, 'notifications'));
-                        batch.set(notifRef, {
-                            userId: driverDoc.id,
-                            title: '¡Nuevo Servicio de Taxi Disponible!',
-                            body: 'Hay una nueva solicitud de transporte esperándote.',
-                            read: false,
-                            createdAt: serverTimestamp()
-                        });
-                    });
-                    await batch.commit();
-                } catch (notifErr) {
-                    console.warn("Could not send notifications to drivers:", notifErr);
-                    // Continue anyway, admin will manually assign if needed
-                }
-            }
-
-            // Small delay for firestore propagation if needed
-            setTimeout(() => {
-                navigate(`/taxi/track/${requestRef.id}`);
-            }, 800);
+            navigate(`/taxi/track/${newReqId}`);
 
         } catch (error) {
             console.error("Error creating transport request:", error);
-            const errorMsg = error instanceof Error ? error.message : "Error desconocido";
-            if (errorMsg.includes("storage/unauthorized")) {
-                toast.error("Error de permisos al subir el comprobante. Contacta soporte.");
-            } else {
-                toast.error("No se pudo procesar la solicitud. Revisa tu conexión o intenta de nuevo.");
-            }
+            toast.error("No se pudo procesar la solicitud. Revisa tu conexión o intenta de nuevo.");
             setStep('payment');
         } finally {
             setIsUploading(false);

@@ -4,8 +4,7 @@ import { useCart } from '../context/CartContext';
 import { useAuth } from '../context/AuthContext';
 import { useCurrency } from '../context/CurrencyContext';
 import { useState, useEffect } from 'react';
-import { collection, addDoc, serverTimestamp, doc, getDoc, updateDoc, getDocs, query, where, increment, collectionGroup } from 'firebase/firestore';
-import { db } from '../lib/firebase';
+import { supabase } from '../lib/supabase';
 import { calculateDistance, formatDistance } from '../lib/geo';
 import AddressPicker from '../components/AddressPicker';
 import WaiterLayout from '../waiter/components/WaiterLayout';
@@ -67,9 +66,11 @@ export default function Cart({ hideHeader = false }: CartProps) {
     const checkCredits = async () => {
       if (!user?.email) return;
       try {
-        const creditsQuery = query(collectionGroup(db, 'credits'), where('userEmail', '==', user.email));
-        const snap = await getDocs(creditsQuery);
-        const isDefaulted = snap.docs.some(d => d.data().status === 'defaulted');
+        const { data: credits } = await supabase
+          .from('restaurant_credits')
+          .select('status')
+          .eq('user_email', user.email);
+        const isDefaulted = (credits || []).some((d: any) => d.status === 'defaulted');
         setHasDefaultedCredit(isDefaulted);
       } catch (err) {
         console.error(err);
@@ -117,8 +118,12 @@ export default function Cart({ hideHeader = false }: CartProps) {
   useEffect(() => {
     const fetchSettings = async () => {
       try {
-        const sDoc = await getDoc(doc(db, 'delivery_settings', 'settings'));
-        if (sDoc.exists()) setSystemSettings(sDoc.data());
+        const { data: sDoc } = await supabase
+          .from('app_settings')
+          .select('*')
+          .eq('id', 'delivery_settings')
+          .maybeSingle();
+        if (sDoc) setSystemSettings(sDoc.value || sDoc);
       } catch (err) { console.error(err); }
     };
     fetchSettings();
@@ -140,9 +145,25 @@ export default function Cart({ hideHeader = false }: CartProps) {
       if (items.length > 0) {
         setLoadingDistance(true);
         try {
-          const rDoc = await getDoc(doc(db, 'restaurants', items[0].restaurantId));
-          if (rDoc.exists()) {
-            const data = rDoc.data();
+          const { data: rDoc } = await supabase
+            .from('comercios')
+            .select('*')
+            .eq('id', items[0].restaurantId)
+            .maybeSingle();
+
+          if (rDoc) {
+            const data = {
+              id: rDoc.id,
+              name: rDoc.name,
+              category: rDoc.category,
+              whatsapp: rDoc.whatsapp,
+              ownDelivery: rDoc.own_delivery ?? rDoc.ownDelivery,
+              appDelivery: rDoc.app_delivery ?? rDoc.appDelivery,
+              pickupOnly: rDoc.pickup_only ?? rDoc.pickupOnly,
+              deliveryRates: rDoc.delivery_rates || rDoc.deliveryRates || [],
+              location: rDoc.location,
+              ...rDoc
+            };
             setRestaurantData(data);
             if (!data.ownDelivery && !data.appDelivery && data.pickupOnly) {
               setDeliveryMethod('pickup');
@@ -156,8 +177,12 @@ export default function Cart({ hideHeader = false }: CartProps) {
               setDistance(d);
             }
           }
-          const rewSnap = await getDocs(query(collection(db, 'restaurants', items[0].restaurantId, 'rewards'), where('isActive', '==', true)));
-          setRestaurantRewards(rewSnap.docs.map(d => ({ id: d.id, ...d.data() })));
+          const { data: rewSnap } = await supabase
+            .from('rewards')
+            .select('*')
+            .eq('restaurant_id', items[0].restaurantId)
+            .eq('is_active', true);
+          if (rewSnap) setRestaurantRewards(rewSnap.map((d: any) => ({ id: d.id, ...d })));
         } catch (err) { console.error(err); } finally { setLoadingDistance(false); }
       }
     };
@@ -212,8 +237,12 @@ export default function Cart({ hideHeader = false }: CartProps) {
     setError(null);
     try {
       const restaurantId = items[0].restaurantId;
-      const restaurantDoc = await getDoc(doc(db, 'restaurants', restaurantId));
-      const rData = restaurantDoc.exists() ? restaurantDoc.data() : null;
+      const { data: rDoc } = await supabase
+        .from('comercios')
+        .select('*')
+        .eq('id', restaurantId)
+        .maybeSingle();
+      const rData = rDoc;
       if (!isWaiter && !rData?.whatsapp) throw new Error("No WhatsApp config");
 
       let addressStr = isWaiter ? `Mesa: ${tableNumber}` : (deliveryMethod === 'pickup' ? "Recoger en local" : (selectedAddress ? `${selectedAddress.name} - ${selectedAddress.reference || ''}` : "Recoger en local"));
@@ -228,65 +257,70 @@ export default function Cart({ hideHeader = false }: CartProps) {
       let tableId = null;
       if (isWaiter && tableNumber) {
         try {
-          const tablesRef = collection(db, 'restaurants', restaurantId, 'tables');
-          const q = query(tablesRef, where('number', '==', tableNumber));
-          const qSnap = await getDocs(q);
-          if (!qSnap.empty) {
-            tableId = qSnap.docs[0].id;
+          const { data: tData } = await supabase
+            .from('restaurant_tables')
+            .select('id')
+            .eq('restaurant_id', restaurantId)
+            .eq('number', tableNumber)
+            .maybeSingle();
+          if (tData) {
+            tableId = tData.id;
           }
         } catch (err) {
           console.error("Error fetching tableId:", err);
         }
       }
 
-      const orderData = {
-        userId: isWaiter ? (waiterData.id || 'waiter') : (user?.uid || 'guest_' + Date.now()),
-        userName: isWaiter ? (customerName || `Cliente Mesa ${tableNumber || 'N/A'}`) : (user?.displayName || guestName || 'Cliente Invitado'),
-        userPhone: isWaiter ? '' : (userData?.phone || guestPhone || ''),
-        userCedula: isWaiter ? '' : (userData?.cedula || guestCedula || ''),
-        userEmail: isWaiter ? (waiterData.email || 'N/A') : (user?.email || 'N/A'),
-        restaurantId,
-        restaurantName: rData?.name || 'Deliexpress Restaurant',
-        restaurantCity: rData?.location?.city || '',
+      const newOrderId = (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : `order_${Date.now()}`;
+
+      const orderData: any = {
+        id: newOrderId,
+        user_id: isWaiter ? (waiterData.id || 'waiter') : (user?.uid || 'guest_' + Date.now()),
+        user_name: isWaiter ? (customerName || `Cliente Mesa ${tableNumber || 'N/A'}`) : (user?.displayName || guestName || 'Cliente Invitado'),
+        user_phone: isWaiter ? '' : (userData?.phone || guestPhone || ''),
+        user_cedula: isWaiter ? '' : (userData?.cedula || guestCedula || ''),
+        user_email: isWaiter ? (waiterData.email || 'N/A') : (user?.email || 'N/A'),
+        restaurant_id: restaurantId,
+        restaurant_name: rData?.name || 'Deliexpress Restaurant',
+        restaurant_city: rData?.location?.city || '',
         source: isWaiter ? 'waiter' : 'client',
-        waiterId: isWaiter ? (waiterData.id || null) : null,
-        waiterName: isWaiter ? (waiterData.name || null) : null,
-        table: isWaiter ? (tableNumber || null) : null,
-        tableId: isWaiter ? (tableId || null) : null,
-        tableNumber: isWaiter ? (tableNumber || null) : null,
+        waiter_id: isWaiter ? (waiterData.id || null) : null,
+        waiter_name: isWaiter ? (waiterData.name || null) : null,
+        table_number: isWaiter ? (tableNumber || null) : null,
+        table_id: isWaiter ? (tableId || null) : null,
         items: sanitizedItems,
         subtotal: cartSubtotalUSD || 0, 
-        deliveryFee: deliveryFee || 0, 
-        driverPayout: driverPayout || 0, 
-        deliveryShift: currentShift || 'day', 
+        delivery_fee: deliveryFee || 0, 
+        driver_payout: driverPayout || 0, 
+        delivery_shift: currentShift || 'day', 
         distance: distance || 0,
         total: finalTotal || 0, 
         status: isWaiter ? 'preparing' : 'pendiente_pago', 
-        paymentStatus: isWaiter ? paymentStatus : 'pending', // Use the selected payment status
+        payment_status: isWaiter ? paymentStatus : 'pending',
         notified: false,
-        deliveryAddress: addressStr, 
-        deliveryCoords: (!isWaiter && deliveryMethod === 'app_delivery' && selectedAddress && selectedAddress.lat) ? { lat: selectedAddress.lat, lng: selectedAddress.lng } : null,
-        createdAt: serverTimestamp(), 
-        orderNote: orderNote.trim() || ''
+        delivery_address: addressStr, 
+        delivery_coords: (!isWaiter && deliveryMethod === 'app_delivery' && selectedAddress && selectedAddress.lat) ? { lat: selectedAddress.lat, lng: selectedAddress.lng } : null,
+        created_at: new Date().toISOString(), 
+        order_note: orderNote.trim() || ''
       };
 
       // Remove any undefined keys at the root level
       Object.keys(orderData).forEach(key => (orderData as any)[key] === undefined && delete (orderData as any)[key]);
 
-      const docRef = await addDoc(collection(db, 'orders'), orderData);
-      setOrderId(docRef.id);
+      const { error: insErr } = await supabase.from('orders').insert(orderData);
+      if (insErr) throw insErr;
+      setOrderId(newOrderId);
 
       // Auto-insert first chat message from the restaurant
       if (!isWaiter) {
           try {
-              // Wait for importing collection and addDoc is already available
-              await addDoc(collection(db, 'orders', docRef.id, 'messages'), {
+              await supabase.from('messages').insert({
+                  order_id: newOrderId,
                   text: 'Gracias por elegirnos! En este momento serás atendido por uno de nuestros cajeros para confirmar la existencia de cada item de tu pedido! Lo haremos en un 2x3!',
-                  senderId: restaurantId,
-                  senderName: 'Atención al Cliente',
-                  senderRole: 'restaurant',
-                  timestamp: serverTimestamp(),
-                  isRead: false
+                  sender_id: restaurantId,
+                  sender_name: 'Atención al Cliente',
+                  sender_role: 'restaurant',
+                  created_at: new Date().toISOString()
               });
           } catch(e) {
              console.error('Error adding welcome chat message', e);
@@ -297,12 +331,11 @@ export default function Cart({ hideHeader = false }: CartProps) {
       if (isWaiter && tableId) {
         setIsSyncingTable(true);
         try {
-          const tableRef = doc(db, 'restaurants', restaurantId, 'tables', tableId);
-          await updateDoc(tableRef, {
+          await supabase.from('restaurant_tables').update({
             status: 'occupied',
-            lastOrderId: docRef.id,
-            updatedAt: serverTimestamp()
-          });
+            current_order_id: newOrderId,
+            updated_at: new Date().toISOString()
+          }).eq('id', tableId);
         } catch (tableErr) {
           console.error("Error updating table status:", tableErr);
         } finally {

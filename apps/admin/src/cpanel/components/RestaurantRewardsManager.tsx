@@ -1,8 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Gift, Plus, Trash2, Edit2, Save, X, Image as ImageIcon, Upload, Tag } from 'lucide-react';
-import { db, storage } from '../../lib/firebase';
-import { collection, addDoc, getDocs, deleteDoc, doc, updateDoc, serverTimestamp, query, where } from 'firebase/firestore';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { supabase } from '../../lib/supabase';
 import { toast } from 'react-hot-toast';
 
 interface RestaurantReward {
@@ -43,15 +41,33 @@ export default function RestaurantRewardsManager({ restaurantId }: RestaurantRew
 
     const fetchRewards = async () => {
         try {
-            const querySnapshot = await getDocs(collection(db, `restaurants/${restaurantId}/rewards`));
-            const data = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as RestaurantReward));
-            
+            const { data: rewardsData, error: rewardsErr } = await supabase
+                .from('restaurant_rewards')
+                .select('*')
+                .or(`restaurant_id.eq.${restaurantId},restaurantId.eq.${restaurantId}`)
+                .order('created_at', { ascending: false });
+
+            if (rewardsErr) throw rewardsErr;
+
+            const mappedRewards: RestaurantReward[] = (rewardsData || []).map((r: any) => ({
+                id: r.id,
+                title: r.title,
+                description: r.description,
+                pointsCost: Number(r.points_cost ?? r.pointsCost ?? 0),
+                imageUrl: r.image_url || r.imageUrl,
+                isActive: r.is_active ?? r.isActive ?? true,
+                createdAt: r.created_at || r.createdAt
+            }));
+
             // Fetch products configured with points price
-            const prodSnap = await getDocs(query(collection(db, `restaurants/${restaurantId}/products`), where('pointsPrice', '>', 0)));
-            const pData = prodSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-            
-            setRewards(data);
-            setPointsProducts(pData);
+            const { data: prodData } = await supabase
+                .from('products')
+                .select('*')
+                .or(`comercio_id.eq.${restaurantId},comercioId.eq.${restaurantId}`)
+                .or('points_price.gt.0,pointsPrice.gt.0');
+
+            setRewards(mappedRewards);
+            setPointsProducts(prodData || []);
         } catch (error) {
             console.error("Error fetching restaurant rewards:", error);
             toast.error("Error al cargar recompensas");
@@ -79,16 +95,37 @@ export default function RestaurantRewardsManager({ restaurantId }: RestaurantRew
             let imageUrl = '';
 
             if (imageFile) {
-                const storageRef = ref(storage, `restaurants/${restaurantId}/rewards/${Date.now()}_${imageFile.name}`);
-                const snapshot = await uploadBytes(storageRef, imageFile);
-                imageUrl = await getDownloadURL(snapshot.ref);
+                const ext = imageFile.name.split('.').pop() || 'jpg';
+                const filePath = `restaurants/${restaurantId}/rewards/${Date.now()}.${ext}`;
+                const { error: upErr } = await supabase.storage
+                    .from('store_assets')
+                    .upload(filePath, imageFile, { upsert: true });
+
+                if (upErr) throw upErr;
+
+                const { data: pubData } = supabase.storage
+                    .from('store_assets')
+                    .getPublicUrl(filePath);
+
+                imageUrl = pubData.publicUrl;
             }
 
-            await addDoc(collection(db, `restaurants/${restaurantId}/rewards`), {
-                ...newReward,
-                imageUrl,
-                createdAt: serverTimestamp()
-            });
+            const { error: insertErr } = await supabase.from('restaurant_rewards').insert([{
+                restaurant_id: restaurantId,
+                restaurantId: restaurantId,
+                title: newReward.title,
+                description: newReward.description || '',
+                points_cost: newReward.pointsCost,
+                pointsCost: newReward.pointsCost,
+                image_url: imageUrl,
+                imageUrl: imageUrl,
+                is_active: newReward.isActive ?? true,
+                isActive: newReward.isActive ?? true,
+                created_at: new Date().toISOString(),
+                createdAt: new Date().toISOString()
+            }]);
+
+            if (insertErr) throw insertErr;
 
             toast.success("Recompensa creada exitosamente");
             setShowAddModal(false);
@@ -116,8 +153,16 @@ export default function RestaurantRewardsManager({ restaurantId }: RestaurantRew
     const handleDeleteReward = async (id: string, currentImageUrl?: string) => {
         if (!window.confirm("¿Seguro que quieres eliminar esta recompensa?")) return;
         try {
-            await deleteDoc(doc(db, `restaurants/${restaurantId}/rewards`, id));
-            // Optional: delete image from storage if needed
+            const { error } = await supabase.from('restaurant_rewards').delete().eq('id', id);
+            if (error) throw error;
+
+            if (currentImageUrl) {
+                const path = currentImageUrl.split('/store_assets/')[1];
+                if (path) {
+                    await supabase.storage.from('store_assets').remove([path]).catch(() => {});
+                }
+            }
+
             toast.success("Recompensa eliminada");
             fetchRewards();
         } catch (error) {
@@ -128,9 +173,16 @@ export default function RestaurantRewardsManager({ restaurantId }: RestaurantRew
 
     const toggleStatus = async (reward: RestaurantReward) => {
         try {
-            await updateDoc(doc(db, `restaurants/${restaurantId}/rewards`, reward.id), {
-                isActive: !reward.isActive
-            });
+            const newStatus = !reward.isActive;
+            const { error } = await supabase
+                .from('restaurant_rewards')
+                .update({
+                    is_active: newStatus,
+                    isActive: newStatus
+                })
+                .eq('id', reward.id);
+
+            if (error) throw error;
             fetchRewards();
         } catch (error) {
             console.error("Error updating reward status:", error);

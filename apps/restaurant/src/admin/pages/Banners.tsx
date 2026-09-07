@@ -1,8 +1,6 @@
-import React, { useState, useEffect } from 'react';
-import { collection, query, where, getDocs, addDoc, deleteDoc, doc, updateDoc, serverTimestamp, onSnapshot, getDoc } from 'firebase/firestore';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Trash2, Plus, Image as ImageIcon, Clock, ExternalLink, Timer, Upload, AlertCircle, Pencil, Loader2, CheckCircle2 } from 'lucide-react';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { db, storage } from '../../lib/firebase';
+import { supabase } from '../../lib/supabase';
 import { motion, AnimatePresence } from 'motion/react';
 import { useAuth } from '../../context/AuthContext';
 
@@ -30,79 +28,68 @@ export default function Banners() {
         remaining: 3
     });
 
+    const fetchBanners = useCallback(async () => {
+        if (!rid) return;
+        try {
+            const { data } = await supabase
+                .from('banners')
+                .select('*')
+                .eq('restaurant_id', rid)
+                .order('created_at', { ascending: false });
+
+            const formatted = (data || []).map((b: any) => ({
+                id: b.id,
+                title: b.title,
+                linkUrl: b.link_url,
+                imageUrl: b.image_url,
+                duration: b.duration || 5,
+                isActive: b.is_active,
+                status: b.is_active ? 'active' : 'pending_approval',
+                createdAt: b.created_at
+            }));
+            setBanners(formatted);
+            setBannerStats(prev => ({
+                ...prev,
+                used: formatted.length,
+                remaining: Math.max(0, prev.total - formatted.length)
+            }));
+        } catch (error) {
+            console.error("Error fetching banners:", error);
+        } finally {
+            setLoading(false);
+        }
+    }, [rid]);
+
     useEffect(() => {
         if (!rid) return;
 
-        // Fetch Business Data (Subscription)
-        const unsubBus = onSnapshot(doc(db, 'restaurants', rid),
-            (docSnap) => {
-                if (docSnap.exists()) {
-                    const data = docSnap.data();
-                    setBusinessData(data);
-                    const limit = data.subscription?.bannerLimit || 3;
-                    setBannerStats(prev => ({ ...prev, total: limit }));
-                }
-            },
-            (error) => {
-                console.error("Error fetching restaurant profile:", error);
-                setLoading(false);
+        // Fetch Business Data
+        const fetchBusiness = async () => {
+            const { data } = await supabase
+                .from('comercios')
+                .select('*')
+                .eq('id', rid)
+                .single();
+            if (data) {
+                setBusinessData(data);
+                const limit = (data as any).subscription?.bannerLimit || 3;
+                setBannerStats(prev => ({ ...prev, total: limit }));
             }
-        );
+        };
+        fetchBusiness();
+        fetchBanners();
 
-        // Fetch Banners for this Restaurant
-        const q = query(
-            collection(db, 'banners'),
-            where('restaurantId', '==', rid)
-        );
-
-        const unsubBanners = onSnapshot(q,
-            (snapshot) => {
-                const data = snapshot.docs.map(doc => ({
-                    id: doc.id,
-                    ...doc.data()
-                }));
-                setBanners(data);
-                setLoading(false);
-            },
-            (error) => {
-                console.error("Error fetching banners:", error);
-                setLoading(false);
-            }
-        );
-
-        // Calculate Usage this month
-        const startOfMonth = new Date();
-        startOfMonth.setDate(1);
-        startOfMonth.setHours(0, 0, 0, 0);
-
-        const qStats = query(
-            collection(db, 'banner_updates'),
-            where('restaurantId', '==', rid),
-            where('timestamp', '>=', startOfMonth)
-        );
-
-        const unsubStats = onSnapshot(qStats,
-            (snapshot) => {
-                const count = snapshot.size;
-                setBannerStats(prev => ({
-                    ...prev,
-                    used: count,
-                    remaining: Math.max(0, prev.total - count)
-                }));
-            },
-            (error) => {
-                console.error("Error fetching stats:", error);
-                // Not strictly necessary to stop loading here as others should cover it,
-                // but good for completeness
-            }
-        );
+        const channel = supabase
+            .channel(`banners_${rid}`)
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'banners', filter: `restaurant_id=eq.${rid}` }, () => {
+                fetchBanners();
+            })
+            .subscribe();
 
         return () => {
-            unsubBus();
-            unsubBanners();
-            unsubStats();
+            supabase.removeChannel(channel);
         };
-    }, [rid]);
+    }, [rid, fetchBanners]);
 
     const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
@@ -138,48 +125,31 @@ export default function Banners() {
             let finalImageUrl = newBanner.imageUrl;
 
             if (selectedFile) {
-                const storageRef = ref(storage, `banners/${rid}/${Date.now()}_${selectedFile.name}`);
-                const snapshot = await uploadBytes(storageRef, selectedFile);
-                finalImageUrl = await getDownloadURL(snapshot.ref);
+                const ext = selectedFile.name.split('.').pop() || 'png';
+                const filePath = `${rid}/banners/${Date.now()}_${selectedFile.name.replace(/[^a-z0-9.]/gi, '_')}`;
+                const { error: upErr } = await supabase.storage.from('store_assets').upload(filePath, selectedFile, { upsert: true });
+                if (upErr) throw upErr;
+                const { data: urlData } = supabase.storage.from('store_assets').getPublicUrl(filePath);
+                finalImageUrl = urlData.publicUrl;
             }
 
-            const bannerData = {
-                ...newBanner,
-                imageUrl: finalImageUrl,
-                restaurantId: rid,
-                restaurantName: businessData.name || '',
-                updatedAt: serverTimestamp(),
-                isActive: false,
-                status: 'pending_approval',
-                // Inherit visibility from subscription
-                visibilityScope: businessData.subscription.scope || 'city',
-                targetState: businessData.location?.state || '',
-                targetCity: businessData.location?.city || ''
+            const bannerData: any = {
+                restaurant_id: rid,
+                title: newBanner.title || '',
+                link_url: newBanner.linkUrl || '',
+                image_url: finalImageUrl,
+                duration: newBanner.duration || 5,
+                is_active: false,
+                updated_at: new Date().toISOString()
             };
 
             if (editingId) {
-                await updateDoc(doc(db, 'banners', editingId), bannerData);
-                // Record update if image changed
-                if (selectedFile) {
-                    await addDoc(collection(db, 'banner_updates'), {
-                        restaurantId: rid,
-                        bannerId: editingId,
-                        timestamp: serverTimestamp(),
-                        type: 'update'
-                    });
-                }
+                const { error: updErr } = await supabase.from('banners').update(bannerData).eq('id', editingId);
+                if (updErr) throw updErr;
             } else {
-                const docRef = await addDoc(collection(db, 'banners'), {
-                    ...bannerData,
-                    createdAt: serverTimestamp(),
-                });
-                // Record update (creation counts as one)
-                await addDoc(collection(db, 'banner_updates'), {
-                    restaurantId: rid,
-                    bannerId: docRef.id,
-                    timestamp: serverTimestamp(),
-                    type: 'create'
-                });
+                bannerData.created_at = new Date().toISOString();
+                const { error: insErr } = await supabase.from('banners').insert(bannerData);
+                if (insErr) throw insErr;
             }
 
             setIsAdding(false);
@@ -192,6 +162,7 @@ export default function Banners() {
             });
             setSelectedFile(null);
             setImagePreview(null);
+            fetchBanners();
         } catch (error) {
             console.error("Error saving banner: ", error);
             alert("Error al guardar el banner");
@@ -203,7 +174,8 @@ export default function Banners() {
     const handleDelete = async (id: string) => {
         if (!window.confirm("¿Seguro que deseas eliminar este banner?")) return;
         try {
-            await deleteDoc(doc(db, 'banners', id));
+            await supabase.from('banners').delete().eq('id', id);
+            fetchBanners();
         } catch (error) {
             console.error("Error deleting banner: ", error);
         }

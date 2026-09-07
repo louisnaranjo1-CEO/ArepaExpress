@@ -1,8 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { doc, getDoc, collection, getDocs, query, where, orderBy, limit } from 'firebase/firestore';
-import { db, storage } from '../../lib/firebase';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { supabase } from '../../lib/supabase';
 import {
     ArrowLeft, Store, Star, Tag, MapPin, Phone,
     ShoppingBag, Box, Users, TrendingUp, Calendar,
@@ -11,7 +9,6 @@ import {
     Image as ImageIcon, Camera, Share2, Zap, Gift
 } from 'lucide-react';
 import { GLOBAL_CATEGORIES, CATEGORY_SECTORS } from '../../lib/constants';
-import { updateDoc } from 'firebase/firestore';
 import RestaurantRewardsManager from '../components/RestaurantRewardsManager';
 import DualPrice from '../../components/DualPrice';
 import { motion, AnimatePresence } from 'motion/react';
@@ -98,80 +95,110 @@ export default function RestaurantProfile() {
     const [loading, setLoading] = useState(true);
     const [pendingBannerCount, setPendingBannerCount] = useState(0);
     const [isEditModalOpen, setIsEditModalOpen] = useState(false);
-    const [editData, setEditData] = useState<Partial<RestaurantData>>({});
     const [isUpdating, setIsUpdating] = useState(false);
+    const [isSaving, setIsSaving] = useState(false);
+    const [isUploadingLogo, setIsUploadingLogo] = useState(false);
     const [logoFile, setLogoFile] = useState<File | null>(null);
     const [logoPreview, setLogoPreview] = useState<string | null>(null);
-    const [isUploadingLogo, setIsUploadingLogo] = useState(false);
-    const [isSaving, setIsSaving] = useState(false);
-    const [paymentMethods, setPaymentMethods] = useState<any[]>([]);
-
-
     const [allCategories, setAllCategories] = useState<Category[]>([]);
     const [casheaIcon, setCasheaIcon] = useState<string | null>(null);
-    const sectors = allCategories.filter(c => !c.parentId);
-    const subCats = allCategories.filter(c => c.parentId === editData.sector);
-
-    const [confirmStatus, setConfirmStatus] = useState<'active' | 'busy' | 'unavailable' | null>(null);
+    const [paymentMethods, setPaymentMethods] = useState<any[]>([]);
+    const [editData, setEditData] = useState<any>({});
 
     useEffect(() => {
+        if (!id) return;
         const fetchData = async () => {
-            if (!id) return;
             setLoading(true);
             try {
                 // Restaurant info
-                const restDoc = await getDoc(doc(db, 'restaurants', id));
-                if (restDoc.exists()) {
-                    const data = restDoc.data() as RestaurantData;
-                    setRestaurant({ id: restDoc.id, ...data } as RestaurantData);
-                    setPaymentMethods(data.paymentMethods || []);
+                const { data: restData } = await supabase
+                    .from('comercios')
+                    .select('*')
+                    .eq('id', id)
+                    .maybeSingle();
+
+                if (restData) {
+                    const rData: RestaurantData = {
+                        id: restData.id,
+                        name: restData.name,
+                        category: restData.category,
+                        sector: restData.sector,
+                        rating: restData.rating || 5,
+                        reviews: restData.reviews || 0,
+                        deliveryTime: restData.delivery_time || restData.deliveryTime || '30-45 min',
+                        image: restData.image || restData.logo_url || restData.logoUrl || '',
+                        logoUrl: restData.logo_url || restData.logoUrl || '',
+                        coverUrl: restData.cover_url || restData.coverUrl || '',
+                        whatsapp: restData.whatsapp || '',
+                        isActive: restData.is_active !== undefined ? restData.is_active : restData.isActive,
+                        status: restData.status || 'active',
+                        billingDay: restData.billing_day || restData.billingDay,
+                        billingAmount: restData.billing_amount || restData.billingAmount,
+                        featured: restData.featured || false,
+                        hasCashea: restData.has_cashea !== undefined ? restData.has_cashea : restData.hasCashea,
+                        location: restData.location || {
+                            city: restData.city || '',
+                            state: restData.state || '',
+                            address: restData.address || '',
+                            reference: restData.reference || ''
+                        },
+                        subscriptionEnd: restData.subscription_end || restData.subscriptionEnd,
+                        paymentMethods: restData.payment_methods || restData.paymentMethods || []
+                    };
+                    setRestaurant(rData);
+                    setPaymentMethods(rData.paymentMethods || []);
                 }
 
                 // Stats: Products
-                const productsSnap = await getDocs(collection(db, 'restaurants', id, 'products'));
-                const pCount = productsSnap.size;
-                const products = productsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                const { data: productsData } = await supabase
+                    .from('products')
+                    .select('*')
+                    .eq('restaurant_id', id);
+
+                const products = productsData || [];
+                const pCount = products.length;
 
                 // Stats: Orders
-                const ordersSnap = await getDocs(query(collection(db, 'orders'), where('restaurantId', '==', id)));
-                const oCount = ordersSnap.size;
-                const orders = ordersSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                const { data: ordersData } = await supabase
+                    .from('orders')
+                    .select('*')
+                    .eq('restaurant_id', id);
 
-                const totalSales = orders.reduce((acc: number, curr: any) => acc + (curr.total || 0), 0);
+                const orders = ordersData || [];
+                const oCount = orders.length;
+
+                const totalSales = orders.reduce((acc: number, curr: any) => acc + (parseFloat(curr.total) || 0), 0);
                 const avgOrder = oCount > 0 ? totalSales / oCount : 0;
-
-                // Stats: Followers
-                const followersSnap = await getDocs(collection(db, 'restaurants', id, 'followers'));
-                const fCount = followersSnap.size;
 
                 setStats({
                     totalOrders: oCount,
                     totalSales,
                     productsCount: pCount,
-                    followersCount: fCount,
+                    followersCount: 0,
                     averageOrderValue: avgOrder
                 });
 
-                setRecentOrders(orders.sort((a: any, b: any) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0)).slice(0, 5));
+                setRecentOrders(
+                    orders.sort((a: any, b: any) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime()).slice(0, 5)
+                );
                 setPopularProducts(products.slice(0, 4));
 
                 // Banners pending for approval
-                const bannersSnap = await getDocs(query(collection(db, 'banners'), where('restaurantId', '==', id), where('status', '==', 'pending_approval')));
-                setPendingBannerCount(bannersSnap.size);
+                const { data: bannersData } = await supabase
+                    .from('banners')
+                    .select('*')
+                    .eq('restaurant_id', id)
+                    .eq('status', 'pending_approval');
+                setPendingBannerCount((bannersData || []).length);
 
                 // Categories & Icons
-                const catSnap = await getDocs(collection(db, 'global_categories'));
-                const cats = catSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Category[];
-                setAllCategories(cats);
+                const { data: catData } = await supabase.from('global_categories').select('*');
+                setAllCategories((catData || []) as Category[]);
 
-                const iconsSnap = await getDocs(collection(db, 'global_icons'));
-                const icons = iconsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })) as any[];
-                const cashea = icons.find(icon => icon.name?.toLowerCase() === 'cashea');
-
+                const { data: iconData } = await supabase.from('global_icons').select('*');
+                const cashea = (iconData || []).find((icon: any) => icon.name?.toLowerCase() === 'cashea');
                 if (cashea) {
-                    setCasheaIcon(cashea.url || cashea.imageUrl);
-                } else {
-                    setCasheaIcon("https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/logo%20cashea.png?alt=media&token=5b266100-3323-41bb-a5a4-23957ce678a1");
+                    setCasheaIcon(cashea.image_url || cashea.url || cashea.imageUrl);
                 }
 
             } catch (error) {
@@ -190,16 +217,20 @@ export default function RestaurantProfile() {
 
         setIsUpdating(true);
         try {
-            let finalData = { ...editData, paymentMethods };
+            let finalData = { ...editData, payment_methods: paymentMethods };
 
             if (logoFile) {
-                const storageRef = ref(storage, `restaurants/${id}/logo_${Date.now()}`);
-                const snapshot = await uploadBytes(storageRef, logoFile);
-                const downloadURL = await getDownloadURL(snapshot.ref);
-                finalData.logoUrl = downloadURL;
+                const filePath = `restaurants/${id}/logo_${Date.now()}_${logoFile.name.replace(/[^a-zA-Z0-9.-]/g, '_')}`;
+                const { error: upErr } = await supabase.storage.from('store_assets').upload(filePath, logoFile, { upsert: true });
+                if (upErr) throw upErr;
+                const { data: pubData } = supabase.storage.from('store_assets').getPublicUrl(filePath);
+                finalData.logo_url = pubData.publicUrl;
+                finalData.logoUrl = pubData.publicUrl;
             }
 
-            await updateDoc(doc(db, 'restaurants', id), finalData);
+            const { error } = await supabase.from('comercios').update(finalData).eq('id', id);
+            if (error) throw error;
+
             setRestaurant({ ...restaurant, ...finalData } as RestaurantData);
             setIsEditModalOpen(false);
             setLogoFile(null);
@@ -214,14 +245,17 @@ export default function RestaurantProfile() {
 
     const handleImageUpload = async (file: File, type: 'logo' | 'cover') => {
         if (!id) return;
-        setIsUploadingLogo(true); // Assuming this is only for logo for now
+        setIsUploadingLogo(true);
         try {
-            const storageRef = ref(storage, `restaurants/${id}/${type}_${Date.now()}`);
-            const snapshot = await uploadBytes(storageRef, file);
-            const downloadURL = await getDownloadURL(snapshot.ref);
+            const filePath = `restaurants/${id}/${type}_${Date.now()}_${file.name.replace(/[^a-zA-Z0-9.-]/g, '_')}`;
+            const { error: upErr } = await supabase.storage.from('store_assets').upload(filePath, file, { upsert: true });
+            if (upErr) throw upErr;
+            const { data: pubData } = supabase.storage.from('store_assets').getPublicUrl(filePath);
+            const downloadURL = pubData.publicUrl;
 
-            setEditData(prev => ({
+            setEditData((prev: any) => ({
                 ...prev,
+                [`${type}_url`]: downloadURL,
                 [`${type}Url`]: downloadURL
             }));
             if (type === 'logo') {
@@ -253,10 +287,13 @@ export default function RestaurantProfile() {
         if (!id || !restaurant) return;
         setIsSaving(true);
         try {
-            await updateDoc(doc(db, 'restaurants', id), {
+            const payload = {
                 ...editData,
-                paymentMethods
-            });
+                payment_methods: paymentMethods
+            };
+            const { error } = await supabase.from('comercios').update(payload).eq('id', id);
+            if (error) throw error;
+
             setRestaurant({ ...restaurant, ...editData, paymentMethods } as RestaurantData);
             setIsEditModalOpen(false);
         } catch (error) {
@@ -892,7 +929,7 @@ export default function RestaurantProfile() {
                                             <div className="flex items-center gap-3">
                                                 <div className={`w-12 h-12 rounded-xl flex items-center justify-center p-1.5 transition-all ${editData.hasCashea ? 'bg-yellow-400 shadow-inner' : 'bg-slate-100'}`}>
                                                     <img
-                                                        src={casheaIcon || "https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/unnamed%20(14).jpg?alt=media"}
+                                                        src={casheaIcon || "/logo_cashea.png"}
                                                         alt="Cashea"
                                                         className={`w-full h-full object-contain transition-all ${editData.hasCashea ? 'opacity-100 scale-110' : 'opacity-40 grayscale'}`}
                                                     />

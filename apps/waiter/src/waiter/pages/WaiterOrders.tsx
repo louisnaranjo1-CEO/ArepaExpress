@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { ClipboardList, Clock, CheckCircle, Search } from 'lucide-react';
-import { collection, query, where, onSnapshot, orderBy } from 'firebase/firestore';
-import { db } from '../../lib/firebase';
+import { supabase } from '../../lib/supabase';
 import WaiterLayout from '../components/WaiterLayout';
 import { motion, AnimatePresence } from 'motion/react';
 import DualPrice from '../../components/DualPrice';
@@ -18,22 +17,61 @@ export default function WaiterOrders() {
             return;
         }
 
-        const q = query(
-            collection(db, 'orders'),
-            where('restaurantId', '==', restaurantId),
-            orderBy('createdAt', 'desc')
-        );
+        const fetchOrders = async () => {
+            try {
+                const { data, error } = await supabase
+                    .from('orders')
+                    .select('*')
+                    .eq('restaurant_id', restaurantId)
+                    .order('created_at', { ascending: false });
 
-        const unsubscribe = onSnapshot(q, (snapshot) => {
-            const fetched = snapshot.docs.map(doc => ({
-                id: doc.id,
-                ...doc.data()
-            }));
-            setOrders(fetched);
-            setLoading(false);
-        });
+                if (error) {
+                    console.error("Error fetching orders:", error);
+                    return;
+                }
 
-        return () => unsubscribe();
+                const fetched = (data || []).map((o: any) => {
+                    const cDate = o.created_at ? new Date(o.created_at) : new Date();
+                    return {
+                        id: o.id,
+                        table: o.table_number || o.table || '',
+                        status: o.status,
+                        items: o.items || [],
+                        total: o.total || 0,
+                        createdAt: {
+                            seconds: Math.floor(cDate.getTime() / 1000),
+                            toDate: () => cDate,
+                            toMillis: () => cDate.getTime(),
+                            toISOString: () => cDate.toISOString(),
+                        },
+                        ...o
+                    };
+                });
+                setOrders(fetched);
+            } catch (err) {
+                console.error("Error loading orders:", err);
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        fetchOrders();
+
+        const channel = supabase
+            .channel(`waiter_orders_${restaurantId}`)
+            .on('postgres_changes', {
+                event: '*',
+                schema: 'public',
+                table: 'orders',
+                filter: `restaurant_id=eq.${restaurantId}`
+            }, () => {
+                fetchOrders();
+            })
+            .subscribe();
+
+        return () => {
+            supabase.removeChannel(channel);
+        };
     }, []);
 
     const activeOrders = orders.filter(o =>

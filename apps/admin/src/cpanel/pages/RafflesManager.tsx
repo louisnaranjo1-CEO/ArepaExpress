@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Ticket, Plus, Trash2, MapPin, Calendar, Save, X, Globe, Map as MapIcon, Home, Gift } from 'lucide-react';
-import { db } from '../../lib/firebase';
-import { collection, addDoc, getDocs, deleteDoc, doc, updateDoc, serverTimestamp } from 'firebase/firestore';
+import { supabase } from '../../lib/supabase';
 import toast from 'react-hot-toast';
 
 interface Raffle {
@@ -40,9 +39,25 @@ export default function RafflesManager() {
         setLoading(true);
         try {
             const collectionName = activeTab === 'clients' ? 'raffles' : 'driver_raffles';
-            const querySnapshot = await getDocs(collection(db, collectionName));
-            const data = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Raffle));
-            setRaffles(data);
+            const { data, error } = await supabase
+                .from(collectionName)
+                .select('*')
+                .order('created_at', { ascending: false });
+
+            if (error) throw error;
+            const mapped = (data || []).map(d => ({
+                id: d.id,
+                title: d.title,
+                description: d.description,
+                prize: d.prize,
+                scope: d.scope || 'national',
+                locationName: d.location_name || d.locationName,
+                drawDate: d.draw_date || d.drawDate,
+                isActive: d.is_active !== undefined ? d.is_active : (d.status !== 'inactive'),
+                pointsCost: d.points_cost !== undefined ? d.points_cost : d.pointsCost,
+                createdAt: d.created_at
+            } as Raffle));
+            setRaffles(mapped);
         } catch (error) {
             console.error("Error fetching raffles:", error);
             toast.error("Error al cargar sorteos");
@@ -63,10 +78,23 @@ export default function RafflesManager() {
 
         try {
             const collectionName = activeTab === 'clients' ? 'raffles' : 'driver_raffles';
-            await addDoc(collection(db, collectionName), {
-                ...newRaffle,
-                createdAt: serverTimestamp()
-            });
+            const payload: any = {
+                title: newRaffle.title,
+                description: newRaffle.description,
+                prize: newRaffle.prize,
+                scope: newRaffle.scope || 'national',
+                location_name: newRaffle.locationName || '',
+                draw_date: newRaffle.drawDate,
+                is_active: newRaffle.isActive !== false,
+                created_at: new Date().toISOString()
+            };
+            if (activeTab === 'drivers') {
+                payload.points_cost = newRaffle.pointsCost;
+            }
+
+            const { error } = await supabase.from(collectionName).insert([payload]);
+            if (error) throw error;
+
             toast.success("Sorteo creado");
             setShowAddModal(false);
             fetchRaffles();
@@ -88,7 +116,9 @@ export default function RafflesManager() {
         if (!window.confirm("¿Eliminar este sorteo?")) return;
         try {
             const collectionName = activeTab === 'clients' ? 'raffles' : 'driver_raffles';
-            await deleteDoc(doc(db, collectionName, id));
+            const { error } = await supabase.from(collectionName).delete().eq('id', id);
+            if (error) throw error;
+
             toast.success("Eliminado");
             fetchRaffles();
         } catch (error) {

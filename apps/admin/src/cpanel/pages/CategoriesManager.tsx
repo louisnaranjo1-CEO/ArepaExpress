@@ -1,7 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { collection, getDocs, addDoc, deleteDoc, doc, updateDoc, query, orderBy, writeBatch, serverTimestamp } from 'firebase/firestore';
-import { db, storage } from '../../lib/firebase';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { supabase } from '../../lib/supabase';
 import {
     Trash2, Plus, Tag, Edit3, Save, X, Search, RefreshCw,
     Star, Camera, Loader2, ChevronRight, ChevronDown, Layers, Grid,
@@ -43,19 +41,28 @@ export default function CategoriesManager() {
 
     const fetchCategories = async () => {
         try {
-            const q = query(collection(db, 'global_categories'), orderBy('name', 'asc'));
-            const querySnapshot = await getDocs(q);
-            const data = querySnapshot.docs.map(doc => ({
-                id: doc.id,
-                ...doc.data()
+            const { data, error } = await supabase
+                .from('global_categories')
+                .select('*')
+                .order('name', { ascending: true });
+
+            if (error) throw error;
+            const mapped = (data || []).map((c: any) => ({
+                ...c,
+                imageUrl: c.image_url || c.imageUrl,
+                isActive: c.is_active !== undefined ? c.is_active : (c.isActive !== false),
+                isFeatured: c.is_featured !== undefined ? c.is_featured : c.isFeatured,
+                clickCount: c.click_count !== undefined ? c.click_count : c.clickCount,
+                parentId: c.parent_id !== undefined ? c.parent_id : c.parentId,
+                order: c.order_index !== undefined ? c.order_index : c.order
             })) as Category[];
 
-            setCategories(data);
+            setCategories(mapped);
 
             // Expand all by default if search is active or first load
-            if (data.length > 0) {
+            if (mapped.length > 0) {
                 const initialExpanded: Record<string, boolean> = {};
-                data.filter(c => !c.parentId).forEach(s => {
+                mapped.filter(c => !c.parentId).forEach(s => {
                     initialExpanded[s.id] = true;
                 });
                 setExpandedSectors(initialExpanded);
@@ -112,9 +119,11 @@ export default function CategoriesManager() {
     };
 
     const uploadPhoto = async (file: File) => {
-        const fileRef = ref(storage, `categories/${Date.now()}_${file.name}`);
-        const snapshot = await uploadBytes(fileRef, file);
-        return await getDownloadURL(snapshot.ref);
+        const filePath = `categories/${Date.now()}_${file.name.replace(/[^a-zA-Z0-9.-]/g, '_')}`;
+        const { error: upErr } = await supabase.storage.from('store_assets').upload(filePath, file, { upsert: true });
+        if (upErr) throw upErr;
+        const { data: pubData } = supabase.storage.from('store_assets').getPublicUrl(filePath);
+        return pubData.publicUrl;
     };
 
     const handleSave = async (e: React.FormEvent) => {
@@ -134,22 +143,24 @@ export default function CategoriesManager() {
                 name: formData.name.trim(),
                 description: formData.description.trim(),
                 icon: formData.icon.trim(),
-                imageUrl: finalImageUrl,
-                isFeatured,
-                isActive,
-                parentId: parentId || null,
-                updatedAt: serverTimestamp(),
+                image_url: finalImageUrl,
+                is_featured: isFeatured,
+                is_active: isActive,
+                parent_id: parentId || null,
+                updated_at: new Date().toISOString(),
             };
 
             if (modalMode === 'create') {
-                await addDoc(collection(db, 'global_categories'), {
+                const { error } = await supabase.from('global_categories').insert([{
                     ...payload,
-                    clickCount: 0,
-                    createdAt: serverTimestamp(),
-                });
+                    click_count: 0,
+                    created_at: new Date().toISOString(),
+                }]);
+                if (error) throw error;
                 toast.success("Categoría creada exitosamente");
             } else if (selectedCategory) {
-                await updateDoc(doc(db, 'global_categories', selectedCategory.id), payload);
+                const { error } = await supabase.from('global_categories').update(payload).eq('id', selectedCategory.id);
+                if (error) throw error;
                 toast.success("Categoría actualizada exitosamente");
             }
 
@@ -177,7 +188,8 @@ export default function CategoriesManager() {
 
         const loadingToast = toast.loading("Eliminando...");
         try {
-            await deleteDoc(doc(db, 'global_categories', category.id));
+            const { error } = await supabase.from('global_categories').delete().eq('id', category.id);
+            if (error) throw error;
             toast.success("Eliminado correctamente");
             fetchCategories();
         } catch (error) {
@@ -193,29 +205,33 @@ export default function CategoriesManager() {
 
         const loadingToast = toast.loading("Sincronizando...");
         try {
-            const batch = writeBatch(db);
             const parentIdsMap: Record<string, string> = {};
 
             // 1. Principal Categories
             for (const parentName of GLOBAL_CATEGORIES) {
                 const existing = categories.find(c => c.name.toLowerCase() === parentName.toLowerCase() && !c.parentId);
                 if (!existing) {
-                    const newRef = doc(collection(db, 'global_categories'));
-                    batch.set(newRef, {
-                        name: parentName,
-                        description: `Categoría Principal - ${parentName}`,
-                        isActive: true,
-                        isFeatured: false,
-                        parentId: null,
-                        createdAt: serverTimestamp()
-                    });
-                    parentIdsMap[parentName] = newRef.id;
+                    const { data: inserted, error: insertErr } = await supabase
+                        .from('global_categories')
+                        .insert([{
+                            name: parentName,
+                            description: `Categoría Principal - ${parentName}`,
+                            is_active: true,
+                            is_featured: false,
+                            parent_id: null,
+                            created_at: new Date().toISOString()
+                        }])
+                        .select('id')
+                        .single();
+                    if (insertErr) throw insertErr;
+                    if (inserted) parentIdsMap[parentName] = inserted.id;
                 } else {
                     parentIdsMap[parentName] = existing.id;
                 }
             }
 
             // 2. Subcategories
+            const subInserts: any[] = [];
             for (const [parentName, subList] of Object.entries(CATEGORY_SECTORS)) {
                 const pId = parentIdsMap[parentName];
                 if (!pId) continue;
@@ -223,19 +239,22 @@ export default function CategoriesManager() {
                 for (const subName of subList) {
                     const exists = categories.find(c => c.name.toLowerCase() === subName.toLowerCase() && c.parentId === pId);
                     if (!exists) {
-                        const subRef = doc(collection(db, 'global_categories'));
-                        batch.set(subRef, {
+                        subInserts.push({
                             name: subName,
-                            parentId: pId,
-                            isActive: true,
-                            isFeatured: false,
-                            createdAt: serverTimestamp()
+                            parent_id: pId,
+                            is_active: true,
+                            is_featured: false,
+                            created_at: new Date().toISOString()
                         });
                     }
                 }
             }
 
-            await batch.commit();
+            if (subInserts.length > 0) {
+                const { error: subErr } = await supabase.from('global_categories').insert(subInserts);
+                if (subErr) throw subErr;
+            }
+
             toast.success("Sincronización completa");
             fetchCategories();
         } catch (error) {

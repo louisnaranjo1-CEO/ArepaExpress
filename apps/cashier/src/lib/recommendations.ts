@@ -1,6 +1,3 @@
-import { db } from './firebase';
-import { doc, getDoc, updateDoc, arrayUnion } from 'firebase/firestore';
-
 const MAX_HISTORY = 20;
 
 export interface ViewedProduct {

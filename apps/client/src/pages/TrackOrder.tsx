@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { doc, onSnapshot, getDoc, updateDoc, serverTimestamp, addDoc, collection, query, where, orderBy, limit } from 'firebase/firestore';
-import { db } from '../lib/firebase';
+import { supabase } from '../lib/supabase';
 import { DeliveryDriver } from '../lib/delivery-service';
 import { Navigation, Clock, CheckCircle2, Bike, Motorbike, MapPin, Phone, ArrowLeft, Store, Star, Wallet, X, Loader2, ImageIcon, Upload, CreditCard as CreditCardIcon, AlertCircle, Copy, MessageCircle } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -13,7 +12,6 @@ import OrderChatWindow from '../components/chat/OrderChatWindow';
 import AddressPicker from '../components/AddressPicker';
 import InAppCall from '../components/InAppCall';
 import { useAuth } from '../context/AuthContext';
-import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { motion, AnimatePresence } from 'motion/react';
 import { GoogleMap, useJsApiLoader, Marker } from '@react-google-maps/api';
 
@@ -99,83 +97,136 @@ export default function TrackOrder() {
         if (!orderId) return;
 
         // Fetch Platform Config for Delivery Payment
-        getDoc(doc(db, 'system_configs', 'finances')).then(snap => {
-            if (snap.exists()) {
-                setPlatformConfig(snap.data());
+        supabase.from('system_configs').select('*').eq('id', 'finances').maybeSingle().then(({ data }) => {
+            if (data) {
+                setPlatformConfig(data);
             }
         });
 
         // Fetch Delivery Settings for Fees
-        getDoc(doc(db, 'delivery_settings', 'settings')).then(snap => {
-            if (snap.exists()) {
-                setDeliverySettings(snap.data());
+        supabase.from('app_settings').select('*').eq('id', 'delivery_settings').maybeSingle().then(({ data }) => {
+            if (data) {
+                setDeliverySettings(data);
             }
         });
 
-        // 1. Listen to Order
-        const unsubscribe = onSnapshot(doc(db, 'orders', orderId), async (snapshot) => {
-            if (snapshot.exists()) {
-                const orderData = snapshot.data();
+        // 1. Fetch & Listen to Order
+        supabase.from('orders').select('*').eq('id', orderId).maybeSingle().then(async ({ data: orderData }) => {
+            if (orderData) {
                 setOrder(orderData);
-
-                // Fetch restaurant logo
-                if (orderData.restaurantId && (!restaurant || restaurant.id !== orderData.restaurantId)) {
-                    const rDoc = await getDoc(doc(db, 'restaurants', orderData.restaurantId));
-                    if (rDoc.exists()) {
-                        setRestaurant({ id: rDoc.id, ...rDoc.data() });
+                const rId = orderData.restaurantId || orderData.restaurant_id;
+                if (rId && (!restaurant || restaurant.id !== rId)) {
+                    const { data: rData } = await supabase.from('comercios').select('*').eq('id', rId).maybeSingle();
+                    if (rData) {
+                        setRestaurant({ id: rData.id, ...rData });
                     }
                 }
             }
             setLoading(false);
         });
 
-        // 2. Listen to Transport Request
-        const transportQ = query(
-            collection(db, 'transport_requests'),
-            where('orderId', '==', orderId),
-            orderBy('createdAt', 'desc'),
-            limit(1)
-        );
+        const orderChannel = supabase.channel(`order_track_${orderId}`)
+            .on('postgres_changes', {
+                event: '*',
+                schema: 'public',
+                table: 'orders',
+                filter: `id=eq.${orderId}`
+            }, async (payload) => {
+                if (payload.new) {
+                    const orderData: any = payload.new;
+                    setOrder(orderData);
 
-        const unsubscribeTransport = onSnapshot(transportQ, async (snapshot) => {
-            if (!snapshot.empty) {
-                const trData = snapshot.docs[0].data();
-                const trId = snapshot.docs[0].id;
-                setTransportRequest({ id: trId, ...trData });
-
-                // If assigned, fetch driver
-                if (trData.driverId && (!driver || driver.id !== trData.driverId)) {
-                    const dDoc = await getDoc(doc(db, 'delivery_drivers', trData.driverId));
-                    if (dDoc.exists()) {
-                        setDriver({ id: dDoc.id, ...dDoc.data() } as DeliveryDriver);
+                    const rId = orderData.restaurantId || orderData.restaurant_id;
+                    if (rId && (!restaurant || restaurant.id !== rId)) {
+                        const { data: rData } = await supabase.from('comercios').select('*').eq('id', rId).maybeSingle();
+                        if (rData) {
+                            setRestaurant({ id: rData.id, ...rData });
+                        }
                     }
                 }
+            })
+            .subscribe();
 
-                // Auto switch tab to delivery if assigned or searching
-                if (trData.status === 'searching' || trData.driverId) {
-                    // setActiveTab('delivery'); // Maybe too intrusive? Let's leave it for now.
+        // 2. Fetch & Listen to Transport Request
+        const fetchTransport = async () => {
+            const { data: trList } = await supabase
+                .from('transport_requests')
+                .select('*')
+                .or(`orderId.eq.${orderId},order_id.eq.${orderId}`)
+                .order('createdAt', { ascending: false })
+                .limit(1);
+
+            if (trList && trList.length > 0) {
+                const trData = trList[0];
+                setTransportRequest({ id: trData.id, ...trData });
+
+                const dId = trData.driverId || trData.driver_id;
+                if (dId && (!driver || driver.id !== dId)) {
+                    const { data: dData } = await supabase.from('delivery_drivers').select('*').eq('id', dId).maybeSingle();
+                    if (dData) {
+                        setDriver({ id: dData.id, ...dData } as DeliveryDriver);
+                    }
                 }
             }
-        });
+        };
+        fetchTransport();
+
+        const transportChannel = supabase.channel(`tr_track_${orderId}`)
+            .on('postgres_changes', {
+                event: '*',
+                schema: 'public',
+                table: 'transport_requests',
+                filter: `order_id=eq.${orderId}`
+            }, async (payload) => {
+                if (payload.new) {
+                    const trData: any = payload.new;
+                    setTransportRequest({ id: trData.id, ...trData });
+
+                    const dId = trData.driverId || trData.driver_id;
+                    if (dId && (!driver || driver.id !== dId)) {
+                        const { data: dData } = await supabase.from('delivery_drivers').select('*').eq('id', dId).maybeSingle();
+                        if (dData) {
+                            setDriver({ id: dData.id, ...dData } as DeliveryDriver);
+                        }
+                    }
+                }
+            })
+            .subscribe();
 
         return () => {
-            unsubscribe();
-            unsubscribeTransport();
+            supabase.removeChannel(orderChannel);
+            supabase.removeChannel(transportChannel);
         };
     }, [orderId]);
 
     // Listen to Driver Live Location if available
     useEffect(() => {
-        if (!transportRequest?.driverId) return;
+        const driverId = transportRequest?.driverId || transportRequest?.driver_id;
+        if (!driverId) return;
 
-        const unsubLoc = onSnapshot(doc(db, 'driver_locations', transportRequest.driverId), (snap) => {
-            if (snap.exists()) {
-                setDriverLocation(snap.data() as any);
+        supabase.from('driver_locations').select('*').eq('driver_id', driverId).maybeSingle().then(({ data }) => {
+            if (data) {
+                setDriverLocation(data as any);
             }
         });
 
-        return () => unsubLoc();
-    }, [transportRequest?.driverId]);
+        const locChannel = supabase.channel(`driver_loc_${driverId}`)
+            .on('postgres_changes', {
+                event: '*',
+                schema: 'public',
+                table: 'driver_locations',
+                filter: `driver_id=eq.${driverId}`
+            }, (payload) => {
+                if (payload.new) {
+                    setDriverLocation(payload.new as any);
+                }
+            })
+            .subscribe();
+
+        return () => {
+            supabase.removeChannel(locChannel);
+        };
+    }, [transportRequest?.driverId, transportRequest?.driver_id]);
 
     // Live geolocation for the "blue dot"
     useEffect(() => {
@@ -257,19 +308,28 @@ export default function TrackOrder() {
         try {
             const updates: any = {
                 restaurantPaymentClientConfirmed: true,
+                restaurant_payment_client_confirmed: true,
                 status: 'pending_verification',
-                paymentReference: paymentReference
+                paymentReference: paymentReference,
+                payment_reference: paymentReference,
+                updated_at: new Date().toISOString()
             };
 
-            await updateDoc(doc(db, 'orders', orderId), updates);
+            await supabase.from('orders').update(updates).eq('id', orderId);
 
             // Enviar mensaje automático al chat
-            await addDoc(collection(db, `orders/${orderId}/messages`), {
+            await supabase.from('messages').insert({
+                order_id: orderId,
+                orderId: orderId,
                 text: `📢 He realizado el pago. Referencia: ${paymentReference}. Favor validar.`,
+                sender_id: user?.uid || 'guest',
                 senderId: user?.uid || 'guest',
+                sender_name: order.userName || 'Cliente',
                 senderName: order.userName || 'Cliente',
+                sender_role: 'client',
                 senderRole: 'client',
-                createdAt: serverTimestamp()
+                created_at: new Date().toISOString(),
+                createdAt: new Date().toISOString()
             });
 
             toast.success('Información de pago enviada al negocio');
@@ -286,15 +346,17 @@ export default function TrackOrder() {
         
         const newItems = order.items.filter((item: any) => item.id !== itemId);
         const newSubtotal = newItems.reduce((acc: number, item: any) => acc + (item.price * item.quantity), 0);
-        const newTotal = newSubtotal + (order.deliveryFee || 0);
+        const newTotal = newSubtotal + (order.deliveryFee || order.delivery_fee || 0);
 
         try {
-            await updateDoc(doc(db, 'orders', orderId), {
+            await supabase.from('orders').update({
                 items: newItems,
                 subtotal: newSubtotal,
                 total: newTotal,
-                missingItems: (order.missingItems || []).filter((id: string) => id !== itemId)
-            });
+                missingItems: (order.missingItems || []).filter((id: string) => id !== itemId),
+                missing_items: (order.missing_items || order.missingItems || []).filter((id: string) => id !== itemId),
+                updated_at: new Date().toISOString()
+            }).eq('id', orderId);
         } catch (error) {
             console.error("Error removing item:", error);
             toast.error("Error al eliminar producto");
@@ -304,19 +366,28 @@ export default function TrackOrder() {
     const handleConfirmStockChanges = async () => {
         if (!orderId) return;
         try {
-            await updateDoc(doc(db, 'orders', orderId), {
+            await supabase.from('orders').update({
                 status: 'pending',
                 stockConfirmed: false,
-                missingItems: []
-            });
+                stock_confirmed: false,
+                missingItems: [],
+                missing_items: [],
+                updated_at: new Date().toISOString()
+            }).eq('id', orderId);
             
             // Enviar mensaje automático al chat
-            await addDoc(collection(db, `orders/${orderId}/messages`), {
+            await supabase.from('messages').insert({
+                order_id: orderId,
+                orderId: orderId,
                 text: "🔄 *El cliente ha realizado cambios en su pedido.* Favor verificar stock nuevamente.",
+                sender_id: user?.uid || 'guest',
                 senderId: user?.uid || 'guest',
+                sender_name: order.userName || 'Cliente',
                 senderName: order.userName || 'Cliente',
+                sender_role: 'client',
                 senderRole: 'client',
-                createdAt: serverTimestamp()
+                created_at: new Date().toISOString(),
+                createdAt: new Date().toISOString()
             });
 
             toast.success("Cambios confirmados. Esperando verificación del restaurante.");
@@ -330,10 +401,12 @@ export default function TrackOrder() {
         if(!orderId) return;
         if(window.confirm('¿Estás seguro que deseas cancelar tu pedido? Esta acción no se puede deshacer.')) {
             try {
-                await updateDoc(doc(db, 'orders', orderId), {
+                await supabase.from('orders').update({
                     status: 'cancelled',
-                    cancelledAt: serverTimestamp()
-                });
+                    cancelledAt: new Date().toISOString(),
+                    cancelled_at: new Date().toISOString(),
+                    updated_at: new Date().toISOString()
+                }).eq('id', orderId);
                 toast.success('Pedido cancelado');
             } catch (error) {
                 console.error(error);
@@ -346,23 +419,33 @@ export default function TrackOrder() {
         if (!orderId || !order) return;
         setIsUpdatingAddress(true);
         try {
-            await updateDoc(doc(db, 'orders', orderId), {
-                address: {
-                    ...(order.address || {}),
-                    name: editDelivery.addressName,
-                    reference: editDelivery.addressReference
-                },
-                // Also update deliveryAddress string for compatibility
-                deliveryAddress: `${editDelivery.addressName} (${editDelivery.addressReference})`.trim()
-            });
+            const updatedAddress = {
+                ...(order.address || {}),
+                name: editDelivery.addressName,
+                reference: editDelivery.addressReference
+            };
+            const addrStr = `${editDelivery.addressName} (${editDelivery.addressReference})`.trim();
+
+            await supabase.from('orders').update({
+                address: updatedAddress,
+                deliveryAddress: addrStr,
+                delivery_address: addrStr,
+                updated_at: new Date().toISOString()
+            }).eq('id', orderId);
 
             // Enviar mensaje automático al chat
-            await addDoc(collection(db, `orders/${orderId}/messages`), {
+            await supabase.from('messages').insert({
+                order_id: orderId,
+                orderId: orderId,
                 text: `📍 *El cliente ha actualizado su dirección de entrega:* \n\n*Dirección:* ${editDelivery.addressName}\n*Referencia:* ${editDelivery.addressReference}`,
+                sender_id: user?.uid || 'guest',
                 senderId: user?.uid || 'guest',
+                sender_name: order.userName || 'Cliente',
                 senderName: order.userName || 'Cliente',
+                sender_role: 'client',
                 senderRole: 'client',
-                createdAt: serverTimestamp()
+                created_at: new Date().toISOString(),
+                createdAt: new Date().toISOString()
             });
 
             toast.success("Dirección actualizada correctamente");
@@ -379,29 +462,45 @@ export default function TrackOrder() {
         if(!orderId || !order) return;
         if(window.confirm('¿Deseas cambiar tu entrega a Retiro en Local? El costo de delivery será $0.')) {
             try {
-                await updateDoc(doc(db, 'orders', orderId), {
+                await supabase.from('orders').update({
                     deliveryMethod: 'pickup',
+                    delivery_method: 'pickup',
                     deliveryFee: 0,
+                    delivery_fee: 0,
                     total: order.subtotal,
-                    pickupNotified: false // Para disparar alerta en el cajero
-                });
+                    pickupNotified: false,
+                    pickup_notified: false,
+                    updated_at: new Date().toISOString()
+                }).eq('id', orderId);
 
                 // Enviar mensaje automático al chat
-                await addDoc(collection(db, `orders/${orderId}/messages`), {
+                await supabase.from('messages').insert({
+                    order_id: orderId,
+                    orderId: orderId,
                     text: "🏪 He cambiado mi pedido a RETIRO EN LOCAL (PickUp). Favor no enviar motorizado.",
+                    sender_id: user?.uid || 'guest',
                     senderId: user?.uid || 'guest',
+                    sender_name: order.userName || 'Cliente',
                     senderName: order.userName || 'Cliente',
+                    sender_role: 'client',
                     senderRole: 'client',
-                    createdAt: serverTimestamp()
+                    created_at: new Date().toISOString(),
+                    createdAt: new Date().toISOString()
                 });
 
                 // Enviar mensaje automático al chat
-                await addDoc(collection(db, `orders/${orderId}/messages`), {
+                await supabase.from('messages').insert({
+                    order_id: orderId,
+                    orderId: orderId,
                     text: "🔔 *El cliente ha decidido retirar el pedido en el local (PickUp).* ",
+                    sender_id: user?.uid || 'guest',
                     senderId: user?.uid || 'guest',
+                    sender_name: order.userName || 'Cliente',
                     senderName: order.userName || 'Cliente',
+                    sender_role: 'client',
                     senderRole: 'client',
-                    createdAt: serverTimestamp()
+                    created_at: new Date().toISOString(),
+                    createdAt: new Date().toISOString()
                 });
 
                 toast.success("Cambiado a Pick Up");
@@ -435,23 +534,35 @@ export default function TrackOrder() {
         try {
             const updates: any = {
                 deliveryPaymentClientConfirmed: true,
+                delivery_payment_client_confirmed: true,
                 status: 'verificando_pago_delivery',
                 deliveryPaymentReference: deliveryPaymentReference,
-                deliveryPaymentStatus: 'pending_verification'
+                delivery_payment_reference: deliveryPaymentReference,
+                deliveryPaymentStatus: 'pending_verification',
+                delivery_payment_status: 'pending_verification',
+                updated_at: new Date().toISOString()
             };
 
-            await updateDoc(doc(db, 'orders', orderId), updates);
+            await supabase.from('orders').update(updates).eq('id', orderId);
 
             // Create transport request so it appears in CPanel "Viajes (Taxis)"
             const transportData: any = {
+                id: crypto.randomUUID(),
                 type: 'food_delivery',
                 serviceType: 'Delivery de Comida',
+                service_type: 'Delivery de Comida',
                 orderId: orderId,
-                restaurantId: order.restaurantId,
+                order_id: orderId,
+                restaurantId: order.restaurantId || order.restaurant_id,
+                restaurant_id: order.restaurantId || order.restaurant_id,
                 userId: order.userId || user?.uid,
+                user_id: order.userId || user?.uid,
                 userName: order.userName || user?.displayName || 'Cliente',
+                user_name: order.userName || user?.displayName || 'Cliente',
                 userPhone: order.userPhone || user?.phoneNumber || '',
+                user_phone: order.userPhone || user?.phoneNumber || '',
                 userCedula: order.userCedula || '',
+                user_cedula: order.userCedula || '',
                 origin: {
                     address: restaurant?.location?.address 
                         ? `${order.restaurantName || restaurant?.name} - ${restaurant.location.address}, ${restaurant.location.city || ''}`
@@ -465,31 +576,38 @@ export default function TrackOrder() {
                     coords: order.deliveryCoords || order.address?.coords || userLocation || null
                 },
                 vehicleType: order.vehicleType || 'moto',
+                vehicle_type: order.vehicleType || 'moto',
                 clientTotal: order.deliveryFee || 0,
+                client_total: order.deliveryFee || 0,
                 driverPayout: (order.deliveryFee || 0) * 0.8,
+                driver_payout: (order.deliveryFee || 0) * 0.8,
                 serviceFee: (order.deliveryFee || 0) * 0.2,
+                service_fee: (order.deliveryFee || 0) * 0.2,
                 status: 'verifying_payment',
                 paymentMethod: 'Transferencia/Pago Móvil',
+                payment_method: 'Transferencia/Pago Móvil',
                 paymentRef: deliveryPaymentReference,
-                createdAt: serverTimestamp()
+                payment_ref: deliveryPaymentReference,
+                created_at: new Date().toISOString(),
+                createdAt: new Date().toISOString(),
+                updated_at: new Date().toISOString()
             };
 
-            // Clean undefined values to prevent Firestore errors
-            Object.keys(transportData).forEach(key => {
-                if (transportData[key] === undefined) {
-                    delete transportData[key];
-                }
-            });
-
-            await addDoc(collection(db, 'transport_requests'), transportData);
+            await supabase.from('transport_requests').insert(transportData);
 
             // Enviar mensaje automático al chat
-            await addDoc(collection(db, `orders/${orderId}/messages`), {
+            await supabase.from('messages').insert({
+                order_id: orderId,
+                orderId: orderId,
                 text: `🚀 He reportado el pago del delivery (Ref: ${deliveryPaymentReference}). Por favor verificar.`,
+                sender_id: user?.uid || 'guest',
                 senderId: user?.uid || 'guest',
+                sender_name: order.userName || 'Cliente',
                 senderName: order.userName || 'Cliente',
+                sender_role: 'client',
                 senderRole: 'client',
-                createdAt: serverTimestamp()
+                created_at: new Date().toISOString(),
+                createdAt: new Date().toISOString()
             });
 
             toast.success('Información de pago enviada exitosamente');
@@ -512,14 +630,17 @@ export default function TrackOrder() {
         const rate = rates.find((r: any) => distance >= r.from && (distance <= r.to || !r.to));
         
         const newFee = rate ? (rate.clientPrice || rate.price) : (type === 'moto' ? 2.5 : 5.0);
-        const newTotal = order.subtotal + newFee;
+        const newTotal = (order.subtotal || 0) + newFee;
 
         try {
-            await updateDoc(doc(db, 'orders', orderId), {
+            await supabase.from('orders').update({
                 vehicleType: type,
+                vehicle_type: type,
                 deliveryFee: newFee,
-                total: newTotal
-            });
+                delivery_fee: newFee,
+                total: newTotal,
+                updated_at: new Date().toISOString()
+            }).eq('id', orderId);
             toast.success(`Vehículo actualizado: ${type === 'moto' ? 'Moto' : 'Carro'}`);
         } catch (error) {
             console.error("Error updating vehicle:", error);
@@ -530,14 +651,16 @@ export default function TrackOrder() {
     const handleProceedToDeliveryPayment = async () => {
         if (!orderId) return;
         try {
-            await updateDoc(doc(db, 'orders', orderId), {
+            await supabase.from('orders').update({
                 vehicleType: editDelivery.vehicleType,
+                vehicle_type: editDelivery.vehicleType,
                 address: {
                     ...(order.address || {}),
                     name: editDelivery.addressName,
                     reference: editDelivery.addressReference
-                }
-            });
+                },
+                updated_at: new Date().toISOString()
+            }).eq('id', orderId);
             setShowDeliveryPaymentModal(true);
         } catch (error) {
             console.error(error);
@@ -1461,12 +1584,20 @@ export default function TrackOrder() {
                                 setShowAddressPicker(false);
                                 setIsUpdatingAddress(true);
                                 try {
-                                    await updateDoc(doc(db, 'orders', order.id), {
-                                        'address.name': data.name,
-                                        'address.reference': data.reference,
-                                        'address.lat': data.lat,
-                                        'address.lng': data.lng
-                                    });
+                                    const updatedAddress = {
+                                        ...(order.address || {}),
+                                        name: data.name,
+                                        reference: data.reference,
+                                        lat: data.lat,
+                                        lng: data.lng
+                                    };
+                                    const addrStr = `${data.name} (${data.reference})`.trim();
+                                    await supabase.from('orders').update({
+                                        address: updatedAddress,
+                                        deliveryAddress: addrStr,
+                                        delivery_address: addrStr,
+                                        updated_at: new Date().toISOString()
+                                    }).eq('id', order.id);
                                     toast.success('Dirección actualizada');
                                 } catch (error) {
                                     console.error(error);

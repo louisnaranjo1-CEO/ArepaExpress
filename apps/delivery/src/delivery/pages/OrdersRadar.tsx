@@ -1,7 +1,4 @@
 import React, { useState, useEffect } from 'react';
-import { ref, getDownloadURL } from 'firebase/storage';
-import { rtdb, storage } from '../../lib/firebase';
-import { ref as rtdbRef, onValue } from 'firebase/database';
 import { useAuth } from '../../context/AuthContext';
 import { Car, Bike, MapPin, Navigation, Phone, CheckCircle2, MessageSquare, Send, User as UserIcon, Star, MessageCircle, Clock, AlertTriangle, ArrowLeft, Package } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
@@ -194,28 +191,22 @@ export default function OrdersRadar() {
     // 3.1 Listen for incoming in-app calls when driver has an active transport
     useEffect(() => {
         if (!activeTransport?.id || !user) return;
-        const callStatusRef = rtdbRef(rtdb, `calls/${activeTransport.id}/status`);
-        const callInitRef = rtdbRef(rtdb, `calls/${activeTransport.id}/initiatorId`);
-        let initiatorId: string | null = null;
-
-        // First get who is initiating
-        const initUnsub = onValue(callInitRef, (snap) => {
-            initiatorId = snap.val();
+        const channel = supabase.channel(`call_${activeTransport.id}`, {
+            config: { broadcast: { self: false } }
         });
 
-        const statusUnsub = onValue(callStatusRef, (snap) => {
-            const status = snap.val();
-            if (status === 'calling' && initiatorId && initiatorId !== user.uid) {
-                setShowIncomingCall(true);
-            }
-            if (status === 'ended' || status === null) {
-                setShowIncomingCall(false);
-            }
-        });
+        channel
+            .on('broadcast', { event: 'signal' }, ({ payload }) => {
+                if (payload?.type === 'offer' && payload.from !== user.uid) {
+                    setShowIncomingCall(true);
+                } else if (payload?.type === 'status' && payload.status === 'ended') {
+                    setShowIncomingCall(false);
+                }
+            })
+            .subscribe();
 
         return () => {
-            initUnsub();
-            statusUnsub();
+            supabase.removeChannel(channel);
         };
     }, [activeTransport?.id, user]);
 

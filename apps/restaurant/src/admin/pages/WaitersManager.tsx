@@ -1,9 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Plus, Search, Edit2, Trash2, Key, CheckCircle2, XCircle, Shield, Phone, Mail, User, Camera, Loader2, Save, X } from 'lucide-react';
-import { db, storage } from '../../lib/firebase';
+import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../context/AuthContext';
-import { collection, addDoc, getDocs, deleteDoc, doc, query, updateDoc, where, setDoc, getDoc } from 'firebase/firestore';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 
 interface Waiter {
     id: string;
@@ -34,41 +32,54 @@ export default function WaitersManager() {
     const [photoPreview, setPhotoPreview] = useState<string | null>(null);
     const [showPassword, setShowPassword] = useState(false);
 
-    useEffect(() => {
-        if (!rid) return;
-        fetchWaiters();
-    }, [rid]);
-
-    const fetchWaiters = async () => {
+    const fetchWaiters = useCallback(async () => {
         if (!rid) return;
         setLoading(true);
         try {
-            const waitersRef = collection(db, 'restaurants', rid, 'waiters');
-            const q = query(waitersRef);
-            const snapshot = await getDocs(q);
-            const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Waiter[];
-            setWaiters(data);
+            const { data, error } = await supabase
+                .from('waiters')
+                .select('*')
+                .eq('restaurant_id', rid)
+                .order('created_at', { ascending: false });
 
-            // Auto-sync missing indexes (background)
-            if (data.length > 0) {
-                Promise.all(data.map(async (w) => {
-                    const idxRef = doc(db, 'waiter_index', w.email.toLowerCase());
-                    const idxSnap = await getDoc(idxRef);
-                    if (!idxSnap.exists()) {
-                        await setDoc(idxRef, {
-                            restaurantId: rid,
-                            waiterId: w.id,
-                            email: w.email.toLowerCase()
-                        });
-                    }
-                })).catch(console.error);
+            if (error) throw error;
+
+            if (data) {
+                setWaiters(data.map((w: any) => ({
+                    id: w.id,
+                    restaurantId: w.restaurant_id,
+                    name: w.name,
+                    email: w.email || '',
+                    phone: w.phone || '',
+                    password: w.password || '',
+                    photoUrl: w.photo_url || '',
+                    role: (w.role as any) || 'waiter',
+                    isActive: w.is_active ?? true,
+                    createdAt: w.created_at
+                })));
             }
         } catch (error) {
             console.error("Error fetching waiters:", error);
         } finally {
             setLoading(false);
         }
-    };
+    }, [rid]);
+
+    useEffect(() => {
+        if (!rid) return;
+        fetchWaiters();
+
+        const channel = supabase
+            .channel(`waiters_${rid}`)
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'waiters', filter: `restaurant_id=eq.${rid}` }, () => {
+                fetchWaiters();
+            })
+            .subscribe();
+
+        return () => {
+            supabase.removeChannel(channel);
+        };
+    }, [rid, fetchWaiters]);
 
     const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
@@ -84,9 +95,12 @@ export default function WaitersManager() {
 
     const uploadPhoto = async (file: File) => {
         if (!rid) return '';
-        const fileRef = ref(storage, `restaurants/${rid}/waiters/${Date.now()}_${file.name}`);
-        await uploadBytes(fileRef, file);
-        return await getDownloadURL(fileRef);
+        const ext = file.name.split('.').pop() || 'png';
+        const filePath = `${rid}/waiters/${Date.now()}.${ext}`;
+        const { error: upErr } = await supabase.storage.from('store_assets').upload(filePath, file, { upsert: true });
+        if (upErr) throw upErr;
+        const { data: urlData } = supabase.storage.from('store_assets').getPublicUrl(filePath);
+        return urlData.publicUrl;
     };
 
     const handleAddWaiter = async (e: React.FormEvent) => {
@@ -101,21 +115,19 @@ export default function WaitersManager() {
             }
 
             const waiterData = {
-                ...formData,
-                photoUrl,
-                restaurantId: rid,
-                isActive: true,
-                createdAt: new Date()
+                restaurant_id: rid,
+                name: formData.name,
+                email: formData.email.toLowerCase().trim(),
+                phone: formData.phone,
+                password: formData.password,
+                role: formData.role,
+                photo_url: photoUrl,
+                is_active: true,
+                created_at: new Date().toISOString()
             };
 
-            const docRef = await addDoc(collection(db, 'restaurants', rid, 'waiters'), waiterData);
-
-            // Add to index for global lookup
-            await setDoc(doc(db, 'waiter_index', formData.email.toLowerCase()), {
-                restaurantId: rid,
-                waiterId: docRef.id,
-                email: formData.email.toLowerCase()
-            });
+            const { error: insErr } = await supabase.from('waiters').insert(waiterData);
+            if (insErr) throw insErr;
 
             setIsAdding(false);
             setFormData({ name: '', email: '', phone: '', password: '', role: 'waiter' });
@@ -123,13 +135,8 @@ export default function WaitersManager() {
             setPhotoPreview(null);
             fetchWaiters();
         } catch (error: any) {
-            console.error("Error adding waiter (Detailed):", error);
-            // Check if it's a permission error
-            if (error.code === 'permission-denied' || error.message?.includes('permission')) {
-                alert("Error de permisos: Las reglas de seguridad de Firebase están bloqueando la operación. Por favor, revisa que firestore.rules y storage.rules estén desplegadas.");
-            } else {
-                alert("Error al añadir mesero: " + (error.message || "Error desconocido"));
-            }
+            console.error("Error adding waiter:", error);
+            alert("Error al añadir mesero: " + (error.message || "Error desconocido"));
         } finally {
             setIsSaving(false);
         }
@@ -145,25 +152,18 @@ export default function WaitersManager() {
                 photoUrl = await uploadPhoto(photoFile);
             }
 
-            // Get old data to check if email changed
-            const oldWaiter = waiters.find(w => w.id === editingId);
+            const updateData: any = {
+                name: editData.name,
+                email: editData.email.toLowerCase().trim(),
+                phone: editData.phone,
+                password: editData.password,
+                role: editData.role,
+                photo_url: photoUrl,
+                updated_at: new Date().toISOString()
+            };
 
-            await updateDoc(doc(db, 'restaurants', rid, 'waiters', editingId), {
-                ...editData,
-                photoUrl,
-                updatedAt: new Date()
-            });
-
-            // Update index
-            if (oldWaiter && oldWaiter.email.toLowerCase() !== editData.email.toLowerCase()) {
-                await deleteDoc(doc(db, 'waiter_index', oldWaiter.email.toLowerCase()));
-            }
-
-            await setDoc(doc(db, 'waiter_index', editData.email.toLowerCase()), {
-                restaurantId: rid,
-                waiterId: editingId,
-                email: editData.email.toLowerCase()
-            });
+            const { error: updErr } = await supabase.from('waiters').update(updateData).eq('id', editingId);
+            if (updErr) throw updErr;
 
             setEditingId(null);
             setPhotoFile(null);
@@ -180,11 +180,8 @@ export default function WaitersManager() {
     const handleDeleteWaiter = async (waiterId: string) => {
         if (!rid || !confirm('¿Estás seguro de eliminar a este mesero?')) return;
         try {
-            const waiter = waiters.find(w => w.id === waiterId);
-            if (waiter) {
-                await deleteDoc(doc(db, 'waiter_index', waiter.email.toLowerCase()));
-            }
-            await deleteDoc(doc(db, 'restaurants', rid, 'waiters', waiterId));
+            const { error } = await supabase.from('waiters').delete().eq('id', waiterId);
+            if (error) throw error;
             fetchWaiters();
         } catch (error) {
             console.error("Error deleting waiter:", error);

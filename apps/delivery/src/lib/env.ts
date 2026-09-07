@@ -6,4 +6,4 @@ export const isDemoMode = () => {
   return hostname === 'demo.deliexpress.app' || hostname === 'localhost';
 };
 
-export const UN2X3_LOGO = "https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/logo.png?alt=media&v=1.1";
+export const UN2X3_LOGO = "https://xfialzrbbsdzzcjtefqo.supabase.co/storage/v1/object/public/store_assets/logo.png";

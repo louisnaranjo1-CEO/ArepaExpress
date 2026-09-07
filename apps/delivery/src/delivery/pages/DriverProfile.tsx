@@ -3,9 +3,7 @@ import { useAuth } from '../../context/AuthContext';
 import { User, Mail, MapPin, CreditCard, LogOut, ShoppingBag, Settings, ChevronRight, Clock, FileText, Bell, Navigation, X, Shield, UploadCloud, CheckCircle2, Save, Image as ImageIcon, Key, Trash2, ArrowLeft, Camera, Truck, ShieldCheck, Smartphone, Fingerprint } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { signOut, updateEmail, updatePassword, deleteUser } from 'firebase/auth';
-import { auth, db, storage } from '../../lib/firebase';
-import { collection, addDoc, serverTimestamp, doc, onSnapshot, updateDoc, setDoc } from 'firebase/firestore';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { auth } from '../../lib/firebase';
 import { Geolocation } from '@capacitor/geolocation';
 import { requestNotificationPermission, disableNotifications } from '../../lib/notifications';
 import { VENEZUELA_DATA, VENEZUELA_STATES } from '../../lib/venezuelaData';
@@ -223,39 +221,50 @@ export default function DriverProfile() {
             // Upload Selfie
             if (selfieFile) {
                 const ext = selfieFile.name.split('.').pop() || 'jpg';
-                const sRef = ref(storage, `delivery_docs/${user.uid}/selfie_${Date.now()}.${ext}`);
-                const snap = await uploadBytes(sRef, selfieFile, { contentType: selfieFile.type });
-                documents.selfieUrl = await getDownloadURL(snap.ref);
+                const filePath = `delivery_docs/${user.uid}/selfie_${Date.now()}.${ext}`;
+                const { error: upErr } = await supabase.storage.from('store_assets').upload(filePath, selfieFile, { upsert: true });
+                if (!upErr) {
+                    const { data: pubData } = supabase.storage.from('store_assets').getPublicUrl(filePath);
+                    documents.selfieUrl = pubData.publicUrl;
+                }
             }
 
             // Upload License
             if (licenseFile) {
                 const ext = licenseFile.name.split('.').pop() || 'jpg';
-                const lRef = ref(storage, `delivery_docs/${user.uid}/license_${Date.now()}.${ext}`);
-                const snap = await uploadBytes(lRef, licenseFile, { contentType: licenseFile.type });
-                documents.licenseUrl = await getDownloadURL(snap.ref);
+                const filePath = `delivery_docs/${user.uid}/license_${Date.now()}.${ext}`;
+                const { error: upErr } = await supabase.storage.from('store_assets').upload(filePath, licenseFile, { upsert: true });
+                if (!upErr) {
+                    const { data: pubData } = supabase.storage.from('store_assets').getPublicUrl(filePath);
+                    documents.licenseUrl = pubData.publicUrl;
+                }
             }
 
             // Upload Vehicle Photo
             if (vehicleFile) {
                 const ext = vehicleFile.name.split('.').pop() || 'jpg';
-                const vRef = ref(storage, `delivery_docs/${user.uid}/vehicle_${Date.now()}.${ext}`);
-                const snap = await uploadBytes(vRef, vehicleFile, { contentType: vehicleFile.type });
-                documents.vehicleUrl = await getDownloadURL(snap.ref);
+                const filePath = `delivery_docs/${user.uid}/vehicle_${Date.now()}.${ext}`;
+                const { error: upErr } = await supabase.storage.from('store_assets').upload(filePath, vehicleFile, { upsert: true });
+                if (!upErr) {
+                    const { data: pubData } = supabase.storage.from('store_assets').getPublicUrl(filePath);
+                    documents.vehicleUrl = pubData.publicUrl;
+                }
             }
 
             const requestData = {
-                driverId: user.uid,
-                driverName: driverProfile.fullName || 'Desconocido',
-                requestedAt: serverTimestamp(),
+                driver_id: user.uid,
+                driver_name: driverProfile.fullName || 'Desconocido',
+                phone: updateForm.phone,
+                vehicle_type: updateForm.vehicleType,
+                vehicle_plate: updateForm.vehiclePlate,
+                selfie_url: documents.selfieUrl || null,
+                license_url: documents.licenseUrl || null,
+                vehicle_photo_url: documents.vehicleUrl || null,
                 status: 'pending',
-                newData: {
-                    ...updateForm,
-                    documents
-                }
+                created_at: new Date().toISOString()
             };
 
-            await addDoc(collection(db, 'delivery_update_requests'), requestData);
+            await supabase.from('delivery_update_requests').insert(requestData);
 
             // Update phone immediately for quicker communication
             if (updateForm.phone && updateForm.phone !== driverProfile.phone) {
@@ -406,18 +415,18 @@ export default function DriverProfile() {
                                 try {
                                     if (userData?.biometricLockEnabled) {
                                         // Disable
-                                        await setDoc(doc(db, 'users', user.uid), {
-                                            biometricLockEnabled: false
-                                        }, { merge: true });
+                                        await supabase.from('profiles').update({
+                                            biometric_lock_enabled: false
+                                        }).eq('id', user.uid);
                                         alert('Bloqueo biométrico desactivado');
                                     } else {
                                         // Enable
                                         const biometricData = await registerBiometric(user.uid, user.email || '');
                                         if (biometricData) {
-                                            await setDoc(doc(db, 'users', user.uid), {
-                                                biometricLockEnabled: true,
-                                                biometricCredentialId: biometricData.id
-                                            }, { merge: true });
+                                            await supabase.from('profiles').update({
+                                                biometric_lock_enabled: true,
+                                                biometric_credential_id: biometricData.id
+                                            }).eq('id', user.uid);
                                             alert('Bloqueo biométrico activado');
                                         } else {
                                             alert('No se pudo activar la biometría');
@@ -467,17 +476,17 @@ export default function DriverProfile() {
                                 try {
                                     if (userData?.locationPermissionsAllowed) {
                                         // Disable
-                                        await updateDoc(doc(db, 'users', user.uid), {
-                                            locationPermissionsAllowed: false
-                                        });
+                                        await supabase.from('profiles').update({
+                                            location_permissions_allowed: false
+                                        }).eq('id', user.uid);
                                         alert('Ubicación en tiempo real desactivada');
                                     } else {
                                         // Enable
                                         const permission = await Geolocation.requestPermissions();
                                         if (permission.location === 'granted') {
-                                            await updateDoc(doc(db, 'users', user.uid), {
-                                                locationPermissionsAllowed: true
-                                            });
+                                            await supabase.from('profiles').update({
+                                                location_permissions_allowed: true
+                                            }).eq('id', user.uid);
                                             alert('Ubicación en tiempo real activada');
                                         } else {
                                             alert('Se requiere permiso de ubicación para activar esta función');

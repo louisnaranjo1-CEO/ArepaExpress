@@ -1,8 +1,6 @@
 import React, { useState } from 'react';
-import { X, UploadCloud, CheckCircle2, AlertCircle } from 'lucide-react';
-import { doc, updateDoc } from 'firebase/firestore';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { db, storage } from '../lib/firebase';
+import { X, CheckCircle2, AlertCircle } from 'lucide-react';
+import { supabase } from '../lib/supabase';
 
 interface DeliveryPaymentModalProps {
     isOpen: boolean;
@@ -32,12 +30,15 @@ export default function DeliveryPaymentModal({ isOpen, onClose, orderId, deliver
         setError(null);
 
         try {
-            // Update order doc
-            await updateDoc(doc(db, 'orders', orderId), {
+            const { error: updateError } = await supabase.from('orders').update({
+                delivery_payment_ref: reference.trim(),
                 deliveryPaymentRef: reference.trim(),
+                delivery_payment_status: 'verifying',
                 deliveryPaymentStatus: 'verifying',
-                status: 'verificando_pago_delivery' // new status
-            });
+                status: 'verificando_pago_delivery'
+            }).eq('id', orderId);
+
+            if (updateError) throw updateError;
 
             onSuccess();
             onClose();

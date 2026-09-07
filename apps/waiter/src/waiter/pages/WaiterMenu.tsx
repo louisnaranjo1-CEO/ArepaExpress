@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
-import { doc, getDoc, collection, getDocs } from 'firebase/firestore';
-import { db } from '../../lib/firebase';
+import { supabase } from '../../lib/supabase';
 import { ArrowLeft, Search, Star, Clock, Plus, Store, CheckCircle, Smartphone, X, Tag } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useCart } from '../../context/CartContext';
@@ -34,16 +33,52 @@ export default function WaiterMenu() {
                 return;
             }
             try {
-                const docRef = doc(db, 'restaurants', restaurantId);
-                const docSnap = await getDoc(docRef);
+                const { data: resDoc, error: resErr } = await supabase
+                    .from('comercios')
+                    .select('*')
+                    .eq('id', restaurantId)
+                    .maybeSingle();
 
-                if (docSnap.exists()) {
-                    setRestaurant({ id: docSnap.id, ...docSnap.data() });
+                if (resErr) {
+                    console.error("Error fetching restaurant:", resErr);
+                }
 
-                    const productsRef = collection(db, 'restaurants', restaurantId, 'products');
-                    const productsSnap = await getDocs(productsRef);
-                    const fetchedProducts = productsSnap.docs.map(p => ({ id: p.id, ...p.data() })) as Product[];
-                    setProducts(fetchedProducts);
+                if (resDoc) {
+                    setRestaurant({
+                        id: resDoc.id,
+                        name: resDoc.name,
+                        category: resDoc.category,
+                        logoUrl: resDoc.logo_url || resDoc.logoUrl,
+                        coverUrl: resDoc.cover_url || resDoc.coverUrl,
+                        image: resDoc.image_url || resDoc.image,
+                        ...resDoc
+                    });
+
+                    const { data: prods, error: prodsErr } = await supabase
+                        .from('products')
+                        .select('*')
+                        .eq('restaurant_id', restaurantId);
+
+                    if (prodsErr) {
+                        console.error("Error fetching products:", prodsErr);
+                    }
+
+                    if (prods) {
+                        const fetchedProducts = prods.map((p: any) => ({
+                            id: p.id,
+                            name: p.name,
+                            price: Number(p.price) || 0,
+                            promoPrice: Number(p.promo_price ?? p.promoPrice) || 0,
+                            image: p.image_url || p.image,
+                            category: p.category || 'General',
+                            description: p.description || '',
+                            isAvailable: p.is_available ?? p.isAvailable ?? true,
+                            variants: p.variants || [],
+                            pointsPrice: p.points_price || p.pointsPrice,
+                            ...p
+                        })) as Product[];
+                        setProducts(fetchedProducts);
+                    }
                 }
             } catch (err) {
                 console.error("Error fetching menu:", err);
@@ -151,194 +186,133 @@ export default function WaiterMenu() {
                             placeholder="Buscar en el menú..."
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
-                            className="w-full pl-12 pr-4 py-3.5 bg-slate-50 border border-slate-100 rounded-2xl outline-none focus:border-primary focus:bg-white transition-all font-bold text-slate-600 shadow-sm"
+                            className="w-full bg-slate-50 border border-slate-100 rounded-2xl py-3.5 pl-12 pr-4 font-bold text-sm outline-none focus:border-primary transition-all"
                         />
                     </div>
                 </div>
 
                 {/* Categories */}
-                <div className="sticky top-8 z-40 bg-white/95 backdrop-blur-sm border-b border-slate-50 py-3 mt-4">
-                    <div className="flex overflow-x-auto gap-2 px-5 hide-scrollbar">
-                        {categories.map((cat) => (
-                            <button
-                                key={cat}
-                                onClick={() => setActiveCategory(cat)}
-                                className={`px-5 py-2 rounded-full text-xs font-bold whitespace-nowrap transition-all ${activeCategory === cat
-                                    ? "bg-primary text-slate-900 shadow-md shadow-primary/20"
-                                    : "bg-slate-50 text-slate-500 border border-slate-100"
-                                    }`}
-                            >
-                                {cat}
-                            </button>
-                        ))}
-                    </div>
-                </div>
-
-                {/* Menu List */}
-                <div className="px-5 pb-32 flex-1 mt-4 space-y-4">
-                    {filteredProducts.map((product) => (
-                        <div
-                            key={product.id}
-                            className="flex gap-4 py-4 border-b border-slate-50 items-center cursor-pointer group"
-                            onClick={() => {
-                                setSelectedProduct(product);
-                                setSelectedVariant(null);
-                                setSelectionQty(1);
-                                setSelectionNote('');
-                            }}
+                <div className="flex gap-2 overflow-x-auto px-5 py-4 scrollbar-none">
+                    {categories.map((cat) => (
+                        <button
+                            key={cat}
+                            onClick={() => setActiveCategory(cat)}
+                            className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider whitespace-nowrap transition-all ${
+                                activeCategory === cat
+                                    ? 'bg-slate-900 text-white shadow-md'
+                                    : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
+                            }`}
                         >
-                            <div className="flex-1">
-                                <h3 className="font-bold text-slate-800 text-sm mb-1">{product.name}</h3>
-                                <p className="text-[10px] text-slate-400 line-clamp-2 leading-relaxed mb-2">{product.description}</p>
-                                {product.variants && product.variants.length > 0 ? (
-                                    <div className="w-full flex flex-col gap-2">
-                                        <div className="flex items-center gap-1.5">
-                                            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tight">Desde</span>
-                                            <DualPrice 
-                                                usdAmount={Math.min(...product.variants.map(v => v.price))}
-                                                className="font-black text-slate-900 text-base"
-                                                showDivider={false}
-                                            />
-                                        </div>
-                                        <div className="flex gap-2 flex-wrap">
-                                            {product.variants.map((v, idx) => (
-                                                <div key={idx} className="bg-white border border-slate-100 px-2.5 py-1 rounded-xl flex flex-col gap-0 shadow-sm">
-                                                    <span className="text-[8px] font-black uppercase text-slate-400 leading-none">{v.name}</span>
-                                                    <DualPrice 
-                                                        usdAmount={v.price} 
-                                                        className="text-[11px] font-black text-slate-800 leading-none"
-                                                        showDivider={false}
-                                                    />
-                                                </div>
-                                            ))}
-                                        </div>
-                                    </div>
-                                ) : (
-                                    <div className="flex items-center gap-2">
-                                        {product.promoPrice && product.promoPrice > 0 ? (
-                                            <>
-                                                <DualPrice 
-                                                    usdAmount={product.promoPrice} 
-                                                    className="font-black text-slate-900 text-base"
-                                                    showDivider={false}
-                                                />
-                                                <span className="text-[10px] text-slate-400 line-through font-bold">${product.price.toFixed(2)}</span>
-                                            </>
-                                        ) : (
-                                            <DualPrice 
-                                                usdAmount={product.price || 0} 
-                                                className="font-black text-slate-900 text-base"
-                                                showDivider={false}
-                                            />
-                                        )}
-                                    </div>
-                                )}
-                            </div>
-                            <div className="relative shrink-0 w-24 h-24">
-                                <img
-                                    src={product.image}
-                                    alt={product.name}
-                                    className="w-full h-full object-cover rounded-2xl shadow-sm bg-slate-50"
-                                />
-                                <button
-                                    onClick={(e) => {
-                                        e.stopPropagation();
-                                        setSelectedProduct(product);
-                                        setSelectedVariant(null);
-                                        setSelectionQty(1);
-                                        setSelectionNote('');
-                                    }}
-                                    className="absolute -bottom-2 -right-2 w-8 h-8 bg-primary text-slate-900 rounded-full flex items-center justify-center shadow-lg active:scale-90 transition-transform z-10"
-                                >
-                                    <Plus className="w-5 h-5 font-bold" />
-                                </button>
-                            </div>
-                        </div>
+                            {cat}
+                        </button>
                     ))}
                 </div>
 
-                {/* SELECTION MODAL (Enhanced) */}
+                {/* Products Grid */}
+                <div className="px-5 pb-28 grid grid-cols-1 gap-4 flex-1">
+                    {filteredProducts.map((product) => (
+                        <div 
+                            key={product.id}
+                            onClick={() => {
+                                setSelectedProduct(product);
+                                setSelectedVariant(product.variants && product.variants.length > 0 ? product.variants[0] : null);
+                                setSelectionQty(1);
+                                setSelectionNote('');
+                            }}
+                            className="bg-white p-4 rounded-3xl border border-slate-100 shadow-sm flex items-center justify-between gap-4 cursor-pointer hover:border-slate-200 active:scale-[0.99] transition-all"
+                        >
+                            <div className="flex-1 min-w-0">
+                                <h3 className="font-black text-slate-800 text-base">{product.name}</h3>
+                                {product.description && (
+                                    <p className="text-xs text-slate-400 font-medium line-clamp-2 mt-1">{product.description}</p>
+                                )}
+                                <div className="mt-2 flex items-center gap-2">
+                                    <DualPrice 
+                                        usdAmount={product.promoPrice && product.promoPrice > 0 ? product.promoPrice : (product.price || 0)} 
+                                        className="font-black text-slate-900 text-sm"
+                                        showDivider={true}
+                                    />
+                                    {product.promoPrice && product.promoPrice > 0 && (
+                                        <span className="line-through text-xs text-slate-400 font-bold">
+                                            ${product.price?.toFixed(2)}
+                                        </span>
+                                    )}
+                                </div>
+                            </div>
+
+                            {product.image && (
+                                <div className="w-20 h-20 rounded-2xl bg-slate-100 overflow-hidden shrink-0">
+                                    <img src={product.image} alt={product.name} className="w-full h-full object-cover" />
+                                </div>
+                            )}
+                        </div>
+                    ))}
+
+                    {filteredProducts.length === 0 && (
+                        <div className="text-center py-12 text-slate-400 font-bold text-sm">
+                            No se encontraron productos en esta categoría.
+                        </div>
+                    )}
+                </div>
+
+                {/* Product Detail Modal */}
                 <AnimatePresence>
                     {selectedProduct && (
-                        <div className="fixed inset-0 z-[200] flex items-end justify-center">
-                            <motion.div
+                        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
+                            <motion.div 
                                 initial={{ opacity: 0 }}
                                 animate={{ opacity: 1 }}
                                 exit={{ opacity: 0 }}
-                                className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm"
                                 onClick={() => setSelectedProduct(null)}
+                                className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm"
                             />
-                            <motion.div
-                                initial={{ opacity: 0, y: 100 }}
-                                animate={{ opacity: 1, y: 0 }}
-                                exit={{ opacity: 0, y: 100 }}
-                                className="bg-white rounded-t-[3rem] w-full max-w-lg shadow-2xl overflow-hidden relative z-[210] flex flex-col max-h-[90vh]"
+
+                            <motion.div 
+                                initial={{ y: '100%' }}
+                                animate={{ y: 0 }}
+                                exit={{ y: '100%' }}
+                                transition={{ type: 'spring', damping: 25, stiffness: 200 }}
+                                className="relative w-full max-w-lg bg-white rounded-t-[2.5rem] sm:rounded-[2.5rem] max-h-[85vh] overflow-hidden flex flex-col z-10"
                             >
-                                {/* Header / Image */}
-                                <div className="relative h-56 shrink-0">
-                                    {selectedProduct.image ? (
-                                        <img src={selectedProduct.image} className="w-full h-full object-cover" alt={selectedProduct.name} />
-                                    ) : (
-                                        <div className="w-full h-full flex items-center justify-center text-slate-300 bg-slate-100">
-                                            <Tag className="w-16 h-16" />
-                                        </div>
-                                    )}
+                                {/* Modal Header */}
+                                <div className="p-6 border-b border-slate-100 flex items-center justify-between shrink-0">
+                                    <h2 className="text-xl font-black text-slate-800">{selectedProduct.name}</h2>
                                     <button 
                                         onClick={() => setSelectedProduct(null)}
-                                        className="absolute top-4 right-4 bg-black/20 backdrop-blur-md text-white p-2 rounded-full hover:bg-black/40 transition-colors"
+                                        className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 hover:bg-slate-200"
                                     >
                                         <X className="w-5 h-5" />
                                     </button>
-                                    <div className="absolute bottom-0 left-0 right-0 p-6 bg-gradient-to-t from-black/80 to-transparent">
-                                        <h3 className="text-xl font-black text-white">{selectedProduct.name}</h3>
-                                        <div className="flex items-center gap-1 mt-1 text-white/80 font-bold text-xs">
-                                            <span>{selectedProduct.category} • </span>
-                                            <DualPrice 
-                                                usdAmount={selectedProduct.promoPrice && selectedProduct.promoPrice > 0 ? selectedProduct.promoPrice : selectedProduct.price || 0}
-                                                className="text-white font-bold"
-                                                showDivider={true}
-                                            />
-                                        </div>
-                                    </div>
                                 </div>
 
-                                <div className="flex-1 overflow-y-auto p-6 space-y-6 custom-scrollbar">
-                                    {/* Description */}
-                                    {selectedProduct.description && (
-                                        <div className="space-y-2">
-                                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Descripción</label>
-                                            <p className="text-slate-600 font-medium text-sm leading-relaxed bg-slate-50 p-4 rounded-2xl border border-slate-100">
-                                                {selectedProduct.description}
-                                            </p>
+                                <div className="p-6 overflow-y-auto space-y-6">
+                                    {selectedProduct.image && (
+                                        <div className="w-full h-48 rounded-3xl overflow-hidden bg-slate-100">
+                                            <img src={selectedProduct.image} alt={selectedProduct.name} className="w-full h-full object-cover" />
                                         </div>
                                     )}
 
-                                    {/* Variants selection */}
+                                    {selectedProduct.description && (
+                                        <p className="text-sm text-slate-500 font-medium leading-relaxed">{selectedProduct.description}</p>
+                                    )}
+
+                                    {/* Variants */}
                                     {selectedProduct.variants && selectedProduct.variants.length > 0 && (
                                         <div className="space-y-3">
-                                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Selecciona una Variante <span className="text-red-500 font-bold">*</span></label>
+                                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Elige una opción</label>
                                             <div className="grid grid-cols-1 gap-2">
-                                                {selectedProduct.variants.map((variant: any, idx: number) => (
+                                                {selectedProduct.variants.map((v: any, idx: number) => (
                                                     <button
                                                         key={idx}
-                                                        onClick={() => setSelectedVariant(variant)}
-                                                        className={`flex items-center justify-between p-4 rounded-2xl border-2 transition-all font-bold ${
-                                                            selectedVariant?.name === variant.name 
-                                                            ? 'border-primary bg-primary/5 text-slate-900' 
-                                                            : 'border-slate-100 text-slate-600 hover:border-slate-200 bg-slate-50/50'
+                                                        onClick={() => setSelectedVariant(v)}
+                                                        className={`p-4 rounded-2xl border flex items-center justify-between text-left transition-all ${
+                                                            selectedVariant?.name === v.name
+                                                                ? 'border-primary bg-primary/5 font-black text-slate-900'
+                                                                : 'border-slate-100 hover:border-slate-200 font-bold text-slate-600'
                                                         }`}
                                                     >
-                                                        <div className="flex items-center gap-3">
-                                                            <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${selectedVariant?.name === variant.name ? 'border-primary bg-primary' : 'border-slate-300'}`}>
-                                                                {selectedVariant?.name === variant.name && <div className="w-2 h-2 bg-white rounded-full" />}
-                                                            </div>
-                                                        <span className="text-sm">{variant.name}</span>
-                                                        </div>
-                                                        <DualPrice 
-                                                            usdAmount={variant.price} 
-                                                            className="font-black text-sm"
-                                                            showDivider={false}
-                                                        />
+                                                        <span>{v.name}</span>
+                                                        <DualPrice usdAmount={v.price} className="font-bold text-sm" showDivider={false} />
                                                     </button>
                                                 ))}
                                             </div>
@@ -346,7 +320,7 @@ export default function WaiterMenu() {
                                     )}
 
                                     {/* Quantity and Notes */}
-                                    <div className="space-y-6">
+                                    <div className="space-y-4">
                                         <div className="space-y-3">
                                             <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Cantidad</label>
                                             <div className="flex items-center bg-slate-100 p-1 rounded-2xl w-fit">

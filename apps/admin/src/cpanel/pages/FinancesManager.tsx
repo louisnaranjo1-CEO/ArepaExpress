@@ -1,7 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { doc, getDoc, setDoc, collection, query, onSnapshot, orderBy, updateDoc, addDoc } from 'firebase/firestore';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { db, storage } from '../../lib/firebase';
+import { supabase } from '../../lib/supabase';
 import { Save, Wallet, Receipt, CreditCard, DollarSign, Activity, Image as ImageIcon, UploadCloud, Trash2, Globe, Layout, CheckCircle, XCircle, Store, Bike } from 'lucide-react';
 import toast from 'react-hot-toast';
 
@@ -79,10 +77,14 @@ export default function FinancesManager() {
         const fetchConfig = async () => {
             try {
                 // Fetch Finance Config
-                const financeRef = doc(db, 'system_configs', 'finances');
-                const financeSnap = await getDoc(financeRef);
-                if (financeSnap.exists()) {
-                    const data = financeSnap.data();
+                const { data: finData } = await supabase
+                    .from('app_settings')
+                    .select('*')
+                    .eq('id', 'finances')
+                    .maybeSingle();
+
+                if (finData?.data) {
+                    const data = finData.data;
                     const mergedPaymentMethods = { ...config.paymentMethods };
                     if (data.paymentMethods) {
                         Object.keys(data.paymentMethods).forEach(key => {
@@ -96,10 +98,14 @@ export default function FinancesManager() {
                 }
 
                 // Fetch Subscription Config
-                const subRef = doc(db, 'system_configs', 'subscriptions');
-                const subSnap = await getDoc(subRef);
-                if (subSnap.exists()) {
-                    setSubscriptionConfig(subSnap.data());
+                const { data: subData } = await supabase
+                    .from('app_settings')
+                    .select('*')
+                    .eq('id', 'subscriptions')
+                    .maybeSingle();
+
+                if (subData?.data) {
+                    setSubscriptionConfig(subData.data);
                 }
             } catch (error) {
                 console.error("Error fetching configs:", error);
@@ -111,31 +117,46 @@ export default function FinancesManager() {
 
         const fetchRestaurants = async () => {
             try {
-                const restQuery = query(collection(db, 'restaurants'), orderBy('name'));
-                const unsubscribeRests = onSnapshot(restQuery, (snap) => {
-                    setRestaurants(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-                });
-                return unsubscribeRests;
+                const { data } = await supabase
+                    .from('comercios')
+                    .select('*')
+                    .order('name', { ascending: true });
+                if (data) {
+                    setRestaurants(data.map(r => ({
+                        ...r,
+                        subscriptionEnd: r.subscription_end || r.subscriptionEnd
+                    })));
+                }
             } catch (error) {
                 console.error("Error fetching restaurants for subscriptions:", error);
             }
         };
 
-        fetchConfig();
-        const unsubRestsPromise = fetchRestaurants();
+        const fetchBanners = async () => {
+            try {
+                const { data } = await supabase
+                    .from('banners')
+                    .select('*')
+                    .order('created_at', { ascending: false });
+                if (data) {
+                    setBannerRequests(data);
+                }
+            } catch (error) {
+                console.error("Error fetching banner requests:", error);
+            }
+        };
 
-        // Fetch Banner Requests realtime
-        const bannerQuery = query(collection(db, 'banners'), orderBy('createdAt', 'desc'));
-        const unsubscribe = onSnapshot(bannerQuery, (snap) => {
-            const requests = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-            setBannerRequests(requests);
-        }, (error) => {
-            console.error("Error fetching banner requests:", error);
-        });
+        fetchConfig();
+        fetchRestaurants();
+        fetchBanners();
+
+        const channel = supabase.channel('admin_finances_realtime')
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'comercios' }, () => fetchRestaurants())
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'banners' }, () => fetchBanners())
+            .subscribe();
 
         return () => {
-             unsubscribe();
-             unsubRestsPromise.then(unsub => unsub && unsub());
+            supabase.removeChannel(channel);
         };
     }, []);
 
@@ -143,8 +164,16 @@ export default function FinancesManager() {
         setIsSaving(true);
         try {
             await Promise.all([
-                setDoc(doc(db, 'system_configs', 'finances'), config),
-                setDoc(doc(db, 'system_configs', 'subscriptions'), subscriptionConfig)
+                supabase.from('app_settings').upsert({
+                    id: 'finances',
+                    data: config,
+                    updated_at: new Date().toISOString()
+                }),
+                supabase.from('app_settings').upsert({
+                    id: 'subscriptions',
+                    data: subscriptionConfig,
+                    updated_at: new Date().toISOString()
+                })
             ]);
             toast.success("Configuración guardada correctamente");
         } catch (error) {
@@ -160,12 +189,18 @@ export default function FinancesManager() {
         
         try {
             const nextMonth = new Date();
-            // adding exactly 30 days
             nextMonth.setDate(nextMonth.getDate() + 30);
             
-            await updateDoc(doc(db, 'restaurants', restaurantId), {
-                subscriptionEnd: nextMonth.toISOString()
-            });
+            const { error } = await supabase
+                .from('comercios')
+                .update({
+                    subscription_end: nextMonth.toISOString(),
+                    subscriptionEnd: nextMonth.toISOString()
+                })
+                .eq('id', restaurantId);
+
+            if (error) throw error;
+            setRestaurants(prev => prev.map(r => r.id === restaurantId ? { ...r, subscriptionEnd: nextMonth.toISOString() } : r));
             toast.success("Suscripción renovada por 30 días");
         } catch (error) {
             console.error("Error renewing subscription:", error);
@@ -173,14 +208,18 @@ export default function FinancesManager() {
         }
     };
 
-
-
     const handleUpdateBannerStatus = async (id: string, newStatus: 'approved' | 'rejected') => {
         try {
-            await updateDoc(doc(db, 'banners', id), { 
-                status: newStatus,
-                isActive: newStatus === 'approved' 
-            });
+            const { error } = await supabase
+                .from('banners')
+                .update({ 
+                    status: newStatus,
+                    is_active: newStatus === 'approved' 
+                })
+                .eq('id', id);
+
+            if (error) throw error;
+            setBannerRequests(prev => prev.map(b => b.id === id ? { ...b, status: newStatus, isActive: newStatus === 'approved' } : b));
             toast.success(`Solicitud ${newStatus === 'approved' ? 'aprobada' : 'rechazada'}`);
         } catch (error) {
             console.error(error);
@@ -191,37 +230,36 @@ export default function FinancesManager() {
     const handleLogoUpload = async (methodId: string, file: File) => {
         setUploadingLogo(methodId);
         try {
-            const timestamp = Date.now();
-            const storageRef = ref(storage, `payment_logos/${methodId}_${timestamp}`);
-            const snapshot = await uploadBytes(storageRef, file);
-            const downloadURL = await getDownloadURL(snapshot.ref);
+            const filePath = `payment_logos/${methodId}_${Date.now()}_${file.name.replace(/[^a-zA-Z0-9.-]/g, '_')}`;
+            const { error: upErr } = await supabase.storage.from('store_assets').upload(filePath, file, { upsert: true });
+            if (upErr) throw upErr;
+            const { data: pubData } = supabase.storage.from('store_assets').getPublicUrl(filePath);
+            const downloadURL = pubData.publicUrl;
 
             // 1. Update local state
-            setConfig((prev: any) => ({
-                ...prev,
+            const updatedConfig = {
+                ...config,
                 paymentMethods: {
-                    ...prev.paymentMethods,
+                    ...config.paymentMethods,
                     [methodId]: {
-                        ...prev.paymentMethods[methodId],
+                        ...config.paymentMethods[methodId],
                         logoUrl: downloadURL
                     }
                 }
-            }));
+            };
+            setConfig(updatedConfig);
 
-            // 2. Perform atomic update in Firestore so it's saved immediately
-            const financeRef = doc(db, 'system_configs', 'finances');
-            await updateDoc(financeRef, {
-                [`paymentMethods.${methodId}.logoUrl`]: downloadURL
+            // 2. Perform update in Supabase
+            await supabase.from('app_settings').upsert({
+                id: 'finances',
+                data: updatedConfig,
+                updated_at: new Date().toISOString()
             });
 
             toast.success("Logo guardado correctamente");
         } catch (error: any) {
             console.error("Error uploading logo:", error);
-            if (error.code === 'storage/unauthorized') {
-                toast.error("Permiso denegado. Las reglas de Storage están siendo actualizadas.");
-            } else {
-                toast.error("Error al procesar el logo.");
-            }
+            toast.error("Error al procesar el logo.");
         } finally {
             setUploadingLogo(null);
         }
@@ -238,62 +276,73 @@ export default function FinancesManager() {
     const LogoSection = ({ methodId }: { methodId: string }) => (
         <div className="mt-4 pt-4 border-t border-slate-100 flex items-center gap-4">
             <div className="relative group">
-                <div className="w-16 h-16 rounded-xl bg-slate-100 border border-slate-200 flex items-center justify-center overflow-hidden">
-                    {config.paymentMethods[methodId].logoUrl ? (
-                        <img src={config.paymentMethods[methodId].logoUrl} alt="Logo" className="w-full h-full object-contain" />
+                <div className="w-16 h-16 rounded-2xl border-2 border-dashed border-slate-200 flex items-center justify-center bg-slate-50 overflow-hidden relative">
+                    {config.paymentMethods[methodId]?.logoUrl ? (
+                        <img 
+                            src={config.paymentMethods[methodId]?.logoUrl} 
+                            alt="Logo" 
+                            className="w-full h-full object-contain p-2" 
+                        />
                     ) : (
-                        <ImageIcon className="w-6 h-6 text-slate-400" />
+                        <ImageIcon className="w-6 h-6 text-slate-300" />
+                    )}
+
+                    {uploadingLogo === methodId && (
+                        <div className="absolute inset-0 bg-white/80 backdrop-blur-sm flex items-center justify-center">
+                            <div className="w-5 h-5 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+                        </div>
                     )}
                 </div>
-                {uploadingLogo === methodId && (
-                    <div className="absolute inset-0 bg-white/80 flex items-center justify-center rounded-xl">
-                        <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin"></div>
-                    </div>
-                )}
             </div>
+
             <div className="flex-1">
-                <label className="block text-[10px] font-black text-slate-400 uppercase mb-2">Logo del Método</label>
-                <div className="flex gap-2">
-                    <label className="flex-1 cursor-pointer">
-                        <div className="bg-white border border-slate-200 text-slate-600 px-4 py-2 rounded-xl text-xs font-bold hover:bg-slate-50 transition-colors flex items-center justify-center gap-2">
-                            <UploadCloud className="w-4 h-4" />
-                            {config.paymentMethods[methodId].logoUrl ? 'Cambiar Logo' : 'Subir Logo'}
-                        </div>
-                        <input
-                            type="file"
-                            className="hidden"
-                            accept="image/*"
+                <p className="text-xs font-bold text-slate-700">Logo del Método</p>
+                <p className="text-[10px] text-slate-400">Recomendado PNG transparente 200x200</p>
+                
+                <div className="mt-2 flex items-center gap-2">
+                    <label className="cursor-pointer bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold px-3 py-1.5 rounded-xl transition-all flex items-center gap-1.5">
+                        <UploadCloud className="w-3.5 h-3.5" />
+                        <span>Subir</span>
+                        <input 
+                            type="file" 
+                            accept="image/*" 
+                            className="hidden" 
                             onChange={(e) => {
                                 const file = e.target.files?.[0];
                                 if (file) handleLogoUpload(methodId, file);
                             }}
                         />
                     </label>
-                    <button
-                        onClick={async () => {
-                            if (!window.confirm("¿Seguro que quieres eliminar este logo?")) return;
-                            setConfig((prev: any) => ({
-                                ...prev,
-                                paymentMethods: {
-                                    ...prev.paymentMethods,
-                                    [methodId]: { ...prev.paymentMethods[methodId], logoUrl: '' }
+
+                    {config.paymentMethods[methodId]?.logoUrl && (
+                        <button
+                            type="button"
+                            onClick={async () => {
+                                const updatedConfig = {
+                                    ...config,
+                                    paymentMethods: {
+                                        ...config.paymentMethods,
+                                        [methodId]: { ...config.paymentMethods[methodId], logoUrl: '' }
+                                    }
+                                };
+                                setConfig(updatedConfig);
+                                try {
+                                    await supabase.from('app_settings').upsert({
+                                        id: 'finances',
+                                        data: updatedConfig,
+                                        updated_at: new Date().toISOString()
+                                    });
+                                    toast.success("Logo eliminado");
+                                } catch (err) {
+                                    console.error(err);
+                                    toast.error("Error al actualizar la base de datos");
                                 }
-                            }));
-                            try {
-                                const financeRef = doc(db, 'system_configs', 'finances');
-                                await updateDoc(financeRef, {
-                                    [`paymentMethods.${methodId}.logoUrl`]: ''
-                                });
-                                toast.success("Logo eliminado");
-                            } catch (err) {
-                                console.error(err);
-                                toast.error("Error al actualizar la base de datos");
-                            }
-                        }}
-                        className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-xl transition-all"
-                    >
-                        <Trash2 className="w-4 h-4" />
-                    </button>
+                            }}
+                            className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-xl transition-all"
+                        >
+                            <Trash2 className="w-4 h-4" />
+                        </button>
+                    )}
                 </div>
             </div>
         </div>

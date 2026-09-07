@@ -1,8 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { collection, getDocs, addDoc, deleteDoc, doc, updateDoc, serverTimestamp, setDoc, getDoc } from 'firebase/firestore';
 import { Trash2, Plus, Image as ImageIcon, Clock, ExternalLink, Timer, Upload, AlertCircle, Pencil, Save } from 'lucide-react';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { db, storage } from '../../lib/firebase';
+import { supabase } from '../../lib/supabase';
 import { motion, AnimatePresence } from 'motion/react';
 import { toast } from 'react-hot-toast';
 
@@ -64,12 +62,23 @@ export default function BannersManager() {
 
     const fetchBanners = async () => {
         try {
-            const querySnapshot = await getDocs(collection(db, 'banners'));
-            const data = querySnapshot.docs.map(doc => ({
-                id: doc.id,
-                ...doc.data()
+            const { data, error } = await supabase
+                .from('banners')
+                .select('*')
+                .order('created_at', { ascending: false });
+
+            if (error) throw error;
+            const mapped = (data || []).map(b => ({
+                ...b,
+                imageUrl: b.image_url || b.imageUrl,
+                linkUrl: b.link_url || b.linkUrl,
+                targetScreen: b.target_screen || b.targetScreen,
+                isActive: b.is_active !== undefined ? b.is_active : b.isActive,
+                visibilityScope: b.visibility_scope || b.visibilityScope,
+                targetState: b.target_state || b.targetState,
+                targetCity: b.target_city || b.targetCity
             }));
-            setBanners(data);
+            setBanners(mapped);
         } catch (error) {
             console.error("Error fetching banners: ", error);
         } finally {
@@ -100,24 +109,26 @@ export default function BannersManager() {
 
             const bannerData = {
                 type: 'fidelization',
-                isActive: Boolean(currentBanner.isActive),
+                is_active: Boolean(currentBanner.isActive),
                 title: String(currentBanner.title || ''),
                 explanation: String(currentBanner.explanation || ''),
                 prizes: prizes,
-                imageUrl: String(currentBanner.bannerImageUrl || ''),
-                visibilityScope: currentBanner.visibilityScope || 'national',
-                targetState: currentBanner.targetState || '',
-                targetCity: currentBanner.targetCity || '',
-                linkUrl: '',
+                image_url: String(currentBanner.bannerImageUrl || ''),
+                visibility_scope: currentBanner.visibilityScope || 'national',
+                target_state: currentBanner.targetState || '',
+                target_city: currentBanner.targetCity || '',
+                link_url: '',
                 duration: 5,
-                updatedAt: serverTimestamp()
+                updated_at: new Date().toISOString()
             };
 
             if (editingFidelizationId) {
-                await updateDoc(doc(db, 'banners', editingFidelizationId), bannerData);
+                const { error } = await supabase.from('banners').update(bannerData).eq('id', editingFidelizationId);
+                if (error) throw error;
                 toast.success("Banner de fidelización actualizado");
             } else {
-                await addDoc(collection(db, 'banners'), { ...bannerData, createdAt: serverTimestamp() });
+                const { error } = await supabase.from('banners').insert([{ ...bannerData, created_at: new Date().toISOString() }]);
+                if (error) throw error;
                 toast.success("Banner de fidelización guardado correctamente");
             }
 
@@ -148,9 +159,11 @@ export default function BannersManager() {
         setUploadingBannerImage(true);
         const loadingToast = toast.loading("Subiendo imagen principal...");
         try {
-            const imageRef = ref(storage, `loyalty_prizes/main_banner_${Date.now()}_${file.name}`);
-            await uploadBytes(imageRef, file);
-            const imageUrl = await getDownloadURL(imageRef);
+            const filePath = `loyalty_prizes/main_banner_${Date.now()}_${file.name.replace(/[^a-zA-Z0-9.-]/g, '_')}`;
+            const { error: upErr } = await supabase.storage.from('store_assets').upload(filePath, file, { upsert: true });
+            if (upErr) throw upErr;
+            const { data: pubData } = supabase.storage.from('store_assets').getPublicUrl(filePath);
+            const imageUrl = pubData.publicUrl;
 
             setGlobalBanner(prev => ({ ...prev, bannerImageUrl: imageUrl }));
             toast.success("Imagen subida correctamente", { id: loadingToast });
@@ -169,9 +182,11 @@ export default function BannersManager() {
         }
         setAddingPrize(true);
         try {
-            const imageRef = ref(storage, `loyalty_prizes/${Date.now()}_${newPrize.image.name}`);
-            await uploadBytes(imageRef, newPrize.image);
-            const imageUrl = await getDownloadURL(imageRef);
+            const filePath = `loyalty_prizes/${Date.now()}_${newPrize.image.name.replace(/[^a-zA-Z0-9.-]/g, '_')}`;
+            const { error: upErr } = await supabase.storage.from('store_assets').upload(filePath, newPrize.image, { upsert: true });
+            if (upErr) throw upErr;
+            const { data: pubData } = supabase.storage.from('store_assets').getPublicUrl(filePath);
+            const imageUrl = pubData.publicUrl;
 
             setGlobalBanner(prev => ({
                 ...prev,
@@ -218,25 +233,35 @@ export default function BannersManager() {
             let finalImageUrl = newBanner.imageUrl;
 
             if (selectedFile) {
-                const storageRef = ref(storage, `banners/${Date.now()}_${selectedFile.name}`);
-                const snapshot = await uploadBytes(storageRef, selectedFile);
-                finalImageUrl = await getDownloadURL(snapshot.ref);
+                const filePath = `banners/${Date.now()}_${selectedFile.name.replace(/[^a-zA-Z0-9.-]/g, '_')}`;
+                const { error: upErr } = await supabase.storage.from('store_assets').upload(filePath, selectedFile, { upsert: true });
+                if (upErr) throw upErr;
+                const { data: pubData } = supabase.storage.from('store_assets').getPublicUrl(filePath);
+                finalImageUrl = pubData.publicUrl;
             }
 
             const bannerData = {
-                ...newBanner,
-                imageUrl: finalImageUrl,
-                updatedAt: serverTimestamp(),
-                isActive: true
+                title: newBanner.title,
+                image_url: finalImageUrl,
+                link_url: newBanner.linkUrl,
+                duration: newBanner.duration,
+                type: newBanner.type,
+                visibility_scope: newBanner.visibilityScope,
+                target_state: newBanner.targetState,
+                target_city: newBanner.targetCity,
+                updated_at: new Date().toISOString(),
+                is_active: true
             };
 
             if (editingId) {
-                await updateDoc(doc(db, 'banners', editingId), bannerData);
+                const { error } = await supabase.from('banners').update(bannerData).eq('id', editingId);
+                if (error) throw error;
             } else {
-                await addDoc(collection(db, 'banners'), {
+                const { error } = await supabase.from('banners').insert([{
                     ...bannerData,
-                    createdAt: serverTimestamp(),
-                });
+                    created_at: new Date().toISOString(),
+                }]);
+                if (error) throw error;
             }
 
             setIsAdding(false);
@@ -265,7 +290,8 @@ export default function BannersManager() {
     const handleDelete = async (id: string) => {
         if (!window.confirm("¿Seguro que deseas eliminar este banner?")) return;
         try {
-            await deleteDoc(doc(db, 'banners', id));
+            const { error } = await supabase.from('banners').delete().eq('id', id);
+            if (error) throw error;
             setBanners(prev => prev.filter(b => b.id !== id));
         } catch (error) {
             console.error("Error deleting banner: ", error);
@@ -274,7 +300,8 @@ export default function BannersManager() {
 
     const toggleActive = async (id: string, currentStatus: boolean) => {
         try {
-            await updateDoc(doc(db, 'banners', id), { isActive: !currentStatus });
+            const { error } = await supabase.from('banners').update({ is_active: !currentStatus }).eq('id', id);
+            if (error) throw error;
             setBanners(prev => prev.map(b => b.id === id ? { ...b, isActive: !currentStatus } : b));
         } catch (error) {
             console.error("Error updating status: ", error);

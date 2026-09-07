@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { ArrowLeft, Bell, BellOff, ChevronRight, Clock, Trash2, Utensils } from 'lucide-react';
+import { ArrowLeft, Bell, BellOff, Clock, Trash2, Utensils } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
-import { collection, query, where, orderBy, getDocs, doc, updateDoc, deleteDoc, writeBatch } from 'firebase/firestore';
-import { db } from '../lib/firebase';
+import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
+import toast from 'react-hot-toast';
 
 export default function Notifications() {
     const { user } = useAuth();
@@ -11,36 +11,58 @@ export default function Notifications() {
     const [notifications, setNotifications] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
 
+    const fetchNotifications = async () => {
+        if (!user) return;
+        try {
+            const { data, error } = await supabase
+                .from('notifications')
+                .select('*')
+                .or(`user_id.eq.${user.id},userId.eq.${user.id}`)
+                .order('created_at', { ascending: false });
+
+            if (error) throw error;
+
+            const mapped = (data || []).map((d: any) => ({
+                id: d.id,
+                title: d.title,
+                body: d.body,
+                read: d.read ?? false,
+                restaurantId: d.restaurant_id || d.restaurantId,
+                restaurantName: d.restaurant_name || d.restaurantName || 'Deliexpress',
+                createdAt: d.created_at || d.createdAt
+            }));
+
+            setNotifications(mapped);
+        } catch (error) {
+            console.error("Error fetching notifications:", error);
+        } finally {
+            setLoading(false);
+        }
+    };
+
     useEffect(() => {
         if (!user) return;
-
-        const fetchNotifications = async () => {
-            try {
-                const q = query(
-                    collection(db, 'notifications'),
-                    where('userId', '==', user.uid),
-                    orderBy('createdAt', 'desc')
-                );
-                const querySnapshot = await getDocs(q);
-                const fetched = querySnapshot.docs.map(doc => ({
-                    id: doc.id,
-                    ...doc.data()
-                }));
-                setNotifications(fetched);
-            } catch (error) {
-                console.error("Error fetching notifications:", error);
-            } finally {
-                setLoading(false);
-            }
-        };
-
         fetchNotifications();
+
+        const channel = supabase
+            .channel(`client_notifications_${user.id}`)
+            .on('postgres_changes', {
+                event: '*',
+                schema: 'public',
+                table: 'notifications'
+            }, () => {
+                fetchNotifications();
+            })
+            .subscribe();
+
+        return () => {
+            supabase.removeChannel(channel);
+        };
     }, [user]);
 
     const markAsRead = async (id: string, restaurantId?: string) => {
         try {
-            const notifRef = doc(db, 'notifications', id);
-            await updateDoc(notifRef, { read: true });
+            await supabase.from('notifications').update({ read: true }).eq('id', id);
             setNotifications(prev => prev.map(n => n.id === id ? { ...n, read: true } : n));
 
             if (restaurantId) {
@@ -56,15 +78,12 @@ export default function Notifications() {
         if (!confirm("¿Estás seguro de que quieres eliminar todas las notificaciones?")) return;
 
         try {
-            const batch = writeBatch(db);
-            notifications.forEach(n => {
-                const ref = doc(db, 'notifications', n.id);
-                batch.delete(ref);
-            });
-            await batch.commit();
+            await supabase.from('notifications').delete().or(`user_id.eq.${user.id},userId.eq.${user.id}`);
             setNotifications([]);
+            toast.success("Notificaciones eliminadas");
         } catch (error) {
             console.error("Error clearing notifications:", error);
+            toast.error("Error al eliminar notificaciones");
         }
     };
 
@@ -107,41 +126,44 @@ export default function Notifications() {
                     </div>
                 ) : notifications.length > 0 ? (
                     <div className="space-y-3">
-                        {notifications.map((notif) => (
-                            <button
-                                key={notif.id}
-                                onClick={() => markAsRead(notif.id, notif.restaurantId)}
-                                className={`w-full flex items-start gap-4 p-4 rounded-3xl transition-all border ${notif.read
-                                        ? 'bg-white border-slate-100 opacity-70'
-                                        : 'bg-white border-primary/20 shadow-md shadow-primary/5 ring-1 ring-primary/5'
-                                    }`}
-                            >
-                                <div className={`p-3 rounded-2xl flex-shrink-0 ${notif.read ? 'bg-slate-100 text-slate-400' : 'bg-primary/10 text-slate-900'
-                                    }`}>
-                                    <Utensils className="w-5 h-5" />
-                                </div>
-                                <div className="flex-1 text-left min-w-0">
-                                    <div className="flex items-center justify-between gap-2 mb-1">
-                                        <p className={`text-xs font-black uppercase tracking-wider truncate transition-colors ${notif.read ? 'text-slate-400' : 'text-slate-900'}`}>
-                                            {notif.restaurantName}
-                                        </p>
-                                        <div className="flex items-center gap-1 text-[10px] text-slate-400 font-medium flex-shrink-0">
-                                            <Clock className="w-3 h-3" />
-                                            {notif.createdAt?.toDate ? notif.createdAt.toDate().toLocaleDateString() : 'Hoy'}
-                                        </div>
+                        {notifications.map((notif) => {
+                            const dateStr = notif.createdAt ? new Date(notif.createdAt).toLocaleDateString() : 'Hoy';
+                            return (
+                                <button
+                                    key={notif.id}
+                                    onClick={() => markAsRead(notif.id, notif.restaurantId)}
+                                    className={`w-full flex items-start gap-4 p-4 rounded-3xl transition-all border ${notif.read
+                                            ? 'bg-white border-slate-100 opacity-70'
+                                            : 'bg-white border-primary/20 shadow-md shadow-primary/5 ring-1 ring-primary/5'
+                                        }`}
+                                >
+                                    <div className={`p-3 rounded-2xl flex-shrink-0 ${notif.read ? 'bg-slate-100 text-slate-400' : 'bg-primary/10 text-slate-900'
+                                        }`}>
+                                        <Utensils className="w-5 h-5" />
                                     </div>
-                                    <h4 className={`text-sm font-bold text-slate-900 mb-1 ${notif.read ? 'font-medium' : ''}`}>
-                                        {notif.title}
-                                    </h4>
-                                    <p className="text-[12px] text-slate-500 line-clamp-2 leading-relaxed">
-                                        {notif.body}
-                                    </p>
-                                </div>
-                                {!notif.read && (
-                                    <div className="w-2.5 h-2.5 rounded-full bg-primary mt-1 shadow-sm"></div>
-                                )}
-                            </button>
-                        ))}
+                                    <div className="flex-1 text-left min-w-0">
+                                        <div className="flex items-center justify-between gap-2 mb-1">
+                                            <p className={`text-xs font-black uppercase tracking-wider truncate transition-colors ${notif.read ? 'text-slate-400' : 'text-slate-900'}`}>
+                                                {notif.restaurantName}
+                                            </p>
+                                            <div className="flex items-center gap-1 text-[10px] text-slate-400 font-medium flex-shrink-0">
+                                                <Clock className="w-3 h-3" />
+                                                {dateStr}
+                                            </div>
+                                        </div>
+                                        <h4 className={`text-sm font-bold text-slate-900 mb-1 ${notif.read ? 'font-medium' : ''}`}>
+                                            {notif.title}
+                                        </h4>
+                                        <p className="text-[12px] text-slate-500 line-clamp-2 leading-relaxed">
+                                            {notif.body}
+                                        </p>
+                                    </div>
+                                    {!notif.read && (
+                                        <div className="w-2.5 h-2.5 rounded-full bg-primary mt-1 shadow-sm"></div>
+                                    )}
+                                </button>
+                            );
+                        })}
                     </div>
                 ) : (
                     <div className="flex flex-col items-center justify-center py-20 px-10 text-center space-y-4">

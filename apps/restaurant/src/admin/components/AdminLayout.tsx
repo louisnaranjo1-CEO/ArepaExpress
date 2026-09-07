@@ -1,10 +1,8 @@
 import React from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import { LayoutDashboard, Store, UtensilsCrossed, ClipboardList, LogOut, ChevronRight, Menu, X, Settings, HelpCircle, Trash2, User, ChevronUp, Users, UserCheck, Printer, Key, Mail as MailIcon, AlertTriangle, Grid, CreditCard, Layout, Star, MessageSquare, Megaphone, DollarSign, Gift, Volume2, VolumeX, Shield } from 'lucide-react';
-import { auth, db } from '../../lib/firebase';
 import { useAuth } from '../../context/AuthContext';
 import { updateUserEmail, updateUserPassword } from '../../lib/auth-service';
-import { doc, getDoc, deleteDoc, collection, query, where, onSnapshot, updateDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { supabase } from '../../lib/supabase';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -40,125 +38,112 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
 
     React.useEffect(() => {
         if (!currentUid) return;
+        let isMounted = true;
+
         const fetchRestaurant = async () => {
             try {
-                const docRef = doc(db, 'restaurants', currentUid);
-                const docSnap = await getDoc(docRef);
-                if (docSnap.exists()) {
-                    const data = docSnap.data();
+                const { data, error } = await supabase
+                    .from('comercios')
+                    .select('*')
+                    .eq('id', currentUid)
+                    .maybeSingle();
+
+                if (data) {
+                    if (!isMounted) return;
                     setRestaurantName(data.name || 'Mi Negocio');
-                    if (data.createdAt) {
-                        setCreatedAt(data.createdAt.toDate());
+                    if (data.created_at) {
+                        setCreatedAt(new Date(data.created_at));
                     }
-                    if (data.billingDay && data.billingAmount) {
-                        calculateBilling(data.billingDay, data.billingAmount);
+                    if (data.billing_day && data.billing_amount) {
+                        calculateBilling(data.billing_day, Number(data.billing_amount));
                     }
-                    setAudioAlertsEnabled(data.audioAlertsEnabled ?? true);
-                    setIsActive(data.isActive !== false);
+                    setAudioAlertsEnabled(data.audio_alerts_enabled ?? true);
+                    setIsActive(data.is_active !== false);
                 } else {
                     // Auto-inicializar restaurante si es primera vez que entra con Google o Supabase
                     const defaultName = user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'Mi Negocio';
                     const defaultRest = {
                         id: currentUid,
                         name: defaultName,
-                        email: user?.email || '',
                         rif: 'PROVISIONAL',
                         owner_uid: currentUid,
-                        ownerEmail: user?.email || '',
+                        email: user?.email || '',
                         business_type: 'restaurant',
-                        isActive: true,
-                        isApproved: true,
+                        locations: [],
+                        whatsapp: '',
+                        own_delivery: false,
+                        is_approved: true,
+                        is_active: true,
                         rating: 5.0,
-                        deliveryTime: '30-45 min',
-                        deliveryFee: 1.5,
+                        delivery_time: '30-45 min',
+                        delivery_fee: 1.5,
                         category: 'Varios',
-                        audioAlertsEnabled: true,
-                        createdAt: serverTimestamp(),
-                        updatedAt: serverTimestamp()
+                        audio_alerts_enabled: true
                     };
-                    await setDoc(docRef, defaultRest, { merge: true });
+                    await supabase.from('comercios').insert(defaultRest);
+                    if (!isMounted) return;
                     setRestaurantName(defaultRest.name);
                     setIsActive(true);
-
-                    // Sincronizar en Supabase comercios
-                    try {
-                        const { data: cData } = await supabase.from('comercios').select('id').eq('id', currentUid).maybeSingle();
-                        if (!cData) {
-                            await supabase.from('comercios').insert({
-                                id: currentUid,
-                                name: defaultName,
-                                rif: 'PROVISIONAL',
-                                owner_uid: currentUid,
-                                email: user?.email || '',
-                                business_type: 'restaurant',
-                                locations: [],
-                                whatsapp: '',
-                                own_delivery: false,
-                                is_approved: true,
-                                rating: 5.0,
-                                delivery_time: '30-45 min',
-                                delivery_fee: 1.5,
-                                category: 'Varios'
-                            });
-                        }
-                    } catch (supErr) {
-                        console.warn("Comercios auto-init:", supErr);
-                    }
                 }
             } catch (err) {
                 console.error("Error cargando datos de negocio:", err);
-                setIsActive(true);
+                if (isMounted) setIsActive(true);
             }
         };
+
         const fetchSupport = async () => {
             try {
-                const sRef = doc(db, 'settings', 'customer_service');
-                const sSnap = await getDoc(sRef);
-                if (sSnap.exists()) {
-                    setSupportPhone(sSnap.data().phoneNumber || '');
+                const { data } = await supabase
+                    .from('app_settings')
+                    .select('*')
+                    .eq('id', 'customer_service')
+                    .maybeSingle();
+                if (data && isMounted) {
+                    setSupportPhone(data.phone_number || data.data?.phoneNumber || '');
                 }
             } catch (err) {
                 console.error("Error fetching support settings:", err);
             }
         };
+
         fetchRestaurant();
         fetchSupport();
 
-        // Listen for new orders
-        const q = query(collection(db, 'orders'), where('restaurantId', '==', currentUid));
-        let initialLoad = true;
-
-        const unsubscribe = onSnapshot(q, (snapshot) => {
-            if (initialLoad) {
-                initialLoad = false;
-                return;
-            }
-
-            snapshot.docChanges().forEach((change) => {
-                if (change.type === 'added') {
-                    const data = change.doc.data();
-                    // Solo notificar si el estado es 'pending' o 'confirmed' (nuevos)
+        // Listen for new orders via Supabase Realtime
+        const channel = supabase.channel(`admin-layout-orders:${currentUid}`)
+            .on(
+                'postgres_changes',
+                {
+                    event: 'INSERT',
+                    schema: 'public',
+                    table: 'orders',
+                    filter: `restaurant_id=eq.${currentUid}`
+                },
+                (payload) => {
+                    const data = payload.new as any;
                     if (data.status === 'pending' || data.status === 'confirmed') {
                         const newNotification = {
-                            id: change.doc.id,
+                            id: data.id,
                             title: '¡Nuevo Pedido!',
-                            message: `Has recibido un nuevo pedido de ${data.userName} por $${data.total.toFixed(2)}`,
-                            createdAt: new Date().getTime(),
+                            message: `Has recibido un nuevo pedido de ${data.user_name || 'Cliente'} por $${Number(data.total || 0).toFixed(2)}`,
+                            createdAt: Date.now(),
                         };
 
                         setNotifications(prev => [...prev, newNotification]);
 
-                        // Auto-dismiss after 8 seconds
                         setTimeout(() => {
-                            setNotifications(prev => prev.filter(n => n.id !== change.doc.id));
+                            setNotifications(prev => prev.filter(n => n.id !== data.id));
                         }, 8000);
                     }
                 }
-            });
-        });
+            )
+            .subscribe();
 
-        return () => unsubscribe();
-    }, [user]);
+        return () => {
+            isMounted = false;
+            supabase.removeChannel(channel);
+        };
+    }, [user, currentUid]);
 
     const calculateBilling = (billingDay: number, amount: number) => {
         const today = new Date();
@@ -194,7 +179,7 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
     };
 
     const handleLogout = async () => {
-        await auth.signOut();
+        await supabase.auth.signOut();
         navigate('/');
     };
 
@@ -226,9 +211,8 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
     const handleDeleteAccount = async () => {
         if (!currentUid) return;
         try {
-            await deleteDoc(doc(db, 'restaurants', currentUid));
-            // In a real app, we'd also delete the auth user, but for demo we just sign out
-            await auth.signOut();
+            await supabase.from('comercios').delete().eq('id', currentUid);
+            await supabase.auth.signOut();
             navigate('/');
         } catch (error) {
             console.error("Error deleting account:", error);
@@ -242,9 +226,9 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
         try {
             const newValue = !audioAlertsEnabled;
             setAudioAlertsEnabled(newValue);
-            await updateDoc(doc(db, 'restaurants', currentUid), {
-                audioAlertsEnabled: newValue
-            });
+            await supabase.from('comercios').update({
+                audio_alerts_enabled: newValue
+            }).eq('id', currentUid);
         } catch (error) {
             console.error("Error toggling audio alerts:", error);
             setAudioAlertsEnabled(!audioAlertsEnabled); // Revert
@@ -290,7 +274,8 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
                         <div className="flex items-center gap-3 cursor-pointer active:scale-95 transition-transform" onClick={() => window.location.href = 'https://deliexpress.app'}>
                             <div className="w-14 h-14 flex items-center justify-center p-1 overflow-visible">
                                 <img
-                                    src="https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/logo.png?alt=media&v=1.1"
+                                    src="https://xfialzrbbsdzzcjtefqo.supabase.co/storage/v1/object/public/store_assets/logo.png"
+                                    onError={(e: any) => { e.currentTarget.src = '/logo.png'; }}
                                     alt="Encontrado en un 2x3"
                                     className="w-full h-full object-contain filter drop-shadow-sm brightness-110"
                                 />

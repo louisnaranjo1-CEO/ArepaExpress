@@ -29,9 +29,6 @@ import {
     ChevronUp,
     CreditCard
 } from 'lucide-react';
-import { db, storage } from '../../lib/firebase';
-import { doc, getDoc, updateDoc, setDoc, collection, getDocs, orderBy, query } from 'firebase/firestore';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { useAuth } from '../../context/AuthContext';
 import AddressPicker from '../../components/AddressPicker';
 import { VENEZUELA_DATA, VENEZUELA_STATES } from '../../lib/venezuelaData';
@@ -177,11 +174,17 @@ export default function RestaurantProfile() {
 
         const fetchRestaurant = async () => {
             try {
-                const docRef = doc(db, 'restaurants', rid);
-                const docSnap = await getDoc(docRef);
+                const { data, error } = await supabase
+                    .from('comercios')
+                    .select('*')
+                    .eq('id', rid)
+                    .single();
 
-                if (docSnap.exists()) {
-                    const data = docSnap.data();
+                if (error && error.code !== 'PGRST116') {
+                    console.error("Error fetching restaurant from Supabase:", error);
+                }
+
+                if (data) {
                     setName(data.name || '');
 
                     // Parse RIF (handle prefixes J, V, G, E, C)
@@ -204,7 +207,7 @@ export default function RestaurantProfile() {
                     }
 
                     // Company type
-                    setCompanyType(data.companyType || 'CA');
+                    setCompanyType(data.company_type || data.companyType || 'CA');
 
                     // Parse WhatsApp (strictly 10 digits, +58 locked)
                     const rawWhatsapp = (data.whatsapp || '').trim();
@@ -216,33 +219,34 @@ export default function RestaurantProfile() {
                     }
                     setWhatsappNumber(cleanedWa.slice(0, 10));
 
-                    setOwnDelivery(data.ownDelivery || false);
-                    setAppDelivery(data.appDelivery || false);
-                    setPickupOnly(data.pickupOnly || false);
-                    setDeliveryTime(data.deliveryTime || '30-45 min');
-                    setLogoUrl(data.logoUrl || '');
-                    setCoverUrl(data.coverUrl || '');
+                    setOwnDelivery(data.own_delivery ?? data.ownDelivery ?? false);
+                    setAppDelivery(data.app_delivery ?? data.appDelivery ?? false);
+                    setPickupOnly(data.pickup_only ?? data.pickupOnly ?? false);
+                    setDeliveryTime(data.delivery_time || data.deliveryTime || '30-45 min');
+                    setLogoUrl(data.logo_url || data.logoUrl || data.image || '');
+                    setCoverUrl(data.cover_url || data.coverUrl || '');
                     setLocation(data.location || (data.locations && data.locations.length > 0 ? data.locations[0] : null));
-                    setDeliveryRates(data.deliveryRates || []);
-                    setWorkingHours(data.workingHours || DEFAULT_WORKING_HOURS);
-                    setFollowerCount(data.followerCount || 0);
-                    setSocialLinks(data.socialLinks || []);
-                    setCategoryId(data.categoryId || (data.category ? data.category : ''));
-                    setSubCategoryId(data.subCategoryId || '');
-                    setHasCashea(data.hasCashea || false);
-                    setCasheaQrUrl(data.casheaQrUrl || '');
-                    setHasTwoByThree(data.hasTwoByThree || false);
-                    setTwoByThreeInitial(data.twoByThreeInitial || 50);
-                    setTwoByThreeInstallments(data.twoByThreeInstallments || 2);
-                    setBusinessType(data.businessType || 'restaurant');
-                    setPaymentMethods(data.paymentMethods || []);
+                    setDeliveryRates(data.delivery_rates || data.deliveryRates || []);
+                    setWorkingHours(data.working_hours || data.workingHours || DEFAULT_WORKING_HOURS);
+                    setFollowerCount(data.follower_count || data.followerCount || 0);
+                    setSocialLinks(data.social_links || data.socialLinks || []);
+                    setCategoryId(data.category_id || data.categoryId || (data.category ? data.category : ''));
+                    setSubCategoryId(data.sub_category_id || data.subCategoryId || '');
+                    setHasCashea(data.has_cashea ?? data.hasCashea ?? false);
+                    setCasheaQrUrl(data.cashea_qr_url || data.casheaQrUrl || '');
+                    setHasTwoByThree(data.has_two_by_three ?? data.hasTwoByThree ?? false);
+                    setTwoByThreeInitial(data.two_by_three_initial ?? data.twoByThreeInitial ?? 50);
+                    setTwoByThreeInstallments(data.two_by_three_installments ?? data.twoByThreeInstallments ?? 2);
+                    setBusinessType(data.business_type || data.businessType || 'restaurant');
+                    setPaymentMethods(data.payment_methods || data.paymentMethods || []);
 
-                    // Fetch followers list
-                    const followersRef = collection(db, 'restaurants', rid, 'followers');
-                    const followersQuery = query(followersRef, orderBy('followedAt', 'desc'));
-                    const followersSnap = await getDocs(followersQuery);
-                    const followersList = followersSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-                    setFollowers(followersList);
+                    // Fetch followers list from Supabase
+                    const { data: followersList } = await supabase
+                        .from('restaurant_followers')
+                        .select('*')
+                        .eq('restaurant_id', rid)
+                        .order('created_at', { ascending: false });
+                    setFollowers(followersList || []);
                 }
             } catch (error) {
                 console.error("Error fetching restaurant:", error);
@@ -253,18 +257,16 @@ export default function RestaurantProfile() {
 
         fetchRestaurant();
 
-        // Fetch Global Icons
+        // Fetch Global Icons from Supabase
         const fetchGlobalIcons = async () => {
             try {
-                const iconsSnap = await getDocs(collection(db, 'global_icons'));
-                const icons = iconsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })) as any[];
-                setGlobalIcons(icons);
-
-                const cashea = icons.find(icon => icon.name?.toLowerCase() === 'cashea');
-                if (cashea) {
-                    setCasheaIcon(cashea.url || cashea.imageUrl);
-                } else {
-                    setCasheaIcon("https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/logo%20cashea.png?alt=media&token=5b266100-3323-41bb-a5a4-23957ce678a1");
+                const { data: icons } = await supabase.from('global_icons').select('*');
+                if (icons) {
+                    setGlobalIcons(icons);
+                    const cashea = icons.find((icon: any) => icon.name?.toLowerCase() === 'cashea');
+                    if (cashea) {
+                        setCasheaIcon(cashea.url || cashea.imageUrl || cashea.image_url);
+                    }
                 }
             } catch (err) {
                 console.error("Error fetching global icons:", err);
@@ -272,10 +274,22 @@ export default function RestaurantProfile() {
         };
         fetchGlobalIcons();
 
-        // Fetch Global Categories
+        // Fetch Global Categories from Supabase
         const fetchGlobalCategories = async () => {
-            const catSnap = await getDocs(collection(db, 'global_categories'));
-            setGlobalCategories(catSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+            try {
+                const { data: categories } = await supabase.from('global_categories').select('*').order('name');
+                if (categories) {
+                    setGlobalCategories(categories.map((c: any) => ({
+                        id: c.id,
+                        name: c.name,
+                        parentId: c.parent_id || c.parentId,
+                        icon: c.icon || c.image_url,
+                        isActive: c.is_active !== undefined ? c.is_active : true
+                    })));
+                }
+            } catch (err) {
+                console.error("Error fetching global categories:", err);
+            }
         };
         fetchGlobalCategories();
     }, [user, rid]);
@@ -292,7 +306,7 @@ export default function RestaurantProfile() {
         setWhatsappNumber(digits.slice(0, 10));
     };
 
-    // Categories synchronized from Super Admin (Firestore global_categories)
+    // Categories synchronized from Super Admin (Supabase global_categories)
     const firestoreParents = globalCategories.filter(c => !c.parentId && c.isActive !== false);
     const availableCategories: { id: string; name: string; icon?: string }[] = 
         firestoreParents.length > 0
@@ -337,24 +351,30 @@ export default function RestaurantProfile() {
             let currentLogoUrl = logoUrl;
             let currentCoverUrl = coverUrl;
 
-            // Handle Logo Upload
+            // Handle Logo Upload to Supabase Storage
             if (logoFile) {
                 setUploadingLogo(true);
-                const logoStorageRef = ref(storage, `restaurants/${rid}/logo_${Date.now()}`);
-                const snapshot = await uploadBytes(logoStorageRef, logoFile);
-                currentLogoUrl = await getDownloadURL(snapshot.ref);
+                const ext = logoFile.name.split('.').pop() || 'png';
+                const path = `${rid}/logo_${Date.now()}.${ext}`;
+                const { error: upErr } = await supabase.storage.from('store_assets').upload(path, logoFile, { upsert: true });
+                if (upErr) throw upErr;
+                const { data: urlData } = supabase.storage.from('store_assets').getPublicUrl(path);
+                currentLogoUrl = urlData.publicUrl;
                 setLogoUrl(currentLogoUrl);
                 setLogoFile(null);
                 setLogoPreviewUrl(null);
                 setUploadingLogo(false);
             }
 
-            // Handle Cover Upload
+            // Handle Cover Upload to Supabase Storage
             if (coverFile) {
                 setUploadingCover(true);
-                const coverStorageRef = ref(storage, `restaurants/${rid}/cover_${Date.now()}`);
-                const snapshot = await uploadBytes(coverStorageRef, coverFile);
-                currentCoverUrl = await getDownloadURL(snapshot.ref);
+                const ext = coverFile.name.split('.').pop() || 'png';
+                const path = `${rid}/cover_${Date.now()}.${ext}`;
+                const { error: upErr } = await supabase.storage.from('store_assets').upload(path, coverFile, { upsert: true });
+                if (upErr) throw upErr;
+                const { data: urlData } = supabase.storage.from('store_assets').getPublicUrl(path);
+                currentCoverUrl = urlData.publicUrl;
                 setCoverUrl(currentCoverUrl);
                 setCoverFile(null);
                 setCoverPreviewUrl(null);
@@ -364,9 +384,12 @@ export default function RestaurantProfile() {
             let currentCasheaQrUrl = casheaQrUrl;
             if (casheaQrFile) {
                 setUploadingCasheaQr(true);
-                const casheaStorageRef = ref(storage, `restaurants/${rid}/cashea_qr_${Date.now()}`);
-                const snapshot = await uploadBytes(casheaStorageRef, casheaQrFile);
-                currentCasheaQrUrl = await getDownloadURL(snapshot.ref);
+                const ext = casheaQrFile.name.split('.').pop() || 'png';
+                const path = `${rid}/cashea_qr_${Date.now()}.${ext}`;
+                const { error: upErr } = await supabase.storage.from('store_assets').upload(path, casheaQrFile, { upsert: true });
+                if (upErr) throw upErr;
+                const { data: urlData } = supabase.storage.from('store_assets').getPublicUrl(path);
+                currentCasheaQrUrl = urlData.publicUrl;
                 setCasheaQrUrl(currentCasheaQrUrl);
                 setCasheaQrFile(null);
                 setCasheaQrPreviewUrl(null);
@@ -383,61 +406,46 @@ export default function RestaurantProfile() {
             const formattedRif = rifNumber.trim() ? `${rifPrefix}-${rifNumber.trim()}` : '';
             const fullWhatsapp = whatsappNumber.trim() ? `+58${whatsappNumber.trim()}` : '';
 
-            const docRef = doc(db, 'restaurants', rid as string);
-            
-            // Sanitize data to avoid undefined field errors in Firestore
-            const sanitizedData = JSON.parse(JSON.stringify({
+            const payload = {
+                id: rid,
                 name: name || '',
                 rif: formattedRif,
-                companyType: companyType || 'CA',
+                company_type: companyType || 'CA',
                 whatsapp: fullWhatsapp,
                 category: finalCatName,
-                categoryId: categoryId || '',
-                subCategoryId: subCategoryId || '',
-                businessType: finalBusinessType,
-                ownDelivery: ownDelivery || false,
-                appDelivery: appDelivery || false,
-                pickupOnly: pickupOnly || false,
-                deliveryTime: deliveryTime || '30-45 min',
-                logoUrl: currentLogoUrl || '',
-                coverUrl: currentCoverUrl || '',
+                category_id: categoryId || '',
+                sub_category_id: subCategoryId || '',
+                business_type: finalBusinessType,
+                own_delivery: ownDelivery || false,
+                app_delivery: appDelivery || false,
+                pickup_only: pickupOnly || false,
+                delivery_time: deliveryTime || '30-45 min',
+                logo_url: currentLogoUrl || '',
+                cover_url: currentCoverUrl || '',
+                image: currentLogoUrl || '',
                 location: location || null,
-                deliveryRates: deliveryRates || [],
-                workingHours: workingHours || [],
-                socialLinks: socialLinks || [],
-                hasCashea: hasCashea || false,
-                casheaQrUrl: currentCasheaQrUrl || '',
-                hasTwoByThree: hasTwoByThree || false,
-                twoByThreeInitial: twoByThreeInitial || 50,
-                twoByThreeInstallments: twoByThreeInstallments || 2,
-                paymentMethods: paymentMethods || [],
-                updatedAt: new Date().toISOString()
-            }));
+                locations: location ? [location] : [],
+                delivery_rates: deliveryRates || [],
+                working_hours: workingHours || [],
+                social_links: socialLinks || [],
+                has_cashea: hasCashea || false,
+                cashea_qr_url: currentCasheaQrUrl || '',
+                has_two_by_three: hasTwoByThree || false,
+                two_by_three_initial: twoByThreeInitial || 50,
+                two_by_three_installments: twoByThreeInstallments || 2,
+                payment_methods: paymentMethods || [],
+                updated_at: new Date().toISOString()
+            };
 
-            await setDoc(docRef, sanitizedData, { merge: true });
+            const { error: saveErr } = await supabase.from('comercios').upsert(payload);
+            if (saveErr) throw saveErr;
 
-            // Sincronizar en Supabase comercios
-            try {
-                await supabase.from('comercios').upsert({
-                    id: rid,
-                    name: name || '',
-                    rif: formattedRif,
-                    company_type: companyType || 'CA',
-                    whatsapp: fullWhatsapp,
-                    business_type: finalBusinessType,
-                    category: finalCatName,
-                    updated_at: new Date().toISOString()
-                });
-            } catch (sbErr) {
-                console.warn("Supabase comercios sync note:", sbErr);
-            }
-
-            console.log("Restaurant profile updated successfully");
+            console.log("Restaurant profile updated successfully via Supabase");
             setSaved(true);
             setTimeout(() => setSaved(false), 3000);
         } catch (error) {
             console.error("Error updating restaurant:", error);
-            alert("Error al guardar los cambios. Por favor, verifica tu conexión o los permisos de almacenamiento.");
+            alert("Error al guardar los cambios en la base de datos.");
         } finally {
             setIsSaving(false);
             setUploadingLogo(false);
@@ -1098,7 +1106,7 @@ export default function RestaurantProfile() {
                                 <div className="flex items-center gap-3">
                                     <div className={`w-12 h-12 rounded-xl flex items-center justify-center transition-all ${hasCashea ? 'bg-yellow-400 shadow-lg shadow-yellow-400/30 ring-4 ring-yellow-500/10' : 'bg-white shadow-sm border border-slate-100'}`}>
                                         <img
-                                            src={casheaIcon || "https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/logo%20cashea.png?alt=media&token=5b266100-3323-41bb-a5a4-23957ce678a1"}
+                                            src={casheaIcon || "https://xfialzrbbsdzzcjtefqo.supabase.co/storage/v1/object/public/store_assets/logo_cashea.png"}
                                             className={`w-8 h-8 object-contain transition-all ${hasCashea ? 'scale-110' : ''}`}
                                             alt="Cashea"
                                         />

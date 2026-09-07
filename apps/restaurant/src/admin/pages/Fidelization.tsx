@@ -1,8 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Gift, Sparkles, Award, TrendingUp, Search, User as UserIcon, Loader2, ChevronRight, Star, ShoppingBag, Plus, Filter, X, CheckCircle2, MessageSquare, Bell, Users, Trash2 } from 'lucide-react';
-import { db, storage } from '../../lib/firebase';
-import { collection, query, getDocs, doc, getDoc, where, orderBy, setDoc, addDoc, serverTimestamp, deleteDoc, updateDoc } from 'firebase/firestore';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../context/AuthContext';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -60,20 +58,20 @@ export default function Fidelization() {
     const [loyalClients, setLoyalClients] = useState<LoyalClient[]>([]);
     const [loading, setLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
-    const [pointRatio, setPointRatio] = useState(2.5);
+    const [pointRatio, setPointRatio] = useState<number>(10); // Default 10 points per $
     const [stats, setStats] = useState({
         totalPointsAwarded: 0,
         avgPointsPerClient: 0,
-        activeCampaigns: 0
     });
 
     // Contests State
     const [contests, setContests] = useState<Contest[]>([]);
-    const [products, setProducts] = useState<Product[]>([]);
     const [isContestModalOpen, setIsContestModalOpen] = useState(false);
     const [runningContest, setRunningContest] = useState(false);
+    const [recentWinners, setRecentWinners] = useState<(ContestWinner & { prize: string })[] | null>(null);
+    const [products, setProducts] = useState<Product[]>([]);
 
-    // Form State
+    // Contest Form State
     const [contestForm, setContestForm] = useState({
         title: '',
         prizes: [''],
@@ -83,24 +81,25 @@ export default function Fidelization() {
             minAge: '',
             maxAge: '',
             gender: 'all',
-            minPurchase: '0'
+            minPurchase: '',
         },
-        whatsappMessage: '¡Hola! 🎉 Has sido seleccionado como ganador de nuestro sorteo. ¡Felicidades! 🎁'
+        whatsappMessage: '¡Hola {nombre}! 🎉 Nos complace informarte que has sido seleccionado como uno de los ganadores de nuestro sorteo especial en {restaurante}. Tu premio: {premio}. ¡Pasa por nuestro local para reclamarlo!'
     });
 
-    // Active Results State
-    const [recentWinners, setRecentWinners] = useState<ContestWinner[] | null>(null);
-
-    // Public Raffle State
+    // Public Raffle / Social Promotion State
     const [publicRaffle, setPublicRaffle] = useState({
         title: '',
         description: '',
+        prize: '',
+        endDate: '',
+        isActive: false,
         image: '',
-        videoLink: '',
-        isActive: false
+        instagram: '',
+        tiktok: '',
+        youtube: ''
     });
-    const [uploadingImage, setUploadingImage] = useState(false);
     const [savingPromotion, setSavingPromotion] = useState(false);
+    const [uploadingImage, setUploadingImage] = useState(false);
 
     useEffect(() => {
         if (!rid) return;
@@ -111,37 +110,28 @@ export default function Fidelization() {
         try {
             setLoading(true);
 
-            // 1. Fetch Ranking Data with index fallback
-            const ordersRef = collection(db, 'orders');
-            const qOrders = query(ordersRef, where('restaurantId', '==', rid), orderBy('createdAt', 'desc'));
-            
-            const fetchOrders = async (queryToUse: any, isFallback = false) => {
-                try {
-                    const snap = await getDocs(queryToUse);
-                    return snap;
-                } catch (err: any) {
-                    if (!isFallback && err.code === 'failed-precondition') {
-                        const fallbackQ = query(ordersRef, where('restaurantId', '==', rid));
-                        return await getDocs(fallbackQ);
-                    }
-                    throw err;
-                }
-            };
+            // 1. Fetch Orders for this restaurant from Supabase
+            const { data: ordersData } = await supabase
+                .from('orders')
+                .select('*')
+                .eq('restaurant_id', rid)
+                .order('created_at', { ascending: false });
 
-            const ordersSnap = await fetchOrders(qOrders);
+            const orders = ordersData || [];
 
             const clientMap = new Map<string, { lastOrder: any, count: number }>();
             let totalRestaurantOrdersValue = 0;
 
-            ordersSnap.docs.forEach(orderDoc => {
-                const data = orderDoc.data() as any;
-                const userId = data.userId;
+            orders.forEach(data => {
+                const userId = data.user_id || data.userId;
                 if (!userId) return;
 
-                totalRestaurantOrdersValue += (data.total || 0);
+                totalRestaurantOrdersValue += Number(data.total || 0);
+
+                const orderDate = data.created_at || data.createdAt;
 
                 if (!clientMap.has(userId)) {
-                    clientMap.set(userId, { lastOrder: data.createdAt, count: 1 });
+                    clientMap.set(userId, { lastOrder: orderDate, count: 1 });
                 } else {
                     const existing = clientMap.get(userId)!;
                     clientMap.set(userId, { ...existing, count: existing.count + 1 });
@@ -151,26 +141,32 @@ export default function Fidelization() {
             const fullClientList: LoyalClient[] = [];
             let totalPointsAccumulated = 0;
 
-            for (const [userId, stats] of clientMap.entries()) {
-                const userRef = doc(db, 'users', userId);
-                const userSnap = await getDoc(userRef);
+            // Fetch Profiles for clients
+            const userIds = Array.from(clientMap.keys());
+            if (userIds.length > 0) {
+                const { data: profilesData } = await supabase
+                    .from('profiles')
+                    .select('*')
+                    .in('id', userIds);
 
-                if (userSnap.exists()) {
-                    const userData = userSnap.data();
-                    const userPoints = userData.points || 0;
+                const profileMap = new Map((profilesData || []).map(p => [p.id, p]));
+
+                for (const [userId, clientStats] of clientMap.entries()) {
+                    const p = profileMap.get(userId);
+                    const userPoints = Number(p?.points || 0);
                     totalPointsAccumulated += userPoints;
 
                     fullClientList.push({
                         id: userId,
-                        name: userData.displayName || userData.name || 'Cliente sin nombre',
-                        email: userData.email,
-                        phone: userData.phone,
-                        photoURL: userData.photoURL || userData.image,
+                        name: p?.full_name || p?.displayName || 'Cliente sin nombre',
+                        email: p?.email,
+                        phone: p?.phone,
+                        photoURL: p?.avatar_url || p?.photoURL,
                         points: userPoints,
-                        totalOrdersAtRestaurant: stats.count,
-                        lastOrderDate: stats.lastOrder,
-                        gender: userData.gender,
-                        age: userData.age
+                        totalOrdersAtRestaurant: clientStats.count,
+                        lastOrderDate: clientStats.lastOrder,
+                        gender: p?.gender,
+                        age: p?.age
                     });
                 }
             }
@@ -184,31 +180,41 @@ export default function Fidelization() {
             }));
 
             // 2. Fetch Restaurant's Products
-            const productsRef = collection(db, 'restaurants', rid, 'products');
-            const productsSnap = await getDocs(productsRef);
-            const prods: Product[] = [];
-            productsSnap.forEach(doc => {
-                prods.push({ id: doc.id, name: doc.data().name, category: doc.data().category });
-            });
-            setProducts(prods);
+            const { data: prodsData } = await supabase
+                .from('products')
+                .select('id, name, category')
+                .eq('restaurant_id', rid);
 
-            // 3. Fetch Past Contests
-            const contestsRef = collection(db, 'restaurants', rid, 'restaurant_contests');
-            const qContests = query(contestsRef, orderBy('createdAt', 'desc'));
-            const contestsSnap = await getDocs(qContests);
-            const fetchedContests: Contest[] = [];
-            contestsSnap.forEach(doc => {
-                fetchedContests.push({ id: doc.id, ...doc.data() } as Contest);
-            });
+            setProducts((prodsData || []).map(p => ({ id: p.id, name: p.name, category: p.category || '' })));
+
+            // 3. Fetch Past Contests from Supabase
+            const { data: contestsData } = await supabase
+                .from('restaurant_contests')
+                .select('*')
+                .eq('restaurant_id', rid)
+                .order('created_at', { ascending: false });
+
+            const fetchedContests: Contest[] = (contestsData || []).map(c => ({
+                id: c.id,
+                title: c.title,
+                prizes: c.prizes || [],
+                winnersCount: c.winners_count || 1,
+                filters: c.filters || {},
+                winners: c.winners || [],
+                whatsappMessage: c.whatsapp_message || '',
+                createdAt: c.created_at ? new Date(c.created_at) : new Date()
+            }));
             setContests(fetchedContests);
 
-            // 4. Fetch Public Raffle / Promotion
-            const resSnap = await getDoc(doc(db, 'restaurants', rid));
-            if (resSnap.exists()) {
-                const resData = resSnap.data();
-                if (resData.activeRaffle) {
-                    setPublicRaffle(resData.activeRaffle);
-                }
+            // 4. Fetch Public Raffle / Promotion from comercios
+            const { data: resData } = await supabase
+                .from('comercios')
+                .select('name, active_raffle, social_promotion')
+                .eq('id', rid)
+                .maybeSingle();
+
+            if (resData?.active_raffle || resData?.social_promotion) {
+                setPublicRaffle(resData.active_raffle || resData.social_promotion);
             }
 
         } catch (error) {
@@ -236,7 +242,8 @@ export default function Fidelization() {
     const handleDeleteContest = async (contestId: string) => {
         if (!rid || !window.confirm('¿Estás seguro de que deseas eliminar este registro de sorteo?')) return;
         try {
-            await deleteDoc(doc(db, 'restaurants', rid, 'restaurant_contests', contestId));
+            const { error } = await supabase.from('restaurant_contests').delete().eq('id', contestId);
+            if (error) throw error;
             setContests(contests.filter(c => c.id !== contestId));
             toast.success("Sorteo eliminado correctamente");
         } catch (error) {
@@ -255,19 +262,21 @@ export default function Fidelization() {
             // STEP 1: Find eligible orders based on filters
             const minPurchase = parseFloat(contestForm.filters.minPurchase) || 0;
 
-            const ordersRef = collection(db, 'orders');
-            const qOrders = query(ordersRef, where('restaurantId', '==', rid));
-            const ordersSnap = await getDocs(qOrders);
+            const { data: ordersData, error: ordersErr } = await supabase
+                .from('orders')
+                .select('*')
+                .eq('restaurant_id', rid);
+
+            if (ordersErr) console.error("Error querying orders:", ordersErr);
 
             let eligibleUserIds = new Set<string>();
 
-            ordersSnap.docs.forEach(docSnap => {
-                const data = docSnap.data() as any;
-                const userId = data.userId;
+            (ordersData || []).forEach(data => {
+                const userId = data.user_id || data.userId;
                 if (!userId) return;
 
                 // Validate minimum purchase
-                if (data.total < minPurchase) return;
+                if (Number(data.total || 0) < minPurchase) return;
 
                 // Validate product if specific product selected
                 if (contestForm.filters.productId !== 'all') {
@@ -287,24 +296,26 @@ export default function Fidelization() {
             const targetGender = contestForm.filters.gender;
 
             for (const userId of Array.from(eligibleUserIds)) {
-                // To avoid multiple DB calls, we can reuse loyalClients if the user has ordered before
                 let knownClient = loyalClients.find(c => c.id === userId);
 
                 let checkAge = knownClient?.age;
                 let checkGender = knownClient?.gender;
 
-                // If not in loyalClients (unlikely if they just ordered, but possible), or missing demographic, we fetch
                 if (!knownClient || checkAge === undefined || checkGender === undefined) {
-                    const uSnap = await getDoc(doc(db, 'users', userId));
-                    if (uSnap.exists()) {
-                        const uData = uSnap.data();
+                    const { data: uData } = await supabase
+                        .from('profiles')
+                        .select('*')
+                        .eq('id', userId)
+                        .maybeSingle();
+
+                    if (uData) {
                         checkAge = uData.age;
                         checkGender = uData.gender;
 
                         if (!knownClient) {
                             knownClient = {
                                 id: userId,
-                                name: uData.displayName || uData.name || 'Usuario',
+                                name: uData.full_name || uData.displayName || 'Usuario',
                                 phone: uData.phone || '',
                                 points: 0, totalOrdersAtRestaurant: 1, lastOrderDate: null
                             };
@@ -345,41 +356,59 @@ export default function Fidelization() {
                 userId: c.id,
                 name: c.name,
                 phone: c.phone,
-                prize: contestForm.prizes[idx] || contestForm.prizes[0] // fallback to first prize if something went wrong
+                prize: contestForm.prizes[idx] || contestForm.prizes[0]
             }));
 
             // STEP 4: Save Contest to Database
-            const resSnap = await getDoc(doc(db, 'restaurants', rid));
-            const restaurantName = resSnap.data()?.name || 'El Restaurante';
+            const { data: resData } = await supabase
+                .from('comercios')
+                .select('name')
+                .eq('id', rid)
+                .maybeSingle();
+
+            const restaurantName = resData?.name || 'El Restaurante';
 
             const contestData = {
+                restaurant_id: rid,
                 title: contestForm.title,
                 prizes: contestForm.prizes,
-                winnersCount: winnersCount,
+                winners_count: winnersCount,
                 filters: contestForm.filters,
                 winners: selectedWinners,
-                whatsappMessage: contestForm.whatsappMessage,
-                createdAt: serverTimestamp()
+                whatsapp_message: contestForm.whatsappMessage,
             };
 
-            const contestsRef = collection(db, 'restaurants', rid, 'restaurant_contests');
-            const newContestRef = await addDoc(contestsRef, contestData);
+            const { data: newContest, error: cErr } = await supabase
+                .from('restaurant_contests')
+                .insert(contestData)
+                .select()
+                .single();
+
+            if (cErr) throw cErr;
 
             // STEP 5: Send In-App Notifications
             for (const winner of selectedWinners) {
-                await addDoc(collection(db, 'notifications'), {
-                    userId: winner.userId,
-                    restaurantId: rid,
+                await supabase.from('notifications').insert({
+                    user_id: winner.userId,
+                    restaurant_id: rid,
                     title: `¡Ganaste en ${restaurantName}! 🎉`,
                     body: `Has sido seleccionado como ganador del sorteo "${contestForm.title}". Premio: ${winner.prize}. ¡Felicidades!`,
                     read: false,
-                    createdAt: serverTimestamp()
                 });
             }
 
             // Update local state
             setRecentWinners(selectedWinners);
-            setContests([{ id: newContestRef.id, ...contestData, createdAt: new Date() } as Contest, ...contests]);
+            setContests([{
+                id: newContest.id,
+                title: newContest.title,
+                prizes: newContest.prizes,
+                winnersCount: newContest.winners_count,
+                filters: newContest.filters,
+                winners: newContest.winners,
+                whatsappMessage: newContest.whatsapp_message,
+                createdAt: new Date()
+            }, ...contests]);
 
             // Success
             setIsContestModalOpen(false);
@@ -402,9 +431,14 @@ export default function Fidelization() {
         if (!rid) return;
         setSavingPromotion(true);
         try {
-            await updateDoc(doc(db, 'restaurants', rid), {
-                activeRaffle: publicRaffle
-            });
+            const { error } = await supabase
+                .from('comercios')
+                .update({
+                    active_raffle: publicRaffle
+                })
+                .eq('id', rid);
+
+            if (error) throw error;
             toast.success("Anuncio de sorteo actualizado correctamente");
         } catch (error) {
             console.error("Error saving promotion:", error);
@@ -420,10 +454,19 @@ export default function Fidelization() {
 
         setUploadingImage(true);
         try {
-            const storageRef = ref(storage, `restaurants/${rid}/raffle_${Date.now()}`);
-            await uploadBytes(storageRef, file);
-            const url = await getDownloadURL(storageRef);
-            setPublicRaffle(prev => ({ ...prev, image: url }));
+            const fileExt = file.name.split('.').pop() || 'jpg';
+            const fileName = `restaurants/${rid}/raffle_${Date.now()}.${fileExt}`;
+            const { error: uploadError } = await supabase.storage
+                .from('store_assets')
+                .upload(fileName, file);
+
+            if (uploadError) throw uploadError;
+
+            const { data: { publicUrl } } = supabase.storage
+                .from('store_assets')
+                .getPublicUrl(fileName);
+
+            setPublicRaffle(prev => ({ ...prev, image: publicUrl }));
             toast.success("Imagen subida correctamente");
         } catch (error) {
             console.error("Error uploading image:", error);

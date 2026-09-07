@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { collection, query, onSnapshot, orderBy, doc, updateDoc, addDoc, getDocs, where, writeBatch } from 'firebase/firestore';
-import { db } from '../../lib/firebase';
+import { supabase } from '../../lib/supabase';
 import { DollarSign, Search, CheckCircle, RefreshCw, AlertCircle, TrendingUp, History, User, Copy } from 'lucide-react';
 import toast from 'react-hot-toast';
 import DualPrice from '../../components/DualPrice';
@@ -19,66 +18,80 @@ export default function LiquidationsManager() {
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        // Fetch Restaurants
-        const qResta = query(collection(db, 'restaurants'), orderBy('name'));
-        const unsubResta = onSnapshot(qResta, (snap) => {
-            setRestaurants(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-        });
+        const fetchRestaurants = async () => {
+            const { data } = await supabase.from('comercios').select('*').order('name');
+            if (data) {
+                setRestaurants(data.map(r => ({
+                    ...r,
+                    deuda_delivery_acumulada: r.deuda_delivery_acumulada || 0
+                })));
+            }
+        };
 
-        // Fetch Drivers and Unpaid Earnings
         const fetchDriversAndEarnings = async () => {
             try {
-                const driversSnap = await getDocs(collection(db, 'delivery_drivers'));
-                const driversData = driversSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+                const { data: driversData } = await supabase.from('drivers').select('*');
+                const { data: ordersData } = await supabase.from('orders').select('*').eq('status', 'completed');
+                const { data: transportData } = await supabase.from('transport_requests').select('*').eq('status', 'completed');
 
-                // Realtime unpaid orders
-                const qOrders = query(collection(db, 'orders'), where('status', '==', 'completed'));
-                const unsubOrders = onSnapshot(qOrders, (ordersSnap) => {
-                    const ordersData = ordersSnap.docs.map(d => ({ id: d.id, ...d.data() })) as any[];
-                    
-                    const qTransport = query(collection(db, 'transport_requests'), where('status', '==', 'completed'));
-                    getDocs(qTransport).then((transportSnap) => {
-                        const transportData = transportSnap.docs.map(d => ({ id: d.id, ...d.data() })) as any[];
-                        
-                        const processedDrivers = driversData.map(driver => {
-                            const driverOrders = ordersData.filter(o => o.deliveryDriverId === driver.id && !o.deliveryPaid);
-                            const driverTransports = transportData.filter(t => t.driverId === driver.id && !t.driverPaid);
-                            
-                            const deliverySum = driverOrders.reduce((sum, o) => sum + (o.deliveryFee || 0), 0);
-                            const transportSum = driverTransports.reduce((sum, t) => sum + parseFloat(t.driverPayout || t.price || 0), 0);
-                            
-                            return {
-                                ...driver,
-                                unpaidOrders: driverOrders,
-                                unpaidTransports: driverTransports,
-                                totalUnpaid: deliverySum + transportSum,
-                                hasRequested: driverOrders.some(o => o.paymentRequested) || driverTransports.some(t => t.paymentRequested)
-                            };
-                        });
-                        
-                        setDrivers(processedDrivers.sort((a, b) => b.totalUnpaid - a.totalUnpaid));
-                        setLoading(false);
-                    });
+                const processedDrivers = (driversData || []).map((driver: any) => {
+                    const driverOrders = (ordersData || []).filter((o: any) => 
+                        (o.delivery_driver_id === driver.id || o.deliveryDriverId === driver.id) && 
+                        !o.delivery_paid && !o.deliveryPaid
+                    );
+                    const driverTransports = (transportData || []).filter((t: any) => 
+                        (t.driver_id === driver.id || t.driverId === driver.id) && 
+                        !t.driver_paid && !t.driverPaid
+                    );
+
+                    const deliverySum = driverOrders.reduce((sum: number, o: any) => sum + (o.delivery_fee || o.deliveryFee || 0), 0);
+                    const transportSum = driverTransports.reduce((sum: number, t: any) => sum + parseFloat(t.driver_payout || t.driverPayout || t.price || 0), 0);
+
+                    return {
+                        ...driver,
+                        fullName: driver.full_name || driver.fullName,
+                        unpaidOrders: driverOrders,
+                        unpaidTransports: driverTransports,
+                        totalUnpaid: deliverySum + transportSum,
+                        hasRequested: driverOrders.some((o: any) => o.paymentRequested || o.payment_requested) || driverTransports.some((t: any) => t.paymentRequested || t.payment_requested)
+                    };
                 });
-                return unsubOrders;
+
+                setDrivers(processedDrivers.sort((a: any, b: any) => b.totalUnpaid - a.totalUnpaid));
+                setLoading(false);
             } catch (err) {
                 console.error("Error fetching drivers:", err);
                 setLoading(false);
             }
         };
 
-        const unsubOrdersPromise = fetchDriversAndEarnings();
+        const fetchPayoutsHistory = async () => {
+            const { data } = await supabase.from('payouts_history').select('*').order('paid_at', { ascending: false });
+            if (data) {
+                setPayoutsHistory(data.map(p => ({
+                    ...p,
+                    targetId: p.target_id || p.targetId,
+                    targetName: p.target_name || p.targetName,
+                    targetType: p.target_type || p.targetType,
+                    amountPaid: p.amount_paid !== undefined ? p.amount_paid : p.amountPaid,
+                    paidAt: p.paid_at || p.paidAt
+                })));
+            }
+        };
 
-        // Fetch Payouts History
-        const qHistory = query(collection(db, 'payouts_history'), orderBy('paidAt', 'desc'));
-        const unsubHistory = onSnapshot(qHistory, (snap) => {
-            setPayoutsHistory(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-        });
+        fetchRestaurants();
+        fetchDriversAndEarnings();
+        fetchPayoutsHistory();
+
+        const channel = supabase.channel('liquidations_changes')
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'comercios' }, () => fetchRestaurants())
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, () => fetchDriversAndEarnings())
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'transport_requests' }, () => fetchDriversAndEarnings())
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'payouts_history' }, () => fetchPayoutsHistory())
+            .subscribe();
 
         return () => {
-            unsubResta();
-            unsubOrdersPromise.then((unsub: any) => unsub && unsub());
-            unsubHistory();
+            supabase.removeChannel(channel);
         };
     }, []);
 
@@ -87,20 +100,19 @@ export default function LiquidationsManager() {
         if (!window.confirm(`¿Confirmas que el restaurante ${restaurantName} ha pagado su deuda de $${currentDebt.toFixed(2)} (${bsAmount.toFixed(2)} Bs) por concepto de delivery/repartos?`)) return;
         
         try {
-            const restRef = doc(db, 'restaurants', restaurantId);
-            await updateDoc(restRef, {
+            await supabase.from('comercios').update({
                 deuda_delivery_acumulada: 0
-            });
-            
-            await addDoc(collection(db, 'payouts_history'), {
-                targetId: restaurantId,
-                targetName: restaurantName,
-                targetType: 'restaurant',
-                amountPaid: currentDebt,
-                paidAt: new Date().toISOString(),
+            }).eq('id', restaurantId);
+
+            await supabase.from('payouts_history').insert([{
+                target_id: restaurantId,
+                target_name: restaurantName,
+                target_type: 'restaurant',
+                amount_paid: currentDebt,
+                paid_at: new Date().toISOString(),
                 type: 'debt_cleared',
                 description: 'Deuda por repartos cobrados en local saldada.'
-            });
+            }]);
 
             toast.success("Deuda saldada correctamente");
         } catch (error) {
@@ -114,29 +126,23 @@ export default function LiquidationsManager() {
         if (!window.confirm(`¿Confirmas el pago de $${driver.totalUnpaid.toFixed(2)} (${bsAmount.toFixed(2)} Bs) al piloto ${driver.fullName}?`)) return;
 
         try {
-            const batch = writeBatch(db);
+            for (const o of driver.unpaidOrders) {
+                await supabase.from('orders').update({ delivery_paid: true, deliveryPaid: true }).eq('id', o.id);
+            }
 
-            driver.unpaidOrders.forEach((o: any) => {
-                const ref = doc(db, 'orders', o.id);
-                batch.update(ref, { deliveryPaid: true });
-            });
+            for (const t of driver.unpaidTransports) {
+                await supabase.from('transport_requests').update({ driver_paid: true, driverPaid: true }).eq('id', t.id);
+            }
 
-            driver.unpaidTransports.forEach((t: any) => {
-                const ref = doc(db, 'transport_requests', t.id);
-                batch.update(ref, { driverPaid: true });
-            });
-
-            await batch.commit();
-
-            await addDoc(collection(db, 'payouts_history'), {
-                targetId: driver.id,
-                targetName: driver.fullName,
-                targetType: 'driver',
-                amountPaid: driver.totalUnpaid,
-                paidAt: new Date().toISOString(),
+            await supabase.from('payouts_history').insert([{
+                target_id: driver.id,
+                target_name: driver.fullName,
+                target_type: 'driver',
+                amount_paid: driver.totalUnpaid,
+                paid_at: new Date().toISOString(),
                 type: 'driver_payout',
                 description: `Liquidación de ${driver.unpaidOrders.length} envíos y ${driver.unpaidTransports.length} viajes.`
-            });
+            }]);
 
             toast.success(`Pago procesado a ${driver.fullName}`);
         } catch (error) {

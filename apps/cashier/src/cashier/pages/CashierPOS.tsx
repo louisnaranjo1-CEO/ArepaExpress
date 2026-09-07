@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useParams, useLocation } from 'react-router-dom';
-import { doc, getDoc, collection, getDocs, setDoc, updateDoc, serverTimestamp, query, where } from 'firebase/firestore';
-import { db } from '../../lib/firebase';
+import { supabase } from '../../lib/supabase';
 import { ArrowLeft, Plus, Minus, Trash2, ShoppingBag, CheckCircle, Loader2, Star, Clock, Store, Truck, X, Tag, MessageSquare, MapPin, Instagram, Youtube, Music2, ExternalLink, Search, LayoutGrid, List } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import ReviewsModal from '../components/ReviewsModal';
@@ -59,34 +58,57 @@ export default function CashierPOS() {
             if (!restaurantId) return;
 
             try {
-                // Fetch Restaurant info
-                const resDoc = await getDoc(doc(db, 'restaurants', restaurantId));
-                if (resDoc.exists()) {
-                    setRestaurant({ id: resDoc.id, ...resDoc.data() });
+                // Fetch Restaurant info from Supabase comercios
+                const { data: resDoc } = await supabase
+                    .from('comercios')
+                    .select('*')
+                    .eq('id', restaurantId)
+                    .maybeSingle();
+
+                if (resDoc) {
+                    setRestaurant(resDoc);
                 }
 
                 // Fetch Products
-                const productsRef = collection(db, 'restaurants', restaurantId, 'products');
-                const productsSnap = await getDocs(productsRef);
-                const fetchedProducts = productsSnap.docs.map(p => ({ id: p.id, ...p.data() }));
-                setProducts(fetchedProducts);
+                const { data: productsData } = await supabase
+                    .from('products')
+                    .select('*')
+                    .eq('restaurant_id', restaurantId);
+
+                setProducts(productsData || []);
 
                 // Fetch Tables
-                const tablesRef = collection(db, 'restaurants', restaurantId, 'tables');
-                const tablesSnap = await getDocs(tablesRef);
-                setTables(tablesSnap.docs.map(d => ({ id: d.id, ...d.data() })));
+                const { data: tablesData } = await supabase
+                    .from('restaurant_tables')
+                    .select('*')
+                    .eq('restaurant_id', restaurantId);
+
+                setTables(tablesData || []);
 
                 // Fetch Printer Stations
-                const stationsRef = collection(db, 'restaurants', restaurantId, 'printers');
-                const stationsSnap = await getDocs(stationsRef);
-                setStations(stationsSnap.docs.map(d => ({ id: d.id, ...d.data() })));
+                const { data: stationsData } = await supabase
+                    .from('printers')
+                    .select('*')
+                    .eq('restaurant_id', restaurantId);
+
+                setStations(stationsData || []);
 
                 // Fetch Order if editing specifically by ID
                 if (orderId) {
-                    const orderDoc = await getDoc(doc(db, 'orders', orderId));
-                    if (orderDoc.exists()) {
-                        const data = orderDoc.data();
-                        loadOrderToPOS(orderDoc.id, data);
+                    const { data: orderDoc } = await supabase
+                        .from('orders')
+                        .select('*')
+                        .eq('id', orderId)
+                        .maybeSingle();
+
+                    if (orderDoc) {
+                        loadOrderToPOS(orderDoc.id, {
+                            ...orderDoc,
+                            items: orderDoc.items || [],
+                            paymentMethod: orderDoc.payment_method || orderDoc.paymentMethod,
+                            paymentStatus: orderDoc.payment_status || orderDoc.paymentStatus,
+                            tableNumber: orderDoc.table_number || orderDoc.tableNumber
+                        });
                     }
                 }
             } catch (error) {
@@ -125,18 +147,23 @@ export default function CashierPOS() {
         
         // Search for active order on this table
         try {
-            const ordersRef = collection(db, 'orders');
-            const q = query(
-                ordersRef, 
-                where("restaurantId", "==", restaurantId),
-                where("table", "==", table.number),
-                where("status", "in", ["preparing", "ready"])
-            );
-            const querySnap = await getDocs(q);
+            const { data: activeOrders } = await supabase
+                .from('orders')
+                .select('*')
+                .eq('restaurant_id', restaurantId)
+                .eq('table_number', table.number)
+                .in('status', ['preparing', 'ready', 'pending'])
+                .limit(1);
             
-            if (!querySnap.empty) {
-                const orderDoc = querySnap.docs[0];
-                loadOrderToPOS(orderDoc.id, orderDoc.data());
+            if (activeOrders && activeOrders.length > 0) {
+                const orderDoc = activeOrders[0];
+                loadOrderToPOS(orderDoc.id, {
+                    ...orderDoc,
+                    items: orderDoc.items || [],
+                    paymentMethod: orderDoc.payment_method || orderDoc.paymentMethod,
+                    paymentStatus: orderDoc.payment_status || orderDoc.paymentStatus,
+                    tableNumber: orderDoc.table_number || orderDoc.tableNumber
+                });
             } else {
                 setActiveOrder(null);
                 setCartItems([]);
@@ -305,29 +332,52 @@ export default function CashierPOS() {
 
             if (finalOrderId) {
                 // Update existing order
-                await updateDoc(doc(db, 'orders', finalOrderId), commonData);
+                await supabase.from('orders').update({
+                    items: commonData.items,
+                    subtotal: commonData.subtotal,
+                    total: commonData.total,
+                    status: commonData.status,
+                    payment_status: commonData.paymentStatus,
+                    payment_method: commonData.paymentMethod,
+                    table_number: commonData.table,
+                    is_delivery: commonData.isDelivery || false,
+                    delivery_address: commonData.deliveryAddress || null,
+                    delivery_fee: commonData.deliveryFee || 0,
+                    waiter_id: commonData.waiterId || null,
+                    waiter_name: commonData.waiterName || null
+                }).eq('id', finalOrderId);
             } else {
                 // Create new order
-                const newOrderRef = doc(collection(db, 'orders'));
-                finalOrderId = newOrderRef.id;
-                await setDoc(newOrderRef, {
-                    ...commonData,
-                    userId: 'local_walk_in',
-                    restaurantId,
-                    userName: 'Cliente Local',
+                const { data: newOrder, error: oErr } = await supabase.from('orders').insert({
+                    restaurant_id: restaurantId,
+                    user_id: 'local_walk_in',
+                    user_name: 'Cliente Local',
                     source: 'pos',
-                    createdAt: serverTimestamp(),
-                });
+                    items: commonData.items,
+                    subtotal: commonData.subtotal,
+                    total: commonData.total,
+                    status: commonData.status,
+                    payment_status: commonData.paymentStatus,
+                    payment_method: commonData.paymentMethod,
+                    table_number: commonData.table,
+                    is_delivery: commonData.isDelivery || false,
+                    delivery_address: commonData.deliveryAddress || null,
+                    delivery_fee: commonData.deliveryFee || 0,
+                    waiter_id: commonData.waiterId || null,
+                    waiter_name: commonData.waiterName || null
+                }).select().single();
+
+                if (oErr) throw oErr;
+                finalOrderId = newOrder.id;
 
                 // Update Table status to occupied
                 if (selectedTable) {
-                    const tableRef = doc(db, 'restaurants', restaurantId, 'tables', selectedTable.id);
-                    await updateDoc(tableRef, {
+                    await supabase.from('restaurant_tables').update({
                         status: 'occupied',
-                        lastOrderId: finalOrderId,
-                        waiterId: waiterOrderInfo?.id || 'cashier',
-                        waiterName: waiterOrderInfo?.name || 'Caja/Admin'
-                    });
+                        last_order_id: finalOrderId,
+                        waiter_id: waiterOrderInfo?.id || 'cashier',
+                        waiter_name: waiterOrderInfo?.name || 'Caja/Admin'
+                    }).eq('id', selectedTable.id);
                 }
             }
 
@@ -419,9 +469,9 @@ export default function CashierPOS() {
                 return cleanedItem;
             });
             
-            await updateDoc(doc(db, 'orders', activeOrder.id), {
+            await supabase.from('orders').update({
                 items: updatedItems
-            });
+            }).eq('id', activeOrder.id);
             
             const totalSuccess = printResults.filter(r => r.success).length;
             if (totalSuccess > 0) {

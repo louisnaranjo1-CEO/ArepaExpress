@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { collection, query, orderBy, onSnapshot, doc, updateDoc, serverTimestamp, getDoc, setDoc } from 'firebase/firestore';
-import { db } from '../../lib/firebase';
+import { supabase } from '../../lib/supabase';
 import { MessageSquareWarning, Search, Filter, Clock, CheckCircle, AlertCircle, User, Phone, Mail, Send, X, Settings } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import toast from 'react-hot-toast';
@@ -33,9 +32,14 @@ export default function SupportTicketsManager() {
     useEffect(() => {
         const fetchSettings = async () => {
             try {
-                const settingsDoc = await getDoc(doc(db, 'settings', 'customer_service'));
-                if (settingsDoc.exists()) {
-                    setSupportPhone(settingsDoc.data().supportPhone || '');
+                const { data } = await supabase
+                    .from('app_settings')
+                    .select('*')
+                    .eq('id', 'customer_service')
+                    .maybeSingle();
+
+                if (data) {
+                    setSupportPhone(data.phone_number || data.data?.supportPhone || '');
                 }
             } catch (error) {
                 console.error("Error fetching settings:", error);
@@ -51,10 +55,13 @@ export default function SupportTicketsManager() {
         }
         setSavingSettings(true);
         try {
-            await setDoc(doc(db, 'settings', 'customer_service'), {
-                supportPhone: supportPhone,
-                updatedAt: serverTimestamp()
-            }, { merge: true });
+            const { error } = await supabase.from('app_settings').upsert({
+                id: 'customer_service',
+                phone_number: supportPhone.trim(),
+                data: { supportPhone: supportPhone.trim() },
+                updated_at: new Date().toISOString()
+            });
+            if (error) throw error;
             toast.success('Configuración guardada correctamente');
         } catch (error) {
             console.error("Error saving settings:", error);
@@ -64,29 +71,51 @@ export default function SupportTicketsManager() {
         }
     };
 
+    const fetchTickets = async () => {
+        try {
+            const { data, error } = await supabase
+                .from('support_tickets')
+                .select('*')
+                .order('created_at', { ascending: false });
+
+            if (!error && data) {
+                const fetchedTickets: SupportTicket[] = data.map(d => ({
+                    id: d.id,
+                    userId: d.user_id || d.userId,
+                    userName: d.user_name || d.userName || 'Usuario',
+                    userEmail: d.user_email || d.userEmail || '',
+                    userPhone: d.user_phone || d.userPhone || '',
+                    title: d.title || d.subject || 'Sin título',
+                    description: d.description || '',
+                    status: (d.status === 'closed' ? 'closed' : 'open') as 'open' | 'closed',
+                    createdAt: d.created_at || d.createdAt,
+                    adminResponse: d.admin_response || d.adminResponse
+                }));
+                setTickets(fetchedTickets);
+                if (selectedTicket) {
+                    const updated = fetchedTickets.find(t => t.id === selectedTicket.id);
+                    if (updated) setSelectedTicket(updated);
+                }
+            }
+        } catch (err) {
+            console.error(err);
+        } finally {
+            setLoading(false);
+        }
+    };
 
     useEffect(() => {
-        const q = query(
-            collection(db, 'support_tickets'),
-            orderBy('createdAt', 'desc')
-        );
+        fetchTickets();
 
-        const unsubscribe = onSnapshot(q, (snapshot) => {
-            const fetchedTickets = snapshot.docs.map(doc => ({
-                id: doc.id,
-                ...doc.data()
-            })) as SupportTicket[];
-            setTickets(fetchedTickets);
-            setLoading(false);
-            
-            // Update selected ticket if it's currently open
-            if (selectedTicket) {
-                const updated = fetchedTickets.find(t => t.id === selectedTicket.id);
-                if (updated) setSelectedTicket(updated);
-            }
-        });
+        const channel = supabase.channel('support_tickets_realtime')
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'support_tickets' }, () => {
+                fetchTickets();
+            })
+            .subscribe();
 
-        return () => unsubscribe();
+        return () => {
+            supabase.removeChannel(channel);
+        };
     }, [selectedTicket]);
 
     const filteredTickets = tickets.filter(ticket => {
@@ -109,16 +138,18 @@ export default function SupportTicketsManager() {
 
         setIsSubmitting(true);
         try {
-            const ticketRef = doc(db, 'support_tickets', ticketId);
-            await updateDoc(ticketRef, {
+            const { error } = await supabase.from('support_tickets').update({
                 status: 'closed',
-                adminResponse: adminResponse,
-                updatedAt: serverTimestamp()
-            });
-            
+                admin_response: adminResponse,
+                updated_at: new Date().toISOString()
+            }).eq('id', ticketId);
+
+            if (error) throw error;
+
             toast.success('Ticket respondido y cerrado correctamente');
             setSelectedTicket(null);
             setAdminResponse('');
+            fetchTickets();
         } catch (error) {
             console.error("Error updating ticket:", error);
             toast.error('Error al actualizar el ticket');

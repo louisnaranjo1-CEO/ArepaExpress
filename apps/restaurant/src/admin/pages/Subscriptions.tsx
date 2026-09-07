@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { doc, getDoc, collection, query, where, onSnapshot } from 'firebase/firestore';
-import { db } from '../../lib/firebase';
+import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../context/AuthContext';
 import { CreditCard, CheckCircle2, AlertCircle, Clock, Layout, Globe, Map as MapIcon, MapPin as PinIcon } from 'lucide-react';
 import { format } from 'date-fns';
@@ -24,25 +23,51 @@ export default function Subscriptions() {
 
         // Fetch Global Subscription Config
         const fetchConfig = async () => {
-            const docRef = doc(db, 'system_configs', 'subscriptions');
-            const docSnap = await getDoc(docRef);
-            if (docSnap.exists()) {
-                setSubConfig(docSnap.data());
+            const { data } = await supabase
+                .from('system_settings')
+                .select('*')
+                .eq('id', 'subscriptions')
+                .maybeSingle();
+
+            if (data) {
+                setSubConfig(data.data || data);
             }
         };
 
-        // Listen to Restaurant's Subscription
-        const unsubSub = onSnapshot(doc(db, 'restaurants', rid), (doc) => {
-            if (doc.exists()) {
-                const data = doc.data();
+        // Fetch Restaurant's Subscription
+        const fetchRestaurant = async () => {
+            const { data } = await supabase
+                .from('comercios')
+                .select('*')
+                .eq('id', rid)
+                .maybeSingle();
+
+            if (data) {
                 setRestaurantData(data);
                 setBusinessSub(data.subscription || null);
             }
             setLoading(false);
-        });
+        };
+
+        const channel = supabase.channel(`comercios-sub:${rid}`)
+            .on('postgres_changes', {
+                event: 'UPDATE',
+                schema: 'public',
+                table: 'comercios',
+                filter: `id=eq.${rid}`
+            }, (payload) => {
+                const data = payload.new as any;
+                setRestaurantData(data);
+                setBusinessSub(data.subscription || null);
+            })
+            .subscribe();
 
         fetchConfig();
-        return () => unsubSub();
+        fetchRestaurant();
+
+        return () => {
+            supabase.removeChannel(channel);
+        };
     }, [rid]);
 
     // Calculate Banner Stats based on current month
@@ -53,23 +78,22 @@ export default function Subscriptions() {
         startOfMonth.setDate(1);
         startOfMonth.setHours(0, 0, 0, 0);
 
-        const q = query(
-            collection(db, 'banner_updates'),
-            where('restaurantId', '==', rid),
-            where('timestamp', '>=', startOfMonth)
-        );
+        const fetchBannerStats = async () => {
+            const { count } = await supabase
+                .from('banner_updates')
+                .select('*', { count: 'exact', head: true })
+                .eq('restaurant_id', rid)
+                .gte('timestamp', startOfMonth.toISOString());
 
-        const unsubStats = onSnapshot(q, (snapshot) => {
-            const count = snapshot.size;
             const limit = businessSub.bannerLimit || 3;
             setBannerStats({
-                used: count,
+                used: count || 0,
                 total: limit,
-                remaining: Math.max(0, limit - count)
+                remaining: Math.max(0, limit - (count || 0))
             });
-        });
+        };
 
-        return () => unsubStats();
+        fetchBannerStats();
     }, [rid, businessSub]);
 
     if (loading) {

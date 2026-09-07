@@ -1,8 +1,6 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
-import { doc, onSnapshot, updateDoc, serverTimestamp, query, collection, orderBy, limit, increment, addDoc } from 'firebase/firestore';
-import { ref, getDownloadURL } from 'firebase/storage';
-import { db, storage } from '../lib/firebase';
+import { supabase } from '../lib/supabase';
 import { DeliveryDriver } from '../lib/delivery-service';
 import toast from 'react-hot-toast';
 import { Navigation, Clock, CheckCircle2, Phone, ArrowLeft, Car, ShieldCheck, MessageCircle, Star, XCircle, MapPin, Package } from 'lucide-react';
@@ -77,42 +75,93 @@ export default function TransportTracker() {
     useEffect(() => {
         if (!requestId) return;
 
-        const unsubscribe = onSnapshot(doc(db, 'transport_requests', requestId), (snapshot) => {
-            if (snapshot.exists()) {
-                const requestData = snapshot.data();
-                setRequest(requestData);
-            }
+        supabase.from('transport_requests').select('*').eq('id', requestId).maybeSingle().then(({ data }) => {
+            if (data) setRequest(data);
             setLoading(false);
         });
 
-        return () => unsubscribe();
+        const channel = supabase.channel(`tr_req_${requestId}`)
+            .on('postgres_changes', {
+                event: '*',
+                schema: 'public',
+                table: 'transport_requests',
+                filter: `id=eq.${requestId}`
+            }, (payload) => {
+                if (payload.new) setRequest(payload.new);
+            })
+            .subscribe();
+
+        return () => {
+            supabase.removeChannel(channel);
+        };
     }, [requestId]);
 
     // Escuchar los cambios del conductor en tiempo real (para obtener la ubicación actualizada)
     useEffect(() => {
-        if (!request?.driverId) return;
+        const driverId = request?.driverId || request?.driver_id;
+        if (!driverId) return;
 
-        const unsubscribe = onSnapshot(doc(db, 'delivery_drivers', request.driverId), (dDoc) => {
-            if (dDoc.exists()) {
-                setDriver({ id: dDoc.id, ...dDoc.data() } as DeliveryDriver);
+        supabase.from('delivery_drivers').select('*').eq('id', driverId).maybeSingle().then(({ data }) => {
+            if (data) {
+                const dData: any = { id: data.id, ...data };
+                if (data.current_location && !data.currentLocation) {
+                    dData.currentLocation = data.current_location;
+                }
+                setDriver(dData as DeliveryDriver);
             }
         });
 
-        return () => unsubscribe();
-    }, [request?.driverId]);
+        const dChannel = supabase.channel(`tr_driver_${driverId}`)
+            .on('postgres_changes', {
+                event: '*',
+                schema: 'public',
+                table: 'delivery_drivers',
+                filter: `id=eq.${driverId}`
+            }, (payload) => {
+                if (payload.new) {
+                    const data: any = payload.new;
+                    const dData: any = { id: data.id, ...data };
+                    if (data.current_location && !data.currentLocation) {
+                        dData.currentLocation = data.current_location;
+                    }
+                    setDriver(dData as DeliveryDriver);
+                }
+            })
+            .subscribe();
+
+        const locChannel = supabase.channel(`tr_driver_loc_${driverId}`)
+            .on('postgres_changes', {
+                event: '*',
+                schema: 'public',
+                table: 'driver_locations',
+                filter: `driver_id=eq.${driverId}`
+            }, (payload) => {
+                if (payload.new) {
+                    const loc: any = payload.new;
+                    setDriver((prev: any) => {
+                        if (!prev) return prev;
+                        return {
+                            ...prev,
+                            currentLocation: {
+                                latitude: loc.latitude,
+                                longitude: loc.longitude
+                            }
+                        };
+                    });
+                }
+            })
+            .subscribe();
+
+        return () => {
+            supabase.removeChannel(dChannel);
+            supabase.removeChannel(locChannel);
+        };
+    }, [request?.driverId, request?.driver_id]);
 
     // Fetch notification sound
     useEffect(() => {
-        const fetchSound = async () => {
-            try {
-                const soundRef = ref(storage, 'Digital_Cascade_01.mp3');
-                const url = await getDownloadURL(soundRef);
-                notificationSoundUrl.current = url;
-            } catch (err) {
-                console.error("No se pudo cargar el sonido de notificación:", err);
-            }
-        };
-        fetchSound();
+        const { data } = supabase.storage.from('store_assets').getPublicUrl('Digital_Cascade_01.mp3');
+        notificationSoundUrl.current = data?.publicUrl || '/sounds/notification.mp3';
     }, []);
 
     // Real-time user location tracking (Blue Dot)
@@ -183,32 +232,25 @@ export default function TransportTracker() {
             return;
         }
 
-        const q = query(
-            collection(db, `transport_requests/${requestId}/messages`),
-            orderBy('createdAt', 'desc'),
-            limit(1)
-        );
+        const chatPath = `transport_requests/${requestId}`;
+        const channel = supabase.channel(`passenger_chat_notif_${requestId}`)
+            .on('postgres_changes', {
+                event: 'INSERT',
+                schema: 'public',
+                table: 'messages'
+            }, (payload) => {
+                if (payload.new) {
+                    const data: any = payload.new;
+                    const isForThisChat = data.order_id === requestId || data.orderId === requestId || data.chat_path === chatPath;
+                    const reqUserId = request?.userId || request?.user_id;
+                    const senderId = data.sender_id || data.senderId;
 
-        const unsub = onSnapshot(q, (snapshot) => {
-            if (!snapshot.empty) {
-                const latestMsg = snapshot.docs[0];
-                const data = latestMsg.data();
-                
-                // Si es un mensaje nuevo y es del conductor
-                if (lastChatIdSeen.current !== null && 
-                    lastChatIdSeen.current !== latestMsg.id && 
-                    data.senderId !== request?.userId) {
-                    
-                    const now = Date.now();
-                    const msgTime = data.createdAt?.toMillis() || now;
-                    if (now - msgTime < 30000) {
-                        // Play sound
+                    if (isForThisChat && senderId && senderId !== reqUserId) {
                         if (notificationSoundUrl.current) {
                             const audio = new Audio(notificationSoundUrl.current);
                             audio.play().catch(e => console.error("Error playing chat audio:", e));
                         }
 
-                        // Alerta Visual (Toast)
                         toast((t) => (
                             <div className="flex flex-col gap-1 p-1">
                                 <p className="font-black text-slate-900 text-sm flex items-center gap-2">
@@ -233,14 +275,13 @@ export default function TransportTracker() {
                         setUnreadCount(prev => prev + 1);
                     }
                 }
-                lastChatIdSeen.current = latestMsg.id;
-            } else {
-                lastChatIdSeen.current = "";
-            }
-        });
+            })
+            .subscribe();
 
-        return () => unsub();
-    }, [requestId, showChat, request?.userId]);
+        return () => {
+            supabase.removeChannel(channel);
+        };
+    }, [requestId, showChat, request?.userId, request?.user_id]);
 
     useEffect(() => {
         if (request && ['completed', 'cancelled'].includes(request.status)) {
@@ -274,12 +315,16 @@ export default function TransportTracker() {
         if (!requestId || rating === 0) return;
         setSubmittingRating(true);
         try {
-            await updateDoc(doc(db, 'transport_requests', requestId), {
+            await supabase.from('transport_requests').update({
                 rating,
                 ratingTags: selectedTags,
+                rating_tags: selectedTags,
                 ratingComment: comment,
-                ratedAt: serverTimestamp()
-            });
+                rating_comment: comment,
+                ratedAt: new Date().toISOString(),
+                rated_at: new Date().toISOString(),
+                updated_at: new Date().toISOString()
+            }).eq('id', requestId);
             setHasRated(true);
             toast.success("¡Gracias por tu calificación!");
         } catch (error) {
@@ -294,13 +339,18 @@ export default function TransportTracker() {
         if (!requestId || !request || !lostItemDesc.trim()) return;
         setSubmittingLost(true);
         try {
-            await addDoc(collection(db, 'lost_items'), {
-                requestId,
-                userId: request.userId,
-                driverId: request.driverId,
+            await supabase.from('lost_items').insert({
+                id: crypto.randomUUID(),
+                request_id: requestId,
+                requestId: requestId,
+                user_id: request.userId || request.user_id,
+                userId: request.userId || request.user_id,
+                driver_id: request.driverId || request.driver_id,
+                driverId: request.driverId || request.driver_id,
                 description: lostItemDesc.trim(),
                 status: 'pending',
-                createdAt: serverTimestamp(),
+                created_at: new Date().toISOString(),
+                createdAt: new Date().toISOString()
             });
             setLostItemSent(true);
             setShowLostItem(false);
@@ -317,24 +367,38 @@ export default function TransportTracker() {
         if (!requestId || !request) return;
         if (!confirm("¿Seguro que deseas cancelar esta reserva? El dinero será devuelto a tu billetera virtual.")) return;
         try {
-            await updateDoc(doc(db, 'transport_requests', requestId), {
+            await supabase.from('transport_requests').update({
                 status: 'cancelled',
-                cancelledAt: serverTimestamp()
-            });
+                cancelledAt: new Date().toISOString(),
+                cancelled_at: new Date().toISOString(),
+                updated_at: new Date().toISOString()
+            }).eq('id', requestId);
 
-            if (request.price && request.price > 0 && !request.userId.startsWith('guest_')) {
-                const userRef = doc(db, 'users', request.userId);
-                await updateDoc(userRef, {
-                    walletBalance: increment(request.price)
-                });
+            const userId = request.userId || request.user_id;
+            const price = parseFloat(request.price || 0);
 
-                await addDoc(collection(db, 'wallet_recharges'), {
-                    userId: request.userId,
-                    amount: request.price,
+            if (price > 0 && userId && !userId.startsWith('guest_')) {
+                const { data: profile } = await supabase.from('profiles').select('wallet_balance, "walletBalance"').eq('id', userId).maybeSingle();
+                const currentBal = parseFloat(profile?.wallet_balance || profile?.walletBalance || 0);
+                const newBalance = currentBal + price;
+
+                await supabase.from('profiles').update({
+                    walletBalance: newBalance,
+                    wallet_balance: newBalance,
+                    updated_at: new Date().toISOString()
+                }).eq('id', userId);
+
+                await supabase.from('wallet_recharges').insert({
+                    id: crypto.randomUUID(),
+                    userId: userId,
+                    user_id: userId,
+                    amount: price,
                     status: 'approved',
                     paymentMethod: 'Reembolso',
+                    payment_method: 'Reembolso',
                     reference: 'Cancelación Reserva ' + requestId.slice(0, 6),
-                    createdAt: serverTimestamp(),
+                    created_at: new Date().toISOString(),
+                    createdAt: new Date().toISOString()
                 });
             }
 
@@ -457,7 +521,8 @@ export default function TransportTracker() {
                     <div className="flex flex-col items-center justify-center gap-4 animate-fade-in px-6 w-full h-full pb-20">
                         <div className="w-32 h-32 bg-white rounded-3xl shadow-xl shadow-primary/20 p-5 flex items-center justify-center">
                             <img
-                                src="https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/logo.png?alt=media&v=1.1"
+                                src="https://xfialzrbbsdzzcjtefqo.supabase.co/storage/v1/object/public/store_assets/logo.png"
+                                onError={(e: any) => { e.currentTarget.src = '/logo.png'; }}
                                 alt="Deliexpress Logo"
                                 className="w-full h-full object-contain animate-bounce-subtle"
                             />
@@ -547,7 +612,7 @@ export default function TransportTracker() {
                         </div>
                         <p className="font-bold text-slate-500 text-xs mt-0.5">
                             {request.scheduled && request.status === 'searching' 
-                                ? `Programado para: ${request.scheduledAt && typeof request.scheduledAt.toDate === 'function' ? request.scheduledAt.toDate().toLocaleString('es-VE', { weekday: 'long', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : 'Fecha pendiente'}`
+                                ? `Programado para: ${(request.scheduledAt ? (typeof request.scheduledAt.toDate === 'function' ? request.scheduledAt.toDate() : new Date(request.scheduledAt)) : null)?.toLocaleString('es-VE', { weekday: 'long', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) || 'Fecha pendiente'}`
                                 : statusInfo.subtitle}
                         </p>
                     </div>

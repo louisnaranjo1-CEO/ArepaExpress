@@ -2,10 +2,10 @@ import { Heart, ShoppingBag, ArrowRight, Star } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { doc, getDoc, collection, getDocs } from 'firebase/firestore';
-import { db } from '../lib/firebase';
+import { supabase } from '../lib/supabase';
 import { Restaurant } from '../lib/seed';
 import { requestNotificationPermission } from '../lib/notifications';
+import toast from 'react-hot-toast';
 
 export default function Favorites() {
     const { user, userData } = useAuth();
@@ -21,28 +21,40 @@ export default function Favorites() {
             }
 
             try {
-                const userRef = doc(db, 'users', user.uid);
-                const userSnap = await getDoc(userRef);
+                const { data: prof, error } = await supabase
+                    .from('profiles')
+                    .select('favorites')
+                    .eq('id', user.id)
+                    .maybeSingle();
 
-                if (userSnap.exists()) {
-                    const favoriteIds: string[] = userSnap.data().favorites || [];
+                if (error) throw error;
 
-                    if (favoriteIds.length > 0) {
-                        // Fetch details for each favorite restaurant ID
-                        const restaurantPromises = favoriteIds.map(async (id) => {
-                            const resRef = doc(db, 'restaurants', id);
-                            const resSnap = await getDoc(resRef);
-                            if (resSnap.exists()) {
-                                return { id: resSnap.id, ...resSnap.data() } as Restaurant;
-                            }
-                            return null;
-                        });
+                const favoriteIds: string[] = Array.isArray(prof?.favorites) ? prof.favorites : [];
 
-                        const fetchedRestaurants = (await Promise.all(restaurantPromises)).filter(Boolean) as Restaurant[];
-                        setFavorites(fetchedRestaurants);
-                    } else {
-                        setFavorites([]);
-                    }
+                if (favoriteIds.length > 0) {
+                    const { data: rests, error: restsErr } = await supabase
+                        .from('comercios')
+                        .select('*')
+                        .in('id', favoriteIds);
+
+                    if (restsErr) throw restsErr;
+
+                    const mapped: Restaurant[] = (rests || []).map((r: any) => ({
+                        id: r.id,
+                        name: r.name,
+                        category: r.category,
+                        businessType: r.business_type || r.businessType,
+                        rating: r.rating || 5.0,
+                        reviews: r.reviews || 0,
+                        deliveryTime: r.delivery_time || r.deliveryTime || '30 min',
+                        distance: r.distance || '1.0 km',
+                        image: r.image || r.logo_url || r.logoUrl,
+                        logoUrl: r.logo_url || r.logoUrl
+                    }));
+
+                    setFavorites(mapped);
+                } else {
+                    setFavorites([]);
                 }
             } catch (error) {
                 console.error("Error fetching favorites:", error);
@@ -56,21 +68,21 @@ export default function Favorites() {
 
     const handleActivateNotifications = async () => {
         if (!user) {
-            alert("Debes iniciar sesión para activar las notificaciones.");
+            toast.error("Debes iniciar sesión para activar las notificaciones.");
             return;
         }
 
         setActivatingNotifications(true);
         try {
-            const success = await requestNotificationPermission(user.uid);
-            if (success) {
-                alert("¡Notificaciones activadas con éxito! 🎉");
+            const res = await requestNotificationPermission(user.id);
+            if (res.success) {
+                toast.success("¡Notificaciones activadas con éxito! 🎉");
             } else {
-                alert("No pudimos activar las notificaciones. Asegúrate de dar los permisos necesarios en tu navegador.");
+                toast.error(res.error || "No pudimos activar las notificaciones.");
             }
         } catch (error) {
             console.error("Error activating notifications:", error);
-            alert("Ocurrió un error al activar las notificaciones.");
+            toast.error("Ocurrió un error al activar las notificaciones.");
         } finally {
             setActivatingNotifications(false);
         }
@@ -151,7 +163,7 @@ export default function Favorites() {
                 )}
             </div>
 
-            {!(userData?.fcmTokens && userData.fcmTokens.length > 0) && (
+            {!(userData as any)?.fcm_tokens?.length && (
                 <div className="px-6 mt-8 mb-4 max-w-sm mx-auto">
                     <div className="bg-gradient-to-r from-orange-400 to-primary rounded-[32px] p-8 text-white shadow-xl hover:-translate-y-1 transition-transform cursor-pointer">
                         <h3 className="text-xl font-black leading-tight mb-2">¿Quieres ver más <br />restaurantes?</h3>

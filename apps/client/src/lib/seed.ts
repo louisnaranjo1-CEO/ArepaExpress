@@ -1,5 +1,4 @@
-import { collection, writeBatch, doc, query, where, getDocs } from 'firebase/firestore';
-import { db } from './firebase';
+import { supabase } from './supabase';
 
 export interface ProductVariant {
     name: string;
@@ -181,23 +180,42 @@ const MOCK_RESTAURANTS: Restaurant[] = [
 
 export const seedDatabase = async () => {
     try {
-        const batch = writeBatch(db);
-
         for (const restaurant of MOCK_RESTAURANTS) {
-            const restaurantRef = doc(collection(db, 'restaurants'));
             const { products, ...restaurantData } = restaurant;
 
-            batch.set(restaurantRef, restaurantData);
+            const { data: insertedRest, error: restErr } = await supabase
+                .from('comercios')
+                .insert({
+                    name: restaurantData.name,
+                    category: restaurantData.category,
+                    business_type: restaurantData.businessType,
+                    rating: restaurantData.rating,
+                    reviews: restaurantData.reviews,
+                    delivery_time: restaurantData.deliveryTime,
+                    distance: restaurantData.distance,
+                    image: restaurantData.image,
+                    logo_url: restaurantData.logoUrl,
+                    is_mock: true,
+                    featured: restaurantData.featured
+                })
+                .select('id')
+                .single();
 
-            if (products && products.length > 0) {
-                for (const product of products) {
-                    const productRef = doc(collection(restaurantRef, 'products'));
-                    batch.set(productRef, product);
-                }
+            if (restErr) throw restErr;
+
+            if (insertedRest && products && products.length > 0) {
+                const productsToInsert = products.map(p => ({
+                    comercio_id: insertedRest.id,
+                    name: p.name,
+                    description: p.description,
+                    price: p.price,
+                    image: p.image,
+                    category: p.category
+                }));
+                await supabase.from('products').insert(productsToInsert);
             }
         }
 
-        await batch.commit();
         console.log("✅ Datos de prueba poblando la base de datos con éxito!");
         return true;
     } catch (error) {
@@ -208,25 +226,17 @@ export const seedDatabase = async () => {
 
 export const clearMockDatabase = async () => {
     try {
-        const q = query(collection(db, 'restaurants'), where('isMock', '==', true));
-        const snapshot = await getDocs(q);
+        const { data: mocks } = await supabase
+            .from('comercios')
+            .select('id')
+            .eq('is_mock', true);
 
-        const batch = writeBatch(db);
-        let count = 0;
-
-        for (const docSnap of snapshot.docs) {
-            const productsSnap = await getDocs(collection(db, 'restaurants', docSnap.id, 'products'));
-            for (const productDoc of productsSnap.docs) {
-                batch.delete(doc(db, 'restaurants', docSnap.id, 'products', productDoc.id));
-            }
-            batch.delete(doc(db, 'restaurants', docSnap.id));
-            count++;
-            // Batch limit is 500 operations, but since MOCK_RESTAURANTS has 5 items each with 2 products, it's 15 ops max. Fine for now.
+        if (mocks && mocks.length > 0) {
+            const ids = mocks.map(m => m.id);
+            await supabase.from('products').delete().in('comercio_id', ids);
+            await supabase.from('comercios').delete().in('id', ids);
         }
 
-        if (count > 0) {
-            await batch.commit();
-        }
         console.log("✅ Datos de prueba eliminados con éxito.");
         return true;
     } catch (error) {

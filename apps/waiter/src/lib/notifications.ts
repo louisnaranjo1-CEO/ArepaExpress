@@ -1,6 +1,6 @@
-import { messaging, db } from './firebase';
+import { messaging } from './firebase';
 import { getToken, isSupported } from 'firebase/messaging';
-import { doc, updateDoc, arrayUnion, setDoc } from 'firebase/firestore';
+import { supabase } from './supabase';
 
 export const requestNotificationPermission = async (userId: string) => {
     try {
@@ -24,12 +24,22 @@ export const requestNotificationPermission = async (userId: string) => {
             if (token) {
                 console.log('FCM Token:', token);
 
-                // Save token to user document
-                const userRef = doc(db, 'users', userId);
-                await setDoc(userRef, {
-                    fcmTokens: arrayUnion(token),
-                    notificationsEnabled: true
-                }, { merge: true });
+                // Save token to profile
+                const { data: userProf } = await supabase
+                    .from('profiles')
+                    .select('fcm_tokens')
+                    .eq('id', userId)
+                    .maybeSingle();
+
+                const tokens: string[] = Array.isArray(userProf?.fcm_tokens) ? userProf.fcm_tokens : [];
+                if (!tokens.includes(token)) {
+                    tokens.push(token);
+                }
+
+                await supabase.from('profiles').update({
+                    fcm_tokens: tokens,
+                    notifications_enabled: true
+                }).eq('id', userId);
 
                 return { success: true };
             } else {
@@ -49,11 +59,10 @@ export const requestNotificationPermission = async (userId: string) => {
 
 export const disableNotifications = async (userId: string) => {
     try {
-        const userRef = doc(db, 'users', userId);
-        await updateDoc(userRef, {
-            fcmTokens: [],
-            notificationsEnabled: false
-        });
+        await supabase.from('profiles').update({
+            fcm_tokens: [],
+            notifications_enabled: false
+        }).eq('id', userId);
         return true;
     } catch (error) {
         console.error('An error occurred while disabling notifications:', error);

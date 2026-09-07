@@ -1,6 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { collection, query, where, onSnapshot } from 'firebase/firestore';
-import { db } from '../../lib/firebase';
+import { supabase } from '../../lib/supabase';
 import { motion } from 'motion/react';
 import { Tag, TrendingUp } from 'lucide-react';
 
@@ -27,17 +26,45 @@ export default function ProductTicker({ restaurantId }: ProductTickerProps) {
     useEffect(() => {
         if (!restaurantId) return;
 
-        const productsRef = collection(db, 'restaurants', restaurantId, 'products');
-        const q = query(productsRef, where('isAvailable', '!=', false));
+        const fetchProducts = async () => {
+            const { data } = await supabase
+                .from('products')
+                .select('*')
+                .eq('restaurant_id', restaurantId)
+                .neq('is_available', false);
 
-        const unsubscribe = onSnapshot(q, (snapshot) => {
-            const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Product));
-            // Filter inactive ones manually if the query doesn't handle all cases or if composite index is missing
-            setProducts(data.filter(p => (p as any).isAvailable !== false));
+            if (data) {
+                setProducts(data.map(p => ({
+                    id: p.id,
+                    name: p.name,
+                    price: Number(p.price || 0),
+                    promoPrice: p.promo_price ? Number(p.promo_price) : undefined,
+                    image: p.image_url || p.image,
+                    images: p.images || [],
+                    variants: p.variants || [],
+                    consultPrice: p.consult_price,
+                    category: p.category || ''
+                })));
+            }
             setLoading(false);
-        });
+        };
 
-        return () => unsubscribe();
+        fetchProducts();
+
+        const channel = supabase.channel(`products-ticker:${restaurantId}`)
+            .on('postgres_changes', {
+                event: '*',
+                schema: 'public',
+                table: 'products',
+                filter: `restaurant_id=eq.${restaurantId}`
+            }, () => {
+                fetchProducts();
+            })
+            .subscribe();
+
+        return () => {
+            supabase.removeChannel(channel);
+        };
     }, [restaurantId]);
 
     if (loading || products.length === 0) return null;

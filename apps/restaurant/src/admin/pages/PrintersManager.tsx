@@ -1,7 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Printer, Plus, Search, Trash2, Edit2, Check, X, Loader2, AlertCircle } from 'lucide-react';
-import { db } from '../../lib/firebase';
-import { collection, query, getDocs, doc, addDoc, updateDoc, deleteDoc, onSnapshot } from 'firebase/firestore';
+import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../context/AuthContext';
 import { requestUsbDevice } from '../../lib/usb-printer';
 
@@ -46,23 +45,50 @@ export default function PrintersManager() {
         printerName: ''
     });
 
+    const fetchStations = useCallback(async () => {
+        if (!rid) return;
+        setLoading(true);
+        try {
+            const { data } = await supabase
+                .from('printers')
+                .select('*')
+                .eq('restaurant_id', rid)
+                .order('created_at', { ascending: false });
+
+            if (data) {
+                setStations(data.map((p: any) => ({
+                    id: p.id,
+                    name: p.name,
+                    categories: p.categories || [],
+                    isActive: p.is_active ?? true,
+                    vendorId: p.vendor_id,
+                    productId: p.product_id,
+                    printerName: p.printer_name || '',
+                    createdAt: p.created_at
+                })));
+            }
+        } catch (err) {
+            console.error("Error fetching printers:", err);
+        } finally {
+            setLoading(false);
+        }
+    }, [rid]);
+
     useEffect(() => {
         if (!user || !rid) return;
+        fetchStations();
 
-        const stationsRef = collection(db, 'restaurants', rid, 'printers');
-        const q = query(stationsRef);
+        const channel = supabase
+            .channel(`printers_${rid}`)
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'printers', filter: `restaurant_id=eq.${rid}` }, () => {
+                fetchStations();
+            })
+            .subscribe();
 
-        const unsubscribe = onSnapshot(q, (snapshot) => {
-            const items: Station[] = [];
-            snapshot.forEach((doc) => {
-                items.push({ id: doc.id, ...doc.data() } as Station);
-            });
-            setStations(items.sort((a, b) => b.createdAt?.seconds - a.createdAt?.seconds));
-            setLoading(false);
-        });
-
-        return () => unsubscribe();
-    }, [user, rid]);
+        return () => {
+            supabase.removeChannel(channel);
+        };
+    }, [user, rid, fetchStations]);
 
     const handleOpenModal = (station?: Station) => {
         if (station) {
@@ -91,24 +117,36 @@ export default function PrintersManager() {
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!user || !formData.name.trim()) return;
+        if (!user || !formData.name.trim() || !rid) return;
 
         setSubmitting(true);
         try {
-            const stationsRef = collection(db, 'restaurants', rid, 'printers');
+            const printerPayload: any = {
+                restaurant_id: rid,
+                name: formData.name.trim(),
+                categories: formData.categories || [],
+                is_active: formData.isActive,
+                vendor_id: formData.vendorId || null,
+                product_id: formData.productId || null,
+                printer_name: formData.printerName || '',
+                updated_at: new Date().toISOString()
+            };
 
             if (editingStation) {
-                await updateDoc(doc(db, 'restaurants', rid, 'printers', editingStation.id), {
-                    ...formData,
-                    updatedAt: new Date()
-                });
+                const { error: updErr } = await supabase
+                    .from('printers')
+                    .update(printerPayload)
+                    .eq('id', editingStation.id);
+                if (updErr) throw updErr;
             } else {
-                await addDoc(stationsRef, {
-                    ...formData,
-                    createdAt: new Date()
-                });
+                printerPayload.created_at = new Date().toISOString();
+                const { error: insErr } = await supabase
+                    .from('printers')
+                    .insert(printerPayload);
+                if (insErr) throw insErr;
             }
             setIsModalOpen(false);
+            fetchStations();
         } catch (error) {
             console.error("Error saving station:", error);
             alert("Error al guardar la estación");
@@ -121,7 +159,9 @@ export default function PrintersManager() {
         if (!user || !rid || !window.confirm('¿Estás seguro de eliminar esta estación?')) return;
 
         try {
-            await deleteDoc(doc(db, 'restaurants', rid, 'printers', id));
+            const { error } = await supabase.from('printers').delete().eq('id', id);
+            if (error) throw error;
+            fetchStations();
         } catch (error) {
             console.error("Error deleting station:", error);
             alert("Error al eliminar la estación");

@@ -2,9 +2,7 @@ import { MapPin, ChevronDown, ChevronRight, Bell, Search, SlidersHorizontal, Ute
 import { motion, AnimatePresence } from 'motion/react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useState, useEffect, useMemo } from 'react';
-import { collection, getDocs, query, where, doc, updateDoc, increment, collectionGroup, limit, serverTimestamp } from 'firebase/firestore';
-import { db, auth } from '../lib/firebase';
-import { Restaurant, Product } from '../lib/seed';
+import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import { calculateDistance, formatDistance } from '../lib/geo';
 import CitySelectorModal from '../components/CitySelectorModal';
@@ -108,15 +106,17 @@ export default function Home() {
               const state = addressComponents.find((c: any) => c.types.includes('administrative_area_level_1'))?.short_name;
               if (city && state) {
                 setLocationName(`${city}`);
-                // Sync with Firestore if logged in
-                if (userData?.uid || auth.currentUser?.uid) {
-                  const uid = userData?.uid || auth.currentUser?.uid;
+                // Sync with Supabase if logged in
+                const uid = userData?.uid || userData?.id;
+                if (uid) {
                   try {
-                    await updateDoc(doc(db, 'users', uid), {
+                    await supabase.from('profiles').update({
+                      last_city: city,
                       lastCity: city,
+                      last_state: state,
                       lastState: state,
-                      lastLocationUpdate: serverTimestamp()
-                    });
+                      updated_at: new Date().toISOString()
+                    }).eq('id', uid);
                   } catch (e) {
                     console.error("Error syncing location:", e);
                   }
@@ -141,30 +141,31 @@ export default function Home() {
   useEffect(() => {
     const fetchBanners = async () => {
       try {
-        const querySnapshot = await getDocs(collection(db, 'banners'));
-        const fetchedBanners = querySnapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data()
-        })) as any[];
+        const { data: fetchedBanners } = await supabase
+          .from('banners')
+          .select('*');
 
-        const activeBanners = fetchedBanners.filter(b => b.isActive && (b.type === 'top_banner' || b.type === 'fidelization' || !b.type));
+        const activeBanners = (fetchedBanners || []).filter((b: any) => 
+          (b.is_active ?? b.isActive) && 
+          (b.type === 'top_banner' || b.type === 'fidelization' || !b.type)
+        );
 
         // Location filtering
-        const filteredBanners = activeBanners.filter(banner => {
+        const filteredBanners = activeBanners.filter((banner: any) => {
           if (isDemoMode()) {
-            return banner.visibilityScope === 'national';
+            return (banner.visibility_scope ?? banner.visibilityScope) === 'national';
           }
 
-          const scope = banner.visibilityScope || 'national';
+          const scope = banner.visibility_scope || banner.visibilityScope || 'national';
 
           if (scope === 'national') return true;
 
           if (scope === 'state') {
-            return banner.targetState === manualState;
+            return (banner.target_state || banner.targetState) === manualState;
           }
 
           if (scope === 'city') {
-            return banner.targetCity === manualCity;
+            return (banner.target_city || banner.targetCity) === manualCity;
           }
 
           return false;
@@ -182,10 +183,13 @@ export default function Home() {
       try {
         // Fetch Settings
         try {
-            const settingsSnap = await getDocs(collection(db, 'settings'));
-            const globalSettings = settingsSnap.docs.find(d => d.id === 'global');
+            const { data: globalSettings } = await supabase
+              .from('system_configs')
+              .select('*')
+              .eq('id', 'global')
+              .maybeSingle();
             if (globalSettings) {
-               setCategoryMode(globalSettings.data().categoryMode || 'manual');
+               setCategoryMode(globalSettings.data?.categoryMode || globalSettings.categoryMode || 'manual');
             }
         } catch (e) {
             console.warn("Could not fetch global settings:", e);
@@ -194,12 +198,21 @@ export default function Home() {
         }
 
         // Fetch Categories
-        const categoriesSnap = await getDocs(collection(db, 'global_categories'));
-        const fetchedCategories = categoriesSnap.docs.map(doc => ({
+        const { data: fetchedCategories } = await supabase
+          .from('global_categories')
+          .select('*');
+
+        const cats = (fetchedCategories || []).map((doc: any) => ({
           id: doc.id,
-          ...doc.data()
+          name: doc.name,
+          icon: doc.icon,
+          parentId: doc.parent_id ?? doc.parentId,
+          isActive: doc.is_active ?? doc.isActive,
+          isFeatured: doc.is_featured ?? doc.isFeatured,
+          clickCount: doc.click_count ?? doc.clickCount ?? 0,
+          ...doc
         })) as Category[];
-        setCategories(fetchedCategories.filter(c => c.isActive));
+        setCategories(cats.filter(c => c.isActive));
 
         // Fetch All Restaurants for filtering logic and profiles
         let fetchedRestaurants: Restaurant[] = [];
@@ -225,11 +238,24 @@ export default function Home() {
                 };
             });
         } else {
-            const rQuery = query(collection(db, 'restaurants'));
-            const rSnap = await getDocs(rQuery);
-            fetchedRestaurants = rSnap.docs.map(doc => ({
+            const { data: rSnap } = await supabase
+              .from('comercios')
+              .select('*');
+
+            fetchedRestaurants = (rSnap || []).map((doc: any) => ({
                id: doc.id,
-               ...doc.data()
+               name: doc.name,
+               category: doc.category,
+               whatsapp: doc.whatsapp,
+               image: doc.image_url || doc.image,
+               logoUrl: doc.logo_url || doc.logoUrl || doc.logo,
+               rating: doc.rating,
+               reviews: doc.reviews,
+               isActive: doc.is_active ?? doc.isActive,
+               hasCashea: doc.has_cashea ?? doc.hasCashea,
+               hasTwoByThree: doc.has_two_by_three ?? doc.hasTwoByThree,
+               location: doc.location,
+               ...doc
             })) as Restaurant[];
 
             // Filter inactive restaurants
@@ -281,7 +307,6 @@ export default function Home() {
             }
         }
         setRestaurants(fetchedRestaurants);
-        const cityResIds = new Set(fetchedRestaurants.map(r => r.id));
 
         // Fetch All Products for Recommendations from top restaurants in the area
         let allProducts: RecommendedProduct[] = [];
@@ -298,20 +323,30 @@ export default function Home() {
                 }))
             );
         } else {
-            await Promise.all(topRestForProducts.map(async (rest) => {
-                const pSnap = await getDocs(query(collection(db, 'restaurants', rest.id, 'products'), limit(15)));
-                pSnap.docs.forEach(d => {
-                    const data = d.data();
+            const restIds = topRestForProducts.map(r => r.id);
+            if (restIds.length > 0) {
+                const { data: pData } = await supabase
+                  .from('products')
+                  .select('*')
+                  .in('restaurant_id', restIds)
+                  .limit(200);
+
+                (pData || []).forEach((d: any) => {
+                    const r = fetchedRestaurants.find((rest: any) => rest.id === (d.restaurant_id || d.restaurantId));
                     allProducts.push({ 
                       id: d.id, 
-                      restaurantId: rest.id, 
-                      restaurantLogo: (rest as any).logoUrl || rest.image,
-                      restaurantHasCashea: rest.hasCashea,
-                      restaurantHasTwoByThree: rest.hasTwoByThree,
-                      ...data 
+                      restaurantId: d.restaurant_id || d.restaurantId, 
+                      restaurantLogo: r ? (r.logoUrl || r.image) : '',
+                      restaurantHasCashea: r?.hasCashea,
+                      restaurantHasTwoByThree: r?.hasTwoByThree,
+                      name: d.name,
+                      price: d.price,
+                      image: d.image_url || d.image,
+                      category: d.category,
+                      ...d 
                     } as RecommendedProduct);
                 });
-            }));
+            }
         }
 
         const history = recommendationsService.getViewedProductsHistory();
@@ -365,14 +400,15 @@ export default function Home() {
         }
 
         // Use official Cashea icon from global_icons
-        const iconsSnap = await getDocs(collection(db, 'global_icons'));
-        const icons = iconsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })) as any[];
-        const cashea = icons.find(icon => icon.name?.toLowerCase() === 'cashea');
+        const { data: icons } = await supabase
+          .from('global_icons')
+          .select('*');
+        const cashea = (icons || []).find((icon: any) => icon.name?.toLowerCase() === 'cashea');
 
         if (cashea) {
-          setCasheaIcon(cashea.imageUrl || cashea.url);
+          setCasheaIcon(cashea.image_url || cashea.imageUrl || cashea.url);
         } else {
-          setCasheaIcon("https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/logo%20cashea.png?alt=media&token=5b266100-3323-41bb-a5a4-23957ce678a1");
+          setCasheaIcon("https://xfialzrbbsdzzcjtefqo.supabase.co/storage/v1/object/public/store_assets/logo_cashea.png");
         }
 
       } catch (error: any) {
@@ -412,9 +448,15 @@ export default function Home() {
 
   const handleCategoryClick = async (category: Category) => {
     try {
-      updateDoc(doc(db, 'global_categories', category.id), {
-        clickCount: increment(1)
-      });
+      supabase
+        .from('global_categories')
+        .update({
+          click_count: (category.clickCount || 0) + 1,
+          clickCount: (category.clickCount || 0) + 1
+        })
+        .eq('id', category.id)
+        .then(() => {})
+        .catch(console.error);
 
       // Navigate to search with sector filter if it's a sector
       if (!category.parentId) {
@@ -434,14 +476,16 @@ export default function Home() {
     setManualState(state);
     setManualCity(city);
     setLocationName(`${city}`);
-    // Sync with Firestore if logged in
-    if (userData?.uid || auth.currentUser?.uid) {
-      const uid = userData?.uid || auth.currentUser?.uid;
-      updateDoc(doc(db, 'users', uid), {
+    // Sync with Supabase if logged in
+    const uid = userData?.uid || userData?.id;
+    if (uid) {
+      supabase.from('profiles').update({
+        last_city: city,
         lastCity: city,
+        last_state: state,
         lastState: state,
-        lastLocationUpdate: serverTimestamp()
-      }).catch(console.error);
+        updated_at: new Date().toISOString()
+      }).eq('id', uid).then(() => {}).catch(console.error);
     }
     // Clear GPS coordinates so distance doesn't mess up sorting if user is physically far away
     setUserLocation(null);
@@ -849,7 +893,7 @@ export default function Home() {
                         {restaurant.hasCashea && (
                         <div className="absolute top-3 right-12 z-20 w-10 h-10 bg-yellow-400 backdrop-blur rounded-xl p-1.5 shadow-xl border border-white/20 flex items-center justify-center animate-in zoom-in duration-500 hover:scale-110 transition-transform">
                             <img
-                            src={casheaIcon || "https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/logo%20cashea.png?alt=media&token=5b266100-3323-41bb-a5a4-23957ce678a1"}
+                            src={casheaIcon || "https://xfialzrbbsdzzcjtefqo.supabase.co/storage/v1/object/public/store_assets/logo_cashea.png"}
                             alt="Cashea"
                             className="w-full h-full object-contain"
                             />
@@ -990,7 +1034,7 @@ function ProductGrid({ title, products, casheaIcon }: { title: string, products:
                   {/* Cashea Badge */}
                   {product.restaurantHasCashea && (
                     <div className="w-6 h-6 bg-yellow-400 rounded-full flex items-center justify-center shadow-sm" title="Cashea">
-                      <img src={casheaIcon || "https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/logo%20cashea.png?alt=media&token=5b266100-3323-41bb-a5a4-23957ce678a1"} alt="Cashea" className="w-4 h-4 object-contain" />
+                      <img src={casheaIcon || "https://xfialzrbbsdzzcjtefqo.supabase.co/storage/v1/object/public/store_assets/logo_cashea.png"} alt="Cashea" className="w-4 h-4 object-contain" />
                     </div>
                   )}
                   {/* 2x3 Resuelve Badge */}

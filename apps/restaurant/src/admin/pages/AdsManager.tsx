@@ -1,7 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { collection, doc, getDoc, updateDoc, addDoc } from 'firebase/firestore';
-import { db, storage } from '../../lib/firebase';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../context/AuthContext';
 import { Megaphone, Briefcase, Plus, Trash2, Image as ImageIcon, Save, Loader2, Target, CheckCircle } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
@@ -38,13 +36,15 @@ export default function AdsManager() {
         if (!rid) return;
         const fetchSettings = async () => {
             try {
-                const docSnap = await getDoc(doc(db, 'restaurants', rid));
-                if (docSnap.exists()) {
-                    const data = docSnap.data();
-                    if (data.jobOpportunities) {
-                        setJobsActive(data.jobOpportunities.active || false);
-                        setJobPositions(data.jobOpportunities.positions || []);
-                    }
+                const { data, error } = await supabase
+                    .from('comercios')
+                    .select('name, job_opportunities')
+                    .eq('id', rid)
+                    .maybeSingle();
+
+                if (data?.job_opportunities) {
+                    setJobsActive(data.job_opportunities.active || false);
+                    setJobPositions(data.job_opportunities.positions || []);
                 }
             } catch (error) {
                 console.error("Error fetching ads data:", error);
@@ -59,10 +59,18 @@ export default function AdsManager() {
         if (!rid) return;
         setSaving(true);
         try {
-            await updateDoc(doc(db, 'restaurants', rid), {
-                'jobOpportunities.active': newActiveState,
-                'jobOpportunities.positions': newPositions
-            });
+            const { error } = await supabase
+                .from('comercios')
+                .update({
+                    job_opportunities: {
+                        active: newActiveState,
+                        positions: newPositions
+                    }
+                })
+                .eq('id', rid);
+
+            if (error) throw error;
+
             setJobsActive(newActiveState);
             setJobPositions(newPositions);
         } catch (error) {
@@ -111,25 +119,41 @@ export default function AdsManager() {
         setSaving(true);
         try {
             // Get Restaurant Name
-            const restSnap = await getDoc(doc(db, 'restaurants', rid));
-            const restName = restSnap.exists() ? restSnap.data().name : 'Restaurante Desconocido';
+            const { data: restData } = await supabase
+                .from('comercios')
+                .select('name')
+                .eq('id', rid)
+                .maybeSingle();
 
-            // Upload Image
-            const fileRef = ref(storage, `banner_requests/${rid}_${Date.now()}`);
-            await uploadBytes(fileRef, bannerFile);
-            const imageUrl = await getDownloadURL(fileRef);
+            const restName = restData?.name || 'Restaurante Desconocido';
 
-            // Save Request
-            await addDoc(collection(db, 'banner_requests'), {
-                restaurantId: rid,
-                restaurantName: restName,
-                planId: plan.id,
-                planName: plan.name,
-                price: plan.price,
-                imageUrl,
-                status: 'pending',
-                createdAt: new Date()
-            });
+            // Upload Image to Supabase Storage
+            const fileExt = bannerFile.name.split('.').pop() || 'jpg';
+            const fileName = `banner_requests/${rid}_${Date.now()}.${fileExt}`;
+            const { error: uploadError } = await supabase.storage
+                .from('store_assets')
+                .upload(fileName, bannerFile);
+
+            if (uploadError) throw uploadError;
+
+            const { data: { publicUrl: imageUrl } } = supabase.storage
+                .from('store_assets')
+                .getPublicUrl(fileName);
+
+            // Save Request to Supabase Table
+            const { error: insertError } = await supabase
+                .from('banner_requests')
+                .insert({
+                    restaurant_id: rid,
+                    restaurant_name: restName,
+                    plan_id: plan.id,
+                    plan_name: plan.name,
+                    price: plan.price,
+                    image_url: imageUrl,
+                    status: 'pending'
+                });
+
+            if (insertError) throw insertError;
 
             alert(`¡Solicitud enviada! Nuestro equipo revisará su pago de $${plan.price} y activará su banner pronto.`);
             setBannerRequesting(null);

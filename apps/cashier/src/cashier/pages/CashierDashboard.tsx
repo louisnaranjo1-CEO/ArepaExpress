@@ -1,8 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { LogOut, DollarSign, CheckCircle, Clock, X, Loader2, Store, CreditCard, User, Plus, Edit, ClipboardList, MapPin, Instagram, Youtube, Music2, ExternalLink, Star, MessageSquare, Bike, Bell, Truck, Search, Utensils, ShoppingCart, Trash2, Minus, ChevronDown, Check, History, AlertCircle, Receipt, Image as ImageIcon } from 'lucide-react';
-import { auth, db } from '../../lib/firebase';
-import { onAuthStateChanged } from 'firebase/auth';
-import { collection, query, where, onSnapshot, orderBy, doc, updateDoc, getDoc, getDocs, increment, addDoc, serverTimestamp } from 'firebase/firestore';
+import { supabase } from '../../lib/supabase';
 import { useNavigate } from 'react-router-dom';
 import { printToUsbDevice, formatTicket, PrintOrder } from '../../lib/usb-printer';
 import ProductTicker from '../components/ProductTicker';
@@ -12,7 +10,6 @@ import { motion, AnimatePresence } from 'motion/react';
 import QRCode from 'react-qr-code';
 import OrderChatWindow from '../../components/chat/OrderChatWindow';
 import toast from 'react-hot-toast';
-import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 
 interface Order {
     id: string;
@@ -124,7 +121,7 @@ export default function CashierDashboard() {
     const [selectedOrderForComanda, setSelectedOrderForComanda] = useState<Order | null>(null);
 
     // Audio object for the notification sound
-    const [notificationSound] = useState(() => new Audio('https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/Digital_Cascade_01.mp3?alt=media&token=211ed9a7-2b49-469f-8869-3fc2cd38d2f5'));
+    const [notificationSound] = useState(() => new Audio('https://xfialzrbbsdzzcjtefqo.supabase.co/storage/v1/object/public/store_assets/Digital_Cascade_01.mp3'));
 
     useEffect(() => {
         const storedCashier = localStorage.getItem('cashierData');
@@ -141,18 +138,15 @@ export default function CashierDashboard() {
         // Fetch Restaurant Data
         console.log("CASHIER_SYNC: Stored Restaurant ID:", storedRestaurantId);
 
-        // Debug Firebase Auth State
-        onAuthStateChanged(auth, (user: any) => {
-            if (user) console.log("CASHIER_AUTH: User UID is", user.uid, "Anonymous:", user.isAnonymous);
-            else console.log("CASHIER_AUTH: No user authenticated in Firebase Auth");
-        });
-
         const fetchRestaurant = async () => {
             try {
-                const docRef = doc(db, 'restaurants', storedRestaurantId);
-                const docSnap = await getDoc(docRef);
-                if (docSnap.exists()) {
-                   setRestaurant({ id: docSnap.id, ...docSnap.data() });
+                const { data, error } = await supabase
+                    .from('comercios')
+                    .select('*')
+                    .eq('id', storedRestaurantId)
+                    .maybeSingle();
+                if (data) {
+                    setRestaurant(data);
                 }
             } catch (error) {
                 console.error("Error fetching restaurant:", error);
@@ -160,72 +154,155 @@ export default function CashierDashboard() {
         };
         fetchRestaurant();
 
-        const ordersRef = collection(db, 'orders');
+        const mapOrder = (o: any): Order => {
+            const cDate = o.created_at ? new Date(o.created_at) : new Date();
+            const dateWrapper: any = {
+                toDate: () => cDate,
+                toMillis: () => cDate.getTime(),
+                toISOString: () => cDate.toISOString(),
+                toString: () => cDate.toISOString(),
+                toLocaleString: () => cDate.toLocaleString()
+            };
 
-        // Order subscription with index fallback
-        let unsubscribe2: () => void;
-        const setupOrderSubscription = (isFallback = false) => {
-            const q = isFallback 
-                ? query(ordersRef, where('restaurantId', '==', storedRestaurantId))
-                : query(ordersRef, where('restaurantId', '==', storedRestaurantId), orderBy('createdAt', 'desc'));
+            return {
+                id: o.id,
+                items: o.items || [],
+                total: Number(o.total) || 0,
+                subtotal: Number(o.subtotal) || Number(o.total) || 0,
+                status: o.status || 'pending',
+                paymentStatus: o.payment_status || o.paymentStatus || 'pending',
+                paymentMethod: o.payment_method || o.paymentMethod || '',
+                source: o.source || (o.waiter_id ? 'waiter' : 'app'),
+                userName: o.user_name || o.userName || 'Cliente',
+                userId: o.user_id || o.userId,
+                waiterName: o.waiter_name || o.waiterName,
+                waiterId: o.waiter_id || o.waiterId,
+                table: o.table_number || o.tableNumber || o.table,
+                tableNumber: o.table_number || o.tableNumber,
+                tableId: o.table_id || o.tableId,
+                createdAt: dateWrapper,
+                deliveryAddress: o.delivery_address || o.deliveryAddress,
+                deliveryFee: Number(o.delivery_fee || o.deliveryFee) || 0,
+                notified: o.notified ?? false,
+                pickupNotified: o.pickup_notified ?? o.pickupNotified ?? false,
+                tip: Number(o.tip) || 0,
+                paymentProofURL: o.payment_proof_url || o.paymentProofURL || o.paymentProofUrl || '',
+                paymentProofUrl: o.payment_proof_url || o.paymentProofURL || o.paymentProofUrl || '',
+                reference: o.payment_reference || o.reference || o.paymentReference || '',
+                paymentReference: o.payment_reference || o.reference || o.paymentReference || '',
+                orderNote: o.notes || o.order_note || o.orderNote || '',
+                stockConfirmed: o.stock_confirmed ?? o.stockConfirmed,
+                deliveryMethod: o.delivery_method || o.deliveryMethod || (o.order_type === 'pickup' ? 'pickup' : 'delivery'),
+                deliverySource: o.delivery_source || o.deliverySource,
+                installments: o.installments || []
+            } as any;
+        };
 
-            unsubscribe2 = onSnapshot(q, (snapshot) => {
-                let data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Order));
-                if (isFallback) {
-                    data.sort((a, b) => {
-                        const timeA = a.createdAt?.toMillis?.() || 0;
-                        const timeB = b.createdAt?.toMillis?.() || 0;
-                        return timeB - timeA;
-                    });
-                }
-                console.log(`CASHIER_SYNC: Received ${data.length} orders for restaurant ${storedRestaurantId}${isFallback ? ' (using fallback)' : ''}`);
-                setOrders(data);
-                setLoading(false);
-            }, (err: any) => {
-                if (!isFallback && err.code === 'failed-precondition') {
-                    console.warn("Index not found in Cashier dashboard, using fallback query");
-                    setupOrderSubscription(true);
-                } else {
-                    console.error("CASHIER_SYNC_ERROR:", err);
+        const fetchOrders = async () => {
+            try {
+                const { data, error } = await supabase
+                    .from('orders')
+                    .select('*')
+                    .eq('restaurant_id', storedRestaurantId)
+                    .order('created_at', { ascending: false });
+
+                if (error) throw error;
+                if (data) {
+                    const mapped = data.map(mapOrder);
+                    setOrders(mapped);
                     setLoading(false);
                 }
-            });
+            } catch (err: any) {
+                console.error("CASHIER_SYNC_ERROR:", err);
+                setLoading(false);
+            }
         };
-        setupOrderSubscription();
+        fetchOrders();
+
+        const ordersChannel = supabase.channel(`cashier_orders_${storedRestaurantId}`)
+            .on('postgres_changes', {
+                event: '*',
+                schema: 'public',
+                table: 'orders',
+                filter: `restaurant_id=eq.${storedRestaurantId}`
+            }, () => {
+                fetchOrders();
+            })
+            .subscribe();
 
         // Fetch products for edit modal
         const fetchProducts = async () => {
-            const productsRef = collection(db, 'restaurants', storedRestaurantId, 'products');
-            const snap = await getDocs(productsRef);
-            setPosProducts(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+            try {
+                const { data } = await supabase
+                    .from('products')
+                    .select('*')
+                    .eq('restaurant_id', storedRestaurantId);
+                setPosProducts(data || []);
+            } catch (err) {
+                console.error("Error fetching products:", err);
+            }
         };
         fetchProducts();
 
         // Fetch waiters for assignment
         const fetchWaiters = async () => {
-            const waitersRef = collection(db, 'restaurants', storedRestaurantId, 'waiters');
-            const snap = await getDocs(waitersRef);
-            setWaiters(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+            try {
+                const { data } = await supabase
+                    .from('waiters')
+                    .select('*')
+                    .eq('restaurant_id', storedRestaurantId);
+                setWaiters(data || []);
+            } catch (err) {
+                console.error("Error fetching waiters:", err);
+            }
         };
         fetchWaiters();
 
         // Real-time tables
-        const tablesRef = collection(db, 'restaurants', storedRestaurantId, 'tables');
-        const unsubscribeTables = onSnapshot(tablesRef, (snapshot) => {
-            const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-            // Sort tables logically
-            data.sort((a: any, b: any) => {
-                const numA = parseInt(a.number, 10);
-                const numB = parseInt(b.number, 10);
-                if (!isNaN(numA) && !isNaN(numB)) return numA - numB;
-                return (a.number || '').localeCompare(b.number || '');
-            });
-            setTables(data);
-        });
+        const fetchTables = async () => {
+            try {
+                const { data } = await supabase
+                    .from('restaurant_tables')
+                    .select('*')
+                    .eq('restaurant_id', storedRestaurantId);
+                const tbls = (data || []).map((t: any) => ({
+                    id: t.id,
+                    number: t.number,
+                    seats: t.capacity || t.seats || 4,
+                    status: t.status || 'available',
+                    activeOrder: t.active_order || null,
+                    currentOrderId: t.current_order_id || t.lastOrderId || null,
+                    waiterName: t.waiter_name || t.waiterName,
+                    waiterId: t.waiter_id || t.waiterId,
+                    area: t.area || 'General'
+                }));
+                tbls.sort((a: any, b: any) => {
+                    const numA = parseInt(a.number, 10);
+                    const numB = parseInt(b.number, 10);
+                    if (!isNaN(numA) && !isNaN(numB)) return numA - numB;
+                    return (a.number || '').localeCompare(b.number || '');
+                });
+                setTables(tbls);
+            } catch (err) {
+                console.error("Error fetching tables:", err);
+            }
+        };
+        fetchTables();
+
+        const tablesChannel = supabase.channel(`cashier_tables_${storedRestaurantId}`)
+            .on('postgres_changes', {
+                event: '*',
+                schema: 'public',
+                table: 'restaurant_tables',
+                filter: `restaurant_id=eq.${storedRestaurantId}`
+            }, () => {
+                fetchTables();
+            })
+            .subscribe();
 
         return () => {
-            unsubscribe2();
-            unsubscribeTables();
+            supabase.removeChannel(ordersChannel);
+            supabase.removeChannel(tablesChannel);
         };
     }, [navigate]);
 
@@ -234,9 +311,14 @@ export default function CashierDashboard() {
         if (paymentMethod === 'Fidelidad' && selectedOrder?.userId) {
             const fetchUserPoints = async () => {
                 try {
-                    const userSnap = await getDoc(doc(db, 'users', selectedOrder.userId));
-                    if (userSnap.exists()) {
-                        setUserLoyaltyPoints(userSnap.data().loyaltyPoints || 0);
+                    const { data, error } = await supabase
+                        .from('profiles')
+                        .select('loyalty_points, points')
+                        .eq('id', selectedOrder.userId)
+                        .maybeSingle();
+
+                    if (data) {
+                        setUserLoyaltyPoints(data.loyalty_points ?? data.points ?? 0);
                     } else {
                         setUserLoyaltyPoints(0);
                     }
@@ -253,9 +335,9 @@ export default function CashierDashboard() {
 
     const handleMarkPickupNotified = async (orderId: string) => {
         try {
-            await updateDoc(doc(db, 'orders', orderId), {
-                pickupNotified: true
-            });
+            await supabase.from('orders').update({
+                pickup_notified: true
+            }).eq('id', orderId);
         } catch (e) {
             console.error("Error marking pickup as notified:", e);
         }
@@ -380,16 +462,16 @@ export default function CashierDashboard() {
                     </motion.div>
                 ), { duration: 15000, id: order.id });
 
-                // Mark as notified in Firestore and local state
+                // Mark as notified in Supabase and local state
                 try {
-                    await updateDoc(doc(db, 'orders', order.id), { notified: true });
+                    await supabase.from('orders').update({ notified: true }).eq('id', order.id);
                     setNotifiedOrderIds(prev => new Set(prev).add(order.id));
                 } catch (err) {
                     console.error("Error updating notified status:", err);
                 }
             });
         }
-    }, [orders, notifiedOrderIds, notificationSound, navigate, db]);
+    }, [orders, notifiedOrderIds, notificationSound, navigate]);
 
     // Pickup notification monitor
     useEffect(() => {
@@ -441,14 +523,14 @@ export default function CashierDashboard() {
 
                 // Mark as notified
                 try {
-                    await updateDoc(doc(db, 'orders', order.id), { pickupNotified: true });
+                    await supabase.from('orders').update({ pickup_notified: true }).eq('id', order.id);
                     setNotifiedPickupOrderIds(prev => new Set(prev).add(order.id));
                 } catch (err) {
                     console.error("Error updating pickup notified status:", err);
                 }
             });
         }
-    }, [orders, notifiedPickupOrderIds, notificationSound, db]);
+    }, [orders, notifiedPickupOrderIds, notificationSound]);
 
     const handleLogout = () => {
         localStorage.removeItem('cashierData');
@@ -463,46 +545,34 @@ export default function CashierDashboard() {
         setCloseRegisterModalOpen(true);
         
         try {
-            // Get today's start date
             const today = new Date();
             today.setHours(0, 0, 0, 0);
 
-            // Fetch all sold orders for today
-            const ordersRef = collection(db, 'orders');
-            // Firestore queries usually require composite index for inequality/equality combos. 
-            // So we fetch all of today's and filter 'sold' client side if no index exists, 
-            // but we can query by restaurantId and order by createdAt and filter locally.
-            // Since we already have the real-time query for this restaurant without where clause on time, 
-            // let's do a fast one-time fetch or just use snapshot if we collected all today's but we didn't.
-            // Actually, best is to do a manual fetch, order by createdAt desc, and stop iterating when < today.
-            
-            // Simpler: Just fetch all from restaurant where paymentStatus == 'sold' and date >= today.
-            // But Date in firestore requires Timestamp. We'll fetch all or just the ones from our state if they have ALL.
-            // Our state `orders` only has pending ones! We must query DB.
-            const querySnapshot = await import('firebase/firestore').then(({ getDocs, where, query, collection }) => {
-                return getDocs(query(
-                    collection(db, 'orders'),
-                    where('restaurantId', '==', restaurantId),
-                    where('paymentStatus', '==', 'sold')
-                ));
-            });
+            const { data: soldOrders, error } = await supabase
+                .from('orders')
+                .select('*')
+                .eq('restaurant_id', restaurantId)
+                .gte('created_at', today.toISOString());
+
+            if (error) throw error;
             
             let totalGeneral = 0;
             const pmData: Record<string, number> = {};
             let propinasMeseros = 0;
+            let soldCount = 0;
 
-            querySnapshot.forEach(doc => {
-                const data = doc.data();
-                const ts = data.createdAt ? (data.createdAt.toDate ? data.createdAt.toDate() : new Date(data.createdAt)) : new Date(0);
-                if (ts >= today) { // Only today's sorted out
-                    const tot = (data.total || 0);
+            (soldOrders || []).forEach((data: any) => {
+                const pStatus = data.payment_status || data.paymentStatus;
+                if (pStatus === 'sold' || pStatus === 'paid') {
+                    soldCount++;
+                    const tot = Number(data.total) || 0;
                     totalGeneral += tot;
                     
-                    const method = data.paymentMethod || 'Otro';
+                    const method = data.payment_method || data.paymentMethod || 'Otro';
                     pmData[method] = (pmData[method] || 0) + tot;
                     
-                    if (data.source === 'waiter' && data.tip) {
-                        propinasMeseros += data.tip;
+                    if ((data.source === 'waiter' || data.waiter_id) && data.tip) {
+                        propinasMeseros += Number(data.tip) || 0;
                     }
                 }
             });
@@ -511,7 +581,7 @@ export default function CashierDashboard() {
                 totalGeneral,
                 paymentMethods: pmData,
                 propinasMeseros,
-                count: querySnapshot.size
+                count: soldCount
             });
             
         } catch (error) {
@@ -539,54 +609,66 @@ export default function CashierDashboard() {
                 }
                 
                 // Subtract points from user profile
-                const { increment } = await import('firebase/firestore');
-                await updateDoc(doc(db, 'users', selectedOrder.userId), {
-                    loyaltyPoints: increment(-pointsNeeded)
-                });
+                const { data: userProf } = await supabase
+                    .from('profiles')
+                    .select('loyalty_points, points')
+                    .eq('id', selectedOrder.userId)
+                    .maybeSingle();
+
+                const currentPoints = userProf?.loyalty_points ?? userProf?.points ?? 0;
+                await supabase.from('profiles').update({
+                    loyalty_points: Math.max(0, currentPoints - pointsNeeded)
+                }).eq('id', selectedOrder.userId);
             }
 
             let proofURL = '';
             const file = proofUploadFiles[selectedOrder.id];
             
             if (file) {
-                const storage = getStorage();
-                const storageRef = ref(storage, `payments/${selectedOrder.id}_${file.name}`);
-                const uploadResult = await uploadBytes(storageRef, file);
-                proofURL = await getDownloadURL(uploadResult.ref);
+                const fileExt = file.name.split('.').pop();
+                const filePath = `payments/${selectedOrder.id}_${Date.now()}.${fileExt}`;
+                const { error: uploadError } = await supabase.storage
+                    .from('store_assets')
+                    .upload(filePath, file);
+
+                if (!uploadError) {
+                    const { data: urlData } = supabase.storage
+                        .from('store_assets')
+                        .getPublicUrl(filePath);
+                    proofURL = urlData.publicUrl;
+                }
             }
 
             const safeSubtotal = selectedOrder.subtotal ?? selectedOrder.total ?? 0;
+            const isWaiter = selectedOrder.source === 'waiter';
             const updates: any = {
+                payment_method: paymentMethod,
                 paymentMethod: paymentMethod,
+                payment_status: 'sold',
                 paymentStatus: 'sold',
                 tip: closeTip,
                 total: safeSubtotal + (selectedOrder.deliveryFee || 0) + closeTip,
+                payment_reference: referenceInputs[selectedOrder.id] || '',
                 reference: referenceInputs[selectedOrder.id] || '',
-                paymentProofURL: proofURL
+                payment_proof_url: proofURL,
+                paymentProofURL: proofURL,
+                status: isWaiter ? 'delivered' : 'preparing'
             };
 
-            let shouldPrint = false;
-            // If it's a waiter's order, mark as delivered if it was preparing
-            if (selectedOrder.source === 'waiter') {
-                updates.status = 'delivered';
-            } else {
-                // If it's from the app or POS direct, it goes to preparing and triggers printer
-                updates.status = 'preparing';
-                shouldPrint = true;
-            }
+            let shouldPrint = !isWaiter;
 
-            await updateDoc(doc(db, 'orders', selectedOrder.id), updates);
+            await supabase.from('orders').update(updates).eq('id', selectedOrder.id);
 
             // Notify user via chat if verified from pending_verification
             if (selectedOrder.status === 'pending_verification' || selectedOrder.source !== 'pos') {
                 try {
-                    const messagesRef = collection(db, 'orders', selectedOrder.id, 'messages');
-                    await addDoc(messagesRef, {
+                    await supabase.from('messages').insert({
+                        order_id: selectedOrder.id,
                         text: "✅ ¡Tu pago ha sido verificado satisfactoriamente! Estamos preparando tu orden. 👨‍🍳",
                         sender: 'restaurant',
-                        senderName: cashierData?.name || 'Cajero',
-                        createdAt: serverTimestamp(),
-                        type: 'system'
+                        sender_name: cashierData?.name || 'Cajero',
+                        type: 'system',
+                        created_at: new Date().toISOString()
                     });
                 } catch (chatError) {
                     console.error("Error sending verification chat message:", chatError);
@@ -596,17 +678,24 @@ export default function CashierDashboard() {
             // Print if it's a new App order verified by the Cashier
             if (shouldPrint && restaurantId) {
                 try {
-                    const printersRef = collection(db, 'restaurants', restaurantId, 'printers');
-                    const snapshot = await import('firebase/firestore').then(({ getDocs }) => getDocs(printersRef));
-                    const printers = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() as any }));
+                    const { data: printersData } = await supabase
+                        .from('printers')
+                        .select('*')
+                        .eq('restaurant_id', restaurantId);
+
+                    const printers = printersData || [];
                     const printPromises: Promise<boolean>[] = [];
 
                     for (const printer of printers) {
-                        if (!printer.vendorId || !printer.productId || !printer.isActive) continue;
+                        const vId = printer.vendor_id || printer.vendorId;
+                        const pId = printer.product_id || printer.productId;
+                        const active = printer.is_active ?? printer.isActive ?? true;
+                        if (!vId || !pId || !active) continue;
 
+                        const printerCategories = printer.categories || [];
                         const itemsForThisPrinter = selectedOrder.items.filter(item => {
                             const itemCat = (item as any).category || '';
-                            return printer.categories?.includes(itemCat);
+                            return printerCategories.includes(itemCat) || printerCategories.length === 0;
                         });
 
                         if (itemsForThisPrinter.length > 0) {
@@ -621,7 +710,7 @@ export default function CashierDashboard() {
                             };
 
                             const buffer = formatTicket(printData);
-                            printPromises.push(printToUsbDevice(printer.vendorId, printer.productId, buffer));
+                            printPromises.push(printToUsbDevice(vId, pId, buffer));
                         }
                     }
 
@@ -641,21 +730,25 @@ export default function CashierDashboard() {
                 try {
                     let tid = selectedOrder.tableId;
                     if (!tid) {
-                        const tNum = selectedOrder.tableNumber || selectedOrder.table;
-                        const tablesRef = collection(db, 'restaurants', restaurantId, 'tables');
-                        const q = query(tablesRef, where('number', '==', tNum.toString()));
-                        const qSnap = await getDocs(q);
-                        if (!qSnap.empty) {
-                            tid = qSnap.docs[0].id;
+                        const tNum = (selectedOrder.tableNumber || selectedOrder.table).toString();
+                        const { data: matchingTables } = await supabase
+                            .from('restaurant_tables')
+                            .select('id')
+                            .eq('restaurant_id', restaurantId)
+                            .eq('number', tNum)
+                            .limit(1);
+
+                        if (matchingTables && matchingTables.length > 0) {
+                            tid = matchingTables[0].id;
                         }
                     }
                     if (tid) {
-                        await updateDoc(doc(db, 'restaurants', restaurantId, 'tables', tid), {
+                        await supabase.from('restaurant_tables').update({
                             status: 'available',
-                            lastOrderId: '',
-                            waiterId: '',
-                            waiterName: ''
-                        });
+                            current_order_id: null,
+                            waiter_id: null,
+                            waiter_name: null
+                        }).eq('id', tid);
                     }
                 } catch (err) {
                     console.error("Error freeing table:", err);
@@ -677,10 +770,10 @@ export default function CashierDashboard() {
     const handleRequestDelivery = async (orderId: string) => {
         setIsAccepting(true);
         try {
-            await updateDoc(doc(db, 'orders', orderId), {
+            await supabase.from('orders').update({
                 status: 'buscando_piloto',
-                deliveryRequestedAt: new Date()
-            });
+                delivery_requested_at: new Date().toISOString()
+            }).eq('id', orderId);
 
             toast.success("Buscando repartidor... (Backend notificado)");
         } catch (error) {
@@ -730,17 +823,21 @@ ESTADO: ${order.status.toUpperCase()}
 
     const handleConfirmStock = async (orderId: string) => {
         try {
-            const orderRef = doc(db, 'orders', orderId);
-            await updateDoc(orderRef, { stockConfirmed: true });
+            await supabase.from('orders').update({
+                stock_confirmed: true,
+                stockConfirmed: true
+            }).eq('id', orderId);
 
             // Fetch restaurant payment methods to send to chat
             if (restaurantId) {
-                const restaurantRef = doc(db, 'restaurants', restaurantId);
-                const restaurantSnap = await getDoc(restaurantRef);
+                const { data: restaurantData } = await supabase
+                    .from('comercios')
+                    .select('*')
+                    .eq('id', restaurantId)
+                    .maybeSingle();
                 
-                if (restaurantSnap.exists()) {
-                    const restaurantData = restaurantSnap.data();
-                    const methods = restaurantData.paymentMethods || [];
+                if (restaurantData) {
+                    const methods = restaurantData.payment_methods || restaurantData.paymentMethods || [];
                     
                     if (methods.length > 0) {
                         let paymentMsg = "✅ *Stock confirmado.* Ya puedes realizar tu pago:\n\n";
@@ -749,12 +846,14 @@ ESTADO: ${order.status.toUpperCase()}
                         });
                         paymentMsg += "Favor enviar el capture y la referencia por este medio.";
 
-                        await addDoc(collection(db, `orders/${orderId}/messages`), {
+                        await supabase.from('messages').insert({
+                            order_id: orderId,
                             text: paymentMsg,
-                            senderId: restaurantId,
-                            senderName: 'Restaurante',
-                            senderRole: 'restaurant',
-                            createdAt: serverTimestamp()
+                            sender_id: restaurantId,
+                            sender_name: 'Restaurante',
+                            sender_role: 'restaurant',
+                            sender: 'restaurant',
+                            created_at: new Date().toISOString()
                         });
                     }
                 }
@@ -769,13 +868,14 @@ ESTADO: ${order.status.toUpperCase()}
 
     const handleVerifyPayment = async (orderId: string) => {
         try {
-            const orderRef = doc(db, 'orders', orderId);
             const orderTemp = orders.find(o => o.id === orderId);
-            await updateDoc(orderRef, { 
+            await supabase.from('orders').update({ 
                 status: 'preparing',
+                payment_status: 'paid',
                 paymentStatus: 'paid',
-                verifiedAt: serverTimestamp()
-            });
+                verified_at: new Date().toISOString()
+            }).eq('id', orderId);
+
             toast.success("Pago verificado. Orden enviada a cocina.");
             
             if (orderTemp) {
@@ -789,9 +889,8 @@ ESTADO: ${order.status.toUpperCase()}
 
     const updateStatus = async (orderId: string, newStatus: string) => {
         try {
-            const orderRef = doc(db, 'orders', orderId);
             const orderTemp = orders.find(o => o.id === orderId);
-            await updateDoc(orderRef, { status: newStatus });
+            await supabase.from('orders').update({ status: newStatus }).eq('id', orderId);
             toast.success(`Pedido actualizado a ${newStatus}`);
             
             // Si pasa a cocina, imprimir automáticamente si así se desea
@@ -809,20 +908,25 @@ ESTADO: ${order.status.toUpperCase()}
         setPrintingOrderId(orderId);
         try {
             // Obtener todas las impresoras configuradas
-            const printersRef = collection(db, 'restaurants', restaurantId, 'printers');
-            const snapshot = await getDocs(printersRef);
-            const printers = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() as any }));
+            const { data: printersData } = await supabase
+                .from('printers')
+                .select('*')
+                .eq('restaurant_id', restaurantId);
 
-            // Promesas de impresión
+            const printers = printersData || [];
             const printPromises: Promise<boolean>[] = [];
 
             // Agrupar ítems por impresora según categoría
             for (const printer of printers) {
-                if (!printer.vendorId || !printer.productId || !printer.isActive) continue;
+                const vId = printer.vendor_id || printer.vendorId;
+                const pId = printer.product_id || printer.productId;
+                const active = printer.is_active ?? printer.isActive ?? true;
+                if (!vId || !pId || !active) continue;
 
+                const printerCategories = printer.categories || [];
                 const itemsForThisPrinter = orderData.items.filter(item => {
                     const itemCat = (item as any).category || '';
-                    return printer.categories?.includes(itemCat) || printer.categories?.length === 0;
+                    return printerCategories.includes(itemCat) || printerCategories.length === 0;
                 });
 
                 if (itemsForThisPrinter.length > 0) {
@@ -837,7 +941,7 @@ ESTADO: ${order.status.toUpperCase()}
                     } as any;
 
                     const buffer = formatTicket(printData);
-                    printPromises.push(printToUsbDevice(printer.vendorId, printer.productId, buffer));
+                    printPromises.push(printToUsbDevice(vId, pId, buffer));
                 }
             }
 
@@ -860,27 +964,41 @@ ESTADO: ${order.status.toUpperCase()}
         try {
             const updates: any = { 
                 status: 'preparing', 
+                payment_method: paymentMethod,
                 paymentMethod: paymentMethod,
+                payment_status: (paymentMethod === 'Crédito (2x3)') ? 'pending' : 'sold',
                 paymentStatus: (paymentMethod === 'Crédito (2x3)') ? 'pending' : 'sold',
-                updatedAt: serverTimestamp()
+                updated_at: new Date().toISOString()
             };
 
             // Process optional reference and screenshot
             if (paymentMethod === 'Pago Móvil' || paymentMethod === 'Transferencia' || paymentMethod === 'Zelle') {
                 const refVal = referenceInputs[selectedOrderForAccept.id];
                 const file = proofUploadFiles[selectedOrderForAccept.id];
-                if (refVal) updates.paymentReference = refVal;
+                if (refVal) {
+                    updates.payment_reference = refVal;
+                    updates.paymentReference = refVal;
+                }
                 
                 if (file) {
-                    const storage = getStorage();
-                    const fileRef = ref(storage, `payment_proofs/${selectedOrderForAccept.id}_${Date.now()}`);
-                    await uploadBytes(fileRef, file);
-                    const url = await getDownloadURL(fileRef);
-                    updates.paymentProofUrl = url;
+                    const fileExt = file.name.split('.').pop();
+                    const filePath = `payment_proofs/${selectedOrderForAccept.id}_${Date.now()}.${fileExt}`;
+                    const { error: uploadErr } = await supabase.storage
+                        .from('store_assets')
+                        .upload(filePath, file);
+
+                    if (!uploadErr) {
+                        const { data: urlData } = supabase.storage
+                            .from('store_assets')
+                            .getPublicUrl(filePath);
+                        updates.payment_proof_url = urlData.publicUrl;
+                        updates.paymentProofUrl = urlData.publicUrl;
+                        updates.paymentProofURL = urlData.publicUrl;
+                    }
                 }
             }
 
-            // 2x3 Logic (Simplified for Cashier if config not fully available, but keeping pattern)
+            // 2x3 Logic
             if (paymentMethod === 'Crédito (2x3)') {
                 const total = selectedOrderForAccept.total;
                 const installments = [
@@ -889,11 +1007,11 @@ ESTADO: ${order.status.toUpperCase()}
                     { id: 'inst2_'+Date.now(), amount: total * 0.25, status: 'pending', dueDate: new Date(Date.now() + 30*24*60*60*1000).toISOString(), type: 'installment' }
                 ];
                 updates.installments = installments;
+                updates.is_two_by_three = true;
                 updates.isTwoByThree = true;
             }
 
-            const orderRef = doc(db, 'orders', selectedOrderForAccept.id);
-            await updateDoc(orderRef, updates);
+            await supabase.from('orders').update(updates).eq('id', selectedOrderForAccept.id);
             
             const orderTemp = { ...selectedOrderForAccept, ...updates };
             toast.success("Orden aceptada y enviada a cocina");
@@ -1096,10 +1214,10 @@ ESTADO: ${order.status.toUpperCase()}
                 setShowTableModal(false);
             } else if (selectedTable.activeOrder) {
                 // Just update responsibility
-                await updateDoc(doc(db, 'orders', selectedTable.activeOrder.id), {
-                    waiterId: waiterInfo.id,
-                    waiterName: waiterInfo.name
-                });
+                await supabase.from('orders').update({
+                    waiter_id: waiterInfo.id,
+                    waiter_name: waiterInfo.name
+                }).eq('id', selectedTable.activeOrder.id);
                 toast.success("Responsabilidad actualizada");
                 setShowTableModal(false);
             }
@@ -1302,44 +1420,51 @@ ESTADO: ${order.status.toUpperCase()}
 
             if (posEditingOrderId) {
                 // Update existing order
-                const orderRef = doc(db, 'orders', posEditingOrderId);
-                await updateDoc(orderRef, {
+                await supabase.from('orders').update({
                     items,
                     total,
-                    userName: posClientName || 'Cliente en mostrador',
-                    clientId: posClientDNI || '',
-                    deliveryAddress: deliveryAddressStr,
-                    deliveryFee: posDeliveryFee,
-                    waiterId: selectedWaiter?.id || 'cashier',
-                    waiterName: selectedWaiter?.name || 'Caja/Admin',
-                    tableId: posOrderType === 'local' ? (selectedTable?.id || '') : '',
-                    tableNumber: posOrderType === 'local' ? (selectedTable?.number || '') : '',
-                    updatedAt: serverTimestamp()
-                });
+                    subtotal: total,
+                    user_name: posClientName || 'Cliente en mostrador',
+                    client_dni: posClientDNI || '',
+                    delivery_address: deliveryAddressStr,
+                    delivery_fee: posDeliveryFee,
+                    waiter_id: selectedWaiter?.id || 'cashier',
+                    waiter_name: selectedWaiter?.name || 'Caja/Admin',
+                    table_id: posOrderType === 'local' ? (selectedTable?.id || '') : '',
+                    table_number: posOrderType === 'local' ? (selectedTable?.number || '') : '',
+                    updated_at: new Date().toISOString()
+                }).eq('id', posEditingOrderId);
                 targetOrderRefId = posEditingOrderId;
                 toast.success("Pedido actualizado");
             } else {
                 // Create new order
-                const newOrderRef = await addDoc(collection(db, 'orders'), {
-                    restaurantId,
-                    userId: 'pos_customer',
-                    userName: posClientName || 'Cliente en mostrador',
-                    clientId: posClientDNI || '',
-                    items,
-                    total,
-                    status: 'preparing',
-                    paymentStatus: posOrderType === 'local' ? 'paid' : 'sold',
-                    createdAt: serverTimestamp(),
-                    deliveryAddress: deliveryAddressStr,
-                    source: 'pos',
-                    type: posOrderType,
-                    deliveryFee: posDeliveryFee,
-                    waiterId: selectedWaiter?.id || 'cashier',
-                    waiterName: selectedWaiter?.name || 'Caja/Admin',
-                    tableId: posOrderType === 'local' ? (selectedTable?.id || '') : '',
-                    tableNumber: posOrderType === 'local' ? (selectedTable?.number || '') : '',
-                });
-                targetOrderRefId = newOrderRef.id;
+                const { data: newOrderResult, error: insertError } = await supabase
+                    .from('orders')
+                    .insert({
+                        restaurant_id: restaurantId,
+                        user_id: 'pos_customer',
+                        user_name: posClientName || 'Cliente en mostrador',
+                        client_dni: posClientDNI || '',
+                        items,
+                        total,
+                        subtotal: total,
+                        status: 'preparing',
+                        payment_status: posOrderType === 'local' ? 'paid' : 'sold',
+                        created_at: new Date().toISOString(),
+                        delivery_address: deliveryAddressStr,
+                        source: 'pos',
+                        order_type: posOrderType,
+                        delivery_fee: posDeliveryFee,
+                        waiter_id: selectedWaiter?.id || 'cashier',
+                        waiter_name: selectedWaiter?.name || 'Caja/Admin',
+                        table_id: posOrderType === 'local' ? (selectedTable?.id || '') : '',
+                        table_number: posOrderType === 'local' ? (selectedTable?.number || '') : ''
+                    })
+                    .select('id')
+                    .single();
+
+                if (insertError) throw insertError;
+                targetOrderRefId = newOrderResult.id;
                 toast.success("Pedido creado");
 
                 // Automatic kitchen printing for POS orders
@@ -1357,13 +1482,12 @@ ESTADO: ${order.status.toUpperCase()}
 
             // Update Table Status if local
             if (posOrderType === 'local' && selectedTable) {
-                const tableRef = doc(db, 'restaurants', restaurantId, 'tables', selectedTable.id);
-                await updateDoc(tableRef, {
+                await supabase.from('restaurant_tables').update({
                     status: 'occupied',
-                    lastOrderId: targetOrderRefId,
-                    waiterId: selectedWaiter?.id || 'cashier',
-                    waiterName: selectedWaiter?.name || 'Caja/Admin'
-                });
+                    current_order_id: targetOrderRefId,
+                    waiter_id: selectedWaiter?.id || 'cashier',
+                    waiter_name: selectedWaiter?.name || 'Caja/Admin'
+                }).eq('id', selectedTable.id);
             }
 
             setShowPOS(false);
@@ -1867,12 +1991,12 @@ ESTADO: ${order.status.toUpperCase()}
                                         const newSubtotal = editOrderItems.reduce((acc, i) => acc + (i.price * i.quantity), 0);
                                         const newTotal = newSubtotal + (selectedOrderForEdit.deliveryFee || 0);
                                         
-                                        await updateDoc(doc(db, 'orders', selectedOrderForEdit.id), {
+                                        await supabase.from('orders').update({
                                             items: editOrderItems,
                                             subtotal: newSubtotal,
                                             total: newTotal,
-                                            orderNote: editOrderNote
-                                        });
+                                            notes: editOrderNote
+                                        }).eq('id', selectedOrderForEdit.id);
                                         
                                         setEditModalOpen(false);
                                         toast.success("Orden actualizada");
@@ -1982,11 +2106,11 @@ ESTADO: ${order.status.toUpperCase()}
                                         if (dispatchType === 'own') {
                                             setIsAccepting(true);
                                             try {
-                                                await updateDoc(doc(db, 'orders', selectedOrderForDispatch.id), {
+                                                await supabase.from('orders').update({
                                                     status: 'delivering',
-                                                    dispatchedAt: serverTimestamp(),
-                                                    deliverySource: 'own'
-                                                });
+                                                    dispatched_at: new Date().toISOString(),
+                                                    delivery_source: 'own'
+                                                }).eq('id', selectedOrderForDispatch.id);
                                                 toast.success("Pedido enviado con delivery propio");
                                                 setDispatchModalOpen(false);
                                             } catch (err) {
@@ -1999,11 +2123,11 @@ ESTADO: ${order.status.toUpperCase()}
                                             // Show radar for 3 seconds then update
                                             setTimeout(async () => {
                                                 try {
-                                                    await updateDoc(doc(db, 'orders', selectedOrderForDispatch.id), {
+                                                    await supabase.from('orders').update({
                                                         status: 'buscando_piloto',
-                                                        deliveryRequestedAt: serverTimestamp(),
-                                                        deliverySource: 'platform'
-                                                    });
+                                                        delivery_requested_at: new Date().toISOString(),
+                                                        delivery_source: 'platform'
+                                                    }).eq('id', selectedOrderForDispatch.id);
                                                     toast.success("Señal enviada a los repartidores");
                                                     setDispatchModalOpen(false);
                                                 } catch (err) {

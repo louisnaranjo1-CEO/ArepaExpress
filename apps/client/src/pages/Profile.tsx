@@ -5,13 +5,9 @@ import { isDemoMode } from '../lib/env';
 import DemoAlertModal from '../components/DemoAlertModal';
 import { requestNotificationPermission, disableNotifications } from '../lib/notifications';
 import { useAuth } from '../context/AuthContext';
-import { auth, db, storage } from '../lib/firebase';
 import { supabase } from '../lib/supabase';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { signInWithGoogle, signInWithEmail, signUpWithEmail, processReferralCode, sendPasswordResetEmail } from '../lib/auth-service';
-import { collection, query, where, orderBy, getDocs, doc, setDoc, serverTimestamp, collectionGroup, getDoc, updateDoc, addDoc } from 'firebase/firestore';
-import { updateProfile } from 'firebase/auth';
 import { Image as ImageIcon, Camera, Smartphone, User as UserIcon, Save } from 'lucide-react';
 import AddressPicker from '../components/AddressPicker';
 import { motion, AnimatePresence } from 'motion/react';
@@ -58,8 +54,8 @@ interface ActivityItem {
 const RestaurantPointCard: React.FC<{ restId: string, points: number }> = ({ restId, points }) => {
     const [name, setName] = useState('Cargando...');
     useEffect(() => {
-        getDoc(doc(db, 'restaurants', restId)).then(d => {
-            if (d.exists()) setName(d.data().name);
+        supabase.from('comercios').select('name').eq('id', restId).maybeSingle().then(({ data }) => {
+            if (data?.name) setName(data.name);
             else setName('Local Afiliado');
         });
     }, [restId]);
@@ -204,18 +200,18 @@ export default function Profile() {
             if (!user) return;
             setLoadingActivities(true);
             try {
+                const uid = user.id || user.uid;
                 // Fetch Orders
-                const qOrders = query(
-                    collection(db, 'orders'),
-                    where('userId', '==', user.uid),
-                    orderBy('createdAt', 'desc')
-                );
-                const orderSnapshot = await getDocs(qOrders);
-                const fetchedOrders = orderSnapshot.docs.map(doc => {
-                    const data = doc.data();
-                    const restId = data.restaurantId || (data.items && data.items.length > 0 ? data.items[0].restaurantId : null);
+                const { data: orderData } = await supabase
+                    .from('orders')
+                    .select('*')
+                    .or(`user_id.eq.${uid},userId.eq.${uid}`)
+                    .order('created_at', { ascending: false });
+
+                const fetchedOrders = (orderData || []).map((data: any) => {
+                    const restId = data.restaurant_id || data.restaurantId || (data.items && data.items.length > 0 ? (data.items[0].restaurant_id || data.items[0].restaurantId) : null);
                     return {
-                        id: doc.id,
+                        id: data.id,
                         type: 'order',
                         restaurantId: restId,
                         ...data
@@ -223,39 +219,39 @@ export default function Profile() {
                 });
 
                 // Fetch Transports
-                const qTransports = query(
-                    collection(db, 'transport_requests'),
-                    where('userId', '==', user.uid),
-                    orderBy('createdAt', 'desc')
-                );
-                const transportSnapshot = await getDocs(qTransports);
-                const fetchedTransports = transportSnapshot.docs.map(doc => {
+                const { data: transportData } = await supabase
+                    .from('transport_requests')
+                    .select('*')
+                    .or(`user_id.eq.${uid},userId.eq.${uid}`)
+                    .order('created_at', { ascending: false });
+
+                const fetchedTransports = (transportData || []).map((data: any) => {
                     return {
-                        id: doc.id,
+                        id: data.id,
                         type: 'transport',
-                        ...doc.data()
+                        ...data
                     } as ActivityItem;
                 });
 
                 // Fetch Wallet Recharges
-                const qRecharges = query(
-                    collection(db, 'wallet_recharges'),
-                    where('userId', '==', user.uid),
-                    orderBy('createdAt', 'desc')
-                );
-                const rechargeSnapshot = await getDocs(qRecharges);
-                const fetchedRecharges = rechargeSnapshot.docs.map(doc => {
+                const { data: rechargeData } = await supabase
+                    .from('wallet_recharges')
+                    .select('*')
+                    .or(`user_id.eq.${uid},userId.eq.${uid}`)
+                    .order('created_at', { ascending: false });
+
+                const fetchedRecharges = (rechargeData || []).map((data: any) => {
                     return {
-                        id: doc.id,
+                        id: data.id,
                         type: 'wallet_recharge',
-                        ...doc.data()
+                        ...data
                     } as ActivityItem;
                 });
 
                 // Combine and sort
                 const combined = [...fetchedOrders, ...fetchedTransports, ...fetchedRecharges].sort((a, b) => {
-                    const timeA = a.createdAt?.toMillis ? a.createdAt.toMillis() : (a.createdAt instanceof Date ? a.createdAt.getTime() : 0);
-                    const timeB = b.createdAt?.toMillis ? b.createdAt.toMillis() : (b.createdAt instanceof Date ? b.createdAt.getTime() : 0);
+                    const timeA = a.created_at ? new Date(a.created_at).getTime() : (a.createdAt?.toMillis ? a.createdAt.toMillis() : (a.createdAt instanceof Date ? a.createdAt.getTime() : 0));
+                    const timeB = b.created_at ? new Date(b.created_at).getTime() : (b.createdAt?.toMillis ? b.createdAt.toMillis() : (b.createdAt instanceof Date ? b.createdAt.getTime() : 0));
                     return timeB - timeA;
                 });
 
@@ -269,9 +265,13 @@ export default function Profile() {
 
         const fetchPaymentMethods = async () => {
             try {
-                const docSnap = await getDoc(doc(db, 'system_configs', 'finances'));
-                if (docSnap.exists()) {
-                    setPaymentMethods(docSnap.data().paymentMethods);
+                const { data: docSnap } = await supabase
+                    .from('system_configs')
+                    .select('*')
+                    .eq('id', 'finances')
+                    .maybeSingle();
+                if (docSnap) {
+                    setPaymentMethods(docSnap.data?.paymentMethods || docSnap.paymentMethods);
                 }
             } catch (error) {
                 console.error("Error fetching payment methods:", error);
@@ -288,22 +288,17 @@ export default function Profile() {
             if (!user) return;
             setLoadingTickets(true);
             try {
-                const qTickets = query(
-                    collection(db, 'support_tickets'),
-                    where('userId', '==', user.uid)
-                );
-                const snapshot = await getDocs(qTickets);
-                const fetchedTickets = snapshot.docs.map(doc => ({
-                    id: doc.id,
-                    ...doc.data()
+                const uid = user.id || user.uid;
+                const { data: snapshot } = await supabase
+                    .from('support_tickets')
+                    .select('*')
+                    .or(`user_id.eq.${uid},userId.eq.${uid}`)
+                    .order('created_at', { ascending: false });
+
+                const fetchedTickets = (snapshot || []).map((data: any) => ({
+                    id: data.id,
+                    ...data
                 })) as SupportTicket[];
-                
-                // Sort locally by createdAt desc
-                fetchedTickets.sort((a, b) => {
-                    const timeA = a.createdAt?.toMillis ? a.createdAt.toMillis() : Date.now();
-                    const timeB = b.createdAt?.toMillis ? b.createdAt.toMillis() : Date.now();
-                    return timeB - timeA;
-                });
                 
                 setSupportTickets(fetchedTickets);
             } catch (error) {
@@ -317,24 +312,16 @@ export default function Profile() {
             if (!user) return;
             setLoadingCredits(true);
             try {
-                const qCredits = query(
-                    collectionGroup(db, 'credits'),
-                    where('userEmail', '==', user.email)
-                );
-                const snapshot = await getDocs(qCredits);
-                const fetchedCredits = await Promise.all(snapshot.docs.map(async (doc) => {
-                    const data = doc.data();
-                    // Obtener nombre del restaurante
-                    const restRef = doc.ref.parent.parent;
-                    let restName = 'Restaurante';
-                    if (restRef) {
-                        const restSnap = await getDoc(restRef);
-                        if (restSnap.exists()) restName = restSnap.data().name;
-                    }
-                    return { id: doc.id, restaurantName: restName, ...data };
-                }));
-                // Sort by date created desc
-                setMyCredits(fetchedCredits.sort((a:any, b:any) => b.createdAt - a.createdAt));
+                const { data: snapshot } = await supabase
+                    .from('restaurant_credits')
+                    .select('*')
+                    .eq('user_email', user.email)
+                    .order('created_at', { ascending: false });
+
+                const fetchedCredits = (snapshot || []).map((data: any) => {
+                    return { id: data.id, restaurantName: data.restaurant_name || data.restaurantName || 'Restaurante', ...data };
+                });
+                setMyCredits(fetchedCredits);
             } catch (error) {
                 console.error("Error fetching credits:", error);
             } finally {
@@ -364,24 +351,35 @@ export default function Profile() {
 
         setIsSubmittingTicket(true);
         try {
+            const uid = user.id || user.uid;
             const newTicket = {
-                userId: user.uid,
+                user_id: uid,
+                userId: uid,
+                user_name: userData.displayName || 'Usuario sin nombre',
                 userName: userData.displayName || 'Usuario sin nombre',
+                user_email: user.email || '',
                 userEmail: user.email || '',
+                user_phone: userData.phone || '',
                 userPhone: userData.phone || '',
                 title: ticketForm.title,
                 description: ticketForm.description,
                 status: 'open',
-                createdAt: serverTimestamp()
+                created_at: new Date().toISOString()
             };
 
-            const docRef = await addDoc(collection(db, 'support_tickets'), newTicket);
+            const { data: insData, error: insErr } = await supabase
+                .from('support_tickets')
+                .insert(newTicket)
+                .select()
+                .single();
+
+            const ticketId = insData?.id || `ticket_${Date.now()}`;
             
             // Add locally to update UI immediately
             setSupportTickets(prev => [{
                 ...newTicket,
-                id: docRef.id,
-                createdAt: { toDate: () => new Date() } // Mock timestamp for local display immediately
+                id: ticketId,
+                createdAt: new Date().toISOString()
             } as any, ...prev]);
 
             toast.success("Reporte enviado con éxito");
@@ -440,10 +438,11 @@ export default function Profile() {
     };
 
     const handleDeleteAddress = async (addressId: string) => {
-        if (!user || (!userData?.addresses)) return;
+        const uid = user?.id || user?.uid;
+        if (!uid || (!userData?.addresses)) return;
         const newAddresses = userData.addresses.filter(a => a.id !== addressId);
         try {
-            await setDoc(doc(db, 'users', user.uid), { addresses: newAddresses }, { merge: true });
+            await supabase.from('profiles').update({ addresses: newAddresses, updated_at: new Date().toISOString() }).eq('id', uid);
         } catch (e) {
             console.error("Error deleting address", e);
             alert("No se pudo eliminar la dirección.");
@@ -451,13 +450,14 @@ export default function Profile() {
     };
 
     const handleSetDefaultAddress = async (addressId: string) => {
-        if (!user || (!userData?.addresses)) return;
+        const uid = user?.id || user?.uid;
+        if (!uid || (!userData?.addresses)) return;
         const newAddresses = userData.addresses.map(a => ({
             ...a,
             isDefault: a.id === addressId
         }));
         try {
-            await setDoc(doc(db, 'users', user.uid), { addresses: newAddresses }, { merge: true });
+            await supabase.from('profiles').update({ addresses: newAddresses, updated_at: new Date().toISOString() }).eq('id', uid);
         } catch (e) {
             console.error("Error setting default address", e);
             alert("No se pudo establecer como predeterminada.");
@@ -542,7 +542,7 @@ export default function Profile() {
     };
 
     const handleLogout = async () => {
-        await auth.signOut();
+        await supabase.auth.signOut();
         navigate('/');
     };
 
@@ -700,26 +700,36 @@ export default function Profile() {
 
     const handleRechargeSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!user || (!rechargeAmount && !rechargeProof)) return;
+        const uid = user?.id || user?.uid;
+        if (!uid || (!rechargeAmount && !rechargeProof)) return;
 
         setIsRecharging(true);
         try {
             let proofUrl = '';
             if (rechargeProof) {
-                const storageRef = ref(storage, `wallet_recharges/${user.uid}/${Date.now()}_${rechargeProof.name}`);
-                const snapshot = await uploadBytes(storageRef, rechargeProof);
-                proofUrl = await getDownloadURL(snapshot.ref);
+                const ext = rechargeProof.name.split('.').pop() || 'jpg';
+                const path = `wallet_recharges/${uid}/${Date.now()}.${ext}`;
+                const { error: upErr } = await supabase.storage.from('store_assets').upload(path, rechargeProof, { upsert: true });
+                if (!upErr) {
+                    const { data: { publicUrl } } = supabase.storage.from('store_assets').getPublicUrl(path);
+                    proofUrl = publicUrl;
+                }
             }
 
-            await addDoc(collection(db, 'wallet_recharges'), {
-                userId: user.uid,
+            await supabase.from('wallet_recharges').insert({
+                user_id: uid,
+                userId: uid,
+                user_name: userData?.displayName || user.displayName || 'Usuario',
                 userName: userData?.displayName || user.displayName || 'Usuario',
+                user_phone: userData?.phone || '',
                 userPhone: userData?.phone || '',
                 amount: parseFloat(rechargeAmount),
+                proof_url: proofUrl,
                 proofUrl,
+                payment_ref: rechargeRef,
                 paymentRef: rechargeRef,
                 status: 'pending',
-                createdAt: serverTimestamp()
+                created_at: new Date().toISOString()
             });
 
             alert("¡Recarga enviada! Verificaremos los datos pronto.");
@@ -743,7 +753,7 @@ export default function Profile() {
                     className="w-80 h-32 flex items-center justify-center mb-8 cursor-pointer active:scale-95 transition-transform p-2 overflow-visible"
                 >
                     <img 
-                        src="https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/logo.png?alt=media&v=1.1" 
+                        src="https://xfialzrbbsdzzcjtefqo.supabase.co/storage/v1/object/public/store_assets/logo.png" 
                         alt="Deliexpress Logo"
                         className="w-auto h-full object-contain filter drop-shadow-xl"
                     />
@@ -1686,23 +1696,29 @@ export default function Profile() {
 
                                 <div
                                     onClick={async () => {
-                                        if (!user) return;
+                                        const uid = user?.id || user?.uid;
+                                        if (!uid) return;
                                         setUpdatingBiometrics(true);
                                         try {
                                             if (userData?.biometricLockEnabled) {
                                                 // Disable
-                                                await setDoc(doc(db, 'users', user.uid), {
-                                                    biometricLockEnabled: false
-                                                }, { merge: true });
+                                                await supabase.from('profiles').update({
+                                                    biometricLockEnabled: false,
+                                                    biometric_lock_enabled: false,
+                                                    updated_at: new Date().toISOString()
+                                                }).eq('id', uid);
                                                 toast.success('Bloqueo biométrico desactivado');
                                             } else {
                                                 // Enable
-                                                const biometricData = await registerBiometric(user.uid, user.email || '');
+                                                const biometricData = await registerBiometric(uid, user.email || '');
                                                 if (biometricData) {
-                                                    await setDoc(doc(db, 'users', user.uid), {
+                                                    await supabase.from('profiles').update({
                                                         biometricLockEnabled: true,
-                                                        biometricCredentialId: biometricData.id
-                                                    }, { merge: true });
+                                                        biometric_lock_enabled: true,
+                                                        biometricCredentialId: biometricData.id,
+                                                        biometric_credential_id: biometricData.id,
+                                                        updated_at: new Date().toISOString()
+                                                    }).eq('id', uid);
                                                     toast.success('Bloqueo biométrico activado');
                                                 } else {
                                                     toast.error('No se pudo activar la biometría');
@@ -1743,22 +1759,27 @@ export default function Profile() {
 
                                 <div
                                     onClick={async () => {
-                                        if (!user) return;
+                                        const uid = user?.id || user?.uid;
+                                        if (!uid) return;
                                         setUpdatingLocation(true);
                                         try {
                                             if (userData?.locationPermissionsAllowed) {
                                                 // Disable
-                                                await updateDoc(doc(db, 'users', user.uid), {
-                                                    locationPermissionsAllowed: false
-                                                });
+                                                await supabase.from('profiles').update({
+                                                    locationPermissionsAllowed: false,
+                                                    location_permissions_allowed: false,
+                                                    updated_at: new Date().toISOString()
+                                                }).eq('id', uid);
                                                 toast.success('Ubicación en tiempo real desactivada');
                                             } else {
                                                 // Enable
                                                 const permission = await Geolocation.requestPermissions();
                                                 if (permission.location === 'granted') {
-                                                    await updateDoc(doc(db, 'users', user.uid), {
-                                                        locationPermissionsAllowed: true
-                                                    });
+                                                    await supabase.from('profiles').update({
+                                                        locationPermissionsAllowed: true,
+                                                        location_permissions_allowed: true,
+                                                        updated_at: new Date().toISOString()
+                                                    }).eq('id', uid);
                                                     toast.success('Ubicación en tiempo real activada');
                                                 } else {
                                                     toast.error('Se requiere permiso de ubicación para activar esta función');
@@ -1879,7 +1900,7 @@ export default function Profile() {
                     className="mt-8 text-center p-6 grayscale opacity-50 cursor-pointer active:scale-95 transition-transform"
                     onClick={() => window.location.href = 'https://deliexpress.app'}
                 >
-                    <img src="https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/logo.png?alt=media&v=1.1" alt="Deliexpress" className="h-12 mx-auto mb-2" />
+                    <img src="https://xfialzrbbsdzzcjtefqo.supabase.co/storage/v1/object/public/store_assets/logo.png" alt="Deliexpress" className="h-12 mx-auto mb-2" />
                     <p className="text-[10px] uppercase tracking-widest font-bold text-slate-400">Hecho con ❤️ en Venezuela</p>
                 </div>
             </div>
@@ -1902,10 +1923,10 @@ export default function Profile() {
                                     isDefault: isFirst || currentAddresses.length === 0
                                 };
 
-                                const userRef = doc(db, 'users', user.uid);
-                                await setDoc(userRef, {
-                                    addresses: [...currentAddresses, newAddress]
-                                }, { merge: true });
+                                await supabase.from('profiles').update({
+                                    addresses: [...currentAddresses, newAddress],
+                                    updated_at: new Date().toISOString()
+                                }).eq('id', user.id || user.uid);
                                 setShowAddressPicker(false);
                             } catch (err) {
                                 console.error("Error saving address:", err);
@@ -2359,7 +2380,7 @@ export default function Profile() {
                                                 }}
                                             >
                                                 <img
-                                                    src="https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/logo.png?alt=media&v=1.1"
+                                                    src="https://xfialzrbbsdzzcjtefqo.supabase.co/storage/v1/object/public/store_assets/logo.png"
                                                     alt="Deliexpress"
                                                     className="w-full h-full object-contain brightness-0 invert"
                                                 />

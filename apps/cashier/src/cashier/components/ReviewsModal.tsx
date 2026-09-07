@@ -1,8 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { X, Star, MessageSquare, Loader2, User } from 'lucide-react';
-import { db } from '../../lib/firebase';
-import { collection, query, where, orderBy, getDocs } from 'firebase/firestore';
+import { supabase } from '../../lib/supabase';
 
 interface Review {
     id: string;
@@ -32,11 +31,23 @@ export default function ReviewsModal({ isOpen, onClose, restaurantId }: ReviewsM
     const fetchReviews = async () => {
         setLoading(true);
         try {
-            const reviewsRef = collection(db, 'restaurants', restaurantId, 'reviews');
-            const q = query(reviewsRef, where('isHidden', '==', false), orderBy('createdAt', 'desc'));
-            const snap = await getDocs(q);
-            const data = snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Review));
-            setReviews(data);
+            const { data, error } = await supabase
+                .from('reviews')
+                .select('*')
+                .eq('restaurant_id', restaurantId)
+                .neq('is_hidden', true)
+                .order('created_at', { ascending: false });
+
+            if (data) {
+                setReviews(data.map(r => ({
+                    id: r.id,
+                    userName: r.user_name || r.userName || 'Cliente',
+                    rating: Number(r.rating || 5),
+                    comment: r.comment || '',
+                    createdAt: r.created_at ? new Date(r.created_at) : new Date(),
+                    userPhoto: r.user_avatar || r.userPhoto
+                })));
+            }
         } catch (error) {
             console.error("Error fetching reviews:", error);
         } finally {

@@ -1,9 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { X, Star, UploadCloud, Image as ImageIcon, Trash2 } from 'lucide-react';
-import { db, storage } from '../lib/firebase';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { collection, addDoc, serverTimestamp, doc, updateDoc, getDoc } from 'firebase/firestore';
+import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import toast from 'react-hot-toast';
 
@@ -44,7 +42,7 @@ export default function ReviewModal({ isOpen, onClose, restaurantId, orderId, on
         for (const file of files) {
             if (file.size > MAX_FILE_SIZE_MB * 1024 * 1024) {
                 setError(`La foto "${file.name}" supera el límite de ${MAX_FILE_SIZE_MB}MB.`);
-                return; // Stop processing if one fails
+                return;
             }
             if (!file.type.startsWith('image/')) {
                 setError(`El archivo "${file.name}" no es una imagen válida.`);
@@ -58,7 +56,6 @@ export default function ReviewModal({ isOpen, onClose, restaurantId, orderId, on
         setPhotos(prev => [...prev, ...validFiles]);
         setPhotoPreviews(prev => [...prev, ...newPreviews]);
 
-        // Reset input so the same file could be selected again if removed
         if (e.target) e.target.value = '';
     };
 
@@ -93,39 +90,57 @@ export default function ReviewModal({ isOpen, onClose, restaurantId, orderId, on
             const photoURLs: string[] = [];
             for (let i = 0; i < photos.length; i++) {
                 const file = photos[i];
-                const storageRef = ref(storage, `reviews/${restaurantId}/${orderId}_${Date.now()}_${i}`);
-                const snapshot = await uploadBytes(storageRef, file);
-                const downloadURL = await getDownloadURL(snapshot.ref);
-                photoURLs.push(downloadURL);
+                const ext = file.name.split('.').pop() || 'jpg';
+                const filePath = `reviews/${restaurantId}/${orderId}_${Date.now()}_${i}.${ext}`;
+                const { error: upErr } = await supabase.storage
+                    .from('store_assets')
+                    .upload(filePath, file, { upsert: true });
+
+                if (upErr) throw upErr;
+
+                const { data: pubData } = supabase.storage
+                    .from('store_assets')
+                    .getPublicUrl(filePath);
+
+                photoURLs.push(pubData.publicUrl);
             }
 
-            // Save review
+            // Save review in Supabase
             const reviewData = {
-                userId: user.uid,
-                userName: userData?.displayName || user.displayName || 'Usuario',
-                userPhoto: user.photoURL || '',
+                user_id: user.id || user.uid,
+                user_name: userData?.displayName || user.displayName || 'Usuario',
+                user_avatar: user.photoURL || '',
                 rating,
                 comment,
                 photos: photoURLs,
-                createdAt: serverTimestamp(),
-                isHidden: false,
-                orderId
+                created_at: new Date().toISOString(),
+                is_hidden: false,
+                order_id: orderId,
+                restaurant_id: restaurantId
             };
 
-            const reviewsRef = collection(db, 'restaurants', restaurantId, 'reviews');
-            await addDoc(reviewsRef, reviewData);
+            const { error: insertErr } = await supabase.from('reviews').insert([reviewData]);
+            if (insertErr) throw insertErr;
 
-            // Update order to mark as reviewed and completed if it was delivered
-            const orderRef = doc(db, 'orders', orderId);
-            const orderSnap = await getDoc(orderRef);
-            const updateData: any = { hasReviewed: true };
+            // Update order to mark as reviewed and completed if delivered
+            const { data: orderSnap } = await supabase
+                .from('orders')
+                .select('status')
+                .eq('id', orderId)
+                .maybeSingle();
+
+            const updateData: any = {
+                has_reviewed: true,
+                hasReviewed: true
+            };
             
-            if (orderSnap.exists() && orderSnap.data().status === 'delivered') {
+            if (orderSnap && orderSnap.status === 'delivered') {
                 updateData.status = 'completed';
             }
             
-            await updateDoc(orderRef, updateData);
+            await supabase.from('orders').update(updateData).eq('id', orderId);
 
+            toast.success("¡Reseña enviada con éxito!");
             onReviewSubmitted();
         } catch (err: any) {
             console.error("Error submitting review:", err);
@@ -172,86 +187,77 @@ export default function ReviewModal({ isOpen, onClose, restaurantId, orderId, on
                                         onMouseEnter={() => setHoverRating(star)}
                                         onMouseLeave={() => setHoverRating(0)}
                                         onClick={() => setRating(star)}
-                                        className="p-1 transition-transform hover:scale-110 active:scale-90"
+                                        className="p-1.5 transition-transform hover:scale-110 active:scale-95"
                                     >
                                         <Star
-                                            className={`w-10 h-10 transition-colors ${(hoverRating || rating) >= star
-                                                ? 'fill-orange-400 text-orange-400'
-                                                : 'fill-slate-100 text-slate-200'
-                                                }`}
+                                            className={`w-8 h-8 transition-colors ${
+                                                star <= (hoverRating || rating)
+                                                    ? 'fill-amber-400 text-amber-400'
+                                                    : 'text-slate-200'
+                                            }`}
                                         />
                                     </button>
                                 ))}
                             </div>
                         </div>
 
-                        {/* Comment */}
-                        <div className="space-y-2">
-                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-2">Tu Reseña</label>
+                        {/* Comment Input */}
+                        <div className="space-y-1.5">
+                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">
+                                Comentario
+                            </label>
                             <textarea
-                                required
                                 value={comment}
                                 onChange={(e) => setComment(e.target.value)}
-                                placeholder="Comparte detalles de tu experiencia, ¿Qué te gustó más?"
-                                className="w-full h-32 bg-slate-50 border-2 border-slate-100 rounded-2xl p-4 font-bold text-slate-700 focus:bg-white focus:border-primary transition-all outline-none resize-none"
-                            ></textarea>
+                                placeholder="Cuéntanos más sobre la calidad de la comida, el empaque..."
+                                className="w-full bg-slate-50 border-2 border-slate-100 focus:border-primary p-4 rounded-2xl outline-none font-bold text-slate-700 transition-all text-sm min-h-[100px] resize-none"
+                            />
                         </div>
 
-                        {/* Photos Upload */}
-                        <div className="space-y-4">
-                            <div className="flex items-center justify-between ml-2">
-                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                                    Fotos (Opcional - Máx {MAX_PHOTOS})
-                                </label>
-                                <span className="text-[10px] font-bold text-slate-400">{photos.length}/{MAX_PHOTOS}</span>
-                            </div>
-
-                            <div className="flex flex-wrap gap-3">
-                                {photoPreviews.map((preview, index) => (
-                                    <div key={index} className="relative w-24 h-24 rounded-2xl border-2 border-slate-100 overflow-hidden group">
-                                        <img src={preview} alt={`Preview ${index}`} className="w-full h-full object-cover" />
-                                        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                                            <button
-                                                type="button"
-                                                onClick={() => removePhoto(index)}
-                                                className="w-8 h-8 bg-red-500 rounded-full flex items-center justify-center text-white active:scale-95 transition-transform"
-                                            >
-                                                <Trash2 className="w-4 h-4" />
-                                            </button>
-                                        </div>
+                        {/* Photo Previews */}
+                        {photoPreviews.length > 0 && (
+                            <div className="flex gap-3 overflow-x-auto pb-2">
+                                {photoPreviews.map((preview, i) => (
+                                    <div key={i} className="relative w-20 h-20 rounded-2xl overflow-hidden border border-slate-200 shrink-0 group">
+                                        <img src={preview} alt="Upload preview" className="w-full h-full object-cover" />
+                                        <button
+                                            type="button"
+                                            onClick={() => removePhoto(i)}
+                                            className="absolute top-1 right-1 bg-black/60 p-1 rounded-full text-white opacity-0 group-hover:opacity-100 transition-opacity"
+                                        >
+                                            <Trash2 className="w-3.5 h-3.5" />
+                                        </button>
                                     </div>
                                 ))}
-
-                                {photos.length < MAX_PHOTOS && (
-                                    <div className="relative w-24 h-24 rounded-2xl bg-slate-50 border-2 border-dashed border-slate-200 flex flex-col items-center justify-center hover:bg-slate-100 transition-colors cursor-pointer group">
-                                        <UploadCloud className="w-6 h-6 text-slate-400 mb-1 group-hover:text-slate-900 transition-colors" />
-                                        <span className="text-[8px] font-black uppercase tracking-widest text-slate-400 group-hover:text-slate-900 transition-colors">Subir</span>
-                                        <input
-                                            type="file"
-                                            accept="image/*"
-                                            multiple
-                                            onChange={handlePhotoChange}
-                                            className="absolute inset-0 opacity-0 cursor-pointer z-10"
-                                        />
-                                    </div>
-                                )}
                             </div>
-                            <p className="text-[10px] text-slate-400 font-medium ml-2">Máximo 2MB por foto.</p>
-                        </div>
+                        )}
 
-                        {/* Submit Button */}
+                        {/* Photo Input Button */}
+                        {photos.length < MAX_PHOTOS && (
+                            <div>
+                                <label className="flex items-center justify-center gap-2 p-3 bg-slate-50 border-2 border-dashed border-slate-200 rounded-2xl cursor-pointer hover:border-primary transition-all text-xs font-bold text-slate-500">
+                                    <UploadCloud className="w-4 h-4" />
+                                    <span>Agregar Fotos ({photos.length}/{MAX_PHOTOS})</span>
+                                    <input
+                                        type="file"
+                                        accept="image/*"
+                                        multiple
+                                        onChange={handlePhotoChange}
+                                        className="hidden"
+                                    />
+                                </label>
+                            </div>
+                        )}
+
                         <button
                             type="submit"
-                            disabled={isSubmitting}
-                            className="w-full bg-primary text-slate-900 py-4 rounded-2xl font-bold shadow-lg shadow-primary/30 hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-70 mt-4 flex items-center justify-center gap-2"
+                            disabled={isSubmitting || rating === 0}
+                            className="w-full py-4 bg-primary text-slate-900 rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl shadow-primary/20 hover:scale-[1.01] active:scale-95 transition-all disabled:opacity-50 flex items-center justify-center gap-2"
                         >
                             {isSubmitting ? (
-                                <>
-                                    <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                                    Enviando...
-                                </>
+                                <div className="w-5 h-5 border-2 border-slate-900 border-t-transparent rounded-full animate-spin"></div>
                             ) : (
-                                "Publicar Reseña"
+                                'Enviar Reseña'
                             )}
                         </button>
                     </form>

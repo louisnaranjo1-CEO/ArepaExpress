@@ -2,8 +2,7 @@ import { ArrowLeft, Search, Heart, Star, Clock, Plus, AlertCircle, MessageSquare
 import { motion, AnimatePresence } from 'motion/react';
 import { Link, useParams, useNavigate } from 'react-router-dom';
 import { useState, useEffect } from 'react';
-import { doc, getDoc, collection, getDocs, updateDoc, arrayUnion, arrayRemove, setDoc, deleteDoc, increment, query, where, orderBy } from 'firebase/firestore';
-import { db } from '../lib/firebase';
+import { supabase } from '../lib/supabase';
 import { Restaurant, Product } from '../lib/seed';
 import { useCart } from '../context/CartContext';
 import { useAuth } from '../context/AuthContext';
@@ -90,43 +89,79 @@ export default function RestaurantPage() {
         }
 
         // Fetch restaurant details
-        const docRef = doc(db, 'restaurants', id);
-        const docSnap = await getDoc(docRef);
+        const { data: docSnap } = await supabase
+          .from('comercios')
+          .select('*')
+          .eq('id', id)
+          .maybeSingle();
 
-        if (docSnap.exists()) {
-          const data = docSnap.data();
+        if (docSnap) {
+          const data = {
+            id: docSnap.id,
+            name: docSnap.name,
+            category: docSnap.category,
+            whatsapp: docSnap.whatsapp,
+            image: docSnap.image_url || docSnap.image,
+            logoUrl: docSnap.logo_url || docSnap.logoUrl || docSnap.logo,
+            isActive: docSnap.is_active ?? docSnap.isActive,
+            followerCount: docSnap.follower_count ?? docSnap.followerCount ?? 0,
+            hasCashea: docSnap.has_cashea ?? docSnap.hasCashea,
+            hasTwoByThree: docSnap.has_two_by_three ?? docSnap.hasTwoByThree,
+            location: docSnap.location,
+            ...docSnap
+          };
           if (data.isActive === false) {
             setError("Este restaurante no se encuentra disponible actualmente.");
             setLoading(false);
             return;
           }
-          setRestaurant({ id: docSnap.id, ...data });
+          setRestaurant(data);
           setFollowerCount(data.followerCount || 0);
 
+          const uid = user?.id || user?.uid;
+
           // Check if it's in user following
-          if (user) {
+          if (uid) {
             try {
-              const followRef = doc(db, 'restaurants', id, 'followers', user.uid);
-              const followSnap = await getDoc(followRef);
-              setIsFollowing(followSnap.exists());
+              const { data: followSnap } = await supabase
+                .from('restaurant_followers')
+                .select('id')
+                .eq('restaurant_id', id)
+                .eq('user_id', uid)
+                .maybeSingle();
+              setIsFollowing(!!followSnap);
             } catch (followErr) {
               console.warn("Could not check follow status:", followErr);
             }
           }
 
-          // Fetch products subcollection
-          const productsRef = collection(db, 'restaurants', id, 'products');
-          const productsSnap = await getDocs(productsRef);
-          const fetchedProducts = productsSnap.docs.map(p => ({ id: p.id, ...p.data() })) as Product[];
+          // Fetch products
+          const { data: productsData } = await supabase
+            .from('products')
+            .select('*')
+            .eq('restaurant_id', id);
+
+          const fetchedProducts = (productsData || []).map((p: any) => ({
+            id: p.id,
+            name: p.name,
+            price: p.price,
+            image: p.image_url || p.image,
+            category: p.category,
+            description: p.description,
+            ...p
+          })) as Product[];
           setProducts(fetchedProducts);
 
           // Check if it's in user favorites
-          if (user) {
+          if (uid) {
             try {
-              const userRef = doc(db, 'users', user.uid);
-              const userSnap = await getDoc(userRef);
-              if (userSnap.exists()) {
-                const favs = userSnap.data().favorites || [];
+              const { data: userSnap } = await supabase
+                .from('profiles')
+                .select('favorites')
+                .eq('id', uid)
+                .maybeSingle();
+              if (userSnap) {
+                const favs = userSnap.favorites || [];
                 setIsFavorite(favs.includes(id));
               }
             } catch (favErr) {
@@ -146,15 +181,15 @@ export default function RestaurantPage() {
 
     const fetchIcons = async () => {
       try {
-        const iconsSnap = await getDocs(collection(db, 'global_icons'));
-        const icons = iconsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })) as any[];
-        const cashea = icons.find(icon => icon.name?.toLowerCase() === 'cashea');
+        const { data: icons } = await supabase
+          .from('global_icons')
+          .select('*');
+        const cashea = (icons || []).find((icon: any) => icon.name?.toLowerCase() === 'cashea');
 
         if (cashea) {
-          setCasheaIcon(cashea.imageUrl || cashea.url);
+          setCasheaIcon(cashea.image_url || cashea.imageUrl || cashea.url);
         } else {
-          // Fallback to official Cashea icon if not found in global_icons
-          setCasheaIcon("https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/logo%20cashea.png?alt=media&token=5b266100-3323-41bb-a5a4-23957ce678a1");
+          setCasheaIcon("https://xfialzrbbsdzzcjtefqo.supabase.co/storage/v1/object/public/store_assets/logo_cashea.png");
         }
       } catch (err) {
         console.error("Error fetching icons:", err);
@@ -163,17 +198,20 @@ export default function RestaurantPage() {
 
     fetchRestaurantAndMenu();
     fetchIcons();
-  }, [id]);
+  }, [id, user]);
 
   useEffect(() => {
     const fetchReviews = async () => {
       if (!id || activeTab !== 'Reseñas' || reviews.length > 0) return;
       setLoadingReviews(true);
       try {
-        const reviewsRef = collection(db, 'restaurants', id, 'reviews');
-        const q = query(reviewsRef, where('isHidden', '==', false), orderBy('createdAt', 'desc'));
-        const snap = await getDocs(q);
-        setReviews(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+        const { data: revs } = await supabase
+          .from('reviews')
+          .select('*')
+          .eq('restaurant_id', id)
+          .eq('is_hidden', false)
+          .order('created_at', { ascending: false });
+        setReviews(revs || []);
       } catch (err) {
         console.error("Error fetching reviews:", err);
       } finally {
@@ -318,52 +356,80 @@ export default function RestaurantPage() {
   };
 
   const toggleFavorite = async () => {
-    if (!user) {
+    const uid = user?.id || user?.uid;
+    if (!uid) {
       alert("Inicia sesión para guardar tus restaurantes favoritos.");
       return;
     }
     try {
-      const userRef = doc(db, 'users', user.uid);
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('favorites')
+        .eq('id', uid)
+        .maybeSingle();
+
+      let favs: string[] = profile?.favorites || [];
       if (isFavorite) {
-        setIsFavorite(false); // Optimistic DB update
-        await updateDoc(userRef, { favorites: arrayRemove(id) });
+        setIsFavorite(false); // Optimistic UI update
+        favs = favs.filter(f => f !== id);
       } else {
         setIsFavorite(true);
-        await updateDoc(userRef, { favorites: arrayUnion(id) });
+        if (id && !favs.includes(id)) favs.push(id);
       }
+      await supabase
+        .from('profiles')
+        .update({ favorites: favs, updated_at: new Date().toISOString() })
+        .eq('id', uid);
     } catch (e) {
       console.error("Error toggling favorite:", e);
-      // Revert on error
       setIsFavorite(!isFavorite);
     }
   };
 
   const toggleFollow = async () => {
-    if (!user) {
+    const uid = user?.id || user?.uid;
+    if (!uid) {
       alert("Inicia sesión para seguir a tus locales favoritos.");
       return;
     }
     if (!id) return;
 
     try {
-      const resRef = doc(db, 'restaurants', id);
-      const followerRef = doc(db, 'restaurants', id, 'followers', user.uid);
-
       if (isFollowing) {
         setIsFollowing(false);
-        setFollowerCount(prev => Math.max(0, prev - 1));
-        await deleteDoc(followerRef);
-        await updateDoc(resRef, { followerCount: increment(-1) });
+        const newCount = Math.max(0, followerCount - 1);
+        setFollowerCount(newCount);
+        await supabase
+          .from('restaurant_followers')
+          .delete()
+          .eq('restaurant_id', id)
+          .eq('user_id', uid);
+        await supabase
+          .from('comercios')
+          .update({
+            follower_count: newCount,
+            followerCount: newCount
+          })
+          .eq('id', id);
       } else {
         setIsFollowing(true);
-        setFollowerCount(prev => prev + 1);
-        await setDoc(followerRef, {
-          uid: user.uid,
-          displayName: user.displayName || 'Usuario',
-          photoURL: user.photoURL || '',
-          followedAt: new Date()
-        });
-        await updateDoc(resRef, { followerCount: increment(1) });
+        const newCount = followerCount + 1;
+        setFollowerCount(newCount);
+        await supabase
+          .from('restaurant_followers')
+          .upsert({
+            restaurant_id: id,
+            user_id: uid,
+            user_name: user.displayName || 'Usuario',
+            created_at: new Date().toISOString()
+          });
+        await supabase
+          .from('comercios')
+          .update({
+            follower_count: newCount,
+            followerCount: newCount
+          })
+          .eq('id', id);
       }
     } catch (e) {
       console.error("Error toggling follow:", e);
@@ -469,7 +535,7 @@ export default function RestaurantPage() {
             {restaurant.hasCashea && (
               <div className="absolute -top-1 -right-1 w-8 h-8 bg-white/95 backdrop-blur rounded-xl p-1 shadow-lg border border-white/50 flex items-center justify-center animate-in zoom-in duration-500">
                 <img
-                  src={casheaIcon || "https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/logo%20cashea.png?alt=media&token=5b266100-3323-41bb-a5a4-23957ce678a1"}
+                  src={casheaIcon || "https://xfialzrbbsdzzcjtefqo.supabase.co/storage/v1/object/public/store_assets/logo_cashea.png"}
                   alt="Cashea"
                   className="w-full h-full object-contain"
                 />
@@ -537,7 +603,7 @@ export default function RestaurantPage() {
             >
               <div className="absolute top-0 right-0 w-24 h-24 bg-yellow-400/5 rounded-full -mr-8 -mt-8 blur-2xl" />
               <div className="w-12 h-12 rounded-[1.25rem] bg-yellow-400 flex items-center justify-center shrink-0 shadow-lg shadow-yellow-400/30 group-hover:scale-110 transition-transform">
-                <img src={casheaIcon || "https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/logo%20cashea.png?alt=media&token=5b266100-3323-41bb-a5a4-23957ce678a1"} className="w-7 h-7 object-contain" alt="Cashea" />
+                <img src={casheaIcon || "https://xfialzrbbsdzzcjtefqo.supabase.co/storage/v1/object/public/store_assets/logo_cashea.png"} className="w-7 h-7 object-contain" alt="Cashea" />
               </div>
               <div className="flex-1">
                 <div className="flex items-center gap-2">

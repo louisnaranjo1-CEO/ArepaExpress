@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
-import { db } from '../../lib/firebase';
-import { collection, query, where, onSnapshot, getDocs } from 'firebase/firestore';
+import { supabase } from '../../lib/supabase';
 import { Trophy, Star, Target, CheckCircle2, Navigation, ArrowLeft } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
@@ -29,37 +28,56 @@ export default function Achievements() {
     useEffect(() => {
         if (!user) return;
 
-        // Fetch active achievements
-        const qAchievements = query(
-            collection(db, 'achievements'),
-            where('isActive', '==', true)
-        );
+        const fetchAchievements = async () => {
+            try {
+                const { data } = await supabase
+                    .from('achievements')
+                    .select('*')
+                    .eq('is_active', true);
 
-        const unsubAchievements = onSnapshot(qAchievements, (snapshot) => {
-            const items = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Achievement));
-            setAchievements(items);
-        });
+                if (data) {
+                    setAchievements(data.map((d: any) => ({
+                        id: d.id,
+                        title: d.title,
+                        description: d.description,
+                        targetType: d.target_type || d.targetType || 'trips',
+                        targetValue: d.target_value ?? d.targetValue ?? 0,
+                        rewardValue: d.reward_value ?? d.rewardValue ?? 0,
+                        rewardType: d.reward_type || d.rewardType || 'cash',
+                        isActive: d.is_active ?? d.isActive ?? true
+                    })));
+                }
+            } catch (err) {
+                console.error("Error fetching achievements:", err);
+            }
+        };
 
         // Calculate driver stats
         const calculateStats = async () => {
             try {
                 // Delivery orders
-                const qOrders = query(collection(db, 'orders'), where('deliveryDriverId', '==', user.uid), where('status', '==', 'completed'));
-                const ordersSnap = await getDocs(qOrders);
-                let trips = ordersSnap.size;
+                const { data: ordersData } = await supabase
+                    .from('orders')
+                    .select('id, rating')
+                    .eq('delivery_driver_id', user.uid)
+                    .eq('status', 'completed');
+
+                let trips = (ordersData || []).length;
                 let fiveStarsCount = 0;
-                ordersSnap.forEach(doc => {
-                    const data = doc.data();
-                    if (data.rating === 5) fiveStarsCount++;
+                (ordersData || []).forEach((d: any) => {
+                    if (d.rating === 5) fiveStarsCount++;
                 });
 
                 // Transport requests
-                const qTransport = query(collection(db, 'transport_requests'), where('driverId', '==', user.uid), where('status', '==', 'completed'));
-                const transportSnap = await getDocs(qTransport);
-                trips += transportSnap.size;
-                transportSnap.forEach(doc => {
-                    const data = doc.data();
-                    if (data.rating === 5) fiveStarsCount++;
+                const { data: transportData } = await supabase
+                    .from('transport_requests')
+                    .select('id, rating')
+                    .eq('driver_id', user.uid)
+                    .eq('status', 'completed');
+
+                trips += (transportData || []).length;
+                (transportData || []).forEach((d: any) => {
+                    if (d.rating === 5) fiveStarsCount++;
                 });
 
                 setStats({
@@ -73,21 +91,30 @@ export default function Achievements() {
             }
         };
 
+        fetchAchievements();
         calculateStats();
 
-        return () => unsubAchievements();
+        const channel = supabase
+            .channel('public:achievements')
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'achievements' }, () => {
+                fetchAchievements();
+            })
+            .subscribe();
+
+        return () => {
+            supabase.removeChannel(channel);
+        };
     }, [user]);
 
     const getProgress = (achievement: Achievement) => {
         let current = 0;
         if (achievement.targetType === 'trips') current = stats.totalTrips;
         if (achievement.targetType === 'stars') current = stats.totalStars;
-        // time is hard to calculate historically without complex logic, will default to trips logic for now
         if (achievement.targetType === 'time') current = stats.totalTrips; 
         
         return {
             current,
-            percentage: Math.min(100, Math.round((current / achievement.targetValue) * 100)),
+            percentage: Math.min(100, Math.round((current / (achievement.targetValue || 1)) * 100)),
             isCompleted: current >= achievement.targetValue
         };
     };

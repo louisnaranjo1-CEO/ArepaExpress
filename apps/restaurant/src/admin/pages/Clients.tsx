@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Users, Search, ShoppingBag, Heart, Star, ChevronRight, User as UserIcon, Loader2, Calendar, MapPin, Phone } from 'lucide-react';
-import { db } from '../../lib/firebase';
-import { collection, query, getDocs, doc, getDoc, where, orderBy } from 'firebase/firestore';
+import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../context/AuthContext';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -39,22 +38,19 @@ export default function Clients() {
         console.log("Fetching clients for restaurant:", rid);
         
         try {
-            // 1. Get all orders for this restaurant
-            const ordersRef = collection(db, 'orders');
-            let ordersSnap;
-            
-            try {
-                // Try with sorting (requires index: restaurantId ASC, createdAt DESC)
-                const q = query(ordersRef, where('restaurantId', '==', rid), orderBy('createdAt', 'desc'));
-                ordersSnap = await getDocs(q);
-            } catch (indexError) {
-                console.warn("Index not found for sorted orders, falling back to unsorted query:", indexError);
-                // Fallback to unsorted query (doesn't require composite index)
-                const qFallback = query(ordersRef, where('restaurantId', '==', rid));
-                ordersSnap = await getDocs(qFallback);
+            // Get all orders for this restaurant from Supabase
+            const { data: ordersData, error } = await supabase
+                .from('orders')
+                .select('*')
+                .eq('restaurant_id', rid)
+                .order('created_at', { ascending: false });
+
+            if (error) {
+                console.error("Error fetching orders for clients:", error);
             }
 
-            console.log(`Found ${ordersSnap.size} orders`);
+            const orders = ordersData || [];
+            console.log(`Found ${orders.length} orders`);
 
             const clientMap = new Map<string, { 
                 lastOrderDate: any, 
@@ -65,59 +61,50 @@ export default function Clients() {
                 photoURL?: string
             }>();
 
-            ordersSnap.forEach(docSnap => {
-                const data = docSnap.data();
+            orders.forEach(data => {
                 if (!data) return;
 
                 // Determine a unique ID for this client
-                let clientId = data.userId;
+                let clientId = data.user_id || data.userId;
                 
-                // Special handling for guest/local/POS orders to ensure they don't aggregate together incorrectly
                 const isGenericId = !clientId || 
                                    clientId === 'waiter' || 
                                    clientId === 'local_walk_in' || 
                                    clientId === 'pos_customer' || 
-                                   clientId.startsWith('guest_');
+                                   clientId.startsWith?.('guest_');
 
                 if (isGenericId) {
-                    // Try to use unique identifiers in this order:
-                    // 1. clientId (which POS uses for DNI)
-                    // 2. userPhone
-                    // 3. userEmail
-                    // 4. userName (last resort, might group different people with same name)
-                    // 5. fallback to order doc ID
-                    clientId = data.clientId || data.userPhone || data.userEmail || data.userName || `anonymous_${docSnap.id}`;
+                    clientId = data.client_dni || data.clientId || data.user_phone || data.userPhone || data.user_email || data.userEmail || data.user_name || data.userName || `anonymous_${data.id}`;
                 }
                 
-                const orderDate = data.createdAt;
+                const orderDate = data.created_at || data.createdAt;
+                const orderDateMillis = orderDate ? new Date(orderDate).getTime() : 0;
                 
                 if (clientMap.has(clientId)) {
                     const stats = clientMap.get(clientId)!;
                     stats.totalOrders += 1;
                     
-                    // Safe comparison using timestamps or conversion
-                    const currentLastMillis = stats.lastOrderDate?.toMillis?.() || (stats.lastOrderDate instanceof Date ? stats.lastOrderDate.getTime() : 0);
-                    const orderDateMillis = orderDate?.toMillis?.() || (orderDate instanceof Date ? orderDate.getTime() : 0);
+                    const currentLastMillis = stats.lastOrderDate ? new Date(stats.lastOrderDate).getTime() : 0;
                     const isMoreRecent = orderDateMillis > currentLastMillis;
                     
                     if (isMoreRecent) {
                         stats.lastOrderDate = orderDate;
-                        if (data.userName) stats.name = data.userName;
-                        if (data.userEmail) stats.email = data.userEmail;
-                        if (data.userPhone) stats.phone = data.userPhone;
+                        if (data.user_name || data.userName) stats.name = data.user_name || data.userName;
+                        if (data.user_email || data.userEmail) stats.email = data.user_email || data.userEmail;
+                        if (data.user_phone || data.userPhone) stats.phone = data.user_phone || data.userPhone;
                     }
                 } else {
                     clientMap.set(clientId, {
                         lastOrderDate: orderDate,
                         totalOrders: 1,
-                        name: data.userName || 'Cliente Invitado',
-                        email: data.userEmail || 'N/A',
-                        phone: data.userPhone || 'N/A'
+                        name: data.user_name || data.userName || 'Cliente Invitado',
+                        email: data.user_email || data.userEmail || 'N/A',
+                        phone: data.user_phone || data.userPhone || 'N/A'
                     });
                 }
             });
 
-            // 2. Map aggregated data to Client objects
+            // Map aggregated data to Client objects
             const fetchedClients: Client[] = Array.from(clientMap.entries()).map(([cid, stats]) => ({
                 id: cid,
                 name: stats.name,
@@ -128,13 +115,13 @@ export default function Clients() {
                 totalOrders: stats.totalOrders,
                 points: 0,
                 favorites: [],
-                createdAt: stats.lastOrderDate // Approximation
+                createdAt: stats.lastOrderDate
             }));
 
-            // Sort by last order date descending manually
+            // Sort by last order date descending
             fetchedClients.sort((a, b) => {
-                const timeA = a.lastOrderDate?.toMillis?.() || (a.lastOrderDate instanceof Date ? a.lastOrderDate.getTime() : 0);
-                const timeB = b.lastOrderDate?.toMillis?.() || (b.lastOrderDate instanceof Date ? b.lastOrderDate.getTime() : 0);
+                const timeA = a.lastOrderDate ? new Date(a.lastOrderDate).getTime() : 0;
+                const timeB = b.lastOrderDate ? new Date(b.lastOrderDate).getTime() : 0;
                 return timeB - timeA;
             });
 

@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { DollarSign, TrendingDown, TrendingUp, Plus, Calendar, Settings, FileText, CheckCircle, Clock } from 'lucide-react';
-import { db } from '../../lib/firebase';
-import { collection, query, where, getDocs, addDoc, orderBy, serverTimestamp, Timestamp } from 'firebase/firestore';
+import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../context/AuthContext';
 
 interface Expense {
@@ -58,61 +57,87 @@ export default function Finance() {
             // Get today's bounds
             const today = new Date();
             today.setHours(0, 0, 0, 0);
-            const startOfDay = Timestamp.fromDate(today);
 
             const tomorrow = new Date(today);
             tomorrow.setDate(tomorrow.getDate() + 1);
-            const endOfDay = Timestamp.fromDate(tomorrow);
 
             // Fetch successful orders for today
-            const ordersRef = collection(db, 'orders');
-            const qOrders = query(
-                ordersRef,
-                where('restaurantId', '==', rid),
-                where('paymentStatus', '==', 'sold'),
-                where('createdAt', '>=', startOfDay),
-                where('createdAt', '<', endOfDay)
-            );
-            const ordersSnap = await getDocs(qOrders);
+            const { data: ordersData, error: ordersErr } = await supabase
+                .from('orders')
+                .select('*')
+                .eq('restaurant_id', rid)
+                .gte('created_at', today.toISOString())
+                .lt('created_at', tomorrow.toISOString());
+
+            if (ordersErr) console.error("Error fetching orders:", ordersErr);
+
             let income = 0;
             const salesList: any[] = [];
-            ordersSnap.forEach(doc => {
-                const data = doc.data();
-                income += data.total;
-                salesList.push({ id: doc.id, ...data });
+            (ordersData || []).forEach(o => {
+                const totalNum = Number(o.total || 0);
+                income += totalNum;
+                salesList.push({
+                    id: o.id,
+                    ...o,
+                    total: totalNum,
+                    tip: Number(o.tip || 0),
+                    paymentMethod: o.payment_method || o.paymentMethod || 'Pagado',
+                    waiterName: o.waiter_name || o.waiterName,
+                    createdAt: o.created_at ? new Date(o.created_at) : new Date()
+                });
             });
             setGrossIncome(income);
-            setSales(salesList.sort((a, b) => b.createdAt?.toDate().getTime() - a.createdAt?.toDate().getTime()));
+            setSales(salesList.sort((a, b) => (b.createdAt?.getTime?.() || 0) - (a.createdAt?.getTime?.() || 0)));
 
-            // Fetch expenses
-            const expensesRef = collection(db, 'restaurants', rid, 'expenses');
-            const qExpenses = query(expensesRef, orderBy('date', 'desc'));
-            const expensesSnap = await getDocs(qExpenses);
+            // Fetch expenses from Supabase
+            const { data: expensesData, error: expErr } = await supabase
+                .from('expenses')
+                .select('*')
+                .eq('restaurant_id', rid)
+                .order('date', { ascending: false });
+
+            if (expErr) console.error("Error fetching expenses:", expErr);
 
             const expensesList: Expense[] = [];
             let todayExp = 0;
 
-            expensesSnap.forEach(doc => {
-                const data = doc.data();
-                expensesList.push({ id: doc.id, ...data } as Expense);
+            (expensesData || []).forEach(data => {
+                const dateObj = data.date ? new Date(data.date) : new Date(data.created_at);
+                const amountNum = Number(data.amount || 0);
+                expensesList.push({
+                    id: data.id,
+                    description: data.description,
+                    category: data.category,
+                    amount: amountNum,
+                    paymentMethod: data.payment_method || data.paymentMethod || 'Efectivo',
+                    date: dateObj
+                });
 
                 // If it's from today, add to todayExp
-                if (data.date && data.date.toDate() >= today && data.date.toDate() < tomorrow) {
-                    todayExp += data.amount;
+                if (dateObj >= today && dateObj < tomorrow) {
+                    todayExp += amountNum;
                 }
             });
             setTotalExpenses(todayExp);
             setExpenses(expensesList);
 
-            // Fetch closures
-            const closuresRef = collection(db, 'restaurants', rid, 'cash_registers');
-            const qClosures = query(closuresRef, orderBy('date', 'desc'));
-            const closuresSnap = await getDocs(qClosures);
+            // Fetch closures from Supabase
+            const { data: closuresData, error: closErr } = await supabase
+                .from('cash_registers')
+                .select('*')
+                .eq('restaurant_id', rid)
+                .order('date', { ascending: false });
 
-            const closuresList: CashRegister[] = [];
-            closuresSnap.forEach(doc => {
-                closuresList.push({ id: doc.id, ...doc.data() } as CashRegister);
-            });
+            if (closErr) console.error("Error fetching closures:", closErr);
+
+            const closuresList: CashRegister[] = (closuresData || []).map(doc => ({
+                id: doc.id,
+                date: doc.date ? new Date(doc.date) : new Date(doc.created_at),
+                grossIncome: Number(doc.gross_income ?? doc.grossIncome ?? 0),
+                totalExpenses: Number(doc.total_expenses ?? doc.totalExpenses ?? 0),
+                netProfit: Number(doc.net_profit ?? doc.netProfit ?? 0),
+                closedBy: doc.closed_by ?? doc.closedBy ?? 'Admin'
+            }));
             setClosures(closuresList);
 
         } catch (error) {
@@ -128,13 +153,16 @@ export default function Finance() {
 
         setIsSubmitting(true);
         try {
-            await addDoc(collection(db, 'restaurants', rid, 'expenses'), {
+            const { error } = await supabase.from('expenses').insert({
+                restaurant_id: rid,
                 description: expenseForm.description,
                 category: expenseForm.category,
                 amount: parseFloat(expenseForm.amount),
-                paymentMethod: expenseForm.paymentMethod,
-                date: serverTimestamp()
+                payment_method: expenseForm.paymentMethod,
+                date: new Date().toISOString()
             });
+
+            if (error) throw error;
 
             setExpenseForm({ description: '', category: 'Insumos', amount: '', paymentMethod: 'Efectivo' });
             setShowExpenseModal(false);
@@ -152,13 +180,17 @@ export default function Finance() {
         if (!window.confirm("¿Estás seguro de cerrar la caja de hoy? Esto guardará un registro histórico con el saldo actual.")) return;
 
         try {
-            await addDoc(collection(db, 'restaurants', rid, 'cash_registers'), {
-                date: serverTimestamp(),
-                grossIncome,
-                totalExpenses,
-                netProfit: grossIncome - totalExpenses,
-                closedBy: user.email || 'Admin'
+            const { error } = await supabase.from('cash_registers').insert({
+                restaurant_id: rid,
+                date: new Date().toISOString(),
+                gross_income: grossIncome,
+                total_expenses: totalExpenses,
+                net_profit: grossIncome - totalExpenses,
+                closed_by: user.email || 'Admin'
             });
+
+            if (error) throw error;
+
             alert("Cierre de caja registrado exitosamente");
             fetchFinanceData();
         } catch (error) {
@@ -285,7 +317,7 @@ export default function Finance() {
                                                     )}
                                                     <span className="text-xs text-slate-400 font-bold flex items-center gap-1">
                                                         <Clock className="w-3 h-3" />
-                                                        {sale.createdAt ? sale.createdAt.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}
+                                                        {sale.createdAt ? (sale.createdAt.toLocaleTimeString ? sale.createdAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : new Date(sale.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })) : ''}
                                                     </span>
                                                 </div>
                                             </div>
@@ -323,7 +355,7 @@ export default function Finance() {
                                                     <span className="text-[10px] bg-slate-200 text-slate-600 px-2 py-0.5 rounded-md font-bold uppercase tracking-wider">{expense.category}</span>
                                                     <span className="text-xs text-slate-400 font-bold flex items-center gap-1">
                                                         <Clock className="w-3 h-3" />
-                                                        {expense.date ? expense.date.toDate().toLocaleDateString() : 'Pendiente'}
+                                                        {expense.date ? (expense.date.toLocaleDateString ? expense.date.toLocaleDateString() : new Date(expense.date).toLocaleDateString()) : 'Pendiente'}
                                                     </span>
                                                 </div>
                                             </div>
@@ -355,7 +387,7 @@ export default function Finance() {
                                                 </div>
                                                 <div>
                                                     <p className="font-black text-slate-800 text-lg">
-                                                        {closure.date ? closure.date.toDate().toLocaleDateString() : 'Fecha Inválida'}
+                                                        {closure.date ? (closure.date.toLocaleDateString ? closure.date.toLocaleDateString() : new Date(closure.date).toLocaleDateString()) : 'Fecha Inválida'}
                                                     </p>
                                                     <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">{closure.closedBy}</p>
                                                 </div>

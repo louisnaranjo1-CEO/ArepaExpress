@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Trophy, Plus, Save, X, Edit, Trash2, Target, CheckCircle } from 'lucide-react';
-import { db } from '../../lib/firebase';
-import { collection, query, onSnapshot, doc, setDoc, deleteDoc, serverTimestamp, updateDoc } from 'firebase/firestore';
+import { supabase } from '../../lib/supabase';
 
 interface Achievement {
     id: string;
@@ -30,38 +29,73 @@ export default function PilotAchievements() {
         isActive: true
     });
 
-    useEffect(() => {
-        const q = query(collection(db, 'achievements'));
-        const unsubscribe = onSnapshot(q, (snapshot) => {
-            const list: Achievement[] = snapshot.docs.map(doc => ({
-                id: doc.id,
-                ...doc.data()
-            } as Achievement));
-            setAchievements(list);
-            setLoading(false);
-        });
+    const fetchAchievements = async () => {
+        try {
+            const { data, error } = await supabase
+                .from('achievements')
+                .select('*')
+                .order('created_at', { ascending: false });
 
-        return () => unsubscribe();
+            if (error) throw error;
+            const list: Achievement[] = (data || []).map(d => ({
+                id: d.id,
+                title: d.title,
+                description: d.description,
+                targetType: d.target_type || d.targetType,
+                targetValue: d.target_value !== undefined ? d.target_value : d.targetValue,
+                rewardValue: d.reward_value !== undefined ? d.reward_value : d.rewardValue,
+                rewardType: d.reward_type || d.rewardType,
+                isActive: d.is_active !== undefined ? d.is_active : d.isActive,
+                createdAt: d.created_at
+            }));
+            setAchievements(list);
+        } catch (err) {
+            console.error("Error fetching achievements:", err);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    useEffect(() => {
+        fetchAchievements();
+
+        const channel = supabase.channel('achievements_realtime')
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'achievements' }, () => {
+                fetchAchievements();
+            })
+            .subscribe();
+
+        return () => {
+            supabase.removeChannel(channel);
+        };
     }, []);
 
     const handleSave = async (e: React.FormEvent) => {
         e.preventDefault();
         setLoading(true);
         try {
+            const payload = {
+                title: formData.title,
+                description: formData.description,
+                target_type: formData.targetType,
+                target_value: formData.targetValue,
+                reward_value: formData.rewardValue,
+                reward_type: formData.rewardType,
+                is_active: formData.isActive !== false
+            };
+
             if (formData.id) {
-                await updateDoc(doc(db, 'achievements', formData.id), {
-                    ...formData,
-                    updatedAt: serverTimestamp()
-                });
+                const { error } = await supabase.from('achievements').update(payload).eq('id', formData.id);
+                if (error) throw error;
             } else {
-                const newRef = doc(collection(db, 'achievements'));
-                await setDoc(newRef, {
-                    ...formData,
-                    id: newRef.id,
-                    createdAt: serverTimestamp()
-                });
+                const { error } = await supabase.from('achievements').insert([{
+                    ...payload,
+                    created_at: new Date().toISOString()
+                }]);
+                if (error) throw error;
             }
             resetForm();
+            fetchAchievements();
         } catch (error) {
             console.error("Error saving achievement:", error);
             alert("Error al guardar el logro.");
@@ -74,7 +108,9 @@ export default function PilotAchievements() {
         if (!window.confirm("¿Seguro que deseas eliminar este logro?")) return;
         setLoading(true);
         try {
-            await deleteDoc(doc(db, 'achievements', id));
+            const { error } = await supabase.from('achievements').delete().eq('id', id);
+            if (error) throw error;
+            fetchAchievements();
         } catch (error) {
             console.error("Error deleting:", error);
             alert("Error al eliminar.");

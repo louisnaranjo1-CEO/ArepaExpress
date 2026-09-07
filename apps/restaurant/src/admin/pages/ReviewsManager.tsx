@@ -1,8 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Star, MessageSquare, EyeOff, Eye, Trash2, Clock, CheckCircle } from 'lucide-react';
-import { db } from '../../lib/firebase';
-import { collection, query, orderBy, getDocs, doc, updateDoc, deleteDoc } from 'firebase/firestore';
+import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../context/AuthContext';
 import { Link } from 'react-router-dom';
 
@@ -13,38 +12,52 @@ export default function ReviewsManager() {
     const [loading, setLoading] = useState(true);
     const [stats, setStats] = useState({ total: 0, avg: 0 });
 
-    const fetchReviews = async () => {
+    const fetchReviews = useCallback(async () => {
         if (!rid) return;
         setLoading(true);
         try {
-            const reviewsRef = collection(db, 'restaurants', rid, 'reviews');
-            const q = query(reviewsRef, orderBy('createdAt', 'desc'));
-            const snap = await getDocs(q);
-            const fetched = snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as any));
+            const { data, error } = await supabase
+                .from('reviews')
+                .select('*')
+                .eq('restaurant_id', rid)
+                .order('created_at', { ascending: false });
+
+            if (error) throw error;
+
+            const fetched = (data || []).map((r: any) => ({
+                id: r.id,
+                userName: r.user_name || 'Cliente',
+                userAvatar: r.user_avatar || '',
+                rating: r.rating || 5,
+                comment: r.comment || '',
+                isHidden: r.is_hidden || false,
+                photos: r.photos || [],
+                createdAt: r.created_at
+            }));
             setReviews(fetched);
 
             if (fetched.length > 0) {
                 const total = fetched.length;
-                const avg = fetched.reduce((acc, r) => acc + r.rating, 0) / total;
+                const avg = fetched.reduce((acc: number, r: any) => acc + r.rating, 0) / total;
                 setStats({ total, avg });
+            } else {
+                setStats({ total: 0, avg: 0 });
             }
         } catch (error) {
             console.error("Error fetching reviews:", error);
         } finally {
             setLoading(false);
         }
-    };
+    }, [rid]);
 
     useEffect(() => {
         fetchReviews();
-    }, [rid]);
+    }, [rid, fetchReviews]);
 
     const toggleVisibility = async (reviewId: string, currentHidden: boolean) => {
         if (!rid) return;
         try {
-            await updateDoc(doc(db, 'restaurants', rid, 'reviews', reviewId), {
-                isHidden: !currentHidden
-            });
+            await supabase.from('reviews').update({ is_hidden: !currentHidden }).eq('id', reviewId);
             setReviews(prev => prev.map(r => r.id === reviewId ? { ...r, isHidden: !currentHidden } : r));
         } catch (error) {
             console.error("Error toggling visibility:", error);
@@ -57,7 +70,7 @@ export default function ReviewsManager() {
         if (!window.confirm("¿Estás seguro de que quieres eliminar esta reseña permanentemente?")) return;
 
         try {
-            await deleteDoc(doc(db, 'restaurants', rid, 'reviews', reviewId));
+            await supabase.from('reviews').delete().eq('id', reviewId);
             setReviews(prev => prev.filter(r => r.id !== reviewId));
             const newReviews = reviews.filter(r => r.id !== reviewId);
             if (newReviews.length > 0) {

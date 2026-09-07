@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { User, Camera, TrendingUp, Calendar, Clock, LogOut, ChevronRight, Award, ShoppingBag, DollarSign } from 'lucide-react';
-import { collection, query, where, getDocs, orderBy } from 'firebase/firestore';
-import { db } from '../../lib/firebase';
+import { supabase } from '../../lib/supabase';
 import WaiterLayout from '../components/WaiterLayout';
 import { motion } from 'motion/react';
 import { useNavigate } from 'react-router-dom';
@@ -25,34 +24,37 @@ export default function WaiterProfile() {
             }
 
             try {
-                const q = query(
-                    collection(db, 'orders'),
-                    where('restaurantId', '==', restaurantId),
-                    where('waiterId', '==', waiterData.id),
-                    orderBy('createdAt', 'desc')
-                );
+                const { data: orders, error } = await supabase
+                    .from('orders')
+                    .select('created_at, waiter_id, restaurant_id')
+                    .eq('restaurant_id', restaurantId)
+                    .eq('waiter_id', waiterData.id);
 
-                const snapshot = await getDocs(q);
-                const orders = snapshot.docs.map(doc => ({
-                    ...doc.data(),
-                    createdAt: doc.data().createdAt?.toMillis() || 0
-                }));
+                if (error) {
+                    console.error("Error fetching waiter orders stats:", error);
+                    return;
+                }
 
-                const now = Date.now();
-                const oneDay = 24 * 60 * 60 * 1000;
-                const oneWeek = 7 * oneDay;
-                const oneMonth = 30 * oneDay;
+                if (orders) {
+                    const now = Date.now();
+                    const oneDay = 24 * 60 * 60 * 1000;
+                    const oneWeek = 7 * oneDay;
+                    const oneMonth = 30 * oneDay;
 
-                const dayOrders = orders.filter(o => now - o.createdAt < oneDay);
-                const weekOrders = orders.filter(o => now - o.createdAt < oneWeek);
-                const monthOrders = orders.filter(o => now - o.createdAt < oneMonth);
+                    const mapped = orders.map(o => ({
+                        createdAt: o.created_at ? new Date(o.created_at).getTime() : 0
+                    }));
 
-                setStats({
-                    day: { count: dayOrders.length },
-                    week: { count: weekOrders.length },
-                    month: { count: monthOrders.length }
-                });
+                    const dayOrders = mapped.filter(o => now - o.createdAt < oneDay);
+                    const weekOrders = mapped.filter(o => now - o.createdAt < oneWeek);
+                    const monthOrders = mapped.filter(o => now - o.createdAt < oneMonth);
 
+                    setStats({
+                        day: { count: dayOrders.length },
+                        week: { count: weekOrders.length },
+                        month: { count: monthOrders.length }
+                    });
+                }
             } catch (err) {
                 console.error("Error fetching stats:", err);
             } finally {
@@ -79,8 +81,8 @@ export default function WaiterProfile() {
                 <div className="relative z-10 flex flex-col items-center">
                     <div className="relative group">
                         <div className="w-28 h-28 bg-white/20 backdrop-blur-md rounded-full border-4 border-white/30 flex items-center justify-center overflow-hidden shadow-2xl">
-                            {waiterData.photoURL ? (
-                                <img src={waiterData.photoURL} alt="Profile" className="w-full h-full object-cover" />
+                            {waiterData.photo || waiterData.photoURL ? (
+                                <img src={waiterData.photo || waiterData.photoURL} alt="Profile" className="w-full h-full object-cover" />
                             ) : (
                                 <User className="w-12 h-12 text-white" />
                             )}

@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { TrendingUp, Users, ShoppingBag, DollarSign, Clock, ChevronRight, Loader2 } from 'lucide-react';
-import { db } from '../../lib/firebase';
-import { collection, query, where, onSnapshot, orderBy, limit, getDocs } from 'firebase/firestore';
+import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../context/AuthContext';
 import { Link } from 'react-router-dom';
 
@@ -18,73 +17,75 @@ export default function Dashboard() {
 
     useEffect(() => {
         if (!user) return;
-
-        // Fetch Stats
         const rid = userData?.managedRestaurantId || user?.uid;
         if (!rid) return;
 
-        const ordersRef = collection(db, 'orders');
-        const q = query(ordersRef, where('restaurantId', '==', rid));
+        const loadDashboardData = async () => {
+            try {
+                // 1. Orders
+                const { data: ordersData } = await supabase
+                    .from('orders')
+                    .select('*')
+                    .eq('restaurant_id', rid);
 
-        const unsubscribe = onSnapshot(q, (snapshot) => {
-            let sales = 0;
-            let todayCount = 0;
-            const now = new Date();
-            const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+                let sales = 0;
+                let todayCount = 0;
+                const now = new Date();
+                const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
 
-            snapshot.forEach((doc) => {
-                const data = doc.data();
-                if (data.status === 'delivered') {
-                    sales += data.total || 0;
-                }
-                const createdAt = data.createdAt?.toDate();
-                if (createdAt && createdAt >= startOfToday) {
-                    todayCount++;
-                }
-            });
+                (ordersData || []).forEach((order: any) => {
+                    if (order.status === 'delivered') {
+                        sales += Number(order.total) || 0;
+                    }
+                    const createdAt = order.created_at ? new Date(order.created_at) : null;
+                    if (createdAt && createdAt >= startOfToday) {
+                        todayCount++;
+                    }
+                });
 
-            // Active products count
-            const productsRef = collection(db, 'restaurants', rid, 'products');
-            getDocs(query(productsRef, where('isActive', '==', true))).then(prodSnap => {
+                // 2. Active products
+                const { count: prodCount } = await supabase
+                    .from('products')
+                    .select('*', { count: 'exact', head: true })
+                    .eq('restaurant_id', rid)
+                    .eq('is_active', true);
+
                 setStats(prev => ({
                     ...prev,
                     totalSales: sales,
                     ordersToday: todayCount,
-                    activeProducts: prodSnap.size
+                    activeProducts: prodCount || 0
                 }));
-            });
 
-            // Recent orders with index fallback
-            const recentQ = query(ordersRef, where('restaurantId', '==', rid), orderBy('createdAt', 'desc'), limit(5));
-            const fetchRecent = async (queryToUse: any, isFallback = false) => {
-                try {
-                    const recentSnap = await getDocs(queryToUse);
-                    const items: any[] = [];
-                    recentSnap.forEach(d => items.push({ id: d.id, ...(d.data() as object) }));
-                    
-                    if (isFallback) {
-                        items.sort((a, b) => {
-                            const timeA = a.createdAt?.toMillis?.() || 0;
-                            const timeB = b.createdAt?.toMillis?.() || 0;
-                            return timeB - timeA;
-                        });
-                    }
-                    setRecentOrders(items.slice(0, 5));
-                } catch (err: any) {
-                    console.error("Error fetching recent orders:", err);
-                    if (!isFallback && err.code === 'failed-precondition') {
-                        const fallbackQ = query(ordersRef, where('restaurantId', '==', rid));
-                        fetchRecent(fallbackQ, true);
-                    }
-                }
-            };
-            fetchRecent(recentQ);
+                // 3. Recent orders
+                const { data: recent } = await supabase
+                    .from('orders')
+                    .select('*')
+                    .eq('restaurant_id', rid)
+                    .order('created_at', { ascending: false })
+                    .limit(5);
 
-            setLoading(false);
-        });
+                setRecentOrders(recent || []);
+            } catch (err) {
+                console.error("Error loading dashboard data:", err);
+            } finally {
+                setLoading(false);
+            }
+        };
 
-        return () => unsubscribe();
-    }, [user]);
+        loadDashboardData();
+
+        const channel = supabase
+            .channel(`dashboard_${rid}`)
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'orders', filter: `restaurant_id=eq.${rid}` }, () => {
+                loadDashboardData();
+            })
+            .subscribe();
+
+        return () => {
+            supabase.removeChannel(channel);
+        };
+    }, [user, userData]);
 
     const cards = [
         { title: 'Ventas Totales', value: `$${stats.totalSales.toFixed(2)}`, icon: DollarSign, color: 'text-green-600', bg: 'bg-green-50' },
@@ -154,8 +155,10 @@ export default function Dashboard() {
                                         </div>
                                     </div>
                                     <div className="text-right">
-                                        <p className="font-black text-slate-900">${order.total?.toFixed(2)}</p>
-                                        <p className="text-[10px] font-bold text-slate-400">{order.createdAt?.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
+                                        <p className="font-black text-slate-900">${(Number(order.total) || 0).toFixed(2)}</p>
+                                        <p className="text-[10px] font-bold text-slate-400">
+                                            {order.created_at ? new Date(order.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : (order.createdAt?.toDate ? order.createdAt.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '')}
+                                        </p>
                                     </div>
                                 </div>
                             ))

@@ -18,9 +18,8 @@ import {
     Check,
     Truck
 } from 'lucide-react';
-import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
-import { db } from '../../lib/firebase';
 import { supabase } from '../../lib/supabase';
+import { UN2X3_LOGO } from '../../lib/env';
 import { VENEZUELA_DATA, VENEZUELA_STATES } from '../../lib/venezuelaData';
 import AddressPicker from '../../components/AddressPicker';
 
@@ -233,17 +232,17 @@ export default function Onboarding() {
                 }
             );
 
-            // También actualizar la colección global de usuarios en Firebase si está en uso
+            // Actualizar perfil de usuario en Supabase
             try {
-                await setDoc(doc(db, 'users', user.uid), {
-                    displayName: formData.fullName.trim(),
+                await supabase.from('profiles').update({
+                    full_name: formData.fullName.trim(),
                     phone: fullPhone,
                     birthdate: formData.birthdate,
                     cedula: fullCedula,
-                    updatedAt: serverTimestamp()
-                }, { merge: true });
-            } catch (fbErr) {
-                console.warn('Sync users Firestore:', fbErr);
+                    updated_at: new Date().toISOString()
+                }).eq('id', user.uid);
+            } catch (err) {
+                console.warn('Sync users Supabase:', err);
             }
 
             // Redirigir a pantalla de verificación pendiente
@@ -262,9 +261,10 @@ export default function Onboarding() {
                 <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
                         <img
-                            src="https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/logo.png?alt=media&v=1.1"
+                            src={UN2X3_LOGO}
                             alt="Logo"
                             className="w-10 h-10 object-contain rounded-xl shadow-sm"
+                            onError={(e: any) => { e.target.src = '/icon-192.png'; }}
                         />
                         <div>
                             <h1 className="font-black text-xl text-slate-900 leading-none">Registro de Piloto</h1>

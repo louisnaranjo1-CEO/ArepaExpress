@@ -1,8 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { ShoppingBag, Clock, ChevronRight, Bike, Navigation, ArrowLeft } from 'lucide-react';
-import { collection, query, where, orderBy, onSnapshot, limit, doc, getDoc } from 'firebase/firestore';
-import { db } from '../lib/firebase';
+import { ShoppingBag, Clock, ChevronRight, Bike, Navigation } from 'lucide-react';
+import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import Cart from './Cart';
 
@@ -18,32 +17,49 @@ export default function Orders() {
     const [loadingOrders, setLoadingOrders] = useState(true);
     const navigate = useNavigate();
 
+    const formatOrderDate = (dateVal: any) => {
+        if (!dateVal) return 'Hoy';
+        const d = typeof dateVal?.toDate === 'function' ? dateVal.toDate() : new Date(dateVal);
+        if (isNaN(d.getTime())) return 'Hoy';
+        return `${d.toLocaleDateString()} • ${d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+    };
+
     useEffect(() => {
         if (!user) return;
+        const uid = user.id || user.uid;
 
-        // Query active orders (not completed or cancelled)
-        const q = query(
-            collection(db, 'orders'),
-            where('userId', '==', user.uid),
-            where('status', 'not-in', ['completed', 'cancelled', 'rejected', 'delivered']),
-            orderBy('status'),
-            orderBy('createdAt', 'desc'),
-            limit(10)
-        );
+        const fetchOrders = async () => {
+            try {
+                const { data, error } = await supabase
+                    .from('orders')
+                    .select('*')
+                    .or(`user_id.eq.${uid},userId.eq.${uid}`)
+                    .not('status', 'in', '("completed","cancelled","rejected","delivered")')
+                    .order('created_at', { ascending: false })
+                    .limit(10);
 
-        const unsubscribe = onSnapshot(q, (snapshot) => {
-            const orders = snapshot.docs.map(doc => ({
-                id: doc.id,
-                ...doc.data()
-            }));
-            setActiveOrders(orders);
-            setLoadingOrders(false);
-        }, (error) => {
-            console.error("Error fetching active orders:", error);
-            setLoadingOrders(false);
-        });
+                if (!error && data) {
+                    setActiveOrders(data);
+                }
+            } catch (err) {
+                console.error("Error fetching active orders:", err);
+            } finally {
+                setLoadingOrders(false);
+            }
+        };
 
-        return () => unsubscribe();
+        fetchOrders();
+
+        const channel = supabase
+            .channel(`client_orders_${uid}`)
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, () => {
+                fetchOrders();
+            })
+            .subscribe();
+
+        return () => {
+            supabase.removeChannel(channel);
+        };
     }, [user]);
 
     // Fetch restaurant logos when orders change
@@ -53,11 +69,17 @@ export default function Orders() {
             let changed = false;
 
             for (const order of activeOrders) {
-                if (order.restaurantId && !newLogos[order.restaurantId]) {
+                const restId = order.restaurant_id || order.restaurantId;
+                if (restId && !newLogos[restId]) {
                     try {
-                        const rDoc = await getDoc(doc(db, 'restaurants', order.restaurantId));
-                        if (rDoc.exists()) {
-                            newLogos[order.restaurantId] = rDoc.data().logoUrl || '';
+                        const { data } = await supabase
+                            .from('comercios')
+                            .select('logo_url, logoUrl, logo')
+                            .eq('id', restId)
+                            .maybeSingle();
+
+                        if (data) {
+                            newLogos[restId] = data.logo_url || data.logoUrl || data.logo || '';
                             changed = true;
                         }
                     } catch (err) {
@@ -183,17 +205,17 @@ export default function Orders() {
                                 <div className="flex justify-between items-start mb-4 relative z-10">
                                     <div className="flex items-center gap-3">
                                         <div className="w-14 h-14 bg-slate-50 rounded-2xl flex items-center justify-center text-slate-400 group-hover:bg-primary/10 transition-all overflow-hidden border border-slate-100 shadow-inner">
-                                            {restaurantLogos[order.restaurantId] ? (
-                                                <img src={restaurantLogos[order.restaurantId]} alt="Logo" className="w-full h-full object-cover" />
+                                            {restaurantLogos[order.restaurant_id || order.restaurantId] ? (
+                                                <img src={restaurantLogos[order.restaurant_id || order.restaurantId]} alt="Logo" className="w-full h-full object-cover" />
                                             ) : (
                                                 <ShoppingBag className="w-7 h-7" />
                                             )}
                                         </div>
                                         <div>
                                             <p className="font-black text-slate-900 group-hover:text-slate-900 transition-colors text-lg">#{order.id.slice(-6).toUpperCase()}</p>
-                                            <p className="text-sm font-bold text-slate-900 truncate max-w-[150px]">{order.restaurantName || 'Restaurante'}</p>
+                                            <p className="text-sm font-bold text-slate-900 truncate max-w-[150px]">{order.restaurant_name || order.restaurantName || 'Restaurante'}</p>
                                             <p className="text-[10px] text-slate-400 font-bold uppercase tracking-tight mt-0.5">
-                                                {order.createdAt?.toDate().toLocaleDateString()} • {order.createdAt?.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                                {formatOrderDate(order.created_at || order.createdAt)}
                                             </p>
                                         </div>
                                     </div>
@@ -227,7 +249,7 @@ export default function Orders() {
                                             ))}
                                         </div>
                                         <p className="text-[10px] font-bold uppercase tracking-tighter">
-                                            {order.items?.length || 0} productos • Total: {order.total?.toLocaleString('es-VE', { style: 'currency', currency: 'USD' })}
+                                            {order.items?.length || 0} productos • Total: {order.total ? Number(order.total).toLocaleString('es-VE', { style: 'currency', currency: 'USD' }) : '$0.00'}
                                         </p>
                                     </div>
                                 </div>

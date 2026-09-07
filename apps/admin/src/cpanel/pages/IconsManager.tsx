@@ -1,7 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { collection, getDocs, addDoc, deleteDoc, doc, updateDoc, query, orderBy } from 'firebase/firestore';
-import { db, storage } from '../../lib/firebase';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { supabase } from '../../lib/supabase';
 import { Trash2, Plus, Edit3, Save, X, ImageIcon, Camera, Loader2, Share2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -27,13 +25,19 @@ export default function IconsManager() {
 
     const fetchIcons = async () => {
         try {
-            const q = query(collection(db, 'global_icons'), orderBy('name', 'asc'));
-            const querySnapshot = await getDocs(q);
-            const data = querySnapshot.docs.map(doc => ({
+            const { data, error } = await supabase
+                .from('global_icons')
+                .select('*')
+                .order('name', { ascending: true });
+
+            if (error) throw error;
+            const mapped = (data || []).map(doc => ({
                 id: doc.id,
-                ...doc.data()
+                name: doc.name,
+                imageUrl: doc.image_url || doc.imageUrl,
+                createdAt: doc.created_at
             })) as GlobalIcon[];
-            setIcons(data);
+            setIcons(mapped);
         } catch (error) {
             console.error("Error fetching icons: ", error);
         } finally {
@@ -58,9 +62,11 @@ export default function IconsManager() {
     };
 
     const uploadPhoto = async (file: File) => {
-        const fileRef = ref(storage, `global_icons/${Date.now()}_${file.name}`);
-        await uploadBytes(fileRef, file);
-        return await getDownloadURL(fileRef);
+        const filePath = `global_icons/${Date.now()}_${file.name.replace(/[^a-zA-Z0-9.-]/g, '_')}`;
+        const { error: upErr } = await supabase.storage.from('store_assets').upload(filePath, file, { upsert: true });
+        if (upErr) throw upErr;
+        const { data: pubData } = supabase.storage.from('store_assets').getPublicUrl(filePath);
+        return pubData.publicUrl;
     };
 
     const handleAdd = async (e: React.FormEvent) => {
@@ -74,11 +80,13 @@ export default function IconsManager() {
         try {
             const imageUrl = await uploadPhoto(photoFile);
 
-            await addDoc(collection(db, 'global_icons'), {
+            const { error } = await supabase.from('global_icons').insert([{
                 name: formData.name.trim(),
-                imageUrl: imageUrl,
-                createdAt: new Date(),
-            });
+                image_url: imageUrl,
+                created_at: new Date().toISOString(),
+            }]);
+            if (error) throw error;
+
             setIsAdding(false);
             setPhotoFile(null);
             setPhotoPreview(null);
@@ -97,10 +105,11 @@ export default function IconsManager() {
 
         setIsSaving(true);
         try {
-            await updateDoc(doc(db, 'global_icons', id), {
-                name: editData.name.trim(),
-                updatedAt: new Date(),
-            });
+            const { error } = await supabase.from('global_icons').update({
+                name: editData.name.trim()
+            }).eq('id', id);
+            if (error) throw error;
+
             setEditingId(null);
             fetchIcons();
         } catch (error) {
@@ -114,7 +123,8 @@ export default function IconsManager() {
     const handleDelete = async (id: string) => {
         if (!window.confirm("¿Seguro que deseas eliminar este icono? Los restaurantes que lo usen dejarán de mostrarlo correctamente.")) return;
         try {
-            await deleteDoc(doc(db, 'global_icons', id));
+            const { error } = await supabase.from('global_icons').delete().eq('id', id);
+            if (error) throw error;
             setIcons(prev => prev.filter(i => i.id !== id));
         } catch (error) {
             console.error("Error deleting icon: ", error);

@@ -1,7 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { collection, query, where, onSnapshot, doc, getDoc, addDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { db, storage } from '../../lib/firebase';
+import { supabase } from '../../lib/supabase';
 import { Megaphone, Plus, ImageIcon, Upload, X, MapPin } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { VENEZUELA_DATA, VENEZUELA_STATES } from '../../lib/venezuelaData';
@@ -44,52 +42,92 @@ export default function PushCampaigns({ restaurantId }: { restaurantId: string }
         // Cargar las tarifas
         const loadSettings = async () => {
             try {
-                const docSnap = await getDoc(doc(db, 'system_settings', 'marketing'));
-                if (docSnap.exists()) {
+                const { data } = await supabase
+                    .from('system_settings')
+                    .select('*')
+                    .eq('id', 'marketing')
+                    .maybeSingle();
+
+                if (data) {
+                    const marketing = data.data || data;
                     setPrices({
-                        pushPriceCity: docSnap.data().pushPriceCity ?? 5,
-                        pushPriceState: docSnap.data().pushPriceState ?? 10,
-                        pushPriceNational: docSnap.data().pushPriceNational ?? 20,
+                        pushPriceCity: marketing.pushPriceCity ?? 5,
+                        pushPriceState: marketing.pushPriceState ?? 10,
+                        pushPriceNational: marketing.pushPriceNational ?? 20,
                     });
                 }
             } catch (err) {
-                console.error(err);
+                console.error("Error loading marketing settings:", err);
             }
         };
         loadSettings();
 
         // Cargar nombre del rest
         const loadRest = async () => {
-             const rDoc = await getDoc(doc(db, 'restaurants', restaurantId));
-             if (rDoc.exists()) {
-                 const data = rDoc.data();
-                 setRestaurantData(data);
-                 // Default to restaurant location
-                 if (data.location?.state || data.address?.state) {
-                     const st = data.location?.state || data.address?.state;
-                     setTempState(st);
-                     addState(st);
+            const { data } = await supabase
+                .from('comercios')
+                .select('*')
+                .eq('id', restaurantId)
+                .maybeSingle();
 
-                     if (data.location?.city || data.address?.city) {
+            if (data) {
+                setRestaurantData(data);
+                // Default to restaurant location
+                if (data.location?.state || data.address?.state) {
+                    const st = data.location?.state || data.address?.state;
+                    setTempState(st);
+                    addState(st);
+
+                    if (data.location?.city || data.address?.city) {
                         const ct = data.location?.city || data.address?.city;
                         setTempCity(ct);
                         addCity(`${st}: ${ct}`);
-                     }
-                 }
-             }
+                    }
+                }
+            }
         };
         loadRest();
 
         // Escuchar campañas mías
-        const q = query(collection(db, 'push_campaigns'), where('restaurantId', '==', restaurantId));
-        const unsubscribe = onSnapshot(q, snap => {
-            const arr: any[] = [];
-            snap.forEach(d => arr.push({ id: d.id, ...d.data() }));
-            arr.sort((a,b) => (b.createdAt?.toMillis() || 0) - (a.createdAt?.toMillis() || 0));
-            setCampaigns(arr);
-        });
+        const fetchCampaigns = async () => {
+            const { data } = await supabase
+                .from('push_campaigns')
+                .select('*')
+                .eq('restaurant_id', restaurantId)
+                .order('created_at', { ascending: false });
 
-        return () => unsubscribe();
+            if (data) {
+                setCampaigns(data.map(d => ({
+                    id: d.id,
+                    ...d,
+                    restaurantId: d.restaurant_id,
+                    restaurantName: d.restaurant_name,
+                    imageUrl: d.banner_url,
+                    paymentImage: d.payment_image_url,
+                    paymentRef: d.payment_ref,
+                    cities: d.selected_cities || [],
+                    states: d.selected_states || [],
+                    createdAt: d.created_at ? new Date(d.created_at) : new Date(),
+                    scheduledAt: d.scheduled_at ? new Date(d.scheduled_at) : new Date()
+                })));
+            }
+        };
+        fetchCampaigns();
+
+        const channel = supabase.channel(`push-campaigns:${restaurantId}`)
+            .on('postgres_changes', {
+                event: '*',
+                schema: 'public',
+                table: 'push_campaigns',
+                filter: `restaurant_id=eq.${restaurantId}`
+            }, () => {
+                fetchCampaigns();
+            })
+            .subscribe();
+
+        return () => {
+            supabase.removeChannel(channel);
+        };
     }, [restaurantId]);
 
     const getCurrentPrice = () => {
@@ -155,16 +193,30 @@ export default function PushCampaigns({ restaurantId }: { restaurantId: string }
             console.log("Iniciando subida de campaña push...");
             let bannerUrl = '';
             if (bannerImage) {
-                const bannerRef = ref(storage, `push_campaigns/${restaurantId}_${Date.now()}_banner`);
-                const snap = await uploadBytes(bannerRef, bannerImage);
-                bannerUrl = await getDownloadURL(snap.ref);
+                const bannerExt = bannerImage.name.split('.').pop() || 'jpg';
+                const bannerPath = `push_campaigns/${restaurantId}_${Date.now()}_banner.${bannerExt}`;
+                const { error: bErr } = await supabase.storage
+                    .from('store_assets')
+                    .upload(bannerPath, bannerImage);
+                if (bErr) throw bErr;
+                const { data: { publicUrl } } = supabase.storage
+                    .from('store_assets')
+                    .getPublicUrl(bannerPath);
+                bannerUrl = publicUrl;
             }
 
             let pImage = '';
             if (paymentImage) {
-                const payRef = ref(storage, `push_campaigns/${restaurantId}_${Date.now()}_payment`);
-                const snap = await uploadBytes(payRef, paymentImage);
-                pImage = await getDownloadURL(snap.ref);
+                const payExt = paymentImage.name.split('.').pop() || 'jpg';
+                const payPath = `push_campaigns/${restaurantId}_${Date.now()}_payment.${payExt}`;
+                const { error: pErr } = await supabase.storage
+                    .from('store_assets')
+                    .upload(payPath, paymentImage);
+                if (pErr) throw pErr;
+                const { data: { publicUrl } } = supabase.storage
+                    .from('store_assets')
+                    .getPublicUrl(payPath);
+                pImage = publicUrl;
             }
 
             const finalCities = locationLevel === 'city' ? selectedCities : [];
@@ -174,32 +226,27 @@ export default function PushCampaigns({ restaurantId }: { restaurantId: string }
             const scheduledDatetime = new Date(`${scheduledDate}T${scheduledTime}`);
 
             const campaignData = {
-                restaurantId,
-                restaurantName: restaurantData?.name || 'Restaurante',
-                restaurantLogo: restaurantData?.logoUrl || '',
+                restaurant_id: restaurantId,
+                restaurant_name: restaurantData?.name || 'Restaurante',
                 title,
                 subtitle,
-                location: locationLevel,
-                cities: finalCities,
-                states: finalStates,
-                // Fallbacks for backward compatibility
-                city: finalCities.length > 0 ? finalCities[0] : null,
-                state: finalStates.length > 0 ? finalStates[0] : null,
-                minAge,
-                maxAge,
+                location_level: locationLevel,
+                selected_cities: finalCities,
+                selected_states: finalStates,
+                min_age: minAge,
+                max_age: maxAge,
                 sex,
-                imageUrl: bannerUrl,
-                paymentRef,
-                paymentImage: pImage,
+                banner_url: bannerUrl,
+                payment_ref: paymentRef,
+                payment_image_url: pImage,
                 price: getCurrentPrice(),
                 status: 'verifying_payment',
-                clicks: 0,
-                createdAt: serverTimestamp(),
-                scheduledAt: scheduledDatetime
+                scheduled_at: scheduledDatetime.toISOString()
             };
 
-            console.log("Guardando en Firestore:", campaignData);
-            await addDoc(collection(db, 'push_campaigns'), campaignData);
+            console.log("Guardando en Supabase:", campaignData);
+            const { error: insertErr } = await supabase.from('push_campaigns').insert(campaignData);
+            if (insertErr) throw insertErr;
 
             toast.success("Campaña subida. Esperando verificación.");
             setIsCreating(false);
@@ -501,13 +548,14 @@ export default function PushCampaigns({ restaurantId }: { restaurantId: string }
                                    onClick={async () => {
                                        const newS = camp.status === 'active' ? 'inactive' : 'active';
                                        if (!confirm(`¿Estás seguro de ${newS === 'active' ? 'VOLVER A ACTIVAR' : 'PAUSAR'} esta campaña?`)) return;
-                                       try {
-                                           await updateDoc(doc(db, 'push_campaigns', camp.id), {
-                                                status: newS,
-                                                ...(newS === 'active' ? { activatedAt: new Date() } : {})
-                                           });
-                                           toast.success("Estado cambiado correctamente");
-                                       } catch(e){ toast.error("Error al pausar/activar"); }
+                                        try {
+                                            const { error: updErr } = await supabase
+                                                .from('push_campaigns')
+                                                .update({ status: newS })
+                                                .eq('id', camp.id);
+                                            if (updErr) throw updErr;
+                                            toast.success("Estado cambiado correctamente");
+                                        } catch(e){ toast.error("Error al pausar/activar"); }
                                    }}
                                    className={`w-full mt-3 py-2 px-4 rounded-xl font-bold text-[10px] uppercase tracking-widest transition-all ${camp.status === 'active' ? 'bg-slate-100 text-slate-600 hover:bg-slate-200' : 'bg-primary text-black hover:bg-primary/90 shadow-lg shadow-primary/20'}`}
                                >

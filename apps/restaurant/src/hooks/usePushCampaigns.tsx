@@ -1,6 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { collection, query, where, onSnapshot, updateDoc, doc, increment } from 'firebase/firestore';
-import { db } from '../lib/firebase';
+import { supabase } from '../lib/supabase';
 import { getCachedAudioUrl, NOTIFICATION_SOUND_URL } from './useGlobalAudioAlerts';
 import { toast } from 'react-hot-toast';
 import { useNavigate } from 'react-router-dom';
@@ -32,33 +31,22 @@ export function usePushCampaigns(userData: any, userId: string | undefined) {
     useEffect(() => {
         if (!userData || !userId) return;
 
-        // Escuchar campañas activas (Solo las más recientes)
-        const q = query(collection(db, 'push_campaigns'), where('status', '==', 'active'));
-        
-        const unsubscribe = onSnapshot(q, (snapshot) => {
-            snapshot.docChanges().forEach(change => {
-                const data = change.doc.data();
-                const cid = change.doc.id;
+        const processCampaign = (data: any, cid: string) => {
+            if (!data || data.status !== 'active') return;
 
-                // Si fue añadida o modificada y no la hemos visto
-                if ((change.type === 'added' || change.type === 'modified') && !seenCampaigns.current.has(cid)) {
-                    
-                    // Solo notificar si fue activada en los últimos 2 días para evitar spam viejo
-                    const now = Date.now();
-                    const actTime = data.activatedAt?.toMillis() || 0;
-                    if (now - actTime > 172800000) return; // Más de 48 horas de activada
+            const now = Date.now();
+            const actDate = data.activated_at || data.activatedAt;
+            const actTime = actDate ? new Date(actDate).getTime() : 0;
+            if (actTime && (now - actTime > 172800000)) return; // Más de 48 horas de activada
 
-                    // 0. Programación (Programado para el futuro)
-                    if (data.scheduledAt) {
-                        const schedTime = data.scheduledAt.toMillis();
-                        if (now < schedTime) return; // Aún no es hora
-                    }
+            const schedDate = data.scheduled_at || data.scheduledAt;
+            if (schedDate) {
+                const schedTime = new Date(schedDate).getTime();
+                if (now < schedTime) return;
+            }
 
-                    // Forzar mostrar si es MUY reciente (menos de 5 minutos de activada), saltando el seen check
-                    // Esto ayuda a que si el admin la activa justo ahora, el usuario la vea si o si.
-                    const isVeryRecent = (now - actTime) < 300000; // 5 minutos
-
-                    if (seenCampaigns.current.has(cid) && !isVeryRecent) return;
+            const isVeryRecent = actTime ? (now - actTime) < 300000 : false;
+            if (seenCampaigns.current.has(cid) && !isVeryRecent) return;
 
                     // == Filtrado de Segmentación ==
                     
@@ -149,12 +137,13 @@ export function usePushCampaigns(userData: any, userId: string | undefined) {
 
                     const handleClick = async (tId: string) => {
                         toast.dismiss(tId);
-                        navigate(`/restaurant/${data.restaurantId}`);
+                        const rId = data.restaurant_id || data.restaurantId;
+                        if (rId) navigate(`/restaurant/${rId}`);
                         try {
-                            // Sumar Click!
-                            await updateDoc(doc(db, 'push_campaigns', cid), {
-                                clicks: increment(1)
-                            });
+                            const { data: cur } = await supabase.from('push_campaigns').select('clicks').eq('id', cid).maybeSingle();
+                            await supabase.from('push_campaigns').update({
+                                clicks: (cur?.clicks || 0) + 1
+                            }).eq('id', cid);
                         } catch(e){}
                     };
 
@@ -177,9 +166,9 @@ export function usePushCampaigns(userData: any, userId: string | undefined) {
                             <X className="w-3.5 h-3.5"/>
                           </button>
                           
-                          {data.imageUrl ? (
+                          {(data.imageUrl || data.image_url) ? (
                               <div className="relative h-44 overflow-hidden">
-                                  <img src={data.imageUrl} alt="Promoción" className="w-full h-full object-cover transform group-hover:scale-105 transition-transform duration-700" />
+                                  <img src={data.imageUrl || data.image_url} alt="Promoción" className="w-full h-full object-cover transform group-hover:scale-105 transition-transform duration-700" />
                                   <div className="absolute inset-0 bg-gradient-to-t from-black via-transparent to-transparent opacity-60" />
                               </div>
                           ) : (
@@ -188,8 +177,8 @@ export function usePushCampaigns(userData: any, userId: string | undefined) {
                           
                           <div className="p-5 flex gap-4 items-start bg-black">
                              <div className="w-14 h-14 bg-slate-900 rounded-2xl flex-shrink-0 border border-primary/20 overflow-hidden shadow-2xl flex items-center justify-center p-0.5 group-hover:border-primary transition-colors">
-                                 {data.restaurantLogo ? (
-                                    <img src={data.restaurantLogo} className="w-full h-full object-cover rounded-xl"/>
+                                 {(data.restaurantLogo || data.restaurant_logo) ? (
+                                    <img src={data.restaurantLogo || data.restaurant_logo} className="w-full h-full object-cover rounded-xl"/>
                                  ) : (
                                     <span className="font-bold text-primary">DP</span>
                                  )}
@@ -213,11 +202,38 @@ export function usePushCampaigns(userData: any, userId: string | undefined) {
                         duration: 15000, // 15 seconds
                         position: 'top-center'
                     });
+        };
 
+        const fetchActiveCampaigns = async () => {
+            try {
+                const { data } = await supabase
+                    .from('push_campaigns')
+                    .select('*')
+                    .eq('status', 'active');
+                if (data) {
+                    data.forEach((c: any) => processCampaign(c, c.id));
                 }
-            });
-        });
+            } catch (e) {
+                console.error("Error fetching push campaigns:", e);
+            }
+        };
+        fetchActiveCampaigns();
 
-        return () => unsubscribe();
+        const channel = supabase.channel('push_campaigns_realtime')
+            .on('postgres_changes', {
+                event: '*',
+                schema: 'public',
+                table: 'push_campaigns',
+                filter: 'status=eq.active'
+            }, (payload: any) => {
+                if (payload.new) {
+                    processCampaign(payload.new, payload.new.id);
+                }
+            })
+            .subscribe();
+
+        return () => {
+            supabase.removeChannel(channel);
+        };
     }, [userData, userId, navigate]);
 }
