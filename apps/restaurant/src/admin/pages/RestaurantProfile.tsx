@@ -35,6 +35,31 @@ import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { useAuth } from '../../context/AuthContext';
 import AddressPicker from '../../components/AddressPicker';
 import { VENEZUELA_DATA, VENEZUELA_STATES } from '../../lib/venezuelaData';
+import { supabase } from '../../lib/supabase';
+import { GLOBAL_CATEGORIES, CATEGORY_SECTORS } from '../../lib/constants';
+
+const getCategoryEmoji = (name: string): string => {
+    if (!name) return '🏪';
+    const lower = name.toLowerCase();
+    if (lower.includes('restaurante') || lower.includes('comida')) return '🍽️';
+    if (lower.includes('panader')) return '🥖';
+    if (lower.includes('supermercado') || lower.includes('viveres') || lower.includes('víveres')) return '🛒';
+    if (lower.includes('ferreter')) return '🔧';
+    if (lower.includes('motorepuesto') || lower.includes('moto')) return '🏍️';
+    if (lower.includes('autoparte') || lower.includes('carro') || lower.includes('vehiculo')) return '🚗';
+    if (lower.includes('concesionario')) return '🚙';
+    if (lower.includes('farmacia') || lower.includes('salud') || lower.includes('medic')) return '💊';
+    if (lower.includes('licor') || lower.includes('bebida') || lower.includes('cerveza')) return '🍷';
+    if (lower.includes('tecnolog') || lower.includes('celular') || lower.includes('comput')) return '📱';
+    if (lower.includes('hogar') || lower.includes('mueble')) return '🛋️';
+    if (lower.includes('moda') || lower.includes('ropa') || lower.includes('calzado')) return '👗';
+    if (lower.includes('belleza') || lower.includes('estetica') || lower.includes('estética') || lower.includes('barber')) return '💇';
+    if (lower.includes('mascota') || lower.includes('veterinaria')) return '🐾';
+    if (lower.includes('papeler') || lower.includes('librer')) return '📚';
+    if (lower.includes('hotel') || lower.includes('posada') || lower.includes('hospedaje')) return '🏨';
+    if (lower.includes('servicio') || lower.includes('taller')) return '⚙️';
+    return '🏪';
+};
 
 interface Location {
     address: string;
@@ -95,8 +120,12 @@ export default function RestaurantProfile() {
 
     // Form states
     const [name, setName] = useState('');
-    const [rif, setRif] = useState('');
-    const [whatsapp, setWhatsapp] = useState('');
+    const [rifPrefix, setRifPrefix] = useState<'J' | 'V' | 'G' | 'E' | 'C'>('J');
+    const [rifNumber, setRifNumber] = useState('');
+    const [companyType, setCompanyType] = useState('CA');
+    const [whatsappNumber, setWhatsappNumber] = useState('');
+    const [isBusinessTypeOpen, setIsBusinessTypeOpen] = useState(false);
+    const [businessTypeSearch, setBusinessTypeSearch] = useState('');
     const [ownDelivery, setOwnDelivery] = useState(false);
     const [appDelivery, setAppDelivery] = useState(false);
     const [pickupOnly, setPickupOnly] = useState(false);
@@ -133,7 +162,7 @@ export default function RestaurantProfile() {
     const [casheaQrFile, setCasheaQrFile] = useState<File | null>(null);
     const [casheaQrPreviewUrl, setCasheaQrPreviewUrl] = useState<string | null>(null);
     const [uploadingCasheaQr, setUploadingCasheaQr] = useState(false);
-    const [businessType, setBusinessType] = useState<'restaurant' | 'hotel'>('restaurant');
+    const [businessType, setBusinessType] = useState<'restaurant' | 'hotel' | 'store'>('restaurant');
 
     // 2x3 Config
     const [hasTwoByThree, setHasTwoByThree] = useState(false);
@@ -154,8 +183,39 @@ export default function RestaurantProfile() {
                 if (docSnap.exists()) {
                     const data = docSnap.data();
                     setName(data.name || '');
-                    setRif(data.rif || '');
-                    setWhatsapp(data.whatsapp || '');
+
+                    // Parse RIF (handle prefixes J, V, G, E, C)
+                    const rawRif = (data.rif || '').trim();
+                    const rifMatch = rawRif.match(/^([JVGECjvgec])[-_.\s]?([0-9-]*)$/);
+                    if (rifMatch) {
+                        setRifPrefix(rifMatch[1].toUpperCase() as any);
+                        setRifNumber(rifMatch[2]);
+                    } else if (rawRif) {
+                        const firstChar = rawRif.charAt(0).toUpperCase();
+                        if (['J', 'V', 'G', 'E', 'C'].includes(firstChar)) {
+                            setRifPrefix(firstChar as any);
+                            setRifNumber(rawRif.slice(1).replace(/^[-_.\s]/, ''));
+                        } else {
+                            setRifNumber(rawRif);
+                        }
+                    } else {
+                        setRifPrefix('J');
+                        setRifNumber('');
+                    }
+
+                    // Company type
+                    setCompanyType(data.companyType || 'CA');
+
+                    // Parse WhatsApp (strictly 10 digits, +58 locked)
+                    const rawWhatsapp = (data.whatsapp || '').trim();
+                    let cleanedWa = rawWhatsapp.replace(/\D/g, '');
+                    if (cleanedWa.startsWith('58') && cleanedWa.length > 10) {
+                        cleanedWa = cleanedWa.slice(2);
+                    } else if (cleanedWa.startsWith('0')) {
+                        cleanedWa = cleanedWa.slice(1);
+                    }
+                    setWhatsappNumber(cleanedWa.slice(0, 10));
+
                     setOwnDelivery(data.ownDelivery || false);
                     setAppDelivery(data.appDelivery || false);
                     setPickupOnly(data.pickupOnly || false);
@@ -167,7 +227,7 @@ export default function RestaurantProfile() {
                     setWorkingHours(data.workingHours || DEFAULT_WORKING_HOURS);
                     setFollowerCount(data.followerCount || 0);
                     setSocialLinks(data.socialLinks || []);
-                    setCategoryId(data.categoryId || '');
+                    setCategoryId(data.categoryId || (data.category ? data.category : ''));
                     setSubCategoryId(data.subCategoryId || '');
                     setHasCashea(data.hasCashea || false);
                     setCasheaQrUrl(data.casheaQrUrl || '');
@@ -220,6 +280,56 @@ export default function RestaurantProfile() {
         fetchGlobalCategories();
     }, [user, rid]);
 
+    // Helper to format WhatsApp
+    const handleWhatsappChange = (val: string) => {
+        let digits = val.replace(/\D/g, '');
+        if (digits.startsWith('58') && digits.length > 10) {
+            digits = digits.slice(2);
+        }
+        if (digits.startsWith('0')) {
+            digits = digits.slice(1);
+        }
+        setWhatsappNumber(digits.slice(0, 10));
+    };
+
+    // Categories synchronized from Super Admin (Firestore global_categories)
+    const firestoreParents = globalCategories.filter(c => !c.parentId && c.isActive !== false);
+    const availableCategories: { id: string; name: string; icon?: string }[] = 
+        firestoreParents.length > 0
+            ? firestoreParents.map(c => ({ id: c.id, name: c.name, icon: c.icon || c.imageUrl }))
+            : GLOBAL_CATEGORIES.map(name => ({ id: name, name, icon: undefined }));
+
+    const currentCategory = availableCategories.find(c => c.id === categoryId || c.name === categoryId)
+        || (categoryId ? { id: categoryId, name: categoryId } : null);
+
+    const filteredCategories = availableCategories.filter(cat =>
+        cat.name.toLowerCase().includes(businessTypeSearch.toLowerCase().trim())
+    );
+
+    // Subcategories for current category
+    const firestoreSubs = globalCategories.filter(c => (c.parentId === currentCategory?.id || c.parentId === categoryId) && c.isActive !== false);
+    const fallbackSubs = currentCategory?.name && CATEGORY_SECTORS[currentCategory.name]
+        ? CATEGORY_SECTORS[currentCategory.name].map(s => ({ id: s, name: s }))
+        : [];
+    const availableSubCategories = firestoreSubs.length > 0 ? firestoreSubs : fallbackSubs;
+
+    const handleSelectCategory = (cat: { id: string; name: string }) => {
+        setCategoryId(cat.id);
+        setSubCategoryId('');
+        setIsBusinessTypeOpen(false);
+        setBusinessTypeSearch('');
+
+        const isHotel = cat.name.toLowerCase().includes('hotel') || cat.name.toLowerCase().includes('posada') || cat.name.toLowerCase().includes('hospedaje');
+        const isRest = cat.name.toLowerCase().includes('restaurante') || cat.name.toLowerCase().includes('comida') || cat.name.toLowerCase().includes('panader');
+        if (isHotel) {
+            setBusinessType('hotel');
+        } else if (isRest) {
+            setBusinessType('restaurant');
+        } else {
+            setBusinessType('store');
+        }
+    };
+
     const handleSave = async () => {
         if (!user || !rid) return;
         setIsSaving(true);
@@ -263,13 +373,28 @@ export default function RestaurantProfile() {
                 setUploadingCasheaQr(false);
             }
 
+            const selectedCatObj = availableCategories.find(c => c.id === categoryId || c.name === categoryId);
+            const finalCatName = selectedCatObj ? selectedCatObj.name : (categoryId || 'Comercio General');
+
+            const isHotel = finalCatName.toLowerCase().includes('hotel') || finalCatName.toLowerCase().includes('posada') || finalCatName.toLowerCase().includes('hospedaje');
+            const isRest = finalCatName.toLowerCase().includes('restaurante') || finalCatName.toLowerCase().includes('comida') || finalCatName.toLowerCase().includes('panader');
+            const finalBusinessType = isHotel ? 'hotel' : (isRest ? 'restaurant' : 'store');
+
+            const formattedRif = rifNumber.trim() ? `${rifPrefix}-${rifNumber.trim()}` : '';
+            const fullWhatsapp = whatsappNumber.trim() ? `+58${whatsappNumber.trim()}` : '';
+
             const docRef = doc(db, 'restaurants', rid as string);
             
             // Sanitize data to avoid undefined field errors in Firestore
             const sanitizedData = JSON.parse(JSON.stringify({
                 name: name || '',
-                rif: rif || '',
-                whatsapp: whatsapp || '',
+                rif: formattedRif,
+                companyType: companyType || 'CA',
+                whatsapp: fullWhatsapp,
+                category: finalCatName,
+                categoryId: categoryId || '',
+                subCategoryId: subCategoryId || '',
+                businessType: finalBusinessType,
                 ownDelivery: ownDelivery || false,
                 appDelivery: appDelivery || false,
                 pickupOnly: pickupOnly || false,
@@ -280,19 +405,32 @@ export default function RestaurantProfile() {
                 deliveryRates: deliveryRates || [],
                 workingHours: workingHours || [],
                 socialLinks: socialLinks || [],
-                categoryId: categoryId || '',
-                subCategoryId: subCategoryId || '',
                 hasCashea: hasCashea || false,
                 casheaQrUrl: currentCasheaQrUrl || '',
                 hasTwoByThree: hasTwoByThree || false,
                 twoByThreeInitial: twoByThreeInitial || 50,
                 twoByThreeInstallments: twoByThreeInstallments || 2,
-                businessType: businessType || 'restaurant',
                 paymentMethods: paymentMethods || [],
                 updatedAt: new Date().toISOString()
             }));
 
             await setDoc(docRef, sanitizedData, { merge: true });
+
+            // Sincronizar en Supabase comercios
+            try {
+                await supabase.from('comercios').upsert({
+                    id: rid,
+                    name: name || '',
+                    rif: formattedRif,
+                    company_type: companyType || 'CA',
+                    whatsapp: fullWhatsapp,
+                    business_type: finalBusinessType,
+                    category: finalCatName,
+                    updated_at: new Date().toISOString()
+                });
+            } catch (sbErr) {
+                console.warn("Supabase comercios sync note:", sbErr);
+            }
 
             console.log("Restaurant profile updated successfully");
             setSaved(true);
@@ -406,7 +544,7 @@ export default function RestaurantProfile() {
             <div className="flex justify-between items-end flex-wrap gap-4">
                 <div>
                     <h1 className="text-3xl font-black text-slate-900">Configuración del Negocio</h1>
-                    <p className="text-slate-500 font-medium">Gestiona la información pública de tu {businessType === 'restaurant' ? 'restaurante' : 'hotel/posada'}.</p>
+                    <p className="text-slate-500 font-medium">Gestiona la información pública y comercial de tu negocio ({currentCategory?.name || 'Comercio'}).</p>
                 </div>
                 <button
                     onClick={handleSave}
@@ -511,105 +649,220 @@ export default function RestaurantProfile() {
                                 </div>
                             </div>
 
+                            <div className="space-y-2">
+                                <label className="text-sm font-bold text-slate-700 ml-1">Nombre del Negocio / Razón Comercial</label>
+                                <input
+                                    type="text"
+                                    value={name}
+                                    onChange={(e) => setName(e.target.value)}
+                                    className="w-full bg-slate-50 border-2 border-transparent focus:border-primary focus:bg-white p-4 rounded-2xl outline-none transition-all font-bold text-slate-800"
+                                    placeholder="Ej: Deliexpress Gourmet"
+                                />
+                            </div>
+
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                 <div className="space-y-2">
-                                    <label className="text-sm font-bold text-slate-500 ml-2">Nombre del Negocio</label>
-                                    <input
-                                        type="text"
-                                        value={name}
-                                        onChange={(e) => setName(e.target.value)}
-                                        className="w-full bg-slate-50 border-2 border-transparent focus:border-primary focus:bg-white p-4 rounded-2xl outline-none transition-all font-bold text-slate-700"
-                                        placeholder="Ej: Deliexpress"
-                                    />
+                                    <label className="text-sm font-bold text-slate-700 ml-1">RIF del Negocio</label>
+                                    <div className="flex bg-slate-50 border-2 border-transparent focus-within:border-primary focus-within:bg-white rounded-2xl transition-all overflow-hidden">
+                                        <select
+                                            value={rifPrefix}
+                                            onChange={(e) => setRifPrefix(e.target.value as any)}
+                                            className="bg-slate-100/90 hover:bg-slate-200/70 border-r border-slate-200 px-3 py-4 font-black text-slate-800 text-sm outline-none cursor-pointer"
+                                            title="Selecciona la letra del RIF en Venezuela"
+                                        >
+                                            <option value="J">J (Jurídico)</option>
+                                            <option value="V">V (Venezolano)</option>
+                                            <option value="G">G (Gubernamental)</option>
+                                            <option value="E">E (Extranjero)</option>
+                                            <option value="C">C (Comunal / EPS)</option>
+                                        </select>
+                                        <input
+                                            type="text"
+                                            value={rifNumber}
+                                            onChange={(e) => setRifNumber(e.target.value.replace(/[^0-9-]/g, ''))}
+                                            className="w-full bg-transparent p-4 outline-none font-bold text-slate-800 tracking-wide"
+                                            placeholder="12345678-9"
+                                        />
+                                    </div>
+                                    <p className="text-[11px] text-slate-400 ml-1">Letra venezolana ({rifPrefix}) + número de RIF</p>
                                 </div>
+
                                 <div className="space-y-2">
-                                    <label className="text-sm font-bold text-slate-500 ml-2">RIF</label>
-                                    <input
-                                        type="text"
-                                        value={rif}
-                                        onChange={(e) => setRif(e.target.value)}
-                                        className="w-full bg-slate-50 border-2 border-transparent focus:border-primary focus:bg-white p-4 rounded-2xl outline-none transition-all font-bold text-slate-700"
-                                        placeholder="Ej: J-12345678-9"
-                                    />
+                                    <label className="text-sm font-bold text-slate-700 ml-1">¿Qué tipo de compañía es tu empresa?</label>
+                                    <div className="relative">
+                                        <select
+                                            value={companyType}
+                                            onChange={(e) => setCompanyType(e.target.value)}
+                                            className="w-full bg-slate-50 border-2 border-transparent focus:border-primary focus:bg-white p-4 pr-10 rounded-2xl outline-none transition-all font-bold text-slate-800 appearance-none cursor-pointer"
+                                        >
+                                            <option value="FP">FP - Firma Personal</option>
+                                            <option value="PYME">PYME - Pequeña y Mediana Empresa</option>
+                                            <option value="CA">C.A. - Compañía Anónima</option>
+                                            <option value="SRL">S.R.L. - Sociedad de Responsabilidad Limitada</option>
+                                            <option value="SA">S.A. - Sociedad Anónima</option>
+                                            <option value="Emprendimiento">Emprendimiento (RNE)</option>
+                                            <option value="Cooperativa">Cooperativa</option>
+                                            <option value="Comunal">Empresa Comunal / Propiedad Social</option>
+                                            <option value="Otro">Otra Formalidad</option>
+                                        </select>
+                                        <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 pointer-events-none" />
+                                    </div>
+                                    <p className="text-[11px] text-slate-400 ml-1">Estructura legal registrada en Venezuela</p>
                                 </div>
                             </div>
 
                             <div className="space-y-2">
-                                <label className="text-sm font-bold text-slate-500 ml-2">WhatsApp de Pedidos</label>
-                                <div className="relative">
-                                    <Phone className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
+                                <label className="text-sm font-bold text-slate-700 ml-1">WhatsApp de Pedidos y Contacto</label>
+                                <div className="flex bg-slate-50 border-2 border-transparent focus-within:border-primary focus-within:bg-white rounded-2xl transition-all overflow-hidden">
+                                    <div className="flex items-center gap-1.5 px-4 py-4 bg-slate-100/90 border-r border-slate-200 text-slate-800 font-black text-sm select-none">
+                                        <span className="text-base">🇻🇪</span>
+                                        <span>+58</span>
+                                    </div>
                                     <input
-                                        type="text"
-                                        value={whatsapp}
-                                        onChange={(e) => setWhatsapp(e.target.value)}
-                                        className="w-full bg-slate-50 border-2 border-transparent focus:border-primary focus:bg-white p-4 pl-12 rounded-2xl outline-none transition-all font-bold text-slate-700"
-                                        placeholder="Ej: +58 412 1234567"
+                                        type="tel"
+                                        value={whatsappNumber}
+                                        onChange={(e) => handleWhatsappChange(e.target.value)}
+                                        maxLength={10}
+                                        className="w-full bg-transparent p-4 outline-none font-bold text-slate-800 tracking-wide text-base"
+                                        placeholder="412 1234567"
                                     />
                                 </div>
+                                <p className="text-[11px] text-slate-400 ml-1">Escribe únicamente los 10 dígitos locales (ej: 4121234567). El prefijo +58 está fijado.</p>
                             </div>
 
                             <div className="bg-slate-50 p-6 rounded-3xl border border-slate-100 space-y-4">
-                                <h3 className="text-sm font-black text-slate-400 uppercase ml-1">Tipo de Negocio</h3>
-                                <div className="grid grid-cols-2 gap-3 p-1 bg-white rounded-2xl border border-slate-200">
-                                    <button
-                                        onClick={() => setBusinessType('restaurant')}
-                                        className={`flex items-center justify-center gap-2 py-3 rounded-xl font-black text-xs uppercase tracking-widest transition-all ${
-                                            businessType === 'restaurant' 
-                                            ? 'bg-primary text-slate-900 shadow-lg shadow-primary/20 scale-100' 
-                                            : 'text-slate-400 hover:text-slate-600'
-                                        }`}
-                                    >
-                                        <Store className="w-5 h-5" />
-                                        <span>Restaurante</span>
-                                    </button>
-                                    <button
-                                        onClick={() => setBusinessType('hotel')}
-                                        className={`flex items-center justify-center gap-2 py-3 rounded-xl font-black text-xs uppercase tracking-widest transition-all ${
-                                            businessType === 'hotel' 
-                                            ? 'bg-primary text-slate-900 shadow-lg shadow-primary/20 scale-100' 
-                                            : 'text-slate-400 hover:text-slate-600'
-                                        }`}
-                                    >
-                                        <Building2 className="w-5 h-5" />
-                                        <span>Hotel / Posada</span>
-                                    </button>
+                                <div className="flex items-center justify-between flex-wrap gap-2">
+                                    <div>
+                                        <h3 className="text-sm font-black text-slate-700 uppercase tracking-wider">
+                                            Tipo de Negocio / Rama Comercial
+                                        </h3>
+                                        <p className="text-xs text-slate-400 font-medium">
+                                            Selecciona el ramo al que pertenece tu comercio en la ciudad
+                                        </p>
+                                    </div>
+                                    <span className="inline-flex items-center gap-1 px-3 py-1 bg-amber-500/10 text-amber-700 border border-amber-500/20 text-[10px] font-black rounded-full uppercase tracking-wider">
+                                        👑 Sincronizado con Super Admin
+                                    </span>
                                 </div>
-                                <p className="text-[10px] text-slate-400 italic px-2">
-                                    * Cambiar el tipo de negocio adaptará la interfaz para tus clientes (ej: "Reservar" en lugar de "Añadir").
-                                </p>
-                            </div>
 
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
-                                <div className="space-y-2">
-                                    <label className="text-sm font-bold text-slate-500 ml-2">Sector Público (Categoría Principal)</label>
-                                    <select
-                                        value={categoryId}
-                                        onChange={(e) => {
-                                            setCategoryId(e.target.value);
-                                            setSubCategoryId('');
-                                        }}
-                                        className="w-full bg-slate-50 border-2 border-transparent focus:border-primary focus:bg-white p-4 rounded-2xl outline-none transition-all font-bold text-slate-700 appearance-none"
+                                {/* Botón Desplegable */}
+                                <div className="relative">
+                                    <button
+                                        type="button"
+                                        onClick={() => setIsBusinessTypeOpen(!isBusinessTypeOpen)}
+                                        className="w-full flex items-center justify-between p-4 bg-white border-2 border-slate-200 hover:border-primary focus:border-primary rounded-2xl transition-all shadow-xs group"
                                     >
-                                        <option value="">Selecciona un Sector</option>
-                                        {globalCategories.filter(c => !c.parentId && c.isActive !== false).map(c => (
-                                            <option key={c.id} value={c.id}>{c.name}</option>
-                                        ))}
-                                    </select>
+                                        <div className="flex items-center gap-3.5 min-w-0">
+                                            <div className="w-11 h-11 rounded-xl bg-slate-100 flex items-center justify-center text-2xl shrink-0 group-hover:bg-primary/20 transition-colors">
+                                                {currentCategory ? getCategoryEmoji(currentCategory.name) : '🏪'}
+                                            </div>
+                                            <div className="text-left truncate">
+                                                <span className="block text-[10px] font-black text-slate-400 uppercase tracking-wider">
+                                                    Ramo Seleccionado
+                                                </span>
+                                                <span className="block text-base font-black text-slate-900 truncate">
+                                                    {currentCategory ? currentCategory.name : 'Selecciona el Tipo de Negocio...'}
+                                                </span>
+                                            </div>
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                            <ChevronDown className={`w-5 h-5 text-slate-400 transition-transform duration-200 ${isBusinessTypeOpen ? 'rotate-180 text-primary' : ''}`} />
+                                        </div>
+                                    </button>
+
+                                    {/* Backdrop para cerrar al hacer clic afuera */}
+                                    {isBusinessTypeOpen && (
+                                        <div
+                                            className="fixed inset-0 z-20"
+                                            onClick={() => setIsBusinessTypeOpen(false)}
+                                        />
+                                    )}
+
+                                    {/* Menú Desplegable con Filtro de Búsqueda */}
+                                    <AnimatePresence>
+                                        {isBusinessTypeOpen && (
+                                            <motion.div
+                                                initial={{ opacity: 0, y: -8, scale: 0.98 }}
+                                                animate={{ opacity: 1, y: 0, scale: 1 }}
+                                                exit={{ opacity: 0, y: -8, scale: 0.98 }}
+                                                transition={{ duration: 0.15 }}
+                                                className="absolute z-30 left-0 right-0 mt-2 bg-white rounded-2xl border border-slate-200 shadow-2xl p-3 space-y-2 max-h-[380px] overflow-hidden flex flex-col"
+                                            >
+                                                {/* Buscador interno */}
+                                                <div className="relative shrink-0">
+                                                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                                                    <input
+                                                        type="text"
+                                                        value={businessTypeSearch}
+                                                        onChange={(e) => setBusinessTypeSearch(e.target.value)}
+                                                        placeholder="Buscar tipo de negocio (ej: ferretería, panadería, repuestos...)"
+                                                        className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-9 pr-4 py-2.5 text-xs font-bold text-slate-800 outline-none focus:border-primary"
+                                                        autoFocus
+                                                    />
+                                                </div>
+
+                                                {/* Lista de ramas comerciales */}
+                                                <div className="overflow-y-auto space-y-1 pr-1 flex-1">
+                                                    {filteredCategories.length > 0 ? (
+                                                        filteredCategories.map(cat => {
+                                                            const isSelected = (currentCategory?.id === cat.id || currentCategory?.name === cat.name);
+                                                            return (
+                                                                <button
+                                                                    key={cat.id}
+                                                                    type="button"
+                                                                    onClick={() => handleSelectCategory(cat)}
+                                                                    className={`w-full flex items-center justify-between p-3 rounded-xl transition-all text-left ${
+                                                                        isSelected
+                                                                            ? 'bg-primary/20 text-slate-900 font-black'
+                                                                            : 'hover:bg-slate-50 text-slate-700 font-bold'
+                                                                    }`}
+                                                                >
+                                                                    <div className="flex items-center gap-3">
+                                                                        <span className="text-xl">{getCategoryEmoji(cat.name)}</span>
+                                                                        <span className="text-sm">{cat.name}</span>
+                                                                    </div>
+                                                                    {isSelected && (
+                                                                        <span className="w-2.5 h-2.5 rounded-full bg-slate-900" />
+                                                                    )}
+                                                                </button>
+                                                            );
+                                                        })
+                                                    ) : (
+                                                        <div className="py-6 text-center text-xs text-slate-400 font-bold">
+                                                            No se encontraron resultados para "{businessTypeSearch}"
+                                                        </div>
+                                                    )}
+                                                </div>
+
+                                                <div className="pt-2 border-t border-slate-100 text-[10px] text-slate-400 text-center font-medium">
+                                                    🔒 Categorías administradas exclusivamente por el Super Administrador.
+                                                </div>
+                                            </motion.div>
+                                        )}
+                                    </AnimatePresence>
                                 </div>
-                                <div className="space-y-2">
-                                    <label className="text-sm font-bold text-slate-500 ml-2">Especialidad (Subcategoría)</label>
-                                    <select
-                                        value={subCategoryId}
-                                        onChange={(e) => setSubCategoryId(e.target.value)}
-                                        className="w-full bg-slate-50 border-2 border-transparent focus:border-primary focus:bg-white p-4 rounded-2xl outline-none transition-all font-bold text-slate-700 appearance-none"
-                                        disabled={!categoryId}
-                                    >
-                                        <option value="">Selecciona una Especialidad</option>
-                                        {globalCategories.filter(c => c.parentId === categoryId && c.isActive !== false).map(c => (
-                                            <option key={c.id} value={c.id}>{c.name}</option>
-                                        ))}
-                                    </select>
-                                </div>
+
+                                {/* Selector de Especialidad / Subcategoría si aplica */}
+                                {availableSubCategories.length > 0 && (
+                                    <div className="space-y-1.5 pt-2">
+                                        <label className="text-xs font-bold text-slate-600 ml-1">
+                                            Especialidad / Subcategoría dentro de {currentCategory?.name || 'tu negocio'}
+                                        </label>
+                                        <div className="relative">
+                                            <select
+                                                value={subCategoryId}
+                                                onChange={(e) => setSubCategoryId(e.target.value)}
+                                                className="w-full bg-white border border-slate-200 p-3.5 pr-10 rounded-xl outline-none focus:border-primary font-bold text-slate-800 text-sm appearance-none cursor-pointer"
+                                            >
+                                                <option value="">Selecciona una Especialidad (Opcional)</option>
+                                                {availableSubCategories.map(s => (
+                                                    <option key={s.id} value={s.id}>{s.name}</option>
+                                                ))}
+                                            </select>
+                                            <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 pointer-events-none" />
+                                        </div>
+                                    </div>
+                                )}
                             </div>
                         </div>
                     </section>
@@ -954,88 +1207,99 @@ export default function RestaurantProfile() {
                         </div>
                     </section>
 
-                    <section className="bg-white p-8 rounded-[40px] shadow-sm border border-slate-100 space-y-6">
-                        <div className="flex justify-between items-center bg-slate-50/50 p-4 rounded-3xl mb-2">
-                            <h2 className="text-xl font-black text-slate-900 flex items-center gap-2">
-                                <Clock className="w-6 h-6 text-slate-900" />
-                                Horario de Trabajo
-                            </h2>
-                            <div className="flex gap-2">
+                    <section className="bg-white p-6 md:p-8 rounded-[40px] shadow-sm border border-slate-100 space-y-5">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-slate-100">
+                            <div>
+                                <h2 className="text-xl font-black text-slate-900 flex items-center gap-2.5">
+                                    <Clock className="w-5 h-5 text-primary" />
+                                    Horario de Trabajo
+                                </h2>
+                                <p className="text-xs text-slate-400 font-medium mt-0.5">
+                                    Configura los horarios de atención al público de tu negocio
+                                </p>
+                            </div>
+                            <div className="flex items-center gap-2 flex-wrap">
                                 <button
+                                    type="button"
                                     onClick={() => applyBulkHours(0, 4)}
-                                    className="px-3 py-1.5 bg-slate-100 text-[10px] font-black text-slate-500 rounded-xl hover:bg-slate-200 transition-colors shadow-sm"
-                                    title="Aplica el horario de Lunes a los demás días hábiles"
+                                    className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl transition-all active:scale-95"
+                                    title="Aplica el horario de Lunes a Viernes"
                                 >
-                                    Lun-Vie
+                                    Lun - Vie
                                 </button>
                                 <button
+                                    type="button"
                                     onClick={() => applyBulkHours(0, 6)}
-                                    className="px-3 py-1.5 bg-primary/10 text-[10px] font-black text-slate-900 rounded-xl hover:bg-primary/20 transition-colors shadow-sm"
-                                    title="Aplica el horario de Lunes a toda la semana"
+                                    className="px-3 py-1.5 bg-primary/20 hover:bg-primary/30 text-slate-900 text-xs font-black rounded-xl transition-all active:scale-95"
+                                    title="Aplica el horario de Lunes a los 7 días"
                                 >
                                     Toda la Semana
                                 </button>
                             </div>
                         </div>
 
-                        <div className="space-y-3">
+                        <div className="divide-y divide-slate-100">
                             {workingHours.map((wh, idx) => (
                                 <div
                                     key={wh.day}
-                                    className={`flex items-center justify-between gap-3 p-3 rounded-3xl border-2 transition-all ${wh.closed
-                                        ? 'bg-red-50/30 border-red-100/50'
-                                        : 'bg-slate-50 border-transparent hover:border-slate-100'
-                                        }`}
+                                    className="py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3 px-2 rounded-2xl hover:bg-slate-50/70 transition-colors"
                                 >
-                                    <div className="w-20">
-                                        <span className={`text-xs font-black uppercase tracking-wider ${wh.closed ? 'text-red-400' : 'text-slate-800'}`}>
+                                    {/* Left: Day & Status indicator */}
+                                    <div className="flex items-center gap-3 min-w-[130px]">
+                                        <span className={`w-2.5 h-2.5 rounded-full transition-all ${
+                                            wh.closed ? 'bg-slate-300' : 'bg-emerald-500 shadow-sm shadow-emerald-500/50'
+                                        }`} />
+                                        <span className="text-sm font-bold text-slate-800">
                                             {wh.day}
                                         </span>
                                     </div>
 
-                                    {!wh.closed ? (
-                                        <div className="flex-1 flex items-center justify-center gap-2">
-                                            <div className="relative group">
+                                    {/* Center: Hours inputs or Closed badge */}
+                                    <div className="flex-1 flex items-center justify-start sm:justify-center">
+                                        {!wh.closed ? (
+                                            <div className="inline-flex items-center gap-2 bg-white px-3 py-1.5 rounded-xl border border-slate-200 shadow-xs">
                                                 <input
                                                     type="time"
                                                     value={wh.open}
                                                     onChange={(e) => updateWorkingHours(idx, 'open', e.target.value)}
-                                                    className="bg-white border-2 border-slate-100 rounded-xl px-2 py-1.5 text-xs font-black text-slate-700 outline-none focus:border-primary transition-all"
+                                                    className="bg-transparent text-xs font-bold text-slate-700 outline-none cursor-pointer"
                                                 />
-                                            </div>
-                                            <div className="w-2 h-[2px] bg-slate-200 rounded-full" />
-                                            <div className="relative group">
+                                                <span className="text-slate-300 font-bold text-xs">—</span>
                                                 <input
                                                     type="time"
                                                     value={wh.close}
                                                     onChange={(e) => updateWorkingHours(idx, 'close', e.target.value)}
-                                                    className="bg-white border-2 border-slate-100 rounded-xl px-2 py-1.5 text-xs font-black text-slate-700 outline-none focus:border-primary transition-all"
+                                                    className="bg-transparent text-xs font-bold text-slate-700 outline-none cursor-pointer"
                                                 />
                                             </div>
-                                        </div>
-                                    ) : (
-                                        <div className="flex-1 text-center">
-                                            <span className="text-[10px] font-black text-red-500 bg-red-100/50 px-3 py-1 rounded-full uppercase tracking-widest">
-                                                Cerrado
+                                        ) : (
+                                            <span className="text-xs font-semibold text-slate-400 bg-slate-100 px-3 py-1 rounded-xl">
+                                                No laborable / Cerrado
                                             </span>
-                                        </div>
-                                    )}
+                                        )}
+                                    </div>
 
-                                    <button
-                                        onClick={() => updateWorkingHours(idx, 'closed', !wh.closed)}
-                                        className={`w-20 py-2 rounded-xl text-[10px] font-black uppercase tracking-tighter transition-all shadow-sm ${wh.closed
-                                            ? 'bg-slate-900 text-white hover:bg-slate-800'
-                                            : 'bg-white text-slate-400 hover:text-red-500 border border-slate-100'
+                                    {/* Right: Modern Pill Toggle */}
+                                    <div className="flex items-center justify-end">
+                                        <button
+                                            type="button"
+                                            onClick={() => updateWorkingHours(idx, 'closed', !wh.closed)}
+                                            className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all ${
+                                                wh.closed
+                                                    ? 'bg-slate-100 text-slate-500 hover:bg-slate-200 hover:text-slate-700'
+                                                    : 'bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100'
                                             }`}
-                                    >
-                                        {wh.closed ? 'Abrir' : 'Cerrar'}
-                                    </button>
+                                        >
+                                            {wh.closed ? 'Cerrado' : 'Abierto'}
+                                        </button>
+                                    </div>
                                 </div>
                             ))}
-                            <p className="text-[10px] text-slate-400 text-center font-bold italic mt-4">
-                                * Tip: Configura el Lunes y presiona "Toda la Semana" para ahorrar tiempo.
-                            </p>
                         </div>
+
+                        <p className="text-[11px] text-slate-400 text-center font-medium pt-2">
+                            💡 Tip: Configura el horario del Lunes y presiona <strong>"Toda la Semana"</strong> para sincronizarlo rápidamente.
+                        </p>
                     </section>
 
                     {/* Social Media Section */}
