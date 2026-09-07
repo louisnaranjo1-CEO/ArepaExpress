@@ -720,67 +720,6 @@ export default function Profile() {
                                 <span className="text-slate-900 font-bold text-xs group-hover:text-primary transition-colors">¿No tienes cuenta? </span>
                                 <span className="text-slate-900 font-black text-xs group-hover:underline">Regístrate</span>
                             </button>
-                            <div className="flex items-center gap-4 my-2">
-                                <div className="h-px bg-slate-100 flex-1"></div>
-                                <span className="text-[10px] font-black text-slate-300 uppercase tracking-widest">¿trabajas con nuestros aliados?</span>
-                                <div className="h-px bg-slate-100 flex-1"></div>
-                            </div>
-                            <button
-                                onClick={() => {
-                                    if (isDemoMode()) {
-                                        setShowDemoAlert(true);
-                                        return;
-                                    }
-                                    const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-                                    if (isLocalhost) {
-                                        window.location.href = `${window.location.protocol}//meseros.localhost:${window.location.port}`;
-                                    } else {
-                                        window.location.href = 'https://meseros.deliexpress.app';
-                                    }
-                                }}
-                                className="w-full bg-slate-50 text-slate-500 py-4 rounded-2xl font-bold hover:bg-slate-100 transition-colors flex items-center justify-center gap-2"
-                            >
-                                <Shield className="w-5 h-5 opacity-50" />
-                                Acceso Meseros
-                            </button>
-
-                            <div className="flex items-center gap-4 my-2 pt-2">
-                                <div className="h-px bg-slate-100 flex-1"></div>
-                                <span className="text-[10px] font-black text-slate-300 uppercase tracking-widest">Emprende y se un freelancer en un 2x3</span>
-                                <div className="h-px bg-slate-100 flex-1"></div>
-                            </div>
-                            <button
-                                onClick={() => {
-                                    if (isDemoMode()) {
-                                        setShowDemoAlert(true);
-                                        return;
-                                    }
-                                    window.location.href = 'https://deliexpress.app/delivery/login';
-                                }}
-                                className="w-full bg-primary/10 text-slate-900 py-4 rounded-2xl font-bold hover:bg-primary/20 transition-colors flex items-center justify-center gap-2"
-                            >
-                                <Navigation className="w-5 h-5 opacity-50" />
-                                Acceso Delivery / Taxi
-                            </button>
-
-                            <div className="flex items-center gap-4 my-2 pt-2">
-                                <div className="h-px bg-slate-100 flex-1"></div>
-                                <span className="text-[10px] font-black text-slate-300 uppercase tracking-widest">¿Quieres que tu negocio crezca?</span>
-                                <div className="h-px bg-slate-100 flex-1"></div>
-                            </div>
-                            <button
-                                onClick={() => {
-                                    if (isDemoMode()) {
-                                        setShowDemoAlert(true);
-                                        return;
-                                    }
-                                    window.location.href = 'https://restaurante.deliexpress.app';
-                                }}
-                                className="w-full bg-green-500/10 text-green-600 py-4 rounded-2xl font-bold hover:bg-green-500/20 transition-colors flex items-center justify-center gap-2"
-                            >
-                                <Store className="w-5 h-5 opacity-50" />
-                                Conviértete en aliado y deja que te encuentren en un 2x3
-                            </button>
                         </>
                     )}
                 </div>
