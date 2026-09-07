@@ -21,10 +21,8 @@ service cloud.firestore {
       allow create: if request.auth != null && request.auth.uid == userId;
       allow update: if request.auth != null && (
         isCPanelAdmin() || 
-        // User updating their own profile (cannot change points/referrals)
-        (request.auth.uid == userId && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['points', 'totalReferrals'])) ||
-        // Another user (e.g., restaurant admin or referred user) updating ONLY points and referrals
-        (request.auth.uid != userId && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['points', 'totalReferrals']))
+        // User updating their own profile (cannot change points/referrals or role directly)
+        (request.auth.uid == userId && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['points', 'totalReferrals', 'role']))
       );
       allow delete: if request.auth != null && (request.auth.uid == userId || isCPanelAdmin());
     }
@@ -113,25 +111,24 @@ service cloud.firestore {
         isCPanelAdmin()
       );
       
-      // Allow guests and waiters (no auth required right now) to create orders
-      allow create: if true;
+      // Allow authenticated users and validated guests to create orders
+      allow create: if request.auth != null || (request.resource.data.userId != null && request.resource.data.userId.matches('guest_.*'));
       
       // Restrictions to update status/payments
-      allow update: if (request.auth != null && (
+      allow update: if isCPanelAdmin() || (request.auth != null && (
         request.auth.uid == resource.data.restaurantId || 
         request.auth.uid == resource.data.deliveryDriverId ||
         (exists(/databases/$(database)/documents/sessions/$(request.auth.uid)) && get(/databases/$(database)/documents/sessions/$(request.auth.uid)).data.restaurantId == resource.data.restaurantId) ||
-        (resource.data.status == 'finding_driver' && request.resource.data.status == 'driver_assigned')
-      )) || 
-      // Permit guests to attach payment
-      (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['restaurantId', 'userId', 'items'])) ||
-      isCPanelAdmin();
+        (resource.data.status == 'finding_driver' && request.resource.data.status == 'driver_assigned') ||
+        // Customer can only attach payment details, cannot alter status, prices or restaurant
+        (request.auth.uid == resource.data.userId && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['restaurantId', 'status', 'total', 'subtotal', 'items']))
+      ));
       
       allow delete: if isCPanelAdmin();
 
-      // Chat Messages
+      // Chat Messages (requires authentication)
       match /messages/{messageId} {
-        allow read, write: if true;
+        allow read, write: if request.auth != null;
       }
     }
 
@@ -191,7 +188,7 @@ service cloud.firestore {
     match /home_icons/{iconId} { allow read: if true; allow write: if isCPanelAdmin(); }
     match /global_icons/{iconId} { allow read: if true; allow write: if isCPanelAdmin(); }
     match /payment_methods/{methodId} { allow read: if true; allow write: if isCPanelAdmin(); }
-    match /push_campaigns/{campaignId} { allow read: if true; allow create: if request.auth != null; allow update, delete: if isCPanelAdmin() || (request.auth != null && resource.data.restaurantId == request.auth.uid); }
+    match /push_campaigns/{campaignId} { allow read: if true; allow create: if isCPanelAdmin() || (request.auth != null && request.resource.data.restaurantId == request.auth.uid); allow update, delete: if isCPanelAdmin() || (request.auth != null && resource.data.restaurantId == request.auth.uid); }
 
     // Subscriptions & Wallets
     match /subscriptions/{subId} { allow read: if true; allow write: if isCPanelAdmin() || (request.auth != null && request.auth.uid == request.resource.data.restaurantId); }

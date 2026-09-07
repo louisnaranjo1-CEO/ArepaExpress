@@ -1,3 +1,4 @@
+require('dotenv').config();
 const express = require('express');
 const { Pool } = require('pg');
 const cors = require('cors');
@@ -6,12 +7,12 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// Configuración de la base de datos
+// Configuración segura de la base de datos
 const pool = new Pool({
-  host: process.env.DB_HOST || '35.223.26.84',
-  port: process.env.DB_PORT || 5432,
-  user: process.env.DB_USER || 'postgres',
-  password: process.env.DB_PASSWORD || 'Musico007_',
+  host: process.env.DB_HOST,
+  port: parseInt(process.env.DB_PORT || '5432', 10),
+  user: process.env.DB_USER,
+  password: process.env.DB_PASSWORD,
   database: process.env.DB_NAME || 'postgres',
   ssl: process.env.DB_SSL === 'false' ? false : { rejectUnauthorized: false },
   max: 20,

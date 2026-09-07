@@ -1,0 +1,233 @@
+import React, { useState, useEffect } from 'react';
+import { NavLink, useNavigate } from 'react-router-dom';
+import { LayoutDashboard, Store, Users, Image as ImageIcon, LogOut, ChevronRight, Menu, X, Tag, Truck, Wallet, Car, Share2, Gift, Ticket, MessageSquareWarning, Megaphone, ShoppingBag, Trophy } from 'lucide-react';
+import { collection, query, where, onSnapshot } from 'firebase/firestore';
+import { db } from '../../lib/firebase';
+import { UN2X3_LOGO } from '../../lib/env';
+import { useGlobalAudioAlerts } from '../../hooks/useGlobalAudioAlerts';
+import { useHaptics } from '../../hooks/useHaptics';
+
+interface CpanelLayoutProps {
+    children: React.ReactNode;
+    onLogout: () => void;
+}
+
+export default function CpanelLayout({ children, onLogout }: CpanelLayoutProps) {
+    const navigate = useNavigate();
+    const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+    const [pendingTransports, setPendingTransports] = useState(0);
+    const [pendingTickets, setPendingTickets] = useState(0);
+    const [pendingPayouts, setPendingPayouts] = useState(0);
+    const { vibrateSelection } = useHaptics();
+
+    useGlobalAudioAlerts('cpanel');
+
+    useEffect(() => {
+        // Listen to pending transport requests that need admin payment verification
+        const qTransports = query(
+            collection(db, 'transport_requests'),
+            where('status', '==', 'verifying_payment')
+        );
+
+        const unsubscribeTransports = onSnapshot(qTransports, (snapshot) => {
+            setPendingTransports(snapshot.size);
+        });
+        
+        // Listen to open support tickets
+        const qTickets = query(
+            collection(db, 'support_tickets'),
+            where('status', '==', 'open')
+        );
+
+        const unsubscribeTickets = onSnapshot(qTickets, (snapshot) => {
+            setPendingTickets(snapshot.size);
+        });
+
+        // Listen to pending payout requests
+        const qPayoutOrders = query(collection(db, 'orders'), where('paymentRequested', '==', true), where('deliveryPaid', '==', false));
+        const qPayoutTransports = query(collection(db, 'transport_requests'), where('paymentRequested', '==', true), where('driverPaid', '==', false));
+
+        let ordersCount = 0;
+        let transportsCount = 0;
+
+        const unsubscribePayoutOrders = onSnapshot(qPayoutOrders, (snapshot) => {
+            ordersCount = snapshot.size;
+            setPendingPayouts(ordersCount + transportsCount);
+        });
+
+        const unsubscribePayoutTransports = onSnapshot(qPayoutTransports, (snapshot) => {
+            transportsCount = snapshot.size;
+            setPendingPayouts(ordersCount + transportsCount);
+        });
+
+        return () => {
+            unsubscribeTransports();
+            unsubscribeTickets();
+            unsubscribePayoutOrders();
+            unsubscribePayoutTransports();
+        };
+    }, []);
+
+    const handleLogout = () => {
+        onLogout();
+        navigate('/');
+    };
+
+    const navItems = [
+        { path: '/', icon: LayoutDashboard, label: 'Resumen' },
+        { path: '/app-orders', icon: ShoppingBag, label: 'Pedidos App en Vivo' },
+        { path: '/restaurants', icon: Store, label: 'Restaurantes' },
+        { path: '/users', icon: Users, label: 'Usuarios' },
+        { path: '/banners', icon: ImageIcon, label: 'Banners' },
+        { path: '/categories', icon: Tag, label: 'Categorías' },
+        { path: '/delivery', icon: Truck, label: 'Delivery Express' },
+        { path: '/transports', icon: Car, label: 'Viajes (Taxis)', badge: pendingTransports },
+        { path: '/finances', icon: Wallet, label: 'Finanzas' },
+        { path: '/liquidations', icon: Wallet, label: 'Liquidaciones', badge: pendingPayouts },
+        { path: '/fidelization', icon: Gift, label: 'Fidelización' },
+        { path: '/raffles', icon: Ticket, label: 'Sorteos y Rifas' },
+        { path: '/achievements', icon: Trophy, label: 'Logros de Pilotos' },
+        { path: '/marketing', icon: Megaphone, label: 'Marketing & Push' },
+        { path: '/icons', icon: Share2, label: 'Iconos' },
+        { path: '/support', icon: MessageSquareWarning, label: 'Reportes de Falla', badge: pendingTickets },
+    ];
+
+    return (
+        <div className="h-[100dvh] bg-slate-50 flex overflow-hidden">
+            {/* Mobile Sidebar Backdrop */}
+            {isSidebarOpen && (
+                <div
+                    className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-40 md:hidden"
+                    onClick={() => setIsSidebarOpen(false)}
+                />
+            )}
+
+            {/* Sidebar */}
+            <aside className={`fixed inset-y-0 left-0 w-[85vw] max-w-sm bg-slate-900 border-r border-slate-800 z-50 transform transition-transform duration-300 ease-in-out md:relative md:w-72 md:translate-x-0 ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
+                <div className="flex flex-col h-full pt-safe">
+                    {/* Sidebar Header */}
+                    <div className="p-4 border-b border-slate-800 flex items-center justify-between">
+                        <div className="flex items-center gap-3 cursor-pointer active:scale-95 transition-transform" onClick={() => window.location.href = 'https://deliexpress.app'}>
+                            <div className="relative w-14 h-14 flex items-center justify-center p-1 overflow-visible">
+                                <img
+                                    src={UN2X3_LOGO}
+                                    alt="Arepa Express"
+                                    className="w-full h-full object-contain filter drop-shadow-sm"
+                                />
+                            </div>
+                            <div className="flex flex-col">
+                                <h1 className="font-black text-white leading-tight">Encontrado en un 2x3</h1>
+                                <p className="text-[10px] font-bold text-white/50 uppercase tracking-wider">Cpanel Administrativo</p>
+                            </div>
+                        </div>
+                        <button className="md:hidden" onClick={() => setIsSidebarOpen(false)}>
+                            <X className="w-6 h-6 text-slate-400" />
+                        </button>
+                    </div>
+
+                    {/* Nav Items */}
+                    <nav className="flex-1 px-3 py-2 space-y-0.5 overflow-y-auto custom-scrollbar">
+                        {navItems.map((item) => (
+                            <NavLink
+                                key={item.path}
+                                to={item.path}
+                                className={({ isActive }) =>
+                                    `flex items-center justify-between py-2.5 px-4 rounded-xl font-bold transition-all group relative ${isActive
+                                        ? 'bg-primary !text-slate-900 shadow-lg shadow-primary/20'
+                                        : 'text-slate-400 hover:bg-white/5 hover:text-white'
+                                    }`
+                                }
+                                onClick={() => { vibrateSelection(); setIsSidebarOpen(false); }}
+                            >
+                                <div className="flex items-center gap-3">
+                                    <item.icon className="w-5 h-5" />
+                                    <span className="text-[15px]">{item.label}</span>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    {!!item.badge && item.badge > 0 && (
+                                        <span className="bg-red-500 text-white text-[10px] px-2 py-0.5 rounded-full font-black animate-pulse">
+                                            {item.badge}
+                                        </span>
+                                    )}
+                                    <ChevronRight className={`w-4 h-4 transition-transform group-hover:translate-x-1 ${isSidebarOpen ? 'opacity-100' : 'opacity-0'}`} />
+                                </div>
+                            </NavLink>
+                        ))}
+                    </nav>
+
+                    {/* Sidebar Footer */}
+                    <div className="p-3 border-t border-slate-800">
+                        <button
+                            onClick={handleLogout}
+                            className="w-full flex items-center gap-3 px-4 py-3 text-slate-400 font-bold hover:bg-red-500/10 hover:text-red-400 rounded-xl transition-colors"
+                        >
+                            <LogOut className="w-5 h-5" />
+                            <span>Cerrar Sesión</span>
+                        </button>
+                    </div>
+                </div>
+            </aside>
+
+            {/* Main Content */}
+            <main className="flex-1 flex flex-col min-w-0 overflow-hidden relative pb-[65px] md:pb-0">
+                {/* Top Header */}
+                <header className="h-14 md:h-20 bg-white border-b border-slate-200 px-4 md:px-6 flex items-center justify-between flex-shrink-0 pt-safe">
+                    <button
+                        className="md:hidden p-2 -ml-2 text-slate-500 active:scale-95 transition-transform"
+                        onClick={() => { vibrateSelection(); setIsSidebarOpen(true); }}
+                    >
+                        <Menu className="w-6 h-6" />
+                    </button>
+                    <div className="flex items-center gap-4">
+                        <h2 className="text-xl font-black text-slate-900">Control Principal</h2>
+                    </div>
+                </header>
+
+                <div className="flex-1 overflow-y-auto p-2 md:p-8 relative custom-scrollbar">
+                    {children}
+                </div>
+
+                {/* Mobile Bottom Navigation */}
+                <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 flex items-center justify-around pb-safe z-40 h-[65px] px-2 shadow-[0_-4px_20px_rgba(0,0,0,0.05)]">
+                    <NavLink
+                        to="/"
+                        onClick={() => vibrateSelection()}
+                        className={({ isActive }) => `flex flex-col items-center justify-center w-full h-full space-y-1 ${isActive ? 'text-primary' : 'text-slate-400'}`}
+                    >
+                        <LayoutDashboard className="w-5 h-5" />
+                        <span className="text-[10px] font-bold">Resumen</span>
+                    </NavLink>
+                    <NavLink
+                        to="/restaurants"
+                        onClick={() => vibrateSelection()}
+                        className={({ isActive }) => `flex flex-col items-center justify-center w-full h-full space-y-1 ${isActive ? 'text-primary' : 'text-slate-400'}`}
+                    >
+                        <Store className="w-5 h-5" />
+                        <span className="text-[10px] font-bold">Tiendas</span>
+                    </NavLink>
+                    <NavLink
+                        to="/transports"
+                        onClick={() => vibrateSelection()}
+                        className={({ isActive }) => `flex flex-col items-center justify-center w-full h-full space-y-1 relative ${isActive ? 'text-primary' : 'text-slate-400'}`}
+                    >
+                        <Car className="w-5 h-5" />
+                        {pendingTransports > 0 && (
+                            <span className="absolute top-1 right-2 w-2 h-2 bg-red-500 rounded-full"></span>
+                        )}
+                        <span className="text-[10px] font-bold">Taxis</span>
+                    </NavLink>
+                    <button
+                        onClick={() => { vibrateSelection(); setIsSidebarOpen(true); }}
+                        className="flex flex-col items-center justify-center w-full h-full space-y-1 text-slate-400 relative"
+                    >
+                        <Menu className="w-5 h-5" />
+                        {pendingTickets > 0 && (
+                            <span className="absolute top-1 right-2 w-2 h-2 bg-red-500 rounded-full"></span>
+                        )}
+                        <span className="text-[10px] font-bold">Más</span>
+                    </button>
+                </nav>
+            </main>
+        </div>
+    );
+}

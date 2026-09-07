@@ -1,15 +1,31 @@
 {
-  "name": "react-example",
+  "name": "un2x3-monorepo",
   "private": true,
-  "version": "0.0.0",
+  "version": "1.0.0",
   "type": "module",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
   "scripts": {
-    "dev": "vite --port=3000 --host=0.0.0.0",
-    "build": "vite build",
+    "dev": "vite --config apps/client/vite.config.ts",
+    "dev:client": "vite --config apps/client/vite.config.ts",
+    "dev:restaurant": "vite --config apps/restaurant/vite.config.ts",
+    "dev:delivery": "vite --config apps/delivery/vite.config.ts",
+    "dev:admin": "vite --config apps/admin/vite.config.ts",
+    "dev:waiter": "vite --config apps/waiter/vite.config.ts",
+    "dev:cashier": "vite --config apps/cashier/vite.config.ts",
+    "build": "vite build --config apps/client/vite.config.ts",
+    "build:client": "vite build --config apps/client/vite.config.ts",
+    "build:restaurant": "vite build --config apps/restaurant/vite.config.ts",
+    "build:delivery": "vite build --config apps/delivery/vite.config.ts",
+    "build:admin": "vite build --config apps/admin/vite.config.ts",
+    "build:waiter": "vite build --config apps/waiter/vite.config.ts",
+    "build:cashier": "vite build --config apps/cashier/vite.config.ts",
+    "build:all": "npm run build:client && npm run build:restaurant && npm run build:delivery && npm run build:admin && npm run build:waiter && npm run build:cashier",
     "deploy": "npx wrangler deploy",
     "preview": "vite preview",
-    "clean": "rm -rf dist",
-    "lint": "tsc --noEmit"
+    "clean": "rm -rf dist apps/*/dist"
   },
   "dependencies": {
     "@capacitor-firebase/authentication": "^8.2.0",
