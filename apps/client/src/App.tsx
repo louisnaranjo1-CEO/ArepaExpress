@@ -21,6 +21,8 @@ import { useNavigate } from 'react-router-dom';
 import { useGlobalAudioAlerts } from './hooks/useGlobalAudioAlerts';
 import { usePushCampaigns } from './hooks/usePushCampaigns';
 
+import ResetPassword from './pages/ResetPassword';
+
 function RedirectHandler({ children }: { children: React.ReactNode }) {
     const { user, userData } = useAuth();
     const navigate = useNavigate();
@@ -58,6 +60,7 @@ export default function ClientApp() {
                                         <Route path="/track/:orderId" element={<TrackOrder />} />
                                         <Route path="/taxi/track/:requestId" element={<TransportTracker />} />
                                         <Route path="/taxi" element={<Taxi />} />
+                                        <Route path="/reset-password" element={<ResetPassword />} />
                                     </Routes>
                                 </div>
                                 <BottomNav />

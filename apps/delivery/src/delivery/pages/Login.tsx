@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { LogIn, UserPlus, Mail, Lock, User, ArrowRight, ChevronRight, Gavel } from 'lucide-react';
-import { signInWithGoogle, signInWithEmail, signUpWithEmail } from '../../lib/auth-service';
+import { LogIn, UserPlus, Mail, Lock, User, ArrowRight, ChevronRight, Gavel, X, CheckCircle } from 'lucide-react';
+import { signInWithGoogle, signInWithEmail, signUpWithEmail, sendPasswordResetEmail } from '../../lib/auth-service';
 import { getDriverProfile } from '../../lib/delivery-service';
 import { motion, AnimatePresence } from 'motion/react';
 import { UN2X3_LOGO } from '../../lib/env';
@@ -15,7 +15,26 @@ export default function Login() {
         password: '',
         name: ''
     });
+    const [showForgotModal, setShowForgotModal] = useState(false);
+    const [forgotEmail, setForgotEmail] = useState('');
+    const [isSendingForgot, setIsSendingForgot] = useState(false);
+    const [forgotSuccess, setForgotSuccess] = useState(false);
     const navigate = useNavigate();
+
+    const handleForgotPassword = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!forgotEmail) return;
+        setIsSendingForgot(true);
+        try {
+            await sendPasswordResetEmail(forgotEmail.trim());
+            setForgotSuccess(true);
+        } catch (err: any) {
+            console.error("Error sending driver reset email:", err);
+            setError(err.message || "Error al enviar el correo de recuperación");
+        } finally {
+            setIsSendingForgot(false);
+        }
+    };
 
     const handleGoogleLogin = async () => {
         try {
@@ -170,6 +189,22 @@ export default function Login() {
                             />
                         </div>
 
+                        {mode === 'login' && (
+                            <div className="flex justify-end pr-1">
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setForgotEmail(formData.email);
+                                        setForgotSuccess(false);
+                                        setShowForgotModal(true);
+                                    }}
+                                    className="text-xs font-bold text-slate-400 hover:text-primary transition-colors"
+                                >
+                                    ¿Olvidaste tu contraseña?
+                                </button>
+                            </div>
+                        )}
+
                         <button
                             type="submit"
                             disabled={loading}
@@ -225,6 +260,76 @@ export default function Login() {
                     <a href="#" className="underline text-slate-500 pl-1">Política de Privacidad</a>.
                 </p>
             </div>
+
+            {/* Forgot Password Modal */}
+            {showForgotModal && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-black/70 backdrop-blur-md animate-in fade-in">
+                    <div className="bg-slate-900 border border-slate-800 rounded-[32px] w-full max-w-sm p-8 shadow-2xl relative">
+                        <button 
+                            onClick={() => setShowForgotModal(false)}
+                            className="absolute top-6 right-6 p-2 text-slate-400 hover:text-white rounded-xl transition-colors"
+                        >
+                            <X className="w-5 h-5" />
+                        </button>
+
+                        <div className="text-center mb-6">
+                            <div className="w-14 h-14 bg-primary/10 rounded-2xl flex items-center justify-center mx-auto mb-3">
+                                <Mail className="w-7 h-7 text-primary" />
+                            </div>
+                            <h3 className="text-xl font-black text-white">Recuperar Acceso</h3>
+                            <p className="text-xs text-slate-400 font-bold uppercase tracking-widest mt-1">
+                                App de Conductores & Delivery
+                            </p>
+                        </div>
+
+                        {forgotSuccess ? (
+                            <div className="text-center py-4 space-y-3">
+                                <div className="w-16 h-16 bg-emerald-500/10 text-emerald-400 rounded-full flex items-center justify-center mx-auto">
+                                    <CheckCircle className="w-8 h-8" />
+                                </div>
+                                <h4 className="text-lg font-black text-white">¡Enlace Enviado!</h4>
+                                <p className="text-xs text-slate-400 font-medium leading-relaxed">
+                                    Hemos enviado las instrucciones para restablecer tu clave a <strong>{forgotEmail}</strong>. Revisa tu correo.
+                                </p>
+                                <button
+                                    onClick={() => setShowForgotModal(false)}
+                                    className="w-full bg-primary text-slate-950 py-3.5 rounded-2xl font-black mt-4"
+                                >
+                                    Cerrar y volver al inicio
+                                </button>
+                            </div>
+                        ) : (
+                            <form onSubmit={handleForgotPassword} className="space-y-4">
+                                <div className="space-y-1">
+                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">
+                                        Correo del Conductor
+                                    </label>
+                                    <input
+                                        type="email"
+                                        required
+                                        value={forgotEmail}
+                                        onChange={(e) => setForgotEmail(e.target.value)}
+                                        placeholder="conductor@correo.com"
+                                        className="w-full bg-slate-950 border border-slate-800 focus:border-primary/50 p-4 rounded-2xl outline-none font-bold text-white text-sm"
+                                    />
+                                </div>
+
+                                <button
+                                    type="submit"
+                                    disabled={isSendingForgot}
+                                    className="w-full bg-primary text-slate-950 py-4 rounded-2xl font-black shadow-lg shadow-primary/20 flex items-center justify-center gap-2 hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-70"
+                                >
+                                    {isSendingForgot ? (
+                                        <div className="w-5 h-5 border-2 border-slate-950 border-t-transparent rounded-full animate-spin"></div>
+                                    ) : (
+                                        "Enviar Enlace de Recuperación"
+                                    )}
+                                </button>
+                            </form>
+                        )}
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

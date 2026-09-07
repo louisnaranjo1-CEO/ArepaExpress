@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { Mail, Lock, Building2, FileText, ArrowRight, Store, LogIn, UserPlus, Hotel } from 'lucide-react';
-import { registerRestaurant, signInAdmin, signInAdminWithGoogle } from '../lib/auth-service';
+import { Mail, Lock, Building2, FileText, ArrowRight, Store, LogIn, UserPlus, Hotel, X, CheckCircle } from 'lucide-react';
+import { registerRestaurant, signInAdmin, signInAdminWithGoogle, sendPasswordResetEmail } from '../lib/auth-service';
 import { useNavigate } from 'react-router-dom';
 
 export default function AdminAuth() {
@@ -15,6 +15,27 @@ export default function AdminAuth() {
     const [restaurantName, setRestaurantName] = useState('');
     const [rif, setRif] = useState('');
     const [businessType, setBusinessType] = useState<'restaurant' | 'hotel'>('restaurant');
+
+    // Forgot Password State
+    const [showForgotModal, setShowForgotModal] = useState(false);
+    const [forgotEmail, setForgotEmail] = useState('');
+    const [isSendingForgot, setIsSendingForgot] = useState(false);
+    const [forgotSuccess, setForgotSuccess] = useState(false);
+
+    const handleForgotPassword = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!forgotEmail) return;
+        setIsSendingForgot(true);
+        try {
+            await sendPasswordResetEmail(forgotEmail.trim());
+            setForgotSuccess(true);
+        } catch (err: any) {
+            console.error("Error sending reset password email:", err);
+            setError(err.message || "Error al enviar el correo de recuperación");
+        } finally {
+            setIsSendingForgot(false);
+        }
+    };
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -155,6 +176,22 @@ export default function AdminAuth() {
                             />
                         </div>
 
+                        {isLogin && (
+                            <div className="flex justify-end pr-1">
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setForgotEmail(email);
+                                        setForgotSuccess(false);
+                                        setShowForgotModal(true);
+                                    }}
+                                    className="text-xs font-bold text-slate-400 hover:text-primary transition-colors"
+                                >
+                                    ¿Olvidaste tu contraseña?
+                                </button>
+                            </div>
+                        )}
+
                         {error && (
                             <div className="p-4 bg-red-50 text-red-600 rounded-2xl text-sm font-bold animate-in shake-in duration-300">
                                 {error}
@@ -235,6 +272,76 @@ export default function AdminAuth() {
                     Al continuar, aceptas los términos de servicio<br />y políticas de privacidad de Un 2x3.
                 </p>
             </div>
+
+            {/* Forgot Password Modal */}
+            {showForgotModal && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-black/60 backdrop-blur-sm animate-in fade-in">
+                    <div className="bg-white rounded-[32px] w-full max-w-sm p-8 shadow-2xl relative border border-slate-100">
+                        <button 
+                            onClick={() => setShowForgotModal(false)}
+                            className="absolute top-6 right-6 p-2 text-slate-400 hover:text-slate-600 rounded-xl transition-colors"
+                        >
+                            <X className="w-5 h-5" />
+                        </button>
+
+                        <div className="text-center mb-6">
+                            <div className="w-14 h-14 bg-primary/10 rounded-2xl flex items-center justify-center mx-auto mb-3">
+                                <Mail className="w-7 h-7 text-slate-900" />
+                            </div>
+                            <h3 className="text-xl font-black text-slate-900">Recuperar Acceso</h3>
+                            <p className="text-xs text-slate-400 font-bold uppercase tracking-widest mt-1">
+                                Panel de Administración
+                            </p>
+                        </div>
+
+                        {forgotSuccess ? (
+                            <div className="text-center py-4 space-y-3">
+                                <div className="w-16 h-16 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto">
+                                    <CheckCircle className="w-8 h-8" />
+                                </div>
+                                <h4 className="text-lg font-black text-slate-900">¡Enlace Enviado!</h4>
+                                <p className="text-xs text-slate-500 font-medium">
+                                    Revisa la bandeja de entrada de <strong>{forgotEmail}</strong> para restablecer tu contraseña institucional.
+                                </p>
+                                <button
+                                    onClick={() => setShowForgotModal(false)}
+                                    className="w-full bg-primary text-slate-900 py-3.5 rounded-2xl font-bold mt-4"
+                                >
+                                    Cerrar y volver al inicio
+                                </button>
+                            </div>
+                        ) : (
+                            <form onSubmit={handleForgotPassword} className="space-y-4">
+                                <div className="space-y-1">
+                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">
+                                        Correo del Negocio
+                                    </label>
+                                    <input
+                                        type="email"
+                                        required
+                                        value={forgotEmail}
+                                        onChange={(e) => setForgotEmail(e.target.value)}
+                                        placeholder="correo@negocio.com"
+                                        className="w-full bg-slate-50 border-2 border-slate-100 focus:border-primary p-4 rounded-2xl outline-none font-bold text-slate-700 text-sm"
+                                    />
+                                </div>
+
+                                <button
+                                    type="submit"
+                                    disabled={isSendingForgot}
+                                    className="w-full bg-primary text-slate-900 py-4 rounded-2xl font-black shadow-lg shadow-primary/30 flex items-center justify-center gap-2 hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-70"
+                                >
+                                    {isSendingForgot ? (
+                                        <div className="w-5 h-5 border-2 border-slate-900 border-t-transparent rounded-full animate-spin"></div>
+                                    ) : (
+                                        "Enviar Enlace de Recuperación"
+                                    )}
+                                </button>
+                            </form>
+                        )}
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

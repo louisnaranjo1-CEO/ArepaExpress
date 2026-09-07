@@ -8,7 +8,7 @@ import { useAuth } from '../context/AuthContext';
 import { auth, db, storage } from '../lib/firebase';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { signInWithGoogle, signInWithEmail, signUpWithEmail, processReferralCode } from '../lib/auth-service';
+import { signInWithGoogle, signInWithEmail, signUpWithEmail, processReferralCode, sendPasswordResetEmail } from '../lib/auth-service';
 import { collection, query, where, orderBy, getDocs, doc, setDoc, serverTimestamp, collectionGroup, getDoc, updateDoc, addDoc } from 'firebase/firestore';
 import { updateProfile } from 'firebase/auth';
 import { Image as ImageIcon, Camera, Smartphone, User as UserIcon, Save } from 'lucide-react';
@@ -109,6 +109,10 @@ export default function Profile() {
     const [password, setPassword] = useState('');
     const [fullName, setFullName] = useState('');
     const [isEmailAuthLoading, setIsEmailAuthLoading] = useState(false);
+    const [showForgotPasswordModal, setShowForgotPasswordModal] = useState(false);
+    const [forgotEmail, setForgotEmail] = useState('');
+    const [isSendingReset, setIsSendingReset] = useState(false);
+    const [resetEmailSent, setResetEmailSent] = useState(false);
     const [logoFile, setLogoFile] = useState<File | null>(null);
     const [logoPreview, setLogoPreview] = useState<string | null>(null);
 
@@ -467,6 +471,22 @@ export default function Profile() {
         }
     };
 
+    const handleForgotPasswordSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!forgotEmail) return;
+        setIsSendingReset(true);
+        try {
+            await sendPasswordResetEmail(forgotEmail.trim());
+            setResetEmailSent(true);
+            toast.success("Correo de recuperación enviado con éxito.");
+        } catch (err: any) {
+            console.error("Error sending reset password email:", err);
+            toast.error(err.message || "Error al enviar el correo de recuperación.");
+        } finally {
+            setIsSendingReset(false);
+        }
+    };
+
     const handleGoogleReferralSubmit = async () => {
         if (!tempGoogleUser) return;
         if (!referralCodeInput) {
@@ -789,6 +809,23 @@ export default function Profile() {
                                         />
                                     </div>
 
+                                    {isLoginMode && (
+                                        <div className="flex justify-end pt-1">
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    setForgotEmail(email);
+                                                    setResetEmailSent(false);
+                                                    setShowEmailModal(false);
+                                                    setShowForgotPasswordModal(true);
+                                                }}
+                                                className="text-xs font-bold text-slate-500 hover:text-primary transition-colors"
+                                            >
+                                                ¿Olvidaste tu contraseña?
+                                            </button>
+                                        </div>
+                                    )}
+
                                     {!isLoginMode && (
                                         <div className="space-y-1">
                                             <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">{isForcedRegister ? "Código de Referido (Aplicado)" : "Código de Referido (Opcional)"}</label>
@@ -826,6 +863,93 @@ export default function Profile() {
                                         </button>
                                     )}
                                 </form>
+                            </motion.div>
+                        </div>
+                    )}
+                </AnimatePresence>
+
+                {/* Forgot Password Modal */}
+                <AnimatePresence>
+                    {showForgotPasswordModal && (
+                        <div className="fixed inset-0 z-[115] flex items-center justify-center p-6 bg-black/60 backdrop-blur-sm">
+                            <motion.div
+                                initial={{ opacity: 0, scale: 0.9, y: 20 }}
+                                animate={{ opacity: 1, scale: 1, y: 0 }}
+                                exit={{ opacity: 0, scale: 0.9, y: 20 }}
+                                className="bg-white rounded-[32px] w-full max-w-sm shadow-2xl overflow-hidden"
+                            >
+                                <div className="p-8 border-b border-slate-50 flex items-center justify-between bg-slate-50/50">
+                                    <div>
+                                        <h3 className="text-xl font-black text-slate-900">
+                                            Recuperar Contraseña
+                                        </h3>
+                                        <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-0.5">
+                                            Te enviaremos un enlace a tu correo 📩
+                                        </p>
+                                    </div>
+                                    <button 
+                                        onClick={() => setShowForgotPasswordModal(false)} 
+                                        className="p-2 hover:bg-slate-200 rounded-xl transition-all"
+                                    >
+                                        <X className="w-5 h-5 text-slate-400" />
+                                    </button>
+                                </div>
+
+                                {resetEmailSent ? (
+                                    <div className="p-8 text-center space-y-4">
+                                        <div className="w-16 h-16 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto">
+                                            <CheckCircle className="w-8 h-8" />
+                                        </div>
+                                        <h4 className="text-lg font-black text-slate-900">¡Correo Enviado!</h4>
+                                        <p className="text-xs text-slate-500 font-medium leading-relaxed">
+                                            Hemos enviado las instrucciones para restablecer tu contraseña a <strong>{forgotEmail}</strong>. Revisa tu bandeja de entrada o spam.
+                                        </p>
+                                        <button
+                                            onClick={() => {
+                                                setShowForgotPasswordModal(false);
+                                                setShowEmailModal(true);
+                                            }}
+                                            className="w-full bg-primary text-slate-900 py-3.5 rounded-2xl font-bold shadow-lg shadow-primary/30"
+                                        >
+                                            Entendido, volver a Iniciar Sesión
+                                        </button>
+                                    </div>
+                                ) : (
+                                    <form onSubmit={handleForgotPasswordSubmit} className="p-8 space-y-4">
+                                        <div className="space-y-1">
+                                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Correo Electrónico</label>
+                                            <input
+                                                type="email"
+                                                required
+                                                value={forgotEmail}
+                                                onChange={(e) => setForgotEmail(e.target.value)}
+                                                placeholder="tu@correo.com"
+                                                className="w-full bg-slate-50 border-2 border-slate-100 focus:border-primary px-4 py-3 rounded-2xl outline-none font-bold text-slate-700 transition-all"
+                                            />
+                                        </div>
+                                        <button
+                                            type="submit"
+                                            disabled={isSendingReset}
+                                            className="w-full bg-primary text-slate-900 py-4 rounded-2xl font-bold shadow-lg shadow-primary/30 hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-70 flex items-center justify-center gap-2"
+                                        >
+                                            {isSendingReset ? (
+                                                <div className="w-5 h-5 border-2 border-slate-900 border-t-transparent rounded-full animate-spin"></div>
+                                            ) : (
+                                                "Enviar Enlace de Recuperación"
+                                            )}
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                setShowForgotPasswordModal(false);
+                                                setShowEmailModal(true);
+                                            }}
+                                            className="w-full text-slate-400 font-bold py-2 hover:text-slate-900 transition-colors text-xs text-center"
+                                        >
+                                            Volver al formulario de inicio
+                                        </button>
+                                    </form>
+                                )}
                             </motion.div>
                         </div>
                     )}
