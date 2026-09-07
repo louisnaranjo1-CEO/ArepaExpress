@@ -58,8 +58,14 @@ export interface DriverProfile {
     cedula: string;
     rif: string;
     age: number;
+    birthdate?: string;
     vehicleType: string;
+    vehicleBrand?: string;
+    vehicleModel?: string;
+    vehicleYear?: string;
     vehiclePlate: string;
+    isVehicleOwner?: boolean;
+    registeredHomeAddress?: any;
     isOnline: boolean;
     availability: string;
     currentLocation: { latitude: number; longitude: number } | null;
@@ -207,14 +213,20 @@ export const driversApi = {
             const profile = Array.isArray(d.profiles) ? d.profiles[0] : d.profiles;
             return {
                 id: d.id,
-                email: profile?.email || '',
-                fullName: profile?.full_name || '',
-                phone: profile?.phone || '',
+                email: d.email || profile?.email || '',
+                fullName: d.full_name || profile?.full_name || '',
+                phone: d.phone || profile?.phone || '',
                 cedula: d.cedula,
                 rif: d.rif,
                 age: d.age,
+                birthdate: d.birthdate,
                 vehicleType: d.vehicle_type,
+                vehicleBrand: d.vehicle_brand,
+                vehicleModel: d.vehicle_model,
+                vehicleYear: d.vehicle_year,
                 vehiclePlate: d.vehicle_plate,
+                isVehicleOwner: d.is_vehicle_owner ?? true,
+                registeredHomeAddress: d.registered_home_address,
                 isOnline: d.is_online,
                 availability: d.availability,
                 currentLocation: d.current_location,

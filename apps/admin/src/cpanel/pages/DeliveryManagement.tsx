@@ -540,17 +540,21 @@ _Enviado desde Deliexpress App_`
                                                 </a>
                                                 <div>
                                                     <h3 className="font-bold text-slate-900 leading-tight">{driver.fullName}</h3>
-                                                    <p className="text-xs text-slate-500">{driver.phone} • {driver.age} años</p>
+                                                    <p className="text-xs text-slate-500">
+                                                        {driver.phone} • {driver.age} años {driver.birthdate ? `(🎂 ${driver.birthdate})` : ''}
+                                                    </p>
                                                 </div>
                                             </div>
                                             <div className="grid grid-cols-2 gap-2 text-xs">
                                                 <div className="bg-slate-50 p-2 rounded-lg">
-                                                    <span className="text-slate-400 font-bold uppercase tracking-wider block mb-0.5">Cédula</span>
-                                                    <span className="font-bold text-slate-700">{driver.cedula}</span>
+                                                    <span className="text-slate-400 font-bold uppercase tracking-wider block mb-0.5">Cédula / RIF</span>
+                                                    <span className="font-bold text-slate-700">{driver.cedula} {driver.rif ? `• ${driver.rif}` : ''}</span>
                                                 </div>
                                                 <div className="bg-slate-50 p-2 rounded-lg">
                                                     <span className="text-slate-400 font-bold uppercase tracking-wider block mb-0.5">Vehículo</span>
-                                                    <span className="font-bold text-slate-700 capitalize">{driver.vehicleType}</span>
+                                                    <span className="font-bold text-slate-700 capitalize">
+                                                        {driver.vehicleType} {driver.vehicleBrand ? `(${driver.vehicleBrand} ${driver.vehicleModel || ''} ${driver.vehicleYear || ''})` : ''}
+                                                    </span>
                                                 </div>
                                             </div>
                                         </div>
@@ -1216,6 +1220,82 @@ _Enviado desde Deliexpress App_`
                             </div>
 
                             <div className="p-6 overflow-y-auto space-y-6">
+                                {/* Ficha de Auditoría del Piloto */}
+                                <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 space-y-3">
+                                    <h4 className="text-xs font-black text-slate-500 uppercase tracking-wider">Ficha de Registro y Auditoría</h4>
+                                    
+                                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-xs">
+                                        <div className="bg-white p-2.5 rounded-xl border border-slate-100 shadow-xs">
+                                            <span className="text-slate-400 font-bold block mb-0.5">Cédula</span>
+                                            <span className="font-bold text-slate-800">{selectedDriver.cedula}</span>
+                                        </div>
+                                        <div className="bg-white p-2.5 rounded-xl border border-slate-100 shadow-xs">
+                                            <span className="text-slate-400 font-bold block mb-0.5">RIF</span>
+                                            <span className="font-bold text-slate-800">{selectedDriver.rif || 'No especificado'}</span>
+                                        </div>
+                                        <div className="bg-white p-2.5 rounded-xl border border-slate-100 shadow-xs">
+                                            <span className="text-slate-400 font-bold block mb-0.5">Teléfono Móvil</span>
+                                            <span className="font-bold text-slate-800">{selectedDriver.phone}</span>
+                                        </div>
+                                        <div className="bg-white p-2.5 rounded-xl border border-slate-100 shadow-xs">
+                                            <span className="text-slate-400 font-bold block mb-0.5">Cumpleaños / Edad</span>
+                                            <span className="font-bold text-slate-800">
+                                                {selectedDriver.birthdate ? `🎂 ${selectedDriver.birthdate}` : ''} ({selectedDriver.age} años)
+                                            </span>
+                                        </div>
+                                        <div className="bg-white p-2.5 rounded-xl border border-slate-100 shadow-xs">
+                                            <span className="text-slate-400 font-bold block mb-0.5">Vehículo Registrado</span>
+                                            <span className="font-bold text-slate-800 capitalize">
+                                                {selectedDriver.vehicleType} {selectedDriver.vehicleBrand ? `• ${selectedDriver.vehicleBrand} ${selectedDriver.vehicleModel || ''}` : ''}
+                                            </span>
+                                        </div>
+                                        <div className="bg-white p-2.5 rounded-xl border border-slate-100 shadow-xs">
+                                            <span className="text-slate-400 font-bold block mb-0.5">Año y Placa</span>
+                                            <span className="font-bold text-slate-800">
+                                                {selectedDriver.vehicleYear ? `${selectedDriver.vehicleYear} • ` : ''}{selectedDriver.vehiclePlate || 'N/A'}
+                                            </span>
+                                        </div>
+                                    </div>
+
+                                    {/* Declaración de Propiedad */}
+                                    <div className="bg-emerald-50 border border-emerald-100 text-emerald-800 text-xs px-3 py-2 rounded-xl flex items-center gap-2">
+                                        <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-600" />
+                                        <span className="font-medium">
+                                            {selectedDriver.isVehicleOwner 
+                                                ? 'Declaración jurada: Propietario o legalmente autorizado para conducir este vehículo.' 
+                                                : 'Vehículo en trámite de propiedad.'}
+                                        </span>
+                                    </div>
+
+                                    {/* Dirección Base Registrada */}
+                                    {(selectedDriver.registeredHomeAddress || selectedDriver.homeLocation) && (
+                                        <div className="bg-white p-3 rounded-xl border border-slate-200 text-xs space-y-1">
+                                            <div className="flex items-center justify-between">
+                                                <span className="text-slate-400 font-bold uppercase tracking-wider">Dirección Base Permanente</span>
+                                                {selectedDriver.homeLocation?.coords && (
+                                                    <a 
+                                                        href={`https://www.google.com/maps?q=${selectedDriver.homeLocation.coords.lat},${selectedDriver.homeLocation.coords.lng}`}
+                                                        target="_blank"
+                                                        rel="noreferrer"
+                                                        className="text-indigo-600 hover:text-indigo-700 font-bold flex items-center gap-1"
+                                                    >
+                                                        <MapPin className="w-3.5 h-3.5" /> Ver en Mapa
+                                                    </a>
+                                                )}
+                                            </div>
+                                            <p className="font-bold text-slate-800">
+                                                {selectedDriver.homeLocation?.city || selectedDriver.registeredHomeAddress?.city}, {selectedDriver.homeLocation?.state || selectedDriver.registeredHomeAddress?.state}
+                                            </p>
+                                            {selectedDriver.homeLocation?.name && (
+                                                <p className="text-slate-600 font-medium">Lugar: {selectedDriver.homeLocation.name}</p>
+                                            )}
+                                            {selectedDriver.homeLocation?.reference && (
+                                                <p className="text-slate-500 font-medium">Ref: {selectedDriver.homeLocation.reference}</p>
+                                            )}
+                                        </div>
+                                    )}
+                                </div>
+
                                 <div>
                                     <h4 className="text-sm font-bold text-slate-900 mb-3 flex items-center gap-2"><User className="w-4 h-4 text-slate-400" /> Selfie y Rostro</h4>
                                     <a href={selectedDriver.documents.selfieUrl} target="_blank" rel="noreferrer" className="block relative group rounded-2xl overflow-hidden border border-slate-200 aspect-video bg-slate-100">

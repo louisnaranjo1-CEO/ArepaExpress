@@ -12,9 +12,14 @@ export interface DeliveryDriver {
     cedula: string;
     rif: string;
     age: number;
+    birthdate?: string;
     phone: string;
     vehicleType: VehicleType;
+    vehicleBrand?: string;
+    vehicleModel?: string;
+    vehicleYear?: string;
     vehiclePlate: string;
+    isVehicleOwner?: boolean;
     status: DeliveryStatus;
     isOnline: boolean;
     availability?: AvailabilityStatus;
@@ -25,7 +30,10 @@ export interface DeliveryDriver {
         state: string;
         city: string;
         coords?: { lat: number; lng: number };
+        reference?: string;
+        name?: string;
     };
+    registeredHomeAddress?: any;
     documents: {
         selfieUrl: string;
         vehicleUrl: string;

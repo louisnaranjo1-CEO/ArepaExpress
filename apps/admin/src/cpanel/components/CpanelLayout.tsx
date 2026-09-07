@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, Store, Users, Image as ImageIcon, LogOut, ChevronRight, Menu, X, Tag, Truck, Wallet, Car, Share2, Gift, Ticket, MessageSquareWarning, Megaphone, ShoppingBag, Trophy, Shield } from 'lucide-react';
+import { LayoutDashboard, Store, Users, Image as ImageIcon, LogOut, ChevronRight, Menu, X, Tag, Truck, Wallet, Car, Share2, Gift, Ticket, MessageSquareWarning, Megaphone, ShoppingBag, Trophy, Shield, Palette } from 'lucide-react';
 import { collection, query, where, onSnapshot } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import { UN2X3_LOGO } from '../../lib/env';
@@ -82,6 +82,7 @@ export default function CpanelLayout({ children, onLogout, adminUser }: CpanelLa
         { path: '/restaurants', icon: Store, label: 'Restaurantes' },
         { path: '/users', icon: Users, label: 'Usuarios' },
         { path: '/banners', icon: ImageIcon, label: 'Banners' },
+        { path: '/design', icon: Palette, label: 'Diseño' },
         { path: '/categories', icon: Tag, label: 'Categorías' },
         { path: '/delivery', icon: Truck, label: 'Delivery Express' },
         { path: '/transports', icon: Car, label: 'Viajes (Taxis)', badge: pendingTransports },

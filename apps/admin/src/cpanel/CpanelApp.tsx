@@ -23,6 +23,7 @@ import RafflesManager from './pages/RafflesManager';
 import SupportTicketsManager from './pages/SupportTicketsManager';
 import MarketingManager from './pages/MarketingManager';
 import PilotAchievements from './pages/PilotAchievements';
+import DesignManager from './pages/DesignManager';
 
 export default function CpanelApp() {
     const isDevAdminPath = window.location.pathname.startsWith('/cpanel');
@@ -193,6 +194,7 @@ export default function CpanelApp() {
                     <Route path="/restaurants/:id" element={<RestaurantProfile />} />
                     <Route path="/users" element={<UsersManager />} />
                     <Route path="/banners" element={<BannersManager />} />
+                    <Route path="/design" element={<DesignManager />} />
                     <Route path="/categories" element={<CategoriesManager />} />
                     <Route path="/delivery" element={<DeliveryManagement />} />
                     <Route path="/app-orders" element={<AppOrders />} />

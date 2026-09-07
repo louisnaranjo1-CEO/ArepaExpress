@@ -251,8 +251,13 @@ export const driversApi = {
         cedula?: string;
         rif?: string;
         age?: number;
+        birthdate?: string;
         vehicle_type: string;
+        vehicle_brand?: string;
+        vehicle_model?: string;
+        vehicle_year?: string;
         vehicle_plate?: string;
+        is_vehicle_owner?: boolean;
         selfie_url?: string;
         vehicle_url?: string;
         license_url?: string;
@@ -260,16 +265,24 @@ export const driversApi = {
         home_city?: string;
         home_coords_lat?: number;
         home_coords_lng?: number;
+        registered_home_address?: any;
     }) => {
         const { error } = await supabase
             .from('drivers')
-            .insert({
+            .upsert({
                 id: data.firebase_uid,
+                full_name: data.full_name,
+                phone: data.phone,
                 cedula: data.cedula,
                 rif: data.rif,
                 age: data.age,
+                birthdate: data.birthdate,
                 vehicle_type: data.vehicle_type,
+                vehicle_brand: data.vehicle_brand,
+                vehicle_model: data.vehicle_model,
+                vehicle_year: data.vehicle_year,
                 vehicle_plate: data.vehicle_plate,
+                is_vehicle_owner: data.is_vehicle_owner ?? true,
                 status: 'pending',
                 is_online: false,
                 availability: 'offline',
@@ -282,8 +295,14 @@ export const driversApi = {
                     state: data.home_state,
                     city: data.home_city,
                     coords: { lat: data.home_coords_lat, lng: data.home_coords_lng }
+                },
+                registered_home_address: data.registered_home_address || {
+                    state: data.home_state,
+                    city: data.home_city,
+                    coords: { lat: data.home_coords_lat, lng: data.home_coords_lng },
+                    registered_at: new Date().toISOString()
                 }
-            });
+            }, { onConflict: 'id' });
         
         if (error) throw error;
         
@@ -294,6 +313,8 @@ export const driversApi = {
             .update({
                 full_name: data.full_name,
                 phone: data.phone,
+                cedula: data.cedula,
+                birthdate: data.birthdate,
                 role: role
             })
             .eq('id', data.firebase_uid);

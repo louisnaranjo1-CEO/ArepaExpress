@@ -12,9 +12,14 @@ export interface DeliveryDriver {
     cedula: string;
     rif: string;
     age: number;
+    birthdate?: string;
     phone: string;
     vehicleType: VehicleType;
+    vehicleBrand?: string;
+    vehicleModel?: string;
+    vehicleYear?: string;
     vehiclePlate: string;
+    isVehicleOwner?: boolean;
     status: DeliveryStatus;
     isOnline: boolean;
     availability?: AvailabilityStatus;
@@ -25,7 +30,10 @@ export interface DeliveryDriver {
         state: string;
         city: string;
         coords?: { lat: number; lng: number };
+        reference?: string;
+        name?: string;
     };
+    registeredHomeAddress?: any;
     documents: {
         selfieUrl: string;
         vehicleUrl: string;
@@ -83,8 +91,13 @@ export const registerDriver = async (
             cedula: data.cedula,
             rif: data.rif,
             age: data.age,
+            birthdate: data.birthdate,
             vehicle_type: data.vehicleType,
+            vehicle_brand: data.vehicleBrand,
+            vehicle_model: data.vehicleModel,
+            vehicle_year: data.vehicleYear,
             vehicle_plate: data.vehiclePlate,
+            is_vehicle_owner: data.isVehicleOwner ?? true,
             selfie_url: selfieUrl,
             vehicle_url: vehicleUrl,
             license_url: licenseUrl,
@@ -92,6 +105,7 @@ export const registerDriver = async (
             home_city: data.homeLocation?.city,
             home_coords_lat: data.homeLocation?.coords?.lat,
             home_coords_lng: data.homeLocation?.coords?.lng,
+            registered_home_address: data.registeredHomeAddress,
         });
     } catch (apiErr) {
         console.error("Error registering driver in Supabase:", apiErr);
