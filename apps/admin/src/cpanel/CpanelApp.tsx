@@ -76,12 +76,8 @@ export default function CpanelApp() {
                 return;
             }
 
-            // Verificar autorización del dispositivo con timeout de 3.5s
-            const authDevicePromise = checkDeviceAuthorization(user.id);
-            const authTimeout = new Promise<boolean>((resolve) => 
-                setTimeout(() => resolve(false), 3500)
-            );
-            const isTrusted = await Promise.race([authDevicePromise, authTimeout]);
+            // Verificar autorización del dispositivo con respaldo de persistencia
+            const isTrusted = await checkDeviceAuthorization(user.id);
 
             setCurrentAdminUser(user);
             setIsAuthenticated(true);
@@ -127,8 +123,14 @@ export default function CpanelApp() {
         const { data: authListener } = supabase.auth.onAuthStateChange(
             async (event, session) => {
                 if (!isMounted) return;
-                if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
+                if (event === 'SIGNED_IN') {
                     await verifyAdminAccess(session?.user ?? null);
+                } else if (event === 'TOKEN_REFRESHED') {
+                    // La renovación periódica de token de Supabase se procesa en segundo plano sin interrumpir al usuario
+                    if (session?.user) {
+                        setCurrentAdminUser(session.user);
+                        setIsAuthenticated(true);
+                    }
                 } else if (event === 'SIGNED_OUT') {
                     setIsAuthenticated(false);
                     setIsDeviceAuthorized(false);

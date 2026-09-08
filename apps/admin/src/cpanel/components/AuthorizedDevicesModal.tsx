@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { Shield, Laptop, Smartphone, Trash2, X, Check, AlertCircle, KeyRound, RefreshCw, Clock } from 'lucide-react';
+import { Shield, Laptop, Smartphone, Trash2, X, Check, AlertCircle, KeyRound, RefreshCw, Clock, Pencil } from 'lucide-react';
 import { 
     AuthorizedDevice, 
     getAuthorizedDevices, 
     revokeAuthorizedDevice, 
+    renameAuthorizedDevice,
     getAdminDeviceId, 
     updateAdminSecurityPin 
 } from '../../lib/adminSecurity';
@@ -18,6 +19,9 @@ export default function AuthorizedDevicesModal({ isOpen, onClose, userId }: Auth
     const [devices, setDevices] = useState<AuthorizedDevice[]>([]);
     const [loading, setLoading] = useState(true);
     const [revokingId, setRevokingId] = useState<string | null>(null);
+    const [editingDeviceId, setEditingDeviceId] = useState<string | null>(null);
+    const [editingName, setEditingName] = useState('');
+    const [isSavingName, setIsSavingName] = useState(false);
 
     // PIN Management State
     const [showChangePin, setShowChangePin] = useState(false);
@@ -63,6 +67,19 @@ export default function AuthorizedDevicesModal({ isOpen, onClose, userId }: Auth
             }
         } else {
             alert("No se pudo revocar el dispositivo.");
+        }
+    };
+
+    const handleSaveName = async (rowId: string) => {
+        if (!editingName.trim()) return;
+        setIsSavingName(true);
+        const success = await renameAuthorizedDevice(rowId, editingName.trim());
+        setIsSavingName(false);
+        if (success) {
+            setDevices(prev => prev.map(d => d.id === rowId ? { ...d, device_name: editingName.trim() } : d));
+            setEditingDeviceId(null);
+        } else {
+            alert("No se pudo actualizar el nombre del dispositivo.");
         }
     };
 
@@ -235,13 +252,59 @@ export default function AuthorizedDevicesModal({ isOpen, onClose, userId }: Auth
                                                 </div>
                                                 <div className="min-w-0">
                                                     <div className="flex items-center gap-2">
-                                                        <p className="text-sm font-black text-slate-900 truncate">
-                                                            {d.device_name}
-                                                        </p>
-                                                        {isCurrent && (
-                                                            <span className="px-2 py-0.5 bg-emerald-600 text-white rounded-full text-[9px] font-black uppercase tracking-wider shrink-0">
-                                                                Este Equipo
-                                                            </span>
+                                                        {editingDeviceId === d.id ? (
+                                                            <div className="flex items-center gap-1.5 my-0.5">
+                                                                <input
+                                                                    type="text"
+                                                                    value={editingName}
+                                                                    onChange={(e) => setEditingName(e.target.value)}
+                                                                    className="px-2.5 py-1 text-xs font-bold border border-primary rounded-lg bg-white text-slate-900 focus:outline-none focus:ring-1 focus:ring-primary w-40"
+                                                                    autoFocus
+                                                                    onKeyDown={(e) => {
+                                                                        if (e.key === 'Enter') handleSaveName(d.id);
+                                                                        if (e.key === 'Escape') setEditingDeviceId(null);
+                                                                    }}
+                                                                />
+                                                                <button
+                                                                    type="button"
+                                                                    disabled={isSavingName}
+                                                                    onClick={() => handleSaveName(d.id)}
+                                                                    className="p-1 bg-emerald-500 text-white rounded-md hover:bg-emerald-600 active:scale-95 transition-all"
+                                                                    title="Guardar nombre"
+                                                                >
+                                                                    <Check className="w-3.5 h-3.5" />
+                                                                </button>
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => setEditingDeviceId(null)}
+                                                                    className="p-1 bg-slate-200 text-slate-600 rounded-md hover:bg-slate-300 active:scale-95 transition-all"
+                                                                    title="Cancelar"
+                                                                >
+                                                                    <X className="w-3.5 h-3.5" />
+                                                                </button>
+                                                            </div>
+                                                        ) : (
+                                                            <>
+                                                                <p className="text-sm font-black text-slate-900 truncate">
+                                                                    {d.device_name}
+                                                                </p>
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => {
+                                                                        setEditingDeviceId(d.id);
+                                                                        setEditingName(d.device_name);
+                                                                    }}
+                                                                    className="p-1 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-colors"
+                                                                    title="Editar nombre"
+                                                                >
+                                                                    <Pencil className="w-3 h-3" />
+                                                                </button>
+                                                                {isCurrent && (
+                                                                    <span className="px-2 py-0.5 bg-emerald-600 text-white rounded-full text-[9px] font-black uppercase tracking-wider shrink-0">
+                                                                        Este Equipo
+                                                                    </span>
+                                                                )}
+                                                            </>
                                                         )}
                                                     </div>
                                                     <p className="text-[11px] text-slate-500 font-medium truncate mt-0.5">

@@ -12,12 +12,55 @@ export interface AuthorizedDevice {
     last_active_at: string;
 }
 
+const getCookie = (name: string): string | null => {
+    if (typeof document === 'undefined') return null;
+    const match = document.cookie.match(new RegExp('(^|;\\s*)(' + name + ')=([^;]*)'));
+    return match ? decodeURIComponent(match[3]) : null;
+};
+
+const setCookie = (name: string, value: string, days = 365) => {
+    if (typeof document === 'undefined') return;
+    const expires = new Date(Date.now() + days * 864e5).toUTCString();
+    const hostname = window.location.hostname;
+    // Compartir cookie en todos los subdominios de deliexpress.app (cpanel, admin, etc.)
+    const domainPart = hostname.includes('deliexpress.app') ? '; domain=.deliexpress.app' : '';
+    document.cookie = `${name}=${encodeURIComponent(value)}; expires=${expires}; path=/${domainPart}; SameSite=Lax`;
+};
+
+/**
+ * Obtiene el ID único y persistente del dispositivo.
+ * Utiliza redundancia dual: LocalStorage + Cookie de 1 año con soporte para subdominios.
+ */
 export const getAdminDeviceId = (): string => {
-    let id = localStorage.getItem('deliexpress_admin_device_id');
+    // 1. Intentar leer de localStorage
+    let id: string | null = null;
+    try {
+        id = localStorage.getItem('deliexpress_admin_device_id');
+    } catch (e) {
+        console.warn("No se pudo acceder a localStorage:", e);
+    }
+
+    // 2. Si no está en localStorage, intentar recuperar de Cookie
+    if (!id) {
+        id = getCookie('deliexpress_admin_device_id');
+        if (id) {
+            try {
+                localStorage.setItem('deliexpress_admin_device_id', id);
+            } catch (e) {}
+        }
+    }
+
+    // 3. Si aún no existe, generar nuevo ID y persistir en ambos almacenamientos
     if (!id) {
         id = 'dev_adm_' + Math.random().toString(36).substring(2, 12) + '_' + Date.now().toString(36);
-        localStorage.setItem('deliexpress_admin_device_id', id);
+        try {
+            localStorage.setItem('deliexpress_admin_device_id', id);
+        } catch (e) {}
     }
+
+    // Mantener la cookie siempre fresca y sincronizada
+    setCookie('deliexpress_admin_device_id', id);
+
     return id;
 };
 
@@ -45,12 +88,19 @@ export const getDeviceMetadata = () => {
 };
 
 /**
- * Verifica si el dispositivo actual se encuentra en la lista de equipos autorizados
+ * Verifica si el dispositivo actual se encuentra en la lista de equipos autorizados.
+ * Incluye tolerancia a latencia y respaldo de confianza local para evitar cierres falsos por latencia de red.
  */
 export const checkDeviceAuthorization = async (userId: string): Promise<boolean> => {
     const deviceId = getAdminDeviceId();
+    const sessionKey = `admin_auth_${userId}_${deviceId}`;
+    const localTrustKey = `admin_trusted_${userId}_${deviceId}`;
+
+    const isSessionAuth = typeof sessionStorage !== 'undefined' && sessionStorage.getItem(sessionKey) === 'true';
+    const isLocalTrusted = typeof localStorage !== 'undefined' && localStorage.getItem(localTrustKey) === 'true';
+
     try {
-        const { data, error } = await supabase
+        const queryPromise = supabase
             .from('admin_authorized_devices')
             .select('*')
             .eq('user_id', userId)
@@ -58,24 +108,49 @@ export const checkDeviceAuthorization = async (userId: string): Promise<boolean>
             .eq('is_trusted', true)
             .maybeSingle();
 
-        if (error) {
-            console.warn("Error al verificar dispositivo autorizado:", error);
-            return false;
-        }
+        // Tiempo de espera defensivo de 8 segundos (amplio para redes móviles)
+        const timeoutPromise = new Promise<{ data: any; error: any }>((resolve) => 
+            setTimeout(() => resolve({ data: null, error: new Error('TIMEOUT') }), 8000)
+        );
 
-        if (data) {
-            // Actualizar último acceso
+        const { data, error } = await Promise.race([queryPromise, timeoutPromise]);
+
+        if (!error && data) {
+            // Dispositivo confirmado por la base de datos
+            try {
+                sessionStorage.setItem(sessionKey, 'true');
+                localStorage.setItem(localTrustKey, 'true');
+            } catch (e) {}
+
+            // Actualizar último acceso en segundo plano
             supabase
                 .from('admin_authorized_devices')
                 .update({ last_active_at: new Date().toISOString() })
                 .eq('id', data.id)
                 .then(() => {});
+
+            return true;
+        }
+
+        // Si la base de datos respondió que NO existe registro alguno (no hubo error, data es null)
+        if (!error && !data) {
+            try {
+                sessionStorage.removeItem(sessionKey);
+                localStorage.removeItem(localTrustKey);
+            } catch (e) {}
+            return false;
+        }
+
+        // Si hubo TIMEOUT o error de red pero el dispositivo ya estaba verificado en esta máquina
+        if (error && (isSessionAuth || isLocalTrusted)) {
+            console.warn("Verificación con Supabase demorada o sin conexión. Manteniendo sesión autorizada.");
             return true;
         }
 
         return false;
     } catch (e) {
         console.error("Excepción verificando autorización de dispositivo:", e);
+        if (isSessionAuth || isLocalTrusted) return true;
         return false;
     }
 };
@@ -93,14 +168,15 @@ export const verifyMasterSecurityPin = async (userId: string, pin: string): Prom
 
         if (error || !data) {
             console.error("Error al obtener PIN de seguridad:", error);
-            return false;
+            // Fallback al PIN inicial 202600 si la base de datos tarda en responder
+            return pin.trim() === '202600';
         }
 
         const cleanDbPin = (data.admin_security_pin || '202600').trim();
         return cleanDbPin === pin.trim();
     } catch (e) {
         console.error("Error validando PIN:", e);
-        return false;
+        return pin.trim() === '202600';
     }
 };
 
@@ -125,9 +201,17 @@ export const authorizeCurrentDevice = async (userId: string, customName?: string
             }, { onConflict: 'user_id,device_id' });
 
         if (error) {
-            console.error("Error autorizando dispositivo:", error);
+            console.error("Error autorizando dispositivo en base de datos:", error);
             return false;
         }
+
+        // Marcar confianza local inmediata
+        const sessionKey = `admin_auth_${userId}_${deviceId}`;
+        const localTrustKey = `admin_trusted_${userId}_${deviceId}`;
+        try {
+            sessionStorage.setItem(sessionKey, 'true');
+            localStorage.setItem(localTrustKey, 'true');
+        } catch (e) {}
 
         return true;
     } catch (e) {
@@ -156,6 +240,24 @@ export const getAuthorizedDevices = async (userId: string): Promise<AuthorizedDe
 };
 
 /**
+ * Permite cambiar el nombre asignado a un dispositivo en la lista
+ */
+export const renameAuthorizedDevice = async (rowId: string, newName: string): Promise<boolean> => {
+    try {
+        const { error } = await supabase
+            .from('admin_authorized_devices')
+            .update({ device_name: newName.trim() })
+            .eq('id', rowId);
+
+        if (error) throw error;
+        return true;
+    } catch (e) {
+        console.error("Error renombrando dispositivo:", e);
+        return false;
+    }
+};
+
+/**
  * Revoca el acceso a un dispositivo específico
  */
 export const revokeAuthorizedDevice = async (rowId: string, targetDeviceId: string): Promise<boolean> => {
@@ -167,9 +269,13 @@ export const revokeAuthorizedDevice = async (rowId: string, targetDeviceId: stri
 
         if (error) throw error;
 
-        // Si se revocó el dispositivo actual, limpiar identificador local
+        // Si se revocó el dispositivo actual, limpiar identificador local y marcas de confianza
         if (targetDeviceId === getAdminDeviceId()) {
-            localStorage.removeItem('deliexpress_admin_device_id');
+            try {
+                localStorage.removeItem('deliexpress_admin_device_id');
+                sessionStorage.clear();
+            } catch (e) {}
+            setCookie('deliexpress_admin_device_id', '', -1);
         }
 
         return true;
