@@ -3,6 +3,7 @@ import { NavLink, useNavigate } from 'react-router-dom';
 import { LayoutDashboard, Store, Users, Image as ImageIcon, LogOut, ChevronRight, Menu, X, Tag, Truck, Wallet, Car, Share2, Gift, Ticket, MessageSquareWarning, Megaphone, ShoppingBag, Trophy, Shield, ShieldCheck, Palette } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { UN2X3_LOGO } from '../../lib/env';
+import { useBranding } from '../../context/BrandingContext';
 import { useGlobalAudioAlerts } from '../../hooks/useGlobalAudioAlerts';
 import { useHaptics } from '../../hooks/useHaptics';
 import AuthorizedDevicesModal from './AuthorizedDevicesModal';
@@ -15,6 +16,7 @@ interface CpanelLayoutProps {
 
 export default function CpanelLayout({ children, onLogout, adminUser }: CpanelLayoutProps) {
     const navigate = useNavigate();
+    const { branding } = useBranding();
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
     const [showDevicesModal, setShowDevicesModal] = useState(false);
     const [pendingTransports, setPendingTransports] = useState(0);
@@ -123,8 +125,8 @@ export default function CpanelLayout({ children, onLogout, adminUser }: CpanelLa
                         <div className="flex items-center gap-3 cursor-pointer active:scale-95 transition-transform" onClick={() => window.location.href = 'https://deliexpress.app'}>
                             <div className="relative w-14 h-14 flex items-center justify-center p-1 overflow-visible">
                                 <img
-                                    src={UN2X3_LOGO}
-                                    alt="Arepa Express"
+                                    src={branding.app_admin_logo || UN2X3_LOGO}
+                                    alt="Admin Logo"
                                     className="w-full h-full object-contain filter drop-shadow-sm"
                                 />
                             </div>

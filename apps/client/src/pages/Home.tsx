@@ -17,6 +17,7 @@ import PointsModal from '../components/PointsModal';
 import BCVCalculatorModal from '../components/BCVCalculatorModal';
 import { isDemoMode, UN2X3_LOGO } from '../lib/env';
 import { useCurrency } from '../context/CurrencyContext';
+import { useBranding } from '../context/BrandingContext';
 import DualPrice from '../components/DualPrice';
 import { DEMO_RESTAURANTS } from '../lib/demoData';
 
@@ -50,6 +51,8 @@ export default function Home() {
   const [currentBannerIndex, setCurrentBannerIndex] = useState(0);
 
   const { bcvRate } = useCurrency();
+  const { branding } = useBranding();
+  const clientLogo = branding.app_client_logo || UN2X3_LOGO;
   const [isCalculatorOpen, setIsCalculatorOpen] = useState(false);
   const [isMapModalOpen, setIsMapModalOpen] = useState(false);
 
@@ -593,8 +596,8 @@ export default function Home() {
             className="flex-1 flex items-center justify-start cursor-pointer active:scale-95 transition-transform overflow-visible"
           >
             <img
-              src={UN2X3_LOGO}
-              alt="Deliexpress Logo"
+              src={clientLogo}
+              alt={branding.app_client_name || "Logo"}
               className="h-10 w-auto object-contain"
             />
           </div>
@@ -768,8 +771,8 @@ export default function Home() {
                 <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-32 h-32 bg-primary/20 rounded-full blur-2xl animate-pulse"></div>
                 <div className="w-28 h-28 bg-white rounded-full p-2.5 shadow-xl shadow-primary/20 border border-primary/10 flex items-center justify-center relative z-10 animate-pulse">
                   <img
-                    src={UN2X3_LOGO}
-                    alt="Deliexpress Logo"
+                    src={clientLogo}
+                    alt={branding.app_client_name || "Logo"}
                     className="w-full h-full object-contain drop-shadow-[0_0_15px_rgba(255,102,0,0.5)]"
                   />
                 </div>

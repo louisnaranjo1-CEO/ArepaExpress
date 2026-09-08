@@ -9,6 +9,7 @@ export * from './lib/mapsConfig';
 // Contexts
 export * from './context/AuthContext';
 export * from './context/CurrencyContext';
+export * from './context/BrandingContext';
 
 // Components
 export { default as RideChat } from './components/RideChat';

@@ -5,8 +5,10 @@ import { signInWithGoogle, signInWithEmail, signUpWithEmail, sendPasswordResetEm
 import { getDriverProfile } from '../../lib/delivery-service';
 import { motion, AnimatePresence } from 'motion/react';
 import { UN2X3_LOGO } from '../../lib/env';
+import { useBranding } from '../../context/BrandingContext';
 
 export default function Login() {
+    const { branding } = useBranding();
     const [mode, setMode] = useState<'login' | 'register'>('login');
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
@@ -96,8 +98,8 @@ export default function Login() {
                         className="h-40 flex flex-col items-center justify-center mb-4 cursor-pointer active:scale-95 transition-transform"
                     >
                         <img
-                            src={UN2X3_LOGO}
-                            alt="Logo Deliexpress"
+                            src={branding.app_driver_logo || UN2X3_LOGO}
+                            alt="Logo Repartidor"
                             className="h-full object-contain drop-shadow-2xl"
                         />
                     </motion.div>

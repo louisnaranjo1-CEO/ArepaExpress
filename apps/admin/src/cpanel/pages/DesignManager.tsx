@@ -14,11 +14,11 @@ interface BrandingData {
 }
 
 const DEFAULT_BRANDING: BrandingData = {
-    app_client_logo: 'https://xfialzrbbsdzzcjtefqo.supabase.co/storage/v1/object/public/store_assets/logo.png',
-    app_client_name: 'DeliExpress',
-    app_driver_logo: 'https://xfialzrbbsdzzcjtefqo.supabase.co/storage/v1/object/public/store_assets/logo.png',
-    app_restaurant_logo: 'https://xfialzrbbsdzzcjtefqo.supabase.co/storage/v1/object/public/store_assets/logo.png',
-    app_admin_logo: 'https://xfialzrbbsdzzcjtefqo.supabase.co/storage/v1/object/public/store_assets/logo.png',
+    app_client_logo: 'https://xfialzrbbsdzzcjtefqo.supabase.co/storage/v1/object/public/branding/logos/app_client_logo_1788875672174.png',
+    app_client_name: 'Un 2x3 Encuentra lo que quieras',
+    app_driver_logo: 'https://xfialzrbbsdzzcjtefqo.supabase.co/storage/v1/object/public/branding/logos/app_driver_logo_1788875821044.jpg',
+    app_restaurant_logo: 'https://xfialzrbbsdzzcjtefqo.supabase.co/storage/v1/object/public/branding/logos/app_restaurant_logo_1788875678044.jpg',
+    app_admin_logo: 'https://xfialzrbbsdzzcjtefqo.supabase.co/storage/v1/object/public/branding/logos/app_admin_logo_1788875678335.jpg',
 };
 
 export default function DesignManager() {
@@ -114,6 +114,9 @@ export default function DesignManager() {
 
             setBranding(finalBranding);
             setFilesToUpload({});
+            try {
+                localStorage.setItem('un2x3_app_branding_cache', JSON.stringify(finalBranding));
+            } catch (e) {}
             toast.success("¡Diseño y logos actualizados con éxito!");
         } catch (err: any) {
             console.error("Error guardando diseño:", err);

@@ -2,6 +2,7 @@ import React from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import { LayoutDashboard, Store, UtensilsCrossed, ClipboardList, LogOut, ChevronRight, Menu, X, Settings, HelpCircle, Trash2, User, ChevronUp, Users, UserCheck, Printer, Key, Mail as MailIcon, AlertTriangle, Grid, CreditCard, Layout, Star, MessageSquare, Megaphone, DollarSign, Gift, Volume2, VolumeX, Shield } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
+import { useBranding } from '../../context/BrandingContext';
 import { updateUserEmail, updateUserPassword } from '../../lib/auth-service';
 import { supabase } from '../../lib/supabase';
 import { format } from 'date-fns';
@@ -15,6 +16,7 @@ interface AdminLayoutProps {
 
 export default function AdminLayout({ children }: AdminLayoutProps) {
     const { user } = useAuth();
+    const { branding } = useBranding();
     const navigate = useNavigate();
     const currentUid = user?.uid || (user as any)?.id;
     const [isSidebarOpen, setIsSidebarOpen] = React.useState(false);
@@ -302,8 +304,7 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
                         <div className="flex items-center gap-3 cursor-pointer active:scale-95 transition-transform" onClick={() => window.location.href = 'https://deliexpress.app'}>
                             <div className="w-14 h-14 flex items-center justify-center p-1 overflow-visible">
                                 <img
-                                    src="https://xfialzrbbsdzzcjtefqo.supabase.co/storage/v1/object/public/store_assets/logo.png"
-                                    onError={(e: any) => { e.currentTarget.src = '/logo.png'; }}
+                                    src={branding.app_restaurant_logo}
                                     alt="Encontrado en un 2x3"
                                     className="w-full h-full object-contain filter drop-shadow-sm brightness-110"
                                 />

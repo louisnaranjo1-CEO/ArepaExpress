@@ -2,8 +2,10 @@ import React, { useState } from 'react';
 import { Mail, Lock, Building2, FileText, ArrowRight, Store, LogIn, UserPlus, Hotel, X, CheckCircle } from 'lucide-react';
 import { registerRestaurant, signInAdmin, signInAdminWithGoogle, sendPasswordResetEmail } from '../lib/auth-service';
 import { useNavigate } from 'react-router-dom';
+import { useBranding } from '../context/BrandingContext';
 
 export default function AdminAuth() {
+    const { branding } = useBranding();
     const [isLogin, setIsLogin] = useState(true);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -86,9 +88,8 @@ export default function AdminAuth() {
                         className="flex items-center justify-center h-24 mb-6 hover:rotate-2 transition-transform duration-500 cursor-pointer active:scale-95"
                     >
                         <img 
-                            src="https://xfialzrbbsdzzcjtefqo.supabase.co/storage/v1/object/public/store_assets/logo.png" 
-                            onError={(e: any) => { e.currentTarget.src = '/logo.png'; }}
-                            alt="Deliexpress Logo" 
+                            src={branding.app_restaurant_logo} 
+                            alt="Logo Negocio" 
                             className="h-full object-contain"
                         />
                     </div>
