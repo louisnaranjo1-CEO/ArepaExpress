@@ -14,12 +14,8 @@ export default function BottomNav() {
   const navigate = useNavigate();
   const [showLocationModal, setShowLocationModal] = useState(false);
 
-  const handleTaxiClick = (e: React.MouseEvent) => {
+  const handleTaxiClick = () => {
     vibrate(30);
-    if (!userData?.locationPermissionsAllowed) {
-        e.preventDefault();
-        setShowLocationModal(true);
-    }
   };
 
   return (

@@ -6,17 +6,20 @@ import { registerSW } from 'virtual:pwa-register';
 import { CurrencyProvider } from './context/CurrencyContext.tsx';
 import { AuthProvider } from './context/AuthContext';
 import { BrandingProvider } from './context/BrandingContext';
+import ErrorBoundary from './components/ErrorBoundary';
 
 registerSW({ immediate: true });
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <AuthProvider>
-      <CurrencyProvider>
-        <BrandingProvider>
-          <App />
-        </BrandingProvider>
-      </CurrencyProvider>
-    </AuthProvider>
+    <ErrorBoundary>
+      <AuthProvider>
+        <CurrencyProvider>
+          <BrandingProvider>
+            <App />
+          </BrandingProvider>
+        </CurrencyProvider>
+      </AuthProvider>
+    </ErrorBoundary>
   </StrictMode>,
 );
