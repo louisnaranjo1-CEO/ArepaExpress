@@ -14,6 +14,7 @@ import InAppCall from '../components/InAppCall';
 import { useAuth } from '../context/AuthContext';
 import { motion, AnimatePresence } from 'motion/react';
 import { GoogleMap, useJsApiLoader, Marker } from '@react-google-maps/api';
+import { GOOGLE_MAPS_API_KEY, GOOGLE_MAPS_LIBRARIES } from '../lib/mapsConfig';
 
 const mapOptions: google.maps.MapOptions = {
     disableDefaultUI: true,
@@ -27,7 +28,8 @@ const mapOptions: google.maps.MapOptions = {
 export default function TrackOrder() {
     const { isLoaded } = useJsApiLoader({
         id: 'google-map-script',
-        googleMapsApiKey: "AIzaSyCb1c-p1R6AZGetk8YzKiLuxjaxjmPqJX8"
+        googleMapsApiKey: GOOGLE_MAPS_API_KEY,
+        libraries: GOOGLE_MAPS_LIBRARIES
     });
 
     const { orderId } = useParams();

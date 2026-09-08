@@ -9,6 +9,7 @@ import CitySelectorModal from '../components/CitySelectorModal';
 import WelcomePopup from '../components/WelcomePopup';
 import ExploreMapModal from '../components/ExploreMapModal';
 import { getCityCoordinates } from '../lib/venezuelaData';
+import { GOOGLE_MAPS_API_KEY } from '../lib/mapsConfig';
 import { recommendationsService } from '../lib/recommendations';
 import { toast } from 'react-hot-toast';
 import { vibrate } from '../utils/haptics';
@@ -115,7 +116,7 @@ export default function Home() {
           // Reverse geocoding only if user hasn't explicitly picked a manual city
           if (!manualCity) {
             try {
-              const response = await fetch(`https://maps.googleapis.com/maps/api/geocode/json?latlng=${coords.lat},${coords.lng}&key=AIzaSyCb1c-p1R6AZGetk8YzKiLuxjaxjmPqJX8`);
+              const response = await fetch(`https://maps.googleapis.com/maps/api/geocode/json?latlng=${coords.lat},${coords.lng}&key=${GOOGLE_MAPS_API_KEY}`);
               const data = await response.json();
               if (data.results && data.results[0]) {
                 const addressComponents = data.results[0].address_components;

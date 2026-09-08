@@ -1839,9 +1839,9 @@ export default function Profile() {
                                                     toast.error('Se requiere permiso de ubicación para activar esta función');
                                                 }
                                             }
-                                        } catch (err) {
-                                            console.error(err);
-                                            toast.error('Error al configurar ubicación');
+                                        } catch (err: any) {
+                                            console.error('Error toggling location permission:', err);
+                                            toast.error(err?.message || 'Error al configurar ubicación');
                                         } finally {
                                             setUpdatingLocation(false);
                                         }

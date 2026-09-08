@@ -141,7 +141,8 @@ export default function Onboarding() {
                     .or(`cedula.eq.${fullCedula},phone.eq.${fullPhone}`);
 
                 if (!queryErr && existingDrivers && existingDrivers.length > 0) {
-                    const others = existingDrivers.filter(d => d.id !== user?.uid);
+                    const currentId = user?.id || (user as any)?.uid;
+                    const others = existingDrivers.filter(d => d.id !== currentId);
                     if (others.some(d => d.cedula === fullCedula)) {
                         setLoading(false);
                         return setError(`La cédula ${fullCedula} ya se encuentra registrada en otra cuenta.`);
@@ -204,10 +205,16 @@ export default function Onboarding() {
             registered_at: new Date().toISOString()
         };
 
+        const driverUid = user?.id || (user as any)?.uid;
+        if (!driverUid) {
+            setLoading(false);
+            return setError('No se detectó una sesión activa. Por favor vuelve a iniciar sesión.');
+        }
+
         try {
             await registerDriver(
-                user.uid,
-                user.email || '',
+                driverUid,
+                user?.email || '',
                 {
                     fullName: formData.fullName.trim(),
                     age: calculatedAge,
@@ -247,7 +254,7 @@ export default function Onboarding() {
                     birthdate: formData.birthdate,
                     cedula: fullCedula,
                     updated_at: new Date().toISOString()
-                }).eq('id', user.uid);
+                }).eq('id', driverUid);
             } catch (err) {
                 console.warn('Sync users Supabase:', err);
             }

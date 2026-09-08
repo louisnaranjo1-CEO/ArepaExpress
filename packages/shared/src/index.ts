@@ -4,6 +4,7 @@ export * from './lib/firebase';
 export * from './lib/api';
 export * from './lib/constants';
 export * from './lib/env';
+export * from './lib/mapsConfig';
 
 // Contexts
 export * from './context/AuthContext';

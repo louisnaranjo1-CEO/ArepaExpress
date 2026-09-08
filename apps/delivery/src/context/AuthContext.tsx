@@ -76,6 +76,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         };
 
         const handleUser = async (sbUser: User | null) => {
+            if (sbUser) {
+                (sbUser as any).uid = sbUser.id; // Compatibility for legacy references
+            }
             setUser(sbUser);
             if (sbUser) {
                 // Register/Update this driver device session specifically for 'delivery' app

@@ -57,6 +57,10 @@ export const registerDriver = async (
     data: Omit<DeliveryDriver, 'id' | 'email' | 'status' | 'isOnline' | 'createdAt' | 'updatedAt' | 'documents' | 'currentLocation'>,
     files: { selfie: File; vehicle: File; license: File }
 ) => {
+    if (!uid) {
+        throw new Error('ID de usuario inválido. Por favor vuelve a iniciar sesión.');
+    }
+
     // Upload documents to Supabase Storage
     const uploadDoc = async (file: File, type: string) => {
         const extension = file.name.split('.').pop() || 'jpg';

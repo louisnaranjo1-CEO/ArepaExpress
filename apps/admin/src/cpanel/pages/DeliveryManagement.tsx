@@ -108,7 +108,8 @@ _Enviado desde Deliexpress App_`
 
     const { isLoaded } = useJsApiLoader({
         id: 'google-map-script',
-        googleMapsApiKey: "AIzaSyCb1c-p1R6AZGetk8YzKiLuxjaxjmPqJX8"
+        googleMapsApiKey: "AIzaSyAT2_wZfYTBGDR7gEpLXRzG-BUQ9Cbu0aQ",
+        libraries: ['places', 'geometry'] as any
     });
 
     useEffect(() => {
