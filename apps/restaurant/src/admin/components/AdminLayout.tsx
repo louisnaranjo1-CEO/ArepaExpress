@@ -22,6 +22,7 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
     const [restaurantName, setRestaurantName] = React.useState('Mi Negocio');
     const [createdAt, setCreatedAt] = React.useState<Date | null>(null);
     const [showDeleteConfirm, setShowDeleteConfirm] = React.useState(false);
+    const [isDeleting, setIsDeleting] = React.useState(false);
     const [showConfigMenu, setShowConfigMenu] = React.useState(false);
     const [configMode, setConfigMode] = React.useState<'none' | 'email' | 'password'>('none');
     const [newValue, setNewValue] = React.useState('');
@@ -215,13 +216,35 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
 
     const handleDeleteAccount = async () => {
         if (!currentUid) return;
+        setIsDeleting(true);
         try {
-            await supabase.from('comercios').delete().eq('id', currentUid);
+            // Call PostgreSQL RPC to cascade delete store and all foreign relations
+            const { error: rpcErr } = await supabase.rpc('delete_comercio_cascade', { target_id: currentUid });
+            if (rpcErr) {
+                console.warn("RPC cascade delete failed, running manual cleanup fallback:", rpcErr);
+                await supabase.from('products').delete().eq('restaurant_id', currentUid);
+                await supabase.from('banners').delete().eq('restaurant_id', currentUid);
+                await supabase.from('cashiers').delete().eq('restaurant_id', currentUid);
+                await supabase.from('waiters').delete().eq('restaurant_id', currentUid);
+                await supabase.from('restaurant_tables').delete().eq('restaurant_id', currentUid);
+                await supabase.from('restaurant_followers').delete().eq('restaurant_id', currentUid);
+                await supabase.from('printers').delete().eq('restaurant_id', currentUid);
+                await supabase.from('reviews').delete().eq('restaurant_id', currentUid);
+                await supabase.from('orders').delete().eq('restaurant_id', currentUid);
+                const { error: delErr } = await supabase.from('comercios').delete().eq('id', currentUid);
+                if (delErr) throw delErr;
+            }
+
             await supabase.auth.signOut();
-            navigate('/');
-        } catch (error) {
+            localStorage.clear();
+            sessionStorage.clear();
+            window.location.href = '/';
+        } catch (error: any) {
             console.error("Error deleting account:", error);
-            alert("Error al eliminar la cuenta");
+            alert("Error al eliminar la cuenta: " + (error.message || "Por favor intenta de nuevo."));
+        } finally {
+            setIsDeleting(false);
+            setShowDeleteConfirm(false);
         }
     };
 
@@ -429,13 +452,22 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
                                 <div className="flex flex-col gap-3">
                                     <button
                                         onClick={handleDeleteAccount}
-                                        className="w-full bg-red-500 text-white py-4 rounded-2xl font-black shadow-lg shadow-red-500/20 hover:scale-[1.02] active:scale-[0.98] transition-all"
+                                        disabled={isDeleting}
+                                        className="w-full bg-red-500 text-white py-4 rounded-2xl font-black shadow-lg shadow-red-500/20 hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-60 flex items-center justify-center gap-2"
                                     >
-                                        Sí, eliminar cuenta
+                                        {isDeleting ? (
+                                            <>
+                                                <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                                                <span>Eliminando cuenta...</span>
+                                            </>
+                                        ) : (
+                                            'Sí, eliminar cuenta'
+                                        )}
                                     </button>
                                     <button
                                         onClick={() => setShowDeleteConfirm(false)}
-                                        className="w-full bg-slate-50 text-slate-900 py-4 rounded-2xl font-black hover:bg-slate-100 transition-all"
+                                        disabled={isDeleting}
+                                        className="w-full bg-slate-50 text-slate-900 py-4 rounded-2xl font-black hover:bg-slate-100 transition-all disabled:opacity-50"
                                     >
                                         Cancelar
                                     </button>

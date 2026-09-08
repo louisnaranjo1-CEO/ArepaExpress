@@ -96,22 +96,29 @@ export default function RestaurantPage() {
           .maybeSingle();
 
         if (docSnap) {
+          const isVisible = (docSnap.is_visible === true || docSnap.isVisible === true);
+          const isActive = (docSnap.is_active !== false && docSnap.isActive !== false);
+
           const data = {
+            ...docSnap,
             id: docSnap.id,
             name: docSnap.name,
             category: docSnap.category,
             whatsapp: docSnap.whatsapp,
             image: docSnap.image_url || docSnap.image,
             logoUrl: docSnap.logo_url || docSnap.logoUrl || docSnap.logo,
-            isActive: docSnap.is_active ?? docSnap.isActive,
+            isActive,
+            is_active: isActive,
+            isVisible,
+            is_visible: isVisible,
             followerCount: docSnap.follower_count ?? docSnap.followerCount ?? 0,
             hasCashea: docSnap.has_cashea ?? docSnap.hasCashea,
             hasTwoByThree: docSnap.has_two_by_three ?? docSnap.hasTwoByThree,
             location: docSnap.location,
-            ...docSnap
           };
-          if (data.isActive === false) {
-            setError("Este restaurante no se encuentra disponible actualmente.");
+
+          if (!isActive || !isVisible) {
+            setError("Este comercio no se encuentra disponible actualmente.");
             setLoading(false);
             return;
           }
@@ -198,6 +205,35 @@ export default function RestaurantPage() {
 
     fetchRestaurantAndMenu();
     fetchIcons();
+
+    if (!id) return;
+
+    // Realtime channel: if the merchant hides or deletes their store while customer is viewing, handle immediately
+    const restChannel = supabase
+      .channel(`restaurant-${id}-sync`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'comercios', filter: `id=eq.${id}` },
+        (payload) => {
+          if (payload.eventType === 'DELETE') {
+            setError("Este comercio ya no se encuentra disponible.");
+            setRestaurant(null);
+          } else if (payload.eventType === 'UPDATE') {
+            const updated = payload.new as any;
+            const isVis = (updated.is_visible === true || updated.isVisible === true);
+            const isAct = (updated.is_active !== false && updated.isActive !== false);
+            if (!isVis || !isAct) {
+              setError("Este comercio no se encuentra disponible actualmente.");
+              setRestaurant(null);
+            }
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(restChannel);
+    };
   }, [id, user]);
 
   useEffect(() => {

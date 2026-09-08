@@ -72,7 +72,7 @@ export default function Search() {
 
                 const fetched: Restaurant[] = (restsData || []).map((r: any) => {
                     const resProds = (prodsData || [])
-                        .filter((p: any) => p.comercio_id === r.id || p.comercioId === r.id)
+                        .filter((p: any) => p.restaurant_id === r.id || p.comercio_id === r.id || p.comercioId === r.id)
                         .map((p: any) => ({
                             id: p.id,
                             name: p.name,
@@ -86,7 +86,12 @@ export default function Search() {
                             isAvailable: p.is_available ?? p.isAvailable ?? true
                         }));
 
+                    const isVisible = (r.is_visible === true || r.isVisible === true);
+                    const isActive = (r.is_active !== false && r.isActive !== false);
+                    const isVerified = (r.is_verified === true || r.isVerified === true || r.verification_status === 'verified');
+
                     return {
+                        ...r,
                         id: r.id,
                         name: r.name,
                         category: r.category,
@@ -100,17 +105,19 @@ export default function Search() {
                         coverUrl: r.cover_url || r.coverUrl,
                         hasCashea: r.has_cashea ?? r.hasCashea,
                         hasTwoByThree: r.has_two_by_three ?? r.hasTwoByThree,
-                        isActive: r.is_active ?? r.isActive ?? true,
-                        isVisible: r.is_visible ?? r.isVisible ?? false,
-                        is_visible: r.is_visible ?? r.isVisible ?? false,
+                        isActive,
+                        is_active: isActive,
+                        isVisible,
+                        is_visible: isVisible,
+                        isVerified,
+                        is_verified: isVerified,
                         location: r.location,
                         products: resProds
                     } as Restaurant;
                 });
 
                 const fetchedResults = fetched.filter(r => 
-                    r.isActive !== false && 
-                    (r.isVisible === true || (r as any).is_visible === true)
+                    r.isActive && r.isVisible
                 );
                 const shuffled = fetchedResults.sort(() => Math.random() - 0.5);
                 setRestaurants(shuffled);
@@ -140,6 +147,26 @@ export default function Search() {
         fetchCategories();
         fetchRestaurants();
 
+        // Realtime subscription on 'comercios' table: sync store changes instantly
+        const comerciosChannel = supabase
+            .channel('client-search-comercios-sync')
+            .on(
+                'postgres_changes',
+                { event: '*', schema: 'public', table: 'comercios' },
+                () => {
+                    fetchRestaurants();
+                }
+            )
+            .subscribe();
+
+        const handleFocus = () => {
+            if (document.visibilityState === 'visible') {
+                fetchRestaurants();
+            }
+        };
+        window.addEventListener('visibilitychange', handleFocus);
+        window.addEventListener('focus', handleFocus);
+
         // Handle incoming category/sector from location state
         if (location.state?.category) {
             setSelectedCategory(location.state.category);
@@ -147,6 +174,12 @@ export default function Search() {
         if (location.state?.sector) {
             setFilters(prev => ({ ...prev, sector: location.state.sector }));
         }
+
+        return () => {
+            supabase.removeChannel(comerciosChannel);
+            window.removeEventListener('visibilitychange', handleFocus);
+            window.removeEventListener('focus', handleFocus);
+        };
     }, [location.state]);
 
     const matchingProducts = useMemo(() => {

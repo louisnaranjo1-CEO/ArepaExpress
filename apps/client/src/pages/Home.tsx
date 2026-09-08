@@ -242,30 +242,36 @@ export default function Home() {
               .from('comercios')
               .select('*');
 
-            fetchedRestaurants = (rSnap || []).map((doc: any) => ({
-               id: doc.id,
-               name: doc.name,
-               category: doc.category,
-               whatsapp: doc.whatsapp,
-               image: doc.image_url || doc.image,
-               logoUrl: doc.logo_url || doc.logoUrl || doc.logo,
-               rating: doc.rating,
-               reviews: doc.reviews,
-               isActive: doc.is_active ?? doc.isActive,
-               isVisible: doc.is_visible ?? doc.isVisible ?? false,
-               is_visible: doc.is_visible ?? doc.isVisible ?? false,
-               isVerified: doc.is_verified ?? doc.isVerified ?? false,
-               is_verified: doc.is_verified ?? doc.isVerified ?? false,
-               hasCashea: doc.has_cashea ?? doc.hasCashea,
-               hasTwoByThree: doc.has_two_by_three ?? doc.hasTwoByThree,
-               location: doc.location,
-               ...doc
-            })) as Restaurant[];
+            fetchedRestaurants = (rSnap || []).map((doc: any) => {
+               const isVisible = (doc.is_visible === true || doc.isVisible === true);
+               const isActive = (doc.is_active !== false && doc.isActive !== false);
+               const isVerified = (doc.is_verified === true || doc.isVerified === true || doc.verification_status === 'verified');
+               return {
+                  ...doc,
+                  id: doc.id,
+                  name: doc.name,
+                  category: doc.category,
+                  whatsapp: doc.whatsapp,
+                  image: doc.image_url || doc.image,
+                  logoUrl: doc.logo_url || doc.logoUrl || doc.logo,
+                  coverUrl: doc.cover_url || doc.coverUrl,
+                  rating: doc.rating,
+                  reviews: doc.reviews,
+                  isActive,
+                  is_active: isActive,
+                  isVisible,
+                  is_visible: isVisible,
+                  isVerified,
+                  is_verified: isVerified,
+                  hasCashea: doc.has_cashea ?? doc.hasCashea,
+                  hasTwoByThree: doc.has_two_by_three ?? doc.hasTwoByThree,
+                  location: doc.location,
+               };
+            }) as Restaurant[];
 
             // Filter inactive and non-visible restaurants
             fetchedRestaurants = fetchedRestaurants.filter(r => 
-               r.isActive !== false && 
-               (r.is_visible === true || r.isVisible === true)
+               r.isActive && r.isVisible
             );
 
             // Update distance strings and compute sorting weights
@@ -427,6 +433,33 @@ export default function Home() {
 
     fetchBanners();
     fetchData();
+
+    // Realtime subscription on 'comercios' table: instantly updates UI when a store visibility changes or is deleted
+    const comerciosChannel = supabase
+      .channel('client-home-comercios-sync')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'comercios' },
+        () => {
+          fetchData();
+        }
+      )
+      .subscribe();
+
+    // Re-fetch when user returns to the tab or app
+    const handleFocus = () => {
+      if (document.visibilityState === 'visible') {
+        fetchData();
+      }
+    };
+    window.addEventListener('visibilitychange', handleFocus);
+    window.addEventListener('focus', handleFocus);
+
+    return () => {
+      supabase.removeChannel(comerciosChannel);
+      window.removeEventListener('visibilitychange', handleFocus);
+      window.removeEventListener('focus', handleFocus);
+    };
   }, [userLocation, manualCity, manualState]);
 
   // Combined effect for Banner Timer

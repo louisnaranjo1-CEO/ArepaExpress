@@ -39,18 +39,24 @@ export default function Favorites() {
 
                     if (restsErr) throw restsErr;
 
-                    const mapped: Restaurant[] = (rests || []).map((r: any) => ({
-                        id: r.id,
-                        name: r.name,
-                        category: r.category,
-                        businessType: r.business_type || r.businessType,
-                        rating: r.rating || 5.0,
-                        reviews: r.reviews || 0,
-                        deliveryTime: r.delivery_time || r.deliveryTime || '30 min',
-                        distance: r.distance || '1.0 km',
-                        image: r.image || r.logo_url || r.logoUrl,
-                        logoUrl: r.logo_url || r.logoUrl
-                    }));
+                    const mapped: Restaurant[] = (rests || [])
+                        .filter((r: any) => {
+                            const isVis = (r.is_visible === true || r.isVisible === true);
+                            const isAct = (r.is_active !== false && r.isActive !== false);
+                            return isVis && isAct;
+                        })
+                        .map((r: any) => ({
+                            id: r.id,
+                            name: r.name,
+                            category: r.category,
+                            businessType: r.business_type || r.businessType,
+                            rating: r.rating || 5.0,
+                            reviews: r.reviews || 0,
+                            deliveryTime: r.delivery_time || r.deliveryTime || '30 min',
+                            distance: r.distance || '1.0 km',
+                            image: r.image || r.logo_url || r.logoUrl,
+                            logoUrl: r.logo_url || r.logoUrl
+                        }));
 
                     setFavorites(mapped);
                 } else {

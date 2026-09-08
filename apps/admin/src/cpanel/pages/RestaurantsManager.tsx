@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
-import { Store, CheckCircle, XCircle, ChevronRight, X, Phone, MapPin, Tag, Box, Star, Users, ShoppingBag, Database, ShieldCheck, ShieldAlert } from 'lucide-react';
+import { Store, CheckCircle, XCircle, ChevronRight, X, Phone, MapPin, Tag, Box, Star, Users, ShoppingBag, Database, ShieldCheck, ShieldAlert, Trash2 } from 'lucide-react';
 import { Restaurant, seedDatabase, clearMockDatabase } from '../../lib/seed';
 import { useNavigate } from 'react-router-dom';
 
@@ -20,6 +20,7 @@ export default function RestaurantsManager() {
     const [restaurants, setRestaurants] = useState<RestaurantDetail[]>([]);
     const [loading, setLoading] = useState(true);
     const [isMocking, setIsMocking] = useState(false);
+    const [deletingId, setDeletingId] = useState<string | null>(null);
 
     const hasMockData = restaurants.some(r => r.isMock);
 
@@ -66,6 +67,38 @@ export default function RestaurantsManager() {
             setRestaurants(prev => prev.map(r => r.id === id ? { ...r, isActive: newStatus } : r));
         } catch (error) {
             console.error("Error updating restaurant status:", error);
+        }
+    };
+
+    const handleDeleteRestaurant = async (id: string, name: string, e: React.MouseEvent) => {
+        e.stopPropagation();
+        if (!window.confirm(`¿Estás SEGURO de eliminar definitivamente "${name}"? Esta acción borrará permanentemente la tienda, sus productos y toda su información de la plataforma.`)) return;
+
+        setDeletingId(id);
+        try {
+            const { error: rpcErr } = await supabase.rpc('delete_comercio_cascade', { target_id: id });
+            if (rpcErr) {
+                console.warn("RPC cascade delete failed, using manual cleanup fallback:", rpcErr);
+                await supabase.from('products').delete().eq('restaurant_id', id);
+                await supabase.from('banners').delete().eq('restaurant_id', id);
+                await supabase.from('cashiers').delete().eq('restaurant_id', id);
+                await supabase.from('waiters').delete().eq('restaurant_id', id);
+                await supabase.from('restaurant_tables').delete().eq('restaurant_id', id);
+                await supabase.from('restaurant_followers').delete().eq('restaurant_id', id);
+                await supabase.from('printers').delete().eq('restaurant_id', id);
+                await supabase.from('reviews').delete().eq('restaurant_id', id);
+                await supabase.from('orders').delete().eq('restaurant_id', id);
+                const { error: delErr } = await supabase.from('comercios').delete().eq('id', id);
+                if (delErr) throw delErr;
+            }
+
+            setRestaurants(prev => prev.filter(r => r.id !== id));
+            alert(`Comercio "${name}" eliminado exitosamente.`);
+        } catch (error: any) {
+            console.error("Error deleting restaurant:", error);
+            alert("Error al eliminar el comercio: " + (error.message || ""));
+        } finally {
+            setDeletingId(null);
         }
     };
 
@@ -198,14 +231,26 @@ export default function RestaurantsManager() {
                             </div>
 
                             {/* Actions */}
-                            <div className="mt-1 pt-3 border-t border-slate-50 flex justify-end">
+                            <div className="mt-1 pt-3 border-t border-slate-50 flex items-center justify-between gap-2">
+                                <button
+                                    onClick={(e) => handleDeleteRestaurant(restaurant.id, restaurant.name, e)}
+                                    disabled={deletingId === restaurant.id}
+                                    title="Eliminar comercio definitivamente"
+                                    className="p-2.5 rounded-2xl text-slate-400 hover:text-red-500 hover:bg-red-50 transition-all disabled:opacity-50 shrink-0"
+                                >
+                                    {deletingId === restaurant.id ? (
+                                        <div className="w-4 h-4 border-2 border-red-500/30 border-t-red-500 rounded-full animate-spin" />
+                                    ) : (
+                                        <Trash2 className="w-4 h-4" />
+                                    )}
+                                </button>
                                 <button
                                     onClick={(e) => toggleStatus(restaurant.id, restaurant.isActive, e)}
-                                    className={`w-full sm:w-auto px-5 py-2.5 rounded-2xl text-[11px] font-black uppercase tracking-widest transition-all ${
+                                    className={`flex-1 sm:flex-initial px-5 py-2.5 rounded-2xl text-[11px] font-black uppercase tracking-widest transition-all text-center ${
                                         isActive ? 'bg-red-50 text-red-600 hover:bg-red-100' : 'bg-emerald-50 text-emerald-600 hover:bg-emerald-100'
                                     }`}
                                 >
-                                    {isActive ? 'Suspender Restaurante' : 'Activar Restaurante'}
+                                    {isActive ? 'Suspender' : 'Activar'}
                                 </button>
                             </div>
                         </div>
