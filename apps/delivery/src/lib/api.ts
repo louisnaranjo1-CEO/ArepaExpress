@@ -156,7 +156,7 @@ export const driversApi = {
             .from('drivers')
             .select(`
                 *,
-                profiles:id ( full_name, email, phone )
+                profiles:profiles!drivers_id_fkey ( full_name, email, phone )
             `)
             .eq('id', uid)
             .single();
@@ -207,7 +207,7 @@ export const driversApi = {
             .from('drivers')
             .select(`
                 *,
-                profiles:id ( full_name, email, phone )
+                profiles:profiles!drivers_id_fkey ( full_name, email, phone )
             `);
             
         if (error) throw error;
@@ -328,16 +328,13 @@ export const driversApi = {
         
         if (error) throw error;
         
-        const role = (data.vehicle_type === 'carro' || data.vehicle_type === 'ejecutivo') ? 'conductor' : 'aliado';
-        
         const { error: profileError } = await supabase
             .from('profiles')
             .update({
                 full_name: data.full_name,
                 phone: data.phone,
                 cedula: data.cedula,
-                birthdate: data.birthdate,
-                role: role
+                birthdate: data.birthdate
             })
             .eq('id', data.firebase_uid);
             

@@ -23,26 +23,38 @@ export interface UserData {
     total_referrals?: number;
     locationPermissionsAllowed?: boolean;
     biometricLockEnabled?: boolean;
+    locationPermissionsAllowed?: boolean;
+    location_permissions_allowed?: boolean;
+    biometric_lock_enabled?: boolean;
+    notificationsEnabled?: boolean;
+    notifications_enabled?: boolean;
+    fcmTokens?: string[];
+    fcm_tokens?: string[];
+    coords?: { lat: number; lng: number };
 }
 
 interface AuthContextType {
     user: User | null;
     userData: UserData | null;
+    setUserData: React.Dispatch<React.SetStateAction<UserData | null>>;
     loading: boolean;
     isProfileComplete: boolean;
     isUnlocked: boolean;
     setIsUnlocked: (unlocked: boolean) => void;
     currentLocation: { lat: number, lng: number } | null;
+    refreshUserData?: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType>({ 
     user: null, 
     userData: null, 
+    setUserData: () => {},
     loading: true, 
     isProfileComplete: false,
     isUnlocked: true,
     setIsUnlocked: () => {},
-    currentLocation: null
+    currentLocation: null,
+    refreshUserData: async () => {}
 });
 
 export const useAuth = () => useContext(AuthContext);
@@ -165,7 +177,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const isProfileComplete = !!(userData?.displayName && userData?.phone);
 
     return (
-        <AuthContext.Provider value={{ user, userData, loading, isProfileComplete, isUnlocked, setIsUnlocked, currentLocation }}>
+        <AuthContext.Provider value={{ user, userData, setUserData, loading, isProfileComplete, isUnlocked, setIsUnlocked, currentLocation }}>
             {children}
         </AuthContext.Provider>
     );

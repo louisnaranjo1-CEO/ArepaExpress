@@ -77,7 +77,7 @@ const RestaurantPointCard: React.FC<{ restId: string, points: number }> = ({ res
 };
 
 export default function Profile() {
-    const { user, userData, isProfileComplete, refreshUserData } = useAuth();
+    const { user, userData, setUserData, isProfileComplete, refreshUserData } = useAuth();
     const navigate = useNavigate();
     const [searchParams] = useSearchParams();
     const [isSigningIn, setIsSigningIn] = useState(false);
@@ -552,13 +552,32 @@ export default function Profile() {
         if (!uid) return;
         setUpdatingNotifications(true);
         try {
-            const isEnabled = userData?.notificationsEnabled || (userData?.fcmTokens && userData.fcmTokens.length > 0) || (userData as any)?.notifications_enabled;
+            const isEnabled = Boolean(
+                userData?.notificationsEnabled || 
+                userData?.notifications_enabled || 
+                (userData?.fcmTokens && userData.fcmTokens.length > 0) ||
+                (userData?.fcm_tokens && userData.fcm_tokens.length > 0)
+            );
             if (isEnabled) {
                 await disableNotifications(uid);
+                setUserData((prev: any) => ({
+                    ...prev,
+                    notificationsEnabled: false,
+                    notifications_enabled: false,
+                    fcmTokens: [],
+                    fcm_tokens: []
+                }));
+                await refreshUserData();
                 toast.success("Notificaciones desactivadas");
             } else {
                 const result = await requestNotificationPermission(uid);
                 if (result.success) {
+                    setUserData((prev: any) => ({
+                        ...prev,
+                        notificationsEnabled: true,
+                        notifications_enabled: true
+                    }));
+                    await refreshUserData();
                     toast.success("Notificaciones activadas con éxito 🎉");
                 } else if (result.error) {
                     toast.error(result.error);
@@ -1689,14 +1708,14 @@ export default function Profile() {
                                         </div>
                                     </div>
                                     <div
-                                        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${userData?.notificationsEnabled || (userData?.fcmTokens && userData.fcmTokens.length > 0) ? 'bg-green-500' : 'bg-slate-300'
+                                        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${userData?.notificationsEnabled || userData?.notifications_enabled || (userData?.fcmTokens && userData.fcmTokens.length > 0) || (userData?.fcm_tokens && userData.fcm_tokens.length > 0) ? 'bg-green-500' : 'bg-slate-300'
                                             }`}
                                     >
                                         {updatingNotifications ? (
                                             <div className="ml-1 w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
                                         ) : (
                                             <span
-                                                className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${userData?.notificationsEnabled || (userData?.fcmTokens && userData.fcmTokens.length > 0) ? 'translate-x-6' : 'translate-x-1'
+                                                className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${userData?.notificationsEnabled || userData?.notifications_enabled || (userData?.fcmTokens && userData.fcmTokens.length > 0) || (userData?.fcm_tokens && userData.fcm_tokens.length > 0) ? 'translate-x-6' : 'translate-x-1'
                                                     }`}
                                             />
                                         )}
@@ -1772,15 +1791,17 @@ export default function Profile() {
                                         if (!uid) return;
                                         setUpdatingLocation(true);
                                         try {
-                                            const isCurrentlyAllowed = userData?.location_permissions_allowed ?? userData?.locationPermissionsAllowed ?? (localStorage.getItem('locationPermissionsAllowed') === 'true');
+                                            const isCurrentlyAllowed = Boolean(userData?.location_permissions_allowed ?? userData?.locationPermissionsAllowed ?? (localStorage.getItem('locationPermissionsAllowed') === 'true'));
                                             if (isCurrentlyAllowed) {
                                                 // Disable
                                                 await supabase.from('profiles').update({
                                                     location_permissions_allowed: false,
+                                                    locationPermissionsAllowed: false,
                                                     updated_at: new Date().toISOString()
                                                 }).eq('id', uid);
                                                 setUserData((prev: any) => ({ ...prev, location_permissions_allowed: false, locationPermissionsAllowed: false }));
                                                 localStorage.setItem('locationPermissionsAllowed', 'false');
+                                                await refreshUserData();
                                                 toast.success('Ubicación en tiempo real desactivada');
                                             } else {
                                                 // Enable
@@ -1807,10 +1828,23 @@ export default function Profile() {
                                                         navigator.geolocation.getCurrentPosition(
                                                             (pos) => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
                                                             (geoErr) => {
-                                                                console.warn('Web geolocation error:', geoErr);
-                                                                resolve(null);
+                                                                console.warn('High accuracy geolocation failed, trying standard accuracy:', geoErr);
+                                                                navigator.geolocation.getCurrentPosition(
+                                                                    (pos) => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+                                                                    (fallbackErr) => {
+                                                                        console.warn('Fallback geolocation failed:', fallbackErr);
+                                                                        const savedLat = localStorage.getItem('userLat');
+                                                                        const savedLng = localStorage.getItem('userLng');
+                                                                        if (savedLat && savedLng) {
+                                                                            resolve({ lat: parseFloat(savedLat), lng: parseFloat(savedLng) });
+                                                                        } else {
+                                                                            resolve(null);
+                                                                        }
+                                                                    },
+                                                                    { enableHighAccuracy: false, timeout: 8000, maximumAge: 300000 }
+                                                                );
                                                             },
-                                                            { enableHighAccuracy: true, timeout: 10000 }
+                                                            { enableHighAccuracy: true, timeout: 6000, maximumAge: 60000 }
                                                         );
                                                     });
                                                     granted = !!userCoords;
@@ -1819,6 +1853,7 @@ export default function Profile() {
                                                 if (granted) {
                                                     const payload: any = {
                                                         location_permissions_allowed: true,
+                                                        locationPermissionsAllowed: true,
                                                         updated_at: new Date().toISOString()
                                                     };
                                                     if (userCoords) {
@@ -1834,6 +1869,7 @@ export default function Profile() {
                                                         coords: userCoords || prev?.coords 
                                                     }));
                                                     localStorage.setItem('locationPermissionsAllowed', 'true');
+                                                    await refreshUserData();
                                                     toast.success('Ubicación en tiempo real activada');
                                                 } else {
                                                     toast.error('Se requiere permiso de ubicación para activar esta función');
@@ -1858,14 +1894,14 @@ export default function Profile() {
                                         </div>
                                     </div>
                                     <div
-                                        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${userData?.locationPermissionsAllowed ? 'bg-emerald-500' : 'bg-slate-300'
+                                        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${userData?.locationPermissionsAllowed || userData?.location_permissions_allowed || localStorage.getItem('locationPermissionsAllowed') === 'true' ? 'bg-emerald-500' : 'bg-slate-300'
                                             }`}
                                     >
                                         {updatingLocation ? (
                                             <div className="ml-1 w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
                                         ) : (
                                             <span
-                                                className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${userData?.locationPermissionsAllowed ? 'translate-x-6' : 'translate-x-1'
+                                                className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${userData?.locationPermissionsAllowed || userData?.location_permissions_allowed || localStorage.getItem('locationPermissionsAllowed') === 'true' ? 'translate-x-6' : 'translate-x-1'
                                                     }`}
                                             />
                                         )}

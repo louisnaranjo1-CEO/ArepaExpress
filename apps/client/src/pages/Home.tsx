@@ -173,27 +173,38 @@ export default function Home() {
           .from('banners')
           .select('*');
 
-        const activeBanners = (fetchedBanners || []).filter((b: any) => 
-          (b.is_active ?? b.isActive) && 
+        const mappedBanners = (fetchedBanners || []).map((b: any) => ({
+          ...b,
+          imageUrl: b.image_url || b.imageUrl || '',
+          linkUrl: b.link_url || b.linkUrl || '',
+          isActive: b.is_active !== undefined ? b.is_active : b.isActive,
+          visibilityScope: b.visibility_scope || b.visibilityScope || 'national',
+          targetState: b.target_state || b.targetState || '',
+          targetCity: b.target_city || b.targetCity || '',
+          orderIndex: b.order_index ?? b.orderIndex ?? 0
+        }));
+
+        const activeBanners = mappedBanners.filter((b: any) => 
+          b.isActive && 
           (b.type === 'top_banner' || b.type === 'fidelization' || !b.type)
         );
 
         // Location filtering
         const filteredBanners = activeBanners.filter((banner: any) => {
           if (isDemoMode()) {
-            return (banner.visibility_scope ?? banner.visibilityScope) === 'national';
+            return banner.visibilityScope === 'national';
           }
 
-          const scope = banner.visibility_scope || banner.visibilityScope || 'national';
+          const scope = banner.visibilityScope || 'national';
 
           if (scope === 'national') return true;
 
           if (scope === 'state') {
-            return (banner.target_state || banner.targetState) === manualState;
+            return banner.targetState === manualState;
           }
 
           if (scope === 'city') {
-            return (banner.target_city || banner.targetCity) === manualCity;
+            return banner.targetCity === manualCity;
           }
 
           return false;
@@ -858,22 +869,22 @@ export default function Home() {
               {banners.map((banner) => (
                 <div key={banner.id} className="min-w-full h-full">
                   <a
-                    href={banner.linkUrl || '#'}
+                    href={banner.linkUrl || banner.link_url || '#'}
                     onClick={(e) => {
                       if (banner.type === 'fidelization') {
                         e.preventDefault();
                         navigate(`/rewards?openBannerId=${banner.id}`);
-                      } else if (banner.linkUrl && banner.linkUrl.startsWith('/')) {
+                      } else if ((banner.linkUrl || banner.link_url) && (banner.linkUrl || banner.link_url).startsWith('/')) {
                         e.preventDefault();
-                        navigate(banner.linkUrl);
+                        navigate(banner.linkUrl || banner.link_url);
                       }
                     }}
-                    target={banner.linkUrl && !banner.linkUrl.startsWith('/') ? "_blank" : undefined}
+                    target={(banner.linkUrl || banner.link_url) && !(banner.linkUrl || banner.link_url).startsWith('/') ? "_blank" : undefined}
                     rel="noopener noreferrer"
                     className="w-full h-full block"
                   >
                     <img
-                      src={banner.imageUrl}
+                      src={banner.imageUrl || banner.image_url}
                       alt={banner.title}
                       className="w-full h-full object-cover select-none pointer-events-none"
                       draggable={false}

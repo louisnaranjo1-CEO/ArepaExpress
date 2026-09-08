@@ -1,16 +1,14 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { User, Mail, MapPin, CreditCard, LogOut, ShoppingBag, Settings, ChevronRight, Clock, FileText, Bell, Navigation, X, Shield, UploadCloud, Star, Wallet, Gift, Award, MessageSquareWarning, Plus, Send, AlertCircle, CheckCircle, Store, Handshake, LifeBuoy, Fingerprint } from 'lucide-react';
+import { User, Mail, MapPin, CreditCard, LogOut, ShoppingBag, Settings, ChevronRight, Clock, FileText, Bell, Navigation, X, Shield, UploadCloud, Star, Wallet, Gift, Award, MessageSquareWarning, Plus, Send, AlertCircle, CheckCircle, Store, Handshake, LifeBuoy, Fingerprint, Calendar } from 'lucide-react';
 import { Geolocation } from '@capacitor/geolocation';
+import { Capacitor } from '@capacitor/core';
 import { isDemoMode } from '../lib/env';
 import DemoAlertModal from '../components/DemoAlertModal';
 import { requestNotificationPermission, disableNotifications } from '../lib/notifications';
 import { useAuth } from '../context/AuthContext';
-import { auth, db, storage } from '../lib/firebase';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { supabase } from '../lib/supabase';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { signInWithGoogle, signInWithEmail, signUpWithEmail, processReferralCode } from '../lib/auth-service';
-import { collection, query, where, orderBy, getDocs, doc, setDoc, serverTimestamp, collectionGroup, getDoc, updateDoc, addDoc } from 'firebase/firestore';
-import { updateProfile } from 'firebase/auth';
+import { signInWithGoogle, signInWithEmail, signUpWithEmail, processReferralCode, sendPasswordResetEmail } from '../lib/auth-service';
 import { Image as ImageIcon, Camera, Smartphone, User as UserIcon, Save } from 'lucide-react';
 import AddressPicker from '../components/AddressPicker';
 import { motion, AnimatePresence } from 'motion/react';
@@ -57,8 +55,8 @@ interface ActivityItem {
 const RestaurantPointCard: React.FC<{ restId: string, points: number }> = ({ restId, points }) => {
     const [name, setName] = useState('Cargando...');
     useEffect(() => {
-        getDoc(doc(db, 'restaurants', restId)).then(d => {
-            if (d.exists()) setName(d.data().name);
+        supabase.from('comercios').select('name').eq('id', restId).maybeSingle().then(({ data }) => {
+            if (data?.name) setName(data.name);
             else setName('Local Afiliado');
         });
     }, [restId]);
@@ -79,7 +77,7 @@ const RestaurantPointCard: React.FC<{ restId: string, points: number }> = ({ res
 };
 
 export default function Profile() {
-    const { user, userData, isProfileComplete } = useAuth();
+    const { user, userData, setUserData, isProfileComplete, refreshUserData } = useAuth();
     const navigate = useNavigate();
     const [searchParams] = useSearchParams();
     const [isSigningIn, setIsSigningIn] = useState(false);
@@ -97,10 +95,13 @@ export default function Profile() {
     // Profile completion form state
     const [profileForm, setProfileForm] = useState({
         displayName: '',
-        phone: '',
-        cedula: '',
+        phone: '', // 10 digits
+        nationality: 'V' as 'V' | 'E',
+        cedulaNumber: '',
+        birthdate: '',
         gender: '' as 'masculine' | 'feminine' | ''
     });
+    const [profileError, setProfileError] = useState<string | null>(null);
 
     // Email Login/Signup State
     const [showEmailModal, setShowEmailModal] = useState(false);
@@ -109,6 +110,10 @@ export default function Profile() {
     const [password, setPassword] = useState('');
     const [fullName, setFullName] = useState('');
     const [isEmailAuthLoading, setIsEmailAuthLoading] = useState(false);
+    const [showForgotPasswordModal, setShowForgotPasswordModal] = useState(false);
+    const [forgotEmail, setForgotEmail] = useState('');
+    const [isSendingReset, setIsSendingReset] = useState(false);
+    const [resetEmailSent, setResetEmailSent] = useState(false);
     const [logoFile, setLogoFile] = useState<File | null>(null);
     const [logoPreview, setLogoPreview] = useState<string | null>(null);
 
@@ -143,12 +148,31 @@ export default function Profile() {
     const [showCreditsModal, setShowCreditsModal] = useState(false);
 
     useEffect(() => {
-        if (userData) {
+        if (userData || user) {
+            let rawPhone = userData?.phone || '';
+            if (rawPhone.startsWith('+58')) {
+                rawPhone = rawPhone.substring(3);
+            } else if (rawPhone.startsWith('0')) {
+                rawPhone = rawPhone.substring(1);
+            }
+
+            let nat: 'V' | 'E' = 'V';
+            let cedNum = userData?.cedula || '';
+            if (cedNum.startsWith('V-') || cedNum.startsWith('v-')) {
+                nat = 'V';
+                cedNum = cedNum.substring(2);
+            } else if (cedNum.startsWith('E-') || cedNum.startsWith('e-')) {
+                nat = 'E';
+                cedNum = cedNum.substring(2);
+            }
+
             setProfileForm({
-                displayName: userData.displayName || user?.displayName || '',
-                phone: userData.phone || '',
-                cedula: userData.cedula || '',
-                gender: userData.gender || ''
+                displayName: userData?.displayName || (user as any)?.user_metadata?.full_name || user?.email?.split('@')[0] || '',
+                phone: rawPhone,
+                nationality: nat,
+                cedulaNumber: cedNum,
+                birthdate: userData?.birthdate || '',
+                gender: (userData as any)?.gender || ''
             });
         }
     }, [userData, user]);
@@ -177,18 +201,18 @@ export default function Profile() {
             if (!user) return;
             setLoadingActivities(true);
             try {
+                const uid = user.id || user.uid;
                 // Fetch Orders
-                const qOrders = query(
-                    collection(db, 'orders'),
-                    where('userId', '==', user.uid),
-                    orderBy('createdAt', 'desc')
-                );
-                const orderSnapshot = await getDocs(qOrders);
-                const fetchedOrders = orderSnapshot.docs.map(doc => {
-                    const data = doc.data();
-                    const restId = data.restaurantId || (data.items && data.items.length > 0 ? data.items[0].restaurantId : null);
+                const { data: orderData } = await supabase
+                    .from('orders')
+                    .select('*')
+                    .or(`user_id.eq.${uid},userId.eq.${uid}`)
+                    .order('created_at', { ascending: false });
+
+                const fetchedOrders = (orderData || []).map((data: any) => {
+                    const restId = data.restaurant_id || data.restaurantId || (data.items && data.items.length > 0 ? (data.items[0].restaurant_id || data.items[0].restaurantId) : null);
                     return {
-                        id: doc.id,
+                        id: data.id,
                         type: 'order',
                         restaurantId: restId,
                         ...data
@@ -196,39 +220,39 @@ export default function Profile() {
                 });
 
                 // Fetch Transports
-                const qTransports = query(
-                    collection(db, 'transport_requests'),
-                    where('userId', '==', user.uid),
-                    orderBy('createdAt', 'desc')
-                );
-                const transportSnapshot = await getDocs(qTransports);
-                const fetchedTransports = transportSnapshot.docs.map(doc => {
+                const { data: transportData } = await supabase
+                    .from('transport_requests')
+                    .select('*')
+                    .or(`user_id.eq.${uid},userId.eq.${uid}`)
+                    .order('created_at', { ascending: false });
+
+                const fetchedTransports = (transportData || []).map((data: any) => {
                     return {
-                        id: doc.id,
+                        id: data.id,
                         type: 'transport',
-                        ...doc.data()
+                        ...data
                     } as ActivityItem;
                 });
 
                 // Fetch Wallet Recharges
-                const qRecharges = query(
-                    collection(db, 'wallet_recharges'),
-                    where('userId', '==', user.uid),
-                    orderBy('createdAt', 'desc')
-                );
-                const rechargeSnapshot = await getDocs(qRecharges);
-                const fetchedRecharges = rechargeSnapshot.docs.map(doc => {
+                const { data: rechargeData } = await supabase
+                    .from('wallet_recharges')
+                    .select('*')
+                    .or(`user_id.eq.${uid},userId.eq.${uid}`)
+                    .order('created_at', { ascending: false });
+
+                const fetchedRecharges = (rechargeData || []).map((data: any) => {
                     return {
-                        id: doc.id,
+                        id: data.id,
                         type: 'wallet_recharge',
-                        ...doc.data()
+                        ...data
                     } as ActivityItem;
                 });
 
                 // Combine and sort
                 const combined = [...fetchedOrders, ...fetchedTransports, ...fetchedRecharges].sort((a, b) => {
-                    const timeA = a.createdAt?.toMillis ? a.createdAt.toMillis() : (a.createdAt instanceof Date ? a.createdAt.getTime() : 0);
-                    const timeB = b.createdAt?.toMillis ? b.createdAt.toMillis() : (b.createdAt instanceof Date ? b.createdAt.getTime() : 0);
+                    const timeA = a.created_at ? new Date(a.created_at).getTime() : (a.createdAt?.toMillis ? a.createdAt.toMillis() : (a.createdAt instanceof Date ? a.createdAt.getTime() : 0));
+                    const timeB = b.created_at ? new Date(b.created_at).getTime() : (b.createdAt?.toMillis ? b.createdAt.toMillis() : (b.createdAt instanceof Date ? b.createdAt.getTime() : 0));
                     return timeB - timeA;
                 });
 
@@ -242,9 +266,13 @@ export default function Profile() {
 
         const fetchPaymentMethods = async () => {
             try {
-                const docSnap = await getDoc(doc(db, 'system_configs', 'finances'));
-                if (docSnap.exists()) {
-                    setPaymentMethods(docSnap.data().paymentMethods);
+                const { data: docSnap } = await supabase
+                    .from('system_configs')
+                    .select('*')
+                    .eq('id', 'finances')
+                    .maybeSingle();
+                if (docSnap) {
+                    setPaymentMethods(docSnap.data?.paymentMethods || docSnap.paymentMethods);
                 }
             } catch (error) {
                 console.error("Error fetching payment methods:", error);
@@ -261,22 +289,17 @@ export default function Profile() {
             if (!user) return;
             setLoadingTickets(true);
             try {
-                const qTickets = query(
-                    collection(db, 'support_tickets'),
-                    where('userId', '==', user.uid)
-                );
-                const snapshot = await getDocs(qTickets);
-                const fetchedTickets = snapshot.docs.map(doc => ({
-                    id: doc.id,
-                    ...doc.data()
+                const uid = user.id || user.uid;
+                const { data: snapshot } = await supabase
+                    .from('support_tickets')
+                    .select('*')
+                    .or(`user_id.eq.${uid},userId.eq.${uid}`)
+                    .order('created_at', { ascending: false });
+
+                const fetchedTickets = (snapshot || []).map((data: any) => ({
+                    id: data.id,
+                    ...data
                 })) as SupportTicket[];
-                
-                // Sort locally by createdAt desc
-                fetchedTickets.sort((a, b) => {
-                    const timeA = a.createdAt?.toMillis ? a.createdAt.toMillis() : Date.now();
-                    const timeB = b.createdAt?.toMillis ? b.createdAt.toMillis() : Date.now();
-                    return timeB - timeA;
-                });
                 
                 setSupportTickets(fetchedTickets);
             } catch (error) {
@@ -290,24 +313,16 @@ export default function Profile() {
             if (!user) return;
             setLoadingCredits(true);
             try {
-                const qCredits = query(
-                    collectionGroup(db, 'credits'),
-                    where('userEmail', '==', user.email)
-                );
-                const snapshot = await getDocs(qCredits);
-                const fetchedCredits = await Promise.all(snapshot.docs.map(async (doc) => {
-                    const data = doc.data();
-                    // Obtener nombre del restaurante
-                    const restRef = doc.ref.parent.parent;
-                    let restName = 'Restaurante';
-                    if (restRef) {
-                        const restSnap = await getDoc(restRef);
-                        if (restSnap.exists()) restName = restSnap.data().name;
-                    }
-                    return { id: doc.id, restaurantName: restName, ...data };
-                }));
-                // Sort by date created desc
-                setMyCredits(fetchedCredits.sort((a:any, b:any) => b.createdAt - a.createdAt));
+                const { data: snapshot } = await supabase
+                    .from('restaurant_credits')
+                    .select('*')
+                    .eq('user_email', user.email)
+                    .order('created_at', { ascending: false });
+
+                const fetchedCredits = (snapshot || []).map((data: any) => {
+                    return { id: data.id, restaurantName: data.restaurant_name || data.restaurantName || 'Restaurante', ...data };
+                });
+                setMyCredits(fetchedCredits);
             } catch (error) {
                 console.error("Error fetching credits:", error);
             } finally {
@@ -337,24 +352,35 @@ export default function Profile() {
 
         setIsSubmittingTicket(true);
         try {
+            const uid = user.id || user.uid;
             const newTicket = {
-                userId: user.uid,
+                user_id: uid,
+                userId: uid,
+                user_name: userData.displayName || 'Usuario sin nombre',
                 userName: userData.displayName || 'Usuario sin nombre',
+                user_email: user.email || '',
                 userEmail: user.email || '',
+                user_phone: userData.phone || '',
                 userPhone: userData.phone || '',
                 title: ticketForm.title,
                 description: ticketForm.description,
                 status: 'open',
-                createdAt: serverTimestamp()
+                created_at: new Date().toISOString()
             };
 
-            const docRef = await addDoc(collection(db, 'support_tickets'), newTicket);
+            const { data: insData, error: insErr } = await supabase
+                .from('support_tickets')
+                .insert(newTicket)
+                .select()
+                .single();
+
+            const ticketId = insData?.id || `ticket_${Date.now()}`;
             
             // Add locally to update UI immediately
             setSupportTickets(prev => [{
                 ...newTicket,
-                id: docRef.id,
-                createdAt: { toDate: () => new Date() } // Mock timestamp for local display immediately
+                id: ticketId,
+                createdAt: new Date().toISOString()
             } as any, ...prev]);
 
             toast.success("Reporte enviado con éxito");
@@ -413,10 +439,11 @@ export default function Profile() {
     };
 
     const handleDeleteAddress = async (addressId: string) => {
-        if (!user || (!userData?.addresses)) return;
+        const uid = user?.id || user?.uid;
+        if (!uid || (!userData?.addresses)) return;
         const newAddresses = userData.addresses.filter(a => a.id !== addressId);
         try {
-            await setDoc(doc(db, 'users', user.uid), { addresses: newAddresses }, { merge: true });
+            await supabase.from('profiles').update({ addresses: newAddresses, updated_at: new Date().toISOString() }).eq('id', uid);
         } catch (e) {
             console.error("Error deleting address", e);
             alert("No se pudo eliminar la dirección.");
@@ -424,13 +451,14 @@ export default function Profile() {
     };
 
     const handleSetDefaultAddress = async (addressId: string) => {
-        if (!user || (!userData?.addresses)) return;
+        const uid = user?.id || user?.uid;
+        if (!uid || (!userData?.addresses)) return;
         const newAddresses = userData.addresses.map(a => ({
             ...a,
             isDefault: a.id === addressId
         }));
         try {
-            await setDoc(doc(db, 'users', user.uid), { addresses: newAddresses }, { merge: true });
+            await supabase.from('profiles').update({ addresses: newAddresses, updated_at: new Date().toISOString() }).eq('id', uid);
         } catch (e) {
             console.error("Error setting default address", e);
             alert("No se pudo establecer como predeterminada.");
@@ -467,6 +495,22 @@ export default function Profile() {
         }
     };
 
+    const handleForgotPasswordSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!forgotEmail) return;
+        setIsSendingReset(true);
+        try {
+            await sendPasswordResetEmail(forgotEmail.trim());
+            setResetEmailSent(true);
+            toast.success("Correo de recuperación enviado con éxito.");
+        } catch (err: any) {
+            console.error("Error sending reset password email:", err);
+            toast.error(err.message || "Error al enviar el correo de recuperación.");
+        } finally {
+            setIsSendingReset(false);
+        }
+    };
+
     const handleGoogleReferralSubmit = async () => {
         if (!tempGoogleUser) return;
         if (!referralCodeInput) {
@@ -499,29 +543,49 @@ export default function Profile() {
     };
 
     const handleLogout = async () => {
-        await auth.signOut();
+        await supabase.auth.signOut();
         navigate('/');
     };
 
     const handleToggleNotifications = async () => {
-        if (!user) return;
+        const uid = user?.id || (user as any)?.uid;
+        if (!uid) return;
         setUpdatingNotifications(true);
         try {
-            const isEnabled = userData?.notificationsEnabled || (userData?.fcmTokens && userData.fcmTokens.length > 0);
+            const isEnabled = Boolean(
+                userData?.notificationsEnabled || 
+                userData?.notifications_enabled || 
+                (userData?.fcmTokens && userData.fcmTokens.length > 0) ||
+                (userData?.fcm_tokens && userData.fcm_tokens.length > 0)
+            );
             if (isEnabled) {
-                await disableNotifications(user.uid);
-                alert("Notificaciones desactivadas.");
+                await disableNotifications(uid);
+                setUserData((prev: any) => ({
+                    ...prev,
+                    notificationsEnabled: false,
+                    notifications_enabled: false,
+                    fcmTokens: [],
+                    fcm_tokens: []
+                }));
+                await refreshUserData();
+                toast.success("Notificaciones desactivadas");
             } else {
-                const result = await requestNotificationPermission(user.uid);
+                const result = await requestNotificationPermission(uid);
                 if (result.success) {
-                    alert("Notificaciones activadas con éxito! 🎉");
+                    setUserData((prev: any) => ({
+                        ...prev,
+                        notificationsEnabled: true,
+                        notifications_enabled: true
+                    }));
+                    await refreshUserData();
+                    toast.success("Notificaciones activadas con éxito 🎉");
                 } else if (result.error) {
-                    alert(result.error);
+                    toast.error(result.error);
                 }
             }
         } catch (err) {
             console.error("Error toggling notifications", err);
-            alert("Ocurrió un error al procesar tu solicitud.");
+            toast.error("Ocurrió un error al procesar tu solicitud.");
         } finally {
             setUpdatingNotifications(false);
         }
@@ -530,45 +594,130 @@ export default function Profile() {
     const handleCompleteProfile = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!user) return;
-        if (!profileForm.displayName || !profileForm.phone || !profileForm.cedula) {
-            alert("Por favor completa todos los campos (Nombre, Celular y Cédula).");
+        setProfileError(null);
+
+        const cleanDisplayName = profileForm.displayName.trim();
+        if (!cleanDisplayName) {
+            setProfileError("Por favor ingresa tu nombre completo.");
+            return;
+        }
+
+        // Phone validation: strip leading zero, check exactly 10 digits
+        let cleanPhone = profileForm.phone.replace(/\D/g, '');
+        if (cleanPhone.startsWith('0')) {
+            cleanPhone = cleanPhone.substring(1);
+        }
+        if (cleanPhone.length !== 10) {
+            setProfileError("El número de celular debe tener exactamente 10 dígitos (ej: 412 1234567).");
+            return;
+        }
+        const fullPhone = `+58${cleanPhone}`;
+
+        // Cédula validation: numeric, between 6 and 9 digits
+        const cleanCedula = profileForm.cedulaNumber.replace(/\D/g, '');
+        if (cleanCedula.length < 6 || cleanCedula.length > 9) {
+            setProfileError("La cédula de identidad debe contener entre 6 y 9 dígitos.");
+            return;
+        }
+        const fullCedula = `${profileForm.nationality}-${cleanCedula}`;
+
+        // Birthdate validation
+        if (!profileForm.birthdate) {
+            setProfileError("Por favor ingresa tu fecha de cumpleaños.");
+            return;
+        }
+
+        const birthDateObj = new Date(profileForm.birthdate);
+        const today = new Date();
+        if (isNaN(birthDateObj.getTime()) || birthDateObj >= today) {
+            setProfileError("Por favor ingresa una fecha de nacimiento válida.");
             return;
         }
 
         setCompletingProfile(true);
         try {
-            let photoURL = user.photoURL;
+            // Check for duplicate phone in another account
+            const { data: existingPhone, error: phoneErr } = await supabase
+                .from('profiles')
+                .select('id')
+                .eq('phone', fullPhone)
+                .neq('id', user.id)
+                .maybeSingle();
+
+            if (phoneErr) console.warn("Phone check warning:", phoneErr);
+            if (existingPhone) {
+                setProfileError(`El número de celular +58 ${cleanPhone} ya está registrado en otra cuenta.`);
+                setCompletingProfile(false);
+                return;
+            }
+
+            // Check for duplicate cédula in another account
+            const { data: existingCedula, error: cedulaErr } = await supabase
+                .from('profiles')
+                .select('id')
+                .eq('cedula', fullCedula)
+                .neq('id', user.id)
+                .maybeSingle();
+
+            if (cedulaErr) console.warn("Cédula check warning:", cedulaErr);
+            if (existingCedula) {
+                setProfileError(`La cédula de identidad ${fullCedula} ya está registrada en otra cuenta.`);
+                setCompletingProfile(false);
+                return;
+            }
+
+            let photoURL = userData?.photoURL || (user as any)?.user_metadata?.avatar_url || '';
 
             if (logoFile) {
-                const storageRef = ref(storage, `users/${user.uid}/profile_${Date.now()}`);
-                const snapshot = await uploadBytes(storageRef, logoFile);
-                photoURL = await getDownloadURL(snapshot.ref);
+                const fileExt = logoFile.name.split('.').pop() || 'jpg';
+                const filePath = `${user.id}/avatar_${Date.now()}.${fileExt}`;
+                const { error: uploadError } = await supabase.storage
+                    .from('avatars')
+                    .upload(filePath, logoFile, { upsert: true });
 
-                // Update Firebase Auth profile
-                await updateProfile(user, { photoURL });
+                if (!uploadError) {
+                    const { data: { publicUrl } } = supabase.storage
+                        .from('avatars')
+                        .getPublicUrl(filePath);
+                    photoURL = publicUrl;
+                }
             }
 
-            const updateData: any = {
-                displayName: profileForm.displayName,
-                phone: profileForm.phone,
-                cedula: profileForm.cedula,
-                gender: profileForm.gender,
-                updatedAt: serverTimestamp()
-            };
+            const { error: updateError } = await supabase
+                .from('profiles')
+                .update({
+                    full_name: cleanDisplayName,
+                    phone: fullPhone,
+                    cedula: fullCedula,
+                    birthdate: profileForm.birthdate,
+                    photo_url: photoURL || null,
+                    updated_at: new Date().toISOString()
+                })
+                .eq('id', user.id);
 
-            if (photoURL) {
-                updateData.photoURL = photoURL;
+            if (updateError) {
+                if (updateError.code === '23505' || updateError.message?.includes('duplicate key')) {
+                    if (updateError.message?.includes('phone')) {
+                        throw new Error("El número de teléfono ya está registrado en otra cuenta.");
+                    }
+                    if (updateError.message?.includes('cedula')) {
+                        throw new Error("La cédula de identidad ya está registrada en otra cuenta.");
+                    }
+                }
+                throw updateError;
             }
 
-            await setDoc(doc(db, 'users', user.uid), updateData, { merge: true });
+            if (refreshUserData) {
+                await refreshUserData();
+            }
 
-            // If explicit update profile was triggered from modal, we might want to close it here
+            toast.success("¡Perfil completado exitosamente! 🚀");
             setShowEditProfileModal(false);
             setLogoFile(null);
             setLogoPreview(null);
-        } catch (e) {
+        } catch (e: any) {
             console.error("Error updating profile", e);
-            alert("Ocurrió un error al guardar tus datos.");
+            setProfileError(e.message || "Ocurrió un error al guardar tus datos.");
         } finally {
             setCompletingProfile(false);
         }
@@ -576,26 +725,36 @@ export default function Profile() {
 
     const handleRechargeSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!user || (!rechargeAmount && !rechargeProof)) return;
+        const uid = user?.id || user?.uid;
+        if (!uid || (!rechargeAmount && !rechargeProof)) return;
 
         setIsRecharging(true);
         try {
             let proofUrl = '';
             if (rechargeProof) {
-                const storageRef = ref(storage, `wallet_recharges/${user.uid}/${Date.now()}_${rechargeProof.name}`);
-                const snapshot = await uploadBytes(storageRef, rechargeProof);
-                proofUrl = await getDownloadURL(snapshot.ref);
+                const ext = rechargeProof.name.split('.').pop() || 'jpg';
+                const path = `wallet_recharges/${uid}/${Date.now()}.${ext}`;
+                const { error: upErr } = await supabase.storage.from('store_assets').upload(path, rechargeProof, { upsert: true });
+                if (!upErr) {
+                    const { data: { publicUrl } } = supabase.storage.from('store_assets').getPublicUrl(path);
+                    proofUrl = publicUrl;
+                }
             }
 
-            await addDoc(collection(db, 'wallet_recharges'), {
-                userId: user.uid,
+            await supabase.from('wallet_recharges').insert({
+                user_id: uid,
+                userId: uid,
+                user_name: userData?.displayName || user.displayName || 'Usuario',
                 userName: userData?.displayName || user.displayName || 'Usuario',
+                user_phone: userData?.phone || '',
                 userPhone: userData?.phone || '',
                 amount: parseFloat(rechargeAmount),
+                proof_url: proofUrl,
                 proofUrl,
+                payment_ref: rechargeRef,
                 paymentRef: rechargeRef,
                 status: 'pending',
-                createdAt: serverTimestamp()
+                created_at: new Date().toISOString()
             });
 
             alert("¡Recarga enviada! Verificaremos los datos pronto.");
@@ -619,7 +778,7 @@ export default function Profile() {
                     className="w-80 h-32 flex items-center justify-center mb-8 cursor-pointer active:scale-95 transition-transform p-2 overflow-visible"
                 >
                     <img 
-                        src="https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/logo.png?alt=media&v=1.1" 
+                        src="https://xfialzrbbsdzzcjtefqo.supabase.co/storage/v1/object/public/store_assets/logo.png" 
                         alt="Deliexpress Logo"
                         className="w-auto h-full object-contain filter drop-shadow-xl"
                     />
@@ -720,67 +879,6 @@ export default function Profile() {
                                 <span className="text-slate-900 font-bold text-xs group-hover:text-primary transition-colors">¿No tienes cuenta? </span>
                                 <span className="text-slate-900 font-black text-xs group-hover:underline">Regístrate</span>
                             </button>
-                            <div className="flex items-center gap-4 my-2">
-                                <div className="h-px bg-slate-100 flex-1"></div>
-                                <span className="text-[10px] font-black text-slate-300 uppercase tracking-widest">¿trabajas con nuestros aliados?</span>
-                                <div className="h-px bg-slate-100 flex-1"></div>
-                            </div>
-                            <button
-                                onClick={() => {
-                                    if (isDemoMode()) {
-                                        setShowDemoAlert(true);
-                                        return;
-                                    }
-                                    const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-                                    if (isLocalhost) {
-                                        window.location.href = `${window.location.protocol}//meseros.localhost:${window.location.port}`;
-                                    } else {
-                                        window.location.href = 'https://meseros.deliexpress.app';
-                                    }
-                                }}
-                                className="w-full bg-slate-50 text-slate-500 py-4 rounded-2xl font-bold hover:bg-slate-100 transition-colors flex items-center justify-center gap-2"
-                            >
-                                <Shield className="w-5 h-5 opacity-50" />
-                                Acceso Meseros
-                            </button>
-
-                            <div className="flex items-center gap-4 my-2 pt-2">
-                                <div className="h-px bg-slate-100 flex-1"></div>
-                                <span className="text-[10px] font-black text-slate-300 uppercase tracking-widest">Emprende y se un freelancer en un 2x3</span>
-                                <div className="h-px bg-slate-100 flex-1"></div>
-                            </div>
-                            <button
-                                onClick={() => {
-                                    if (isDemoMode()) {
-                                        setShowDemoAlert(true);
-                                        return;
-                                    }
-                                    window.location.href = 'https://deliexpress.app/delivery/login';
-                                }}
-                                className="w-full bg-primary/10 text-slate-900 py-4 rounded-2xl font-bold hover:bg-primary/20 transition-colors flex items-center justify-center gap-2"
-                            >
-                                <Navigation className="w-5 h-5 opacity-50" />
-                                Acceso Delivery / Taxi
-                            </button>
-
-                            <div className="flex items-center gap-4 my-2 pt-2">
-                                <div className="h-px bg-slate-100 flex-1"></div>
-                                <span className="text-[10px] font-black text-slate-300 uppercase tracking-widest">¿Quieres que tu negocio crezca?</span>
-                                <div className="h-px bg-slate-100 flex-1"></div>
-                            </div>
-                            <button
-                                onClick={() => {
-                                    if (isDemoMode()) {
-                                        setShowDemoAlert(true);
-                                        return;
-                                    }
-                                    window.location.href = 'https://restaurante.deliexpress.app';
-                                }}
-                                className="w-full bg-green-500/10 text-green-600 py-4 rounded-2xl font-bold hover:bg-green-500/20 transition-colors flex items-center justify-center gap-2"
-                            >
-                                <Store className="w-5 h-5 opacity-50" />
-                                Conviértete en aliado y deja que te encuentren en un 2x3
-                            </button>
                         </>
                     )}
                 </div>
@@ -850,6 +948,23 @@ export default function Profile() {
                                         />
                                     </div>
 
+                                    {isLoginMode && (
+                                        <div className="flex justify-end pt-1">
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    setForgotEmail(email);
+                                                    setResetEmailSent(false);
+                                                    setShowEmailModal(false);
+                                                    setShowForgotPasswordModal(true);
+                                                }}
+                                                className="text-xs font-bold text-slate-500 hover:text-primary transition-colors"
+                                            >
+                                                ¿Olvidaste tu contraseña?
+                                            </button>
+                                        </div>
+                                    )}
+
                                     {!isLoginMode && (
                                         <div className="space-y-1">
                                             <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">{isForcedRegister ? "Código de Referido (Aplicado)" : "Código de Referido (Opcional)"}</label>
@@ -887,6 +1002,93 @@ export default function Profile() {
                                         </button>
                                     )}
                                 </form>
+                            </motion.div>
+                        </div>
+                    )}
+                </AnimatePresence>
+
+                {/* Forgot Password Modal */}
+                <AnimatePresence>
+                    {showForgotPasswordModal && (
+                        <div className="fixed inset-0 z-[115] flex items-center justify-center p-6 bg-black/60 backdrop-blur-sm">
+                            <motion.div
+                                initial={{ opacity: 0, scale: 0.9, y: 20 }}
+                                animate={{ opacity: 1, scale: 1, y: 0 }}
+                                exit={{ opacity: 0, scale: 0.9, y: 20 }}
+                                className="bg-white rounded-[32px] w-full max-w-sm shadow-2xl overflow-hidden"
+                            >
+                                <div className="p-8 border-b border-slate-50 flex items-center justify-between bg-slate-50/50">
+                                    <div>
+                                        <h3 className="text-xl font-black text-slate-900">
+                                            Recuperar Contraseña
+                                        </h3>
+                                        <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-0.5">
+                                            Te enviaremos un enlace a tu correo 📩
+                                        </p>
+                                    </div>
+                                    <button 
+                                        onClick={() => setShowForgotPasswordModal(false)} 
+                                        className="p-2 hover:bg-slate-200 rounded-xl transition-all"
+                                    >
+                                        <X className="w-5 h-5 text-slate-400" />
+                                    </button>
+                                </div>
+
+                                {resetEmailSent ? (
+                                    <div className="p-8 text-center space-y-4">
+                                        <div className="w-16 h-16 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto">
+                                            <CheckCircle className="w-8 h-8" />
+                                        </div>
+                                        <h4 className="text-lg font-black text-slate-900">¡Correo Enviado!</h4>
+                                        <p className="text-xs text-slate-500 font-medium leading-relaxed">
+                                            Hemos enviado las instrucciones para restablecer tu contraseña a <strong>{forgotEmail}</strong>. Revisa tu bandeja de entrada o spam.
+                                        </p>
+                                        <button
+                                            onClick={() => {
+                                                setShowForgotPasswordModal(false);
+                                                setShowEmailModal(true);
+                                            }}
+                                            className="w-full bg-primary text-slate-900 py-3.5 rounded-2xl font-bold shadow-lg shadow-primary/30"
+                                        >
+                                            Entendido, volver a Iniciar Sesión
+                                        </button>
+                                    </div>
+                                ) : (
+                                    <form onSubmit={handleForgotPasswordSubmit} className="p-8 space-y-4">
+                                        <div className="space-y-1">
+                                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Correo Electrónico</label>
+                                            <input
+                                                type="email"
+                                                required
+                                                value={forgotEmail}
+                                                onChange={(e) => setForgotEmail(e.target.value)}
+                                                placeholder="tu@correo.com"
+                                                className="w-full bg-slate-50 border-2 border-slate-100 focus:border-primary px-4 py-3 rounded-2xl outline-none font-bold text-slate-700 transition-all"
+                                            />
+                                        </div>
+                                        <button
+                                            type="submit"
+                                            disabled={isSendingReset}
+                                            className="w-full bg-primary text-slate-900 py-4 rounded-2xl font-bold shadow-lg shadow-primary/30 hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-70 flex items-center justify-center gap-2"
+                                        >
+                                            {isSendingReset ? (
+                                                <div className="w-5 h-5 border-2 border-slate-900 border-t-transparent rounded-full animate-spin"></div>
+                                            ) : (
+                                                "Enviar Enlace de Recuperación"
+                                            )}
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                setShowForgotPasswordModal(false);
+                                                setShowEmailModal(true);
+                                            }}
+                                            className="w-full text-slate-400 font-bold py-2 hover:text-slate-900 transition-colors text-xs text-center"
+                                        >
+                                            Volver al formulario de inicio
+                                        </button>
+                                    </form>
+                                )}
                             </motion.div>
                         </div>
                     )}
@@ -973,6 +1175,13 @@ export default function Profile() {
                     Necesitamos estos datos para poder procesar tus pedidos correctamente.
                 </p>
 
+                {profileError && (
+                    <div className="w-full max-w-sm mb-4 p-4 bg-red-50 border border-red-200 text-red-600 rounded-2xl text-xs font-semibold flex items-center gap-3">
+                        <AlertCircle className="w-5 h-5 shrink-0 text-red-500" />
+                        <span>{profileError}</span>
+                    </div>
+                )}
+
                 <form onSubmit={handleCompleteProfile} className="w-full max-w-sm space-y-4">
                     <div className="space-y-1">
                         <label className="text-xs font-bold text-slate-500 uppercase tracking-wider ml-1">Nombre Completo</label>
@@ -988,26 +1197,84 @@ export default function Profile() {
 
                     <div className="space-y-1">
                         <label className="text-xs font-bold text-slate-500 uppercase tracking-wider ml-1">Número de Celular</label>
-                        <input
-                            type="tel"
-                            required
-                            value={profileForm.phone}
-                            onChange={(e) => setProfileForm({ ...profileForm, phone: e.target.value })}
-                            className="w-full bg-slate-50 border-2 border-slate-100 focus:border-primary px-4 py-4 rounded-2xl outline-none font-bold text-slate-700 transition-all"
-                            placeholder="Ej. 04141234567"
-                        />
+                        <div className="flex rounded-2xl overflow-hidden border-2 border-slate-100 bg-slate-50 focus-within:border-primary transition-all">
+                            <div className="px-3.5 py-4 bg-slate-200/70 border-r border-slate-200 text-slate-700 font-black text-sm flex items-center gap-1.5 select-none shrink-0">
+                                <span>🇻🇪</span>
+                                <span>+58</span>
+                            </div>
+                            <input
+                                type="tel"
+                                required
+                                maxLength={10}
+                                value={profileForm.phone}
+                                onChange={(e) => {
+                                    let val = e.target.value.replace(/\D/g, '');
+                                    if (val.startsWith('0')) val = val.substring(1);
+                                    if (val.length <= 10) {
+                                        setProfileForm({ ...profileForm, phone: val });
+                                    }
+                                }}
+                                className="w-full bg-transparent px-4 py-4 outline-none font-bold text-slate-700 placeholder:text-slate-400 placeholder:font-normal"
+                                placeholder="412 1234567"
+                            />
+                        </div>
+                        <p className="text-[10px] text-slate-400 font-medium ml-1">Ingresa los 10 dígitos sin el cero inicial (ej: 412...)</p>
                     </div>
 
                     <div className="space-y-1">
                         <label className="text-xs font-bold text-slate-500 uppercase tracking-wider ml-1">Cédula de Identidad</label>
+                        <div className="flex rounded-2xl overflow-hidden border-2 border-slate-100 bg-slate-50 focus-within:border-primary transition-all">
+                            <div className="flex bg-slate-200/70 p-1 border-r border-slate-200 shrink-0">
+                                <button
+                                    type="button"
+                                    onClick={() => setProfileForm({ ...profileForm, nationality: 'V' })}
+                                    className={`px-3 py-2 rounded-xl text-xs font-black transition-all ${
+                                        profileForm.nationality === 'V' ? 'bg-primary text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-800'
+                                    }`}
+                                >
+                                    V
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setProfileForm({ ...profileForm, nationality: 'E' })}
+                                    className={`px-3 py-2 rounded-xl text-xs font-black transition-all ${
+                                        profileForm.nationality === 'E' ? 'bg-primary text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-800'
+                                    }`}
+                                >
+                                    E
+                                </button>
+                            </div>
+                            <input
+                                type="text"
+                                required
+                                maxLength={9}
+                                value={profileForm.cedulaNumber}
+                                onChange={(e) => {
+                                    const val = e.target.value.replace(/\D/g, '');
+                                    if (val.length <= 9) {
+                                        setProfileForm({ ...profileForm, cedulaNumber: val });
+                                    }
+                                }}
+                                className="w-full bg-transparent px-4 py-4 outline-none font-bold text-slate-700 placeholder:text-slate-400 placeholder:font-normal"
+                                placeholder="12345678"
+                            />
+                        </div>
+                        <p className="text-[10px] text-slate-400 font-medium ml-1">Selecciona V (Venezolano) o E (Extranjero)</p>
+                    </div>
+
+                    <div className="space-y-1">
+                        <label className="text-xs font-bold text-slate-500 uppercase tracking-wider ml-1 flex items-center gap-1.5">
+                            <Calendar className="w-3.5 h-3.5 text-primary" /> Fecha de Cumpleaños 🎂
+                        </label>
                         <input
-                            type="text"
+                            type="date"
                             required
-                            value={profileForm.cedula}
-                            onChange={(e) => setProfileForm({ ...profileForm, cedula: e.target.value })}
-                            className="w-full bg-slate-50 border-2 border-slate-100 focus:border-primary px-4 py-4 rounded-2xl outline-none font-bold text-slate-700 transition-all"
-                            placeholder="Ej. V-12345678"
+                            value={profileForm.birthdate}
+                            max={new Date().toISOString().split('T')[0]}
+                            onChange={(e) => setProfileForm({ ...profileForm, birthdate: e.target.value })}
+                            className="w-full bg-slate-50 border-2 border-slate-100 focus:border-primary px-4 py-4 rounded-2xl outline-none font-bold text-slate-700 transition-all cursor-pointer"
                         />
+                        <p className="text-[10px] text-slate-400 font-medium ml-1">¡Recibirás promociones y descuentos especiales en tu cumpleaños!</p>
                     </div>
 
                     <button
@@ -1016,7 +1283,7 @@ export default function Profile() {
                         className="w-full bg-primary text-slate-900 py-4 rounded-2xl font-bold shadow-lg shadow-primary/30 hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-70 mt-4 flex items-center justify-center gap-2"
                     >
                         {completingProfile ? (
-                            <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                            <div className="w-5 h-5 border-2 border-slate-900 border-t-transparent rounded-full animate-spin"></div>
                         ) : (
                             "Completar Mi Perfil"
                         )}
@@ -1063,8 +1330,9 @@ export default function Profile() {
                                     referrerPolicy="no-referrer"
                                     onError={(e) => {
                                         console.warn("Profile image failed to load, using fallback");
+                                        const nameForAvatar = userData?.displayName || (userData as any)?.full_name || (user as any)?.displayName || (user as any)?.user_metadata?.full_name || 'D';
                                         (e.target as HTMLImageElement).onerror = null;
-                                        (e.target as HTMLImageElement).src = `https://ui-avatars.com/api/?name=${encodeURIComponent(user?.displayName || 'D')}&background=random&color=fff`;
+                                        (e.target as HTMLImageElement).src = `https://ui-avatars.com/api/?name=${encodeURIComponent(nameForAvatar)}&background=random&color=fff`;
                                     }}
                                 />
                             ) : (
@@ -1072,7 +1340,9 @@ export default function Profile() {
                             )}
                         </div>
                         <div className="flex-1">
-                            <h2 className="text-2xl font-black">{user.displayName || 'Deliexpress Fan'}</h2>
+                            <h2 className="text-2xl font-black">
+                                {userData?.fullName || (userData as any)?.full_name || userData?.displayName || (user as any)?.displayName || (user as any)?.user_metadata?.full_name || (user as any)?.user_metadata?.name || user?.email?.split('@')[0] || 'Usuario'}
+                            </h2>
                             <div className="flex flex-col gap-1">
                                 <div className="flex items-center gap-1 text-white/80 text-xs">
                                     <Mail className="w-3 h-3" />
@@ -1438,14 +1708,14 @@ export default function Profile() {
                                         </div>
                                     </div>
                                     <div
-                                        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${userData?.notificationsEnabled || (userData?.fcmTokens && userData.fcmTokens.length > 0) ? 'bg-green-500' : 'bg-slate-300'
+                                        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${userData?.notificationsEnabled || userData?.notifications_enabled || (userData?.fcmTokens && userData.fcmTokens.length > 0) || (userData?.fcm_tokens && userData.fcm_tokens.length > 0) ? 'bg-green-500' : 'bg-slate-300'
                                             }`}
                                     >
                                         {updatingNotifications ? (
                                             <div className="ml-1 w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
                                         ) : (
                                             <span
-                                                className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${userData?.notificationsEnabled || (userData?.fcmTokens && userData.fcmTokens.length > 0) ? 'translate-x-6' : 'translate-x-1'
+                                                className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${userData?.notificationsEnabled || userData?.notifications_enabled || (userData?.fcmTokens && userData.fcmTokens.length > 0) || (userData?.fcm_tokens && userData.fcm_tokens.length > 0) ? 'translate-x-6' : 'translate-x-1'
                                                     }`}
                                             />
                                         )}
@@ -1454,23 +1724,29 @@ export default function Profile() {
 
                                 <div
                                     onClick={async () => {
-                                        if (!user) return;
+                                        const uid = user?.id || user?.uid;
+                                        if (!uid) return;
                                         setUpdatingBiometrics(true);
                                         try {
                                             if (userData?.biometricLockEnabled) {
                                                 // Disable
-                                                await setDoc(doc(db, 'users', user.uid), {
-                                                    biometricLockEnabled: false
-                                                }, { merge: true });
+                                                await supabase.from('profiles').update({
+                                                    biometricLockEnabled: false,
+                                                    biometric_lock_enabled: false,
+                                                    updated_at: new Date().toISOString()
+                                                }).eq('id', uid);
                                                 toast.success('Bloqueo biométrico desactivado');
                                             } else {
                                                 // Enable
-                                                const biometricData = await registerBiometric(user.uid, user.email || '');
+                                                const biometricData = await registerBiometric(uid, user.email || '');
                                                 if (biometricData) {
-                                                    await setDoc(doc(db, 'users', user.uid), {
+                                                    await supabase.from('profiles').update({
                                                         biometricLockEnabled: true,
-                                                        biometricCredentialId: biometricData.id
-                                                    }, { merge: true });
+                                                        biometric_lock_enabled: true,
+                                                        biometricCredentialId: biometricData.id,
+                                                        biometric_credential_id: biometricData.id,
+                                                        updated_at: new Date().toISOString()
+                                                    }).eq('id', uid);
                                                     toast.success('Bloqueo biométrico activado');
                                                 } else {
                                                     toast.error('No se pudo activar la biometría');
@@ -1511,30 +1787,97 @@ export default function Profile() {
 
                                 <div
                                     onClick={async () => {
-                                        if (!user) return;
+                                        const uid = user?.id || (user as any)?.uid;
+                                        if (!uid) return;
                                         setUpdatingLocation(true);
                                         try {
-                                            if (userData?.locationPermissionsAllowed) {
+                                            const isCurrentlyAllowed = Boolean(userData?.location_permissions_allowed ?? userData?.locationPermissionsAllowed ?? (localStorage.getItem('locationPermissionsAllowed') === 'true'));
+                                            if (isCurrentlyAllowed) {
                                                 // Disable
-                                                await updateDoc(doc(db, 'users', user.uid), {
-                                                    locationPermissionsAllowed: false
-                                                });
+                                                await supabase.from('profiles').update({
+                                                    location_permissions_allowed: false,
+                                                    locationPermissionsAllowed: false,
+                                                    updated_at: new Date().toISOString()
+                                                }).eq('id', uid);
+                                                setUserData((prev: any) => ({ ...prev, location_permissions_allowed: false, locationPermissionsAllowed: false }));
+                                                localStorage.setItem('locationPermissionsAllowed', 'false');
+                                                await refreshUserData();
                                                 toast.success('Ubicación en tiempo real desactivada');
                                             } else {
                                                 // Enable
-                                                const permission = await Geolocation.requestPermissions();
-                                                if (permission.location === 'granted') {
-                                                    await updateDoc(doc(db, 'users', user.uid), {
-                                                        locationPermissionsAllowed: true
+                                                let granted = false;
+                                                let userCoords: { lat: number; lng: number } | null = null;
+
+                                                if (Capacitor.isNativePlatform()) {
+                                                    try {
+                                                        const permission = await Geolocation.requestPermissions();
+                                                        granted = permission.location === 'granted';
+                                                        if (granted) {
+                                                            const pos = await Geolocation.getCurrentPosition();
+                                                            userCoords = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+                                                        }
+                                                    } catch (capErr) {
+                                                        console.warn('Capacitor geolocation permission error:', capErr);
+                                                    }
+                                                } else {
+                                                    if (!navigator.geolocation) {
+                                                        toast.error('Tu navegador no soporta geolocalización');
+                                                        return;
+                                                    }
+                                                    userCoords = await new Promise<{ lat: number; lng: number } | null>((resolve) => {
+                                                        navigator.geolocation.getCurrentPosition(
+                                                            (pos) => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+                                                            (geoErr) => {
+                                                                console.warn('High accuracy geolocation failed, trying standard accuracy:', geoErr);
+                                                                navigator.geolocation.getCurrentPosition(
+                                                                    (pos) => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+                                                                    (fallbackErr) => {
+                                                                        console.warn('Fallback geolocation failed:', fallbackErr);
+                                                                        const savedLat = localStorage.getItem('userLat');
+                                                                        const savedLng = localStorage.getItem('userLng');
+                                                                        if (savedLat && savedLng) {
+                                                                            resolve({ lat: parseFloat(savedLat), lng: parseFloat(savedLng) });
+                                                                        } else {
+                                                                            resolve(null);
+                                                                        }
+                                                                    },
+                                                                    { enableHighAccuracy: false, timeout: 8000, maximumAge: 300000 }
+                                                                );
+                                                            },
+                                                            { enableHighAccuracy: true, timeout: 6000, maximumAge: 60000 }
+                                                        );
                                                     });
+                                                    granted = !!userCoords;
+                                                }
+
+                                                if (granted) {
+                                                    const payload: any = {
+                                                        location_permissions_allowed: true,
+                                                        locationPermissionsAllowed: true,
+                                                        updated_at: new Date().toISOString()
+                                                    };
+                                                    if (userCoords) {
+                                                        payload.coords = userCoords;
+                                                        localStorage.setItem('userLat', userCoords.lat.toString());
+                                                        localStorage.setItem('userLng', userCoords.lng.toString());
+                                                    }
+                                                    await supabase.from('profiles').update(payload).eq('id', uid);
+                                                    setUserData((prev: any) => ({ 
+                                                        ...prev, 
+                                                        location_permissions_allowed: true, 
+                                                        locationPermissionsAllowed: true,
+                                                        coords: userCoords || prev?.coords 
+                                                    }));
+                                                    localStorage.setItem('locationPermissionsAllowed', 'true');
+                                                    await refreshUserData();
                                                     toast.success('Ubicación en tiempo real activada');
                                                 } else {
                                                     toast.error('Se requiere permiso de ubicación para activar esta función');
                                                 }
                                             }
-                                        } catch (err) {
-                                            console.error(err);
-                                            toast.error('Error al configurar ubicación');
+                                        } catch (err: any) {
+                                            console.error('Error toggling location permission:', err);
+                                            toast.error(err?.message || 'Error al configurar ubicación');
                                         } finally {
                                             setUpdatingLocation(false);
                                         }
@@ -1551,14 +1894,14 @@ export default function Profile() {
                                         </div>
                                     </div>
                                     <div
-                                        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${userData?.locationPermissionsAllowed ? 'bg-emerald-500' : 'bg-slate-300'
+                                        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${userData?.locationPermissionsAllowed || userData?.location_permissions_allowed || localStorage.getItem('locationPermissionsAllowed') === 'true' ? 'bg-emerald-500' : 'bg-slate-300'
                                             }`}
                                     >
                                         {updatingLocation ? (
                                             <div className="ml-1 w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
                                         ) : (
                                             <span
-                                                className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${userData?.locationPermissionsAllowed ? 'translate-x-6' : 'translate-x-1'
+                                                className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${userData?.locationPermissionsAllowed || userData?.location_permissions_allowed || localStorage.getItem('locationPermissionsAllowed') === 'true' ? 'translate-x-6' : 'translate-x-1'
                                                     }`}
                                             />
                                         )}
@@ -1647,7 +1990,7 @@ export default function Profile() {
                     className="mt-8 text-center p-6 grayscale opacity-50 cursor-pointer active:scale-95 transition-transform"
                     onClick={() => window.location.href = 'https://deliexpress.app'}
                 >
-                    <img src="https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/logo.png?alt=media&v=1.1" alt="Deliexpress" className="h-12 mx-auto mb-2" />
+                    <img src="https://xfialzrbbsdzzcjtefqo.supabase.co/storage/v1/object/public/store_assets/logo.png" alt="Deliexpress" className="h-12 mx-auto mb-2" />
                     <p className="text-[10px] uppercase tracking-widest font-bold text-slate-400">Hecho con ❤️ en Venezuela</p>
                 </div>
             </div>
@@ -1670,10 +2013,10 @@ export default function Profile() {
                                     isDefault: isFirst || currentAddresses.length === 0
                                 };
 
-                                const userRef = doc(db, 'users', user.uid);
-                                await setDoc(userRef, {
-                                    addresses: [...currentAddresses, newAddress]
-                                }, { merge: true });
+                                await supabase.from('profiles').update({
+                                    addresses: [...currentAddresses, newAddress],
+                                    updated_at: new Date().toISOString()
+                                }).eq('id', user.id || user.uid);
                                 setShowAddressPicker(false);
                             } catch (err) {
                                 console.error("Error saving address:", err);
@@ -1889,6 +2232,13 @@ export default function Profile() {
                                             <UserIcon className="w-4 h-4" /> Información Básica
                                         </h3>
 
+                                        {profileError && (
+                                            <div className="p-4 bg-red-50 border border-red-200 text-red-600 rounded-2xl text-xs font-semibold flex items-center gap-3">
+                                                <AlertCircle className="w-5 h-5 shrink-0 text-red-500" />
+                                                <span>{profileError}</span>
+                                            </div>
+                                        )}
+
                                         <div className="space-y-2">
                                             <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Nombre Completo</label>
                                             <input
@@ -1903,32 +2253,83 @@ export default function Profile() {
 
                                         <div className="space-y-2">
                                             <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Número de Celular</label>
-                                            <div className="relative">
+                                            <div className="flex rounded-2xl overflow-hidden border border-slate-100 bg-slate-50 focus-within:bg-white focus-within:border-primary transition-all">
+                                                <div className="px-3.5 py-4 bg-slate-200/70 border-r border-slate-200 text-slate-700 font-black text-sm flex items-center gap-1.5 select-none shrink-0">
+                                                    <span>🇻🇪</span>
+                                                    <span>+58</span>
+                                                </div>
                                                 <input
                                                     type="tel"
                                                     required
+                                                    maxLength={10}
                                                     value={profileForm.phone}
-                                                    onChange={(e) => setProfileForm({ ...profileForm, phone: e.target.value })}
-                                                    className="w-full bg-slate-50 border border-slate-100 rounded-2xl p-4 pl-12 font-bold text-slate-700 focus:bg-white focus:border-primary transition-all outline-none"
-                                                    placeholder="Ej. 04141234567"
+                                                    onChange={(e) => {
+                                                        let val = e.target.value.replace(/\D/g, '');
+                                                        if (val.startsWith('0')) val = val.substring(1);
+                                                        if (val.length <= 10) {
+                                                            setProfileForm({ ...profileForm, phone: val });
+                                                        }
+                                                    }}
+                                                    className="w-full bg-transparent p-4 outline-none font-bold text-slate-700 placeholder:text-slate-400 placeholder:font-normal"
+                                                    placeholder="412 1234567"
                                                 />
-                                                <Smartphone className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-300" />
                                             </div>
+                                            <p className="text-[9px] text-slate-400 font-bold ml-2">10 dígitos sin el cero inicial</p>
                                         </div>
 
                                         <div className="space-y-2">
                                             <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Cédula de Identidad</label>
-                                            <div className="relative">
+                                            <div className="flex rounded-2xl overflow-hidden border border-slate-100 bg-slate-50 focus-within:bg-white focus-within:border-primary transition-all">
+                                                <div className="flex bg-slate-200/70 p-1 border-r border-slate-200 shrink-0">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setProfileForm({ ...profileForm, nationality: 'V' })}
+                                                        className={`px-3 py-2 rounded-xl text-xs font-black transition-all ${
+                                                            profileForm.nationality === 'V' ? 'bg-primary text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-800'
+                                                        }`}
+                                                    >
+                                                        V
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setProfileForm({ ...profileForm, nationality: 'E' })}
+                                                        className={`px-3 py-2 rounded-xl text-xs font-black transition-all ${
+                                                            profileForm.nationality === 'E' ? 'bg-primary text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-800'
+                                                        }`}
+                                                    >
+                                                        E
+                                                    </button>
+                                                </div>
                                                 <input
                                                     type="text"
                                                     required
-                                                    value={profileForm.cedula}
-                                                    onChange={(e) => setProfileForm({ ...profileForm, cedula: e.target.value })}
-                                                    className="w-full bg-slate-50 border border-slate-100 rounded-2xl p-4 pl-12 font-bold text-slate-700 focus:bg-white focus:border-primary transition-all outline-none"
-                                                    placeholder="Ej. V-12345678"
+                                                    maxLength={9}
+                                                    value={profileForm.cedulaNumber}
+                                                    onChange={(e) => {
+                                                        const val = e.target.value.replace(/\D/g, '');
+                                                        if (val.length <= 9) {
+                                                            setProfileForm({ ...profileForm, cedulaNumber: val });
+                                                        }
+                                                    }}
+                                                    className="w-full bg-transparent p-4 outline-none font-bold text-slate-700 placeholder:text-slate-400 placeholder:font-normal"
+                                                    placeholder="12345678"
                                                 />
-                                                <UserIcon className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-300" />
                                             </div>
+                                        </div>
+
+                                        <div className="space-y-2">
+                                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4 flex items-center gap-1.5">
+                                                <Calendar className="w-3.5 h-3.5 text-primary" /> Fecha de Cumpleaños 🎂
+                                            </label>
+                                            <input
+                                                type="date"
+                                                required
+                                                value={profileForm.birthdate}
+                                                max={new Date().toISOString().split('T')[0]}
+                                                onChange={(e) => setProfileForm({ ...profileForm, birthdate: e.target.value })}
+                                                className="w-full bg-slate-50 border border-slate-100 rounded-2xl p-4 font-bold text-slate-700 focus:bg-white focus:border-primary transition-all outline-none cursor-pointer"
+                                            />
+                                            <p className="text-[9px] text-slate-400 font-bold ml-2">Para promociones especiales en tu día</p>
                                         </div>
 
                                         <div className="space-y-2">
@@ -2069,7 +2470,7 @@ export default function Profile() {
                                                 }}
                                             >
                                                 <img
-                                                    src="https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/logo.png?alt=media&v=1.1"
+                                                    src="https://xfialzrbbsdzzcjtefqo.supabase.co/storage/v1/object/public/store_assets/logo.png"
                                                     alt="Deliexpress"
                                                     className="w-full h-full object-contain brightness-0 invert"
                                                 />

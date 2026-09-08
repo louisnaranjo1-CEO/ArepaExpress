@@ -1,14 +1,15 @@
-import { MapPin, ChevronDown, ChevronRight, Bell, Search, SlidersHorizontal, Utensils, Star, Heart, Clock, Store, Truck, Zap, Tag, X, Layout, Gift, ArrowUp } from 'lucide-react';
+import { MapPin, ChevronDown, ChevronRight, Bell, Search, SlidersHorizontal, Utensils, Star, Heart, Clock, Store, Truck, Zap, Tag, X, Layout, Gift, ArrowUp, Map as MapIcon } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useState, useEffect, useMemo } from 'react';
-import { collection, getDocs, query, where, doc, updateDoc, increment, collectionGroup, limit, serverTimestamp } from 'firebase/firestore';
-import { db, auth } from '../lib/firebase';
-import { Restaurant, Product } from '../lib/seed';
+import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import { calculateDistance, formatDistance } from '../lib/geo';
 import CitySelectorModal from '../components/CitySelectorModal';
 import WelcomePopup from '../components/WelcomePopup';
+import ExploreMapModal from '../components/ExploreMapModal';
+import { getCityCoordinates } from '../lib/venezuelaData';
+import { GOOGLE_MAPS_API_KEY } from '../lib/mapsConfig';
 import { recommendationsService } from '../lib/recommendations';
 import { toast } from 'react-hot-toast';
 import { vibrate } from '../utils/haptics';
@@ -50,6 +51,7 @@ export default function Home() {
 
   const { bcvRate } = useCurrency();
   const [isCalculatorOpen, setIsCalculatorOpen] = useState(false);
+  const [isMapModalOpen, setIsMapModalOpen] = useState(false);
 
   // Recommendations State
   const [isNewUser, setIsNewUser] = useState(true);
@@ -72,23 +74,35 @@ export default function Home() {
 
 
   useEffect(() => {
-    // If user has manually selected a city, we prioritize that
-    if (manualCity && manualState) {
-      setLocationName(`${manualCity}`);
-      return; // Don't override with GPS if manual is set
+    // 1. Check if we already have coordinates in localStorage
+    const savedLat = localStorage.getItem('userLat');
+    const savedLng = localStorage.getItem('userLng');
+    if (savedLat && savedLng && !isNaN(parseFloat(savedLat)) && !isNaN(parseFloat(savedLng))) {
+      setUserLocation({ lat: parseFloat(savedLat), lng: parseFloat(savedLng) });
+    } else if (manualCity) {
+      const fallback = getCityCoordinates(manualCity, manualState);
+      if (fallback) {
+        setUserLocation(fallback);
+      }
     }
 
-    // If we have a saved address, use it.
+    if (manualCity) {
+      setLocationName(`${manualCity}`);
+    }
+
+    // 2. If we have a saved address in user profile, use it
     const defaultAddress = userData?.addresses?.find((a: any) => a.isDefault) || userData?.address;
-    if (defaultAddress) {
+    if (defaultAddress && defaultAddress.lat && defaultAddress.lng) {
       const coords = { lat: defaultAddress.lat, lng: defaultAddress.lng };
       setUserLocation(coords);
-      setLocationName(defaultAddress.reference.split(',')[0]);
+      if (!manualCity) {
+        setLocationName(defaultAddress.reference?.split(',')[0] || defaultAddress.city || 'Ubicación');
+      }
       return;
     }
 
-    // Detect location if no saved address and no manual city
-    if (navigator.geolocation && !manualCity) {
+    // 3. Detect high-accuracy GPS coordinates
+    if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
         async (position) => {
           const coords = {
@@ -96,61 +110,87 @@ export default function Home() {
             lng: position.coords.longitude
           };
           setUserLocation(coords);
+          localStorage.setItem('userLat', coords.lat.toString());
+          localStorage.setItem('userLng', coords.lng.toString());
 
-          // Reverse geocoding
-          try {
-            const response = await fetch(`https://maps.googleapis.com/maps/api/geocode/json?latlng=${coords.lat},${coords.lng}&key=AIzaSyCb1c-p1R6AZGetk8YzKiLuxjaxjmPqJX8`);
-            const data = await response.json();
-            if (data.results && data.results[0]) {
-              const addressComponents = data.results[0].address_components;
-              const city = addressComponents.find((c: any) => c.types.includes('locality'))?.long_name ||
-                addressComponents.find((c: any) => c.types.includes('administrative_area_level_2'))?.long_name;
-              const state = addressComponents.find((c: any) => c.types.includes('administrative_area_level_1'))?.short_name;
-              if (city && state) {
-                setLocationName(`${city}`);
-                // Sync with Firestore if logged in
-                if (userData?.uid || auth.currentUser?.uid) {
-                  const uid = userData?.uid || auth.currentUser?.uid;
-                  try {
-                    await updateDoc(doc(db, 'users', uid), {
-                      lastCity: city,
-                      lastState: state,
-                      lastLocationUpdate: serverTimestamp()
-                    });
-                  } catch (e) {
-                    console.error("Error syncing location:", e);
+          // Reverse geocoding only if user hasn't explicitly picked a manual city
+          if (!manualCity) {
+            try {
+              const response = await fetch(`https://maps.googleapis.com/maps/api/geocode/json?latlng=${coords.lat},${coords.lng}&key=${GOOGLE_MAPS_API_KEY}`);
+              const data = await response.json();
+              if (data.results && data.results[0]) {
+                const addressComponents = data.results[0].address_components;
+                const city = addressComponents.find((c: any) => c.types.includes('locality'))?.long_name ||
+                  addressComponents.find((c: any) => c.types.includes('administrative_area_level_2'))?.long_name;
+                const state = addressComponents.find((c: any) => c.types.includes('administrative_area_level_1'))?.short_name;
+                if (city) {
+                  setLocationName(`${city}`);
+                  localStorage.setItem('userCity', city);
+                  setManualCity(city);
+                  if (state) {
+                    localStorage.setItem('userState', state);
+                    setManualState(state);
+                  }
+                  const uid = userData?.uid || userData?.id;
+                  if (uid) {
+                    try {
+                      await supabase.from('profiles').update({
+                        last_city: city,
+                        lastCity: city,
+                        last_state: state,
+                        lastState: state,
+                        coords: coords,
+                        updated_at: new Date().toISOString()
+                      }).eq('id', uid);
+                    } catch (e) {
+                      console.error("Error syncing location:", e);
+                    }
                   }
                 }
               }
+            } catch (error) {
+              console.error("Geocoding error:", error);
             }
-          } catch (error) {
-            console.error("Geocoding error:", error);
-            setLocationName('Ubicación Desconocida');
           }
         },
         (error) => {
-          console.error("Error getting location:", error);
-          setLocationName('Ubicación Desconocida');
-        }
+          console.warn("Geolocation warning/permission:", error);
+          if (!manualCity && !savedLat) {
+            setLocationName('Seleccionar ciudad');
+          }
+        },
+        { enableHighAccuracy: true, timeout: 8000 }
       );
-    } else if (!manualCity) {
-      setLocationName('Ubicación Desconocida');
+    } else if (!manualCity && !savedLat) {
+      setLocationName('Seleccionar ciudad');
     }
   }, [userData, manualCity, manualState]);
 
   useEffect(() => {
     const fetchBanners = async () => {
       try {
-        const querySnapshot = await getDocs(collection(db, 'banners'));
-        const fetchedBanners = querySnapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data()
-        })) as any[];
+        const { data: fetchedBanners } = await supabase
+          .from('banners')
+          .select('*');
 
-        const activeBanners = fetchedBanners.filter(b => b.isActive && (b.type === 'top_banner' || b.type === 'fidelization' || !b.type));
+        const mappedBanners = (fetchedBanners || []).map((b: any) => ({
+          ...b,
+          imageUrl: b.image_url || b.imageUrl || '',
+          linkUrl: b.link_url || b.linkUrl || '',
+          isActive: b.is_active !== undefined ? b.is_active : b.isActive,
+          visibilityScope: b.visibility_scope || b.visibilityScope || 'national',
+          targetState: b.target_state || b.targetState || '',
+          targetCity: b.target_city || b.targetCity || '',
+          orderIndex: b.order_index ?? b.orderIndex ?? 0
+        }));
+
+        const activeBanners = mappedBanners.filter((b: any) => 
+          b.isActive && 
+          (b.type === 'top_banner' || b.type === 'fidelization' || !b.type)
+        );
 
         // Location filtering
-        const filteredBanners = activeBanners.filter(banner => {
+        const filteredBanners = activeBanners.filter((banner: any) => {
           if (isDemoMode()) {
             return banner.visibilityScope === 'national';
           }
@@ -182,10 +222,13 @@ export default function Home() {
       try {
         // Fetch Settings
         try {
-            const settingsSnap = await getDocs(collection(db, 'settings'));
-            const globalSettings = settingsSnap.docs.find(d => d.id === 'global');
+            const { data: globalSettings } = await supabase
+              .from('system_configs')
+              .select('*')
+              .eq('id', 'global')
+              .maybeSingle();
             if (globalSettings) {
-               setCategoryMode(globalSettings.data().categoryMode || 'manual');
+               setCategoryMode(globalSettings.data?.categoryMode || globalSettings.categoryMode || 'manual');
             }
         } catch (e) {
             console.warn("Could not fetch global settings:", e);
@@ -194,12 +237,21 @@ export default function Home() {
         }
 
         // Fetch Categories
-        const categoriesSnap = await getDocs(collection(db, 'global_categories'));
-        const fetchedCategories = categoriesSnap.docs.map(doc => ({
+        const { data: fetchedCategories } = await supabase
+          .from('global_categories')
+          .select('*');
+
+        const cats = (fetchedCategories || []).map((doc: any) => ({
           id: doc.id,
-          ...doc.data()
+          name: doc.name,
+          icon: doc.icon,
+          parentId: doc.parent_id ?? doc.parentId,
+          isActive: doc.is_active ?? doc.isActive,
+          isFeatured: doc.is_featured ?? doc.isFeatured,
+          clickCount: doc.click_count ?? doc.clickCount ?? 0,
+          ...doc
         })) as Category[];
-        setCategories(fetchedCategories.filter(c => c.isActive));
+        setCategories(cats.filter(c => c.isActive));
 
         // Fetch All Restaurants for filtering logic and profiles
         let fetchedRestaurants: Restaurant[] = [];
@@ -225,15 +277,41 @@ export default function Home() {
                 };
             });
         } else {
-            const rQuery = query(collection(db, 'restaurants'));
-            const rSnap = await getDocs(rQuery);
-            fetchedRestaurants = rSnap.docs.map(doc => ({
-               id: doc.id,
-               ...doc.data()
-            })) as Restaurant[];
+            const { data: rSnap } = await supabase
+              .from('comercios')
+              .select('*');
 
-            // Filter inactive restaurants
-            fetchedRestaurants = fetchedRestaurants.filter(r => r.isActive !== false);
+            fetchedRestaurants = (rSnap || []).map((doc: any) => {
+               const isVisible = (doc.is_visible === true || doc.isVisible === true);
+               const isActive = (doc.is_active !== false && doc.isActive !== false);
+               const isVerified = (doc.is_verified === true || doc.isVerified === true || doc.verification_status === 'verified');
+               return {
+                  ...doc,
+                  id: doc.id,
+                  name: doc.name,
+                  category: doc.category,
+                  whatsapp: doc.whatsapp,
+                  image: doc.image_url || doc.image,
+                  logoUrl: doc.logo_url || doc.logoUrl || doc.logo,
+                  coverUrl: doc.cover_url || doc.coverUrl,
+                  rating: doc.rating,
+                  reviews: doc.reviews,
+                  isActive,
+                  is_active: isActive,
+                  isVisible,
+                  is_visible: isVisible,
+                  isVerified,
+                  is_verified: isVerified,
+                  hasCashea: doc.has_cashea ?? doc.hasCashea,
+                  hasTwoByThree: doc.has_two_by_three ?? doc.hasTwoByThree,
+                  location: doc.location,
+               };
+            }) as Restaurant[];
+
+            // Filter inactive and non-visible restaurants
+            fetchedRestaurants = fetchedRestaurants.filter(r => 
+               r.isActive && r.isVisible
+            );
 
             // Update distance strings and compute sorting weights
             fetchedRestaurants = fetchedRestaurants.map(rest => {
@@ -281,7 +359,6 @@ export default function Home() {
             }
         }
         setRestaurants(fetchedRestaurants);
-        const cityResIds = new Set(fetchedRestaurants.map(r => r.id));
 
         // Fetch All Products for Recommendations from top restaurants in the area
         let allProducts: RecommendedProduct[] = [];
@@ -298,20 +375,30 @@ export default function Home() {
                 }))
             );
         } else {
-            await Promise.all(topRestForProducts.map(async (rest) => {
-                const pSnap = await getDocs(query(collection(db, 'restaurants', rest.id, 'products'), limit(15)));
-                pSnap.docs.forEach(d => {
-                    const data = d.data();
+            const restIds = topRestForProducts.map(r => r.id);
+            if (restIds.length > 0) {
+                const { data: pData } = await supabase
+                  .from('products')
+                  .select('*')
+                  .in('restaurant_id', restIds)
+                  .limit(200);
+
+                (pData || []).forEach((d: any) => {
+                    const r = fetchedRestaurants.find((rest: any) => rest.id === (d.restaurant_id || d.restaurantId));
                     allProducts.push({ 
                       id: d.id, 
-                      restaurantId: rest.id, 
-                      restaurantLogo: (rest as any).logoUrl || rest.image,
-                      restaurantHasCashea: rest.hasCashea,
-                      restaurantHasTwoByThree: rest.hasTwoByThree,
-                      ...data 
+                      restaurantId: d.restaurant_id || d.restaurantId, 
+                      restaurantLogo: r ? (r.logoUrl || r.image) : '',
+                      restaurantHasCashea: r?.hasCashea,
+                      restaurantHasTwoByThree: r?.hasTwoByThree,
+                      name: d.name,
+                      price: d.price,
+                      image: d.image_url || d.image,
+                      category: d.category,
+                      ...d 
                     } as RecommendedProduct);
                 });
-            }));
+            }
         }
 
         const history = recommendationsService.getViewedProductsHistory();
@@ -365,14 +452,15 @@ export default function Home() {
         }
 
         // Use official Cashea icon from global_icons
-        const iconsSnap = await getDocs(collection(db, 'global_icons'));
-        const icons = iconsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })) as any[];
-        const cashea = icons.find(icon => icon.name?.toLowerCase() === 'cashea');
+        const { data: icons } = await supabase
+          .from('global_icons')
+          .select('*');
+        const cashea = (icons || []).find((icon: any) => icon.name?.toLowerCase() === 'cashea');
 
         if (cashea) {
-          setCasheaIcon(cashea.imageUrl || cashea.url);
+          setCasheaIcon(cashea.image_url || cashea.imageUrl || cashea.url);
         } else {
-          setCasheaIcon("https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/logo%20cashea.png?alt=media&token=5b266100-3323-41bb-a5a4-23957ce678a1");
+          setCasheaIcon("https://xfialzrbbsdzzcjtefqo.supabase.co/storage/v1/object/public/store_assets/logo_cashea.png");
         }
 
       } catch (error: any) {
@@ -384,6 +472,33 @@ export default function Home() {
 
     fetchBanners();
     fetchData();
+
+    // Realtime subscription on 'comercios' table: instantly updates UI when a store visibility changes or is deleted
+    const comerciosChannel = supabase
+      .channel('client-home-comercios-sync')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'comercios' },
+        () => {
+          fetchData();
+        }
+      )
+      .subscribe();
+
+    // Re-fetch when user returns to the tab or app
+    const handleFocus = () => {
+      if (document.visibilityState === 'visible') {
+        fetchData();
+      }
+    };
+    window.addEventListener('visibilitychange', handleFocus);
+    window.addEventListener('focus', handleFocus);
+
+    return () => {
+      supabase.removeChannel(comerciosChannel);
+      window.removeEventListener('visibilitychange', handleFocus);
+      window.removeEventListener('focus', handleFocus);
+    };
   }, [userLocation, manualCity, manualState]);
 
   // Combined effect for Banner Timer
@@ -412,9 +527,15 @@ export default function Home() {
 
   const handleCategoryClick = async (category: Category) => {
     try {
-      updateDoc(doc(db, 'global_categories', category.id), {
-        clickCount: increment(1)
-      });
+      supabase
+        .from('global_categories')
+        .update({
+          click_count: (category.clickCount || 0) + 1,
+          clickCount: (category.clickCount || 0) + 1
+        })
+        .eq('id', category.id)
+        .then(() => {})
+        .catch(console.error);
 
       // Navigate to search with sector filter if it's a sector
       if (!category.parentId) {
@@ -434,17 +555,27 @@ export default function Home() {
     setManualState(state);
     setManualCity(city);
     setLocationName(`${city}`);
-    // Sync with Firestore if logged in
-    if (userData?.uid || auth.currentUser?.uid) {
-      const uid = userData?.uid || auth.currentUser?.uid;
-      updateDoc(doc(db, 'users', uid), {
-        lastCity: city,
-        lastState: state,
-        lastLocationUpdate: serverTimestamp()
-      }).catch(console.error);
+    
+    // Set coordinates for city immediately so distance calculation never displays 'Distancia desconocida'
+    const cityCoords = getCityCoordinates(city, state);
+    if (cityCoords) {
+      setUserLocation(cityCoords);
+      localStorage.setItem('userLat', cityCoords.lat.toString());
+      localStorage.setItem('userLng', cityCoords.lng.toString());
     }
-    // Clear GPS coordinates so distance doesn't mess up sorting if user is physically far away
-    setUserLocation(null);
+
+    // Sync with Supabase if logged in
+    const uid = userData?.uid || userData?.id;
+    if (uid) {
+      supabase.from('profiles').update({
+        last_city: city,
+        lastCity: city,
+        last_state: state,
+        lastState: state,
+        ...(cityCoords ? { coords: cityCoords } : {}),
+        updated_at: new Date().toISOString()
+      }).eq('id', uid).then(() => {}).catch(console.error);
+    }
   };
 
   return (
@@ -519,17 +650,28 @@ export default function Home() {
           </div>
         </div>
 
-        {/* Location Selector */}
-        <button
-          onClick={() => setShowLocationTutorial(true)}
-          className="flex items-center gap-1.5 text-secondary hover:text-black transition-all active:scale-95 py-1"
-        >
-          <MapPin className="w-5 h-5 shrink-0" />
-          <span className="text-[15px] font-normal leading-none tracking-tight truncate max-w-[200px]">
-            {locationName !== 'Buscando...' && locationName !== 'Ubicación Desconocida' ? locationName : 'Ingresa tu ubicación'}
-          </span>
-          <ChevronRight className="w-5 h-5 transition-colors shrink-0" />
-        </button>
+        {/* Location Selector & Map Explore Button */}
+        <div className="flex items-center justify-between gap-2">
+          <button
+            onClick={() => setShowLocationTutorial(true)}
+            className="flex items-center gap-1.5 text-secondary hover:text-black transition-all active:scale-95 py-1 min-w-0"
+          >
+            <MapPin className="w-5 h-5 shrink-0" />
+            <span className="text-[15px] font-normal leading-none tracking-tight truncate max-w-[200px]">
+              {locationName !== 'Buscando...' && locationName !== 'Ubicación Desconocida' ? locationName : 'Ingresa tu ubicación'}
+            </span>
+            <ChevronRight className="w-5 h-5 transition-colors shrink-0" />
+          </button>
+
+          <button
+            onClick={() => { vibrate(20); setIsMapModalOpen(true); }}
+            className="flex items-center gap-1.5 bg-black/10 hover:bg-black/20 text-secondary text-xs font-black px-3 py-1.5 rounded-full transition-all active:scale-95 shrink-0 border border-black/5"
+            title="Explorar comercios en el mapa"
+          >
+            <MapIcon className="w-3.5 h-3.5 text-secondary" />
+            <span>Ver mapa</span>
+          </button>
+        </div>
       </header>
 
       {/* Banner Section Background Fade */}
@@ -582,6 +724,14 @@ export default function Home() {
         onSelect={handleCitySelect}
         initialState={manualState}
         initialCity={manualCity}
+      />
+
+      {/* Free Interactive Leaflet/OSM Map Modal */}
+      <ExploreMapModal
+        isOpen={isMapModalOpen}
+        onClose={() => setIsMapModalOpen(false)}
+        restaurants={restaurants}
+        userLocation={userLocation}
       />
 
       {/* App Info Modal */}
@@ -719,22 +869,22 @@ export default function Home() {
               {banners.map((banner) => (
                 <div key={banner.id} className="min-w-full h-full">
                   <a
-                    href={banner.linkUrl || '#'}
+                    href={banner.linkUrl || banner.link_url || '#'}
                     onClick={(e) => {
                       if (banner.type === 'fidelization') {
                         e.preventDefault();
                         navigate(`/rewards?openBannerId=${banner.id}`);
-                      } else if (banner.linkUrl && banner.linkUrl.startsWith('/')) {
+                      } else if ((banner.linkUrl || banner.link_url) && (banner.linkUrl || banner.link_url).startsWith('/')) {
                         e.preventDefault();
-                        navigate(banner.linkUrl);
+                        navigate(banner.linkUrl || banner.link_url);
                       }
                     }}
-                    target={banner.linkUrl && !banner.linkUrl.startsWith('/') ? "_blank" : undefined}
+                    target={(banner.linkUrl || banner.link_url) && !(banner.linkUrl || banner.link_url).startsWith('/') ? "_blank" : undefined}
                     rel="noopener noreferrer"
                     className="w-full h-full block"
                   >
                     <img
-                      src={banner.imageUrl}
+                      src={banner.imageUrl || banner.image_url}
                       alt={banner.title}
                       className="w-full h-full object-cover select-none pointer-events-none"
                       draggable={false}
@@ -830,12 +980,12 @@ export default function Home() {
                 ))
             ) : restaurants.length > 0 ? (
                 restaurants.map((restaurant) => {
-                const coverImg = (restaurant as any).coverUrl || restaurant.image;
-                const logoImg = (restaurant as any).logoUrl || restaurant.image;
+                const coverImg = (restaurant as any).coverUrl || (restaurant as any).cover_url || '';
+                const logoImg = (restaurant as any).logoUrl || (restaurant as any).logo_url || restaurant.image || '';
 
                 return (
                     <Link key={restaurant.id} to={`/restaurant/${restaurant.id}`} onClick={() => vibrate(30)} className="group relative flex flex-col gap-3">
-                    <div className="relative w-full aspect-[16/10] overflow-hidden rounded-xl shadow-sm bg-slate-100">
+                    <div className="relative w-full aspect-[16/10] overflow-hidden rounded-xl shadow-sm bg-slate-900">
                         <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent z-10"></div>
                         <div className="absolute top-3 left-3 z-20 bg-white/90 backdrop-blur-sm px-2.5 py-1 rounded-full flex items-center gap-1 shadow-sm">
                         <Star className="w-4 h-4 text-highlight fill-highlight" />
@@ -849,7 +999,7 @@ export default function Home() {
                         {restaurant.hasCashea && (
                         <div className="absolute top-3 right-12 z-20 w-10 h-10 bg-yellow-400 backdrop-blur rounded-xl p-1.5 shadow-xl border border-white/20 flex items-center justify-center animate-in zoom-in duration-500 hover:scale-110 transition-transform">
                             <img
-                            src={casheaIcon || "https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/logo%20cashea.png?alt=media&token=5b266100-3323-41bb-a5a4-23957ce678a1"}
+                            src={casheaIcon || "https://xfialzrbbsdzzcjtefqo.supabase.co/storage/v1/object/public/store_assets/logo_cashea.png"}
                             alt="Cashea"
                             className="w-full h-full object-contain"
                             />
@@ -868,9 +1018,9 @@ export default function Home() {
                             style={{ backgroundImage: `url('${coverImg}?q=80&w=800&auto=format&fit=crop')` }}
                         ></div>
                         ) : (
-                        <div className="w-full h-full flex flex-col items-center justify-center bg-slate-50 text-slate-300">
-                            <Store className="w-12 h-12 mb-2 opacity-50" />
-                            <span className="text-[10px] font-bold uppercase tracking-widest opacity-50">{restaurant.name}</span>
+                        <div className="w-full h-full bg-gradient-to-br from-slate-800 via-slate-900 to-indigo-950 flex flex-col items-center justify-center text-slate-400 p-4">
+                            <Store className="w-12 h-12 mb-2 text-white/30" />
+                            <span className="text-[11px] font-black uppercase tracking-widest text-white/50 text-center">{restaurant.name}</span>
                         </div>
                         )}
 
@@ -990,7 +1140,7 @@ function ProductGrid({ title, products, casheaIcon }: { title: string, products:
                   {/* Cashea Badge */}
                   {product.restaurantHasCashea && (
                     <div className="w-6 h-6 bg-yellow-400 rounded-full flex items-center justify-center shadow-sm" title="Cashea">
-                      <img src={casheaIcon || "https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/logo%20cashea.png?alt=media&token=5b266100-3323-41bb-a5a4-23957ce678a1"} alt="Cashea" className="w-4 h-4 object-contain" />
+                      <img src={casheaIcon || "https://xfialzrbbsdzzcjtefqo.supabase.co/storage/v1/object/public/store_assets/logo_cashea.png"} alt="Cashea" className="w-4 h-4 object-contain" />
                     </div>
                   )}
                   {/* 2x3 Resuelve Badge */}

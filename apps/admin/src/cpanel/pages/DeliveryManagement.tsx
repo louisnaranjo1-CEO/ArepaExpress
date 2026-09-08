@@ -200,6 +200,22 @@ _Enviado desde Deliexpress App_`
         try {
             if (status === 'rejected') {
                 const driver = drivers.find(d => d.id === id);
+
+                // 1. Borrar todos los archivos de la carpeta en Storage
+                try {
+                    const { data: storageFiles } = await supabase.storage
+                        .from('documents')
+                        .list(`delivery_docs/${id}`);
+
+                    if (storageFiles && storageFiles.length > 0) {
+                        const filePaths = storageFiles.map(f => `delivery_docs/${id}/${f.name}`);
+                        await supabase.storage.from('documents').remove(filePaths);
+                    }
+                } catch (listErr) {
+                    console.warn("Error listando carpeta de documentos:", listErr);
+                }
+
+                // 2. Borrar por URLs específicas si estuvieran en documents o store_assets
                 if (driver && driver.documents) {
                     const urls = [
                         driver.documents.selfieUrl,
@@ -210,23 +226,42 @@ _Enviado desde Deliexpress App_`
 
                     for (const url of urls) {
                         try {
-                            const path = url.split('/documents/')[1] || url.split('/store_assets/')[1] || url;
-                            await supabase.storage.from('store_assets').remove([path]);
-                            await supabase.storage.from('documents').remove([path]);
+                            if (url.includes('/documents/')) {
+                                const path = url.split('/documents/')[1];
+                                if (path) await supabase.storage.from('documents').remove([path]);
+                            } else if (url.includes('/store_assets/')) {
+                                const path = url.split('/store_assets/')[1];
+                                if (path) await supabase.storage.from('store_assets').remove([path]);
+                            }
                         } catch (err) {
                             console.error("Error deleting file during rejection:", url, err);
                         }
                     }
                 }
 
-                // Delete update requests for this driver
+                // 3. Eliminar solicitudes de actualización y registro del driver
                 await supabase.from('delivery_update_requests').delete().eq('driver_id', id);
                 await supabase.from('drivers').delete().eq('id', id);
-                alert("Piloto rechazado. Se eliminó el perfil, solicitudes de actualización y documentos correctamente.");
+
+                // Actualizar estado local inmediatamente
+                setDrivers(prev => prev.filter(d => d.id !== id));
+                alert("Piloto rechazado. Se eliminaron permanentemente todas sus imágenes, documentos y solicitudes.");
             } else {
+                const driver = drivers.find(d => d.id === id);
+                if (status === 'active' && driver) {
+                    const targetRole = (driver.vehicleType === 'carro' || driver.vehicleType === 'ejecutivo') ? 'conductor' : 'aliado';
+                    const { data: userProf } = await supabase.from('profiles').select('role').eq('id', id).maybeSingle();
+                    if (userProf?.role !== 'admin') {
+                        await supabase.from('profiles').update({ role: targetRole }).eq('id', id);
+                    }
+                }
+
                 await driversApi.updateStatus(id, status === 'active', status === 'active' ? 'active' : 'offline');
-                // Also update the 'status' field in the 'drivers' table
+                // Actualizar status en tabla drivers
                 await supabase.from('drivers').update({ status }).eq('id', id);
+
+                setDrivers(prev => prev.map(d => d.id === id ? { ...d, status, isOnline: status === 'active' } : d));
+                alert(status === 'active' ? "¡Piloto aprobado con éxito!" : "Piloto desactivado.");
             }
             setSelectedDriver(null);
         } catch (error) {

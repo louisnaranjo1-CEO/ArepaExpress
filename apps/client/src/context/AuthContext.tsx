@@ -26,12 +26,20 @@ export interface UserData {
     points?: number;
     total_referrals?: number;
     locationPermissionsAllowed?: boolean;
+    location_permissions_allowed?: boolean;
     biometricLockEnabled?: boolean;
+    biometric_lock_enabled?: boolean;
+    notificationsEnabled?: boolean;
+    notifications_enabled?: boolean;
+    fcmTokens?: string[];
+    fcm_tokens?: string[];
+    coords?: { lat: number; lng: number };
 }
 
 interface AuthContextType {
     user: User | null;
     userData: UserData | null;
+    setUserData: React.Dispatch<React.SetStateAction<UserData | null>>;
     loading: boolean;
     isProfileComplete: boolean;
     isUnlocked: boolean;
@@ -43,6 +51,7 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType>({ 
     user: null, 
     userData: null, 
+    setUserData: () => {},
     loading: true, 
     isProfileComplete: false,
     isUnlocked: true,
@@ -106,6 +115,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                     gender: data.gender,
                     photoURL: profilePhoto,
                     points: data.points,
+                    locationPermissionsAllowed: data.location_permissions_allowed ?? data.locationPermissionsAllowed ?? false,
+                    location_permissions_allowed: data.location_permissions_allowed ?? data.locationPermissionsAllowed ?? false,
+                    notificationsEnabled: data.notifications_enabled ?? data.notificationsEnabled ?? false,
+                    notifications_enabled: data.notifications_enabled ?? data.notificationsEnabled ?? false,
+                    biometricLockEnabled: data.biometric_lock_enabled ?? data.biometricLockEnabled ?? false,
+                    biometric_lock_enabled: data.biometric_lock_enabled ?? data.biometricLockEnabled ?? false,
+                    fcmTokens: data.fcm_tokens ?? data.fcmTokens ?? [],
+                    fcm_tokens: data.fcm_tokens ?? data.fcmTokens ?? [],
                 } as UserData);
             } else {
                 setUserData({
@@ -174,6 +191,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                                 gender: updated.gender,
                                 photoURL: updatedPhoto,
                                 points: updated.points,
+                                locationPermissionsAllowed: updated.location_permissions_allowed ?? updated.locationPermissionsAllowed ?? prev?.locationPermissionsAllowed ?? false,
+                                location_permissions_allowed: updated.location_permissions_allowed ?? updated.locationPermissionsAllowed ?? prev?.location_permissions_allowed ?? false,
+                                notificationsEnabled: updated.notifications_enabled ?? updated.notificationsEnabled ?? prev?.notificationsEnabled ?? false,
+                                notifications_enabled: updated.notifications_enabled ?? updated.notificationsEnabled ?? prev?.notifications_enabled ?? false,
+                                biometricLockEnabled: updated.biometric_lock_enabled ?? updated.biometricLockEnabled ?? prev?.biometricLockEnabled ?? false,
+                                biometric_lock_enabled: updated.biometric_lock_enabled ?? updated.biometricLockEnabled ?? prev?.biometric_lock_enabled ?? false,
+                                fcmTokens: updated.fcm_tokens ?? updated.fcmTokens ?? prev?.fcmTokens ?? [],
+                                fcm_tokens: updated.fcm_tokens ?? updated.fcmTokens ?? prev?.fcm_tokens ?? [],
                             }));
                         }
                     )
@@ -282,13 +307,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                     gender: data.gender,
                     photoURL: profilePhoto,
                     points: data.points,
+                    locationPermissionsAllowed: data.location_permissions_allowed ?? data.locationPermissionsAllowed ?? prev?.locationPermissionsAllowed ?? false,
+                    location_permissions_allowed: data.location_permissions_allowed ?? data.locationPermissionsAllowed ?? prev?.location_permissions_allowed ?? false,
+                    notificationsEnabled: data.notifications_enabled ?? data.notificationsEnabled ?? prev?.notificationsEnabled ?? false,
+                    notifications_enabled: data.notifications_enabled ?? data.notificationsEnabled ?? prev?.notifications_enabled ?? false,
+                    biometricLockEnabled: data.biometric_lock_enabled ?? data.biometricLockEnabled ?? prev?.biometricLockEnabled ?? false,
+                    biometric_lock_enabled: data.biometric_lock_enabled ?? data.biometricLockEnabled ?? prev?.biometric_lock_enabled ?? false,
+                    fcmTokens: data.fcm_tokens ?? data.fcmTokens ?? prev?.fcmTokens ?? [],
+                    fcm_tokens: data.fcm_tokens ?? data.fcmTokens ?? prev?.fcm_tokens ?? [],
                 }));
             }
         }
     };
 
     return (
-        <AuthContext.Provider value={{ user, userData, loading, isProfileComplete, isUnlocked, setIsUnlocked, currentLocation, refreshUserData }}>
+        <AuthContext.Provider value={{ user, userData, setUserData, loading, isProfileComplete, isUnlocked, setIsUnlocked, currentLocation, refreshUserData }}>
             {children}
             {sessionTerminated && (
                 <div className="fixed inset-0 z-[9999] flex items-center justify-center p-6 bg-black/80 backdrop-blur-md">

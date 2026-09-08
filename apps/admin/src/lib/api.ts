@@ -159,7 +159,7 @@ export const driversApi = {
             .from('drivers')
             .select(`
                 *,
-                profiles:id ( full_name, email, phone )
+                profiles:profiles!drivers_id_fkey ( full_name, email, phone )
             `)
             .eq('id', uid)
             .single();
@@ -210,7 +210,7 @@ export const driversApi = {
             .from('drivers')
             .select(`
                 *,
-                profiles:id ( full_name, email, phone )
+                profiles:profiles!drivers_id_fkey ( full_name, email, phone )
             `);
             
         if (error) throw error;

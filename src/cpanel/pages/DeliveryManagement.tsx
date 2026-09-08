@@ -171,41 +171,67 @@ _Enviado desde Deliexpress App_`
                         driver.documents.licenseUrl
                     ].filter(Boolean);
 
+                // 1. Borrar todos los archivos de la carpeta en Storage
+                try {
+                    const { data: storageFiles } = await supabase.storage
+                        .from('documents')
+                        .list(`delivery_docs/${id}`);
+
+                    if (storageFiles && storageFiles.length > 0) {
+                        const filePaths = storageFiles.map(f => `delivery_docs/${id}/${f.name}`);
+                        await supabase.storage.from('documents').remove(filePaths);
+                    }
+                } catch (listErr) {
+                    console.warn("Error listando carpeta de documentos:", listErr);
+                }
+
+                // 2. Borrar por URLs específicas si estuvieran en documents o store_assets
+                if (driver && driver.documents) {
+                    const urls = [
+                        driver.documents.selfieUrl,
+                        driver.documents.vehicleUrl,
+                        (driver.documents as any).vehicleImageUrl,
+                        driver.documents.licenseUrl
+                    ].filter(Boolean);
+
                     for (const url of urls) {
                         try {
-                            const fileRef = ref(storage, url);
-                            await deleteObject(fileRef);
+                            if (url.includes('/documents/')) {
+                                const path = url.split('/documents/')[1];
+                                if (path) await supabase.storage.from('documents').remove([path]);
+                            } else if (url.includes('/store_assets/')) {
+                                const path = url.split('/store_assets/')[1];
+                                if (path) await supabase.storage.from('store_assets').remove([path]);
+                            }
                         } catch (err) {
                             console.error("Error deleting file during rejection:", url, err);
                         }
                     }
                 }
 
-                // Delete update requests for this driver
-                const qUpdates = query(collection(db, 'delivery_update_requests'), where('driverId', '==', id));
-                const updateSnaps = await getDocs(qUpdates);
-                for (const docUpd of updateSnaps.docs) {
-                    // Try to delete files in update request too if they exist
-                    const updData = docUpd.data();
-                    if (updData.newData && updData.newData.documents) {
-                        const updUrls = [
-                            updData.newData.documents.selfieUrl,
-                            updData.newData.documents.vehicleUrl,
-                            updData.newData.documents.licenseUrl
-                        ].filter(Boolean);
-                        for (const u of updUrls) {
-                            try { await deleteObject(ref(storage, u)); } catch (e) { }
-                        }
+                // 3. Eliminar solicitudes de actualización y registro del driver
+                await supabase.from('delivery_update_requests').delete().eq('driver_id', id);
+                await supabase.from('drivers').delete().eq('id', id);
+
+                // Actualizar estado local inmediatamente
+                setDrivers(prev => prev.filter(d => d.id !== id));
+                alert("Piloto rechazado. Se eliminaron permanentemente todas sus imágenes, documentos y solicitudes.");
+            } else {
+                const driver = drivers.find(d => d.id === id);
+                if (status === 'active' && driver) {
+                    const targetRole = (driver.vehicleType === 'carro' || driver.vehicleType === 'ejecutivo') ? 'conductor' : 'aliado';
+                    const { data: userProf } = await supabase.from('profiles').select('role').eq('id', id).maybeSingle();
+                    if (userProf?.role !== 'admin') {
+                        await supabase.from('profiles').update({ role: targetRole }).eq('id', id);
                     }
-                    await deleteDoc(docUpd.ref);
                 }
 
-                await supabase.from('drivers').delete().eq('id', id);
-                alert("Piloto rechazado. Se eliminó el perfil, solicitudes de actualización y documentos correctamente.");
-            } else {
                 await driversApi.updateStatus(id, status === 'active', status === 'active' ? 'active' : 'offline');
-                // Also update the 'status' field in the 'drivers' table
+                // Actualizar status en tabla drivers
                 await supabase.from('drivers').update({ status }).eq('id', id);
+
+                setDrivers(prev => prev.map(d => d.id === id ? { ...d, status, isOnline: status === 'active' } : d));
+                alert(status === 'active' ? "¡Piloto aprobado con éxito!" : "Piloto desactivado.");
             }
             setSelectedDriver(null);
         } catch (error) {
