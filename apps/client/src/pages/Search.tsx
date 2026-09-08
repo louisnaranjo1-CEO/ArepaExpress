@@ -7,6 +7,7 @@ import FilterModal, { FilterState } from '../components/FilterModal';
 import { vibrate } from '../utils/haptics';
 import { isDemoMode } from '../lib/env';
 import { DEMO_RESTAURANTS } from '../lib/demoData';
+import { calculateDistance, formatDistance } from '../lib/geo';
 
 export interface Category {
     id: string;
@@ -399,17 +400,28 @@ export default function Search() {
                             ))
                         ) : filteredRestaurants.length > 0 ? (
                             filteredRestaurants.map((res) => {
-                                const coverImg = (res as any).coverUrl || res.image;
-                                const logoImg = (res as any).logoUrl || res.image;
+                                const coverImg = (res as any).coverUrl || (res as any).cover_url || '';
+                                const logoImg = (res as any).logoUrl || (res as any).logo_url || res.image || '';
+
+                                const distStr = (() => {
+                                    const latStr = localStorage.getItem('userLat');
+                                    const lngStr = localStorage.getItem('userLng');
+                                    if (latStr && lngStr && res.location?.coords) {
+                                        const d = calculateDistance(parseFloat(latStr), parseFloat(lngStr), res.location.coords.lat, res.location.coords.lng);
+                                        return formatDistance(d);
+                                    }
+                                    return res.distance && res.distance !== 'Distancia desconocida' ? res.distance : 'Cerca de ti';
+                                })();
 
                                 return (
                                     <Link to={`/restaurant/${res.id}`} key={res.id} onClick={() => vibrate(30)} className="block group relative bg-white rounded-[32px] overflow-hidden shadow-xl shadow-slate-200/50 border border-slate-100 hover:border-primary/20 transition-all hover:scale-[1.01] active:scale-[0.99] cursor-pointer">
-                                        <div className="relative h-48 overflow-hidden bg-slate-100">
+                                        <div className="relative h-48 overflow-hidden bg-slate-900">
                                             {coverImg ? (
                                                 <img src={coverImg} alt={res.name} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" />
                                             ) : (
-                                                <div className="w-full h-full flex flex-col items-center justify-center bg-slate-50 text-slate-300">
-                                                    <Store className="w-12 h-12 mb-2 opacity-50" />
+                                                <div className="w-full h-full bg-gradient-to-br from-slate-800 via-slate-900 to-indigo-950 flex flex-col items-center justify-center text-slate-400 p-4">
+                                                    <Store className="w-12 h-12 mb-2 text-white/30" />
+                                                    <span className="text-xs font-black uppercase tracking-widest text-white/50">{res.name}</span>
                                                 </div>
                                             )}
                                             <div className="absolute top-4 left-4 bg-white/90 backdrop-blur px-3 py-1.5 rounded-full flex items-center gap-1 shadow-sm border border-white/50">
@@ -448,7 +460,7 @@ export default function Search() {
                                                     <span>•</span>
                                                     <div className="flex items-center gap-1 text-blue-500">
                                                         <MapPin className="w-3 h-3" />
-                                                        <span>{res.distance}</span>
+                                                        <span>{distStr}</span>
                                                     </div>
                                                 </div>
                                             </div>

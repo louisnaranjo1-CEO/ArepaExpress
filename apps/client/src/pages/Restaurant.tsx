@@ -518,12 +518,12 @@ export default function RestaurantPage() {
         <div
           className="absolute inset-0 bg-cover bg-center"
           style={{
-            backgroundImage: `linear-gradient(180deg, rgba(0,0,0,0.5) 0%, rgba(0,0,0,0.2) 50%, rgba(0,0,0,0.7) 100%)${restaurant.coverUrl || restaurant.image ? `, url("${restaurant.coverUrl || restaurant.image}")` : ''}`
+            backgroundImage: `linear-gradient(180deg, rgba(0,0,0,0.5) 0%, rgba(0,0,0,0.2) 50%, rgba(0,0,0,0.7) 100%)${restaurant.coverUrl || (restaurant as any).cover_url ? `, url("${restaurant.coverUrl || (restaurant as any).cover_url}")` : ''}`
           }}
         >
-          {!(restaurant.coverUrl || restaurant.image) && (
-            <div className="w-full h-full flex flex-col items-center justify-center text-white/20">
-              <Store className="w-16 h-16 mb-2" />
+          {!(restaurant.coverUrl || (restaurant as any).cover_url) && (
+            <div className="w-full h-full bg-gradient-to-br from-slate-900 via-slate-800 to-indigo-950 flex flex-col items-center justify-center text-white/20">
+              <Store className="w-16 h-16 mb-2 text-white/30" />
             </div>
           )}
         </div>

@@ -1,4 +1,4 @@
-import { MapPin, ChevronDown, ChevronRight, Bell, Search, SlidersHorizontal, Utensils, Star, Heart, Clock, Store, Truck, Zap, Tag, X, Layout, Gift, ArrowUp } from 'lucide-react';
+import { MapPin, ChevronDown, ChevronRight, Bell, Search, SlidersHorizontal, Utensils, Star, Heart, Clock, Store, Truck, Zap, Tag, X, Layout, Gift, ArrowUp, Map as MapIcon } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useState, useEffect, useMemo } from 'react';
@@ -7,6 +7,8 @@ import { useAuth } from '../context/AuthContext';
 import { calculateDistance, formatDistance } from '../lib/geo';
 import CitySelectorModal from '../components/CitySelectorModal';
 import WelcomePopup from '../components/WelcomePopup';
+import ExploreMapModal from '../components/ExploreMapModal';
+import { getCityCoordinates } from '../lib/venezuelaData';
 import { recommendationsService } from '../lib/recommendations';
 import { toast } from 'react-hot-toast';
 import { vibrate } from '../utils/haptics';
@@ -48,6 +50,7 @@ export default function Home() {
 
   const { bcvRate } = useCurrency();
   const [isCalculatorOpen, setIsCalculatorOpen] = useState(false);
+  const [isMapModalOpen, setIsMapModalOpen] = useState(false);
 
   // Recommendations State
   const [isNewUser, setIsNewUser] = useState(true);
@@ -70,23 +73,35 @@ export default function Home() {
 
 
   useEffect(() => {
-    // If user has manually selected a city, we prioritize that
-    if (manualCity && manualState) {
-      setLocationName(`${manualCity}`);
-      return; // Don't override with GPS if manual is set
+    // 1. Check if we already have coordinates in localStorage
+    const savedLat = localStorage.getItem('userLat');
+    const savedLng = localStorage.getItem('userLng');
+    if (savedLat && savedLng && !isNaN(parseFloat(savedLat)) && !isNaN(parseFloat(savedLng))) {
+      setUserLocation({ lat: parseFloat(savedLat), lng: parseFloat(savedLng) });
+    } else if (manualCity) {
+      const fallback = getCityCoordinates(manualCity, manualState);
+      if (fallback) {
+        setUserLocation(fallback);
+      }
     }
 
-    // If we have a saved address, use it.
+    if (manualCity) {
+      setLocationName(`${manualCity}`);
+    }
+
+    // 2. If we have a saved address in user profile, use it
     const defaultAddress = userData?.addresses?.find((a: any) => a.isDefault) || userData?.address;
-    if (defaultAddress) {
+    if (defaultAddress && defaultAddress.lat && defaultAddress.lng) {
       const coords = { lat: defaultAddress.lat, lng: defaultAddress.lng };
       setUserLocation(coords);
-      setLocationName(defaultAddress.reference.split(',')[0]);
+      if (!manualCity) {
+        setLocationName(defaultAddress.reference?.split(',')[0] || defaultAddress.city || 'Ubicación');
+      }
       return;
     }
 
-    // Detect location if no saved address and no manual city
-    if (navigator.geolocation && !manualCity) {
+    // 3. Detect high-accuracy GPS coordinates
+    if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
         async (position) => {
           const coords = {
@@ -94,47 +109,59 @@ export default function Home() {
             lng: position.coords.longitude
           };
           setUserLocation(coords);
+          localStorage.setItem('userLat', coords.lat.toString());
+          localStorage.setItem('userLng', coords.lng.toString());
 
-          // Reverse geocoding
-          try {
-            const response = await fetch(`https://maps.googleapis.com/maps/api/geocode/json?latlng=${coords.lat},${coords.lng}&key=AIzaSyCb1c-p1R6AZGetk8YzKiLuxjaxjmPqJX8`);
-            const data = await response.json();
-            if (data.results && data.results[0]) {
-              const addressComponents = data.results[0].address_components;
-              const city = addressComponents.find((c: any) => c.types.includes('locality'))?.long_name ||
-                addressComponents.find((c: any) => c.types.includes('administrative_area_level_2'))?.long_name;
-              const state = addressComponents.find((c: any) => c.types.includes('administrative_area_level_1'))?.short_name;
-              if (city && state) {
-                setLocationName(`${city}`);
-                // Sync with Supabase if logged in
-                const uid = userData?.uid || userData?.id;
-                if (uid) {
-                  try {
-                    await supabase.from('profiles').update({
-                      last_city: city,
-                      lastCity: city,
-                      last_state: state,
-                      lastState: state,
-                      updated_at: new Date().toISOString()
-                    }).eq('id', uid);
-                  } catch (e) {
-                    console.error("Error syncing location:", e);
+          // Reverse geocoding only if user hasn't explicitly picked a manual city
+          if (!manualCity) {
+            try {
+              const response = await fetch(`https://maps.googleapis.com/maps/api/geocode/json?latlng=${coords.lat},${coords.lng}&key=AIzaSyCb1c-p1R6AZGetk8YzKiLuxjaxjmPqJX8`);
+              const data = await response.json();
+              if (data.results && data.results[0]) {
+                const addressComponents = data.results[0].address_components;
+                const city = addressComponents.find((c: any) => c.types.includes('locality'))?.long_name ||
+                  addressComponents.find((c: any) => c.types.includes('administrative_area_level_2'))?.long_name;
+                const state = addressComponents.find((c: any) => c.types.includes('administrative_area_level_1'))?.short_name;
+                if (city) {
+                  setLocationName(`${city}`);
+                  localStorage.setItem('userCity', city);
+                  setManualCity(city);
+                  if (state) {
+                    localStorage.setItem('userState', state);
+                    setManualState(state);
+                  }
+                  const uid = userData?.uid || userData?.id;
+                  if (uid) {
+                    try {
+                      await supabase.from('profiles').update({
+                        last_city: city,
+                        lastCity: city,
+                        last_state: state,
+                        lastState: state,
+                        coords: coords,
+                        updated_at: new Date().toISOString()
+                      }).eq('id', uid);
+                    } catch (e) {
+                      console.error("Error syncing location:", e);
+                    }
                   }
                 }
               }
+            } catch (error) {
+              console.error("Geocoding error:", error);
             }
-          } catch (error) {
-            console.error("Geocoding error:", error);
-            setLocationName('Ubicación Desconocida');
           }
         },
         (error) => {
-          console.error("Error getting location:", error);
-          setLocationName('Ubicación Desconocida');
-        }
+          console.warn("Geolocation warning/permission:", error);
+          if (!manualCity && !savedLat) {
+            setLocationName('Seleccionar ciudad');
+          }
+        },
+        { enableHighAccuracy: true, timeout: 8000 }
       );
-    } else if (!manualCity) {
-      setLocationName('Ubicación Desconocida');
+    } else if (!manualCity && !savedLat) {
+      setLocationName('Seleccionar ciudad');
     }
   }, [userData, manualCity, manualState]);
 
@@ -516,6 +543,15 @@ export default function Home() {
     setManualState(state);
     setManualCity(city);
     setLocationName(`${city}`);
+    
+    // Set coordinates for city immediately so distance calculation never displays 'Distancia desconocida'
+    const cityCoords = getCityCoordinates(city, state);
+    if (cityCoords) {
+      setUserLocation(cityCoords);
+      localStorage.setItem('userLat', cityCoords.lat.toString());
+      localStorage.setItem('userLng', cityCoords.lng.toString());
+    }
+
     // Sync with Supabase if logged in
     const uid = userData?.uid || userData?.id;
     if (uid) {
@@ -524,11 +560,10 @@ export default function Home() {
         lastCity: city,
         last_state: state,
         lastState: state,
+        ...(cityCoords ? { coords: cityCoords } : {}),
         updated_at: new Date().toISOString()
       }).eq('id', uid).then(() => {}).catch(console.error);
     }
-    // Clear GPS coordinates so distance doesn't mess up sorting if user is physically far away
-    setUserLocation(null);
   };
 
   return (
@@ -603,17 +638,28 @@ export default function Home() {
           </div>
         </div>
 
-        {/* Location Selector */}
-        <button
-          onClick={() => setShowLocationTutorial(true)}
-          className="flex items-center gap-1.5 text-secondary hover:text-black transition-all active:scale-95 py-1"
-        >
-          <MapPin className="w-5 h-5 shrink-0" />
-          <span className="text-[15px] font-normal leading-none tracking-tight truncate max-w-[200px]">
-            {locationName !== 'Buscando...' && locationName !== 'Ubicación Desconocida' ? locationName : 'Ingresa tu ubicación'}
-          </span>
-          <ChevronRight className="w-5 h-5 transition-colors shrink-0" />
-        </button>
+        {/* Location Selector & Map Explore Button */}
+        <div className="flex items-center justify-between gap-2">
+          <button
+            onClick={() => setShowLocationTutorial(true)}
+            className="flex items-center gap-1.5 text-secondary hover:text-black transition-all active:scale-95 py-1 min-w-0"
+          >
+            <MapPin className="w-5 h-5 shrink-0" />
+            <span className="text-[15px] font-normal leading-none tracking-tight truncate max-w-[200px]">
+              {locationName !== 'Buscando...' && locationName !== 'Ubicación Desconocida' ? locationName : 'Ingresa tu ubicación'}
+            </span>
+            <ChevronRight className="w-5 h-5 transition-colors shrink-0" />
+          </button>
+
+          <button
+            onClick={() => { vibrate(20); setIsMapModalOpen(true); }}
+            className="flex items-center gap-1.5 bg-black/10 hover:bg-black/20 text-secondary text-xs font-black px-3 py-1.5 rounded-full transition-all active:scale-95 shrink-0 border border-black/5"
+            title="Explorar comercios en el mapa"
+          >
+            <MapIcon className="w-3.5 h-3.5 text-secondary" />
+            <span>Ver mapa</span>
+          </button>
+        </div>
       </header>
 
       {/* Banner Section Background Fade */}
@@ -666,6 +712,14 @@ export default function Home() {
         onSelect={handleCitySelect}
         initialState={manualState}
         initialCity={manualCity}
+      />
+
+      {/* Free Interactive Leaflet/OSM Map Modal */}
+      <ExploreMapModal
+        isOpen={isMapModalOpen}
+        onClose={() => setIsMapModalOpen(false)}
+        restaurants={restaurants}
+        userLocation={userLocation}
       />
 
       {/* App Info Modal */}
@@ -914,12 +968,12 @@ export default function Home() {
                 ))
             ) : restaurants.length > 0 ? (
                 restaurants.map((restaurant) => {
-                const coverImg = (restaurant as any).coverUrl || restaurant.image;
-                const logoImg = (restaurant as any).logoUrl || restaurant.image;
+                const coverImg = (restaurant as any).coverUrl || (restaurant as any).cover_url || '';
+                const logoImg = (restaurant as any).logoUrl || (restaurant as any).logo_url || restaurant.image || '';
 
                 return (
                     <Link key={restaurant.id} to={`/restaurant/${restaurant.id}`} onClick={() => vibrate(30)} className="group relative flex flex-col gap-3">
-                    <div className="relative w-full aspect-[16/10] overflow-hidden rounded-xl shadow-sm bg-slate-100">
+                    <div className="relative w-full aspect-[16/10] overflow-hidden rounded-xl shadow-sm bg-slate-900">
                         <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent z-10"></div>
                         <div className="absolute top-3 left-3 z-20 bg-white/90 backdrop-blur-sm px-2.5 py-1 rounded-full flex items-center gap-1 shadow-sm">
                         <Star className="w-4 h-4 text-highlight fill-highlight" />
@@ -952,9 +1006,9 @@ export default function Home() {
                             style={{ backgroundImage: `url('${coverImg}?q=80&w=800&auto=format&fit=crop')` }}
                         ></div>
                         ) : (
-                        <div className="w-full h-full flex flex-col items-center justify-center bg-slate-50 text-slate-300">
-                            <Store className="w-12 h-12 mb-2 opacity-50" />
-                            <span className="text-[10px] font-bold uppercase tracking-widest opacity-50">{restaurant.name}</span>
+                        <div className="w-full h-full bg-gradient-to-br from-slate-800 via-slate-900 to-indigo-950 flex flex-col items-center justify-center text-slate-400 p-4">
+                            <Store className="w-12 h-12 mb-2 text-white/30" />
+                            <span className="text-[11px] font-black uppercase tracking-widest text-white/50 text-center">{restaurant.name}</span>
                         </div>
                         )}
 

@@ -78,15 +78,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const handleUser = async (sbUser: User | null) => {
             setUser(sbUser);
             if (sbUser) {
-                // Register/Update this driver device session
+                // Register/Update this driver device session specifically for 'delivery' app
                 try {
-                    await supabase
-                        .from('profiles')
-                        .update({ 
-                            active_device_session: currentDeviceId,
-                            last_active_at: new Date().toISOString()
-                        })
-                        .eq('id', sbUser.id);
+                    await supabase.rpc('update_app_session', {
+                        p_user_id: sbUser.id,
+                        p_app_type: 'delivery',
+                        p_device_id: currentDeviceId
+                    });
                 } catch (err) {
                     console.error("Error registering driver device session:", err);
                 }
@@ -107,16 +105,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                     } as UserData);
                 }
 
-                // Subscribe to profile changes for single device enforcement
+                // Subscribe to profile changes for single device enforcement on 'delivery' app
                 channel = supabase.channel(`public:profiles:${sbUser.id}`)
                     .on(
                         'postgres_changes',
                         { event: 'UPDATE', schema: 'public', table: 'profiles', filter: `id=eq.${sbUser.id}` },
                         async (payload) => {
                             const updated = payload.new as any;
-                            // Check if a new device session took over
-                            if (updated.active_device_session && updated.active_device_session !== currentDeviceId) {
-                                console.warn("Driver session evicted by another device login");
+                            const deliverySession = updated.active_sessions?.delivery;
+                            // Check if a new device session took over specifically in the delivery app
+                            if (deliverySession && deliverySession !== currentDeviceId) {
+                                console.warn("Driver session evicted by another device login in delivery app");
                                 setSessionTerminated(true);
                                 await supabase.auth.signOut();
                                 setUser(null);

@@ -125,32 +125,31 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             }
             setUser(sbUser);
             if (sbUser) {
-                // Register/Update this device session
+                // Register/Update this device session specifically for the 'client' app
                 try {
-                    await supabase
-                        .from('profiles')
-                        .update({ 
-                            active_device_session: currentDeviceId,
-                            last_active_at: new Date().toISOString()
-                        })
-                        .eq('id', sbUser.id);
+                    await supabase.rpc('update_app_session', {
+                        p_user_id: sbUser.id,
+                        p_app_type: 'client',
+                        p_device_id: currentDeviceId
+                    });
                 } catch (err) {
-                    console.error("Error registering device session:", err);
+                    console.error("Error registering client device session:", err);
                 }
 
                 // Fetch profile
                 await fetchProfileData(sbUser);
 
-                // Subscribe to profile changes for single device enforcement
+                // Subscribe to profile changes for single device enforcement on the client app
                 channel = supabase.channel(`public:profiles:${sbUser.id}`)
                     .on(
                         'postgres_changes',
                         { event: 'UPDATE', schema: 'public', table: 'profiles', filter: `id=eq.${sbUser.id}` },
                         async (payload) => {
                             const updated = payload.new as any;
-                            // Check if a new device session took over
-                            if (updated.active_device_session && updated.active_device_session !== currentDeviceId) {
-                                console.warn("Session evicted by another device login");
+                            const clientSession = updated.active_sessions?.client;
+                            // Check if a new device session took over in the client app
+                            if (clientSession && clientSession !== currentDeviceId) {
+                                console.warn("Client app session evicted by another device login in client app");
                                 setSessionTerminated(true);
                                 await supabase.auth.signOut();
                                 setUser(null);

@@ -402,7 +402,7 @@ export default function RestaurantProfile() {
             <div className="relative overflow-hidden rounded-[48px] bg-white border border-slate-100 shadow-xl shadow-slate-200/40">
                 <div className="h-64 relative">
                     <img
-                        src={restaurant.coverUrl || restaurant.image}
+                        src={restaurant.coverUrl || 'https://images.unsplash.com/photo-1504674900247-0877df9cc836?w=1200&q=80'}
                         alt="Cover"
                         className="w-full h-full object-cover"
                     />

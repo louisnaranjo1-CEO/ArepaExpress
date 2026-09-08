@@ -92,15 +92,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                     }
                 }
 
-                // Register/Update this merchant device session
+                // Register/Update this merchant device session specifically for 'restaurant' app
                 try {
-                    await supabase
-                        .from('profiles')
-                        .update({ 
-                            active_device_session: currentDeviceId,
-                            last_active_at: new Date().toISOString()
-                        })
-                        .eq('id', sbUser.id);
+                    await supabase.rpc('update_app_session', {
+                        p_user_id: sbUser.id,
+                        p_app_type: 'restaurant',
+                        p_device_id: currentDeviceId
+                    });
                 } catch (err) {
                     console.error("Error registering merchant device session:", err);
                 }
@@ -127,7 +125,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                             email: sbUser.email || '',
                             full_name: sbUser.user_metadata?.full_name || sbUser.email?.split('@')[0] || 'Comercio',
                             role: 'aliado',
-                            active_device_session: currentDeviceId,
+                            active_sessions: { restaurant: currentDeviceId },
                             last_active_at: new Date().toISOString()
                         };
                         await supabase.from('profiles').upsert(initialProfile);
@@ -141,16 +139,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                     }
                 }
 
-                // Subscribe to profile changes for single device enforcement
+                // Subscribe to profile changes for single device enforcement on 'restaurant' app
                 channel = supabase.channel(`public:profiles:${sbUser.id}`)
                     .on(
                         'postgres_changes',
                         { event: 'UPDATE', schema: 'public', table: 'profiles', filter: `id=eq.${sbUser.id}` },
                         async (payload) => {
                             const updated = payload.new as any;
-                            // Check if a new device session took over
-                            if (updated.active_device_session && updated.active_device_session !== currentDeviceId) {
-                                console.warn("Merchant session evicted by another device login");
+                            const restSession = updated.active_sessions?.restaurant;
+                            // Check if a new device session took over specifically in the restaurant app
+                            if (restSession && restSession !== currentDeviceId) {
+                                console.warn("Restaurant session evicted by another device login in restaurant app");
                                 setSessionTerminated(true);
                                 await supabase.auth.signOut();
                                 setUser(null);

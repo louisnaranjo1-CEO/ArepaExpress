@@ -1,3 +1,4 @@
+import fs from 'fs';
 import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
 import path from 'path';
@@ -22,8 +23,66 @@ export default defineConfig(({ mode }) => {
         },
         workbox: {
           maximumFileSizeToCacheInBytes: 5242880, // 5 MiB
+          runtimeCaching: [
+            {
+              urlPattern: /^https:\/\/.*supabase\.co\/storage\/v1\/object\/public\/.*/i,
+              handler: 'CacheFirst',
+              options: {
+                cacheName: 'supabase-store-images-cache',
+                expiration: {
+                  maxEntries: 1000,
+                  maxAgeSeconds: 60 * 24 * 60 * 60, // 60 days
+                },
+                cacheableResponse: {
+                  statuses: [0, 200],
+                },
+              },
+            },
+            {
+              urlPattern: /^https:\/\/images\.unsplash\.com\/.*/i,
+              handler: 'CacheFirst',
+              options: {
+                cacheName: 'unsplash-images-cache',
+                expiration: {
+                  maxEntries: 250,
+                  maxAgeSeconds: 30 * 24 * 60 * 60, // 30 days
+                },
+                cacheableResponse: {
+                  statuses: [0, 200],
+                },
+              },
+            },
+            {
+              urlPattern: /\.(?:png|jpg|jpeg|svg|gif|webp|ico)$/i,
+              handler: 'CacheFirst',
+              options: {
+                cacheName: 'static-app-images',
+                expiration: {
+                  maxEntries: 500,
+                  maxAgeSeconds: 60 * 24 * 60 * 60,
+                },
+                cacheableResponse: {
+                  statuses: [0, 200],
+                },
+              },
+            },
+          ],
         }
-      })
+      }),
+      {
+        name: 'sync-dist-to-root',
+        closeBundle() {
+          try {
+            const clientDist = path.resolve(__dirname, 'dist');
+            const rootDist = path.resolve(__dirname, '../../dist');
+            if (fs.existsSync(clientDist)) {
+              fs.cpSync(clientDist, rootDist, { recursive: true, force: true });
+            }
+          } catch (e) {
+            console.warn('Could not mirror client dist to root dist:', e);
+          }
+        }
+      }
     ],
     define: {
       'process.env.GEMINI_API_KEY': JSON.stringify(env.GEMINI_API_KEY),
@@ -39,7 +98,7 @@ export default defineConfig(({ mode }) => {
       host: '0.0.0.0',
     },
     build: {
-      outDir: path.resolve(__dirname, '../../dist'),
+      outDir: 'dist',
       emptyOutDir: true,
       chunkSizeWarningLimit: 1000,
     },

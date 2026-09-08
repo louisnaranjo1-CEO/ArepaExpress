@@ -1772,21 +1772,29 @@ export default function Profile() {
                                         if (!uid) return;
                                         setUpdatingLocation(true);
                                         try {
-                                            if (userData?.locationPermissionsAllowed) {
+                                            const isCurrentlyAllowed = userData?.location_permissions_allowed ?? userData?.locationPermissionsAllowed ?? (localStorage.getItem('locationPermissionsAllowed') === 'true');
+                                            if (isCurrentlyAllowed) {
                                                 // Disable
                                                 await supabase.from('profiles').update({
-                                                    locationPermissionsAllowed: false,
                                                     location_permissions_allowed: false,
                                                     updated_at: new Date().toISOString()
                                                 }).eq('id', uid);
+                                                setUserData((prev: any) => ({ ...prev, location_permissions_allowed: false, locationPermissionsAllowed: false }));
+                                                localStorage.setItem('locationPermissionsAllowed', 'false');
                                                 toast.success('Ubicación en tiempo real desactivada');
                                             } else {
                                                 // Enable
                                                 let granted = false;
+                                                let userCoords: { lat: number; lng: number } | null = null;
+
                                                 if (Capacitor.isNativePlatform()) {
                                                     try {
                                                         const permission = await Geolocation.requestPermissions();
                                                         granted = permission.location === 'granted';
+                                                        if (granted) {
+                                                            const pos = await Geolocation.getCurrentPosition();
+                                                            userCoords = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+                                                        }
                                                     } catch (capErr) {
                                                         console.warn('Capacitor geolocation permission error:', capErr);
                                                     }
@@ -1795,24 +1803,37 @@ export default function Profile() {
                                                         toast.error('Tu navegador no soporta geolocalización');
                                                         return;
                                                     }
-                                                    granted = await new Promise<boolean>((resolve) => {
+                                                    userCoords = await new Promise<{ lat: number; lng: number } | null>((resolve) => {
                                                         navigator.geolocation.getCurrentPosition(
-                                                            () => resolve(true),
+                                                            (pos) => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
                                                             (geoErr) => {
                                                                 console.warn('Web geolocation error:', geoErr);
-                                                                resolve(false);
+                                                                resolve(null);
                                                             },
                                                             { enableHighAccuracy: true, timeout: 10000 }
                                                         );
                                                     });
+                                                    granted = !!userCoords;
                                                 }
 
                                                 if (granted) {
-                                                    await supabase.from('profiles').update({
-                                                        locationPermissionsAllowed: true,
+                                                    const payload: any = {
                                                         location_permissions_allowed: true,
                                                         updated_at: new Date().toISOString()
-                                                    }).eq('id', uid);
+                                                    };
+                                                    if (userCoords) {
+                                                        payload.coords = userCoords;
+                                                        localStorage.setItem('userLat', userCoords.lat.toString());
+                                                        localStorage.setItem('userLng', userCoords.lng.toString());
+                                                    }
+                                                    await supabase.from('profiles').update(payload).eq('id', uid);
+                                                    setUserData((prev: any) => ({ 
+                                                        ...prev, 
+                                                        location_permissions_allowed: true, 
+                                                        locationPermissionsAllowed: true,
+                                                        coords: userCoords || prev?.coords 
+                                                    }));
+                                                    localStorage.setItem('locationPermissionsAllowed', 'true');
                                                     toast.success('Ubicación en tiempo real activada');
                                                 } else {
                                                     toast.error('Se requiere permiso de ubicación para activar esta función');
