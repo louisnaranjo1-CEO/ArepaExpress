@@ -252,14 +252,21 @@ export default function Home() {
                rating: doc.rating,
                reviews: doc.reviews,
                isActive: doc.is_active ?? doc.isActive,
+               isVisible: doc.is_visible ?? doc.isVisible ?? false,
+               is_visible: doc.is_visible ?? doc.isVisible ?? false,
+               isVerified: doc.is_verified ?? doc.isVerified ?? false,
+               is_verified: doc.is_verified ?? doc.isVerified ?? false,
                hasCashea: doc.has_cashea ?? doc.hasCashea,
                hasTwoByThree: doc.has_two_by_three ?? doc.hasTwoByThree,
                location: doc.location,
                ...doc
             })) as Restaurant[];
 
-            // Filter inactive restaurants
-            fetchedRestaurants = fetchedRestaurants.filter(r => r.isActive !== false);
+            // Filter inactive and non-visible restaurants
+            fetchedRestaurants = fetchedRestaurants.filter(r => 
+               r.isActive !== false && 
+               (r.is_visible === true || r.isVisible === true)
+            );
 
             // Update distance strings and compute sorting weights
             fetchedRestaurants = fetchedRestaurants.map(rest => {

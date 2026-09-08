@@ -4,9 +4,7 @@ import { supabase } from './supabase';
 
 export const requestNotificationPermission = async (userId: string) => {
     try {
-        const supported = await isSupported();
-        if (!supported || !messaging) {
-            console.warn('Notifications not supported in this browser.');
+        if (typeof window === 'undefined' || !('Notification' in window)) {
             return { success: false, error: 'Tu navegador no soporta notificaciones push.' };
         }
 
@@ -14,46 +12,47 @@ export const requestNotificationPermission = async (userId: string) => {
         if (permission === 'granted') {
             console.log('Notification permission granted.');
 
-            // Get FCM Token
-            const VAPID_KEY = "BPrn5pkkct8Vf4Q8mxZf6q9z7E477VHzoqlmjF-74G__fslZmWQs50fDeZ7DvvB4e4BKS2abbJ_iDBsHBigluH4";
-
-            const token = await getToken(messaging, {
-                vapidKey: VAPID_KEY,
-            });
-
-            if (token) {
-                console.log('FCM Token:', token);
-
-                // Save token to profile
-                const { data: userProf } = await supabase
-                    .from('profiles')
-                    .select('fcm_tokens')
-                    .eq('id', userId)
-                    .maybeSingle();
-
-                const tokens: string[] = Array.isArray(userProf?.fcm_tokens) ? userProf.fcm_tokens : [];
-                if (!tokens.includes(token)) {
-                    tokens.push(token);
+            let token: string | null = null;
+            try {
+                const supported = await isSupported();
+                if (supported && messaging) {
+                    const VAPID_KEY = "BPrn5pkkct8Vf4Q8mxZf6q9z7E477VHzoqlmjF-74G__fslZmWQs50fDeZ7DvvB4e4BKS2abbJ_iDBsHBigluH4";
+                    token = await getToken(messaging, { vapidKey: VAPID_KEY }).catch(err => {
+                        console.warn('FCM Installations/Token skipped:', err?.message || err);
+                        return null;
+                    });
                 }
-
-                await supabase.from('profiles').update({
-                    fcm_tokens: tokens,
-                    notifications_enabled: true
-                }).eq('id', userId);
-
-                return { success: true };
-            } else {
-                console.warn('No registration token available.');
-                return { success: false, error: 'No se pudo generar el token de notificación.' };
+            } catch (fcmErr) {
+                console.warn('Firebase Messaging not initialized or failed:', fcmErr);
             }
+
+            const { data: userProf } = await supabase
+                .from('profiles')
+                .select('fcm_tokens')
+                .eq('id', userId)
+                .maybeSingle();
+
+            const tokens: string[] = Array.isArray(userProf?.fcm_tokens) ? userProf.fcm_tokens : [];
+            if (token && !tokens.includes(token)) {
+                tokens.push(token);
+            }
+
+            await supabase.from('profiles').update({
+                ...(tokens.length > 0 ? { fcm_tokens: tokens } : {}),
+                notifications_enabled: true,
+                notificationsEnabled: true,
+                updated_at: new Date().toISOString()
+            }).eq('id', userId);
+
+            return { success: true };
         } else if (permission === 'denied') {
-            return { success: false, error: 'Has bloqueado las notificaciones. Debes habilitarlas en la configuración de tu navegador.' };
+            return { success: false, error: 'Has bloqueado las notificaciones. Debes habilitarlas en los ajustes de tu navegador.' };
         } else {
             return { success: false, error: 'Permiso de notificaciones no concedido.' };
         }
     } catch (error: any) {
-        console.error('An error occurred while retrieving token:', error);
-        return { success: false, error: error.message || 'Error desconocido al solicitar permisos.' };
+        console.error('An error occurred while requesting notifications:', error);
+        return { success: false, error: 'Ocurrió un inconveniente al solicitar los permisos de notificación.' };
     }
 };
 
@@ -61,7 +60,9 @@ export const disableNotifications = async (userId: string) => {
     try {
         await supabase.from('profiles').update({
             fcm_tokens: [],
-            notifications_enabled: false
+            notifications_enabled: false,
+            notificationsEnabled: false,
+            updated_at: new Date().toISOString()
         }).eq('id', userId);
         return true;
     } catch (error) {

@@ -1272,6 +1272,19 @@ _Enviado desde Deliexpress App_`
                                                 {selectedDriver.vehicleYear ? `${selectedDriver.vehicleYear} • ` : ''}{selectedDriver.vehiclePlate || 'N/A'}
                                             </span>
                                         </div>
+                                        <div className="bg-white p-2.5 rounded-xl border border-slate-100 shadow-xs">
+                                            <span className="text-slate-400 font-bold block mb-0.5">Color y Clima</span>
+                                            <span className="font-bold text-slate-800 flex items-center gap-2">
+                                                <span>{selectedDriver.vehicleColor || 'No especificado'}</span>
+                                                {selectedDriver.vehicleType === 'carro' && (
+                                                    <span className={`text-[10px] px-2 py-0.5 rounded-full font-black ${
+                                                        selectedDriver.hasAc ? 'bg-cyan-100 text-cyan-700' : 'bg-slate-100 text-slate-500'
+                                                    }`}>
+                                                        {selectedDriver.hasAc ? '❄️ Con A/C' : 'Sin A/C'}
+                                                    </span>
+                                                )}
+                                            </span>
+                                        </div>
                                     </div>
 
                                     {/* Declaración de Propiedad */}

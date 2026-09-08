@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { User, Mail, MapPin, CreditCard, LogOut, ShoppingBag, Settings, ChevronRight, Clock, FileText, Bell, Navigation, X, Shield, UploadCloud, Star, Wallet, Gift, Award, MessageSquareWarning, Plus, Send, AlertCircle, CheckCircle, Store, Handshake, LifeBuoy, Fingerprint, Calendar } from 'lucide-react';
 import { Geolocation } from '@capacitor/geolocation';
+import { Capacitor } from '@capacitor/core';
 import { isDemoMode } from '../lib/env';
 import DemoAlertModal from '../components/DemoAlertModal';
 import { requestNotificationPermission, disableNotifications } from '../lib/notifications';
@@ -76,7 +77,7 @@ const RestaurantPointCard: React.FC<{ restId: string, points: number }> = ({ res
 };
 
 export default function Profile() {
-    const { user, userData, isProfileComplete } = useAuth();
+    const { user, userData, isProfileComplete, refreshUserData } = useAuth();
     const navigate = useNavigate();
     const [searchParams] = useSearchParams();
     const [isSigningIn, setIsSigningIn] = useState(false);
@@ -547,24 +548,25 @@ export default function Profile() {
     };
 
     const handleToggleNotifications = async () => {
-        if (!user) return;
+        const uid = user?.id || (user as any)?.uid;
+        if (!uid) return;
         setUpdatingNotifications(true);
         try {
-            const isEnabled = userData?.notificationsEnabled || (userData?.fcmTokens && userData.fcmTokens.length > 0);
+            const isEnabled = userData?.notificationsEnabled || (userData?.fcmTokens && userData.fcmTokens.length > 0) || (userData as any)?.notifications_enabled;
             if (isEnabled) {
-                await disableNotifications(user.uid);
-                alert("Notificaciones desactivadas.");
+                await disableNotifications(uid);
+                toast.success("Notificaciones desactivadas");
             } else {
-                const result = await requestNotificationPermission(user.uid);
+                const result = await requestNotificationPermission(uid);
                 if (result.success) {
-                    alert("Notificaciones activadas con éxito! 🎉");
+                    toast.success("Notificaciones activadas con éxito 🎉");
                 } else if (result.error) {
-                    alert(result.error);
+                    toast.error(result.error);
                 }
             }
         } catch (err) {
             console.error("Error toggling notifications", err);
-            alert("Ocurrió un error al procesar tu solicitud.");
+            toast.error("Ocurrió un error al procesar tu solicitud.");
         } finally {
             setUpdatingNotifications(false);
         }
@@ -684,6 +686,10 @@ export default function Profile() {
                     }
                 }
                 throw updateError;
+            }
+
+            if (refreshUserData) {
+                await refreshUserData();
             }
 
             toast.success("¡Perfil completado exitosamente! 🚀");
@@ -1305,8 +1311,9 @@ export default function Profile() {
                                     referrerPolicy="no-referrer"
                                     onError={(e) => {
                                         console.warn("Profile image failed to load, using fallback");
+                                        const nameForAvatar = userData?.displayName || (userData as any)?.full_name || (user as any)?.displayName || (user as any)?.user_metadata?.full_name || 'D';
                                         (e.target as HTMLImageElement).onerror = null;
-                                        (e.target as HTMLImageElement).src = `https://ui-avatars.com/api/?name=${encodeURIComponent(user?.displayName || 'D')}&background=random&color=fff`;
+                                        (e.target as HTMLImageElement).src = `https://ui-avatars.com/api/?name=${encodeURIComponent(nameForAvatar)}&background=random&color=fff`;
                                     }}
                                 />
                             ) : (
@@ -1314,7 +1321,9 @@ export default function Profile() {
                             )}
                         </div>
                         <div className="flex-1">
-                            <h2 className="text-2xl font-black">{user.displayName || 'Deliexpress Fan'}</h2>
+                            <h2 className="text-2xl font-black">
+                                {userData?.fullName || (userData as any)?.full_name || userData?.displayName || (user as any)?.displayName || (user as any)?.user_metadata?.full_name || (user as any)?.user_metadata?.name || user?.email?.split('@')[0] || 'Usuario'}
+                            </h2>
                             <div className="flex flex-col gap-1">
                                 <div className="flex items-center gap-1 text-white/80 text-xs">
                                     <Mail className="w-3 h-3" />
@@ -1759,7 +1768,7 @@ export default function Profile() {
 
                                 <div
                                     onClick={async () => {
-                                        const uid = user?.id || user?.uid;
+                                        const uid = user?.id || (user as any)?.uid;
                                         if (!uid) return;
                                         setUpdatingLocation(true);
                                         try {
@@ -1773,8 +1782,32 @@ export default function Profile() {
                                                 toast.success('Ubicación en tiempo real desactivada');
                                             } else {
                                                 // Enable
-                                                const permission = await Geolocation.requestPermissions();
-                                                if (permission.location === 'granted') {
+                                                let granted = false;
+                                                if (Capacitor.isNativePlatform()) {
+                                                    try {
+                                                        const permission = await Geolocation.requestPermissions();
+                                                        granted = permission.location === 'granted';
+                                                    } catch (capErr) {
+                                                        console.warn('Capacitor geolocation permission error:', capErr);
+                                                    }
+                                                } else {
+                                                    if (!navigator.geolocation) {
+                                                        toast.error('Tu navegador no soporta geolocalización');
+                                                        return;
+                                                    }
+                                                    granted = await new Promise<boolean>((resolve) => {
+                                                        navigator.geolocation.getCurrentPosition(
+                                                            () => resolve(true),
+                                                            (geoErr) => {
+                                                                console.warn('Web geolocation error:', geoErr);
+                                                                resolve(false);
+                                                            },
+                                                            { enableHighAccuracy: true, timeout: 10000 }
+                                                        );
+                                                    });
+                                                }
+
+                                                if (granted) {
                                                     await supabase.from('profiles').update({
                                                         locationPermissionsAllowed: true,
                                                         location_permissions_allowed: true,

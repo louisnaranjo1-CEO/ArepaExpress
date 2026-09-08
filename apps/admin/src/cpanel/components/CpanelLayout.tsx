@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, Store, Users, Image as ImageIcon, LogOut, ChevronRight, Menu, X, Tag, Truck, Wallet, Car, Share2, Gift, Ticket, MessageSquareWarning, Megaphone, ShoppingBag, Trophy, Shield, Palette } from 'lucide-react';
+import { LayoutDashboard, Store, Users, Image as ImageIcon, LogOut, ChevronRight, Menu, X, Tag, Truck, Wallet, Car, Share2, Gift, Ticket, MessageSquareWarning, Megaphone, ShoppingBag, Trophy, Shield, ShieldCheck, Palette } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { UN2X3_LOGO } from '../../lib/env';
 import { useGlobalAudioAlerts } from '../../hooks/useGlobalAudioAlerts';
@@ -20,6 +20,7 @@ export default function CpanelLayout({ children, onLogout, adminUser }: CpanelLa
     const [pendingTransports, setPendingTransports] = useState(0);
     const [pendingTickets, setPendingTickets] = useState(0);
     const [pendingPayouts, setPendingPayouts] = useState(0);
+    const [pendingVerifications, setPendingVerifications] = useState(0);
     const { vibrateSelection } = useHaptics();
 
     useGlobalAudioAlerts('cpanel');
@@ -52,6 +53,12 @@ export default function CpanelLayout({ children, onLogout, adminUser }: CpanelLa
                     .eq('driver_paid', false);
 
                 setPendingPayouts((ordPayCount || 0) + (transPayCount || 0));
+
+                const { count: verifCount } = await supabase
+                    .from('comercios')
+                    .select('*', { count: 'exact', head: true })
+                    .eq('verification_status', 'pending');
+                setPendingVerifications(verifCount || 0);
             } catch (err) {
                 console.error("Error fetching cpanel counts:", err);
             }
@@ -64,6 +71,7 @@ export default function CpanelLayout({ children, onLogout, adminUser }: CpanelLa
             .on('postgres_changes', { event: '*', schema: 'public', table: 'transport_requests' }, fetchCounts)
             .on('postgres_changes', { event: '*', schema: 'public', table: 'support_tickets' }, fetchCounts)
             .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, fetchCounts)
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'comercios' }, fetchCounts)
             .subscribe();
 
         return () => {
@@ -80,6 +88,7 @@ export default function CpanelLayout({ children, onLogout, adminUser }: CpanelLa
         { path: '/', icon: LayoutDashboard, label: 'Resumen' },
         { path: '/app-orders', icon: ShoppingBag, label: 'Pedidos App en Vivo' },
         { path: '/restaurants', icon: Store, label: 'Restaurantes' },
+        { path: '/verifications', icon: ShieldCheck, label: 'Verificación de Negocios', badge: pendingVerifications },
         { path: '/users', icon: Users, label: 'Usuarios' },
         { path: '/banners', icon: ImageIcon, label: 'Banners' },
         { path: '/design', icon: Palette, label: 'Diseño' },

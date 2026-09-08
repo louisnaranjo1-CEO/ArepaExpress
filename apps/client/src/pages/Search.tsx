@@ -101,12 +101,17 @@ export default function Search() {
                         hasCashea: r.has_cashea ?? r.hasCashea,
                         hasTwoByThree: r.has_two_by_three ?? r.hasTwoByThree,
                         isActive: r.is_active ?? r.isActive ?? true,
+                        isVisible: r.is_visible ?? r.isVisible ?? false,
+                        is_visible: r.is_visible ?? r.isVisible ?? false,
                         location: r.location,
                         products: resProds
                     } as Restaurant;
                 });
 
-                const fetchedResults = fetched.filter(r => r.isActive !== false);
+                const fetchedResults = fetched.filter(r => 
+                    r.isActive !== false && 
+                    (r.isVisible === true || (r as any).is_visible === true)
+                );
                 const shuffled = fetchedResults.sort(() => Math.random() - 0.5);
                 setRestaurants(shuffled);
             } catch (error) {

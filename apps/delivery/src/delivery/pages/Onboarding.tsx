@@ -63,6 +63,8 @@ export default function Onboarding() {
         vehicleModel: '',
         vehicleYear: '',
         vehiclePlate: '',
+        vehicleColor: '',
+        hasAc: false,
         isVehicleOwner: true,
         homeState: '',
         homeCity: '',
@@ -163,6 +165,9 @@ export default function Onboarding() {
                 if (!formData.vehicleBrand.trim() || !formData.vehicleModel.trim() || !formData.vehicleYear.trim() || !formData.vehiclePlate.trim()) {
                     return setError('Por favor completa la marca, modelo, año y placa de tu vehículo.');
                 }
+                if (!formData.vehicleColor.trim()) {
+                    return setError('Por favor indica el color de tu vehículo o moto.');
+                }
             }
             if (!formData.isVehicleOwner) {
                 return setError('Debes declarar bajo fe de juramento la propiedad o autorización del vehículo para continuar.');
@@ -215,6 +220,8 @@ export default function Onboarding() {
                     vehicleModel: formData.vehicleModel.trim(),
                     vehicleYear: formData.vehicleYear.trim(),
                     vehiclePlate: formData.vehiclePlate.trim().toUpperCase(),
+                    vehicleColor: formData.vehicleColor.trim(),
+                    hasAc: formData.vehicleType === 'carro' ? formData.hasAc : false,
                     isVehicleOwner: formData.isVehicleOwner,
                     homeLocation: {
                         state: formData.homeState,
@@ -517,6 +524,46 @@ export default function Onboarding() {
                                             />
                                         </div>
                                     </div>
+
+                                    <div>
+                                        <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">
+                                            Color de la {formData.vehicleType === 'moto' ? 'Moto' : 'Unidad / Carro'}
+                                        </label>
+                                        <input
+                                            type="text"
+                                            value={formData.vehicleColor}
+                                            onChange={e => setFormData({ ...formData, vehicleColor: e.target.value })}
+                                            className="w-full bg-white border-2 border-slate-200 focus:border-primary rounded-2xl px-4 py-3 outline-none transition-all font-bold text-slate-700"
+                                            placeholder="Ej: Blanco, Negro, Rojo, Azul, Gris..."
+                                        />
+                                    </div>
+
+                                    {formData.vehicleType === 'carro' && (
+                                        <div className="bg-slate-50 border-2 border-slate-200 rounded-2xl p-3.5 flex items-center justify-between transition-all hover:border-slate-300">
+                                            <div className="flex items-center gap-3">
+                                                <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-xl transition-colors ${formData.hasAc ? 'bg-cyan-100 text-cyan-600' : 'bg-slate-200 text-slate-400'}`}>
+                                                    ❄️
+                                                </div>
+                                                <div>
+                                                    <p className="text-xs font-black text-slate-800">Aire Acondicionado (A/C)</p>
+                                                    <p className="text-[11px] text-slate-500 font-medium">
+                                                        {formData.hasAc ? 'Cuenta con A/C operativo' : 'Sin aire acondicionado'}
+                                                    </p>
+                                                </div>
+                                            </div>
+                                            <button
+                                                type="button"
+                                                onClick={() => setFormData(prev => ({ ...prev, hasAc: !prev.hasAc }))}
+                                                className={`px-4 py-2 rounded-xl text-xs font-black transition-all cursor-pointer ${
+                                                    formData.hasAc
+                                                        ? 'bg-cyan-500 text-white shadow-md shadow-cyan-500/20'
+                                                        : 'bg-slate-200 text-slate-600 hover:bg-slate-300'
+                                                }`}
+                                            >
+                                                {formData.hasAc ? 'Sí tiene ✓' : 'No tiene'}
+                                            </button>
+                                        </div>
+                                    )}
                                 </div>
                             )}
 
@@ -721,11 +768,27 @@ export default function Onboarding() {
                                 <span className="text-slate-400 font-bold uppercase">Teléfono</span>
                                 <span className="font-bold text-slate-800">{fullPhone}</span>
                             </div>
-                            <div className="flex justify-between items-center pb-2 border-b border-slate-100">
+                            <div className="flex justify-between items-start pb-2 border-b border-slate-100">
                                 <span className="text-slate-400 font-bold uppercase">Vehículo</span>
-                                <span className="font-bold text-slate-800 capitalize">
-                                    {formData.vehicleType} {formData.vehicleBrand ? `• ${formData.vehicleBrand} ${formData.vehicleModel || ''} (${formData.vehiclePlate})` : ''}
-                                </span>
+                                <div className="text-right">
+                                    <span className="font-bold text-slate-800 capitalize block">
+                                        {formData.vehicleType} {formData.vehicleBrand ? `• ${formData.vehicleBrand} ${formData.vehicleModel || ''}` : ''}
+                                    </span>
+                                    {(formData.vehiclePlate || formData.vehicleColor) && (
+                                        <span className="text-[11px] text-slate-500 font-semibold block">
+                                            {formData.vehiclePlate ? `Placa: ${formData.vehiclePlate}` : ''}
+                                            {formData.vehiclePlate && formData.vehicleColor ? ' • ' : ''}
+                                            {formData.vehicleColor ? `Color: ${formData.vehicleColor}` : ''}
+                                        </span>
+                                    )}
+                                    {formData.vehicleType === 'carro' && (
+                                        <span className={`text-[10px] font-bold inline-block mt-0.5 px-2 py-0.5 rounded-full ${
+                                            formData.hasAc ? 'bg-cyan-50 text-cyan-700' : 'bg-slate-100 text-slate-500'
+                                        }`}>
+                                            {formData.hasAc ? '❄️ Con A/C' : 'Sin A/C'}
+                                        </span>
+                                    )}
+                                </div>
                             </div>
                             <div className="flex justify-between items-center pb-2 border-b border-slate-100">
                                 <span className="text-slate-400 font-bold uppercase">Ubicación Base</span>

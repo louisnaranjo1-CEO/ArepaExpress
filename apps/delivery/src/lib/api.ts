@@ -60,6 +60,11 @@ export interface DriverProfile {
     age: number;
     vehicleType: string;
     vehiclePlate: string;
+    vehicleColor?: string;
+    hasAc?: boolean;
+    vehicleBrand?: string;
+    vehicleModel?: string;
+    vehicleYear?: string;
     isOnline: boolean;
     availability: string;
     currentLocation: { latitude: number; longitude: number } | null;
@@ -172,7 +177,12 @@ export const driversApi = {
             rif: data.rif,
             age: data.age,
             vehicleType: data.vehicle_type,
+            vehicleBrand: data.vehicle_brand,
+            vehicleModel: data.vehicle_model,
+            vehicleYear: data.vehicle_year,
             vehiclePlate: data.vehicle_plate,
+            vehicleColor: data.vehicle_color || data.vehicleColor || '',
+            hasAc: data.has_ac ?? data.hasAc ?? false,
             isOnline: data.is_online,
             availability: data.availability,
             currentLocation: data.current_location,
@@ -214,7 +224,12 @@ export const driversApi = {
                 rif: d.rif,
                 age: d.age,
                 vehicleType: d.vehicle_type,
+                vehicleBrand: d.vehicle_brand,
+                vehicleModel: d.vehicle_model,
+                vehicleYear: d.vehicle_year,
                 vehiclePlate: d.vehicle_plate,
+                vehicleColor: d.vehicle_color || d.vehicleColor || '',
+                hasAc: d.has_ac ?? d.hasAc ?? false,
                 isOnline: d.is_online,
                 availability: d.availability,
                 currentLocation: d.current_location,
@@ -255,8 +270,11 @@ export const driversApi = {
         vehicle_type: string;
         vehicle_brand?: string;
         vehicle_model?: string;
+        vehicleYear?: string;
         vehicle_year?: string;
         vehicle_plate?: string;
+        vehicle_color?: string;
+        has_ac?: boolean;
         is_vehicle_owner?: boolean;
         selfie_url?: string;
         vehicle_url?: string;
@@ -280,8 +298,12 @@ export const driversApi = {
                 vehicle_type: data.vehicle_type,
                 vehicle_brand: data.vehicle_brand,
                 vehicle_model: data.vehicle_model,
-                vehicle_year: data.vehicle_year,
+                vehicle_year: data.vehicle_year || data.vehicleYear,
                 vehicle_plate: data.vehicle_plate,
+                vehicle_color: data.vehicle_color || '',
+                vehicleColor: data.vehicle_color || '',
+                has_ac: data.has_ac ?? false,
+                hasAc: data.has_ac ?? false,
                 is_vehicle_owner: data.is_vehicle_owner ?? true,
                 status: 'pending',
                 is_online: false,

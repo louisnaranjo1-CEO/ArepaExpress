@@ -19,6 +19,8 @@ export interface DeliveryDriver {
     vehicleModel?: string;
     vehicleYear?: string;
     vehiclePlate: string;
+    vehicleColor?: string;
+    hasAc?: boolean;
     isVehicleOwner?: boolean;
     status: DeliveryStatus;
     isOnline: boolean;
@@ -97,6 +99,8 @@ export const registerDriver = async (
             vehicle_model: data.vehicleModel,
             vehicle_year: data.vehicleYear,
             vehicle_plate: data.vehiclePlate,
+            vehicle_color: data.vehicleColor,
+            has_ac: data.hasAc,
             is_vehicle_owner: data.isVehicleOwner ?? true,
             selfie_url: selfieUrl,
             vehicle_url: vehicleUrl,

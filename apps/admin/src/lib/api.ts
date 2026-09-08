@@ -64,6 +64,8 @@ export interface DriverProfile {
     vehicleModel?: string;
     vehicleYear?: string;
     vehiclePlate: string;
+    vehicleColor?: string;
+    hasAc?: boolean;
     isVehicleOwner?: boolean;
     registeredHomeAddress?: any;
     isOnline: boolean;
@@ -178,7 +180,12 @@ export const driversApi = {
             rif: data.rif,
             age: data.age,
             vehicleType: data.vehicle_type,
+            vehicleBrand: data.vehicle_brand,
+            vehicleModel: data.vehicle_model,
+            vehicleYear: data.vehicle_year,
             vehiclePlate: data.vehicle_plate,
+            vehicleColor: data.vehicle_color || data.vehicleColor || '',
+            hasAc: data.has_ac ?? data.hasAc ?? false,
             isOnline: data.is_online,
             availability: data.availability,
             currentLocation: data.current_location,
@@ -225,6 +232,8 @@ export const driversApi = {
                 vehicleModel: d.vehicle_model,
                 vehicleYear: d.vehicle_year,
                 vehiclePlate: d.vehicle_plate,
+                vehicleColor: d.vehicle_color || d.vehicleColor || '',
+                hasAc: d.has_ac ?? d.hasAc ?? false,
                 isVehicleOwner: d.is_vehicle_owner ?? true,
                 registeredHomeAddress: d.registered_home_address,
                 isOnline: d.is_online,

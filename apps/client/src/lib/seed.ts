@@ -91,6 +91,11 @@ export interface Restaurant {
     twoByThreeInitial?: number;
     twoByThreeInstallments?: number;
     isActive?: boolean;
+    isVisible?: boolean;
+    is_visible?: boolean;
+    isVerified?: boolean;
+    is_verified?: boolean;
+    verificationStatus?: string;
 }
 
 const MOCK_RESTAURANTS: Restaurant[] = [

@@ -27,8 +27,19 @@ import {
     ChevronRight,
     Search,
     ChevronUp,
-    CreditCard
+    CreditCard,
+    ShieldCheck,
+    ShieldAlert,
+    ShieldX,
+    Lock,
+    ToggleLeft,
+    ToggleRight,
+    Sparkles,
+    CheckCircle2,
+    AlertTriangle,
+    AlertCircle
 } from 'lucide-react';
+import VerificationModal from '../components/VerificationModal';
 import { useAuth } from '../../context/AuthContext';
 import AddressPicker from '../../components/AddressPicker';
 import { VENEZUELA_DATA, VENEZUELA_STATES } from '../../lib/venezuelaData';
@@ -169,6 +180,19 @@ export default function RestaurantProfile() {
     // Payment Methods states
     const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([]);
 
+    // Visibility & Verification states
+    const [isVisible, setIsVisible] = useState(false);
+    const [isVerified, setIsVerified] = useState(false);
+    const [verificationStatus, setVerificationStatus] = useState<'unverified' | 'pending' | 'verified' | 'rejected'>('unverified');
+    const [rejectionReason, setRejectionReason] = useState('');
+    const [addressReference, setAddressReference] = useState('');
+    const [tiktok, setTiktok] = useState('');
+    const [instagram, setInstagram] = useState('');
+    const [requiresDelivery, setRequiresDelivery] = useState(true);
+    const [existingRifUrl, setExistingRifUrl] = useState('');
+    const [isTogglingVisibility, setIsTogglingVisibility] = useState(false);
+    const [isVerificationModalOpen, setIsVerificationModalOpen] = useState(false);
+
     useEffect(() => {
         if (!user || !rid) return;
 
@@ -239,6 +263,22 @@ export default function RestaurantProfile() {
                     setTwoByThreeInstallments(data.two_by_three_installments ?? data.twoByThreeInstallments ?? 2);
                     setBusinessType(data.business_type || data.businessType || 'restaurant');
                     setPaymentMethods(data.payment_methods || data.paymentMethods || []);
+
+                    // Load visibility and verification
+                    const isVis = data.is_visible ?? data.isVisible ?? false;
+                    setIsVisible(isVis);
+                    const isVer = data.is_verified ?? data.isVerified ?? false;
+                    setIsVerified(isVer);
+                    setVerificationStatus(data.verification_status || (isVer ? 'verified' : 'unverified'));
+                    setRejectionReason(data.rejection_reason || '');
+                    const addrRef = data.address_reference || data.verification_data?.addressReference || data.location?.reference || '';
+                    setAddressReference(addrRef);
+                    setTiktok(data.tiktok || data.verification_data?.tiktok || '');
+                    setInstagram(data.instagram || data.verification_data?.instagram || '');
+                    setRequiresDelivery(data.verification_data?.requiresDelivery ?? (data.own_delivery || data.app_delivery || true));
+                    if (data.verification_data?.rifPhotoUrl) {
+                        setExistingRifUrl(data.verification_data.rifPhotoUrl);
+                    }
 
                     // Fetch followers list from Supabase
                     const { data: followersList } = await supabase
@@ -344,6 +384,34 @@ export default function RestaurantProfile() {
         }
     };
 
+    const handleToggleVisibility = async () => {
+        if (verificationStatus !== 'verified') {
+            alert("Para activar la visibilidad de tu tienda debes completar la verificación de tu negocio y ser aprobado por el Super Admin.");
+            return;
+        }
+
+        const nextState = !isVisible;
+        setIsTogglingVisibility(true);
+        try {
+            const { error } = await supabase
+                .from('comercios')
+                .update({
+                    is_visible: nextState,
+                    isVisible: nextState,
+                    updated_at: new Date().toISOString()
+                })
+                .eq('id', rid);
+
+            if (error) throw error;
+            setIsVisible(nextState);
+        } catch (err: any) {
+            console.error("Error cambiando visibilidad:", err);
+            alert("Error al cambiar el estado de visibilidad.");
+        } finally {
+            setIsTogglingVisibility(false);
+        }
+    };
+
     const handleSave = async () => {
         if (!user || !rid) return;
         setIsSaving(true);
@@ -406,7 +474,7 @@ export default function RestaurantProfile() {
             const formattedRif = rifNumber.trim() ? `${rifPrefix}-${rifNumber.trim()}` : '';
             const fullWhatsapp = whatsappNumber.trim() ? `+58${whatsappNumber.trim()}` : '';
 
-            const payload = {
+            const payload: any = {
                 id: rid,
                 name: name || '',
                 rif: formattedRif,
@@ -434,6 +502,11 @@ export default function RestaurantProfile() {
                 two_by_three_initial: twoByThreeInitial || 50,
                 two_by_three_installments: twoByThreeInstallments || 2,
                 payment_methods: paymentMethods || [],
+                is_visible: isVisible,
+                isVisible: isVisible,
+                address_reference: addressReference || location?.reference || '',
+                tiktok: tiktok || '',
+                instagram: instagram || '',
                 updated_at: new Date().toISOString()
             };
 
@@ -551,19 +624,166 @@ export default function RestaurantProfile() {
         <div className="max-w-7xl mx-auto w-full space-y-8 animate-in fade-in duration-700 pb-20">
             <div className="flex justify-between items-end flex-wrap gap-4">
                 <div>
-                    <h1 className="text-3xl font-black text-slate-900">Configuración del Negocio</h1>
+                    <div className="flex items-center gap-2 mb-1 flex-wrap">
+                        <h1 className="text-3xl font-black text-slate-900">Configuración del Negocio</h1>
+                        {isVerified && (
+                            <span className="inline-flex items-center gap-1 bg-emerald-100 text-emerald-800 text-xs font-black px-3 py-1 rounded-full border border-emerald-200">
+                                <CheckCircle2 className="w-3.5 h-3.5" /> Negocio Verificado ✓
+                            </span>
+                        )}
+                    </div>
                     <p className="text-slate-500 font-medium">Gestiona la información pública y comercial de tu negocio ({currentCategory?.name || 'Comercio'}).</p>
                 </div>
-                <button
-                    onClick={handleSave}
-                    disabled={isSaving || uploadingLogo || uploadingCover}
-                    className={`px-6 py-3 rounded-2xl font-black shadow-lg flex items-center gap-2 transition-all hover:scale-[1.02] active:scale-[0.98] disabled:opacity-70 ${saved ? 'bg-green-500 text-slate-900 shadow-green-500/20' : 'bg-primary text-slate-900 shadow-primary/20'
-                        }`}
-                >
-                    {(isSaving || uploadingLogo || uploadingCover) ? <Loader2 className="w-5 h-5 animate-spin" /> : saved ? <Check className="w-5 h-5" /> : <Save className="w-5 h-5" />}
-                    <span>{(isSaving || uploadingLogo || uploadingCover) ? 'Guardando...' : saved ? '¡Guardado!' : 'Guardar Cambios'}</span>
-                </button>
+
+                <div className="flex items-center gap-3 flex-wrap">
+                    {/* Switch de Visibilidad */}
+                    <div className={`p-2.5 px-4 rounded-2xl border flex items-center gap-3 transition-all ${isVisible
+                        ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
+                        : 'bg-slate-100 border-slate-200 text-slate-700'
+                    }`}>
+                        <div className="flex flex-col text-left">
+                            <span className="text-[10px] uppercase font-black tracking-wider opacity-70">
+                                Estado en la App
+                            </span>
+                            <span className="text-xs font-black">
+                                {isVisible ? 'Tienda Visible' : 'Tienda No Visible'}
+                            </span>
+                        </div>
+                        
+                        <button
+                            type="button"
+                            onClick={handleToggleVisibility}
+                            disabled={isTogglingVisibility || !isVerified}
+                            title={!isVerified ? "Debes verificar tu negocio para activar la visibilidad" : isVisible ? "Haz clic para ocultar temporalmente tu tienda" : "Haz clic para hacer visible tu tienda"}
+                            className={`p-1 rounded-xl transition-all ${!isVerified ? 'opacity-50 cursor-not-allowed' : 'hover:scale-105 active:scale-95 cursor-pointer'}`}
+                        >
+                            {isTogglingVisibility ? (
+                                <Loader2 className="w-6 h-6 animate-spin text-slate-500" />
+                            ) : !isVerified ? (
+                                <div className="flex items-center gap-1 bg-slate-200 text-slate-600 px-2 py-1 rounded-lg text-[10px] font-black">
+                                    <Lock className="w-3 h-3" /> Bloqueado
+                                </div>
+                            ) : isVisible ? (
+                                <ToggleRight className="w-8 h-8 text-emerald-600" />
+                            ) : (
+                                <ToggleLeft className="w-8 h-8 text-slate-400" />
+                            )}
+                        </button>
+                    </div>
+
+                    <button
+                        onClick={handleSave}
+                        disabled={isSaving || uploadingLogo || uploadingCover}
+                        className={`px-6 py-3 rounded-2xl font-black shadow-lg flex items-center gap-2 transition-all hover:scale-[1.02] active:scale-[0.98] disabled:opacity-70 ${saved ? 'bg-green-500 text-slate-900 shadow-green-500/20' : 'bg-primary text-slate-900 shadow-primary/20'
+                            }`}
+                    >
+                        {(isSaving || uploadingLogo || uploadingCover) ? <Loader2 className="w-5 h-5 animate-spin" /> : saved ? <Check className="w-5 h-5" /> : <Save className="w-5 h-5" />}
+                        <span>{(isSaving || uploadingLogo || uploadingCover) ? 'Guardando...' : saved ? '¡Guardado!' : 'Guardar Cambios'}</span>
+                    </button>
+                </div>
             </div>
+
+            {/* Banner de Verificación y Visibilidad */}
+            {verificationStatus === 'unverified' && (
+                <div className="bg-gradient-to-r from-amber-500/15 via-amber-500/10 to-transparent border-2 border-amber-400/80 p-6 rounded-[32px] flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-sm animate-in fade-in">
+                    <div className="flex items-start gap-4">
+                        <div className="p-3.5 bg-amber-500 text-slate-950 rounded-2xl shadow-md shadow-amber-500/20 shrink-0">
+                            <ShieldAlert className="w-7 h-7" />
+                        </div>
+                        <div className="space-y-1">
+                            <h3 className="text-lg font-black text-slate-900 leading-snug">
+                                Configura tu cuenta para estar verificado y ser visible
+                            </h3>
+                            <p className="text-xs md:text-sm text-slate-600 font-semibold max-w-2xl leading-relaxed">
+                                Tu tienda actualmente está <strong className="text-slate-900">oculta</strong> en la app. Para cumplir con la normativa, activar la visibilidad y empezar a vender, envía tus recaudos legales (RIF, redes sociales, punto de referencia y WhatsApp).
+                            </p>
+                        </div>
+                    </div>
+                    <button
+                        type="button"
+                        onClick={() => setIsVerificationModalOpen(true)}
+                        className="px-6 py-3.5 bg-slate-950 hover:bg-slate-800 text-primary hover:text-white font-black text-xs md:text-sm rounded-2xl shadow-lg shadow-slate-950/20 flex items-center justify-center gap-2 shrink-0 transition-all hover:scale-105 active:scale-95 cursor-pointer"
+                    >
+                        <ShieldCheck className="w-5 h-5 text-primary" />
+                        <span>VERIFICAR NEGOCIO</span>
+                    </button>
+                </div>
+            )}
+
+            {verificationStatus === 'pending' && (
+                <div className="bg-blue-50 border-2 border-blue-200 p-6 rounded-[32px] flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-sm animate-in fade-in">
+                    <div className="flex items-start gap-4">
+                        <div className="p-3.5 bg-blue-500 text-white rounded-2xl shadow-md shadow-blue-500/20 shrink-0 animate-pulse">
+                            <Clock className="w-7 h-7" />
+                        </div>
+                        <div className="space-y-1">
+                            <div className="inline-flex items-center gap-1.5 bg-blue-100 text-blue-800 text-[10px] font-black px-2.5 py-0.5 rounded-full uppercase tracking-wider mb-0.5">
+                                Solicitud en Revisión
+                            </div>
+                            <h3 className="text-lg font-black text-slate-900 leading-snug">
+                                Tu solicitud de verificación está en auditoría por el Super Admin
+                            </h3>
+                            <p className="text-xs md:text-sm text-slate-600 font-semibold max-w-2xl leading-relaxed">
+                                Hemos recibido tus datos, comprobante de RIF SENIAT y redes sociales. El equipo administrativo está revisando la información para habilitar la visibilidad de tu tienda.
+                            </p>
+                        </div>
+                    </div>
+                    <button
+                        type="button"
+                        onClick={() => setIsVerificationModalOpen(true)}
+                        className="px-5 py-3 bg-white hover:bg-slate-50 text-slate-800 font-black text-xs rounded-2xl border border-slate-200 shadow-sm flex items-center justify-center gap-2 shrink-0 transition-all cursor-pointer"
+                    >
+                        <span>Ver Recaudos Enviados</span>
+                    </button>
+                </div>
+            )}
+
+            {verificationStatus === 'rejected' && (
+                <div className="bg-rose-50 border-2 border-rose-300 p-6 rounded-[32px] flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-sm animate-in fade-in">
+                    <div className="flex items-start gap-4">
+                        <div className="p-3.5 bg-rose-500 text-white rounded-2xl shadow-md shadow-rose-500/20 shrink-0">
+                            <ShieldX className="w-7 h-7" />
+                        </div>
+                        <div className="space-y-1">
+                            <div className="inline-flex items-center gap-1.5 bg-rose-100 text-rose-800 text-[10px] font-black px-2.5 py-0.5 rounded-full uppercase tracking-wider mb-0.5">
+                                Verificación Rechazada
+                            </div>
+                            <h3 className="text-lg font-black text-slate-900 leading-snug">
+                                Observaciones en tu solicitud de verificación
+                            </h3>
+                            <p className="text-xs md:text-sm text-rose-900 font-bold max-w-2xl leading-relaxed">
+                                Motivo indicado: <span className="underline">{rejectionReason || 'Documentación incompleta o ilegible.'}</span> Por favor corrige la información y vuelve a enviar tus recaudos.
+                            </p>
+                        </div>
+                    </div>
+                    <button
+                        type="button"
+                        onClick={() => setIsVerificationModalOpen(true)}
+                        className="px-6 py-3.5 bg-rose-600 hover:bg-rose-700 text-white font-black text-xs md:text-sm rounded-2xl shadow-lg shadow-rose-600/20 flex items-center justify-center gap-2 shrink-0 transition-all hover:scale-105 active:scale-95 cursor-pointer"
+                    >
+                        <ShieldCheck className="w-5 h-5" />
+                        <span>VOLVER A VERIFICAR</span>
+                    </button>
+                </div>
+            )}
+
+            {verificationStatus === 'verified' && (
+                <div className="bg-emerald-50 border border-emerald-200 p-5 rounded-[28px] flex items-center justify-between gap-4 shadow-sm">
+                    <div className="flex items-center gap-3.5">
+                        <div className="p-2.5 bg-emerald-500 text-white rounded-xl shrink-0">
+                            <ShieldCheck className="w-5 h-5" />
+                        </div>
+                        <div>
+                            <h4 className="font-black text-emerald-950 text-sm">
+                                Comercio Verificado Oficialmente ✓
+                            </h4>
+                            <p className="text-xs text-emerald-800 font-medium">
+                                Tu negocio cuenta con la certificación oficial de Encontrado en un 2x3 / Deliexpress. Puedes alternar la visibilidad de tu tienda arriba cuando lo desees.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
                 {/* Left Column: Logo & Main Info */}
@@ -658,24 +878,50 @@ export default function RestaurantProfile() {
                             </div>
 
                             <div className="space-y-2">
-                                <label className="text-sm font-bold text-slate-700 ml-1">Nombre del Negocio / Razón Comercial</label>
-                                <input
-                                    type="text"
-                                    value={name}
-                                    onChange={(e) => setName(e.target.value)}
-                                    className="w-full bg-slate-50 border-2 border-transparent focus:border-primary focus:bg-white p-4 rounded-2xl outline-none transition-all font-bold text-slate-800"
-                                    placeholder="Ej: Deliexpress Gourmet"
-                                />
+                                <div className="flex items-center justify-between">
+                                    <label className="text-sm font-bold text-slate-700 ml-1">Nombre del Negocio / Razón Comercial</label>
+                                    {isVerified && (
+                                        <span className="text-[11px] font-black text-amber-700 bg-amber-50 border border-amber-200 px-2.5 py-0.5 rounded-lg flex items-center gap-1">
+                                            <Lock className="w-3 h-3" /> Protegido por Verificación
+                                        </span>
+                                    )}
+                                </div>
+                                <div className="relative">
+                                    <input
+                                        type="text"
+                                        disabled={isVerified}
+                                        value={name}
+                                        onChange={(e) => setName(e.target.value)}
+                                        className={`w-full bg-slate-50 border-2 border-transparent focus:border-primary focus:bg-white p-4 rounded-2xl outline-none transition-all font-bold text-slate-800 ${isVerified ? 'opacity-75 bg-slate-100 cursor-not-allowed pr-10' : ''}`}
+                                        placeholder="Ej: Deliexpress Gourmet"
+                                    />
+                                    {isVerified && (
+                                        <Lock className="w-5 h-5 text-slate-400 absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none" />
+                                    )}
+                                </div>
+                                {isVerified && (
+                                    <p className="text-[11px] text-amber-700 ml-1 font-semibold">
+                                        Este campo no puede modificarse tras la verificación oficial. Para cambios de razón social, contacta a soporte administrativo.
+                                    </p>
+                                )}
                             </div>
 
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                 <div className="space-y-2">
-                                    <label className="text-sm font-bold text-slate-700 ml-1">RIF del Negocio</label>
-                                    <div className="flex bg-slate-50 border-2 border-transparent focus-within:border-primary focus-within:bg-white rounded-2xl transition-all overflow-hidden">
+                                    <div className="flex items-center justify-between">
+                                        <label className="text-sm font-bold text-slate-700 ml-1">RIF del Negocio</label>
+                                        {isVerified && (
+                                            <span className="text-[11px] font-black text-amber-700 bg-amber-50 border border-amber-200 px-2.5 py-0.5 rounded-lg flex items-center gap-1">
+                                                <Lock className="w-3 h-3" /> Bloqueado
+                                            </span>
+                                        )}
+                                    </div>
+                                    <div className={`flex bg-slate-50 border-2 border-transparent focus-within:border-primary focus-within:bg-white rounded-2xl transition-all overflow-hidden ${isVerified ? 'opacity-75 bg-slate-100 cursor-not-allowed' : ''}`}>
                                         <select
+                                            disabled={isVerified}
                                             value={rifPrefix}
                                             onChange={(e) => setRifPrefix(e.target.value as any)}
-                                            className="bg-slate-100/90 hover:bg-slate-200/70 border-r border-slate-200 px-3 py-4 font-black text-slate-800 text-sm outline-none cursor-pointer"
+                                            className={`bg-slate-100/90 hover:bg-slate-200/70 border-r border-slate-200 px-3 py-4 font-black text-slate-800 text-sm outline-none ${isVerified ? 'cursor-not-allowed' : 'cursor-pointer'}`}
                                             title="Selecciona la letra del RIF en Venezuela"
                                         >
                                             <option value="J">J (Jurídico)</option>
@@ -686,13 +932,21 @@ export default function RestaurantProfile() {
                                         </select>
                                         <input
                                             type="text"
+                                            disabled={isVerified}
                                             value={rifNumber}
                                             onChange={(e) => setRifNumber(e.target.value.replace(/[^0-9-]/g, ''))}
-                                            className="w-full bg-transparent p-4 outline-none font-bold text-slate-800 tracking-wide"
+                                            className={`w-full bg-transparent p-4 outline-none font-bold text-slate-800 tracking-wide ${isVerified ? 'cursor-not-allowed' : ''}`}
                                             placeholder="12345678-9"
                                         />
+                                        {isVerified && (
+                                            <div className="pr-4 flex items-center">
+                                                <Lock className="w-4 h-4 text-slate-400" />
+                                            </div>
+                                        )}
                                     </div>
-                                    <p className="text-[11px] text-slate-400 ml-1">Letra venezolana ({rifPrefix}) + número de RIF</p>
+                                    <p className="text-[11px] text-slate-400 ml-1">
+                                        {isVerified ? 'El RIF está protegido y no es modificable tras verificación.' : `Letra venezolana (${rifPrefix}) + número de RIF`}
+                                    </p>
                                 </div>
 
                                 <div className="space-y-2">
@@ -1570,6 +1824,47 @@ export default function RestaurantProfile() {
                     }}
                 />
             )}
+
+            {/* Verification Modal */}
+            <VerificationModal
+                isOpen={isVerificationModalOpen}
+                onClose={() => setIsVerificationModalOpen(false)}
+                restaurantId={rid}
+                initialData={{
+                    name: name,
+                    rifPrefix: rifPrefix,
+                    rifNumber: rifNumber,
+                    instagram: instagram,
+                    tiktok: tiktok,
+                    address: location?.address || '',
+                    addressReference: addressReference || location?.reference || '',
+                    workingHoursSummary: 'Lunes a Domingo: 08:00 AM - 10:00 PM',
+                    whatsappNumber: whatsappNumber,
+                    requiresDelivery: requiresDelivery,
+                    existingRifUrl: existingRifUrl
+                }}
+                onSuccess={(updated) => {
+                    setVerificationStatus(updated.verificationStatus);
+                    setName(updated.name);
+                    const match = updated.rif.match(/^([JVGEC])-(.*)$/);
+                    if (match) {
+                        setRifPrefix(match[1] as any);
+                        setRifNumber(match[2]);
+                    }
+                    setInstagram(updated.instagram);
+                    setTiktok(updated.tiktok);
+                    setAddressReference(updated.addressReference);
+                    setWhatsappNumber(updated.whatsapp);
+                    setRequiresDelivery(updated.requiresDelivery);
+                    setExistingRifUrl(updated.rifPhotoUrl);
+                    if (location) {
+                        setLocation({
+                            ...location,
+                            reference: updated.addressReference
+                        });
+                    }
+                }}
+            />
         </div>
     );
 }

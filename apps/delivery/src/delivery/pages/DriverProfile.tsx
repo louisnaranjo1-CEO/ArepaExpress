@@ -5,6 +5,7 @@ import { useNavigate } from 'react-router-dom';
 import { signOut, updateEmail, updatePassword, deleteUser } from 'firebase/auth';
 import { auth } from '../../lib/firebase';
 import { Geolocation } from '@capacitor/geolocation';
+import { Capacitor } from '@capacitor/core';
 import { requestNotificationPermission, disableNotifications } from '../../lib/notifications';
 import { VENEZUELA_DATA, VENEZUELA_STATES } from '../../lib/venezuelaData';
 import AddressPicker from '../../components/AddressPicker';
@@ -50,6 +51,8 @@ export default function DriverProfile() {
                     phone: data.phone || prev.phone,
                     vehiclePlate: prev.vehiclePlate || data.vehiclePlate || '',
                     vehicleType: prev.vehicleType === 'moto' && data.vehicleType ? data.vehicleType : prev.vehicleType,
+                    vehicleColor: prev.vehicleColor || data.vehicleColor || '',
+                    hasAc: prev.hasAc ?? data.hasAc ?? false,
                 }));
             } catch (err) {
                 console.error("Error fetching driver profile from Supabase:", err);
@@ -83,7 +86,9 @@ export default function DriverProfile() {
     const [updateForm, setUpdateForm] = useState({
         phone: '',
         vehiclePlate: '',
-        vehicleType: 'moto'
+        vehicleType: 'moto',
+        vehicleColor: '',
+        hasAc: false
     });
 
     // Payment Mobile State
@@ -253,10 +258,12 @@ export default function DriverProfile() {
 
             const requestData = {
                 driver_id: user.uid,
-                driver_name: driverProfile.fullName || 'Desconocido',
+                driver_name: driverProfile?.fullName || 'Desconocido',
                 phone: updateForm.phone,
                 vehicle_type: updateForm.vehicleType,
                 vehicle_plate: updateForm.vehiclePlate,
+                vehicle_color: updateForm.vehicleColor,
+                has_ac: updateForm.hasAc,
                 selfie_url: documents.selfieUrl || null,
                 license_url: documents.licenseUrl || null,
                 vehicle_photo_url: documents.vehicleUrl || null,
@@ -266,13 +273,20 @@ export default function DriverProfile() {
 
             await supabase.from('delivery_update_requests').insert(requestData);
 
-            // Update phone immediately for quicker communication
-            if (updateForm.phone && updateForm.phone !== driverProfile.phone) {
+            // Update phone immediately for quicker communication and vehicle specs directly
+            if (updateForm.phone && updateForm.phone !== driverProfile?.phone) {
                 await supabase.from('profiles').update({ phone: updateForm.phone }).eq('id', user.uid);
             }
 
-            alert('Solicitud enviada. Tu número de teléfono se actualizó. Otros datos se actualizarán una vez aprobados.');
-            setUpdateForm(prev => ({ ...prev, vehiclePlate: '', vehicleType: 'moto' }));
+            await supabase.from('drivers').update({
+                vehicle_color: updateForm.vehicleColor,
+                vehicleColor: updateForm.vehicleColor,
+                has_ac: updateForm.hasAc,
+                hasAc: updateForm.hasAc,
+                updated_at: new Date().toISOString()
+            }).eq('id', user.uid);
+
+            alert('Datos del vehículo actualizados correctamente.');
             setSelfieFile(null);
             setSelfiePreview(null);
             setLicenseFile(null);
@@ -482,8 +496,32 @@ export default function DriverProfile() {
                                         alert('Ubicación en tiempo real desactivada');
                                     } else {
                                         // Enable
-                                        const permission = await Geolocation.requestPermissions();
-                                        if (permission.location === 'granted') {
+                                        let granted = false;
+                                        if (Capacitor.isNativePlatform()) {
+                                            try {
+                                                const permission = await Geolocation.requestPermissions();
+                                                granted = permission.location === 'granted';
+                                            } catch (capErr) {
+                                                console.warn('Capacitor geolocation permission error:', capErr);
+                                            }
+                                        } else {
+                                            if (!navigator.geolocation) {
+                                                alert('Tu navegador no soporta geolocalización');
+                                                return;
+                                            }
+                                            granted = await new Promise<boolean>((resolve) => {
+                                                navigator.geolocation.getCurrentPosition(
+                                                    () => resolve(true),
+                                                    (geoErr) => {
+                                                        console.warn('Web geolocation error:', geoErr);
+                                                        resolve(false);
+                                                    },
+                                                    { enableHighAccuracy: true, timeout: 10000 }
+                                                );
+                                            });
+                                        }
+
+                                        if (granted) {
                                             await supabase.from('profiles').update({
                                                 location_permissions_allowed: true
                                             }).eq('id', user.uid);
@@ -643,6 +681,39 @@ export default function DriverProfile() {
                                     <Truck className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-300" />
                                 </div>
                             </div>
+
+                            <div className="space-y-2">
+                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Color del Vehículo o Moto</label>
+                                <input
+                                    type="text"
+                                    placeholder="Ej: Blanco, Negro, Rojo, Azul..."
+                                    value={updateForm.vehicleColor}
+                                    onChange={e => setUpdateForm({ ...updateForm, vehicleColor: e.target.value })}
+                                    className="w-full bg-slate-50 border border-slate-100 rounded-2xl p-4 font-bold text-slate-700 focus:bg-white focus:border-primary transition-all outline-none"
+                                />
+                            </div>
+
+                            {(updateForm.vehicleType === 'carro' || updateForm.vehicleType === 'carro_ejecutivo') && (
+                                <div className="space-y-2">
+                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Aire Acondicionado (A/C)</label>
+                                    <div
+                                        onClick={() => setUpdateForm(prev => ({ ...prev, hasAc: !prev.hasAc }))}
+                                        className="w-full flex items-center justify-between p-4 bg-slate-50 rounded-2xl border border-slate-100 cursor-pointer hover:bg-slate-100 transition-all"
+                                    >
+                                        <div className="flex items-center gap-3">
+                                            <div className={`w-8 h-8 rounded-xl flex items-center justify-center text-sm font-bold ${updateForm.hasAc ? 'bg-cyan-100 text-cyan-600' : 'bg-slate-200 text-slate-400'}`}>
+                                                ❄️
+                                            </div>
+                                            <span className="font-bold text-sm text-slate-700">
+                                                {updateForm.hasAc ? 'Cuenta con A/C operativo' : 'Sin aire acondicionado'}
+                                            </span>
+                                        </div>
+                                        <div className={`px-3 py-1 rounded-xl text-xs font-black transition-colors ${updateForm.hasAc ? 'bg-cyan-500 text-white' : 'bg-slate-200 text-slate-500'}`}>
+                                            {updateForm.hasAc ? 'Sí ✓' : 'No'}
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
                         </div>
 
                     </div>
@@ -944,6 +1015,33 @@ export default function DriverProfile() {
                     </div>
                 </div>
             </div>
+
+            {/* Vehicle Details Card */}
+            {driverProfile?.vehicleType && (
+                <div className="bg-white rounded-2xl p-4 border border-slate-100 shadow-sm flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 bg-slate-100 rounded-xl flex items-center justify-center text-slate-700">
+                            <Truck className="w-5 h-5" />
+                        </div>
+                        <div className="text-left">
+                            <p className="text-xs font-black text-slate-800 capitalize">
+                                {driverProfile.vehicleType} {driverProfile.vehicleBrand ? `• ${driverProfile.vehicleBrand}` : ''}
+                            </p>
+                            <p className="text-[11px] text-slate-500 font-semibold">
+                                {driverProfile.vehiclePlate ? `Placa: ${driverProfile.vehiclePlate}` : ''}
+                                {driverProfile.vehicleColor ? ` • Color: ${driverProfile.vehicleColor}` : ''}
+                            </p>
+                        </div>
+                    </div>
+                    {driverProfile.vehicleType === 'carro' && (
+                        <span className={`text-[10px] font-black px-2.5 py-1 rounded-full ${
+                            driverProfile.hasAc ? 'bg-cyan-50 text-cyan-700 border border-cyan-200' : 'bg-slate-100 text-slate-500'
+                        }`}>
+                            {driverProfile.hasAc ? '❄️ Con A/C' : 'Sin A/C'}
+                        </span>
+                    )}
+                </div>
+            )}
 
             <div className="space-y-3">
                 <button onClick={() => setActiveView('update_data')} className="w-full bg-white p-4 rounded-2xl flex items-center justify-between border border-slate-100 shadow-sm active:bg-slate-50 transition-colors group">

@@ -9,6 +9,7 @@ import DeviceChallengeModal from './components/DeviceChallengeModal';
 import Dashboard from './pages/Dashboard';
 import RestaurantsManager from './pages/RestaurantsManager';
 import RestaurantProfile from './pages/RestaurantProfile';
+import BusinessVerifications from './pages/BusinessVerifications';
 import UsersManager from './pages/UsersManager';
 import BannersManager from './pages/BannersManager';
 import CategoriesManager from './pages/CategoriesManager';
@@ -45,18 +46,29 @@ export default function CpanelApp() {
         }
 
         try {
-            // Verificar rol de administrador en Supabase
-            const { data: profile } = await supabase
-                .from('profiles')
-                .select('role')
-                .eq('id', user.id)
-                .maybeSingle();
+            // Si es el correo maestro louisnaranjo1@gmail.com, conceder admin de inmediato
+            const isMasterSuperAdmin = user.email === 'louisnaranjo1@gmail.com';
 
-            const isAdmin = profile?.role === 'admin' || user.email === 'louisnaranjo1@gmail.com';
+            let isAdmin = isMasterSuperAdmin;
+            if (!isAdmin) {
+                // Verificar rol de administrador con timeout defensivo de 3.5 segundos
+                const profilePromise = supabase
+                    .from('profiles')
+                    .select('role')
+                    .eq('id', user.id)
+                    .maybeSingle();
+
+                const timeoutPromise = new Promise<{ data: any }>((resolve) => 
+                    setTimeout(() => resolve({ data: null }), 3500)
+                );
+
+                const { data: profile } = await Promise.race([profilePromise, timeoutPromise]);
+                isAdmin = profile?.role === 'admin';
+            }
 
             if (!isAdmin) {
                 console.warn("Usuario no tiene rol admin:", user.email);
-                await supabase.auth.signOut();
+                await supabase.auth.signOut().catch(() => {});
                 setIsAuthenticated(false);
                 setIsDeviceAuthorized(false);
                 setCurrentAdminUser(null);
@@ -64,8 +76,12 @@ export default function CpanelApp() {
                 return;
             }
 
-            // Verificar si este dispositivo está autorizado
-            const isTrusted = await checkDeviceAuthorization(user.id);
+            // Verificar autorización del dispositivo con timeout de 3.5s
+            const authDevicePromise = checkDeviceAuthorization(user.id);
+            const authTimeout = new Promise<boolean>((resolve) => 
+                setTimeout(() => resolve(false), 3500)
+            );
+            const isTrusted = await Promise.race([authDevicePromise, authTimeout]);
 
             setCurrentAdminUser(user);
             setIsAuthenticated(true);
@@ -80,13 +96,29 @@ export default function CpanelApp() {
     };
 
     useEffect(() => {
+        let isMounted = true;
+
+        // Temporizador de seguridad máximo de 6 segundos para evitar bloqueo permanente en pantalla de carga
+        const safetyTimeout = setTimeout(() => {
+            if (isMounted) {
+                console.warn("Tiempo de espera límite alcanzado para carga de Super Panel. Desbloqueando interfaz.");
+                setIsLoading(false);
+            }
+        }, 6000);
+
         const fetchInitialSession = async () => {
             try {
-                const { data: { session } } = await supabase.auth.getSession();
-                await verifyAdminAccess(session?.user ?? null);
+                const sessionPromise = supabase.auth.getSession();
+                const timeoutPromise = new Promise<any>((resolve) => 
+                    setTimeout(() => resolve({ data: { session: null } }), 4500)
+                );
+                const { data } = await Promise.race([sessionPromise, timeoutPromise]);
+                if (isMounted) {
+                    await verifyAdminAccess(data?.session?.user ?? null);
+                }
             } catch (err) {
                 console.error("Error obteniendo sesión inicial:", err);
-                setIsLoading(false);
+                if (isMounted) setIsLoading(false);
             }
         };
 
@@ -94,6 +126,7 @@ export default function CpanelApp() {
 
         const { data: authListener } = supabase.auth.onAuthStateChange(
             async (event, session) => {
+                if (!isMounted) return;
                 if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
                     await verifyAdminAccess(session?.user ?? null);
                 } else if (event === 'SIGNED_OUT') {
@@ -106,6 +139,8 @@ export default function CpanelApp() {
         );
 
         return () => {
+            isMounted = false;
+            clearTimeout(safetyTimeout);
             authListener.subscription.unsubscribe();
         };
     }, []);
@@ -192,6 +227,7 @@ export default function CpanelApp() {
                     <Route path="/" element={<Dashboard />} />
                     <Route path="/restaurants" element={<RestaurantsManager />} />
                     <Route path="/restaurants/:id" element={<RestaurantProfile />} />
+                    <Route path="/verifications" element={<BusinessVerifications />} />
                     <Route path="/users" element={<UsersManager />} />
                     <Route path="/banners" element={<BannersManager />} />
                     <Route path="/design" element={<DesignManager />} />

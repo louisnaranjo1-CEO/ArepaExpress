@@ -1467,7 +1467,7 @@ export default function TrackOrder() {
                                         <p className="font-black text-slate-900 text-lg leading-none mb-1">{driver.fullName}</p>
                                         <div className="flex items-center gap-2">
                                             <span className="text-[10px] font-black text-slate-900 bg-slate-900 px-2 py-0.5 rounded-md uppercase tracking-wider">{driver.vehicleType || 'Repartidor'}</span>
-                                            <span className="text-[10px] font-black text-slate-400 uppercase">{driver.vehiclePlate || 'ABC-123'}</span>
+                                            <span className="text-[10px] font-black text-slate-400 uppercase">{driver.vehiclePlate || 'ABC-123'}{driver.vehicleColor ? ` • ${driver.vehicleColor}` : ''}</span>
                                         </div>
                                     </div>
                                 </div>

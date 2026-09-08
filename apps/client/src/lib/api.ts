@@ -60,6 +60,8 @@ export interface DriverProfile {
     age: number;
     vehicleType: string;
     vehiclePlate: string;
+    vehicleColor?: string;
+    hasAc?: boolean;
     isOnline: boolean;
     availability: string;
     currentLocation: { latitude: number; longitude: number } | null;
@@ -173,6 +175,8 @@ export const driversApi = {
             age: data.age,
             vehicleType: data.vehicle_type,
             vehiclePlate: data.vehicle_plate,
+            vehicleColor: data.vehicle_color || data.vehicleColor || '',
+            hasAc: data.has_ac ?? data.hasAc ?? false,
             isOnline: data.is_online,
             availability: data.availability,
             currentLocation: data.current_location,
@@ -215,6 +219,8 @@ export const driversApi = {
                 age: d.age,
                 vehicleType: d.vehicle_type,
                 vehiclePlate: d.vehicle_plate,
+                vehicleColor: d.vehicle_color || d.vehicleColor || '',
+                hasAc: d.has_ac ?? d.hasAc ?? false,
                 isOnline: d.is_online,
                 availability: d.availability,
                 currentLocation: d.current_location,

@@ -786,7 +786,9 @@ export default function TransportTracker() {
                             </div>
                             <div>
                                 <p className="font-black text-slate-900 text-sm leading-tight">{driver.fullName.split(' ')[0]}</p>
-                                <p className="text-[10px] font-bold text-slate-500 capitalize">{driver.vehicleType} • {driver.vehiclePlate}</p>
+                                <p className="text-[10px] font-bold text-slate-500 capitalize">
+                                    {driver.vehicleType} • {driver.vehiclePlate}{driver.vehicleColor ? ` • ${driver.vehicleColor}` : ''}{driver.hasAc ? ' ❄️' : ''}
+                                </p>
                             </div>
                         </div>
                         <div className="flex gap-2">

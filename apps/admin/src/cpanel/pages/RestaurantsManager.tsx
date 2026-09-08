@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
-import { Store, CheckCircle, XCircle, ChevronRight, X, Phone, MapPin, Tag, Box, Star, Users, ShoppingBag, Database } from 'lucide-react';
+import { Store, CheckCircle, XCircle, ChevronRight, X, Phone, MapPin, Tag, Box, Star, Users, ShoppingBag, Database, ShieldCheck, ShieldAlert } from 'lucide-react';
 import { Restaurant, seedDatabase, clearMockDatabase } from '../../lib/seed';
 import { useNavigate } from 'react-router-dom';
 
@@ -10,6 +10,9 @@ interface RestaurantDetail extends Restaurant {
     totalOrders?: number;
     status?: 'active' | 'busy' | 'unavailable';
     email?: string;
+    isVisible?: boolean;
+    isVerified?: boolean;
+    verificationStatus?: string;
 }
 
 export default function RestaurantsManager() {
@@ -31,6 +34,9 @@ export default function RestaurantsManager() {
             const mapped = (data || []).map(r => ({
                 ...r,
                 isActive: r.is_active !== undefined ? r.is_active : (r.isActive !== false),
+                isVisible: r.is_visible !== undefined ? r.is_visible : (r.isVisible ?? false),
+                isVerified: r.is_verified || r.isVerified || r.verification_status === 'verified',
+                verificationStatus: r.verification_status || 'unverified',
                 logoUrl: r.logo_url || r.logoUrl || r.image,
                 subscriptionEnd: r.subscription_end || r.subscriptionEnd
             })) as RestaurantDetail[];
@@ -128,9 +134,23 @@ export default function RestaurantsManager() {
                                             {restaurant.email || 'Sin correo'}
                                         </div>
                                     </div>
-                                    <div className="mt-1.5 flex flex-wrap gap-2">
+                                    <div className="mt-1.5 flex flex-wrap gap-2 items-center">
                                         <span className="text-[10px] font-bold text-slate-600 bg-slate-50 px-2.5 py-1 rounded-lg border border-slate-100 uppercase tracking-wider">
                                             {restaurant.category}
+                                        </span>
+                                        {restaurant.isVerified ? (
+                                            <span className="px-2 py-0.5 bg-emerald-100 text-emerald-800 text-[10px] font-black rounded-lg flex items-center gap-1">
+                                                <ShieldCheck className="w-3 h-3" /> Verificado
+                                            </span>
+                                        ) : restaurant.verificationStatus === 'pending' ? (
+                                            <span className="px-2 py-0.5 bg-amber-100 text-amber-800 text-[10px] font-black rounded-lg flex items-center gap-1 animate-pulse">
+                                                <ShieldAlert className="w-3 h-3" /> Por Verificar
+                                            </span>
+                                        ) : null}
+                                        <span className={`px-2 py-0.5 text-[10px] font-black rounded-lg ${
+                                            restaurant.isVisible ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-slate-100 text-slate-500'
+                                        }`}>
+                                            {restaurant.isVisible ? 'Visible' : 'Oculto'}
                                         </span>
                                         {restaurant.isMock && (
                                             <span className="px-2.5 py-1 bg-indigo-100 text-indigo-700 text-[10px] uppercase tracking-wider rounded-lg font-black">

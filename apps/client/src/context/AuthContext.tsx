@@ -16,6 +16,7 @@ export interface UserData {
     addresses?: UserAddress[];
     role?: string;
     displayName?: string;
+    fullName?: string;
     email?: string;
     photoURL?: string;
     phone?: string;
@@ -36,6 +37,7 @@ interface AuthContextType {
     isUnlocked: boolean;
     setIsUnlocked: (unlocked: boolean) => void;
     currentLocation: { lat: number, lng: number } | null;
+    refreshUserData: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType>({ 
@@ -45,7 +47,8 @@ const AuthContext = createContext<AuthContextType>({
     isProfileComplete: false,
     isUnlocked: true,
     setIsUnlocked: () => {},
-    currentLocation: null
+    currentLocation: null,
+    refreshUserData: async () => {}
 });
 
 export const useAuth = () => useContext(AuthContext);
@@ -78,9 +81,47 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             handleUser(session?.user ?? null);
         };
 
+        const fetchProfileData = async (sbUser: User) => {
+            const { data } = await supabase
+                .from('profiles')
+                .select('*')
+                .eq('id', sbUser.id)
+                .maybeSingle();
+
+            const profileName = data?.full_name || (sbUser as any).user_metadata?.full_name || (sbUser as any).user_metadata?.name || (sbUser as any).user_metadata?.display_name || '';
+            const profilePhoto = data?.photo_url || (sbUser as any).user_metadata?.avatar_url || (sbUser as any).user_metadata?.picture || '';
+
+            (sbUser as any).displayName = profileName;
+            (sbUser as any).photoURL = profilePhoto;
+
+            if (data) {
+                setUserData({
+                    ...data,
+                    displayName: profileName,
+                    fullName: profileName,
+                    email: data.email || sbUser.email,
+                    phone: data.phone,
+                    cedula: data.cedula,
+                    birthdate: data.birthdate,
+                    gender: data.gender,
+                    photoURL: profilePhoto,
+                    points: data.points,
+                } as UserData);
+            } else {
+                setUserData({
+                    displayName: profileName,
+                    fullName: profileName,
+                    email: sbUser.email,
+                    photoURL: profilePhoto
+                } as UserData);
+            }
+        };
+
         const handleUser = async (sbUser: User | null) => {
             if (sbUser) {
                 (sbUser as any).uid = sbUser.id; // Compatibility for legacy references
+                (sbUser as any).displayName = (sbUser as any).user_metadata?.full_name || (sbUser as any).user_metadata?.name || '';
+                (sbUser as any).photoURL = (sbUser as any).user_metadata?.avatar_url || (sbUser as any).user_metadata?.picture || '';
             }
             setUser(sbUser);
             if (sbUser) {
@@ -98,25 +139,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 }
 
                 // Fetch profile
-                const { data, error } = await supabase
-                    .from('profiles')
-                    .select('*')
-                    .eq('id', sbUser.id)
-                    .single();
-
-                if (!error && data) {
-                    setUserData({
-                        ...data,
-                        displayName: data.full_name,
-                        email: data.email,
-                        phone: data.phone,
-                        cedula: data.cedula,
-                        birthdate: data.birthdate,
-                        gender: data.gender,
-                        photoURL: data.photo_url,
-                        points: data.points,
-                    } as UserData);
-                }
+                await fetchProfileData(sbUser);
 
                 // Subscribe to profile changes for single device enforcement
                 channel = supabase.channel(`public:profiles:${sbUser.id}`)
@@ -135,16 +158,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                                 return;
                             }
 
+                            const updatedName = updated.full_name || (sbUser as any).user_metadata?.full_name || '';
+                            const updatedPhoto = updated.photo_url || (sbUser as any).user_metadata?.avatar_url || '';
+                            (sbUser as any).displayName = updatedName;
+                            (sbUser as any).photoURL = updatedPhoto;
+
                             setUserData((prev) => ({
                                 ...prev,
                                 ...updated,
-                                displayName: updated.full_name,
+                                displayName: updatedName,
+                                fullName: updatedName,
                                 email: updated.email,
                                 phone: updated.phone,
                                 cedula: updated.cedula,
                                 birthdate: updated.birthdate,
                                 gender: updated.gender,
-                                photoURL: updated.photo_url,
+                                photoURL: updatedPhoto,
                                 points: updated.points,
                             }));
                         }
@@ -228,8 +257,39 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         userData?.birthdate
     );
 
+    const refreshUserData = async () => {
+        if (user) {
+            const { data } = await supabase
+                .from('profiles')
+                .select('*')
+                .eq('id', user.id)
+                .maybeSingle();
+
+            if (data) {
+                const profileName = data.full_name || (user as any).user_metadata?.full_name || (user as any).user_metadata?.name || '';
+                const profilePhoto = data.photo_url || (user as any).user_metadata?.avatar_url || '';
+                (user as any).displayName = profileName;
+                (user as any).photoURL = profilePhoto;
+
+                setUserData((prev) => ({
+                    ...prev,
+                    ...data,
+                    displayName: profileName,
+                    fullName: profileName,
+                    email: data.email || user.email,
+                    phone: data.phone,
+                    cedula: data.cedula,
+                    birthdate: data.birthdate,
+                    gender: data.gender,
+                    photoURL: profilePhoto,
+                    points: data.points,
+                }));
+            }
+        }
+    };
+
     return (
-        <AuthContext.Provider value={{ user, userData, loading, isProfileComplete, isUnlocked, setIsUnlocked, currentLocation }}>
+        <AuthContext.Provider value={{ user, userData, loading, isProfileComplete, isUnlocked, setIsUnlocked, currentLocation, refreshUserData }}>
             {children}
             {sessionTerminated && (
                 <div className="fixed inset-0 z-[9999] flex items-center justify-center p-6 bg-black/80 backdrop-blur-md">
