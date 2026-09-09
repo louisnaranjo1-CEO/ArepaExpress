@@ -1,9 +1,7 @@
 import React, { useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
-import { User, Mail, MapPin, CreditCard, LogOut, ShoppingBag, Settings, ChevronRight, Clock, FileText, Bell, Navigation, X, Shield, UploadCloud, CheckCircle2, Save, Image as ImageIcon, Key, Trash2, ArrowLeft, Camera, Truck, ShieldCheck, Smartphone, Fingerprint } from 'lucide-react';
+import { User, Mail, MapPin, CreditCard, LogOut, ShoppingBag, Settings, ChevronRight, Clock, FileText, Bell, Navigation, X, Shield, UploadCloud, CheckCircle2, Save, Image as ImageIcon, Key, Trash2, ArrowLeft, Camera, Truck, ShieldCheck, Smartphone, Fingerprint, Car, Bike, Star } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { signOut, updateEmail, updatePassword, deleteUser } from 'firebase/auth';
-import { auth } from '../../lib/firebase';
 import { Geolocation } from '@capacitor/geolocation';
 import { Capacitor } from '@capacitor/core';
 import { requestNotificationPermission, disableNotifications } from '../../lib/notifications';
@@ -34,25 +32,27 @@ export default function DriverProfile() {
                 if (!isMounted) return;
                 
                 setDriverProfile(data);
-                if (data.homeLocation) {
+                const hl = data.home_location || data.homeLocation;
+                if (hl) {
                     setLocationForm({
-                        state: data.homeLocation.state || '',
-                        city: data.homeLocation.city || '',
-                        coords: data.homeLocation.coords || null
+                        state: hl.state || '',
+                        city: hl.city || '',
+                        coords: hl.coords || null
                     });
                 }
                 
-                if (data.paymentMobile) {
-                    setPaymentMobileForm(data.paymentMobile);
+                const pm = data.payment_mobile || data.paymentMobile;
+                if (pm) {
+                    setPaymentMobileForm(pm);
                 }
 
                 setUpdateForm(prev => ({
                     ...prev,
                     phone: data.phone || prev.phone,
-                    vehiclePlate: prev.vehiclePlate || data.vehiclePlate || '',
-                    vehicleType: prev.vehicleType === 'moto' && data.vehicleType ? data.vehicleType : prev.vehicleType,
-                    vehicleColor: prev.vehicleColor || data.vehicleColor || '',
-                    hasAc: prev.hasAc ?? data.hasAc ?? false,
+                    vehiclePlate: data.vehicle_plate || data.vehiclePlate || prev.vehiclePlate || '',
+                    vehicleType: data.vehicle_type || data.vehicleType || prev.vehicleType || 'moto',
+                    vehicleColor: data.vehicle_color || data.vehicleColor || prev.vehicleColor || '',
+                    hasAc: data.has_ac ?? data.hasAc ?? prev.hasAc ?? false,
                 }));
             } catch (err) {
                 console.error("Error fetching driver profile from Supabase:", err);
@@ -139,10 +139,10 @@ export default function DriverProfile() {
 
     const handleLogout = async () => {
         try {
-            await signOut(auth);
-            navigate('/delivery/login');
+            await supabase.auth.signOut();
+            navigate('/login');
         } catch (error) {
-            console.error(error);
+            console.error("Error al cerrar sesión:", error);
         }
     };
 
@@ -151,12 +151,13 @@ export default function DriverProfile() {
         if (!user || !newEmail) return;
         setLoading(true);
         try {
-            await updateEmail(user, newEmail);
-            alert('Correo electrónico actualizado con éxito.');
+            const { error } = await supabase.auth.updateUser({ email: newEmail });
+            if (error) throw error;
+            alert('Se ha enviado un enlace de confirmación a tu nuevo correo electrónico.');
             setNewEmail('');
         } catch (error: any) {
             console.error(error);
-            alert('Error al cambiar correo. Es posible que necesites cerrar sesión y volver a entrar por seguridad. Detalles: ' + error.message);
+            alert('Error al cambiar correo: ' + error.message);
         } finally {
             setLoading(false);
         }
@@ -167,12 +168,13 @@ export default function DriverProfile() {
         if (!user || !newPassword) return;
         setLoading(true);
         try {
-            await updatePassword(user, newPassword);
+            const { error } = await supabase.auth.updateUser({ password: newPassword });
+            if (error) throw error;
             alert('Contraseña actualizada con éxito.');
             setNewPassword('');
         } catch (error: any) {
             console.error(error);
-            alert('Error al cambiar contraseña. Es posible que necesites cerrar sesión y volver a entrar por seguridad. Detalles: ' + error.message);
+            alert('Error al cambiar contraseña: ' + error.message);
         } finally {
             setLoading(false);
         }
@@ -180,14 +182,23 @@ export default function DriverProfile() {
 
     const handleDeleteAccount = async () => {
         if (!user) return;
-        if (!window.confirm('¿Estás SEGURO de que deseas eliminar tu cuenta permanentemente? Perderás todo tu historial.')) return;
+        const confirmDelete = window.confirm(
+            '¿Estás seguro de que deseas eliminar tu cuenta permanentemente? Se borrarán todos tus datos de conductor, vehículos, registros y acceso al sistema.'
+        );
+        if (!confirmDelete) return;
 
         try {
-            await deleteUser(user);
-            navigate('/delivery/login');
+            setLoading(true);
+            const { error } = await supabase.rpc('delete_user_account');
+            if (error) throw error;
+            await supabase.auth.signOut();
+            alert('Tu cuenta ha sido eliminada exitosamente.');
+            navigate('/login');
         } catch (error: any) {
-            console.error(error);
-            alert('Error al eliminar cuenta. Inicia sesión de nuevo e intenta de nuevo. Detalles: ' + error.message);
+            console.error("Error al eliminar cuenta:", error);
+            alert('Error al eliminar cuenta: ' + (error.message || 'Ocurrió un error inesperado'));
+        } finally {
+            setLoading(false);
         }
     };
 
@@ -992,69 +1003,96 @@ export default function DriverProfile() {
 
     // Default Profile View
     return (
-        <div className="space-y-6 animate-fade-in pb-24 px-4">
+        <div className="space-y-5 animate-fade-in pb-24 px-4">
             <h2 className="text-2xl font-black text-slate-800 tracking-tight">Mi Perfil</h2>
 
-            <div className="bg-white rounded-[32px] p-6 border border-slate-100 shadow-sm text-center relative overflow-hidden">
-                <div className="absolute top-0 left-0 w-full h-24 bg-primary/10 backdrop-blur-3xl -z-10"></div>
-                <div className="w-24 h-24 bg-white p-1 rounded-full mx-auto mb-4 relative shadow-xl shadow-primary/20">
+            {/* Header YANGO Pro */}
+            <div className="bg-gradient-to-b from-slate-900 via-slate-800 to-slate-900 rounded-[32px] p-6 text-white text-center relative overflow-hidden shadow-xl shadow-slate-900/10">
+                <div className="absolute top-0 right-0 w-36 h-36 bg-primary/10 rounded-full blur-2xl pointer-events-none"></div>
+                <div className="relative w-24 h-24 mx-auto mb-3">
                     <img
-                        src={(userData?.photoURL && userData.photoURL.trim() !== "") ? userData.photoURL : (driverProfile?.documents?.selfieUrl && driverProfile.documents.selfieUrl.trim() !== "") ? driverProfile.documents.selfieUrl : (user?.photoURL && user.photoURL.trim() !== "") ? user.photoURL : `https://ui-avatars.com/api/?name=${encodeURIComponent(user?.email || 'Driver')}&background=e0e7ff&color=4f46e5`}
-                        alt="Profile"
-                        className="w-full h-full rounded-full object-cover"
+                        src={(userData?.photoURL && userData.photoURL.trim() !== "") ? userData.photoURL : (driverProfile?.documents?.selfieUrl && driverProfile.documents.selfieUrl.trim() !== "") ? driverProfile.documents.selfieUrl : (user?.photoURL && user.photoURL.trim() !== "") ? user.photoURL : `https://ui-avatars.com/api/?name=${encodeURIComponent(driverProfile?.fullName || user?.displayName || user?.email || 'Conductor')}&background=FACC15&color=000&bold=true`}
+                        alt="Foto Conductor"
+                        className="w-full h-full rounded-full object-cover border-4 border-primary/40 shadow-lg"
                     />
-                    <div className="absolute bottom-0 right-0 w-6 h-6 bg-emerald-500 border-4 border-white rounded-full"></div>
+                    <div className="absolute bottom-0 right-1 w-6 h-6 bg-emerald-500 border-2 border-slate-900 rounded-full flex items-center justify-center shadow">
+                        <CheckCircle2 className="w-3.5 h-3.5 text-white" />
+                    </div>
                 </div>
 
-                <h3 className="text-xl font-black text-slate-900">{driverProfile?.fullName || user?.displayName || 'Piloto'}</h3>
-                <p className="text-sm font-medium text-slate-500 mb-4">{user?.email}</p>
+                <h3 className="text-xl font-black text-white tracking-tight">{driverProfile?.fullName || user?.displayName || 'Conductor Pro'}</h3>
+                <p className="text-xs text-slate-400 font-medium mt-0.5">{user?.email}</p>
 
-                <div className="flex flex-col gap-2">
-                    <div className="flex w-full items-center justify-center gap-2 text-xs font-bold bg-emerald-50 text-emerald-600 px-3 py-1.5 rounded-full capitalize">
-                        <ShieldCheck className="w-4 h-4" /> Cuenta Verificada
+                <div className="mt-2.5 inline-flex items-center gap-1.5 px-3 py-1 bg-white/10 backdrop-blur-md rounded-full text-[11px] font-bold text-primary">
+                    <ShieldCheck className="w-3.5 h-3.5 text-primary" /> Conductor Activo & Verificado
+                </div>
+
+                {/* Yango Metrics Bar */}
+                <div className="grid grid-cols-3 gap-2 mt-5 pt-4 border-t border-white/10 text-center">
+                    <div className="bg-white/5 backdrop-blur-sm rounded-2xl p-2.5">
+                        <div className="flex items-center justify-center gap-1 text-amber-400 font-black text-sm">
+                            <Star className="w-3.5 h-3.5 fill-amber-400" />
+                            <span>{Number(driverProfile?.rating || 5.0).toFixed(1)}</span>
+                        </div>
+                        <p className="text-[10px] text-slate-300 font-semibold mt-0.5">Calificación</p>
+                    </div>
+                    <div className="bg-white/5 backdrop-blur-sm rounded-2xl p-2.5">
+                        <p className="text-emerald-400 font-black text-sm">{driverProfile?.acceptance_rate || 100}%</p>
+                        <p className="text-[10px] text-slate-300 font-semibold mt-0.5">Aceptación</p>
+                    </div>
+                    <div className="bg-white/5 backdrop-blur-sm rounded-2xl p-2.5">
+                        <p className="text-primary font-black text-sm">{driverProfile?.total_trips || 0}</p>
+                        <p className="text-[10px] text-slate-300 font-semibold mt-0.5">Viajes</p>
                     </div>
                 </div>
             </div>
 
-            {/* Vehicle Details Card */}
-            {driverProfile?.vehicleType && (
-                <div className="bg-white rounded-2xl p-4 border border-slate-100 shadow-sm flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 bg-slate-100 rounded-xl flex items-center justify-center text-slate-700">
-                            <Truck className="w-5 h-5" />
+            {/* Active Vehicle Card */}
+            <div className="bg-white rounded-[24px] p-4 sm:p-5 border border-slate-100 shadow-sm">
+                <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3.5">
+                        <div className="w-12 h-12 bg-slate-100 rounded-2xl flex items-center justify-center text-slate-800 shadow-inner">
+                            {driverProfile?.vehicleType === 'moto' ? <Bike className="w-6 h-6" /> : <Car className="w-6 h-6" />}
                         </div>
-                        <div className="text-left">
-                            <p className="text-xs font-black text-slate-800 capitalize">
-                                {driverProfile.vehicleType} {driverProfile.vehicleBrand ? `• ${driverProfile.vehicleBrand}` : ''}
+                        <div>
+                            <p className="text-xs font-black text-slate-900 capitalize">
+                                {driverProfile?.vehicleType === 'moto' ? 'Motocicleta / MotoTaxi' : driverProfile?.vehicleType === 'carro_ejecutivo' ? 'Vehículo Ejecutivo' : 'Automóvil / Taxi'}
                             </p>
-                            <p className="text-[11px] text-slate-500 font-semibold">
-                                {driverProfile.vehiclePlate ? `Placa: ${driverProfile.vehiclePlate}` : ''}
-                                {driverProfile.vehicleColor ? ` • Color: ${driverProfile.vehicleColor}` : ''}
+                            <p className="text-[11px] text-slate-500 font-medium">
+                                {driverProfile?.vehicleBrand ? `${driverProfile.vehicleBrand} ` : ''}
+                                {driverProfile?.vehicleModel ? `${driverProfile.vehicleModel} ` : ''}
+                                {driverProfile?.vehicleColor ? `• ${driverProfile.vehicleColor}` : ''}
                             </p>
                         </div>
                     </div>
-                    {driverProfile.vehicleType === 'carro' && (
-                        <span className={`text-[10px] font-black px-2.5 py-1 rounded-full ${
-                            driverProfile.hasAc ? 'bg-cyan-50 text-cyan-700 border border-cyan-200' : 'bg-slate-100 text-slate-500'
-                        }`}>
-                            {driverProfile.hasAc ? '❄️ Con A/C' : 'Sin A/C'}
-                        </span>
+                    {driverProfile?.vehiclePlate ? (
+                        <div className="px-3 py-1 bg-slate-900 text-yellow-400 rounded-xl font-mono font-black text-xs tracking-wider border border-yellow-400/30 shadow-sm">
+                            {driverProfile.vehiclePlate.toUpperCase()}
+                        </div>
+                    ) : (
+                        <span className="text-[10px] font-bold text-slate-400 bg-slate-100 px-2.5 py-1 rounded-full">Sin Placa</span>
                     )}
                 </div>
-            )}
+                {driverProfile?.hasAc && (
+                    <div className="mt-3 pt-3 border-t border-slate-100 flex items-center gap-2 text-xs font-bold text-cyan-600">
+                        <span>❄️ Equipado con Aire Acondicionado (A/C)</span>
+                    </div>
+                )}
+            </div>
 
+            {/* Quick Action Navigation */}
             <div className="space-y-3">
                 <button onClick={() => setActiveView('update_data')} className="w-full bg-white p-4 rounded-2xl flex items-center justify-between border border-slate-100 shadow-sm active:bg-slate-50 transition-colors group">
                     <div className="flex items-center gap-4">
-                        <div className="w-10 h-10 bg-indigo-50 text-primary rounded-xl flex items-center justify-center shrink-0">
+                        <div className="w-10 h-10 bg-indigo-50 text-indigo-600 rounded-xl flex items-center justify-center shrink-0">
                             <User className="w-5 h-5" />
                         </div>
                         <div className="text-left">
-                            <p className="font-bold text-slate-900">Editar Perfil</p>
-                            <p className="text-xs font-medium text-slate-500">Solicitar cambio de Vehículo</p>
+                            <p className="font-bold text-slate-900 text-sm">Editar Vehículo y Documentos</p>
+                            <p className="text-xs font-medium text-slate-500">Actualizar placa, fotos y tipo de servicio</p>
                         </div>
                     </div>
-                    <ChevronRight className="w-5 h-5 text-slate-300 group-hover:text-primary transition-colors" />
+                    <ChevronRight className="w-5 h-5 text-slate-300 group-hover:text-indigo-600 transition-colors" />
                 </button>
 
                 <button onClick={() => setActiveView('location')} className="w-full bg-white p-4 rounded-2xl flex items-center justify-between border border-slate-100 shadow-sm active:bg-slate-50 transition-colors group">
@@ -1063,8 +1101,10 @@ export default function DriverProfile() {
                             <MapPin className="w-5 h-5" />
                         </div>
                         <div className="text-left">
-                            <p className="font-bold text-slate-900">Ubicación Base</p>
-                            <p className="text-xs font-medium text-slate-500">Cambiar zona de trabajo actual</p>
+                            <p className="font-bold text-slate-900 text-sm">Zona Base de Trabajo</p>
+                            <p className="text-xs font-medium text-slate-500">
+                                {locationForm.city ? `${locationForm.city}, ${locationForm.state}` : 'Configurar Estado y Ciudad'}
+                            </p>
                         </div>
                     </div>
                     <ChevronRight className="w-5 h-5 text-slate-300 group-hover:text-emerald-600 transition-colors" />
@@ -1076,8 +1116,10 @@ export default function DriverProfile() {
                             <CreditCard className="w-5 h-5" />
                         </div>
                         <div className="text-left">
-                            <p className="font-bold text-slate-900">Método de Pago</p>
-                            <p className="text-xs font-medium text-slate-500">Configurar Pago Móvil</p>
+                            <p className="font-bold text-slate-900 text-sm">Cobros y Pago Móvil</p>
+                            <p className="text-xs font-medium text-slate-500">
+                                {paymentMobileForm.bank ? `Banco ${paymentMobileForm.bank} · ${paymentMobileForm.phone}` : 'Configurar cuenta de liquidación'}
+                            </p>
                         </div>
                     </div>
                     <ChevronRight className="w-5 h-5 text-slate-300 group-hover:text-orange-600 transition-colors" />
@@ -1089,8 +1131,8 @@ export default function DriverProfile() {
                             <Settings className="w-5 h-5" />
                         </div>
                         <div className="text-left">
-                            <p className="font-bold text-slate-900">Configuración de Seguridad</p>
-                            <p className="text-xs font-medium text-slate-500">Correo, Contraseña, Eliminar y Sesión</p>
+                            <p className="font-bold text-slate-900 text-sm">Seguridad y Cuenta</p>
+                            <p className="text-xs font-medium text-slate-500">Contraseña, Correo y Eliminar cuenta</p>
                         </div>
                     </div>
                     <ChevronRight className="w-5 h-5 text-slate-300 transition-colors" />
@@ -1099,11 +1141,11 @@ export default function DriverProfile() {
 
             <button
                 onClick={handleLogout}
-                className="w-full bg-slate-100 text-slate-600 p-4 rounded-2xl flex items-center justify-center gap-3 font-black active:scale-95 transition-transform mt-6"
+                className="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 p-4 rounded-2xl flex items-center justify-center gap-3 font-black active:scale-95 transition-all mt-6 shadow-sm"
             >
-                <LogOut className="w-5 h-5" /> Cerrar Sesión
+                <LogOut className="w-5 h-5 text-slate-500" /> Cerrar Sesión
             </button>
-            <p className="text-center text-xs font-medium text-slate-400 mt-6">Delivery Express v1.0.0</p>
+            <p className="text-center text-xs font-medium text-slate-400 mt-4">Deliexpress Driver v2.0 · Estilo Yango</p>
         </div>
     );
 }

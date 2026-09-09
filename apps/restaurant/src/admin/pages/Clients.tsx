@@ -270,7 +270,7 @@ export default function Clients() {
                                 <div className="p-6 text-center">
                                     <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Desde</p>
                                     <p className="text-xs font-black text-slate-900">
-                                        {selectedClient.createdAt ? format(selectedClient.createdAt.toDate(), 'MMM yyyy', { locale: es }) : 'Reciente'}
+                                        {selectedClient.createdAt ? format(selectedClient.createdAt.toDate ? selectedClient.createdAt.toDate() : new Date(selectedClient.createdAt), 'MMM yyyy', { locale: es }) : 'Reciente'}
                                     </p>
                                 </div>
                             </div>
@@ -285,10 +285,10 @@ export default function Clients() {
                                     <div className="bg-slate-50 p-4 rounded-2xl flex items-center justify-between">
                                         <div>
                                             <p className="font-black text-slate-900">
-                                                {selectedClient.lastOrderDate ? format(selectedClient.lastOrderDate.toDate(), "eeee d 'de' MMMM", { locale: es }) : 'N/A'}
+                                                {selectedClient.lastOrderDate ? format(selectedClient.lastOrderDate.toDate ? selectedClient.lastOrderDate.toDate() : new Date(selectedClient.lastOrderDate), "eeee d 'de' MMMM", { locale: es }) : 'N/A'}
                                             </p>
                                             <p className="text-xs text-slate-500 font-medium">
-                                                {selectedClient.lastOrderDate ? format(selectedClient.lastOrderDate.toDate(), 'p') : ''}
+                                                {selectedClient.lastOrderDate ? format(selectedClient.lastOrderDate.toDate ? selectedClient.lastOrderDate.toDate() : new Date(selectedClient.lastOrderDate), 'p') : ''}
                                             </p>
                                         </div>
                                         <ShoppingBag className="w-8 h-8 text-slate-200" />

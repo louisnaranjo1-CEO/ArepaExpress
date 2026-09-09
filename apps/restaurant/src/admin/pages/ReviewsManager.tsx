@@ -143,7 +143,7 @@ export default function ReviewsManager() {
                                             <h3 className="font-bold text-slate-900 text-lg leading-none">{review.userName}</h3>
                                             <span className="text-xs font-bold text-slate-400 flex items-center gap-1">
                                                 <Clock className="w-3.5 h-3.5" />
-                                                {review.createdAt ? new Date(review.createdAt.toDate()).toLocaleDateString() : 'Fecha desconocida'}
+                                                {review.createdAt ? new Date(review.createdAt.toDate ? review.createdAt.toDate() : review.createdAt).toLocaleDateString() : 'Fecha desconocida'}
                                             </span>
                                         </div>
                                         <div className="flex items-center gap-1 mt-2">

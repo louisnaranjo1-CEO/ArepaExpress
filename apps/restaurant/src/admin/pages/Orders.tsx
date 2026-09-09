@@ -347,7 +347,7 @@ export default function Orders() {
                         userName: orderData.userName,
                         items: itemsForThisPrinter.map(i => ({ name: i.name, quantity: i.quantity, price: i.price, notes: (i as any).notes })),
                         stationName: printer.name,
-                        createdAt: orderData.createdAt?.toDate ? orderData.createdAt.toDate() : new Date(),
+                        createdAt: orderData.createdAt?.toDate ? orderData.createdAt.toDate() : (orderData.createdAt ? new Date(orderData.createdAt) : new Date()),
                         orderNote: (orderData as any).orderNote,
                         tableNumber: (orderData as any).tableNumber
                     } as any;
@@ -1077,7 +1077,7 @@ export default function Orders() {
                     <h3 className="text-xl font-black text-slate-900">{order.userName || 'Usuario de Deliexpress'}</h3>
                     <p className="text-sm text-slate-400 font-bold flex items-center gap-1 mt-1">
                         <Clock className="w-4 h-4" />
-                        {order.createdAt?.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        {order.createdAt?.toDate ? order.createdAt.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : (order.createdAt ? new Date(order.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '')}
                     </p>
                 </div>
                 <div className="text-right">

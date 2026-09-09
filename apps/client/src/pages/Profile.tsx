@@ -1609,7 +1609,12 @@ export default function Profile() {
                                                     </div>
                                                     <div className="flex items-center gap-1 text-xs text-slate-500 mt-1.5 ml-8">
                                                         <Clock className="w-3 h-3" />
-                                                        <span>{activity.createdAt?.toDate().toLocaleDateString()} a las {activity.createdAt?.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                                                        <span>
+                                                            {(() => {
+                                                                const actDate = activity.createdAt?.toDate ? activity.createdAt.toDate() : (activity.createdAt ? new Date(activity.createdAt) : null);
+                                                                return actDate ? `${actDate.toLocaleDateString()} a las ${actDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : 'Reciente';
+                                                            })()}
+                                                        </span>
                                                     </div>
                                                 </div>
                                                 <span className={`px-2 py-1 rounded text-[10px] font-bold uppercase tracking-wider mt-1 ${

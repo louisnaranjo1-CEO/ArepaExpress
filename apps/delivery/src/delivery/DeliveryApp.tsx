@@ -17,8 +17,8 @@ function DeliveryRoutes() {
     const [driverProfile, setDriverProfile] = useState<any>(null);
     const [loadingDriver, setLoadingDriver] = useState(true);
 
-    const isProfileComplete = !!(userData?.displayName && userData?.phone);
-    const isDriverProfileComplete = !!(userData?.displayName && userData?.phone);
+    const isProfileComplete = !!(userData?.displayName || driverProfile?.fullName) && !!(userData?.phone || driverProfile?.phone);
+    const isDriverProfileComplete = isProfileComplete;
 
     useEffect(() => {
         let isMounted = true;
@@ -126,7 +126,7 @@ function DeliveryRoutes() {
 
 export default function DeliveryApp() {
     const isDeliveryPath = window.location.pathname.startsWith('/delivery');
-    const isDeliverySubdomain = window.location.hostname.startsWith('delivery.');
+    const isDeliverySubdomain = window.location.hostname.startsWith('delivery.') || window.location.hostname.startsWith('driver.');
     const basename = isDeliveryPath && !isDeliverySubdomain ? '/delivery' : '/';
 
     // Efecto secundario: Forzar clase en body si estamos en delivery

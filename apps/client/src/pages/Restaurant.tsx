@@ -1087,7 +1087,7 @@ export default function RestaurantPage() {
                       </div>
                     </div>
                     <span className="ml-auto text-xs text-slate-400">
-                      {review.createdAt ? new Date(review.createdAt.toDate()).toLocaleDateString() : ''}
+                      {review.createdAt ? new Date(review.createdAt.toDate ? review.createdAt.toDate() : review.createdAt).toLocaleDateString() : ''}
                     </span>
                   </div>
                   <p className="text-sm text-slate-600 mb-4">{review.comment}</p>

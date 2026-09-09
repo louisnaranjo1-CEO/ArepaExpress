@@ -98,39 +98,58 @@ export default function TransportTracker() {
         };
     }, [requestId]);
 
-    // Escuchar los cambios del conductor en tiempo real (para obtener la ubicación actualizada)
+    // Escuchar los cambios del conductor en tiempo real (usando la tabla física 'drivers' y 'driver_locations')
     useEffect(() => {
         const driverId = request?.driverId || request?.driver_id;
         if (!driverId) return;
 
-        supabase.from('delivery_drivers').select('*').eq('id', driverId).maybeSingle().then(({ data }) => {
+        const mapDriverData = (data: any): DeliveryDriver => {
+            return {
+                id: data.id,
+                fullName: data.full_name || data.fullName || 'Conductor',
+                phone: data.phone || '',
+                vehicleType: data.vehicle_type || data.vehicleType || 'carro',
+                vehiclePlate: data.vehicle_plate || data.vehiclePlate || '',
+                vehicleColor: data.vehicle_color || data.vehicleColor || '',
+                hasAc: data.has_ac ?? data.hasAc ?? false,
+                rating: data.rating ? Number(data.rating) : 5.0,
+                totalTrips: data.total_trips || data.totalTrips || 0,
+                currentLocation: data.current_location || data.currentLocation || null,
+                documents: data.documents || {},
+                ...data
+            } as DeliveryDriver;
+        };
+
+        // 1. Cargar datos iniciales desde la tabla física 'drivers'
+        supabase.from('drivers').select('*').eq('id', driverId).maybeSingle().then(async ({ data }) => {
             if (data) {
-                const dData: any = { id: data.id, ...data };
-                if (data.current_location && !data.currentLocation) {
-                    dData.currentLocation = data.current_location;
+                setDriver(mapDriverData(data));
+            } else {
+                const { data: fallbackData } = await supabase.from('delivery_drivers').select('*').eq('id', driverId).maybeSingle();
+                if (fallbackData) {
+                    setDriver(mapDriverData(fallbackData));
                 }
-                setDriver(dData as DeliveryDriver);
             }
         });
 
+        // 2. Suscripción en tiempo real a 'drivers' (las vistas en Postgres no disparan eventos CDC)
         const dChannel = supabase.channel(`tr_driver_${driverId}`)
             .on('postgres_changes', {
                 event: '*',
                 schema: 'public',
-                table: 'delivery_drivers',
+                table: 'drivers',
                 filter: `id=eq.${driverId}`
             }, (payload) => {
                 if (payload.new) {
-                    const data: any = payload.new;
-                    const dData: any = { id: data.id, ...data };
-                    if (data.current_location && !data.currentLocation) {
-                        dData.currentLocation = data.current_location;
-                    }
-                    setDriver(dData as DeliveryDriver);
+                    setDriver(prev => ({
+                        ...(prev || {}),
+                        ...mapDriverData(payload.new)
+                    }));
                 }
             })
             .subscribe();
 
+        // 3. Suscripción a coordenadas en tiempo real en 'driver_locations'
         const locChannel = supabase.channel(`tr_driver_loc_${driverId}`)
             .on('postgres_changes', {
                 event: '*',
@@ -781,15 +800,20 @@ export default function TransportTracker() {
                     <div className="bg-white rounded-xl p-3 border border-slate-200 mb-4 flex items-center justify-between shadow-sm">
                         <div className="flex items-center gap-3">
                             <div className="relative">
-                                <img src={driver.documents.selfieUrl} alt="Driver" className="w-10 h-10 rounded-full object-cover bg-slate-100" />
-                                <div className="absolute -bottom-1 -right-1 bg-orange-500 text-white text-[8px] font-bold px-1.5 py-0.5 rounded-full border border-white">
-                                    ★ 4.9
+                                <img
+                                    src={driver.documents?.selfieUrl || (driver.documents as any)?.selfie_url || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100&auto=format&fit=crop&q=80'}
+                                    alt="Driver"
+                                    className="w-10 h-10 rounded-full object-cover bg-slate-100"
+                                    onError={(e: any) => { e.target.src = 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100&auto=format&fit=crop&q=80'; }}
+                                />
+                                <div className="absolute -bottom-1 -right-1 bg-amber-500 text-white text-[8px] font-bold px-1.5 py-0.5 rounded-full border border-white">
+                                    ★ {driver.rating ? Number(driver.rating).toFixed(1) : '5.0'}
                                 </div>
                             </div>
                             <div>
-                                <p className="font-black text-slate-900 text-sm leading-tight">{driver.fullName.split(' ')[0]}</p>
+                                <p className="font-black text-slate-900 text-sm leading-tight">{(driver.fullName || (driver as any).full_name || 'Conductor').split(' ')[0]}</p>
                                 <p className="text-[10px] font-bold text-slate-500 capitalize">
-                                    {driver.vehicleType} • {driver.vehiclePlate}{driver.vehicleColor ? ` • ${driver.vehicleColor}` : ''}{driver.hasAc ? ' ❄️' : ''}
+                                    {driver.vehicleType || (driver as any).vehicle_type || 'Vehículo'} • {driver.vehiclePlate || (driver as any).vehicle_plate || 'Sin placa'}{(driver.vehicleColor || (driver as any).vehicle_color) ? ` • ${driver.vehicleColor || (driver as any).vehicle_color}` : ''}{(driver.hasAc || (driver as any).has_ac) ? ' ❄️' : ''}
                                 </p>
                             </div>
                         </div>
@@ -822,10 +846,10 @@ export default function TransportTracker() {
                 {showCall && driver && request && (
                     <InAppCall
                         requestId={requestId!}
-                        myId={request.userId}
-                        remoteId={request.driverId}
-                        remoteDisplayName={driver.fullName.split(' ')[0]}
-                        remotePhotoUrl={driver.documents?.selfieUrl}
+                        myId={request.userId || request.user_id}
+                        remoteId={request.driverId || request.driver_id}
+                        remoteDisplayName={(driver.fullName || (driver as any).full_name || 'Conductor').split(' ')[0]}
+                        remotePhotoUrl={driver.documents?.selfieUrl || (driver.documents as any)?.selfie_url}
                         role="caller"
                         onClose={() => setShowCall(false)}
                     />

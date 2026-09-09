@@ -177,7 +177,7 @@ export default function Subscriptions() {
                                         <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100">
                                             <p className="text-[10px] font-black text-slate-400 uppercase mb-1">Próxima Renovación</p>
                                             <p className="font-bold text-slate-700">
-                                                {businessSub.expiryDate ? format(businessSub.expiryDate.toDate(), "dd 'de' MMMM, yyyy", { locale: es }) : 'N/A'}
+                                                {businessSub.expiryDate ? format(businessSub.expiryDate.toDate ? businessSub.expiryDate.toDate() : new Date(businessSub.expiryDate), "dd 'de' MMMM, yyyy", { locale: es }) : 'N/A'}
                                             </p>
                                         </div>
                                         <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100">

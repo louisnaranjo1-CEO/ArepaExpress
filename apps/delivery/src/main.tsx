@@ -5,15 +5,18 @@ import './index.css';
 import { CurrencyProvider } from './context/CurrencyContext.tsx';
 import { AuthProvider } from './context/AuthContext';
 import { BrandingProvider } from './context/BrandingContext';
+import ErrorBoundary from './components/ErrorBoundary';
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <AuthProvider>
-      <CurrencyProvider>
-        <BrandingProvider>
-          <App />
-        </BrandingProvider>
-      </CurrencyProvider>
-    </AuthProvider>
+    <ErrorBoundary>
+      <AuthProvider>
+        <CurrencyProvider>
+          <BrandingProvider>
+            <App />
+          </BrandingProvider>
+        </CurrencyProvider>
+      </AuthProvider>
+    </ErrorBoundary>
   </StrictMode>,
 );

@@ -30,7 +30,11 @@ export default function DeliveryLayout({ children }: DeliveryLayoutProps) {
             try {
                 const profile = await driversApi.getDriver(user.uid);
                 if (isMounted) {
-                    setDriverStatus((profile.availability as AvailabilityStatus) || (profile.isOnline ? 'active' : 'offline'));
+                    if (profile) {
+                        setDriverStatus((profile.availability as AvailabilityStatus) || (profile.isOnline ? 'active' : 'offline'));
+                    } else {
+                        setDriverStatus('offline');
+                    }
                 }
             } catch (error) {
                 console.error("Error fetching driver status:", error);
@@ -44,7 +48,11 @@ export default function DeliveryLayout({ children }: DeliveryLayoutProps) {
                 if (!isMounted) return;
                 try {
                     const profile = await driversApi.getDriver(user.uid);
-                    setDriverStatus((profile.availability as AvailabilityStatus) || (profile.isOnline ? 'active' : 'offline'));
+                    if (profile) {
+                        setDriverStatus((profile.availability as AvailabilityStatus) || (profile.isOnline ? 'active' : 'offline'));
+                    } else {
+                        setDriverStatus('offline');
+                    }
                 } catch(e) {}
             })
             .subscribe();
