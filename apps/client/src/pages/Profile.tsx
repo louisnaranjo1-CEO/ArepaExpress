@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { User, Mail, MapPin, CreditCard, LogOut, ShoppingBag, Settings, ChevronRight, Clock, FileText, Bell, Navigation, X, Shield, UploadCloud, Star, Wallet, Gift, Award, MessageSquareWarning, Plus, Send, AlertCircle, CheckCircle, Store, Handshake, LifeBuoy, Fingerprint, Calendar } from 'lucide-react';
+import { User, Mail, MapPin, CreditCard, LogOut, ShoppingBag, Settings, ChevronRight, Clock, FileText, Bell, Navigation, X, Shield, UploadCloud, Star, Wallet, Gift, Award, MessageSquareWarning, Plus, Send, AlertCircle, CheckCircle, Store, Handshake, LifeBuoy, Fingerprint, Calendar, Trash2, AlertTriangle } from 'lucide-react';
 import { Geolocation } from '@capacitor/geolocation';
 import { Capacitor } from '@capacitor/core';
 import { isDemoMode } from '../lib/env';
@@ -85,6 +85,8 @@ export default function Profile() {
     const [loadingActivities, setLoadingActivities] = useState(false);
     const [showAddressPicker, setShowAddressPicker] = useState(false);
     const [showEditProfileModal, setShowEditProfileModal] = useState(false);
+    const [showDeleteAccountModal, setShowDeleteAccountModal] = useState(false);
+    const [isDeletingAccount, setIsDeletingAccount] = useState(false);
     const [updatingNotifications, setUpdatingNotifications] = useState(false);
     const [updatingBiometrics, setUpdatingBiometrics] = useState(false);
     const [updatingLocation, setUpdatingLocation] = useState(false);
@@ -720,6 +722,31 @@ export default function Profile() {
             setProfileError(e.message || "Ocurrió un error al guardar tus datos.");
         } finally {
             setCompletingProfile(false);
+        }
+    };
+
+    const handleDeleteAccount = async () => {
+        if (!user) return;
+        try {
+            setIsDeletingAccount(true);
+            vibrate(50);
+
+            const { error } = await supabase.rpc('delete_user_account');
+            if (error) throw error;
+
+            toast.success("Tu cuenta ha sido eliminada por completo de la base de datos.");
+            setShowDeleteAccountModal(false);
+            setShowEditProfileModal(false);
+
+            await supabase.auth.signOut();
+            localStorage.clear();
+            sessionStorage.clear();
+            window.location.href = '/';
+        } catch (err: any) {
+            console.error("Error al eliminar la cuenta:", err);
+            toast.error(err.message || "No se pudo eliminar la cuenta. Intenta de nuevo.");
+        } finally {
+            setIsDeletingAccount(false);
         }
     };
 
@@ -2403,29 +2430,100 @@ export default function Profile() {
                                     </div>
                                 </div>
 
-                                <div className="mt-12 flex gap-4 pt-8 border-t border-slate-100">
+                                <div className="mt-10 pt-6 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-4">
                                     <button
                                         type="button"
-                                        onClick={() => setShowEditProfileModal(false)}
-                                        className="flex-1 py-4 bg-slate-100 text-slate-500 rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-slate-200 transition-all shadow-sm active:scale-95"
+                                        onClick={() => {
+                                            vibrate(30);
+                                            setShowDeleteAccountModal(true);
+                                        }}
+                                        className="w-full sm:w-auto py-3.5 px-5 bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200/80 rounded-2xl font-black text-xs uppercase tracking-wider flex items-center justify-center gap-2 active:scale-95 transition-all"
                                     >
-                                        Cancelar
+                                        <Trash2 className="w-4 h-4 text-rose-500" />
+                                        Eliminar Cuenta
                                     </button>
-                                    <button
-                                        type="submit"
-                                        disabled={completingProfile}
-                                        className="flex-[2] py-4 bg-primary text-slate-900 rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-orange-600 transition-all shadow-xl shadow-orange-500/30 flex items-center justify-center gap-2 active:scale-[0.98] disabled:opacity-50"
-                                    >
-                                        {completingProfile ? (
-                                            <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
-                                        ) : (
-                                            <>
-                                                <Save className="w-4 h-4" /> Guardar Cambios
-                                            </>
-                                        )}
-                                    </button>
+
+                                    <div className="flex gap-3 w-full sm:w-auto flex-1 sm:justify-end">
+                                        <button
+                                            type="button"
+                                            onClick={() => setShowEditProfileModal(false)}
+                                            className="flex-1 sm:flex-initial px-6 py-4 bg-slate-100 text-slate-500 rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-slate-200 transition-all shadow-sm active:scale-95"
+                                        >
+                                            Cancelar
+                                        </button>
+                                        <button
+                                            type="submit"
+                                            disabled={completingProfile}
+                                            className="flex-[2] sm:flex-initial px-8 py-4 bg-primary text-slate-900 rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-orange-600 transition-all shadow-xl shadow-orange-500/30 flex items-center justify-center gap-2 active:scale-[0.98] disabled:opacity-50"
+                                        >
+                                            {completingProfile ? (
+                                                <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                                            ) : (
+                                                <>
+                                                    <Save className="w-4 h-4" /> Guardar Cambios
+                                                </>
+                                            )}
+                                        </button>
+                                    </div>
                                 </div>
                             </form>
+                        </motion.div>
+                    </div>
+                )}
+            </AnimatePresence>
+
+            {/* Delete Account Confirmation Modal */}
+            <AnimatePresence>
+                {showDeleteAccountModal && (
+                    <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-black/70 backdrop-blur-md overflow-y-auto">
+                        <motion.div
+                            initial={{ opacity: 0, scale: 0.95, y: 20 }}
+                            animate={{ opacity: 1, scale: 1, y: 0 }}
+                            exit={{ opacity: 0, scale: 0.95, y: 20 }}
+                            className="bg-white rounded-[36px] w-full max-w-sm shadow-2xl p-7 text-center space-y-4 my-auto border border-rose-100"
+                        >
+                            <div className="w-16 h-16 bg-rose-50 text-rose-500 rounded-3xl flex items-center justify-center mx-auto shadow-lg shadow-rose-500/10">
+                                <Trash2 className="w-8 h-8" />
+                            </div>
+
+                            <div>
+                                <h3 className="text-xl font-black text-slate-900">¿Eliminar tu cuenta?</h3>
+                                <p className="text-xs text-slate-500 font-medium mt-2 leading-relaxed">
+                                    Esta acción es <span className="font-bold text-rose-600">permanente e irreversible</span>. Tu información de perfil, billetera, historial de pedidos y servicios de taxi se borrarán completamente de la base de datos.
+                                </p>
+                            </div>
+
+                            <div className="p-3 bg-amber-50 rounded-2xl border border-amber-200/60 text-left flex items-start gap-2.5">
+                                <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                                <p className="text-[11px] font-bold text-amber-800 leading-tight">
+                                    No podrás recuperar tu cuenta ni volver a acceder con tus credenciales actuales.
+                                </p>
+                            </div>
+
+                            <div className="space-y-2 pt-2">
+                                <button
+                                    type="button"
+                                    disabled={isDeletingAccount}
+                                    onClick={handleDeleteAccount}
+                                    className="w-full py-4 bg-rose-600 hover:bg-rose-700 text-white rounded-2xl font-black text-xs uppercase tracking-widest flex items-center justify-center gap-2 shadow-lg shadow-rose-600/20 active:scale-95 disabled:opacity-50 transition-all"
+                                >
+                                    {isDeletingAccount ? (
+                                        <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                                    ) : (
+                                        <>
+                                            <Trash2 className="w-4 h-4" /> Sí, Eliminar Definitivamente
+                                        </>
+                                    )}
+                                </button>
+                                <button
+                                    type="button"
+                                    disabled={isDeletingAccount}
+                                    onClick={() => setShowDeleteAccountModal(false)}
+                                    className="w-full py-3.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-2xl font-bold text-xs uppercase tracking-widest active:scale-95 transition-all"
+                                >
+                                    Cancelar
+                                </button>
+                            </div>
                         </motion.div>
                     </div>
                 )}
