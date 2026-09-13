@@ -163,13 +163,6 @@ _Enviado desde Deliexpress App_`
         try {
             if (status === 'rejected') {
                 const driver = drivers.find(d => d.id === id);
-                if (driver && driver.documents) {
-                    const urls = [
-                        driver.documents.selfieUrl,
-                        driver.documents.vehicleUrl,
-                        (driver.documents as any).vehicleImageUrl, // Checking both for consistency
-                        driver.documents.licenseUrl
-                    ].filter(Boolean);
 
                 // 1. Borrar todos los archivos de la carpeta en Storage
                 try {

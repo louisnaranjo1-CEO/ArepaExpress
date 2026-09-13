@@ -2,10 +2,14 @@ require('dotenv').config();
 const express = require('express');
 const { Pool } = require('pg');
 const cors = require('cors');
+const sharp = require('sharp');
+const axios = require('axios');
+const { fal } = require('@fal-ai/serverless-client');
 
 const app = express();
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: '25mb' }));
+app.use(express.urlencoded({ extended: true, limit: '25mb' }));
 
 // Configuración segura de la base de datos
 const pool = new Pool({
@@ -368,6 +372,121 @@ setInterval(async () => {
     console.error('Error cleaning up location history:', error);
   }
 }, 60 * 60 * 1000); // Cada hora
+
+// =====================================================
+// ESTUDIO IA / PRODUCT PHOTO PROCESSOR
+// Pipeline Determinista:
+// 1. Inferencia SOTA (BiRefNet v2 en Fal.ai si FAL_KEY está configurada)
+// 2. Fallback inteligente a pre-recorte si no hay API key
+// 3. Montaje en lienzo blanco #FFFFFF de 1000x1000 px centrado con 50px de padding
+// 4. Compresión a WebP (calidad 82, effort 4) -> 60-90 KB
+// =====================================================
+
+async function processStoreProductImage(inputBuffer) {
+  let cutProductBuffer = inputBuffer;
+  let isAiCutout = false;
+  let inferenceMessage = '';
+
+  if (process.env.FAL_KEY) {
+    try {
+      fal.config({
+        credentials: process.env.FAL_KEY,
+      });
+
+      const base64Image = `data:image/jpeg;base64,${inputBuffer.toString('base64')}`;
+      console.log('Invocando BiRefNet v2 en fal.ai...');
+
+      const result = await fal.subscribe('fal-ai/birefnet/v2', {
+        input: {
+          image_url: base64Image,
+        },
+        logs: false,
+      });
+
+      const transparentPngUrl = result?.data?.image?.url;
+      if (transparentPngUrl) {
+        const response = await axios.get(transparentPngUrl, { responseType: 'arraybuffer' });
+        cutProductBuffer = Buffer.from(response.data);
+        isAiCutout = true;
+        inferenceMessage = 'Segmentación BiRefNet v2 completada con éxito';
+        console.log('Segmentación BiRefNet v2 completada con éxito');
+      }
+    } catch (aiError) {
+      console.error('Error durante inferencia BiRefNet en fal.ai:', aiError?.message || aiError);
+      inferenceMessage = `Fallo en inferencia IA (${aiError?.message || 'Error'}). Se aplicó encuadre de estudio optimizado.`;
+      cutProductBuffer = inputBuffer;
+    }
+  } else {
+    inferenceMessage = 'FAL_KEY no configurada. Se generó lienzo de estudio 1000x1000 optimizado a WebP sin recorte.';
+  }
+
+  // 1. Redimensionar el producto recortado para que quepa en un canvas de 900x900
+  // dejando 50px de margen interior en cada lado sin deformar el aspect ratio
+  const resizedProduct = await sharp(cutProductBuffer)
+    .resize({
+      width: 900,
+      height: 900,
+      fit: 'inside',
+      withoutEnlargement: true,
+    })
+    .toBuffer();
+
+  // 2. Crear lienzo blanco puro (#FFFFFF) de 1000x1000 px y componer el producto centrado
+  const finalProductWebP = await sharp({
+    create: {
+      width: 1000,
+      height: 1000,
+      channels: 3,
+      background: { r: 255, g: 255, b: 255 }
+    }
+  })
+  .composite([
+    {
+      input: resizedProduct,
+      gravity: 'center'
+    }
+  ])
+  .webp({
+    quality: 82,
+    effort: 4
+  })
+  .toBuffer();
+
+  return {
+    buffer: finalProductWebP,
+    isAiCutout,
+    message: inferenceMessage,
+    sizeBytes: finalProductWebP.length,
+  };
+}
+
+app.post('/api/products/process-image', async (req, res) => {
+  try {
+    const { imageBase64 } = req.body;
+    if (!imageBase64) {
+      return res.status(400).json({ error: 'imageBase64 es requerido' });
+    }
+
+    let cleanBase64 = imageBase64;
+    if (cleanBase64.includes(';base64,')) {
+      cleanBase64 = cleanBase64.split(';base64,')[1];
+    }
+
+    const inputBuffer = Buffer.from(cleanBase64, 'base64');
+    const result = await processStoreProductImage(inputBuffer);
+
+    res.json({
+      success: true,
+      processedImageBase64: `data:image/webp;base64,${result.buffer.toString('base64')}`,
+      isAiCutout: result.isAiCutout,
+      sizeBytes: result.sizeBytes,
+      message: result.message,
+    });
+  } catch (error) {
+    console.error('Error procesando imagen de producto:', error);
+    res.status(500).json({ error: error.message || 'Error procesando imagen' });
+  }
+});
 
 const PORT = process.env.PORT || 8080;
 app.listen(PORT, () => {

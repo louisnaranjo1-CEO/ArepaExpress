@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { UtensilsCrossed, Plus, Search, Filter, Edit2, Trash2, Image as ImageIcon, Check, ChevronDown, X, Loader2, DollarSign, Tag, TrendingUp, Instagram, Youtube, Music2, LayoutGrid, List } from 'lucide-react';
+import { UtensilsCrossed, Plus, Search, Filter, Edit2, Trash2, Image as ImageIcon, Check, ChevronDown, X, Loader2, DollarSign, Tag, TrendingUp, Instagram, Youtube, Music2, LayoutGrid, List, Sparkles } from 'lucide-react';
 import { db, storage } from '../../lib/firebase';
 import { collection, query, getDocs, doc, deleteDoc, updateDoc, addDoc, getDoc, writeBatch } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { useAuth } from '../../context/AuthContext';
 import { GLOBAL_CATEGORIES, CATEGORY_SECTORS, DEVELOPER_WHATSAPP } from '../../lib/constants';
 import { ProductModifier, ModifierType } from '../../lib/seed';
+import { compressClientImage, processProductStudioImage } from '../../utils/imageOptimizer';
 
 interface ProductVariant {
     name: string;
@@ -72,6 +73,9 @@ export default function ProductManagement() {
     const [existingImages, setExistingImages] = useState<string[]>([]);
     const [newImageFiles, setNewImageFiles] = useState<File[]>([]);
     const [previewUrls, setPreviewUrls] = useState<string[]>([]);
+    const [studioMode, setStudioMode] = useState<boolean>(true);
+    const [processingImages, setProcessingImages] = useState<boolean>(false);
+    const [processingStatus, setProcessingStatus] = useState<string>('');
 
     useEffect(() => {
         if (!user) return;
@@ -148,6 +152,8 @@ export default function ProductManagement() {
             setExistingImages(product.images || (product.image ? [product.image] : []));
             setNewImageFiles([]);
             setPreviewUrls([]);
+            setProcessingImages(false);
+            setProcessingStatus('');
         } else {
             setEditingProduct(null);
             setFormData({
@@ -171,6 +177,8 @@ export default function ProductManagement() {
             setExistingImages([]);
             setNewImageFiles([]);
             setPreviewUrls([]);
+            setProcessingImages(false);
+            setProcessingStatus('');
         }
         setIsModalOpen(true);
     };
@@ -394,20 +402,73 @@ export default function ProductManagement() {
         setFormData({ ...formData, modifiers: newModifiers });
     };
 
-    const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const files = Array.from(e.target.files || []) as File[];
-        const totalAllowed = 6 - (existingImages.length + newImageFiles.length);
+    const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const rawFiles = Array.from(e.target.files || []) as File[];
+        e.target.value = '';
 
-        if (files.length > totalAllowed) {
-            alert(`Solo puedes añadir ${totalAllowed} imágenes más.`);
+        const totalAllowed = 6 - (existingImages.length + newImageFiles.length);
+        if (totalAllowed <= 0) {
+            alert('Has alcanzado el límite máximo de 6 imágenes.');
             return;
         }
 
-        const newFiles = files.slice(0, totalAllowed);
-        setNewImageFiles(prev => [...prev, ...newFiles]);
+        if (rawFiles.length > totalAllowed) {
+            alert(`Solo puedes añadir ${totalAllowed} imágenes más.`);
+        }
 
-        const newPreviewUrls = newFiles.map(file => URL.createObjectURL(file));
-        setPreviewUrls(prev => [...prev, ...newPreviewUrls]);
+        const filesToProcess = rawFiles.slice(0, totalAllowed);
+        if (filesToProcess.length === 0) return;
+
+        setProcessingImages(true);
+
+        // Pre-visualización inmediata de los archivos crudos seleccionados
+        const tempUrls = filesToProcess.map(file => URL.createObjectURL(file));
+        const startIndex = previewUrls.length;
+        setPreviewUrls(prev => [...prev, ...tempUrls]);
+
+        try {
+            for (let i = 0; i < filesToProcess.length; i++) {
+                const file = filesToProcess[i];
+                const currentIndex = startIndex + i;
+
+                if (studioMode) {
+                    setProcessingStatus(`Procesando foto ${i + 1} de ${filesToProcess.length}...`);
+                    const result = await processProductStudioImage(file, (msg) => setProcessingStatus(msg));
+
+                    // Reemplazo suave con la imagen WebP de estudio 1000x1000
+                    setPreviewUrls(prev => {
+                        const updated = [...prev];
+                        if (updated[currentIndex]) {
+                            URL.revokeObjectURL(updated[currentIndex]);
+                        }
+                        updated[currentIndex] = result.dataUrl;
+                        return updated;
+                    });
+
+                    setNewImageFiles(prev => [...prev, result.file]);
+                } else {
+                    setProcessingStatus(`Comprimiendo foto ${i + 1}...`);
+                    const compressed = await compressClientImage(file, 1200, 0.85);
+
+                    setPreviewUrls(prev => {
+                        const updated = [...prev];
+                        if (updated[currentIndex]) {
+                            URL.revokeObjectURL(updated[currentIndex]);
+                        }
+                        updated[currentIndex] = compressed.dataUrl;
+                        return updated;
+                    });
+
+                    setNewImageFiles(prev => [...prev, compressed.file]);
+                }
+            }
+        } catch (error) {
+            console.error('Error procesando imágenes:', error);
+            alert('Hubo un inconveniente procesando una de las imágenes.');
+        } finally {
+            setProcessingImages(false);
+            setProcessingStatus('');
+        }
     };
 
     const removeExistingImage = (index: number) => {
@@ -1004,10 +1065,31 @@ export default function ProductManagement() {
                                 )}
                             </div>
 
-                            <div className="space-y-2">
-                                <label className="text-xs font-black text-slate-400 uppercase ml-2 flex items-center gap-1">
-                                    <ImageIcon className="w-3 h-3" /> Imágenes ({existingImages.length + newImageFiles.length}/6)
-                                </label>
+                            <div className="space-y-3">
+                                <div className="flex items-center justify-between ml-2">
+                                    <label className="text-xs font-black text-slate-400 uppercase flex items-center gap-1">
+                                        <ImageIcon className="w-3 h-3" /> Imágenes ({existingImages.length + newImageFiles.length}/6)
+                                    </label>
+                                    <button
+                                        type="button"
+                                        onClick={() => setStudioMode(!studioMode)}
+                                        className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black transition-all ${
+                                            studioMode
+                                                ? 'bg-gradient-to-r from-amber-500 to-orange-500 text-white shadow-md shadow-orange-500/20'
+                                                : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
+                                        }`}
+                                    >
+                                        <Sparkles className="w-3.5 h-3.5" />
+                                        <span>Estudio IA {studioMode ? 'Activo' : 'Desactivado'}</span>
+                                    </button>
+                                </div>
+
+                                {studioMode && (
+                                    <div className="bg-amber-50/90 border border-amber-200/80 rounded-2xl p-2.5 flex items-center gap-2 text-[11px] text-amber-900 font-medium">
+                                        <Sparkles className="w-4 h-4 text-amber-600 shrink-0" />
+                                        <span>Pipeline de catálogo: pre-compresión, centrado en lienzo blanco 1000x1000 y WebP ultra-ligero (&lt;90KB).</span>
+                                    </div>
+                                )}
 
                                 <div className="grid grid-cols-3 gap-3">
                                     {existingImages.map((url, i) => (
@@ -1022,26 +1104,62 @@ export default function ProductManagement() {
                                             </button>
                                         </div>
                                     ))}
-                                    {previewUrls.map((url, i) => (
-                                        <div key={`new-${i}`} className="relative group aspect-square rounded-2xl overflow-hidden bg-slate-100 border-2 border-primary/20">
-                                            <img src={url} className="w-full h-full object-cover" />
-                                            <button
-                                                type="button"
-                                                onClick={() => removeNewImage(i)}
-                                                className="absolute top-1 right-1 p-1 bg-red-500 text-white rounded-lg opacity-0 group-hover:opacity-100 transition-opacity"
-                                            >
-                                                <X className="w-4 h-4" />
-                                            </button>
-                                        </div>
-                                    ))}
-                                    {(existingImages.length + newImageFiles.length) < 6 && (
-                                        <label className="aspect-square rounded-2xl bg-slate-50 border-2 border-dashed border-slate-200 flex flex-col items-center justify-center cursor-pointer hover:bg-slate-100 hover:border-primary/30 transition-all text-slate-400 hover:text-slate-900">
-                                            <Plus className="w-6 h-6 mb-1" />
-                                            <span className="text-[10px] font-black uppercase">Subir</span>
+                                    {previewUrls.map((url, i) => {
+                                        const isSlotProcessing = processingImages && i >= newImageFiles.length;
+                                        return (
+                                            <div key={`new-${i}`} className="relative group aspect-square rounded-2xl overflow-hidden bg-white border-2 border-slate-200 shadow-sm flex items-center justify-center">
+                                                <img src={url} className="w-full h-full object-contain transition-opacity duration-300" />
+                                                
+                                                {/* Efecto de Escaneo Láser mientras procesa */}
+                                                {isSlotProcessing && (
+                                                    <div className="absolute inset-0 bg-slate-900/65 backdrop-blur-[2px] flex flex-col items-center justify-center p-2 text-center overflow-hidden z-20">
+                                                        {/* Haz de luz animado vertical */}
+                                                        <div className="absolute inset-x-0 h-1 bg-gradient-to-r from-transparent via-cyan-400 to-transparent shadow-[0_0_15px_#22d3ee] animate-laser-scan"></div>
+                                                        <Loader2 className="w-6 h-6 text-cyan-300 animate-spin mb-1 z-30" />
+                                                        <span className="text-[10px] font-black text-white uppercase tracking-wider z-30">
+                                                            Estudio IA
+                                                        </span>
+                                                        <span className="text-[9px] text-cyan-200 font-bold z-30 line-clamp-1">
+                                                            {processingStatus || 'Escaneando...'}
+                                                        </span>
+                                                    </div>
+                                                )}
+
+                                                {!isSlotProcessing && (
+                                                    <>
+                                                        <span className="absolute bottom-1 left-1 bg-slate-900/80 backdrop-blur-sm text-white text-[9px] font-black px-1.5 py-0.5 rounded-md flex items-center gap-1 shadow-sm">
+                                                            <Sparkles className="w-2.5 h-2.5 text-amber-400" /> 1000x1000 WebP
+                                                        </span>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => removeNewImage(i)}
+                                                            className="absolute top-1 right-1 p-1 bg-red-500 text-white rounded-lg opacity-0 group-hover:opacity-100 transition-opacity z-10"
+                                                        >
+                                                            <X className="w-4 h-4" />
+                                                        </button>
+                                                    </>
+                                                )}
+                                            </div>
+                                        );
+                                    })}
+                                    {(existingImages.length + previewUrls.length) < 6 && (
+                                        <label className={`aspect-square rounded-2xl bg-slate-50 border-2 border-dashed border-slate-200 flex flex-col items-center justify-center cursor-pointer hover:bg-slate-100 hover:border-primary/30 transition-all text-slate-400 hover:text-slate-900 ${processingImages ? 'opacity-50 pointer-events-none' : ''}`}>
+                                            {processingImages ? (
+                                                <>
+                                                    <Loader2 className="w-6 h-6 mb-1 text-primary animate-spin" />
+                                                    <span className="text-[10px] font-black uppercase">Procesando</span>
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <Plus className="w-6 h-6 mb-1" />
+                                                    <span className="text-[10px] font-black uppercase">Subir</span>
+                                                </>
+                                            )}
                                             <input
                                                 type="file"
                                                 multiple
                                                 accept="image/*"
+                                                disabled={processingImages}
                                                 className="hidden"
                                                 onChange={handleFileChange}
                                             />
