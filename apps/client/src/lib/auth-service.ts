@@ -36,11 +36,16 @@ export const signInWithGoogle = async (): Promise<{ user: any, isNewUser: boolea
             if (error) throw error;
             if (data?.url) {
                 // Abre el flujo de Google dentro de la aplicación (In-App Browser / Custom Tab)
-                await Browser.open({
-                    url: data.url,
-                    windowName: '_self',
-                    presentationStyle: 'popover'
-                });
+                try {
+                    await Browser.open({
+                        url: data.url,
+                        windowName: '_self',
+                        presentationStyle: 'popover'
+                    });
+                } catch (browserErr) {
+                    console.warn("Capacitor Browser error, fallback to window.location:", browserErr);
+                    window.location.href = data.url;
+                }
             }
             return { user: null, isNewUser: false };
         } else {

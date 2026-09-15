@@ -45,7 +45,8 @@ import {
 } from '../lib/weather';
 import { Geolocation } from '@capacitor/geolocation';
 import { Capacitor } from '@capacitor/core';
-import { promptEnableLocation } from '../lib/location-helper';
+import { App as CapApp } from '@capacitor/app';
+import { promptEnableLocation, isLocationHardwareEnabled, openNativeLocationSettings } from '../lib/location-helper';
 import RainOverlay from '../components/RainOverlay';
 import WeatherWidget from '../components/WeatherWidget';
 
@@ -397,16 +398,42 @@ export default function Taxi() {
         // 1. Mobile Native GPS (Android/iOS via Capacitor)
         if (Capacitor.isNativePlatform()) {
             try {
-                // Ensure native GPS hardware is activated on the device
-                await promptEnableLocation();
+                const perm = await Geolocation.checkPermissions().catch(() => ({ location: 'prompt' as any }));
+                if (perm.location !== 'granted') {
+                    await Geolocation.requestPermissions().catch(() => ({ location: 'denied' as any }));
+                }
+            } catch (permErr) {
+                console.warn('Capacitor permissions check error:', permErr);
+            }
 
+            // A) Try High Accuracy (GPS satellite) first with 8s timeout
+            try {
                 const pos = await Geolocation.getCurrentPosition({
                     enableHighAccuracy: true,
-                    timeout: 15000
+                    timeout: 8000,
+                    maximumAge: 5000
                 });
-                coords = { lat: pos.coords.latitude, lng: pos.coords.longitude };
-            } catch (nativeErr) {
-                console.warn('Capacitor Geolocation error/fallback:', nativeErr);
+                if (pos?.coords?.latitude && pos?.coords?.longitude) {
+                    coords = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+                }
+            } catch (highErr) {
+                console.warn('Capacitor High-Accuracy Geolocation timed out/failed, trying balanced provider:', highErr);
+            }
+
+            // B) If satellite GPS timed out (very common indoors), try Low Accuracy (Wi-Fi + Cellular Fused Provider)
+            if (!coords) {
+                try {
+                    const pos = await Geolocation.getCurrentPosition({
+                        enableHighAccuracy: false,
+                        timeout: 6000,
+                        maximumAge: 60000
+                    });
+                    if (pos?.coords?.latitude && pos?.coords?.longitude) {
+                        coords = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+                    }
+                } catch (lowErr) {
+                    console.warn('Capacitor Low-Accuracy Geolocation error:', lowErr);
+                }
             }
         }
 
@@ -416,11 +443,15 @@ export default function Taxi() {
                 coords = await new Promise<{ lat: number; lng: number } | null>((resolve) => {
                     navigator.geolocation.getCurrentPosition(
                         (pos) => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
-                        (err) => {
-                            console.warn('Web Geolocation error:', err);
-                            resolve(null);
+                        () => {
+                            // Fallback to low accuracy
+                            navigator.geolocation.getCurrentPosition(
+                                (p2) => resolve({ lat: p2.coords.latitude, lng: p2.coords.longitude }),
+                                () => resolve(null),
+                                { enableHighAccuracy: false, timeout: 5000, maximumAge: 60000 }
+                            );
                         },
-                        { enableHighAccuracy: true, timeout: 8000, maximumAge: 30000 }
+                        { enableHighAccuracy: true, timeout: 6000, maximumAge: 10000 }
                     );
                 });
             } catch (err) {
@@ -505,6 +536,45 @@ export default function Taxi() {
 
         fetchNearbyDrivers(coords);
     }, [fetchNearbyDrivers, fetchWeather, userData]);
+
+    // Handle user tap on GPS button / Activar GPS
+    const handleRequestGps = useCallback(async () => {
+        vibrate(30);
+        if (Capacitor.isNativePlatform()) {
+            const isHardwareOn = await isLocationHardwareEnabled();
+            if (!isHardwareOn) {
+                toast('Abriendo ajustes de ubicación...', { icon: '⚙️' });
+                await openNativeLocationSettings();
+                return;
+            }
+        }
+        await promptEnableLocation();
+        await locateUser(true);
+    }, [locateUser]);
+
+    // Auto re-locate when user returns to the app (e.g., after activating GPS in phone settings or notification shade)
+    useEffect(() => {
+        let appStateSub: any = null;
+        if (Capacitor.isNativePlatform()) {
+            appStateSub = CapApp.addListener('appStateChange', (state) => {
+                if (state.isActive) {
+                    locateUser(false);
+                }
+            });
+        }
+
+        const onVisibilityChange = () => {
+            if (document.visibilityState === 'visible') {
+                locateUser(false);
+            }
+        };
+        document.addEventListener('visibilitychange', onVisibilityChange);
+
+        return () => {
+            if (appStateSub) appStateSub.then((s: any) => s.remove());
+            document.removeEventListener('visibilitychange', onVisibilityChange);
+        };
+    }, [locateUser]);
 
     // 5. Manage Markers on Map Updates
     useEffect(() => {
@@ -1021,11 +1091,7 @@ export default function Taxi() {
                     </div>
 
                     <button
-                        onClick={async () => {
-                            vibrate(30);
-                            await promptEnableLocation();
-                            locateUser(true);
-                        }}
+                        onClick={handleRequestGps}
                         className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all flex-shrink-0 active:scale-95 ${
                             isLocating ? 'bg-primary text-slate-950 animate-spin' : 'bg-primary/10 text-primary hover:bg-primary/20'
                         }`}
@@ -1117,11 +1183,7 @@ export default function Taxi() {
                                     </div>
                                     <button
                                         type="button"
-                                        onClick={async () => {
-                                            vibrate(30);
-                                            await promptEnableLocation();
-                                            locateUser(true);
-                                        }}
+                                        onClick={handleRequestGps}
                                         className="p-1.5 bg-emerald-50 text-emerald-600 rounded-lg hover:bg-emerald-100 transition-colors flex-shrink-0"
                                         title="Actualizar mi ubicación exacta"
                                     >
@@ -1149,11 +1211,7 @@ export default function Taxi() {
                                     </div>
                                     <button
                                         type="button"
-                                        onClick={async () => {
-                                            vibrate(30);
-                                            await promptEnableLocation();
-                                            locateUser(true);
-                                        }}
+                                        onClick={handleRequestGps}
                                         className="px-2.5 py-1 bg-amber-500 text-slate-950 rounded-lg font-black text-[11px] shadow-sm active:scale-95 transition-transform"
                                     >
                                         Activar GPS

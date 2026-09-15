@@ -11,15 +11,6 @@ import com.getcapacitor.PluginCall;
 import com.getcapacitor.PluginMethod;
 import com.getcapacitor.annotation.ActivityCallback;
 import com.getcapacitor.annotation.CapacitorPlugin;
-import com.google.android.gms.common.api.ResolvableApiException;
-import com.google.android.gms.location.LocationRequest;
-import com.google.android.gms.location.LocationServices;
-import com.google.android.gms.location.LocationSettingsRequest;
-import com.google.android.gms.location.LocationSettingsResponse;
-import com.google.android.gms.location.Priority;
-import com.google.android.gms.location.SettingsClient;
-import com.google.android.gms.tasks.OnFailureListener;
-import com.google.android.gms.tasks.OnSuccessListener;
 
 @CapacitorPlugin(name = "LocationHelper")
 public class LocationHelperPlugin extends Plugin {
@@ -47,11 +38,15 @@ public class LocationHelperPlugin extends Plugin {
         Context context = getContext();
         LocationManager lm = (LocationManager) context.getSystemService(Context.LOCATION_SERVICE);
         boolean isGpsEnabled = false;
+        boolean isNetworkEnabled = false;
         try {
             isGpsEnabled = lm.isProviderEnabled(LocationManager.GPS_PROVIDER);
         } catch (Exception ignored) {}
+        try {
+            isNetworkEnabled = lm.isProviderEnabled(LocationManager.NETWORK_PROVIDER);
+        } catch (Exception ignored) {}
 
-        if (isGpsEnabled) {
+        if (isGpsEnabled || isNetworkEnabled) {
             JSObject ret = new JSObject();
             ret.put("enabled", true);
             call.resolve(ret);
@@ -59,39 +54,9 @@ public class LocationHelperPlugin extends Plugin {
         }
 
         try {
-            LocationRequest locationRequest = new LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, 1000)
-                    .build();
-
-            LocationSettingsRequest.Builder builder = new LocationSettingsRequest.Builder()
-                    .addLocationRequest(locationRequest)
-                    .setAlwaysShow(true);
-
-            SettingsClient client = LocationServices.getSettingsClient(getActivity());
-            client.checkLocationSettings(builder.build())
-                    .addOnSuccessListener(getActivity(), new OnSuccessListener<LocationSettingsResponse>() {
-                        @Override
-                        public void onSuccess(LocationSettingsResponse locationSettingsResponse) {
-                            JSObject ret = new JSObject();
-                            ret.put("enabled", true);
-                            call.resolve(ret);
-                        }
-                    })
-                    .addOnFailureListener(getActivity(), new OnFailureListener() {
-                        @Override
-                        public void onFailure(Exception e) {
-                            if (e instanceof ResolvableApiException) {
-                                try {
-                                    ResolvableApiException resolvable = (ResolvableApiException) e;
-                                    startActivityForResult(call, new Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS), "locationSettingsResult");
-                                    resolvable.startResolutionForResult(getActivity(), 1001);
-                                } catch (Exception sendEx) {
-                                    openSettings(call);
-                                }
-                            } else {
-                                openSettings(call);
-                            }
-                        }
-                    });
+            Intent intent = new Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS);
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            startActivityForResult(call, intent, "locationSettingsResult");
         } catch (Exception ex) {
             openSettings(call);
         }
@@ -102,12 +67,25 @@ public class LocationHelperPlugin extends Plugin {
         try {
             Intent intent = new Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS);
             intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-            getContext().startActivity(intent);
+            if (getActivity() != null) {
+                getActivity().startActivity(intent);
+            } else {
+                getContext().startActivity(intent);
+            }
             JSObject ret = new JSObject();
             ret.put("opened", true);
             call.resolve(ret);
         } catch (Exception ex) {
-            call.reject("Cannot open location settings", ex);
+            try {
+                Intent fallback = new Intent(Settings.ACTION_SETTINGS);
+                fallback.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                getContext().startActivity(fallback);
+                JSObject ret = new JSObject();
+                ret.put("opened", true);
+                call.resolve(ret);
+            } catch (Exception e2) {
+                call.reject("Cannot open location settings", e2);
+            }
         }
     }
 
@@ -117,7 +95,7 @@ public class LocationHelperPlugin extends Plugin {
         LocationManager lm = (LocationManager) context.getSystemService(Context.LOCATION_SERVICE);
         boolean enabled = false;
         try {
-            enabled = lm.isProviderEnabled(LocationManager.GPS_PROVIDER);
+            enabled = lm.isProviderEnabled(LocationManager.GPS_PROVIDER) || lm.isProviderEnabled(LocationManager.NETWORK_PROVIDER);
         } catch (Exception ignored) {}
         JSObject ret = new JSObject();
         ret.put("enabled", enabled);
