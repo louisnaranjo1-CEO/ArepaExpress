@@ -45,6 +45,7 @@ import {
 } from '../lib/weather';
 import { Geolocation } from '@capacitor/geolocation';
 import { Capacitor } from '@capacitor/core';
+import { promptEnableLocation } from '../lib/location-helper';
 import RainOverlay from '../components/RainOverlay';
 import WeatherWidget from '../components/WeatherWidget';
 
@@ -396,16 +397,12 @@ export default function Taxi() {
         // 1. Mobile Native GPS (Android/iOS via Capacitor)
         if (Capacitor.isNativePlatform()) {
             try {
-                const permStatus = await Geolocation.checkPermissions();
-                if (permStatus.location !== 'granted') {
-                    const req = await Geolocation.requestPermissions();
-                    if (req.location !== 'granted') {
-                        throw new Error('Permiso de ubicación denegado en el móvil');
-                    }
-                }
+                // Ensure native GPS hardware is activated on the device
+                await promptEnableLocation();
+
                 const pos = await Geolocation.getCurrentPosition({
                     enableHighAccuracy: true,
-                    timeout: 12000
+                    timeout: 15000
                 });
                 coords = { lat: pos.coords.latitude, lng: pos.coords.longitude };
             } catch (nativeErr) {
@@ -1024,7 +1021,11 @@ export default function Taxi() {
                     </div>
 
                     <button
-                        onClick={() => locateUser(true)}
+                        onClick={async () => {
+                            vibrate(30);
+                            await promptEnableLocation();
+                            locateUser(true);
+                        }}
                         className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all flex-shrink-0 active:scale-95 ${
                             isLocating ? 'bg-primary text-slate-950 animate-spin' : 'bg-primary/10 text-primary hover:bg-primary/20'
                         }`}
@@ -1116,7 +1117,11 @@ export default function Taxi() {
                                     </div>
                                     <button
                                         type="button"
-                                        onClick={() => locateUser(true)}
+                                        onClick={async () => {
+                                            vibrate(30);
+                                            await promptEnableLocation();
+                                            locateUser(true);
+                                        }}
                                         className="p-1.5 bg-emerald-50 text-emerald-600 rounded-lg hover:bg-emerald-100 transition-colors flex-shrink-0"
                                         title="Actualizar mi ubicación exacta"
                                     >
@@ -1144,7 +1149,11 @@ export default function Taxi() {
                                     </div>
                                     <button
                                         type="button"
-                                        onClick={() => locateUser(true)}
+                                        onClick={async () => {
+                                            vibrate(30);
+                                            await promptEnableLocation();
+                                            locateUser(true);
+                                        }}
                                         className="px-2.5 py-1 bg-amber-500 text-slate-950 rounded-lg font-black text-[11px] shadow-sm active:scale-95 transition-transform"
                                     >
                                         Activar GPS

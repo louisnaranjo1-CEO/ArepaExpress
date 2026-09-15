@@ -18,6 +18,11 @@ import { Toaster } from 'react-hot-toast';
 import { CartProvider } from './context/CartContext';
 import { useGlobalAudioAlerts } from './hooks/useGlobalAudioAlerts';
 import { usePushCampaigns } from './hooks/usePushCampaigns';
+import { App as CapApp } from '@capacitor/app';
+import { Browser } from '@capacitor/browser';
+import { Capacitor } from '@capacitor/core';
+import { supabase } from './lib/supabase';
+import toast from 'react-hot-toast';
 
 function RedirectHandler({ children }: { children: React.ReactNode }) {
     const { user, userData } = useAuth();
@@ -26,10 +31,58 @@ function RedirectHandler({ children }: { children: React.ReactNode }) {
     useGlobalAudioAlerts('user', user?.uid);
     usePushCampaigns(userData, user?.uid);
 
+    // Deep linking handler for In-App Native Google Auth
     useEffect(() => {
-        // Redirection logic removed to allow users with multiple roles (e.g., driver and customer)
-        // to use the client app without being forced to the delivery subdomain.
-    }, [user, userData, navigate]);
+        if (!Capacitor.isNativePlatform()) return;
+
+        const handleUrl = async (urlStr: string) => {
+            if (!urlStr || !urlStr.includes('auth/callback')) return;
+
+            try {
+                await Browser.close();
+            } catch (e) {}
+
+            try {
+                const hashIdx = urlStr.indexOf('#');
+                const queryIdx = urlStr.indexOf('?');
+                let paramsStr = '';
+                if (hashIdx !== -1) {
+                    paramsStr = urlStr.substring(hashIdx + 1);
+                } else if (queryIdx !== -1) {
+                    paramsStr = urlStr.substring(queryIdx + 1);
+                }
+
+                const params = new URLSearchParams(paramsStr);
+                const accessToken = params.get('access_token');
+                const refreshToken = params.get('refresh_token');
+
+                if (accessToken && refreshToken) {
+                    const { data: authData, error: authErr } = await supabase.auth.setSession({
+                        access_token: accessToken,
+                        refresh_token: refreshToken
+                    });
+
+                    if (!authErr && authData?.user) {
+                        toast.success('¡Bienvenido! Sesión iniciada');
+                        navigate('/profile');
+                    } else if (authErr) {
+                        console.error('Error setting session from deep link:', authErr);
+                        toast.error('Error al iniciar sesión');
+                    }
+                }
+            } catch (err) {
+                console.error('Error processing deep link:', err);
+            }
+        };
+
+        const sub = CapApp.addListener('appUrlOpen', (event) => {
+            handleUrl(event.url);
+        });
+
+        return () => {
+            sub.then((s) => s.remove());
+        };
+    }, [navigate]);
 
     return <>{children}</>;
 }

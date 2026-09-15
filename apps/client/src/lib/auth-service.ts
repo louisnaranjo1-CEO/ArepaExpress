@@ -20,16 +20,39 @@ export const processReferralCode = async (newUserId: string, referralCode: strin
     }
 }
 
+import { Browser } from '@capacitor/browser';
+
 export const signInWithGoogle = async (): Promise<{ user: any, isNewUser: boolean }> => {
     try {
-        const { data, error } = await supabase.auth.signInWithOAuth({
-            provider: 'google',
-            options: {
-                redirectTo: window.location.origin
+        if (Capacitor.isNativePlatform()) {
+            const redirectUri = 'deliexpress.app://auth/callback';
+            const { data, error } = await supabase.auth.signInWithOAuth({
+                provider: 'google',
+                options: {
+                    redirectTo: redirectUri,
+                    skipBrowserRedirect: true
+                }
+            });
+            if (error) throw error;
+            if (data?.url) {
+                // Abre el flujo de Google dentro de la aplicación (In-App Browser / Custom Tab)
+                await Browser.open({
+                    url: data.url,
+                    windowName: '_self',
+                    presentationStyle: 'popover'
+                });
             }
-        });
-        if (error) throw error;
-        return { user: null, isNewUser: false };
+            return { user: null, isNewUser: false };
+        } else {
+            const { data, error } = await supabase.auth.signInWithOAuth({
+                provider: 'google',
+                options: {
+                    redirectTo: window.location.origin
+                }
+            });
+            if (error) throw error;
+            return { user: null, isNewUser: false };
+        }
     } catch (error) {
         console.error("Error al iniciar sesión con Google (Supabase):", error);
         throw error;
@@ -164,14 +187,34 @@ export const signInAdmin = async (email: string, pass: string): Promise<any> => 
 
 export const signInAdminWithGoogle = async (): Promise<any> => {
     try {
-        const { data, error } = await supabase.auth.signInWithOAuth({
-            provider: 'google',
-            options: {
-                redirectTo: window.location.origin
+        if (Capacitor.isNativePlatform()) {
+            const redirectUri = 'deliexpress.app://auth/callback';
+            const { data, error } = await supabase.auth.signInWithOAuth({
+                provider: 'google',
+                options: {
+                    redirectTo: redirectUri,
+                    skipBrowserRedirect: true
+                }
+            });
+            if (error) throw error;
+            if (data?.url) {
+                await Browser.open({
+                    url: data.url,
+                    windowName: '_self',
+                    presentationStyle: 'popover'
+                });
             }
-        });
-        if (error) throw error;
-        return null;
+            return null;
+        } else {
+            const { data, error } = await supabase.auth.signInWithOAuth({
+                provider: 'google',
+                options: {
+                    redirectTo: window.location.origin
+                }
+            });
+            if (error) throw error;
+            return null;
+        }
     } catch (error) {
         console.error("Error signing in as admin with Google (Supabase):", error);
         throw error;
