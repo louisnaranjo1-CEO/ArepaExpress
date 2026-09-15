@@ -300,25 +300,33 @@ export default function OrdersRadar() {
         };
     }, [user]);
 
-    // 4. Geolocalización constante si hay una orden activa o viaje activo
+    // 4. Geolocalización constante si el conductor está en línea o en viaje activo
     useEffect(() => {
-        if (!user || (!activeOrder && !activeTransport)) return;
+        if (!user) return;
+        const isOnline = driverProfile?.is_online ?? driverProfile?.isOnline ?? true;
+        if (!isOnline && !activeOrder && !activeTransport) return;
 
-        const locInterval = setInterval(() => {
+        const reportLocation = () => {
             if (navigator.geolocation) {
                 navigator.geolocation.getCurrentPosition(
                     (position) => {
-                        const { latitude, longitude } = position.coords;
-                        updateDriverLocation(user.uid, latitude, longitude);
+                        const { latitude, longitude, heading, speed } = position.coords;
+                        updateDriverLocation(user.uid, latitude, longitude, heading || undefined, speed || undefined);
                     },
-                    (err) => console.error("Error obteniendo ubicación:", err),
-                    { enableHighAccuracy: true, maximumAge: 10000, timeout: 5000 }
+                    (err) => console.warn("Aviso obteniendo ubicación GPS del piloto:", err.message),
+                    { enableHighAccuracy: true, maximumAge: 10000, timeout: 8000 }
                 );
             }
-        }, 60000); // Cada 60 Segundos
+        };
+
+        // Reportar de inmediato al conectar
+        reportLocation();
+
+        // Actualizar cada 30 segundos mientras esté conectado
+        const locInterval = setInterval(reportLocation, 30000);
 
         return () => clearInterval(locInterval);
-    }, [user, activeOrder, activeTransport]);
+    }, [user, driverProfile?.is_online, driverProfile?.isOnline, activeOrder, activeTransport]);
 
     // 5. Cargar sonido de notificación y escuchar chat
     useEffect(() => {

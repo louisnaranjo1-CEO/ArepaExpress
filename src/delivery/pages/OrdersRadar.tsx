@@ -1,9 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { ref, getDownloadURL } from 'firebase/storage';
-import { rtdb, storage } from '../../lib/firebase';
-import { ref as rtdbRef, onValue } from 'firebase/database';
 import { useAuth } from '../../context/AuthContext';
-import { Car, Bike, MapPin, Navigation, Phone, CheckCircle2, MessageSquare, Send, User as UserIcon, Star, MessageCircle, Clock, AlertTriangle, ArrowLeft, Package } from 'lucide-react';
+import { useCurrency } from '../../context/CurrencyContext';
+import { Car, Bike, MapPin, Navigation, Phone, CheckCircle2, MessageSquare, Send, User as UserIcon, Star, MessageCircle, Clock, AlertTriangle, ArrowLeft, Package, Sparkles } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import toast from 'react-hot-toast';
 import RideChat from '../../components/RideChat';
@@ -16,9 +14,9 @@ import InAppCall from '../../components/InAppCall';
 import { supabase } from '../../lib/supabase';
 import { driversApi } from '../../lib/api';
 
-
 export default function OrdersRadar() {
     const { user } = useAuth();
+    const { bcvRate } = useCurrency();
     const [driverProfile, setDriverProfile] = useState<any>(null);
     const [availableOrders, setAvailableOrders] = useState<any[]>([]);
     const [availableTransport, setAvailableTransport] = useState<any[]>([]);
@@ -35,6 +33,9 @@ export default function OrdersRadar() {
     const [showIncomingCall, setShowIncomingCall] = useState(false);
     // Outgoing in-app call state
     const [showOutgoingCall, setShowOutgoingCall] = useState(false);
+    // Yango Dispatch countdown popup
+    const [incomingDispatch, setIncomingDispatch] = useState<any>(null);
+    const [countdownSeconds, setCountdownSeconds] = useState(20);
     
     // Helper to get the current active item for calling
     const currentActiveItem = activeTransport || activeOrder;
@@ -83,10 +84,10 @@ export default function OrdersRadar() {
         let availableOrdersChannel: any;
 
         const fetchActiveOrder = async () => {
-            const { data, error } = await supabase
+            const { data } = await supabase
                 .from('orders')
                 .select('*')
-                .eq('deliveryDriverId', user.uid)
+                .or(`delivery_driver_id.eq.${user.uid},deliveryDriverId.eq.${user.uid}`)
                 .in('status', ['en_camino', 'in_transit'])
                 .limit(1);
             if (data && data.length > 0) {
@@ -97,10 +98,10 @@ export default function OrdersRadar() {
         };
 
         const fetchActiveTransport = async () => {
-            const { data, error } = await supabase
+            const { data } = await supabase
                 .from('transport_requests')
                 .select('*')
-                .eq('driverId', user.uid)
+                .or(`driver_id.eq.${user.uid},driverId.eq.${user.uid}`)
                 .in('status', ['accepted', 'arriving', 'in_progress']);
             
             if (data && data.length > 0) {
@@ -116,14 +117,18 @@ export default function OrdersRadar() {
         };
 
         const fetchAvailableOrders = async () => {
-            const { data, error } = await supabase
+            const { data } = await supabase
                 .from('orders')
                 .select('*')
-                .eq('status', 'buscando_piloto')
-                .contains('eligibleDrivers', [user.uid]);
+                .eq('status', 'buscando_piloto');
             
             if (data) {
-                setAvailableOrders(data);
+                const available = data.filter((order: any) => {
+                    const eligible = order.eligible_drivers || order.eligibleDrivers;
+                    if (!eligible || !Array.isArray(eligible) || eligible.length === 0) return true;
+                    return eligible.includes(user.uid);
+                });
+                setAvailableOrders(available);
             } else {
                 setAvailableOrders([]);
             }
@@ -134,11 +139,11 @@ export default function OrdersRadar() {
         fetchAvailableOrders();
 
         activeOrderChannel = supabase.channel('active_order_changes')
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'orders', filter: `deliveryDriverId=eq.${user.uid}` }, fetchActiveOrder)
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, fetchActiveOrder)
             .subscribe();
 
         activeTransportChannel = supabase.channel('active_transport_changes')
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'transport_requests', filter: `driverId=eq.${user.uid}` }, fetchActiveTransport)
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'transport_requests' }, fetchActiveTransport)
             .subscribe();
 
         availableOrdersChannel = supabase.channel('available_orders_changes')
@@ -154,26 +159,24 @@ export default function OrdersRadar() {
 
     // 3. Escuchar viajes disponibles filtrados por vehicleType
     useEffect(() => {
-        if (!driverProfile?.vehicleType) {
-            setAvailableTransport([]);
-            setLoading(false);
-            return;
-        }
-
         let channel: any;
 
         const fetchAvailableTransport = async () => {
-            const { data, error } = await supabase
+            const { data } = await supabase
                 .from('transport_requests')
                 .select('*')
                 .eq('status', 'searching');
             
             if (data) {
+                const drvVehicle = (driverProfile?.vehicle_type || driverProfile?.vehicleType || 'moto').toLowerCase();
                 const reqs = data.filter((req: any) => {
-                    if (req.type !== 'food_delivery') {
-                        return req.vehicleType === driverProfile.vehicleType;
-                    }
-                    return true;
+                    const reqType = req.type || 'transport';
+                    if (reqType === 'food_delivery' || reqType === 'package_delivery') return true;
+                    const reqVehicle = (req.vehicle_type || req.vehicleType || 'moto').toLowerCase();
+                    if (reqVehicle === drvVehicle) return true;
+                    if (drvVehicle === 'carro' && reqVehicle === 'moto') return true;
+                    if (drvVehicle === 'carro_ejecutivo' || drvVehicle === 'ejecutivo') return true;
+                    return false;
                 });
                 setAvailableTransport(reqs);
             }
@@ -194,39 +197,33 @@ export default function OrdersRadar() {
     // 3.1 Listen for incoming in-app calls when driver has an active transport
     useEffect(() => {
         if (!activeTransport?.id || !user) return;
-        const callStatusRef = rtdbRef(rtdb, `calls/${activeTransport.id}/status`);
-        const callInitRef = rtdbRef(rtdb, `calls/${activeTransport.id}/initiatorId`);
-        let initiatorId: string | null = null;
-
-        // First get who is initiating
-        const initUnsub = onValue(callInitRef, (snap) => {
-            initiatorId = snap.val();
+        const channel = supabase.channel(`call_${activeTransport.id}`, {
+            config: { broadcast: { self: false } }
         });
 
-        const statusUnsub = onValue(callStatusRef, (snap) => {
-            const status = snap.val();
-            if (status === 'calling' && initiatorId && initiatorId !== user.uid) {
-                setShowIncomingCall(true);
-            }
-            if (status === 'ended' || status === null) {
-                setShowIncomingCall(false);
-            }
-        });
+        channel
+            .on('broadcast', { event: 'signal' }, ({ payload }) => {
+                if (payload?.type === 'offer' && payload.from !== user.uid) {
+                    setShowIncomingCall(true);
+                } else if (payload?.type === 'status' && payload.status === 'ended') {
+                    setShowIncomingCall(false);
+                }
+            })
+            .subscribe();
 
         return () => {
-            initUnsub();
-            statusUnsub();
+            supabase.removeChannel(channel);
         };
     }, [activeTransport?.id, user]);
 
 
-    // 3.1 Alerta sonora cuando llega un nuevo viaje o pedido
+    // 3.1 Alerta sonora y modal de despacho cuando llega un nuevo viaje o pedido
     const lastAvailableCount = React.useRef(0);
     useEffect(() => {
         const currentCount = availableOrders.length + availableTransport.length;
         
         if (currentCount > lastAvailableCount.current) {
-            // Solo sonar si no hay órdenes activas o si es una nueva entrada
+            // Solo sonar si no hay órdenes activas
             if (notificationSoundUrl.current) {
                 const audio = new Audio(notificationSoundUrl.current);
                 audio.play().catch(e => console.error("Error playing notification sound:", e));
@@ -242,10 +239,35 @@ export default function OrdersRadar() {
                     border: '1px solid #fef08a'
                 }
             });
+
+            // Activar modal de despacho estilo YANGO si no estamos en viaje activo
+            if (!activeOrder && !activeTransport) {
+                const newest = availableTransport[0] || availableOrders[0];
+                if (newest) {
+                    setIncomingDispatch(newest);
+                }
+            }
         }
         
         lastAvailableCount.current = currentCount;
-    }, [availableOrders, availableTransport]);
+    }, [availableOrders, availableTransport, activeOrder, activeTransport]);
+
+    // 3.2 Temporizador de cuenta regresiva de 20s para el despacho YANGO
+    useEffect(() => {
+        if (!incomingDispatch) return;
+        setCountdownSeconds(20);
+        const timer = setInterval(() => {
+            setCountdownSeconds(prev => {
+                if (prev <= 1) {
+                    clearInterval(timer);
+                    setIncomingDispatch(null);
+                    return 0;
+                }
+                return prev - 1;
+            });
+        }, 1000);
+        return () => clearInterval(timer);
+    }, [incomingDispatch]);
 
     // 5. Escuchar último feedback (calificación)
     useEffect(() => {
@@ -254,12 +276,12 @@ export default function OrdersRadar() {
         let channel: any;
 
         const fetchFeedback = async () => {
-            const { data, error } = await supabase
+            const { data } = await supabase
                 .from('transport_requests')
                 .select('*')
-                .eq('driverId', user.uid)
+                .or(`driver_id.eq.${user.uid},driverId.eq.${user.uid}`)
                 .eq('status', 'completed')
-                .order('ratedAt', { ascending: false })
+                .order('created_at', { ascending: false })
                 .limit(1);
             
             if (data && data.length > 0 && data[0].rating) {
@@ -270,7 +292,7 @@ export default function OrdersRadar() {
         fetchFeedback();
 
         channel = supabase.channel('feedback_changes')
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'transport_requests', filter: `driverId=eq.${user.uid}` }, fetchFeedback)
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'transport_requests' }, fetchFeedback)
             .subscribe();
 
         return () => {
@@ -278,25 +300,33 @@ export default function OrdersRadar() {
         };
     }, [user]);
 
-    // 4. Geolocalización constante si hay una orden activa o viaje activo
+    // 4. Geolocalización constante si el conductor está en línea o en viaje activo
     useEffect(() => {
-        if (!user || (!activeOrder && !activeTransport)) return;
+        if (!user) return;
+        const isOnline = driverProfile?.is_online ?? driverProfile?.isOnline ?? true;
+        if (!isOnline && !activeOrder && !activeTransport) return;
 
-        const locInterval = setInterval(() => {
+        const reportLocation = () => {
             if (navigator.geolocation) {
                 navigator.geolocation.getCurrentPosition(
                     (position) => {
-                        const { latitude, longitude } = position.coords;
-                        updateDriverLocation(user.uid, latitude, longitude);
+                        const { latitude, longitude, heading, speed } = position.coords;
+                        updateDriverLocation(user.uid, latitude, longitude, heading || undefined, speed || undefined);
                     },
-                    (err) => console.error("Error obteniendo ubicación:", err),
-                    { enableHighAccuracy: true, maximumAge: 10000, timeout: 5000 }
+                    (err) => console.warn("Aviso obteniendo ubicación GPS del piloto:", err.message),
+                    { enableHighAccuracy: true, maximumAge: 10000, timeout: 8000 }
                 );
             }
-        }, 60000); // Cada 60 Segundos
+        };
+
+        // Reportar de inmediato al conectar
+        reportLocation();
+
+        // Actualizar cada 30 segundos mientras esté conectado
+        const locInterval = setInterval(reportLocation, 30000);
 
         return () => clearInterval(locInterval);
-    }, [user, activeOrder, activeTransport]);
+    }, [user, driverProfile?.is_online, driverProfile?.isOnline, activeOrder, activeTransport]);
 
     // 5. Cargar sonido de notificación y escuchar chat
     useEffect(() => {
@@ -444,9 +474,10 @@ export default function OrdersRadar() {
         setProcessingAction('delivered');
         try {
             let durationSeconds = 0;
-            if (activeOrder.driverAssignedAt) {
-                const start = activeOrder.driverAssignedAt.toDate().getTime();
-                durationSeconds = Math.floor((Date.now() - start) / 1000);
+            const assignedTime = activeOrder.driver_assigned_at || activeOrder.driverAssignedAt;
+            if (assignedTime) {
+                const start = new Date(assignedTime).getTime();
+                durationSeconds = Math.max(0, Math.floor((Date.now() - start) / 1000));
             }
 
             await supabase.from('orders').update({
@@ -454,6 +485,12 @@ export default function OrdersRadar() {
                 delivered_at: new Date().toISOString(),
                 total_service_duration: durationSeconds
             }).eq('id', activeOrder.id);
+
+            // Increment driver total_trips
+            try {
+                const cur = Number(driverProfile?.total_trips || 0) + 1;
+                await supabase.from('drivers').update({ total_trips: cur }).eq('id', user!.uid);
+            } catch (e) {}
 
             if (activeOrder.restaurantId && activeOrder.deliveryFee) {
                 const { error: debtErr } = await supabase.rpc('increment_restaurant_debt', {
@@ -517,9 +554,10 @@ export default function OrdersRadar() {
         setProcessingAction('arriving');
         try {
             let durationSeconds = 0;
-            if (activeTransport.driverAssignedAt) {
-                const start = activeTransport.driverAssignedAt.toDate().getTime();
-                durationSeconds = Math.floor((Date.now() - start) / 1000);
+            const assignedTime = activeTransport.driver_assigned_at || activeTransport.driverAssignedAt;
+            if (assignedTime) {
+                const start = new Date(assignedTime).getTime();
+                durationSeconds = Math.max(0, Math.floor((Date.now() - start) / 1000));
             }
 
             await supabase.from('transport_requests').update({ 
@@ -550,6 +588,12 @@ export default function OrdersRadar() {
                 status: 'completed',
                 completed_at: new Date().toISOString()
             }).eq('id', activeTransport.id);
+
+            // Increment driver total_trips
+            try {
+                const cur = Number(driverProfile?.total_trips || 0) + 1;
+                await supabase.from('drivers').update({ total_trips: cur }).eq('id', user!.uid);
+            } catch (e) {}
 
             if (activeTransport.type === 'food_delivery' && activeTransport.id) {
                 try {
@@ -647,11 +691,11 @@ export default function OrdersRadar() {
                         </h2>
                     </div>
 
-                    {activeTransport.status === 'accepted' && activeTransport.driverAssignedAt && (
+                    {(activeTransport.status === 'accepted' || activeTransport.status === 'arriving') && (activeTransport.driver_assigned_at || activeTransport.driverAssignedAt) && (
                         <div className="pt-2">
                             <ServiceTimer 
-                                startTime={activeTransport.driverAssignedAt} 
-                                mode="countdown" 
+                                startTime={activeTransport.driver_assigned_at || activeTransport.driverAssignedAt} 
+                                mode={activeTransport.status === 'accepted' ? 'countdown' : 'stopwatch'} 
                             />
                         </div>
                     )}
@@ -667,26 +711,37 @@ export default function OrdersRadar() {
                                     <h3 className="text-xs font-black text-blue-500 uppercase tracking-widest">
                                         {activeTransport.type === 'food_delivery' ? 'Pedido a nombre de:' : (activeTransport.type === 'package_delivery' ? 'Remitente:' : 'Pasajero:')}
                                     </h3>
-                                    <p className="font-bold text-slate-700 leading-tight mt-0.5">{activeTransport.userName || 'Usuario'}</p>
-                                    {(activeTransport.userCedula) && (
+                                    <p className="font-bold text-slate-700 leading-tight mt-0.5">{activeTransport.user_name || activeTransport.userName || 'Pasajero'}</p>
+                                    {(activeTransport.user_cedula || activeTransport.userCedula) && (
                                         <div className="text-xs text-slate-500 font-medium mt-0.5 space-y-0.5 pb-2">
-                                            {activeTransport.userCedula && <p>C.I: {activeTransport.userCedula}</p>}
+                                            <p>C.I: {activeTransport.user_cedula || activeTransport.userCedula}</p>
                                         </div>
                                     )}
                                 </div>
-                                <button
-                                    onClick={() => setShowOutgoingCall(true)}
-                                    className="w-12 h-12 bg-emerald-50 text-emerald-600 rounded-2xl flex items-center justify-center shrink-0 border border-emerald-100 shadow-sm active:scale-95 transition-all hover:bg-emerald-100"
-                                    title="Llamar Pasajero"
-                                >
-                                    <Phone className="w-5 h-5 fill-emerald-600/20" />
-                                </button>
+                                <div className="flex items-center gap-2">
+                                    {(activeTransport.user_phone || activeTransport.userPhone) && (
+                                        <a
+                                            href={`tel:${activeTransport.user_phone || activeTransport.userPhone}`}
+                                            className="w-10 h-10 bg-slate-100 text-slate-700 rounded-xl flex items-center justify-center active:scale-95 transition-transform"
+                                            title="Llamada Normal"
+                                        >
+                                            <Phone className="w-4 h-4" />
+                                        </a>
+                                    )}
+                                    <button
+                                        onClick={() => setShowOutgoingCall(true)}
+                                        className="w-10 h-10 bg-emerald-50 text-emerald-600 rounded-xl flex items-center justify-center border border-emerald-100 shadow-sm active:scale-95 transition-all hover:bg-emerald-100"
+                                        title="Llamar Pasajero por App"
+                                    >
+                                        <Phone className="w-4 h-4 fill-emerald-600/20" />
+                                    </button>
+                                </div>
                             </div>
                         </div>
 
                         <div className="w-px h-8 bg-dashed bg-slate-200 ml-6"></div>
 
-                        {activeTransport.type === 'package_delivery' && activeTransport.packageDescription && (
+                        {activeTransport.type === 'package_delivery' && (activeTransport.package_description || activeTransport.packageDescription) && (
                             <>
                                 <div className="flex gap-4">
                                     <div className="w-12 h-12 bg-yellow-50 text-yellow-600 rounded-2xl flex items-center justify-center shrink-0 border border-yellow-100 shadow-inner">
@@ -694,7 +749,7 @@ export default function OrdersRadar() {
                                     </div>
                                     <div className="flex-1">
                                         <h3 className="text-xs font-black text-yellow-600 uppercase tracking-widest">Contenido del Paquete:</h3>
-                                        <p className="font-bold text-slate-700 leading-tight mt-0.5">{activeTransport.packageDescription}</p>
+                                        <p className="font-bold text-slate-700 leading-tight mt-0.5">{activeTransport.package_description || activeTransport.packageDescription}</p>
                                     </div>
                                 </div>
                                 <div className="w-px h-8 bg-dashed bg-slate-200 ml-6"></div>
@@ -703,7 +758,7 @@ export default function OrdersRadar() {
 
                         <div className="flex gap-4">
                             <div className="w-12 h-12 bg-slate-50 text-slate-400 rounded-2xl flex items-center justify-center shrink-0 border border-slate-100 shadow-inner">
-                                {activeTransport.vehicleType === 'moto' ? <Bike className="w-6" /> : <Car className="w-6" />}
+                                {(activeTransport.vehicle_type || activeTransport.vehicleType) === 'moto' ? <Bike className="w-6" /> : <Car className="w-6" />}
                             </div>
                             <div className="flex-1">
                                 <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest">Recoger en:</h3>
@@ -1031,6 +1086,140 @@ export default function OrdersRadar() {
                 </div>
             </div>
 
+            {/* Modal de Despacho Automático estilo Yango Pro */}
+            <AnimatePresence>
+                {incomingDispatch && (
+                    <motion.div
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        className="fixed inset-0 z-[120] bg-black/80 backdrop-blur-md flex items-end sm:items-center justify-center p-4"
+                    >
+                        <motion.div
+                            initial={{ scale: 0.9, y: 50, opacity: 0 }}
+                            animate={{ scale: 1, y: 0, opacity: 1 }}
+                            exit={{ scale: 0.9, y: 50, opacity: 0 }}
+                            transition={{ type: 'spring', stiffness: 350, damping: 25 }}
+                            className="bg-slate-950 text-white w-full max-w-md rounded-[2.5rem] p-6 shadow-2xl border border-slate-800 relative overflow-hidden flex flex-col gap-4"
+                        >
+                            {/* Barra de progreso de tiempo 20s */}
+                            <div className="absolute top-0 left-0 right-0 h-1.5 bg-slate-800 overflow-hidden">
+                                <div
+                                    className="h-full bg-gradient-to-r from-amber-400 to-yellow-300 transition-all duration-1000 ease-linear"
+                                    style={{ width: `${(countdownSeconds / 20) * 100}%` }}
+                                />
+                            </div>
+
+                            {/* Encabezado con tipo de viaje y temporizador */}
+                            <div className="flex items-center justify-between pt-1">
+                                <div className="flex items-center gap-2 px-3 py-1 bg-amber-400/10 border border-amber-400/30 text-amber-400 rounded-full text-[11px] font-black uppercase tracking-wider">
+                                    {incomingDispatch.restaurantName ? (
+                                        <><Bike className="w-3.5 h-3.5" /> Reparto de Comida</>
+                                    ) : incomingDispatch.type === 'package_delivery' ? (
+                                        <><Package className="w-3.5 h-3.5" /> Envío de Paquete</>
+                                    ) : (incomingDispatch.vehicleType === 'moto' || incomingDispatch.vehicle_type === 'moto') ? (
+                                        <><Bike className="w-3.5 h-3.5" /> Taxi Moto</>
+                                    ) : (
+                                        <><Car className="w-3.5 h-3.5" /> Taxi Confort</>
+                                    )}
+                                </div>
+                                <div className="flex items-center gap-1 px-3 py-1 bg-slate-800 rounded-full text-xs font-black text-amber-400 border border-slate-700">
+                                    <Clock className="w-3.5 h-3.5 animate-spin" />
+                                    <span>{countdownSeconds}s</span>
+                                </div>
+                            </div>
+
+                            {/* Precio dual estilo Yango */}
+                            <div className="bg-slate-900/90 rounded-2xl p-4 border border-slate-800/80 flex items-center justify-between">
+                                <div>
+                                    <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Ganancia estimada</span>
+                                    <div className="text-3xl sm:text-4xl font-black text-amber-400">
+                                        ${Number(
+                                            incomingDispatch.driverPayout ||
+                                            incomingDispatch.deliveryFee ||
+                                            incomingDispatch.price ||
+                                            0
+                                        ).toFixed(2)}
+                                    </div>
+                                </div>
+                                {bcvRate > 0 && (
+                                    <div className="text-right">
+                                        <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">En Bolívares</span>
+                                        <div className="text-base font-black text-slate-300">
+                                            Bs. {(
+                                                Number(
+                                                    incomingDispatch.driverPayout ||
+                                                    incomingDispatch.deliveryFee ||
+                                                    incomingDispatch.price ||
+                                                    0
+                                                ) * bcvRate
+                                            ).toFixed(2)}
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Ruta: Origen y Destino */}
+                            <div className="space-y-3 bg-slate-900/50 p-4 rounded-2xl border border-slate-800">
+                                <div className="flex items-start gap-3">
+                                    <div className="w-6 h-6 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center shrink-0 mt-0.5 font-black text-xs border border-emerald-500/30">
+                                        A
+                                    </div>
+                                    <div className="flex-1 min-w-0">
+                                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-wider">
+                                            {incomingDispatch.restaurantName ? 'Restaurante / Origen' : 'Punto de Recogida'}
+                                        </p>
+                                        <p className="text-xs font-bold text-slate-200 truncate">
+                                            {incomingDispatch.restaurantName || incomingDispatch.origin?.address || incomingDispatch.originAddress || 'Ubicación de partida'}
+                                        </p>
+                                    </div>
+                                </div>
+
+                                <div className="ml-3 border-l-2 border-dashed border-slate-700 h-3"></div>
+
+                                <div className="flex items-start gap-3">
+                                    <div className="w-6 h-6 rounded-full bg-amber-500/20 text-amber-400 flex items-center justify-center shrink-0 mt-0.5 font-black text-xs border border-amber-500/30">
+                                        B
+                                    </div>
+                                    <div className="flex-1 min-w-0">
+                                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Destino</p>
+                                        <p className="text-xs font-bold text-slate-200 truncate">
+                                            {incomingDispatch.shippingAddress?.address || incomingDispatch.destination?.address || incomingDispatch.destinationAddress || 'Ubicación de destino'}
+                                        </p>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Botones de Acción */}
+                            <div className="pt-2 flex flex-col gap-2">
+                                <button
+                                    onClick={() => {
+                                        const isOrder = Boolean(incomingDispatch.restaurantName || incomingDispatch.shippingAddress);
+                                        const id = incomingDispatch.id;
+                                        setIncomingDispatch(null);
+                                        if (isOrder) {
+                                            handleAcceptOrder(id);
+                                        } else {
+                                            handleAcceptTransport(id);
+                                        }
+                                    }}
+                                    className="w-full bg-gradient-to-r from-amber-400 to-yellow-400 hover:from-amber-300 hover:to-yellow-300 text-slate-950 font-black py-4 rounded-2xl shadow-xl shadow-amber-400/20 active:scale-95 transition-all text-base uppercase tracking-wider flex items-center justify-center gap-2"
+                                >
+                                    <Sparkles className="w-5 h-5" />
+                                    {incomingDispatch.restaurantName ? 'Aceptar Reparto' : 'Aceptar Viaje'}
+                                </button>
+                                <button
+                                    onClick={() => setIncomingDispatch(null)}
+                                    className="w-full py-2.5 text-slate-400 hover:text-slate-200 font-bold text-xs uppercase tracking-wider text-center active:scale-95 transition-all"
+                                >
+                                    Rechazar / Omitir
+                                </button>
+                            </div>
+                        </motion.div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
+
             {/* Recent Feedback for Driver */}
             <AnimatePresence>
                 {latestFeedback && (
@@ -1099,6 +1288,8 @@ export default function OrdersRadar() {
                                         <div className="text-sm font-black text-emerald-900 mb-4 bg-white/60 p-3 rounded-2xl">
                                             {req.scheduledAt && typeof req.scheduledAt.toDate === 'function' ? (
                                                 <>Para: {req.scheduledAt.toDate().toLocaleString('es-VE', { weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })}</>
+                                            ) : req.scheduledAt ? (
+                                                <>Para: {new Date(req.scheduledAt).toLocaleString('es-VE', { weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })}</>
                                             ) : 'Fecha Pendiente'}
                                         </div>
 
@@ -1142,7 +1333,9 @@ export default function OrdersRadar() {
                                             <span className="text-sm font-black">
                                                 {req.scheduledAt && typeof req.scheduledAt.toDate === 'function'
                                                     ? req.scheduledAt.toDate().toLocaleString('es-VE', { weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })
-                                                    : 'Fecha pendiente'}
+                                                    : req.scheduledAt
+                                                        ? new Date(req.scheduledAt).toLocaleString('es-VE', { weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })
+                                                        : 'Fecha pendiente'}
                                             </span>
                                         </div>
                                     </div>

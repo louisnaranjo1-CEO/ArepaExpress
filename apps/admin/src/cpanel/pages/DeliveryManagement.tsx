@@ -2,11 +2,12 @@ import React, { useState, useEffect } from 'react';
 import { DeliveryDriver } from '../../lib/delivery-service';
 import { driversApi } from '../../lib/api';
 import { supabase } from '../../lib/supabase';
-import { Truck, CheckCircle2, XCircle, FileText, User, DollarSign, ExternalLink, Plus, Trash2, Clock, Sun, Moon, Activity, MapPin, Map as MapIcon, Navigation, Search } from 'lucide-react';
+import { Truck, CheckCircle2, XCircle, FileText, User, DollarSign, ExternalLink, Plus, Trash2, Clock, Sun, Moon, Activity, MapPin, Map as MapIcon, Navigation, Search, CloudRain, Zap, Sparkles, Sliders, Bike, Car, ShieldCheck, Check, RefreshCw } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { GoogleMap, useJsApiLoader, Marker, InfoWindow } from '@react-google-maps/api';
 import DualPrice from '../../components/DualPrice';
 import { useCurrency } from '../../context/CurrencyContext';
+import { DEFAULT_PRICING_SETTINGS, calculateDynamicFare, SmartPricingSettings } from '../../lib/pricing';
 
 export default function DeliveryManagement() {
     const { bcvRate } = useCurrency();
@@ -64,6 +65,7 @@ export default function DeliveryManagement() {
     const [payingDriver, setPayingDriver] = useState(false);
     const [updateRequests, setUpdateRequests] = useState<any[]>([]);
     const [settings, setSettings] = useState<any>({
+        ...DEFAULT_PRICING_SETTINGS,
         dayShift: {
             start: "08:00",
             end: "20:00",
@@ -77,9 +79,9 @@ export default function DeliveryManagement() {
             clientRates: [{ from: 0, to: 2, price: 3.5 }]
         },
         transportRates: {
-            moto: [{ from: 0, to: 2, clientPrice: 1.5, driverPrice: 1.0 }],
-            carro: [{ from: 0, to: 2, clientPrice: 3.0, driverPrice: 2.0 }],
-            ejecutivo: [{ from: 0, to: 2, clientPrice: 7.0, driverPrice: 5.0 }]
+            moto: [{ from: 0, to: 2, clientPrice: 1.8, driverPrice: 1.5 }],
+            carro: [{ from: 0, to: 2, clientPrice: 3.0, driverPrice: 2.5 }],
+            ejecutivo: [{ from: 0, to: 2, clientPrice: 5.0, driverPrice: 4.0 }]
         },
         deliveryRadius: 15,
         whatsappMessageTemplate: `👋 ¡Hola *{RestaurantName}*!
@@ -102,6 +104,12 @@ _Enviado desde Deliexpress App_`
     });
     const [activeShift, setActiveShift] = useState<'day' | 'night'>('day');
     const [savingSettings, setSavingSettings] = useState(false);
+
+    // Simulador de Tarifas en Vivo (Live Simulator)
+    const [simDistance, setSimDistance] = useState<number>(3.5);
+    const [simForceRain, setSimForceRain] = useState<boolean>(false);
+    const [simForceNight, setSimForceNight] = useState<boolean>(false);
+    const [simDriversCount, setSimDriversCount] = useState<number>(3);
     const [showFleetMap, setShowFleetMap] = useState(false);
     const [mapCenter, setMapCenter] = useState({ lat: 10.4806, lng: -66.9036 }); // Caracas
     const [activeMarker, setActiveMarker] = useState<string | null>(null);
@@ -165,11 +173,16 @@ _Enviado desde Deliexpress App_`
                 .select('*')
                 .eq('id', 'delivery_settings')
                 .maybeSingle();
-            if (data && data.data) {
+            if (data) {
+                const sData = data.data || data.value || data;
                 setSettings((prev: any) => ({
                     ...prev,
-                    ...data.data,
-                    transportRates: data.data.transportRates || prev.transportRates
+                    ...sData,
+                    pricingModel: sData.pricingModel || 'smart',
+                    delivery: sData.delivery || prev.delivery || DEFAULT_PRICING_SETTINGS.delivery,
+                    transport: sData.transport || prev.transport || DEFAULT_PRICING_SETTINGS.transport,
+                    dynamicFactors: sData.dynamicFactors || prev.dynamicFactors || DEFAULT_PRICING_SETTINGS.dynamicFactors,
+                    transportRates: sData.transportRates || prev.transportRates
                 }));
             }
         };
@@ -393,21 +406,76 @@ _Enviado desde Deliexpress App_`
     const handleSaveSettings = async () => {
         setSavingSettings(true);
         try {
+            const smartTransport = settings.transport || DEFAULT_PRICING_SETTINGS.transport;
+            const updatedTransportRates = {
+                moto: [
+                    { from: 0, to: smartTransport.moto?.baseKm || 2, clientPrice: smartTransport.moto?.baseFare || 1.8, driverPrice: Number(((smartTransport.moto?.baseFare || 1.8) * ((smartTransport.moto?.driverCutPercent || 85) / 100)).toFixed(2)) },
+                    { from: smartTransport.moto?.baseKm || 2, to: 0, clientPrice: smartTransport.moto?.pricePerKm || 0.5, driverPrice: Number(((smartTransport.moto?.pricePerKm || 0.5) * ((smartTransport.moto?.driverCutPercent || 85) / 100)).toFixed(2)) }
+                ],
+                carro: [
+                    { from: 0, to: smartTransport.carro?.baseKm || 2, clientPrice: smartTransport.carro?.baseFare || 3.0, driverPrice: Number(((smartTransport.carro?.baseFare || 3.0) * ((smartTransport.carro?.driverCutPercent || 85) / 100)).toFixed(2)) },
+                    { from: smartTransport.carro?.baseKm || 2, to: 0, clientPrice: smartTransport.carro?.pricePerKm || 0.8, driverPrice: Number(((smartTransport.carro?.pricePerKm || 0.8) * ((smartTransport.carro?.driverCutPercent || 85) / 100)).toFixed(2)) }
+                ],
+                ejecutivo: [
+                    { from: 0, to: smartTransport.ejecutivo?.baseKm || 2, clientPrice: smartTransport.ejecutivo?.baseFare || 5.0, driverPrice: Number(((smartTransport.ejecutivo?.baseFare || 5.0) * ((smartTransport.ejecutivo?.driverCutPercent || 85) / 100)).toFixed(2)) },
+                    { from: smartTransport.ejecutivo?.baseKm || 2, to: 0, clientPrice: smartTransport.ejecutivo?.pricePerKm || 1.2, driverPrice: Number(((smartTransport.ejecutivo?.pricePerKm || 1.2) * ((smartTransport.ejecutivo?.driverCutPercent || 85) / 100)).toFixed(2)) }
+                ]
+            };
+
+            const payloadToSave = {
+                ...settings,
+                pricingModel: 'smart',
+                transportRates: updatedTransportRates
+            };
+
             const { error } = await supabase
                 .from('app_settings')
                 .upsert({
                     id: 'delivery_settings',
-                    data: settings,
+                    data: payloadToSave,
                     updated_at: new Date().toISOString()
                 });
             if (error) throw error;
-            alert('Configuraciones guardadas correctamente.');
+            alert('¡Configuraciones guardadas correctamente en Supabase!');
         } catch (error) {
             console.error("Error saving settings:", error);
             alert("Error al guardar configuraciones.");
         } finally {
             setSavingSettings(false);
         }
+    };
+
+    const updateDeliveryPricing = (field: string, val: number) => {
+        setSettings((prev: any) => ({
+            ...prev,
+            delivery: {
+                ...(prev.delivery || DEFAULT_PRICING_SETTINGS.delivery),
+                [field]: val
+            }
+        }));
+    };
+
+    const updateTransportPricing = (type: 'moto' | 'carro' | 'ejecutivo', field: string, val: number) => {
+        setSettings((prev: any) => ({
+            ...prev,
+            transport: {
+                ...(prev.transport || DEFAULT_PRICING_SETTINGS.transport),
+                [type]: {
+                    ...(prev.transport?.[type] || DEFAULT_PRICING_SETTINGS.transport[type]),
+                    [field]: val
+                }
+            }
+        }));
+    };
+
+    const updateDynamicFactors = (field: string, val: any) => {
+        setSettings((prev: any) => ({
+            ...prev,
+            dynamicFactors: {
+                ...(prev.dynamicFactors || DEFAULT_PRICING_SETTINGS.dynamicFactors),
+                [field]: val
+            }
+        }));
     };
 
     if (loading) {
@@ -905,290 +973,625 @@ _Enviado desde Deliexpress App_`
                             </div>
                         </div>
 
-                        {/* Pilot Rates Editor */}
-                        <div className="bg-white p-8 rounded-[32px] border border-slate-200 shadow-sm space-y-6">
-                            <div className="flex items-center justify-between">
-                                <div className="flex items-center gap-4">
-                                    <div className="w-12 h-12 bg-indigo-50 text-primary rounded-2xl flex items-center justify-center">
-                                        <Truck className="w-6 h-6" />
+                        {/* ========================================================= */}
+                        {/* SISTEMA DE TARIFAS DINÁMICAS INTELIGENTES (ESTILO YANGO) */}
+                        {/* ========================================================= */}
+                        
+                        {/* 1. Barra de Control Rápido: Modo Lluvia y Dinámica */}
+                        <div className="lg:col-span-2 bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 p-6 md:p-8 rounded-[32px] text-white shadow-xl shadow-indigo-950/20 border border-indigo-900/50">
+                            <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-6">
+                                <div className="space-y-1">
+                                    <div className="flex items-center gap-2">
+                                        <span className="px-3 py-1 bg-amber-400/20 text-amber-300 rounded-full text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5 border border-amber-400/30">
+                                            <Zap className="w-3 h-3 text-amber-400" />
+                                            Algoritmo Dinámico Yango
+                                        </span>
+                                        {settings.dynamicFactors?.rainModeActive && (
+                                            <span className="px-3 py-1 bg-blue-500/20 text-blue-300 rounded-full text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5 border border-blue-400/30 animate-pulse">
+                                                <CloudRain className="w-3 h-3 text-blue-400" />
+                                                Lluvia Activa (+{settings.dynamicFactors?.rainSurchargePercent || 25}%)
+                                            </span>
+                                        )}
                                     </div>
-                                    <div>
-                                        <h3 className="text-xl font-black text-slate-900 tracking-tight">Costo Repartidor</h3>
-                                        <p className="text-xs font-medium text-slate-500">¿Cuánto gana el piloto?</p>
-                                    </div>
+                                    <h3 className="text-2xl font-black tracking-tight text-white">Centro de Control de Tarifas</h3>
+                                    <p className="text-xs text-slate-300 max-w-xl font-medium">
+                                        Ajusta de forma justa la tarifa base, cobro por km y factores de sobrecargo en tiempo real para repartidores y taxis.
+                                    </p>
                                 </div>
-                                <button
-                                    onClick={() => {
-                                        const key = activeShift === 'day' ? 'dayShift' : 'nightShift';
-                                        const newRates = [...settings[key].driverRates, { from: 0, to: 0, price: 0 }];
-                                        setSettings({ ...settings, [key]: { ...settings[key], driverRates: newRates } });
-                                    }}
-                                    className="bg-indigo-50 text-primary p-2.5 rounded-xl hover:bg-indigo-100 transition-colors"
-                                >
-                                    <Plus className="w-5 h-5" />
-                                </button>
-                            </div>
 
-                            <div className="space-y-3">
-                                <div className="grid grid-cols-12 gap-3 px-2">
-                                    <div className="col-span-4 text-[10px] font-black text-slate-400 uppercase">Desde (km)</div>
-                                    <div className="col-span-4 text-[10px] font-black text-slate-400 uppercase">Hasta (km)</div>
-                                    <div className="col-span-3 text-[10px] font-black text-slate-400 uppercase">A Pagar ($)</div>
+                                <div className="flex flex-wrap items-center gap-3">
+                                    {/* Quick Rain Toggle Button */}
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            const current = Boolean(settings.dynamicFactors?.rainModeActive);
+                                            updateDynamicFactors('rainModeActive', !current);
+                                        }}
+                                        className={`px-5 py-3 rounded-2xl font-black text-xs flex items-center gap-2.5 transition-all shadow-lg active:scale-95 ${
+                                            settings.dynamicFactors?.rainModeActive
+                                                ? 'bg-blue-600 text-white shadow-blue-600/30 ring-4 ring-blue-500/20 scale-[1.02]'
+                                                : 'bg-white/10 hover:bg-white/20 text-white/90 border border-white/10'
+                                        }`}
+                                    >
+                                        <CloudRain className={`w-4 h-4 ${settings.dynamicFactors?.rainModeActive ? 'text-white' : 'text-blue-400'}`} />
+                                        <span>{settings.dynamicFactors?.rainModeActive ? '🌧️ Modo Lluvia ACTIVO' : 'Activar Modo Lluvia'}</span>
+                                    </button>
+
+                                    {/* Dynamic Demand Switch */}
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            const current = Boolean(settings.dynamicFactors?.dynamicDemandActive);
+                                            updateDynamicFactors('dynamicDemandActive', !current);
+                                        }}
+                                        className={`px-4 py-3 rounded-2xl font-black text-xs flex items-center gap-2 transition-all active:scale-95 ${
+                                            settings.dynamicFactors?.dynamicDemandActive
+                                                ? 'bg-amber-500 text-slate-950 shadow-lg shadow-amber-500/20'
+                                                : 'bg-white/10 text-white/60 hover:bg-white/20'
+                                        }`}
+                                    >
+                                        <Zap className="w-4 h-4" />
+                                        <span>{settings.dynamicFactors?.dynamicDemandActive ? 'Demanda Dinámica ON' : 'Demanda Normal'}</span>
+                                    </button>
                                 </div>
-                                {(activeShift === 'day' ? settings.dayShift.driverRates : settings.nightShift.driverRates).map((rate: any, idx: number) => (
-                                    <div key={idx} className="grid grid-cols-12 gap-3 items-center group">
-                                        <div className="col-span-4">
-                                            <input
-                                                type="number" step="0.1"
-                                                value={rate.from}
-                                                onChange={(e) => {
-                                                    const key = activeShift === 'day' ? 'dayShift' : 'nightShift';
-                                                    const newRates = [...settings[key].driverRates];
-                                                    newRates[idx].from = parseFloat(e.target.value) || 0;
-                                                    setSettings({ ...settings, [key]: { ...settings[key], driverRates: newRates } });
-                                                }}
-                                                className="w-full bg-slate-50 border border-slate-100 px-3 py-2.5 rounded-xl font-bold text-slate-700"
-                                            />
-                                        </div>
-                                        <div className="col-span-4">
-                                            <input
-                                                type="number" step="0.1"
-                                                value={rate.to}
-                                                onChange={(e) => {
-                                                    const key = activeShift === 'day' ? 'dayShift' : 'nightShift';
-                                                    const newRates = [...settings[key].driverRates];
-                                                    newRates[idx].to = parseFloat(e.target.value) || 0;
-                                                    setSettings({ ...settings, [key]: { ...settings[key], driverRates: newRates } });
-                                                }}
-                                                className="w-full bg-slate-50 border border-slate-100 px-3 py-2.5 rounded-xl font-bold text-slate-700"
-                                            />
-                                        </div>
-                                        <div className="col-span-3">
-                                            <input
-                                                type="number" step="0.1"
-                                                value={rate.price}
-                                                onChange={(e) => {
-                                                    const key = activeShift === 'day' ? 'dayShift' : 'nightShift';
-                                                    const newRates = [...settings[key].driverRates];
-                                                    newRates[idx].price = parseFloat(e.target.value) || 0;
-                                                    setSettings({ ...settings, [key]: { ...settings[key], driverRates: newRates } });
-                                                }}
-                                                className="w-full bg-slate-50 border border-slate-100 px-3 py-2.5 rounded-xl font-bold text-primary"
-                                            />
-                                        </div>
-                                        <div className="col-span-1">
-                                            <button
-                                                onClick={() => {
-                                                    const key = activeShift === 'day' ? 'dayShift' : 'nightShift';
-                                                    const newRates = settings[key].driverRates.filter((_: any, i: number) => i !== idx);
-                                                    setSettings({ ...settings, [key]: { ...settings[key], driverRates: newRates } });
-                                                }}
-                                                className="text-slate-200 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all"
-                                            >
-                                                <Trash2 className="w-4 h-4" />
-                                            </button>
-                                        </div>
-                                    </div>
-                                ))}
                             </div>
                         </div>
 
-                        {/* Client Rates Editor */}
-                        <div className="bg-white p-8 rounded-[32px] border border-slate-200 shadow-sm space-y-6">
-                            <div className="flex items-center justify-between">
-                                <div className="flex items-center gap-4">
-                                    <div className="w-12 h-12 bg-emerald-50 text-emerald-600 rounded-2xl flex items-center justify-center">
-                                        <DollarSign className="w-6 h-6" />
+                        {/* 2. Cuadrícula de Tarifas Base por Servicio (4 Servicios Claros) */}
+                        <div className="lg:col-span-2 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-5">
+                            {/* A) Delivery Express (Restaurante) */}
+                            <div className="bg-white p-6 rounded-[28px] border border-slate-200 shadow-sm space-y-4 hover:border-primary/40 transition-colors">
+                                <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-3">
+                                        <div className="w-10 h-10 rounded-2xl bg-amber-50 text-primary flex items-center justify-center font-black">
+                                            <Truck className="w-5 h-5" />
+                                        </div>
+                                        <div>
+                                            <h4 className="font-black text-slate-900 text-sm">Delivery Express</h4>
+                                            <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Restaurantes • Moto</p>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="space-y-3 pt-2">
+                                    <div>
+                                        <label className="block text-[10px] font-black uppercase text-slate-400 mb-1">Tarifa Base ($)</label>
+                                        <input
+                                            type="number"
+                                            step="0.1"
+                                            value={settings.delivery?.baseFare ?? 1.50}
+                                            onChange={(e) => updateDeliveryPricing('baseFare', parseFloat(e.target.value) || 0)}
+                                            className="w-full bg-slate-50 border border-slate-200 px-3.5 py-2 rounded-xl text-sm font-black text-slate-800 outline-none focus:ring-2 focus:ring-primary/20"
+                                        />
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-2">
+                                        <div>
+                                            <label className="block text-[10px] font-black uppercase text-slate-400 mb-1">Km Base</label>
+                                            <input
+                                                type="number"
+                                                step="0.5"
+                                                value={settings.delivery?.baseKm ?? 2.0}
+                                                onChange={(e) => updateDeliveryPricing('baseKm', parseFloat(e.target.value) || 0)}
+                                                className="w-full bg-slate-50 border border-slate-200 px-3 py-2 rounded-xl text-xs font-black text-slate-800 outline-none focus:ring-2 focus:ring-primary/20"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="block text-[10px] font-black uppercase text-slate-400 mb-1">$/Km Extra</label>
+                                            <input
+                                                type="number"
+                                                step="0.1"
+                                                value={settings.delivery?.pricePerKm ?? 0.50}
+                                                onChange={(e) => updateDeliveryPricing('pricePerKm', parseFloat(e.target.value) || 0)}
+                                                className="w-full bg-slate-50 border border-slate-200 px-3 py-2 rounded-xl text-xs font-black text-slate-800 outline-none focus:ring-2 focus:ring-primary/20"
+                                            />
+                                        </div>
                                     </div>
                                     <div>
-                                        <h3 className="text-xl font-black text-slate-900 tracking-tight">Costo Cliente</h3>
-                                        <p className="text-xs font-medium text-slate-500">¿Cuánto paga el usuario?</p>
+                                        <div className="flex justify-between text-[10px] font-black uppercase text-slate-500 mb-1">
+                                            <span>% Pago al Piloto</span>
+                                            <span className="text-primary font-black">{settings.delivery?.driverCutPercent ?? 80}%</span>
+                                        </div>
+                                        <input
+                                            type="range"
+                                            min="50"
+                                            max="95"
+                                            step="5"
+                                            value={settings.delivery?.driverCutPercent ?? 80}
+                                            onChange={(e) => updateDeliveryPricing('driverCutPercent', parseInt(e.target.value) || 80)}
+                                            className="w-full accent-primary cursor-pointer"
+                                        />
+                                        <p className="text-[10px] text-slate-400 font-medium mt-1">
+                                            Piloto: ${(Number(settings.delivery?.baseFare || 1.5) * ((settings.delivery?.driverCutPercent || 80) / 100)).toFixed(2)} base • Deliexpress: ${(Number(settings.delivery?.baseFare || 1.5) * (1 - (settings.delivery?.driverCutPercent || 80) / 100)).toFixed(2)}
+                                        </p>
                                     </div>
                                 </div>
-                                <button
-                                    onClick={() => {
-                                        const key = activeShift === 'day' ? 'dayShift' : 'nightShift';
-                                        const newRates = [...settings[key].clientRates, { from: 0, to: 0, price: 0 }];
-                                        setSettings({ ...settings, [key]: { ...settings[key], clientRates: newRates } });
-                                    }}
-                                    className="bg-emerald-50 text-emerald-600 p-2.5 rounded-xl hover:bg-emerald-100 transition-colors"
-                                >
-                                    <Plus className="w-5 h-5" />
-                                </button>
                             </div>
 
-                            <div className="space-y-3">
-                                <div className="grid grid-cols-12 gap-3 px-2">
-                                    <div className="col-span-4 text-[10px] font-black text-slate-400 uppercase">Desde (km)</div>
-                                    <div className="col-span-4 text-[10px] font-black text-slate-400 uppercase">Hasta (km)</div>
-                                    <div className="col-span-3 text-[10px] font-black text-slate-400 uppercase">A Cobrar ($)</div>
-                                </div>
-                                {(activeShift === 'day' ? settings.dayShift.clientRates : settings.nightShift.clientRates).map((rate: any, idx: number) => (
-                                    <div key={idx} className="grid grid-cols-12 gap-3 items-center group">
-                                        <div className="col-span-4">
-                                            <input
-                                                type="number" step="0.1"
-                                                value={rate.from}
-                                                onChange={(e) => {
-                                                    const key = activeShift === 'day' ? 'dayShift' : 'nightShift';
-                                                    const newRates = [...settings[key].clientRates];
-                                                    newRates[idx].from = parseFloat(e.target.value) || 0;
-                                                    setSettings({ ...settings, [key]: { ...settings[key], clientRates: newRates } });
-                                                }}
-                                                className="w-full bg-slate-50 border border-slate-100 px-3 py-2.5 rounded-xl font-bold text-slate-700"
-                                            />
+                            {/* B) Moto Taxi */}
+                            <div className="bg-white p-6 rounded-[28px] border border-slate-200 shadow-sm space-y-4 hover:border-primary/40 transition-colors">
+                                <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-3">
+                                        <div className="w-10 h-10 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center font-black">
+                                            <Bike className="w-5 h-5" />
                                         </div>
-                                        <div className="col-span-4">
-                                            <input
-                                                type="number" step="0.1"
-                                                value={rate.to}
-                                                onChange={(e) => {
-                                                    const key = activeShift === 'day' ? 'dayShift' : 'nightShift';
-                                                    const newRates = [...settings[key].clientRates];
-                                                    newRates[idx].to = parseFloat(e.target.value) || 0;
-                                                    setSettings({ ...settings, [key]: { ...settings[key], clientRates: newRates } });
-                                                }}
-                                                className="w-full bg-slate-50 border border-slate-100 px-3 py-2.5 rounded-xl font-bold text-slate-700"
-                                            />
-                                        </div>
-                                        <div className="col-span-3">
-                                            <input
-                                                type="number" step="0.1"
-                                                value={rate.price}
-                                                onChange={(e) => {
-                                                    const key = activeShift === 'day' ? 'dayShift' : 'nightShift';
-                                                    const newRates = [...settings[key].clientRates];
-                                                    newRates[idx].price = parseFloat(e.target.value) || 0;
-                                                    setSettings({ ...settings, [key]: { ...settings[key], clientRates: newRates } });
-                                                }}
-                                                className="w-full bg-slate-50 border border-slate-100 px-3 py-2.5 rounded-xl font-bold text-emerald-600"
-                                            />
-                                        </div>
-                                        <div className="col-span-1">
-                                            <button
-                                                onClick={() => {
-                                                    const key = activeShift === 'day' ? 'dayShift' : 'nightShift';
-                                                    const newRates = settings[key].clientRates.filter((_: any, i: number) => i !== idx);
-                                                    setSettings({ ...settings, [key]: { ...settings[key], clientRates: newRates } });
-                                                }}
-                                                className="text-slate-200 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all"
-                                            >
-                                                <Trash2 className="w-4 h-4" />
-                                            </button>
+                                        <div>
+                                            <h4 className="font-black text-slate-900 text-sm">Moto Taxi</h4>
+                                            <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">1 Pasajero • Rápido</p>
                                         </div>
                                     </div>
-                                ))}
+                                </div>
+
+                                <div className="space-y-3 pt-2">
+                                    <div>
+                                        <label className="block text-[10px] font-black uppercase text-slate-400 mb-1">Tarifa Base ($)</label>
+                                        <input
+                                            type="number"
+                                            step="0.1"
+                                            value={settings.transport?.moto?.baseFare ?? 1.80}
+                                            onChange={(e) => updateTransportPricing('moto', 'baseFare', parseFloat(e.target.value) || 0)}
+                                            className="w-full bg-slate-50 border border-slate-200 px-3.5 py-2 rounded-xl text-sm font-black text-slate-800 outline-none focus:ring-2 focus:ring-primary/20"
+                                        />
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-2">
+                                        <div>
+                                            <label className="block text-[10px] font-black uppercase text-slate-400 mb-1">Km Base</label>
+                                            <input
+                                                type="number"
+                                                step="0.5"
+                                                value={settings.transport?.moto?.baseKm ?? 2.0}
+                                                onChange={(e) => updateTransportPricing('moto', 'baseKm', parseFloat(e.target.value) || 0)}
+                                                className="w-full bg-slate-50 border border-slate-200 px-3 py-2 rounded-xl text-xs font-black text-slate-800 outline-none focus:ring-2 focus:ring-primary/20"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="block text-[10px] font-black uppercase text-slate-400 mb-1">$/Km Extra</label>
+                                            <input
+                                                type="number"
+                                                step="0.1"
+                                                value={settings.transport?.moto?.pricePerKm ?? 0.50}
+                                                onChange={(e) => updateTransportPricing('moto', 'pricePerKm', parseFloat(e.target.value) || 0)}
+                                                className="w-full bg-slate-50 border border-slate-200 px-3 py-2 rounded-xl text-xs font-black text-slate-800 outline-none focus:ring-2 focus:ring-primary/20"
+                                            />
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <div className="flex justify-between text-[10px] font-black uppercase text-slate-500 mb-1">
+                                            <span>% Conductor</span>
+                                            <span className="text-emerald-600 font-black">{settings.transport?.moto?.driverCutPercent ?? 85}%</span>
+                                        </div>
+                                        <input
+                                            type="range"
+                                            min="50"
+                                            max="95"
+                                            step="5"
+                                            value={settings.transport?.moto?.driverCutPercent ?? 85}
+                                            onChange={(e) => updateTransportPricing('moto', 'driverCutPercent', parseInt(e.target.value) || 85)}
+                                            className="w-full accent-emerald-600 cursor-pointer"
+                                        />
+                                        <p className="text-[10px] text-slate-400 font-medium mt-1">
+                                            Piloto: ${(Number(settings.transport?.moto?.baseFare || 1.8) * ((settings.transport?.moto?.driverCutPercent || 85) / 100)).toFixed(2)} base • App: ${(Number(settings.transport?.moto?.baseFare || 1.8) * (1 - (settings.transport?.moto?.driverCutPercent || 85) / 100)).toFixed(2)}
+                                        </p>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* C) Taxi Standard */}
+                            <div className="bg-white p-6 rounded-[28px] border border-slate-200 shadow-sm space-y-4 hover:border-primary/40 transition-colors">
+                                <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-3">
+                                        <div className="w-10 h-10 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center font-black">
+                                            <Car className="w-5 h-5" />
+                                        </div>
+                                        <div>
+                                            <h4 className="font-black text-slate-900 text-sm">Taxi Standard</h4>
+                                            <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Sedán • Hasta 4 Pas.</p>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="space-y-3 pt-2">
+                                    <div>
+                                        <label className="block text-[10px] font-black uppercase text-slate-400 mb-1">Tarifa Base ($)</label>
+                                        <input
+                                            type="number"
+                                            step="0.1"
+                                            value={settings.transport?.carro?.baseFare ?? 3.00}
+                                            onChange={(e) => updateTransportPricing('carro', 'baseFare', parseFloat(e.target.value) || 0)}
+                                            className="w-full bg-slate-50 border border-slate-200 px-3.5 py-2 rounded-xl text-sm font-black text-slate-800 outline-none focus:ring-2 focus:ring-primary/20"
+                                        />
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-2">
+                                        <div>
+                                            <label className="block text-[10px] font-black uppercase text-slate-400 mb-1">Km Base</label>
+                                            <input
+                                                type="number"
+                                                step="0.5"
+                                                value={settings.transport?.carro?.baseKm ?? 2.0}
+                                                onChange={(e) => updateTransportPricing('carro', 'baseKm', parseFloat(e.target.value) || 0)}
+                                                className="w-full bg-slate-50 border border-slate-200 px-3 py-2 rounded-xl text-xs font-black text-slate-800 outline-none focus:ring-2 focus:ring-primary/20"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="block text-[10px] font-black uppercase text-slate-400 mb-1">$/Km Extra</label>
+                                            <input
+                                                type="number"
+                                                step="0.1"
+                                                value={settings.transport?.carro?.pricePerKm ?? 0.80}
+                                                onChange={(e) => updateTransportPricing('carro', 'pricePerKm', parseFloat(e.target.value) || 0)}
+                                                className="w-full bg-slate-50 border border-slate-200 px-3 py-2 rounded-xl text-xs font-black text-slate-800 outline-none focus:ring-2 focus:ring-primary/20"
+                                            />
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <div className="flex justify-between text-[10px] font-black uppercase text-slate-500 mb-1">
+                                            <span>% Conductor</span>
+                                            <span className="text-indigo-600 font-black">{settings.transport?.carro?.driverCutPercent ?? 85}%</span>
+                                        </div>
+                                        <input
+                                            type="range"
+                                            min="50"
+                                            max="95"
+                                            step="5"
+                                            value={settings.transport?.carro?.driverCutPercent ?? 85}
+                                            onChange={(e) => updateTransportPricing('carro', 'driverCutPercent', parseInt(e.target.value) || 85)}
+                                            className="w-full accent-indigo-600 cursor-pointer"
+                                        />
+                                        <p className="text-[10px] text-slate-400 font-medium mt-1">
+                                            Taxista: ${(Number(settings.transport?.carro?.baseFare || 3.0) * ((settings.transport?.carro?.driverCutPercent || 85) / 100)).toFixed(2)} base • App: ${(Number(settings.transport?.carro?.baseFare || 3.0) * (1 - (settings.transport?.carro?.driverCutPercent || 85) / 100)).toFixed(2)}
+                                        </p>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* D) Taxi Ejecutivo */}
+                            <div className="bg-white p-6 rounded-[28px] border border-slate-200 shadow-sm space-y-4 hover:border-primary/40 transition-colors">
+                                <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-3">
+                                        <div className="w-10 h-10 rounded-2xl bg-slate-900 text-amber-400 flex items-center justify-center font-black">
+                                            <Sparkles className="w-5 h-5" />
+                                        </div>
+                                        <div>
+                                            <h4 className="font-black text-slate-900 text-sm">Taxi Ejecutivo</h4>
+                                            <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Premium • Con A/C</p>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="space-y-3 pt-2">
+                                    <div>
+                                        <label className="block text-[10px] font-black uppercase text-slate-400 mb-1">Tarifa Base ($)</label>
+                                        <input
+                                            type="number"
+                                            step="0.1"
+                                            value={settings.transport?.ejecutivo?.baseFare ?? 5.00}
+                                            onChange={(e) => updateTransportPricing('ejecutivo', 'baseFare', parseFloat(e.target.value) || 0)}
+                                            className="w-full bg-slate-50 border border-slate-200 px-3.5 py-2 rounded-xl text-sm font-black text-slate-800 outline-none focus:ring-2 focus:ring-primary/20"
+                                        />
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-2">
+                                        <div>
+                                            <label className="block text-[10px] font-black uppercase text-slate-400 mb-1">Km Base</label>
+                                            <input
+                                                type="number"
+                                                step="0.5"
+                                                value={settings.transport?.ejecutivo?.baseKm ?? 2.0}
+                                                onChange={(e) => updateTransportPricing('ejecutivo', 'baseKm', parseFloat(e.target.value) || 0)}
+                                                className="w-full bg-slate-50 border border-slate-200 px-3 py-2 rounded-xl text-xs font-black text-slate-800 outline-none focus:ring-2 focus:ring-primary/20"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="block text-[10px] font-black uppercase text-slate-400 mb-1">$/Km Extra</label>
+                                            <input
+                                                type="number"
+                                                step="0.1"
+                                                value={settings.transport?.ejecutivo?.pricePerKm ?? 1.20}
+                                                onChange={(e) => updateTransportPricing('ejecutivo', 'pricePerKm', parseFloat(e.target.value) || 0)}
+                                                className="w-full bg-slate-50 border border-slate-200 px-3 py-2 rounded-xl text-xs font-black text-slate-800 outline-none focus:ring-2 focus:ring-primary/20"
+                                            />
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <div className="flex justify-between text-[10px] font-black uppercase text-slate-500 mb-1">
+                                            <span>% Conductor</span>
+                                            <span className="text-slate-900 font-black">{settings.transport?.ejecutivo?.driverCutPercent ?? 85}%</span>
+                                        </div>
+                                        <input
+                                            type="range"
+                                            min="50"
+                                            max="95"
+                                            step="5"
+                                            value={settings.transport?.ejecutivo?.driverCutPercent ?? 85}
+                                            onChange={(e) => updateTransportPricing('ejecutivo', 'driverCutPercent', parseInt(e.target.value) || 85)}
+                                            className="w-full accent-slate-900 cursor-pointer"
+                                        />
+                                        <p className="text-[10px] text-slate-400 font-medium mt-1">
+                                            Conductor: ${(Number(settings.transport?.ejecutivo?.baseFare || 5.0) * ((settings.transport?.ejecutivo?.driverCutPercent || 85) / 100)).toFixed(2)} base • App: ${(Number(settings.transport?.ejecutivo?.baseFare || 5.0) * (1 - (settings.transport?.ejecutivo?.driverCutPercent || 85) / 100)).toFixed(2)}
+                                        </p>
+                                    </div>
+                                </div>
                             </div>
                         </div>
 
-                        {/* Transport Rates Editor (Moto, Car, Exec) */}
-                        <div className="lg:col-span-2 bg-white p-8 rounded-[32px] border border-slate-200 shadow-sm space-y-8">
-                            <div className="flex items-center gap-4 border-b border-slate-100 pb-6">
-                                <div className="w-12 h-12 bg-indigo-50 text-primary rounded-2xl flex items-center justify-center">
-                                    <Activity className="w-6 h-6" />
+                        {/* 3. Ajuste Fino de Factores Dinámicos (Sobrecargos) */}
+                        <div className="lg:col-span-2 bg-white p-8 rounded-[32px] border border-slate-200 shadow-sm space-y-6">
+                            <div className="flex items-center gap-3 border-b border-slate-100 pb-4">
+                                <div className="w-10 h-10 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center font-black">
+                                    <Sliders className="w-5 h-5" />
                                 </div>
                                 <div>
-                                    <h3 className="text-xl font-black text-slate-900 tracking-tight">Tarifas de Taxis (Auto & Moto)</h3>
-                                    <p className="text-xs font-medium text-slate-500">Configuración global de precios por distancia</p>
+                                    <h4 className="font-black text-slate-900 text-base">Parámetros Dinámicos (Surge Factors)</h4>
+                                    <p className="text-xs text-slate-400 font-medium">Define los porcentajes de incremento automático por condiciones externas</p>
                                 </div>
                             </div>
 
-                            <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-                                {(['moto', 'carro', 'ejecutivo'] as const).map((type) => (
-                                    <div key={type} className="space-y-4">
-                                        <div className="flex items-center justify-between">
-                                            <h4 className="font-black text-slate-700 uppercase tracking-wider text-[10px]">
-                                                {type === 'carro' ? 'Taxi Standard' : type === 'ejecutivo' ? 'Taxi Ejecutivo' : 'Moto Taxi'}
-                                            </h4>
-                                            <button
-                                                onClick={() => {
-                                                    const newRates = [...settings.transportRates[type], { from: 0, to: 0, price: 0 }];
-                                                    setSettings({
-                                                        ...settings,
-                                                        transportRates: { ...settings.transportRates, [type]: newRates }
-                                                    });
-                                                }}
-                                                className="text-primary hover:bg-slate-50 p-1 rounded-lg transition-colors"
-                                            >
-                                                <Plus className="w-4 h-4" />
-                                            </button>
-                                        </div>
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                                {/* Lluvia % */}
+                                <div className="bg-slate-50 p-5 rounded-2xl border border-slate-100 space-y-2">
+                                    <div className="flex items-center gap-2">
+                                        <CloudRain className="w-4 h-4 text-blue-500" />
+                                        <label className="text-xs font-black text-slate-800 uppercase tracking-wide">Recargo por Lluvia (%)</label>
+                                    </div>
+                                    <p className="text-[11px] text-slate-400 font-medium leading-relaxed">
+                                        Se transfiere en su totalidad al piloto por el riesgo y dificultad climática.
+                                    </p>
+                                    <div className="pt-2 flex items-center gap-3">
+                                        <input
+                                            type="number"
+                                            min="0"
+                                            max="100"
+                                            step="5"
+                                            value={settings.dynamicFactors?.rainSurchargePercent ?? 25}
+                                            onChange={(e) => updateDynamicFactors('rainSurchargePercent', parseInt(e.target.value) || 0)}
+                                            className="w-24 bg-white border border-slate-200 px-3 py-2 rounded-xl font-black text-blue-600 text-center text-sm outline-none focus:ring-2 focus:ring-blue-400/20"
+                                        />
+                                        <span className="text-xs font-black text-slate-500">% Adicional</span>
+                                    </div>
+                                </div>
 
-                                        <div className="space-y-4">
-                                            <div className="grid grid-cols-12 gap-1 px-1 text-center">
-                                                <div className="col-span-2 text-[8px] font-black text-slate-400 uppercase">Desde</div>
-                                                <div className="col-span-2 text-[8px] font-black text-slate-400 uppercase">Hasta</div>
-                                                <div className="col-span-3 text-[8px] font-black text-slate-400 uppercase">C. Cliente</div>
-                                                <div className="col-span-4 text-[8px] font-black text-slate-400 uppercase">C. Taxi</div>
+                                {/* Demanda / Unidades */}
+                                <div className="bg-slate-50 p-5 rounded-2xl border border-slate-100 space-y-2">
+                                    <div className="flex items-center gap-2">
+                                        <Zap className="w-4 h-4 text-amber-500" />
+                                        <label className="text-xs font-black text-slate-800 uppercase tracking-wide">Oferta y Demanda</label>
+                                    </div>
+                                    <p className="text-[11px] text-slate-400 font-medium leading-relaxed">
+                                        Ajusta precios cuando hay escasez para incentivar unidades a conectarse.
+                                    </p>
+                                    <div className="pt-2 space-y-2">
+                                        <div className="flex items-center justify-between text-xs font-bold text-slate-700">
+                                            <span className="text-[11px]">Baja Oferta (1-2 unidades):</span>
+                                            <div className="flex items-center gap-1">
+                                                <input
+                                                    type="number"
+                                                    min="0"
+                                                    max="50"
+                                                    step="5"
+                                                    value={settings.dynamicFactors?.lowSupplySurchargePercent ?? 15}
+                                                    onChange={(e) => updateDynamicFactors('lowSupplySurchargePercent', parseInt(e.target.value) || 0)}
+                                                    className="w-16 bg-white border border-slate-200 px-2 py-1 rounded-lg font-black text-amber-600 text-center text-xs outline-none"
+                                                />
+                                                <span className="text-[10px] font-bold text-slate-400">%</span>
                                             </div>
-                                            {settings.transportRates[type].map((rate: any, idx: number) => (
-                                                <div key={idx} className="grid grid-cols-12 gap-2 items-center group/range bg-white p-1 rounded-xl border border-slate-50 shadow-sm">
-                                                    <div className="col-span-2">
-                                                        <input
-                                                            type="number" step="0.1"
-                                                            value={rate.from}
-                                                            onChange={(e) => {
-                                                                const newRates = [...settings.transportRates[type]];
-                                                                newRates[idx].from = parseFloat(e.target.value) || 0;
-                                                                setSettings({ ...settings, transportRates: { ...settings.transportRates, [type]: newRates } });
-                                                            }}
-                                                            className="w-full bg-slate-50 border-none rounded-lg px-2 py-1 text-[10px] font-bold text-center"
-                                                        />
-                                                    </div>
-                                                    <div className="col-span-2">
-                                                        <input
-                                                            type="number" step="0.1"
-                                                            value={rate.to || 0}
-                                                            onChange={(e) => {
-                                                                const newRates = [...settings.transportRates[type]];
-                                                                newRates[idx].to = parseFloat(e.target.value) || 0;
-                                                                setSettings({ ...settings, transportRates: { ...settings.transportRates, [type]: newRates } });
-                                                            }}
-                                                            className="w-full bg-slate-50 border-none rounded-lg px-2 py-1 text-[10px] font-bold text-center"
-                                                        />
-                                                    </div>
-                                                    <div className="col-span-3">
-                                                        <input
-                                                            type="number" step="0.5"
-                                                            value={rate.clientPrice || rate.price}
-                                                            onChange={(e) => {
-                                                                const newRates = [...settings.transportRates[type]];
-                                                                newRates[idx].clientPrice = parseFloat(e.target.value) || 0;
-                                                                setSettings({ ...settings, transportRates: { ...settings.transportRates, [type]: newRates } });
-                                                            }}
-                                                            placeholder="C. Cliente"
-                                                            className="w-full bg-emerald-50 border-none rounded-lg px-2 py-1 text-[10px] font-black text-emerald-600 text-center"
-                                                        />
-                                                    </div>
-                                                    <div className="col-span-4">
-                                                        <input
-                                                            type="number" step="0.5"
-                                                            value={rate.driverPrice || rate.price}
-                                                            onChange={(e) => {
-                                                                const newRates = [...settings.transportRates[type]];
-                                                                newRates[idx].driverPrice = parseFloat(e.target.value) || 0;
-                                                                setSettings({ ...settings, transportRates: { ...settings.transportRates, [type]: newRates } });
-                                                            }}
-                                                            placeholder="C. Taxi"
-                                                            className="w-full bg-indigo-50 border-none rounded-lg px-2 py-1 text-[10px] font-black text-primary text-center"
-                                                        />
-                                                    </div>
-                                                    <div className="col-span-1">
-                                                        <button
-                                                            onClick={() => {
-                                                                const newRates = settings.transportRates[type].filter((_: any, i: number) => i !== idx);
-                                                                setSettings({ ...settings, transportRates: { ...settings.transportRates, [type]: newRates } });
-                                                            }}
-                                                            className="text-slate-200 hover:text-red-500 opacity-0 group-hover/range:opacity-100 transition-colors"
-                                                        >
-                                                            <Trash2 className="w-4 h-4" />
-                                                        </button>
-                                                    </div>
-                                                </div>
-                                            ))}
+                                        </div>
+                                        <div className="flex items-center justify-between text-xs font-bold text-slate-700">
+                                            <span className="text-[11px]">Sobredemanda (0 unidades):</span>
+                                            <div className="flex items-center gap-1">
+                                                <input
+                                                    type="number"
+                                                    min="0"
+                                                    max="80"
+                                                    step="5"
+                                                    value={settings.dynamicFactors?.criticalSupplySurchargePercent ?? 30}
+                                                    onChange={(e) => updateDynamicFactors('criticalSupplySurchargePercent', parseInt(e.target.value) || 0)}
+                                                    className="w-16 bg-white border border-slate-200 px-2 py-1 rounded-lg font-black text-rose-600 text-center text-xs outline-none"
+                                                />
+                                                <span className="text-[10px] font-bold text-slate-400">%</span>
+                                            </div>
                                         </div>
                                     </div>
-                                ))}
+                                </div>
+
+                                {/* Turno Nocturno */}
+                                <div className="bg-slate-50 p-5 rounded-2xl border border-slate-100 space-y-2">
+                                    <div className="flex items-center gap-2">
+                                        <Moon className="w-4 h-4 text-indigo-500" />
+                                        <label className="text-xs font-black text-slate-800 uppercase tracking-wide">Recargo Nocturno</label>
+                                    </div>
+                                    <p className="text-[11px] text-slate-400 font-medium leading-relaxed">
+                                        Horario especial para viajes nocturnos de seguridad.
+                                    </p>
+                                    <div className="pt-2 space-y-2">
+                                        <div className="flex items-center justify-between text-xs font-bold text-slate-700">
+                                            <span className="text-[11px]">Recargo noche:</span>
+                                            <div className="flex items-center gap-1">
+                                                <input
+                                                    type="number"
+                                                    min="0"
+                                                    max="50"
+                                                    step="5"
+                                                    value={settings.dynamicFactors?.nightShift?.surchargePercent ?? 20}
+                                                    onChange={(e) => {
+                                                        const cur = settings.dynamicFactors?.nightShift || DEFAULT_PRICING_SETTINGS.dynamicFactors.nightShift;
+                                                        updateDynamicFactors('nightShift', { ...cur, surchargePercent: parseInt(e.target.value) || 0 });
+                                                    }}
+                                                    className="w-16 bg-white border border-slate-200 px-2 py-1 rounded-lg font-black text-indigo-600 text-center text-xs outline-none"
+                                                />
+                                                <span className="text-[10px] font-bold text-slate-400">%</span>
+                                            </div>
+                                        </div>
+                                        <div className="grid grid-cols-2 gap-2 pt-1">
+                                            <div>
+                                                <span className="text-[9px] font-bold text-slate-400 block uppercase">Inicio</span>
+                                                <input
+                                                    type="time"
+                                                    value={settings.dynamicFactors?.nightShift?.start || '20:00'}
+                                                    onChange={(e) => {
+                                                        const cur = settings.dynamicFactors?.nightShift || DEFAULT_PRICING_SETTINGS.dynamicFactors.nightShift;
+                                                        updateDynamicFactors('nightShift', { ...cur, start: e.target.value });
+                                                    }}
+                                                    className="w-full bg-white border border-slate-200 px-2 py-1 rounded-lg text-xs font-bold"
+                                                />
+                                            </div>
+                                            <div>
+                                                <span className="text-[9px] font-bold text-slate-400 block uppercase">Fin</span>
+                                                <input
+                                                    type="time"
+                                                    value={settings.dynamicFactors?.nightShift?.end || '06:00'}
+                                                    onChange={(e) => {
+                                                        const cur = settings.dynamicFactors?.nightShift || DEFAULT_PRICING_SETTINGS.dynamicFactors.nightShift;
+                                                        updateDynamicFactors('nightShift', { ...cur, end: e.target.value });
+                                                    }}
+                                                    className="w-full bg-white border border-slate-200 px-2 py-1 rounded-lg text-xs font-bold"
+                                                />
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* 4. SIMULADOR DE TARIFAS EN TIEMPO REAL (Live Calculator) */}
+                        <div className="lg:col-span-2 bg-gradient-to-br from-slate-900 to-indigo-950 p-8 rounded-[36px] text-white shadow-2xl space-y-6 border border-indigo-900/60">
+                            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-white/10 pb-5">
+                                <div>
+                                    <div className="flex items-center gap-2 mb-1">
+                                        <Sparkles className="w-5 h-5 text-amber-400" />
+                                        <h3 className="text-xl font-black tracking-tight text-white">Simulador de Tarifas en Vivo</h3>
+                                    </div>
+                                    <p className="text-xs text-slate-300 font-medium">Prueba cualquier distancia y condición para ver el cobro al cliente, pago al piloto y margen de Deliexpress.</p>
+                                </div>
+                                <div className="flex items-center gap-2 bg-white/10 p-1.5 rounded-2xl border border-white/10">
+                                    <button
+                                        type="button"
+                                        onClick={() => setSimForceRain(!simForceRain)}
+                                        className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 ${
+                                            simForceRain ? 'bg-blue-500 text-white shadow-md' : 'text-slate-300 hover:text-white'
+                                        }`}
+                                    >
+                                        <CloudRain className="w-3.5 h-3.5" />
+                                        <span>Lluvia {simForceRain ? 'ON' : 'OFF'}</span>
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setSimForceNight(!simForceNight)}
+                                        className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 ${
+                                            simForceNight ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-300 hover:text-white'
+                                        }`}
+                                    >
+                                        <Moon className="w-3.5 h-3.5" />
+                                        <span>Noche {simForceNight ? 'ON' : 'OFF'}</span>
+                                    </button>
+                                </div>
+                            </div>
+
+                            {/* Distance Slider & Quick Selectors */}
+                            <div className="space-y-3 bg-white/5 p-5 rounded-2xl border border-white/10">
+                                <div className="flex items-center justify-between">
+                                    <span className="text-xs font-black uppercase tracking-wider text-slate-400">Distancia del Trayecto</span>
+                                    <span className="text-2xl font-black text-amber-400">{simDistance.toFixed(1)} km</span>
+                                </div>
+                                <input
+                                    type="range"
+                                    min="0.5"
+                                    max="25"
+                                    step="0.5"
+                                    value={simDistance}
+                                    onChange={(e) => setSimDistance(parseFloat(e.target.value) || 1)}
+                                    className="w-full accent-amber-400 cursor-pointer h-2 bg-white/10 rounded-lg"
+                                />
+                                <div className="flex flex-wrap gap-2 pt-1">
+                                    {[1, 2, 3.5, 5, 8, 12, 18].map((dist) => (
+                                        <button
+                                            key={dist}
+                                            type="button"
+                                            onClick={() => setSimDistance(dist)}
+                                            className={`px-3 py-1 rounded-xl text-xs font-black transition-all ${
+                                                simDistance === dist
+                                                    ? 'bg-amber-400 text-slate-950 scale-105'
+                                                    : 'bg-white/10 text-slate-300 hover:bg-white/20'
+                                            }`}
+                                        >
+                                            {dist} km
+                                        </button>
+                                    ))}
+                                    <div className="ml-auto flex items-center gap-2 text-xs font-bold text-slate-300">
+                                        <span className="text-[10px] text-slate-400 uppercase">Unidades en zona:</span>
+                                        {[0, 1, 4].map((num) => (
+                                            <button
+                                                key={num}
+                                                type="button"
+                                                onClick={() => setSimDriversCount(num)}
+                                                className={`px-2.5 py-0.5 rounded-lg text-xs font-bold ${
+                                                    simDriversCount === num ? 'bg-indigo-500 text-white' : 'bg-white/10 text-slate-400'
+                                                }`}
+                                            >
+                                                {num === 4 ? '3+' : num}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* 4 Live Results Cards */}
+                            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 pt-2">
+                                {(
+                                    [
+                                        { key: 'delivery', name: 'Delivery Express', icon: Truck, color: 'border-amber-400/40 bg-amber-500/10' },
+                                        { key: 'moto', name: 'Moto Taxi', icon: Bike, color: 'border-emerald-400/40 bg-emerald-500/10' },
+                                        { key: 'carro', name: 'Taxi Standard', icon: Car, color: 'border-indigo-400/40 bg-indigo-500/10' },
+                                        { key: 'ejecutivo', name: 'Taxi Ejecutivo', icon: Sparkles, color: 'border-purple-400/40 bg-purple-500/10' }
+                                    ] as const
+                                ).map((srv) => {
+                                    const fare = calculateDynamicFare({
+                                        serviceType: srv.key,
+                                        distanceKm: simDistance,
+                                        settings,
+                                        availableDriversCount: simDriversCount,
+                                        forceRain: simForceRain,
+                                        forceNight: simForceNight
+                                    });
+
+                                    return (
+                                        <div key={srv.key} className={`p-5 rounded-2xl border ${srv.color} space-y-3`}>
+                                            <div className="flex items-center justify-between border-b border-white/10 pb-2.5">
+                                                <div className="flex items-center gap-2">
+                                                    <srv.icon className="w-4 h-4 text-white" />
+                                                    <span className="font-black text-xs text-white">{srv.name}</span>
+                                                </div>
+                                                {fare.surgeMultiplier > 1 && (
+                                                    <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-amber-400/20 text-amber-300 border border-amber-400/30">
+                                                        {fare.surgeMultiplier}x
+                                                    </span>
+                                                )}
+                                            </div>
+
+                                            <div className="space-y-2">
+                                                <div>
+                                                    <span className="text-[10px] text-slate-400 uppercase font-black tracking-wider block">Cobra al Cliente:</span>
+                                                    <div className="flex items-baseline gap-2">
+                                                        <span className="text-xl font-black text-white">${fare.clientTotal.toFixed(2)}</span>
+                                                        {bcvRate > 0 && (
+                                                            <span className="text-xs font-bold text-slate-400">
+                                                                ({(fare.clientTotal * bcvRate).toFixed(0)} Bs)
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                </div>
+
+                                                <div className="grid grid-cols-2 gap-2 pt-1 border-t border-white/10 text-xs">
+                                                    <div>
+                                                        <span className="text-[9px] text-emerald-300 font-bold uppercase block">Gana Piloto:</span>
+                                                        <span className="font-black text-emerald-400 text-sm">${fare.driverPayout.toFixed(2)}</span>
+                                                    </div>
+                                                    <div>
+                                                        <span className="text-[9px] text-amber-300 font-bold uppercase block">Deliexpress:</span>
+                                                        <span className="font-black text-amber-400 text-sm">${fare.platformFee.toFixed(2)}</span>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    );
+                                })}
                             </div>
                         </div>
 

@@ -11,6 +11,7 @@ import { isDemoMode } from '../lib/env';
 import DemoAlertModal from '../components/DemoAlertModal';
 import DualPrice from '../components/DualPrice';
 import LocationRequiredModal from '../components/LocationRequiredModal';
+import { calculateDynamicFare } from '../lib/pricing';
 
 interface CartProps {
   hideHeader?: boolean;
@@ -122,7 +123,7 @@ export default function Cart({ hideHeader = false }: CartProps) {
           .select('*')
           .eq('id', 'delivery_settings')
           .maybeSingle();
-        if (sDoc) setSystemSettings(sDoc.value || sDoc);
+        if (sDoc) setSystemSettings(sDoc.data || sDoc.value || sDoc);
       } catch (err) { console.error(err); }
     };
     fetchSettings();
@@ -201,6 +202,18 @@ export default function Cart({ hideHeader = false }: CartProps) {
       }
     }
     if (systemSettings) {
+      if (systemSettings.pricingModel === 'smart' || systemSettings.delivery) {
+        const fare = calculateDynamicFare({
+          serviceType: 'delivery',
+          distanceKm: distance,
+          settings: systemSettings
+        });
+        return {
+          clientFee: fare.clientTotal,
+          driverPayout: fare.driverPayout,
+          shift: fare.activeFactors.isNight ? 'night' : 'day'
+        };
+      }
       const now = new Date();
       const currentTimeStr = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
       let activeShift: 'day' | 'night' = isTimeInRange(currentTimeStr, systemSettings.dayShift?.start || '08:00', systemSettings.dayShift?.end || '20:00') ? 'day' : 'night';

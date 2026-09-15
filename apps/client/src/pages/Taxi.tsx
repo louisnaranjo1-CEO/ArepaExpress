@@ -34,6 +34,7 @@ import { isDemoMode } from '../lib/env';
 import DemoAlertModal from '../components/DemoAlertModal';
 import { useCurrency } from '../context/CurrencyContext';
 import { GOOGLE_MAPS_API_KEY, GOOGLE_MAPS_LIBRARIES } from '../lib/mapsConfig';
+import { calculateDynamicFare, FareCalculationResult } from '../lib/pricing';
 
 interface Location {
     lat: number;
@@ -193,8 +194,8 @@ export default function Taxi() {
                     .maybeSingle();
 
                 if (docSnap) {
-                    const data = docSnap.value || docSnap;
-                    setAdminRates(data.transportRates || {});
+                    const data = docSnap.data || docSnap.value || docSnap;
+                    setAdminRates(data);
                     setServiceHours({
                         day: data.dayShift || { start: "08:00", end: "20:00" },
                         night: data.nightShift || { start: "20:01", end: "07:59" }
@@ -263,46 +264,9 @@ export default function Taxi() {
                 }
             });
 
-            if (validDrivers.length === 0 || isDemoMode()) {
-                const simulated: NearbyDriver[] = [
-                    {
-                        id: 'mock-moto-1',
-                        fullName: 'Carlos (Moto)',
-                        vehicleType: 'moto',
-                        lat: pickupCoords.lat + 0.0035,
-                        lng: pickupCoords.lng + 0.0028,
-                        distanceKm: 0.5,
-                        etaMinutes: 2
-                    },
-                    {
-                        id: 'mock-carro-1',
-                        fullName: 'José (Taxi)',
-                        vehicleType: 'carro',
-                        lat: pickupCoords.lat - 0.0042,
-                        lng: pickupCoords.lng + 0.0051,
-                        distanceKm: 1.1,
-                        etaMinutes: 3
-                    },
-                    {
-                        id: 'mock-ejecutivo-1',
-                        fullName: 'Manuel (Ejecutivo)',
-                        vehicleType: 'ejecutivo',
-                        lat: pickupCoords.lat + 0.0065,
-                        lng: pickupCoords.lng - 0.0045,
-                        distanceKm: 1.6,
-                        etaMinutes: 5
-                    }
-                ];
-                setNearbyDrivers(simulated);
-                setActiveDriversCount({ moto: 1, carro: 1, ejecutivo: 1 });
-            } else {
-                setNearbyDrivers(validDrivers);
-                setActiveDriversCount({
-                    moto: Math.max(1, counts.moto),
-                    carro: Math.max(1, counts.carro),
-                    ejecutivo: Math.max(1, counts.ejecutivo)
-                });
-            }
+            // Solo conductores reales registrados y conectados en la base de datos Supabase
+            setNearbyDrivers(validDrivers);
+            setActiveDriversCount(counts);
         } catch (err) {
             console.error("fetchNearbyDrivers error:", err);
         }
@@ -631,36 +595,19 @@ export default function Taxi() {
         }
     };
 
-    // 9. Pricing Calculation
-    const calculatePrice = (type: 'moto' | 'carro' | 'ejecutivo'): string => {
+    // 9. Pricing Calculation (Algoritmo Dinámico Inteligente estilo Yango)
+    const getFareDetails = (type: 'moto' | 'carro' | 'ejecutivo'): FareCalculationResult => {
         const distance = routeInfo ? routeInfo.distance : 1;
+        return calculateDynamicFare({
+            serviceType: type,
+            distanceKm: distance,
+            settings: adminRates,
+            availableDriversCount: activeDriversCount[type]
+        });
+    };
 
-        if (adminRates && adminRates[type] && Array.isArray(adminRates[type]) && adminRates[type].length > 0) {
-            const rates = adminRates[type];
-            const matchingRange = rates.find((r: any) => {
-                const fromKm = parseFloat(String(r.from || '0'));
-                const toKm = parseFloat(String(r.to || '0'));
-                return distance >= fromKm && (toKm === 0 || distance <= toKm);
-            });
-
-            if (matchingRange) {
-                const p = parseFloat(String(matchingRange.clientPrice || matchingRange.price || '0'));
-                if (p > 0) return p.toFixed(2);
-            }
-
-            const sorted = [...rates].sort((a: any, b: any) => parseFloat(String(b.from || '0')) - parseFloat(String(a.from || '0')));
-            const lastRange = sorted[0];
-            if (lastRange) {
-                const p = parseFloat(String(lastRange.clientPrice || lastRange.price || '0'));
-                if (p > 0) return p.toFixed(2);
-            }
-        }
-
-        // Default rates: Moto: $1.50 base + $0.6/km; Taxi: $2.50 base + $0.9/km; Ejecutivo: $4.00 base + $1.4/km
-        const base = type === 'moto' ? 1.5 : type === 'ejecutivo' ? 4.0 : 2.5;
-        const perKm = type === 'moto' ? 0.6 : type === 'ejecutivo' ? 1.4 : 0.9;
-        const calculated = Math.max(base, base + (distance * perKm));
-        return calculated.toFixed(2);
+    const calculatePrice = (type: 'moto' | 'carro' | 'ejecutivo'): string => {
+        return getFareDetails(type).clientTotal.toFixed(2);
     };
 
     // 10. Request Ride Handler
@@ -675,7 +622,10 @@ export default function Taxi() {
             return;
         }
 
-        const clientTotal = calculatePrice(vehicleType);
+        const fareDetails = getFareDetails(vehicleType);
+        const clientTotal = fareDetails.clientTotal.toFixed(2);
+        const driverPayoutVal = fareDetails.driverPayout;
+        const platformFeeVal = fareDetails.platformFee;
         const currentBalance = userData?.walletBalance || 0;
 
         if (selectedPaymentMethod === 'wallet' && currentBalance < parseFloat(clientTotal)) {
@@ -734,8 +684,12 @@ export default function Taxi() {
                 route: routeInfo,
                 total: parseFloat(clientTotal),
                 price: parseFloat(clientTotal),
-                driverPayout: parseFloat(clientTotal),
-                driver_payout: parseFloat(clientTotal),
+                driverPayout: driverPayoutVal,
+                driver_payout: driverPayoutVal,
+                platformFee: platformFeeVal,
+                platform_fee: platformFeeVal,
+                surgeMultiplier: fareDetails.surgeMultiplier,
+                surge_multiplier: fareDetails.surgeMultiplier,
                 driverId: null,
                 driver_id: null,
                 driverPaid: false,
@@ -1116,6 +1070,18 @@ export default function Taxi() {
                                     {isScheduled ? 'Reservado' : 'Reservar'}
                                 </button>
                             </div>
+
+                            {/* Dynamic Surcharge Indicator (Yango Surge Badge) */}
+                            {getFareDetails(vehicleType).surgeMultiplier > 1 && (
+                                <div className="flex items-center gap-2 bg-amber-50 border border-amber-200/80 text-amber-900 px-3 py-1.5 rounded-xl text-[11px] font-bold">
+                                    <Sparkles className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                                    <span>
+                                        {getFareDetails(vehicleType).activeFactors.isRain
+                                            ? `Tarifa con recargo por lluvia (+${getFareDetails(vehicleType).activeFactors.rainPercent}%)`
+                                            : `Tarifa dinámica por alta demanda (+${Math.round((getFareDetails(vehicleType).surgeMultiplier - 1) * 100)}%)`}
+                                    </span>
+                                </div>
+                            )}
 
                             {/* Scheduled Date Picker */}
                             {isScheduled && (

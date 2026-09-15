@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { User, Mail, MapPin, CreditCard, LogOut, ShoppingBag, Settings, ChevronRight, Clock, FileText, Bell, Navigation, X, Shield, UploadCloud, Star, Wallet, Gift, Award, MessageSquareWarning, Plus, Send, AlertCircle, CheckCircle, Store, Handshake, LifeBuoy, Fingerprint, Calendar } from 'lucide-react';
 import { Geolocation } from '@capacitor/geolocation';
 import { Capacitor } from '@capacitor/core';
-import { isDemoMode } from '../lib/env';
+import { isDemoMode, UN2X3_LOGO } from '../lib/env';
 import DemoAlertModal from '../components/DemoAlertModal';
 import { requestNotificationPermission, disableNotifications } from '../lib/notifications';
 import { useAuth } from '../context/AuthContext';
@@ -778,7 +778,7 @@ export default function Profile() {
                     className="w-80 h-32 flex items-center justify-center mb-8 cursor-pointer active:scale-95 transition-transform p-2 overflow-visible"
                 >
                     <img 
-                        src="https://xfialzrbbsdzzcjtefqo.supabase.co/storage/v1/object/public/store_assets/logo.png" 
+                        src={UN2X3_LOGO} 
                         alt="Deliexpress Logo"
                         className="w-auto h-full object-contain filter drop-shadow-xl"
                     />
@@ -1990,7 +1990,7 @@ export default function Profile() {
                     className="mt-8 text-center p-6 grayscale opacity-50 cursor-pointer active:scale-95 transition-transform"
                     onClick={() => window.location.href = 'https://deliexpress.app'}
                 >
-                    <img src="https://xfialzrbbsdzzcjtefqo.supabase.co/storage/v1/object/public/store_assets/logo.png" alt="Deliexpress" className="h-12 mx-auto mb-2" />
+                    <img src={UN2X3_LOGO} alt="Deliexpress" className="h-12 mx-auto mb-2" />
                     <p className="text-[10px] uppercase tracking-widest font-bold text-slate-400">Hecho con ❤️ en Venezuela</p>
                 </div>
             </div>
@@ -2470,7 +2470,7 @@ export default function Profile() {
                                                 }}
                                             >
                                                 <img
-                                                    src="https://xfialzrbbsdzzcjtefqo.supabase.co/storage/v1/object/public/store_assets/logo.png"
+                                                    src={UN2X3_LOGO}
                                                     alt="Deliexpress"
                                                     className="w-full h-full object-contain brightness-0 invert"
                                                 />
