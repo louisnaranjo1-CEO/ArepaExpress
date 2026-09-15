@@ -8,6 +8,9 @@ import { GoogleMap, useJsApiLoader, DirectionsRenderer, Marker } from '@react-go
 import { GOOGLE_MAPS_API_KEY, GOOGLE_MAPS_LIBRARIES } from '../lib/mapsConfig';
 import RideChat from '../components/RideChat';
 import InAppCall from '../components/InAppCall';
+import { UN2X3_LOGO } from '../lib/env';
+import { isNightTime, yangoDarkMapStyles, yangoDayMapStyles, getWeatherByCoordinates, WeatherInfo } from '../lib/weather';
+import RainOverlay from '../components/RainOverlay';
 
 const mapContainerStyle = {
     width: '100%',
@@ -60,6 +63,24 @@ export default function TransportTracker() {
     const notificationSoundUrl = useRef<string | null>(null);
     const prevStatus = useRef<string | null>(null);
     const lastChatIdSeen = useRef<string | null>(null);
+
+    // Weather & Night Theme State
+    const [isNight, setIsNight] = useState<boolean>(isNightTime());
+    const [weather, setWeather] = useState<WeatherInfo | null>(null);
+
+    useEffect(() => {
+        const updateNight = () => setIsNight(isNightTime());
+        const interval = setInterval(updateNight, 30000);
+        return () => clearInterval(interval);
+    }, []);
+
+    useEffect(() => {
+        if (request?.origin?.lat && request?.origin?.lng) {
+            getWeatherByCoordinates(request.origin.lat, request.origin.lng)
+                .then(w => setWeather(w))
+                .catch(console.error);
+        }
+    }, [request?.origin]);
 
     // Map states
     const { isLoaded } = useJsApiLoader({
@@ -542,7 +563,7 @@ export default function TransportTracker() {
                     <div className="flex flex-col items-center justify-center gap-4 animate-fade-in px-6 w-full h-full pb-20">
                         <div className="w-32 h-32 bg-white rounded-3xl shadow-xl shadow-primary/20 p-5 flex items-center justify-center">
                             <img
-                                src="https://xfialzrbbsdzzcjtefqo.supabase.co/storage/v1/object/public/store_assets/logo.png"
+                                src={UN2X3_LOGO}
                                 onError={(e: any) => { e.currentTarget.src = '/logo.png'; }}
                                 alt="Deliexpress Logo"
                                 className="w-full h-full object-contain animate-bounce-subtle"
@@ -561,13 +582,20 @@ export default function TransportTracker() {
                     <div className="w-full h-full relative">
                         {/* Overlay to ensure back button is visible on the map */}
                         <div className="absolute top-0 left-0 right-0 h-24 bg-gradient-to-b from-black/20 to-transparent z-10 pointer-events-none"></div>
+
+                        {/* Rain Animation Canvas Overlay */}
+                        <RainOverlay isActive={Boolean(weather?.isRaining)} />
+
                         <GoogleMap
                             mapContainerStyle={mapContainerStyle}
                             center={request.origin || { lat: 10.4806, lng: -66.9036 }}
                             zoom={14}
                             onLoad={onLoad}
                             onUnmount={onUnmount}
-                            options={mapOptions}
+                            options={{
+                                ...mapOptions,
+                                styles: isNight ? yangoDarkMapStyles : yangoDayMapStyles
+                            }}
                         >
                             {/* Real-time User Location (Blue Dot) */}
                             {userLocation && (

@@ -8,6 +8,7 @@ import { GoogleMap, useJsApiLoader, Marker, InfoWindow } from '@react-google-map
 import DualPrice from '../../components/DualPrice';
 import { useCurrency } from '../../context/CurrencyContext';
 import { DEFAULT_PRICING_SETTINGS, calculateDynamicFare, SmartPricingSettings } from '../../lib/pricing';
+import { getWeatherByCoordinates, WeatherInfo } from '../../lib/weather';
 
 export default function DeliveryManagement() {
     const { bcvRate } = useCurrency();
@@ -113,6 +114,13 @@ _Enviado desde Deliexpress App_`
     const [showFleetMap, setShowFleetMap] = useState(false);
     const [mapCenter, setMapCenter] = useState({ lat: 10.4806, lng: -66.9036 }); // Caracas
     const [activeMarker, setActiveMarker] = useState<string | null>(null);
+    const [cityWeather, setCityWeather] = useState<WeatherInfo | null>(null);
+
+    useEffect(() => {
+        getWeatherByCoordinates(mapCenter.lat, mapCenter.lng)
+            .then(w => setCityWeather(w))
+            .catch(err => console.error("Error fetching city weather in admin:", err));
+    }, [mapCenter]);
 
     const { isLoaded } = useJsApiLoader({
         id: 'google-map-script',
@@ -1000,6 +1008,29 @@ _Enviado desde Deliexpress App_`
                                 </div>
 
                                 <div className="flex flex-wrap items-center gap-3">
+                                    {/* Live Operational City Weather */}
+                                    {cityWeather && (
+                                        <div className="flex items-center gap-2.5 bg-white/10 px-4 py-2 rounded-2xl border border-white/15 text-xs text-white">
+                                            <span className="text-xl select-none">{cityWeather.conditionEmoji}</span>
+                                            <div>
+                                                <div className="font-black flex items-center gap-1.5">
+                                                    <span>{cityWeather.temperature}°C</span>
+                                                    <span className="text-white/40">•</span>
+                                                    <span>{cityWeather.conditionText}</span>
+                                                </div>
+                                                <div className="text-[10px] text-slate-300 font-medium flex items-center gap-2">
+                                                    <span>🌧️ Lluvia: <strong className="text-sky-300">{cityWeather.rainProbability}%</strong></span>
+                                                    <span>💨 {cityWeather.windSpeed} km/h</span>
+                                                    {cityWeather.isRaining && (
+                                                        <span className="bg-blue-500/40 text-blue-200 px-1.5 py-0.5 rounded text-[9px] font-black animate-pulse">
+                                                            ¡Lloviendo!
+                                                        </span>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )}
+
                                     {/* Quick Rain Toggle Button */}
                                     <button
                                         type="button"

@@ -35,6 +35,15 @@ import DemoAlertModal from '../components/DemoAlertModal';
 import { useCurrency } from '../context/CurrencyContext';
 import { GOOGLE_MAPS_API_KEY, GOOGLE_MAPS_LIBRARIES } from '../lib/mapsConfig';
 import { calculateDynamicFare, FareCalculationResult } from '../lib/pricing';
+import {
+    getWeatherByCoordinates,
+    isNightTime,
+    yangoDayMapStyles,
+    yangoDarkMapStyles,
+    WeatherInfo
+} from '../lib/weather';
+import RainOverlay from '../components/RainOverlay';
+import WeatherWidget from '../components/WeatherWidget';
 
 interface Location {
     lat: number;
@@ -56,30 +65,6 @@ const defaultCenter = {
     lat: 10.4806, // Caracas, Venezuela
     lng: -66.9036
 };
-
-// Yango-style clean map styling
-const yangoMapStyles: google.maps.MapTypeStyle[] = [
-    {
-        featureType: 'poi',
-        elementType: 'labels',
-        stylers: [{ visibility: 'off' }]
-    },
-    {
-        featureType: 'transit',
-        elementType: 'labels.icon',
-        stylers: [{ visibility: 'off' }]
-    },
-    {
-        featureType: 'road',
-        elementType: 'geometry',
-        stylers: [{ lightness: 15 }]
-    },
-    {
-        featureType: 'water',
-        elementType: 'geometry',
-        stylers: [{ color: '#cde2f5' }]
-    }
-];
 
 export default function Taxi() {
     const { user, userData } = useAuth();
@@ -154,6 +139,38 @@ export default function Taxi() {
 
     const [showDemoAlert, setShowDemoAlert] = useState(false);
     const [copiedField, setCopiedField] = useState<string | null>(null);
+
+    // Weather & Night Theme State
+    const [weather, setWeather] = useState<WeatherInfo | null>(null);
+    const [isNight, setIsNight] = useState<boolean>(isNightTime());
+    const [testRain, setTestRain] = useState<boolean>(false);
+
+    // 0.1 Dynamic Night Theme Updater (7:00 PM to 6:00 AM)
+    useEffect(() => {
+        const updateNightTheme = () => {
+            const night = isNightTime();
+            setIsNight(night);
+            if (mapInstanceRef.current) {
+                mapInstanceRef.current.setOptions({
+                    styles: night ? yangoDarkMapStyles : yangoDayMapStyles
+                });
+            }
+        };
+
+        updateNightTheme();
+        const interval = setInterval(updateNightTheme, 30000); // Revisión cada 30 segundos
+        return () => clearInterval(interval);
+    }, []);
+
+    // 0.2 Weather Fetcher (Open-Meteo)
+    const fetchWeather = useCallback(async (lat: number, lng: number) => {
+        try {
+            const w = await getWeatherByCoordinates(lat, lng);
+            setWeather(w);
+        } catch (e) {
+            console.error("Error fetching weather:", e);
+        }
+    }, []);
 
     // 0. Active Reservation / Request Check
     useEffect(() => {
@@ -288,7 +305,7 @@ export default function Taxi() {
                 fullscreenControl: false,
                 clickableIcons: false,
                 gestureHandling: 'greedy',
-                styles: yangoMapStyles
+                styles: isNightTime() ? yangoDarkMapStyles : yangoDayMapStyles
             });
 
             mapInstanceRef.current = map;
@@ -348,6 +365,9 @@ export default function Taxi() {
                 const coords = { lat: pos.coords.latitude, lng: pos.coords.longitude };
                 setUserLocation(coords);
 
+                // Consultar clima en tiempo real de su ubicación
+                fetchWeather(coords.lat, coords.lng);
+
                 // Set origin if not set
                 if (geocoderRef.current) {
                     geocoderRef.current.geocode({ location: coords }, (res, status) => {
@@ -385,11 +405,12 @@ export default function Taxi() {
                     lng: defaultCenter.lng,
                     address: 'Caracas, Venezuela'
                 });
+                fetchWeather(defaultCenter.lat, defaultCenter.lng);
                 fetchNearbyDrivers(defaultCenter);
             },
             { enableHighAccuracy: true, timeout: 8000, maximumAge: 60000 }
         );
-    }, [fetchNearbyDrivers]);
+    }, [fetchNearbyDrivers, fetchWeather]);
 
     // 5. Manage Markers on Map Updates
     useEffect(() => {
@@ -602,7 +623,8 @@ export default function Taxi() {
             serviceType: type,
             distanceKm: distance,
             settings: adminRates,
-            availableDriversCount: activeDriversCount[type]
+            availableDriversCount: activeDriversCount[type],
+            forceRain: Boolean(weather?.isRaining || testRain)
         });
     };
 
@@ -848,6 +870,12 @@ export default function Taxi() {
             {/* 1. Full Screen Interactive Google Map */}
             <div ref={mapDivRef} className="absolute inset-0 w-full h-full z-0" />
 
+            {/* Live Weather Rain Animation Canvas Overlay */}
+            <RainOverlay
+                isActive={Boolean(weather?.isRaining || testRain)}
+                intensity={weather?.precipitationMm && weather.precipitationMm > 1 ? 'heavy' : 'moderate'}
+            />
+
             {!isLoaded && (
                 <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-slate-100/90 backdrop-blur-sm">
                     <div className="w-10 h-10 border-3 border-primary border-t-transparent rounded-full animate-spin mb-3"></div>
@@ -909,31 +937,40 @@ export default function Taxi() {
                     </button>
                 </div>
 
-                {/* Service Mode Chips (Taxi vs Envío) */}
-                <div className="flex gap-2">
-                    <button
-                        onClick={() => setServiceCategory('transport')}
-                        className={`px-4 py-2 rounded-xl font-black text-xs flex items-center gap-1.5 shadow-md transition-all active:scale-95 ${
-                            serviceCategory === 'transport'
-                                ? 'bg-slate-900 text-white'
-                                : 'bg-white/90 text-slate-700 hover:bg-white'
-                        }`}
-                    >
-                        <Car className="w-3.5 h-3.5 text-primary" />
-                        Taxi / Viajes
-                    </button>
+                {/* Service Mode Chips (Taxi vs Envío) & Weather Widget */}
+                <div className="flex items-center justify-between gap-2">
+                    <div className="flex gap-2">
+                        <button
+                            onClick={() => setServiceCategory('transport')}
+                            className={`px-3.5 py-2 rounded-xl font-black text-xs flex items-center gap-1.5 shadow-md transition-all active:scale-95 ${
+                                serviceCategory === 'transport'
+                                    ? 'bg-slate-900 text-white'
+                                    : 'bg-white/90 text-slate-700 hover:bg-white'
+                            }`}
+                        >
+                            <Car className="w-3.5 h-3.5 text-primary" />
+                            Taxi / Viajes
+                        </button>
 
-                    <button
-                        onClick={() => setServiceCategory('package')}
-                        className={`px-4 py-2 rounded-xl font-black text-xs flex items-center gap-1.5 shadow-md transition-all active:scale-95 ${
-                            serviceCategory === 'package'
-                                ? 'bg-slate-900 text-white'
-                                : 'bg-white/90 text-slate-700 hover:bg-white'
-                        }`}
-                    >
-                        <Package className="w-3.5 h-3.5 text-emerald-500" />
-                        Envío Express
-                    </button>
+                        <button
+                            onClick={() => setServiceCategory('package')}
+                            className={`px-3.5 py-2 rounded-xl font-black text-xs flex items-center gap-1.5 shadow-md transition-all active:scale-95 ${
+                                serviceCategory === 'package'
+                                    ? 'bg-slate-900 text-white'
+                                    : 'bg-white/90 text-slate-700 hover:bg-white'
+                            }`}
+                        >
+                            <Package className="w-3.5 h-3.5 text-emerald-500" />
+                            Envío Express
+                        </button>
+                    </div>
+
+                    <WeatherWidget
+                        weather={weather}
+                        isNight={isNight}
+                        testRainActive={testRain}
+                        onToggleTestRain={() => setTestRain(prev => !prev)}
+                    />
                 </div>
 
                 {/* Google Places Autocomplete Predictions Dropdown */}
