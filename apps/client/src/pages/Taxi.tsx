@@ -40,8 +40,11 @@ import {
     isNightTime,
     yangoDayMapStyles,
     yangoDarkMapStyles,
+    googleMapsDarkStyles,
     WeatherInfo
 } from '../lib/weather';
+import { Geolocation } from '@capacitor/geolocation';
+import { Capacitor } from '@capacitor/core';
 import RainOverlay from '../components/RainOverlay';
 import WeatherWidget from '../components/WeatherWidget';
 
@@ -62,8 +65,8 @@ interface NearbyDriver {
 }
 
 const defaultCenter = {
-    lat: 10.4806, // Caracas, Venezuela
-    lng: -66.9036
+    lat: 8.9326, // Calabozo, Guárico, Venezuela
+    lng: -67.4264
 };
 
 export default function Taxi() {
@@ -145,20 +148,20 @@ export default function Taxi() {
     const [isNight, setIsNight] = useState<boolean>(isNightTime());
     const [testRain, setTestRain] = useState<boolean>(false);
 
-    // 0.1 Dynamic Night Theme Updater (7:00 PM to 6:00 AM)
+    // 0.1 Dynamic Theme (Google Maps Dark Mode)
     useEffect(() => {
-        const updateNightTheme = () => {
+        const updateTheme = () => {
             const night = isNightTime();
             setIsNight(night);
             if (mapInstanceRef.current) {
                 mapInstanceRef.current.setOptions({
-                    styles: night ? yangoDarkMapStyles : yangoDayMapStyles
+                    styles: googleMapsDarkStyles
                 });
             }
         };
 
-        updateNightTheme();
-        const interval = setInterval(updateNightTheme, 30000); // Revisión cada 30 segundos
+        updateTheme();
+        const interval = setInterval(updateTheme, 30000);
         return () => clearInterval(interval);
     }, []);
 
@@ -305,7 +308,7 @@ export default function Taxi() {
                 fullscreenControl: false,
                 clickableIcons: false,
                 gestureHandling: 'greedy',
-                styles: isNightTime() ? yangoDarkMapStyles : yangoDayMapStyles
+                styles: googleMapsDarkStyles
             });
 
             mapInstanceRef.current = map;
@@ -347,69 +350,91 @@ export default function Taxi() {
                 }
             });
 
-            // Initial GPS acquisition
-            locateUser(false);
+            // Initial GPS acquisition with auto-pan
+            locateUser(true);
         } catch (e) {
             console.error("Error initializing Google Map:", e);
         }
     }, [isLoaded]);
 
-    // 4. Locate User Helper
-    const locateUser = useCallback((panTo = true) => {
-        if (!navigator.geolocation) return;
+    // 4. Locate User Helper (Native Capacitor GPS with Web fallback)
+    const locateUser = useCallback(async (panTo = true) => {
         setIsLocating(true);
+        let coords: { lat: number; lng: number } | null = null;
 
-        navigator.geolocation.getCurrentPosition(
-            (pos) => {
-                setIsLocating(false);
-                const coords = { lat: pos.coords.latitude, lng: pos.coords.longitude };
-                setUserLocation(coords);
-
-                // Consultar clima en tiempo real de su ubicación
-                fetchWeather(coords.lat, coords.lng);
-
-                // Set origin if not set
-                if (geocoderRef.current) {
-                    geocoderRef.current.geocode({ location: coords }, (res, status) => {
-                        const addr = (status === 'OK' && res && res[0])
-                            ? res[0].formatted_address
-                            : 'Mi ubicación actual';
-
-                        setOrigin({
-                            lat: coords.lat,
-                            lng: coords.lng,
-                            address: addr
-                        });
-                    });
-                } else {
-                    setOrigin({
-                        lat: coords.lat,
-                        lng: coords.lng,
-                        address: 'Mi ubicación actual'
-                    });
+        // 1. Mobile Native GPS (Android/iOS via Capacitor)
+        if (Capacitor.isNativePlatform()) {
+            try {
+                const permStatus = await Geolocation.checkPermissions();
+                if (permStatus.location !== 'granted') {
+                    const req = await Geolocation.requestPermissions();
+                    if (req.location !== 'granted') {
+                        throw new Error('Permiso de ubicación no concedido en el móvil');
+                    }
                 }
-
-                if (mapInstanceRef.current && panTo) {
-                    mapInstanceRef.current.panTo(coords);
-                    mapInstanceRef.current.setZoom(16);
-                }
-
-                fetchNearbyDrivers(coords);
-            },
-            (err) => {
-                setIsLocating(false);
-                console.warn("GPS lookup denied/failed:", err);
-                // Fallback to default center
-                setOrigin({
-                    lat: defaultCenter.lat,
-                    lng: defaultCenter.lng,
-                    address: 'Caracas, Venezuela'
+                const pos = await Geolocation.getCurrentPosition({
+                    enableHighAccuracy: true,
+                    timeout: 12000
                 });
-                fetchWeather(defaultCenter.lat, defaultCenter.lng);
-                fetchNearbyDrivers(defaultCenter);
-            },
-            { enableHighAccuracy: true, timeout: 8000, maximumAge: 60000 }
-        );
+                coords = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+            } catch (nativeErr) {
+                console.warn('Capacitor Geolocation error/fallback:', nativeErr);
+            }
+        }
+
+        // 2. Web Geolocation API fallback
+        if (!coords && navigator.geolocation) {
+            try {
+                coords = await new Promise<{ lat: number; lng: number } | null>((resolve) => {
+                    navigator.geolocation.getCurrentPosition(
+                        (pos) => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+                        (err) => {
+                            console.warn('Web Geolocation error:', err);
+                            resolve(null);
+                        },
+                        { enableHighAccuracy: true, timeout: 8000, maximumAge: 30000 }
+                    );
+                });
+            } catch (err) {
+                console.warn('Error in web geolocation:', err);
+            }
+        }
+
+        setIsLocating(false);
+
+        const targetCoords = coords || defaultCenter;
+        setUserLocation(targetCoords);
+
+        // Consultar clima en tiempo real de su ubicación
+        fetchWeather(targetCoords.lat, targetCoords.lng);
+
+        // Reverse geocode location
+        if (geocoderRef.current) {
+            geocoderRef.current.geocode({ location: targetCoords }, (res, status) => {
+                const addr = (status === 'OK' && res && res[0])
+                    ? res[0].formatted_address
+                    : (coords ? 'Mi ubicación actual' : 'Calabozo, Guárico');
+
+                setOrigin({
+                    lat: targetCoords.lat,
+                    lng: targetCoords.lng,
+                    address: addr
+                });
+            });
+        } else {
+            setOrigin({
+                lat: targetCoords.lat,
+                lng: targetCoords.lng,
+                address: coords ? 'Mi ubicación actual' : 'Calabozo, Guárico'
+            });
+        }
+
+        if (mapInstanceRef.current && panTo) {
+            mapInstanceRef.current.panTo(targetCoords);
+            mapInstanceRef.current.setZoom(16);
+        }
+
+        fetchNearbyDrivers(targetCoords);
     }, [fetchNearbyDrivers, fetchWeather]);
 
     // 5. Manage Markers on Map Updates

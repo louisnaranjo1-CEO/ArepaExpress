@@ -195,63 +195,86 @@ export const yangoDayMapStyles: google.maps.MapTypeStyle[] = [
     }
 ];
 
-// Estilo Oscuro Nocturno de Google Maps (Modo Noche: 7:00 PM a 6:00 AM)
-// Tonos azul medianoche y negro profundo para máxima legibilidad nocturna
-export const yangoDarkMapStyles: google.maps.MapTypeStyle[] = [
-    { elementType: 'geometry', stylers: [{ color: '#161e2e' }] },
-    { elementType: 'labels.text.stroke', stylers: [{ color: '#111827' }] },
-    { elementType: 'labels.text.fill', stylers: [{ color: '#9ca3af' }] },
+// Estilo Oficial Google Maps Dark Mode (Exacto al mapa nativo oscuro de Google Maps)
+export const googleMapsDarkStyles: google.maps.MapTypeStyle[] = [
+    { elementType: 'geometry', stylers: [{ color: '#242f3e' }] },
+    { elementType: 'labels.text.stroke', stylers: [{ color: '#242f3e' }] },
+    { elementType: 'labels.text.fill', stylers: [{ color: '#746855' }] },
     {
         featureType: 'administrative.locality',
         elementType: 'labels.text.fill',
-        stylers: [{ color: '#f3f4f6' }]
+        stylers: [{ color: '#d59563' }]
     },
     {
         featureType: 'poi',
-        stylers: [{ visibility: 'off' }]
+        elementType: 'labels.text.fill',
+        stylers: [{ color: '#d59563' }]
+    },
+    {
+        featureType: 'poi.park',
+        elementType: 'geometry',
+        stylers: [{ color: '#263c3f' }]
+    },
+    {
+        featureType: 'poi.park',
+        elementType: 'labels.text.fill',
+        stylers: [{ color: '#6b9a76' }]
     },
     {
         featureType: 'road',
         elementType: 'geometry',
-        stylers: [{ color: '#283548' }]
+        stylers: [{ color: '#38414e' }]
     },
     {
         featureType: 'road',
         elementType: 'geometry.stroke',
-        stylers: [{ color: '#1a2232' }]
+        stylers: [{ color: '#212a37' }]
     },
     {
         featureType: 'road',
         elementType: 'labels.text.fill',
-        stylers: [{ color: '#e5e7eb' }]
+        stylers: [{ color: '#9ca3af' }]
     },
     {
         featureType: 'road.highway',
         elementType: 'geometry',
-        stylers: [{ color: '#374151' }]
+        stylers: [{ color: '#746855' }]
     },
     {
         featureType: 'road.highway',
         elementType: 'geometry.stroke',
-        stylers: [{ color: '#1f2937' }]
+        stylers: [{ color: '#1f2835' }]
     },
     {
         featureType: 'road.highway',
         elementType: 'labels.text.fill',
-        stylers: [{ color: '#f9fafb' }]
+        stylers: [{ color: '#f3d19c' }]
     },
     {
         featureType: 'transit',
-        stylers: [{ visibility: 'off' }]
+        elementType: 'geometry',
+        stylers: [{ color: '#2f3948' }]
+    },
+    {
+        featureType: 'transit.station',
+        elementType: 'labels.text.fill',
+        stylers: [{ color: '#d59563' }]
     },
     {
         featureType: 'water',
         elementType: 'geometry',
-        stylers: [{ color: '#0b1120' }]
+        stylers: [{ color: '#17263c' }]
     },
     {
         featureType: 'water',
         elementType: 'labels.text.fill',
-        stylers: [{ color: '#6b7280' }]
+        stylers: [{ color: '#515c6d' }]
+    },
+    {
+        featureType: 'water',
+        elementType: 'labels.text.stroke',
+        stylers: [{ color: '#17263c' }]
     }
 ];
+
+export const yangoDarkMapStyles = googleMapsDarkStyles;

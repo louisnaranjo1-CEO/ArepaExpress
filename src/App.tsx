@@ -1,79 +1,78 @@
-import React, { useState, useEffect } from 'react';
-import ClientApp from './ClientApp';
-import AdminApp from './admin/AdminApp';
-import CpanelApp from './cpanel/CpanelApp';
-import WaiterApp from './waiter/WaiterApp';
-import DeliveryApp from './delivery/DeliveryApp';
-import CashierApp from './cashier/CashierApp';
-import { OfflineIndicator } from './components/OfflineIndicator';
-import SplashScreen from './components/SplashScreen';
-import LockScreen from './components/LockScreen';
+import React, { useEffect } from 'react';
+import { BrowserRouter as Router, Routes, Route, useNavigate, useLocation } from 'react-router-dom';
+import BottomNav from './components/BottomNav';
+import Home from './pages/Home';
+import Search from './pages/Search';
+import Favorites from './pages/Favorites';
+import Profile from './pages/Profile';
+import Notifications from './pages/Notifications';
+import Restaurant from './pages/Restaurant';
+import TrackOrder from './pages/TrackOrder';
+import TransportTracker from './pages/TransportTracker';
+import Taxi from './pages/Taxi';
+import Rewards from './pages/Rewards';
+import Orders from './pages/Orders';
+import ResetPassword from './pages/ResetPassword';
 import { useAuth } from './context/AuthContext';
-import { UN2X3_LOGO } from './lib/env';
+import { Toaster } from 'react-hot-toast';
+import { CartProvider } from './context/CartContext';
+import { useGlobalAudioAlerts } from './hooks/useGlobalAudioAlerts';
+import { usePushCampaigns } from './hooks/usePushCampaigns';
 
-function App() {
-  const { isUnlocked, loading } = useAuth();
-  const [showSplash, setShowSplash] = useState(true);
+function RedirectHandler({ children }: { children: React.ReactNode }) {
+    const { user, userData } = useAuth();
+    const navigate = useNavigate();
+    
+    useGlobalAudioAlerts('user', user?.uid);
+    usePushCampaigns(userData, user?.uid);
 
-  // Solicitar ubicación al cargar
-  useEffect(() => {
-    if ("geolocation" in navigator) {
-      navigator.geolocation.getCurrentPosition(
-        () => console.log("Ubicación permitida"),
-        () => console.log("Ubicación denegada")
-      );
-    }
-  }, []);
+    useEffect(() => {
+        // Redirection logic removed to allow users with multiple roles (e.g., driver and customer)
+        // to use the client app without being forced to the delivery subdomain.
+    }, [user, userData, navigate]);
 
-  const isDevAdminPath = window.location.pathname.startsWith('/admin');
-  const isAdminSubdomain = window.location.hostname.startsWith('restaurante.');
-  const isCpanelSubdomain = window.location.hostname.startsWith('cpanel.') || window.location.hostname.startsWith('admin.');
-  const isWaiterSubdomain = window.location.hostname.startsWith('meseros.');
-  const isDeliveryPath = window.location.pathname.startsWith('/delivery') || window.location.hostname.startsWith('delivery.');
-  const isCashierSubdomain = window.location.hostname.startsWith('caja.') || window.location.pathname.startsWith('/caja');
-
-  const renderApp = () => {
-    if (isDeliveryPath) {
-      return <DeliveryApp />;
-    }
-
-    if (isCpanelSubdomain) {
-      return <CpanelApp />;
-    }
-
-    if (isWaiterSubdomain) {
-      return <WaiterApp />;
-    }
-
-    if (isCashierSubdomain) {
-      return <CashierApp />;
-    }
-
-    if (isDevAdminPath || isAdminSubdomain) {
-      return <AdminApp />;
-    }
-
-    return <ClientApp />;
-  };
-
-  // The app is ready when the splash timer finishes AND auth loading is done
-  const isTransitioning = showSplash || loading;
-
-  return (
-    <div className="w-full h-full bg-white">
-      {isTransitioning ? (
-        <SplashScreen 
-          onComplete={() => setShowSplash(false)} 
-          isAuthLoading={loading} 
-        />
-      ) : (
-        <div className="animate-fade-in h-screen overflow-hidden bg-white">
-          {!isUnlocked ? <LockScreen /> : renderApp()}
-          <OfflineIndicator />
-        </div>
-      )}
-    </div>
-  );
+    return <>{children}</>;
 }
 
-export default App;
+function AppContent() {
+    const location = useLocation();
+    const isTrackRoute = location.pathname.startsWith('/taxi/track') || location.pathname.startsWith('/track');
+
+    return (
+        <div className="h-[100dvh] w-full bg-slate-100 flex justify-center overflow-hidden">
+            <div className="bg-white w-full max-w-md flex flex-col shadow-2xl h-full relative overflow-hidden">
+                <div className="flex-1 h-full overflow-hidden relative">
+                    <Routes>
+                        <Route path="/" element={<Home />} />
+                        <Route path="/search" element={<Search />} />
+                        <Route path="/restaurant/:id" element={<Restaurant />} />
+                        <Route path="/orders" element={<Orders />} />
+                        <Route path="/cart" element={<Orders />} />
+                        <Route path="/favorites" element={<Favorites />} />
+                        <Route path="/profile" element={<Profile />} />
+                        <Route path="/rewards" element={<Rewards />} />
+                        <Route path="/notifications" element={<Notifications />} />
+                        <Route path="/track/:orderId" element={<TrackOrder />} />
+                        <Route path="/taxi/track/:requestId" element={<TransportTracker />} />
+                        <Route path="/taxi" element={<Taxi />} />
+                        <Route path="/reset-password" element={<ResetPassword />} />
+                    </Routes>
+                </div>
+                {!isTrackRoute && <BottomNav />}
+            </div>
+        </div>
+    );
+}
+
+export default function ClientApp() {
+    return (
+        <Router>
+            <Toaster position="top-center" reverseOrder={false} />
+            <RedirectHandler>
+                <CartProvider>
+                    <AppContent />
+                </CartProvider>
+            </RedirectHandler>
+        </Router>
+    );
+}

@@ -1,6 +1,5 @@
 import { supabase } from './supabase';
 import { Capacitor } from '@capacitor/core';
-import { FirebaseAuthentication } from '@capacitor-firebase/authentication';
 
 export const processReferralCode = async (newUserId: string, referralCode: string) => {
     if (!referralCode || typeof referralCode !== 'string') return false;
@@ -23,52 +22,16 @@ export const processReferralCode = async (newUserId: string, referralCode: strin
 
 export const signInWithGoogle = async (): Promise<{ user: any, isNewUser: boolean }> => {
     try {
-        let user: any;
-        let isNewUser = false;
-        
-        if (Capacitor.isNativePlatform()) {
-            const result = await FirebaseAuthentication.signInWithGoogle({
-                useCredentialManager: true
-            });
-            const idToken = result.credential?.idToken;
-            if (!idToken) {
-                throw new Error("Login fallido. No se obtuvo el ID Token.");
+        const { data, error } = await supabase.auth.signInWithOAuth({
+            provider: 'google',
+            options: {
+                redirectTo: window.location.origin
             }
-
-            const { data, error } = await supabase.auth.signInWithIdToken({
-                provider: 'google',
-                token: idToken
-            });
-            
-            if (error) throw error;
-            user = data.user;
-            
-            // Verificamos isNewUser basado en created_at
-            if (user && user.created_at && user.last_sign_in_at) {
-                const createdTime = new Date(user.created_at).getTime();
-                const signinTime = new Date(user.last_sign_in_at).getTime();
-                isNewUser = (signinTime - createdTime) < 5000;
-            }
-        } else {
-            const { data, error } = await supabase.auth.signInWithOAuth({
-                provider: 'google',
-                options: {
-                    redirectTo: window.location.origin
-                }
-            });
-            if (error) throw error;
-            // Al hacer redirect, esto no resolverá sincrónicamente, pero
-            // devuelvo un objeto para mantener compatibilidad si no hay error.
-            user = null; // En entorno web, la sesión se establece al redirigir
-        }
-
-        if (user) {
-            localStorage.setItem('deliexpress_uid', user.id);
-        }
-
-        return { user, isNewUser };
-    } catch (error: any) {
-        console.error("Error signing in with Google:", error.message);
+        });
+        if (error) throw error;
+        return { user: null, isNewUser: false };
+    } catch (error) {
+        console.error("Error al iniciar sesión con Google (Supabase):", error);
         throw error;
     }
 };
@@ -164,6 +127,11 @@ export const registerRestaurant = async (email: string, pass: string, restaurant
             whatsapp: '',
             own_delivery: false,
             is_approved: false,
+            is_visible: false,
+            isVisible: false,
+            is_verified: false,
+            isVerified: false,
+            verification_status: 'unverified',
             rating: 5.0,
             image: '',
             delivery_time: '30-45 min',
@@ -196,66 +164,16 @@ export const signInAdmin = async (email: string, pass: string): Promise<any> => 
 
 export const signInAdminWithGoogle = async (): Promise<any> => {
     try {
-        let user: any;
-
-        if (Capacitor.isNativePlatform()) {
-            const result = await FirebaseAuthentication.signInWithGoogle({
-                useCredentialManager: true
-            });
-            const idToken = result.credential?.idToken;
-            if (!idToken) throw new Error("No se pudo obtener el token de Google.");
-            
-            const { data, error } = await supabase.auth.signInWithIdToken({
-                provider: 'google',
-                token: idToken
-            });
-            if (error) throw error;
-            user = data.user;
-        } else {
-            const { data, error } = await supabase.auth.signInWithOAuth({
-                provider: 'google',
-                options: {
-                    redirectTo: window.location.origin
-                }
-            });
-            if (error) throw error;
-            user = null; // The redirect will handle session
-        }
-
-        if (user) {
-            // Verifica si existe el comercio
-            const { data: comercio, error: fetchError } = await supabase
-                .from('comercios')
-                .select('id')
-                .eq('id', user.id)
-                .maybeSingle();
-
-            if (!comercio) {
-                await supabase.from('comercios').insert({
-                    id: user.id,
-                    name: user.user_metadata?.full_name || 'Mi Negocio',
-                    rif: 'PROVISIONAL',
-                    owner_uid: user.id,
-                    email: user.email,
-                    business_type: 'restaurant',
-                    locations: [],
-                    whatsapp: '',
-                    own_delivery: false,
-                    is_approved: false,
-                    rating: 5.0,
-                    image: 'https://images.unsplash.com/photo-1513104890138-7c749659a591?auto=format&fit=crop&q=80',
-                    delivery_time: '30-45 min',
-                    delivery_fee: 1.5,
-                    category: 'Varios'
-                });
+        const { data, error } = await supabase.auth.signInWithOAuth({
+            provider: 'google',
+            options: {
+                redirectTo: window.location.origin
             }
-
-            localStorage.setItem('deliexpress_uid', user.id);
-        }
-
-        return user;
-    } catch (error: any) {
-        console.error("Error signing in admin with Google:", error.message);
+        });
+        if (error) throw error;
+        return null;
+    } catch (error) {
+        console.error("Error signing in as admin with Google (Supabase):", error);
         throw error;
     }
 };

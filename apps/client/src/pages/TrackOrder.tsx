@@ -15,6 +15,7 @@ import { useAuth } from '../context/AuthContext';
 import { motion, AnimatePresence } from 'motion/react';
 import { GoogleMap, useJsApiLoader, Marker } from '@react-google-maps/api';
 import { GOOGLE_MAPS_API_KEY, GOOGLE_MAPS_LIBRARIES } from '../lib/mapsConfig';
+import { googleMapsDarkStyles } from '../lib/weather';
 
 const mapOptions: google.maps.MapOptions = {
     disableDefaultUI: true,
@@ -23,6 +24,7 @@ const mapOptions: google.maps.MapOptions = {
     mapTypeControl: false,
     fullscreenControl: false,
     clickableIcons: false,
+    styles: googleMapsDarkStyles
 };
 
 export default function TrackOrder() {
@@ -728,7 +730,7 @@ export default function TrackOrder() {
                 {isLoaded ? (
                     <GoogleMap
                         mapContainerStyle={{ width: '100%', height: '100%' }}
-                        center={driverLocation || (order?.address?.lat ? { lat: order.address.lat, lng: order.address.lng } : { lat: 10.4806, lng: -66.9036 })}
+                        center={driverLocation || (order?.address?.lat ? { lat: order.address.lat, lng: order.address.lng } : { lat: 8.9326, lng: -67.4264 })}
                         zoom={driverLocation ? 16 : 14}
                         options={mapOptions}
                     >
@@ -1610,8 +1612,8 @@ export default function TrackOrder() {
                             }}
                             initialData={{
                                 name: editDelivery.addressName || 'Casa',
-                                lat: editDelivery.lat || 10.4806,
-                                lng: editDelivery.lng || -66.9036,
+                                lat: editDelivery.lat || 8.9326,
+                                lng: editDelivery.lng || -67.4264,
                                 reference: editDelivery.addressReference || ''
                             }}
                         />

@@ -36,14 +36,12 @@ function RedirectHandler({ children }: { children: React.ReactNode }) {
 
 function AppContent() {
     const location = useLocation();
-    const isTaxiRoute = location.pathname.startsWith('/taxi');
+    const isTrackRoute = location.pathname.startsWith('/taxi/track') || location.pathname.startsWith('/track');
 
     return (
         <div className="h-[100dvh] w-full bg-slate-100 flex justify-center overflow-hidden">
-            <div className={`bg-white w-full max-w-md flex flex-col shadow-2xl h-full relative overflow-hidden ${
-                isTaxiRoute ? '' : ''
-            }`}>
-                <div className={`flex-1 ${isTaxiRoute ? 'h-full overflow-hidden' : 'overflow-y-auto hide-scrollbar'}`}>
+            <div className="bg-white w-full max-w-md flex flex-col shadow-2xl h-full relative overflow-hidden">
+                <div className="flex-1 h-full overflow-hidden relative">
                     <Routes>
                         <Route path="/" element={<Home />} />
                         <Route path="/search" element={<Search />} />
@@ -60,7 +58,7 @@ function AppContent() {
                         <Route path="/reset-password" element={<ResetPassword />} />
                     </Routes>
                 </div>
-                {!isTaxiRoute && <BottomNav />}
+                {!isTrackRoute && <BottomNav />}
             </div>
         </div>
     );

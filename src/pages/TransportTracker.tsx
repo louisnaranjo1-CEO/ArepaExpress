@@ -9,7 +9,7 @@ import { GOOGLE_MAPS_API_KEY, GOOGLE_MAPS_LIBRARIES } from '../lib/mapsConfig';
 import RideChat from '../components/RideChat';
 import InAppCall from '../components/InAppCall';
 import { UN2X3_LOGO } from '../lib/env';
-import { isNightTime, yangoDarkMapStyles, yangoDayMapStyles, getWeatherByCoordinates, WeatherInfo } from '../lib/weather';
+import { isNightTime, yangoDarkMapStyles, yangoDayMapStyles, googleMapsDarkStyles, getWeatherByCoordinates, WeatherInfo } from '../lib/weather';
 import RainOverlay from '../components/RainOverlay';
 
 const mapContainerStyle = {
@@ -588,13 +588,13 @@ export default function TransportTracker() {
 
                         <GoogleMap
                             mapContainerStyle={mapContainerStyle}
-                            center={request.origin || { lat: 10.4806, lng: -66.9036 }}
+                            center={request.origin || { lat: 8.9326, lng: -67.4264 }}
                             zoom={14}
                             onLoad={onLoad}
                             onUnmount={onUnmount}
                             options={{
                                 ...mapOptions,
-                                styles: isNight ? yangoDarkMapStyles : yangoDayMapStyles
+                                styles: googleMapsDarkStyles
                             }}
                         >
                             {/* Real-time User Location (Blue Dot) */}

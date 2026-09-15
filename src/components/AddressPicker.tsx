@@ -1,6 +1,10 @@
 import React, { useState, useCallback, useEffect } from 'react';
 import { GoogleMap, useJsApiLoader, Marker } from '@react-google-maps/api';
 import { X, MapPin, Navigation, Check } from 'lucide-react';
+import { GOOGLE_MAPS_API_KEY, GOOGLE_MAPS_LIBRARIES } from '../lib/mapsConfig';
+import { googleMapsDarkStyles } from '../lib/weather';
+import { Geolocation } from '@capacitor/geolocation';
+import { Capacitor } from '@capacitor/core';
 
 const containerStyle = {
     width: '100%',
@@ -8,18 +12,19 @@ const containerStyle = {
 };
 
 const defaultCenter = {
-    lat: 10.4806, // Caracas, Venezuela
-    lng: -66.9036
+    lat: 8.9326, // Calabozo, Guárico, Venezuela
+    lng: -67.4264
 };
 
-// Custom map theme to hide default POIs
+// Custom map theme to hide default POIs with dark mode
 const mapOptions: google.maps.MapOptions = {
     disableDefaultUI: true,
     zoomControl: false,
     streetViewControl: false,
     mapTypeControl: false,
     fullscreenControl: false,
-    clickableIcons: true,
+    clickableIcons: false,
+    styles: googleMapsDarkStyles
 };
 
 interface AddressPickerProps {
@@ -31,7 +36,8 @@ interface AddressPickerProps {
 export default function AddressPicker({ onClose, onSave, initialData }: AddressPickerProps) {
     const { isLoaded } = useJsApiLoader({
         id: 'google-map-script',
-        googleMapsApiKey: "AIzaSyCb1c-p1R6AZGetk8YzKiLuxjaxjmPqJX8"
+        googleMapsApiKey: GOOGLE_MAPS_API_KEY,
+        libraries: GOOGLE_MAPS_LIBRARIES
     });
 
     const [position, setPosition] = useState(initialData ? { lat: initialData.lat, lng: initialData.lng } : defaultCenter);
@@ -49,23 +55,54 @@ export default function AddressPicker({ onClose, onSave, initialData }: AddressP
     }, []);
 
     useEffect(() => {
-        if (!initialData && navigator.geolocation) {
-            navigator.geolocation.getCurrentPosition((pos) => {
-                const newPos = { lat: pos.coords.latitude, lng: pos.coords.longitude };
-                setPosition(newPos);
-                if (map) map.panTo(newPos);
-            });
-        }
+        let isMounted = true;
+        const fetchInitialPos = async () => {
+            if (initialData) return;
+            let coords: { lat: number; lng: number } | null = null;
+            if (Capacitor.isNativePlatform()) {
+                try {
+                    const perm = await Geolocation.requestPermissions();
+                    if (perm.location === 'granted') {
+                        const pos = await Geolocation.getCurrentPosition({ enableHighAccuracy: true, timeout: 10000 });
+                        coords = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+                    }
+                } catch (e) {
+                    console.warn("Native geolocation error in AddressPicker:", e);
+                }
+            }
+            if (!coords && navigator.geolocation) {
+                try {
+                    coords = await new Promise<{ lat: number; lng: number } | null>((res) => {
+                        navigator.geolocation.getCurrentPosition(
+                            (p) => res({ lat: p.coords.latitude, lng: p.coords.longitude }),
+                            () => res(null),
+                            { enableHighAccuracy: true, timeout: 8000 }
+                        );
+                    });
+                } catch (e) {
+                    console.warn("Web geolocation error in AddressPicker:", e);
+                }
+            }
+            if (isMounted && coords) {
+                setPosition(coords);
+                setUserLocation(coords);
+                if (map) map.panTo(coords);
+            }
+        };
+
+        fetchInitialPos();
 
         // Real-time location tracking (Blue Dot)
         let watchId: number;
         if (navigator.geolocation) {
             watchId = navigator.geolocation.watchPosition(
                 (pos) => {
-                    setUserLocation({
-                        lat: pos.coords.latitude,
-                        lng: pos.coords.longitude
-                    });
+                    if (isMounted) {
+                        setUserLocation({
+                            lat: pos.coords.latitude,
+                            lng: pos.coords.longitude
+                        });
+                    }
                 },
                 (err) => console.warn("Error watching location:", err),
                 { enableHighAccuracy: true }
@@ -73,6 +110,7 @@ export default function AddressPicker({ onClose, onSave, initialData }: AddressP
         }
 
         return () => {
+            isMounted = false;
             if (watchId) navigator.geolocation.clearWatch(watchId);
         };
     }, [map, initialData]);

@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Arepa Admin</string>
+    <string name="title_activity_main">Arepa Admin</string>
+    <string name="package_name">com.arepaexpress.admin</string>
+    <string name="custom_url_scheme">com.arepaexpress.admin</string>
+</resources>
