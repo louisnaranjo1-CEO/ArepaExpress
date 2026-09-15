@@ -64,9 +64,21 @@ interface NearbyDriver {
     etaMinutes: number;
 }
 
-const defaultCenter = {
-    lat: 8.9326, // Calabozo, Guárico, Venezuela
-    lng: -67.4264
+// Helper to get initial map render center from the user's known address or cache
+const getInitialMapCoordinates = (userAddresses?: any[]): google.maps.LatLngLiteral => {
+    if (userAddresses && userAddresses.length > 0) {
+        const def = userAddresses.find((a: any) => a.isDefault) || userAddresses[0];
+        if (def?.lat && def?.lng) return { lat: def.lat, lng: def.lng };
+    }
+    try {
+        const saved = localStorage.getItem('un2x3_exact_user_location');
+        if (saved) {
+            const parsed = JSON.parse(saved);
+            if (parsed?.lat && parsed?.lng) return { lat: parsed.lat, lng: parsed.lng };
+        }
+    } catch (e) {}
+    // Technical fallback strictly for Google Maps canvas rendering initialization
+    return { lat: 8.9326, lng: -67.4264 };
 };
 
 export default function Taxi() {
@@ -99,8 +111,12 @@ export default function Taxi() {
     const [driverNotes, setDriverNotes] = useState('');
     const [showNotesModal, setShowNotesModal] = useState(false);
 
-    // Locations
+    // Locations (Strictly real exact addresses, never artificial default points)
     const [origin, setOrigin] = useState<Location | null>(null);
+    const originRef = useRef<Location | null>(null);
+    useEffect(() => {
+        originRef.current = origin;
+    }, [origin]);
     const [destination, setDestination] = useState<Location | null>(null);
     const [userLocation, setUserLocation] = useState<google.maps.LatLngLiteral | null>(null);
     const [isLocating, setIsLocating] = useState(false);
@@ -298,9 +314,11 @@ export default function Taxi() {
         if (!window.google?.maps) return;
 
         try {
+            const initialMapCenter = getInitialMapCoordinates(userData?.addresses);
+
             const map = new window.google.maps.Map(mapDivRef.current, {
-                center: defaultCenter,
-                zoom: 15,
+                center: initialMapCenter,
+                zoom: 16,
                 disableDefaultUI: true,
                 zoomControl: false,
                 streetViewControl: false,
@@ -326,41 +344,54 @@ export default function Taxi() {
             });
             directionsRendererRef.current = renderer;
 
-            // Map Click to Pick Destination
+            // Map Click to Pick Origin or Destination
             map.addListener('click', (e: google.maps.MapMouseEvent) => {
                 if (!e.latLng) return;
                 vibrate(30);
                 const clickPos = { lat: e.latLng.lat(), lng: e.latLng.lng() };
 
-                // Reverse geocode clicked location
+                // Reverse geocode clicked location to exact address
                 if (geocoderRef.current) {
                     geocoderRef.current.geocode({ location: clickPos }, (res, status) => {
                         const addr = (status === 'OK' && res && res[0])
                             ? res[0].formatted_address
-                            : 'Punto seleccionado en el mapa';
+                            : `${clickPos.lat.toFixed(5)}, ${clickPos.lng.toFixed(5)}`;
 
-                        setDestination({
-                            lat: clickPos.lat,
-                            lng: clickPos.lng,
-                            address: addr
-                        });
-                        setSearchQuery(addr);
-                        setStep('vehicle');
+                        if (!originRef.current) {
+                            const newOrigin = {
+                                lat: clickPos.lat,
+                                lng: clickPos.lng,
+                                address: addr
+                            };
+                            setOrigin(newOrigin);
+                            setUserLocation({ lat: clickPos.lat, lng: clickPos.lng });
+                            fetchNearbyDrivers(clickPos);
+                            toast.success('Punto de partida fijado con éxito');
+                        } else {
+                            setDestination({
+                                lat: clickPos.lat,
+                                lng: clickPos.lng,
+                                address: addr
+                            });
+                            setSearchQuery(addr);
+                            setStep('vehicle');
+                        }
                     });
                 }
             });
 
-            // Initial GPS acquisition with auto-pan
+            // Initial GPS acquisition with auto-pan directly to user's exact position
             locateUser(true);
         } catch (e) {
             console.error("Error initializing Google Map:", e);
         }
     }, [isLoaded]);
 
-    // 4. Locate User Helper (Native Capacitor GPS with Web fallback)
+    // 4. Locate User Helper (Strictly finds the person's exact location, NEVER assigns a default point)
     const locateUser = useCallback(async (panTo = true) => {
         setIsLocating(true);
         let coords: { lat: number; lng: number } | null = null;
+        let knownAddress: string | null = null;
 
         // 1. Mobile Native GPS (Android/iOS via Capacitor)
         if (Capacitor.isNativePlatform()) {
@@ -369,7 +400,7 @@ export default function Taxi() {
                 if (permStatus.location !== 'granted') {
                     const req = await Geolocation.requestPermissions();
                     if (req.location !== 'granted') {
-                        throw new Error('Permiso de ubicación no concedido en el móvil');
+                        throw new Error('Permiso de ubicación denegado en el móvil');
                     }
                 }
                 const pos = await Geolocation.getCurrentPosition({
@@ -400,42 +431,83 @@ export default function Taxi() {
             }
         }
 
+        // 3. Fallback to User's Saved Address from Profile
+        if (!coords && userData?.addresses && userData.addresses.length > 0) {
+            const defaultAddr = userData.addresses.find((a: any) => a.isDefault) || userData.addresses[0];
+            if (defaultAddr?.lat && defaultAddr?.lng) {
+                coords = { lat: defaultAddr.lat, lng: defaultAddr.lng };
+                knownAddress = defaultAddr.reference ? `${defaultAddr.name} (${defaultAddr.reference})` : (defaultAddr.address || defaultAddr.name);
+            }
+        }
+
+        // 4. Fallback to Cached Exact Address in LocalStorage from a prior detection
+        if (!coords) {
+            const savedLocal = localStorage.getItem('un2x3_exact_user_location');
+            if (savedLocal) {
+                try {
+                    const parsed = JSON.parse(savedLocal);
+                    if (parsed?.lat && parsed?.lng && parsed?.address) {
+                        coords = { lat: parsed.lat, lng: parsed.lng };
+                        knownAddress = parsed.address;
+                    }
+                } catch (e) {}
+            }
+        }
+
         setIsLocating(false);
 
-        const targetCoords = coords || defaultCenter;
-        setUserLocation(targetCoords);
+        // If NO EXACT LOCATION is available, DO NOT set any default or fake point!
+        if (!coords) {
+            toast('Activa el GPS de tu dispositivo o toca el mapa para fijar tu ubicación exacta', { icon: '📍', duration: 4500 });
+            return;
+        }
 
-        // Consultar clima en tiempo real de su ubicación
-        fetchWeather(targetCoords.lat, targetCoords.lng);
+        setUserLocation(coords);
+        fetchWeather(coords.lat, coords.lng);
 
-        // Reverse geocode location
-        if (geocoderRef.current) {
-            geocoderRef.current.geocode({ location: targetCoords }, (res, status) => {
-                const addr = (status === 'OK' && res && res[0])
-                    ? res[0].formatted_address
-                    : (coords ? 'Mi ubicación actual' : 'Calabozo, Guárico');
-
-                setOrigin({
-                    lat: targetCoords.lat,
-                    lng: targetCoords.lng,
-                    address: addr
-                });
-            });
-        } else {
+        if (knownAddress) {
             setOrigin({
-                lat: targetCoords.lat,
-                lng: targetCoords.lng,
-                address: coords ? 'Mi ubicación actual' : 'Calabozo, Guárico'
+                lat: coords.lat,
+                lng: coords.lng,
+                address: knownAddress
             });
+        }
+
+        // Reverse geocode location with Google Maps Geocoder to get the exact street/house address
+        if (geocoderRef.current) {
+            geocoderRef.current.geocode({ location: coords }, (res, status) => {
+                let exactAddr = knownAddress;
+                if (status === 'OK' && res && res[0]) {
+                    exactAddr = res[0].formatted_address;
+                } else if (!exactAddr) {
+                    exactAddr = `Ubicación GPS (${coords!.lat.toFixed(5)}, ${coords!.lng.toFixed(5)})`;
+                }
+
+                const finalOrigin: Location = {
+                    lat: coords!.lat,
+                    lng: coords!.lng,
+                    address: exactAddr!
+                };
+
+                setOrigin(finalOrigin);
+                localStorage.setItem('un2x3_exact_user_location', JSON.stringify(finalOrigin));
+            });
+        } else if (!knownAddress) {
+            const finalOrigin: Location = {
+                lat: coords.lat,
+                lng: coords.lng,
+                address: `Ubicación GPS (${coords.lat.toFixed(5)}, ${coords.lng.toFixed(5)})`
+            };
+            setOrigin(finalOrigin);
         }
 
         if (mapInstanceRef.current && panTo) {
-            mapInstanceRef.current.panTo(targetCoords);
-            mapInstanceRef.current.setZoom(16);
+            mapInstanceRef.current.panTo(coords);
+            mapInstanceRef.current.setZoom(17);
         }
 
-        fetchNearbyDrivers(targetCoords);
-    }, [fetchNearbyDrivers, fetchWeather]);
+        fetchNearbyDrivers(coords);
+    }, [fetchNearbyDrivers, fetchWeather, userData]);
 
     // 5. Manage Markers on Map Updates
     useEffect(() => {
@@ -1039,9 +1111,17 @@ export default function Taxi() {
                                     <div className="flex-1 min-w-0">
                                         <p className="text-[9px] font-black uppercase text-slate-400">Punto de partida</p>
                                         <p className="text-xs font-bold text-slate-800 truncate">
-                                            {origin?.address || 'Detectando ubicación actual...'}
+                                            {origin?.address || (isLocating ? 'Detectando tu ubicación exacta...' : 'Toca el GPS o selecciona en el mapa')}
                                         </p>
                                     </div>
+                                    <button
+                                        type="button"
+                                        onClick={() => locateUser(true)}
+                                        className="p-1.5 bg-emerald-50 text-emerald-600 rounded-lg hover:bg-emerald-100 transition-colors flex-shrink-0"
+                                        title="Actualizar mi ubicación exacta"
+                                    >
+                                        <Navigation className={`w-3.5 h-3.5 ${isLocating ? 'animate-spin text-primary' : ''}`} />
+                                    </button>
                                 </div>
                                 <div className="border-t border-slate-200/60 ml-5" />
                                 <div className="flex items-center gap-3">
@@ -1054,6 +1134,23 @@ export default function Taxi() {
                                     </div>
                                 </div>
                             </div>
+
+                            {/* Alert if exact origin is not yet acquired */}
+                            {!origin && !isLocating && (
+                                <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 flex items-center justify-between text-xs text-amber-900 animate-in fade-in">
+                                    <div className="flex items-center gap-2">
+                                        <MapPin className="w-4 h-4 text-amber-600 flex-shrink-0" />
+                                        <span className="font-semibold">Fija tu ubicación exacta para iniciar</span>
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={() => locateUser(true)}
+                                        className="px-2.5 py-1 bg-amber-500 text-slate-950 rounded-lg font-black text-[11px] shadow-sm active:scale-95 transition-transform"
+                                    >
+                                        Activar GPS
+                                    </button>
+                                </div>
+                            )}
 
                             {/* Package Note If in package mode */}
                             {serviceCategory === 'package' && (
@@ -1100,7 +1197,7 @@ export default function Taxi() {
 
                             {/* Continue Button */}
                             <button
-                                disabled={!destination}
+                                disabled={!origin || !destination}
                                 onClick={() => {
                                     vibrate(30);
                                     setStep('vehicle');
