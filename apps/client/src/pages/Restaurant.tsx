@@ -50,7 +50,7 @@ export default function RestaurantPage() {
   const [showJobsModal, setShowJobsModal] = useState(false);
   const [showHoursModal, setShowHoursModal] = useState(false);
   const [casheaIcon, setCasheaIcon] = useState<string | null>(null);
-  const { user } = useAuth();
+  const { user, userData } = useAuth();
 
   const handleShare = () => {
     const referralCode = localStorage.getItem('referralCode') || user?.uid?.slice(0, 6).toUpperCase() || 'INVITE';
@@ -152,10 +152,21 @@ export default function RestaurantPage() {
           const fetchedProducts = (productsData || []).map((p: any) => ({
             id: p.id,
             name: p.name,
-            price: p.price,
+            price: Number(p.price) || 0,
+            promoPrice: p.promo_price !== undefined && p.promo_price !== null ? Number(p.promo_price) : (p.promoPrice ? Number(p.promoPrice) : undefined),
             image: p.image_url || p.image,
-            category: p.category,
+            images: p.images || (p.image_url ? [p.image_url] : (p.image ? [p.image] : [])),
+            category: p.category_name || p.category,
             description: p.description,
+            consultPrice: p.consult_price ?? p.consultPrice ?? (p.price === 0 && (!p.variants || p.variants.length === 0)),
+            variants: p.variants || [],
+            modifiers: p.modifiers || [],
+            pointsPrice: p.points_price || p.pointsPrice,
+            socialMediaLink: p.social_media_link || p.socialMediaLink,
+            tiktokLink: p.tiktok_link || p.tiktokLink,
+            youtubeLink: p.youtube_link || p.youtubeLink,
+            isAvailable: p.is_available ?? p.isAvailable ?? true,
+            isActive: p.is_active ?? p.isActive ?? true,
             ...p
           })) as Product[];
           setProducts(fetchedProducts);
@@ -197,7 +208,7 @@ export default function RestaurantPage() {
         if (cashea) {
           setCasheaIcon(cashea.image_url || cashea.imageUrl || cashea.url);
         } else {
-          setCasheaIcon("https://xfialzrbbsdzzcjtefqo.supabase.co/storage/v1/object/public/store_assets/logo_cashea.png");
+          setCasheaIcon("https://xfialzrbbsdzzcjtefqo.supabase.co/storage/v1/object/public/branding/logos/OIP%20(4).webp");
         }
       } catch (err) {
         console.error("Error fetching icons:", err);
@@ -444,6 +455,8 @@ export default function RestaurantPage() {
     }
     if (!id) return;
 
+    const followerName = userData?.displayName || userData?.fullName || user.user_metadata?.full_name || user.displayName || user.email?.split('@')[0] || 'Un cliente';
+
     try {
       if (isFollowing) {
         setIsFollowing(false);
@@ -461,6 +474,7 @@ export default function RestaurantPage() {
             followerCount: newCount
           })
           .eq('id', id);
+        toast('Dejaste de seguir este negocio', { icon: '👋' });
       } else {
         setIsFollowing(true);
         const newCount = followerCount + 1;
@@ -470,9 +484,10 @@ export default function RestaurantPage() {
           .upsert({
             restaurant_id: id,
             user_id: uid,
-            user_name: user.displayName || 'Usuario',
+            user_name: followerName,
             created_at: new Date().toISOString()
-          });
+          }, { onConflict: 'restaurant_id,user_id' });
+
         await supabase
           .from('comercios')
           .update({
@@ -480,6 +495,26 @@ export default function RestaurantPage() {
             followerCount: newCount
           })
           .eq('id', id);
+
+        // Send real-time notification to the business profile
+        try {
+          await supabase
+            .from('notifications')
+            .insert({
+              restaurant_id: id,
+              user_id: uid,
+              type: 'new_follower',
+              title: '¡Nuevo seguidor!',
+              message: `${followerName} ha comenzado a seguir tu negocio.`,
+              body: `${followerName} ha comenzado a seguir tu negocio.`,
+              read: false,
+              created_at: new Date().toISOString()
+            });
+        } catch (notifErr) {
+          console.warn("Could not insert notification for new follower:", notifErr);
+        }
+
+        toast.success(`¡Ahora sigues a ${restaurant?.name || 'este negocio'}!`);
       }
     } catch (e) {
       console.error("Error toggling follow:", e);
@@ -625,7 +660,7 @@ export default function RestaurantPage() {
             {restaurant.hasCashea && (
               <div className="absolute -top-1 -right-1 w-8 h-8 bg-white/95 backdrop-blur rounded-xl p-1 shadow-lg border border-white/50 flex items-center justify-center animate-in zoom-in duration-500">
                 <img
-                  src={casheaIcon || "https://xfialzrbbsdzzcjtefqo.supabase.co/storage/v1/object/public/store_assets/logo_cashea.png"}
+                  src={casheaIcon || "https://xfialzrbbsdzzcjtefqo.supabase.co/storage/v1/object/public/branding/logos/OIP%20(4).webp"}
                   alt="Cashea"
                   className="w-full h-full object-contain"
                 />
@@ -693,7 +728,7 @@ export default function RestaurantPage() {
             >
               <div className="absolute top-0 right-0 w-24 h-24 bg-yellow-400/5 rounded-full -mr-8 -mt-8 blur-2xl" />
               <div className="w-12 h-12 rounded-[1.25rem] bg-yellow-400 flex items-center justify-center shrink-0 shadow-lg shadow-yellow-400/30 group-hover:scale-110 transition-transform">
-                <img src={casheaIcon || "https://xfialzrbbsdzzcjtefqo.supabase.co/storage/v1/object/public/store_assets/logo_cashea.png"} className="w-7 h-7 object-contain" alt="Cashea" />
+                <img src={casheaIcon || "https://xfialzrbbsdzzcjtefqo.supabase.co/storage/v1/object/public/branding/logos/OIP%20(4).webp"} className="w-7 h-7 object-contain" alt="Cashea" />
               </div>
               <div className="flex-1">
                 <div className="flex items-center gap-2">
@@ -1416,28 +1451,33 @@ export default function RestaurantPage() {
               </div>
 
               {/* Content Section */}
-              <div className="p-8 pb-32 flex-1 overflow-y-auto">
-                <div className="flex justify-between items-start gap-4 mb-4">
-                  <div>
-                    <span className="px-3 py-1 bg-slate-100 text-slate-500 text-[10px] font-black uppercase tracking-widest rounded-full">
-                      {selectedProduct.category}
-                    </span>
-                    <h2 className="text-3xl font-black text-slate-900 mt-2">{selectedProduct.name}</h2>
-                  </div>
-                  <div className="text-right">
-                    {selectedProduct.consultPrice ? (
-                      <span className="text-sm font-black text-orange-600 bg-orange-50 px-4 py-2 rounded-2xl border border-orange-100">
-                        A Cotizar
+              <div className="p-6 md:p-8 pb-32 flex-1 overflow-y-auto">
+                <div className="mb-3">
+                  <span className="px-3 py-1 bg-slate-100 text-slate-500 text-[10px] font-black uppercase tracking-widest rounded-full">
+                    {selectedProduct.category}
+                  </span>
+                </div>
+
+                {/* Title & Price row (perfectly aligned horizontally with same baseline) */}
+                <div className="flex items-baseline justify-between gap-4 mb-4">
+                  <h2 className="text-2xl md:text-3xl font-black text-slate-900 leading-tight">
+                    {selectedProduct.name}
+                  </h2>
+
+                  <div className="text-right flex-shrink-0">
+                    {selectedProduct.consultPrice || (!selectedProduct.price && (!selectedProduct.variants || selectedProduct.variants.length === 0)) ? (
+                      <span className="inline-flex items-center text-xs md:text-sm font-black text-amber-700 bg-amber-50 px-3.5 py-1.5 rounded-xl border border-amber-200 shadow-xs">
+                        Consultar precio
                       </span>
                     ) : (
                       <div className="flex flex-col items-end">
                         {selectedProduct.promoPrice && selectedProduct.promoPrice > 0 ? (
                           <>
-                            <DualPrice usdAmount={selectedProduct.promoPrice} usdClassName="text-3xl font-black text-slate-900" />
-                            <span className="text-sm text-slate-400 line-through font-bold">${selectedProduct.price.toFixed(2)}</span>
+                            <DualPrice usdAmount={selectedProduct.promoPrice} usdClassName="text-2xl md:text-3xl font-black text-slate-900" />
+                            <span className="text-xs md:text-sm text-slate-400 line-through font-bold">${selectedProduct.price.toFixed(2)}</span>
                           </>
                         ) : (
-                          <DualPrice usdAmount={selectedProduct.price} usdClassName="text-3xl font-black text-slate-900" />
+                          <DualPrice usdAmount={selectedProduct.price} usdClassName="text-2xl md:text-3xl font-black text-slate-900" />
                         )}
                       </div>
                     )}
@@ -1564,7 +1604,7 @@ export default function RestaurantPage() {
               </div>
 
               {/* Footer / Add to Cart / Reserve */}
-              <div className="absolute bottom-0 left-0 w-full p-8 bg-white/80 backdrop-blur-md border-t border-slate-100">
+              <div className="absolute bottom-0 left-0 w-full p-6 md:p-8 bg-white/95 backdrop-blur-md border-t border-slate-100">
                 <button
                   disabled={!isFormValid() && !selectedProduct.consultPrice}
                   onClick={() => {
@@ -1591,21 +1631,6 @@ export default function RestaurantPage() {
                     ? 'Completa los campos' 
                     : (selectedProduct.consultPrice ? 'Consultar por WhatsApp' : (restaurant.businessType === 'hotel' ? 'Reservar' : 'Añadir al Carrito'))}
                 </button>
-                {restaurant.whatsapp && !selectedProduct.consultPrice && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      openWhatsApp({ name: selectedProduct.name, price: selectedProduct.promoPrice || selectedProduct.price });
-                      setSelectedProduct(null);
-                      setSelectedVariant(null);
-                      setSelectedModifiers({});
-                    }}
-                    className="w-full mt-2.5 py-3 rounded-2xl font-bold text-xs bg-green-50 hover:bg-green-100 text-green-700 border border-green-200 flex items-center justify-center gap-2 transition-all"
-                  >
-                    <MessageSquare className="w-4 h-4 text-green-600" />
-                    Comprar directo por WhatsApp
-                  </button>
-                )}
               </div>
             </motion.div>
           </div>

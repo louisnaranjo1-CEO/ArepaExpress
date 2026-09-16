@@ -22,6 +22,7 @@ import {
     Shield,
     X,
     ChevronDown,
+    ChevronUp,
     SlidersHorizontal,
     FileText
 } from 'lucide-react';
@@ -157,6 +158,10 @@ export default function Taxi() {
     // Nearby Drivers
     const [nearbyDrivers, setNearbyDrivers] = useState<NearbyDriver[]>([]);
     const [activeDriversCount, setActiveDriversCount] = useState({ moto: 1, carro: 1, ejecutivo: 1 });
+
+    // Bottom Sheet Collapse / Expand State & Drag Handling
+    const [isSheetMinimized, setIsSheetMinimized] = useState(false);
+    const touchStartYRef = useRef<number | null>(null);
 
     const [showDemoAlert, setShowDemoAlert] = useState(false);
     const [copiedField, setCopiedField] = useState<string | null>(null);
@@ -1164,16 +1169,88 @@ export default function Taxi() {
 
             {/* 3. Docked Bottom Sheet (Yango Signature UX) */}
             <div className="absolute inset-x-0 bottom-0 z-30 flex flex-col justify-end pointer-events-none">
-                <div className="pointer-events-auto bg-white/98 backdrop-blur-2xl rounded-t-[32px] shadow-[0_-12px_40px_rgba(0,0,0,0.18)] border-t border-white/60 p-5 max-w-md mx-auto w-full transition-all duration-300 ease-in-out">
-                    {/* Pull Bar */}
-                    <div className="w-12 h-1.5 bg-slate-200 rounded-full mx-auto mb-4" />
+                <div className="pointer-events-auto bg-white/98 backdrop-blur-2xl rounded-t-[28px] sm:rounded-t-[32px] shadow-[0_-12px_40px_rgba(0,0,0,0.18)] border-t border-white/60 px-4 pt-2.5 pb-4 sm:p-5 max-w-md mx-auto w-full transition-all duration-300 ease-in-out">
+                    {/* Pull Bar / Drag Handle Area */}
+                    <div
+                        onTouchStart={(e) => {
+                            touchStartYRef.current = e.touches[0].clientY;
+                        }}
+                        onTouchMove={(e) => {
+                            if (touchStartYRef.current !== null) {
+                                const currentY = e.touches[0].clientY;
+                                const diffY = currentY - touchStartYRef.current;
+                                if (diffY > 40 && !isSheetMinimized) {
+                                    setIsSheetMinimized(true);
+                                    touchStartYRef.current = null;
+                                } else if (diffY < -30 && isSheetMinimized) {
+                                    setIsSheetMinimized(false);
+                                    touchStartYRef.current = null;
+                                }
+                            }
+                        }}
+                        onTouchEnd={() => {
+                            touchStartYRef.current = null;
+                        }}
+                        onClick={() => setIsSheetMinimized(!isSheetMinimized)}
+                        className="w-full flex flex-col items-center justify-center py-2 -mt-1 cursor-pointer select-none group touch-none"
+                        title={isSheetMinimized ? 'Toca o desliza hacia arriba para ver detalles' : 'Desliza hacia abajo para ver más mapa'}
+                    >
+                        <div className="w-12 h-1.5 bg-slate-300 group-hover:bg-slate-400 rounded-full transition-colors" />
+                        {isSheetMinimized && (
+                            <span className="text-[10px] font-bold text-slate-500 mt-1 flex items-center gap-1 animate-pulse">
+                                <span>Toca para ver tarifas</span>
+                                <ChevronUp className="w-3 h-3 text-slate-600" />
+                            </span>
+                        )}
+                    </div>
+
+                    {/* Minimized Peek View (shows when user pulls down or collapses sheet) */}
+                    {isSheetMinimized && (
+                        <div className="pt-1 pb-1 animate-in fade-in duration-200">
+                            <div className="flex items-center justify-between gap-3 bg-slate-50 border border-slate-200/80 rounded-2xl p-2.5">
+                                <div
+                                    onClick={() => setIsSheetMinimized(false)}
+                                    className="flex items-center gap-2.5 flex-1 min-w-0 cursor-pointer"
+                                >
+                                    <div className="w-9 h-9 rounded-xl bg-primary/20 flex items-center justify-center text-slate-900 flex-shrink-0">
+                                        {vehicleType === 'moto' ? (
+                                            <Bike className="w-5 h-5" />
+                                        ) : (
+                                            <Car className="w-5 h-5" />
+                                        )}
+                                    </div>
+                                    <div className="truncate">
+                                        <p className="text-xs font-black text-slate-900 truncate">
+                                            {vehicleType === 'moto' ? 'Moto Express' : vehicleType === 'ejecutivo' ? 'Ejecutivo Comfort' : 'Taxi Deliexpress'}
+                                        </p>
+                                        <p className="text-[10px] font-bold text-slate-500 truncate">
+                                            {routeInfo ? `${routeInfo.distance} km • ${routeInfo.duration}` : 'Calculando ruta...'}
+                                        </p>
+                                    </div>
+                                </div>
+                                <div className="flex items-center gap-2 flex-shrink-0">
+                                    <span className="text-sm font-black text-slate-950">
+                                        ${calculatePrice(vehicleType)}
+                                    </span>
+                                    <button
+                                        type="button"
+                                        onClick={() => setIsSheetMinimized(false)}
+                                        className="p-2 bg-primary text-slate-950 rounded-xl font-black text-xs active:scale-95 transition-transform"
+                                        title="Expandir panel"
+                                    >
+                                        <ChevronUp className="w-4 h-4" />
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
 
                     {/* STEP 1: DESTINATION & SAVED PLACES */}
-                    {step === 'destination' && (
-                        <div className="space-y-4 animate-in fade-in">
+                    {!isSheetMinimized && step === 'destination' && (
+                        <div className="space-y-3.5 animate-in fade-in">
                             {/* Route Indicator Pills */}
-                            <div className="bg-slate-50 rounded-2xl p-3 border border-slate-200/70 space-y-2.5">
-                                <div className="flex items-center gap-3">
+                            <div className="bg-slate-50 rounded-2xl p-2.5 sm:p-3 border border-slate-200/70 space-y-2">
+                                <div className="flex items-center gap-2.5">
                                     <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 ring-4 ring-emerald-100 flex-shrink-0" />
                                     <div className="flex-1 min-w-0">
                                         <p className="text-[9px] font-black uppercase text-slate-400">Punto de partida</p>
@@ -1191,7 +1268,7 @@ export default function Taxi() {
                                     </button>
                                 </div>
                                 <div className="border-t border-slate-200/60 ml-5" />
-                                <div className="flex items-center gap-3">
+                                <div className="flex items-center gap-2.5">
                                     <div className="w-2.5 h-2.5 rounded-full bg-rose-500 ring-4 ring-rose-100 flex-shrink-0" />
                                     <div className="flex-1 min-w-0">
                                         <p className="text-[9px] font-black uppercase text-slate-400">Destino</p>
@@ -1204,10 +1281,10 @@ export default function Taxi() {
 
                             {/* Alert if exact origin is not yet acquired */}
                             {!origin && !isLocating && (
-                                <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 flex items-center justify-between text-xs text-amber-900 animate-in fade-in">
+                                <div className="bg-amber-50 border border-amber-200 rounded-xl p-2.5 flex items-center justify-between text-xs text-amber-900 animate-in fade-in">
                                     <div className="flex items-center gap-2">
                                         <MapPin className="w-4 h-4 text-amber-600 flex-shrink-0" />
-                                        <span className="font-semibold">Fija tu ubicación exacta para iniciar</span>
+                                        <span className="font-semibold text-[11px]">Fija tu ubicación exacta para iniciar</span>
                                     </div>
                                     <button
                                         type="button"
@@ -1230,7 +1307,7 @@ export default function Taxi() {
                                         value={packageDescription}
                                         onChange={(e) => setPackageDescription(e.target.value)}
                                         placeholder="Ej: Documentos, llaves, bolsa..."
-                                        className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-xs font-bold text-slate-800 outline-none focus:border-primary"
+                                        className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 outline-none focus:border-primary"
                                     />
                                 </div>
                             )}
@@ -1238,7 +1315,7 @@ export default function Taxi() {
                             {/* Saved Places Quick Access */}
                             {userData?.addresses && userData.addresses.length > 0 && (
                                 <div>
-                                    <p className="text-[10px] font-black uppercase text-slate-400 mb-2">Lugares frecuentes</p>
+                                    <p className="text-[10px] font-black uppercase text-slate-400 mb-1.5">Lugares frecuentes</p>
                                     <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
                                         {userData.addresses.map((addr: any) => (
                                             <button
@@ -1252,7 +1329,7 @@ export default function Taxi() {
                                                     });
                                                     setStep('vehicle');
                                                 }}
-                                                className="flex items-center gap-2 bg-slate-100 hover:bg-slate-200 px-3.5 py-2 rounded-xl text-xs font-bold text-slate-700 flex-shrink-0 transition-colors"
+                                                className="flex items-center gap-2 bg-slate-100 hover:bg-slate-200 px-3 py-1.5 rounded-xl text-xs font-bold text-slate-700 flex-shrink-0 transition-colors"
                                             >
                                                 <MapPin className="w-3.5 h-3.5 text-primary" />
                                                 <span>{addr.name}</span>
@@ -1269,7 +1346,7 @@ export default function Taxi() {
                                     vibrate(30);
                                     setStep('vehicle');
                                 }}
-                                className="w-full py-4 bg-primary text-slate-950 rounded-2xl font-black text-sm uppercase tracking-wider flex items-center justify-center gap-2 shadow-xl shadow-primary/20 active:scale-95 disabled:opacity-40 disabled:pointer-events-none transition-all"
+                                className="w-full py-3.5 bg-primary text-slate-950 rounded-2xl font-black text-xs uppercase tracking-wider flex items-center justify-center gap-2 shadow-xl shadow-primary/20 active:scale-95 disabled:opacity-40 disabled:pointer-events-none transition-all"
                             >
                                 <span>Ver tarifas de viaje</span>
                                 <ArrowRight className="w-4 h-4" />
@@ -1278,8 +1355,8 @@ export default function Taxi() {
                     )}
 
                     {/* STEP 2: VEHICLE SELECTION (YANGO TIER CARDS) */}
-                    {step === 'vehicle' && (
-                        <div className="space-y-4 animate-in fade-in">
+                    {!isSheetMinimized && step === 'vehicle' && (
+                        <div className="space-y-3 animate-in fade-in">
                             {/* Route Summary Badge & Schedule Toggle */}
                             <div className="flex items-center justify-between pb-1 border-b border-slate-100">
                                 <div className="flex items-center gap-2">
@@ -1287,31 +1364,41 @@ export default function Taxi() {
                                         {routeInfo ? `${routeInfo.distance} km • ${routeInfo.duration}` : 'Calculando ruta...'}
                                     </span>
                                 </div>
-                                <button
-                                    onClick={() => setIsScheduled(!isScheduled)}
-                                    className={`px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all ${
-                                        isScheduled ? 'bg-primary text-slate-950' : 'bg-slate-100 text-slate-600'
-                                    }`}
-                                >
-                                    {isScheduled ? 'Reservado' : 'Reservar'}
-                                </button>
+                                <div className="flex items-center gap-2">
+                                    <button
+                                        onClick={() => setIsScheduled(!isScheduled)}
+                                        className={`px-2 py-0.5 rounded-lg text-[9px] font-black uppercase tracking-wider transition-all ${
+                                            isScheduled ? 'bg-primary text-slate-950' : 'bg-slate-100 text-slate-600'
+                                        }`}
+                                    >
+                                        {isScheduled ? 'Reservado' : 'Reservar'}
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setIsSheetMinimized(true)}
+                                        className="p-1 text-slate-400 hover:text-slate-600 rounded-lg"
+                                        title="Minimizar para ver más mapa"
+                                    >
+                                        <ChevronDown className="w-3.5 h-3.5" />
+                                    </button>
+                                </div>
                             </div>
 
                             {/* Dynamic Surcharge Indicator (Yango Surge Badge) */}
                             {getFareDetails(vehicleType).surgeMultiplier > 1 && (
-                                <div className="flex items-center gap-2 bg-amber-50 border border-amber-200/80 text-amber-900 px-3 py-1.5 rounded-xl text-[11px] font-bold">
-                                    <Sparkles className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                                <div className="flex items-center gap-2 bg-amber-50 border border-amber-200/80 text-amber-900 px-2.5 py-1 rounded-xl text-[10px] font-bold">
+                                    <Sparkles className="w-3 h-3 text-amber-600 shrink-0" />
                                     <span>
                                         {getFareDetails(vehicleType).activeFactors.isRain
-                                            ? `Tarifa con recargo por lluvia (+${getFareDetails(vehicleType).activeFactors.rainPercent}%)`
-                                            : `Tarifa dinámica por alta demanda (+${Math.round((getFareDetails(vehicleType).surgeMultiplier - 1) * 100)}%)`}
+                                             ? `Recargo por lluvia (+${getFareDetails(vehicleType).activeFactors.rainPercent}%)`
+                                             : `Tarifa dinámica (+${Math.round((getFareDetails(vehicleType).surgeMultiplier - 1) * 100)}%)`}
                                     </span>
                                 </div>
                             )}
 
                             {/* Scheduled Date Picker */}
                             {isScheduled && (
-                                <div className="bg-primary/10 border border-primary/20 rounded-xl p-3 flex items-center gap-3">
+                                <div className="bg-primary/10 border border-primary/20 rounded-xl p-2.5 flex items-center gap-3">
                                     <Calendar className="w-4 h-4 text-slate-900 flex-shrink-0" />
                                     <input
                                         type="datetime-local"
@@ -1323,8 +1410,8 @@ export default function Taxi() {
                                 </div>
                             )}
 
-                            {/* Yango Vehicle Tiers Carousel / List */}
-                            <div className="grid grid-cols-3 gap-2.5">
+                            {/* Yango Vehicle Tiers Carousel / List (Streamlined & Compact) */}
+                            <div className="grid grid-cols-3 gap-2">
                                 {/* Moto */}
                                 <button
                                     type="button"
@@ -1332,23 +1419,23 @@ export default function Taxi() {
                                         vibrate(30);
                                         setVehicleType('moto');
                                     }}
-                                    className={`relative flex flex-col items-center p-3 rounded-2xl border-2 transition-all text-center ${
+                                    className={`relative flex flex-col items-center py-2 px-1.5 rounded-2xl border-2 transition-all text-center ${
                                         vehicleType === 'moto'
                                             ? 'border-primary bg-primary/10 shadow-md ring-2 ring-primary/20 scale-[1.02]'
                                             : 'border-slate-100 bg-slate-50 hover:border-slate-200'
                                     }`}
                                 >
-                                    <div className="w-10 h-10 rounded-xl bg-white flex items-center justify-center mb-1.5 shadow-sm">
-                                        <Bike className="w-6 h-6 text-slate-900" />
+                                    <div className="w-8 h-8 rounded-lg bg-white flex items-center justify-center mb-1 shadow-xs">
+                                        <Bike className="w-4 h-4 text-slate-900" />
                                     </div>
-                                    <span className="text-xs font-black text-slate-900">Moto</span>
-                                    <span className="text-[10px] text-emerald-600 font-black mt-0.5">2 min</span>
-                                    <span className="text-xs font-black text-slate-900 mt-1">
+                                    <span className="text-[11px] font-black text-slate-900">Moto</span>
+                                    <span className="text-[9px] text-emerald-600 font-bold">2 min</span>
+                                    <span className="text-xs font-black text-slate-900 mt-0.5">
                                         ${calculatePrice('moto')}
                                     </span>
                                     {bcvRate > 0 && (
-                                        <span className="text-[9px] font-bold text-slate-500">
-                                            {(parseFloat(calculatePrice('moto')) * bcvRate).toFixed(1)} Bs
+                                        <span className="text-[8px] font-bold text-slate-500 truncate max-w-full px-0.5">
+                                            {(parseFloat(calculatePrice('moto')) * bcvRate).toFixed(0)} Bs
                                         </span>
                                     )}
                                 </button>
@@ -1360,23 +1447,23 @@ export default function Taxi() {
                                         vibrate(30);
                                         setVehicleType('carro');
                                     }}
-                                    className={`relative flex flex-col items-center p-3 rounded-2xl border-2 transition-all text-center ${
+                                    className={`relative flex flex-col items-center py-2 px-1.5 rounded-2xl border-2 transition-all text-center ${
                                         vehicleType === 'carro'
-                                            ? 'border-primary bg-primary text-slate-950 shadow-lg shadow-primary/30 ring-2 ring-primary/30 scale-[1.04]'
+                                            ? 'border-primary bg-primary text-slate-950 shadow-md shadow-primary/30 ring-2 ring-primary/30 scale-[1.03]'
                                             : 'border-slate-100 bg-slate-50 hover:border-slate-200'
                                     }`}
                                 >
-                                    <div className="w-10 h-10 rounded-xl bg-white flex items-center justify-center mb-1.5 shadow-sm">
-                                        <Car className="w-6 h-6 text-slate-900" />
+                                    <div className="w-8 h-8 rounded-lg bg-white flex items-center justify-center mb-1 shadow-xs">
+                                        <Car className="w-4 h-4 text-slate-900" />
                                     </div>
-                                    <span className="text-xs font-black">Taxi</span>
-                                    <span className={`text-[10px] font-black mt-0.5 ${vehicleType === 'carro' ? 'text-slate-900' : 'text-emerald-600'}`}>3 min</span>
-                                    <span className="text-xs font-black mt-1">
+                                    <span className="text-[11px] font-black">Taxi</span>
+                                    <span className={`text-[9px] font-bold ${vehicleType === 'carro' ? 'text-slate-900' : 'text-emerald-600'}`}>3 min</span>
+                                    <span className="text-xs font-black mt-0.5">
                                         ${calculatePrice('carro')}
                                     </span>
                                     {bcvRate > 0 && (
-                                        <span className={`text-[9px] font-bold ${vehicleType === 'carro' ? 'text-slate-800' : 'text-slate-500'}`}>
-                                            {(parseFloat(calculatePrice('carro')) * bcvRate).toFixed(1)} Bs
+                                        <span className={`text-[8px] font-bold truncate max-w-full px-0.5 ${vehicleType === 'carro' ? 'text-slate-800' : 'text-slate-500'}`}>
+                                            {(parseFloat(calculatePrice('carro')) * bcvRate).toFixed(0)} Bs
                                         </span>
                                     )}
                                 </button>
@@ -1388,40 +1475,40 @@ export default function Taxi() {
                                         vibrate(30);
                                         setVehicleType('ejecutivo');
                                     }}
-                                    className={`relative flex flex-col items-center p-3 rounded-2xl border-2 transition-all text-center ${
+                                    className={`relative flex flex-col items-center py-2 px-1.5 rounded-2xl border-2 transition-all text-center ${
                                         vehicleType === 'ejecutivo'
                                             ? 'border-slate-900 bg-slate-900 text-white shadow-md ring-2 ring-slate-900/20 scale-[1.02]'
                                             : 'border-slate-100 bg-slate-50 hover:border-slate-200'
                                     }`}
                                 >
-                                    <div className="w-10 h-10 rounded-xl bg-white flex items-center justify-center mb-1.5 shadow-sm">
-                                        <Car className="w-6 h-6 text-amber-500" />
+                                    <div className="w-8 h-8 rounded-lg bg-white flex items-center justify-center mb-1 shadow-xs">
+                                        <Car className="w-4 h-4 text-amber-500" />
                                     </div>
-                                    <span className={`text-xs font-black ${vehicleType === 'ejecutivo' ? 'text-white' : 'text-slate-900'}`}>Confort</span>
-                                    <span className="text-[10px] text-amber-400 font-black mt-0.5">5 min</span>
-                                    <span className={`text-xs font-black mt-1 ${vehicleType === 'ejecutivo' ? 'text-white' : 'text-slate-900'}`}>
+                                    <span className={`text-[11px] font-black ${vehicleType === 'ejecutivo' ? 'text-white' : 'text-slate-900'}`}>Confort</span>
+                                    <span className="text-[9px] text-amber-400 font-bold">5 min</span>
+                                    <span className={`text-xs font-black mt-0.5 ${vehicleType === 'ejecutivo' ? 'text-white' : 'text-slate-900'}`}>
                                         ${calculatePrice('ejecutivo')}
                                     </span>
                                     {bcvRate > 0 && (
-                                        <span className={`text-[9px] font-bold ${vehicleType === 'ejecutivo' ? 'text-slate-300' : 'text-slate-500'}`}>
-                                            {(parseFloat(calculatePrice('ejecutivo')) * bcvRate).toFixed(1)} Bs
+                                        <span className={`text-[8px] font-bold truncate max-w-full px-0.5 ${vehicleType === 'ejecutivo' ? 'text-slate-300' : 'text-slate-500'}`}>
+                                            {(parseFloat(calculatePrice('ejecutivo')) * bcvRate).toFixed(0)} Bs
                                         </span>
                                     )}
                                 </button>
                             </div>
 
                             {/* Payment Quick Pill & Note Row */}
-                            <div className="flex items-center justify-between gap-2 pt-1">
+                            <div className="flex items-center justify-between gap-2 pt-0.5">
                                 <button
                                     onClick={() => {
                                         vibrate(30);
                                         setStep('payment');
                                     }}
-                                    className="flex-1 flex items-center justify-between bg-slate-100 hover:bg-slate-200 px-3.5 py-2.5 rounded-xl text-xs font-bold text-slate-800 transition-colors"
+                                    className="flex-1 flex items-center justify-between bg-slate-100 hover:bg-slate-200 px-3 py-2 rounded-xl text-xs font-bold text-slate-800 transition-colors"
                                 >
                                     <div className="flex items-center gap-2">
-                                        <Wallet className="w-4 h-4 text-primary" />
-                                        <span>
+                                        <Wallet className="w-3.5 h-3.5 text-primary" />
+                                        <span className="text-[11px]">
                                             {selectedPaymentMethod === 'wallet' ? 'Billetera' : selectedPaymentMethod === 'pagoMovil' ? 'Pago Móvil' : selectedPaymentMethod === 'zelle' ? 'Zelle' : 'Efectivo'}
                                         </span>
                                     </div>
@@ -1430,19 +1517,19 @@ export default function Taxi() {
 
                                 <button
                                     onClick={() => setShowNotesModal(true)}
-                                    className={`p-2.5 rounded-xl border transition-all flex items-center justify-center ${
+                                    className={`p-2 rounded-xl border transition-all flex items-center justify-center ${
                                         driverNotes ? 'bg-primary/20 border-primary text-slate-900' : 'bg-slate-100 border-transparent text-slate-600'
                                     }`}
                                     title="Notas para el conductor"
                                 >
-                                    <FileText className="w-4 h-4" />
+                                    <FileText className="w-3.5 h-3.5" />
                                 </button>
                             </div>
 
                             {/* Big Prominent Yango CTA Button */}
                             <button
                                 onClick={handleRequestTaxi}
-                                className="w-full py-4 bg-[#FFB800] text-slate-950 font-black text-sm uppercase tracking-wider rounded-2xl shadow-xl shadow-amber-500/20 active:scale-95 transition-all flex items-center justify-center gap-2"
+                                className="w-full py-3.5 bg-[#FFB800] text-slate-950 font-black text-xs sm:text-sm uppercase tracking-wider rounded-2xl shadow-xl shadow-amber-500/20 active:scale-95 transition-all flex items-center justify-center gap-2"
                             >
                                 <span>Pedir {vehicleType === 'moto' ? 'Moto Express' : vehicleType === 'ejecutivo' ? 'Ejecutivo Comfort' : 'Taxi Deliexpress'} • ${calculatePrice(vehicleType)}</span>
                                 <ArrowRight className="w-4 h-4" />
@@ -1451,7 +1538,7 @@ export default function Taxi() {
                     )}
 
                     {/* STEP 3: PAYMENT METHOD DETAILS */}
-                    {step === 'payment' && (
+                    {!isSheetMinimized && step === 'payment' && (
                         <div className="space-y-4 animate-in fade-in">
                             <div className="flex items-center justify-between">
                                 <h3 className="text-base font-black text-slate-900">Selecciona Método de Pago</h3>

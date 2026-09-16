@@ -463,7 +463,7 @@ export default function Home() {
         if (cashea) {
           setCasheaIcon(cashea.image_url || cashea.imageUrl || cashea.url);
         } else {
-          setCasheaIcon("https://xfialzrbbsdzzcjtefqo.supabase.co/storage/v1/object/public/store_assets/logo_cashea.png");
+          setCasheaIcon("https://xfialzrbbsdzzcjtefqo.supabase.co/storage/v1/object/public/branding/logos/OIP%20(4).webp");
         }
 
       } catch (error: any) {
@@ -1002,7 +1002,7 @@ export default function Home() {
                         {restaurant.hasCashea && (
                         <div className="absolute top-3 right-12 z-20 w-10 h-10 bg-yellow-400 backdrop-blur rounded-xl p-1.5 shadow-xl border border-white/20 flex items-center justify-center animate-in zoom-in duration-500 hover:scale-110 transition-transform">
                             <img
-                            src={casheaIcon || "https://xfialzrbbsdzzcjtefqo.supabase.co/storage/v1/object/public/store_assets/logo_cashea.png"}
+                            src={casheaIcon || "https://xfialzrbbsdzzcjtefqo.supabase.co/storage/v1/object/public/branding/logos/OIP%20(4).webp"}
                             alt="Cashea"
                             className="w-full h-full object-contain"
                             />
@@ -1143,7 +1143,7 @@ function ProductGrid({ title, products, casheaIcon }: { title: string, products:
                   {/* Cashea Badge */}
                   {product.restaurantHasCashea && (
                     <div className="w-6 h-6 bg-yellow-400 rounded-full flex items-center justify-center shadow-sm" title="Cashea">
-                      <img src={casheaIcon || "https://xfialzrbbsdzzcjtefqo.supabase.co/storage/v1/object/public/store_assets/logo_cashea.png"} alt="Cashea" className="w-4 h-4 object-contain" />
+                      <img src={casheaIcon || "https://xfialzrbbsdzzcjtefqo.supabase.co/storage/v1/object/public/branding/logos/OIP%20(4).webp"} alt="Cashea" className="w-4 h-4 object-contain" />
                     </div>
                   )}
                   {/* 2x3 Resuelve Badge */}

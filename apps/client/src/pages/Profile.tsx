@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { User, Mail, MapPin, CreditCard, LogOut, ShoppingBag, Settings, ChevronRight, Clock, FileText, Bell, Navigation, X, Shield, UploadCloud, Star, Wallet, Gift, Award, MessageSquareWarning, Plus, Send, AlertCircle, CheckCircle, Store, Handshake, LifeBuoy, Fingerprint, Calendar, Trash2, AlertTriangle } from 'lucide-react';
+import { User, Mail, MapPin, CreditCard, LogOut, ShoppingBag, Settings, ChevronRight, Clock, FileText, Bell, Navigation, X, Shield, UploadCloud, Star, Wallet, Gift, Award, MessageSquareWarning, Plus, Send, AlertCircle, CheckCircle, Store, Handshake, Fingerprint, Calendar, Trash2, AlertTriangle } from 'lucide-react';
 import { Geolocation } from '@capacitor/geolocation';
 import { Capacitor } from '@capacitor/core';
 import { isDemoMode, UN2X3_LOGO } from '../lib/env';
@@ -799,7 +799,7 @@ export default function Profile() {
 
     if (!user) {
         return (
-            <div className="flex flex-col items-center justify-center min-h-[80vh] px-6 text-center animate-in fade-in slide-in-from-bottom-4 duration-500">
+            <div className="w-full h-full overflow-y-auto overflow-x-hidden flex flex-col items-center justify-center min-h-[80vh] px-6 py-8 text-center animate-in fade-in slide-in-from-bottom-4 duration-500">
                 <div 
                     onClick={() => toast('¡Epale! ¿Iniciamos ya?', { icon: '🚀', style: { borderRadius: '15px', background: '#333', color: '#fff' } })}
                     className="w-80 h-32 flex items-center justify-center mb-8 cursor-pointer active:scale-95 transition-transform p-2 overflow-visible"
@@ -1193,7 +1193,7 @@ export default function Profile() {
     // Profile Completion Overlay/View
     if (user && !isProfileComplete) {
         return (
-            <div className="flex flex-col items-center justify-center min-h-[80vh] px-6 py-12 animate-in fade-in slide-in-from-bottom-4 duration-500">
+            <div className="w-full h-full overflow-y-auto overflow-x-hidden flex flex-col items-center justify-center min-h-[80vh] px-6 py-12 animate-in fade-in slide-in-from-bottom-4 duration-500">
                 <div className="w-24 h-24 bg-primary/10 rounded-full flex items-center justify-center mb-6 overflow-hidden">
                     <User className="w-12 h-12 text-slate-900" />
                 </div>
@@ -1329,17 +1329,11 @@ export default function Profile() {
 
     return (
         <>
-            <div className="pb-24 animate-in fade-in duration-500">
+            <div className="w-full h-full overflow-y-auto overflow-x-hidden pb-32 overscroll-contain animate-in fade-in duration-500">
                 <div className="bg-gradient-to-br from-secondary to-[#003B85] p-8 pt-12 pb-16 text-white rounded-b-[40px] shadow-xl">
                     <div className="relative flex items-center gap-4">
-                        {/* Settings & Support Buttons - Positioned top right to avoid overflow */}
+                        {/* Settings Button - Positioned top right to avoid overflow */}
                         <div className="absolute -top-6 -right-4 flex items-center gap-2">
-                            <button
-                                onClick={() => navigate('/support')}
-                                className="bg-white/10 backdrop-blur-md p-2.5 rounded-xl hover:bg-white/20 transition-all active:scale-90 border border-white/10"
-                            >
-                                <LifeBuoy className="w-5 h-5 text-white/80" />
-                            </button>
                             <button
                                 onClick={() => setShowEditProfileModal(true)}
                                 className="bg-white/10 backdrop-blur-md p-2.5 rounded-xl hover:bg-white/20 transition-all active:scale-90 border border-white/10"

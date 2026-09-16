@@ -137,7 +137,7 @@ export default function Search() {
                 if (cashea) {
                     setCasheaIcon(cashea.image_url || cashea.imageUrl || cashea.url);
                 } else {
-                    setCasheaIcon("https://xfialzrbbsdzzcjtefqo.supabase.co/storage/v1/object/public/store_assets/logo_cashea.png");
+                    setCasheaIcon("https://xfialzrbbsdzzcjtefqo.supabase.co/storage/v1/object/public/branding/logos/OIP%20(4).webp");
                 }
             } catch (err) {
                 console.error("Error fetching cashea icon:", err);
@@ -433,7 +433,7 @@ export default function Search() {
                                             {(res as any).hasCashea && (
                                                 <div className="absolute top-4 right-4 z-20 w-10 h-10 bg-yellow-400 backdrop-blur rounded-xl p-1.5 shadow-xl border border-white/20 flex items-center justify-center animate-in zoom-in duration-500 hover:scale-110 transition-transform">
                                                     <img
-                                                        src={casheaIcon || "https://xfialzrbbsdzzcjtefqo.supabase.co/storage/v1/object/public/store_assets/logo_cashea.png"}
+                                                        src={casheaIcon || "https://xfialzrbbsdzzcjtefqo.supabase.co/storage/v1/object/public/branding/logos/OIP%20(4).webp"}
                                                         alt="Cashea"
                                                         className="w-full h-full object-contain"
                                                     />

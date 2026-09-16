@@ -214,6 +214,8 @@ export default function RestaurantProfile() {
                 const cashea = (iconData || []).find((icon: any) => icon.name?.toLowerCase() === 'cashea');
                 if (cashea) {
                     setCasheaIcon(cashea.image_url || cashea.url || cashea.imageUrl);
+                } else {
+                    setCasheaIcon("https://xfialzrbbsdzzcjtefqo.supabase.co/storage/v1/object/public/branding/logos/OIP%20(4).webp");
                 }
 
             } catch (error) {
@@ -993,7 +995,7 @@ export default function RestaurantProfile() {
                                             <div className="flex items-center gap-3">
                                                 <div className={`w-12 h-12 rounded-xl flex items-center justify-center p-1.5 transition-all ${editData.hasCashea ? 'bg-yellow-400 shadow-inner' : 'bg-slate-100'}`}>
                                                     <img
-                                                        src={casheaIcon || "/logo_cashea.png"}
+                                                        src={casheaIcon || "https://xfialzrbbsdzzcjtefqo.supabase.co/storage/v1/object/public/branding/logos/OIP%20(4).webp"}
                                                         alt="Cashea"
                                                         className={`w-full h-full object-contain transition-all ${editData.hasCashea ? 'opacity-100 scale-110' : 'opacity-40 grayscale'}`}
                                                     />

@@ -107,10 +107,86 @@ export default function AddressPicker({ onClose, onSave, initialData }: AddressP
         };
     }, [handleCurrentLocation, initialData]);
 
+    const executeSearch = (customQuery?: string) => {
+        const queryToSearch = customQuery || searchQuery;
+        if (!queryToSearch || !queryToSearch.trim()) return;
+
+        if (window.google && window.google.maps) {
+            // Try PlacesService findPlaceFromQuery first
+            if (map && window.google.maps.places) {
+                const service = new window.google.maps.places.PlacesService(map);
+                service.findPlaceFromQuery(
+                    {
+                        query: queryToSearch,
+                        fields: ['name', 'geometry', 'formatted_address']
+                    },
+                    (results, status) => {
+                        if (status === window.google.maps.places.PlacesServiceStatus.OK && results && results[0] && results[0].geometry?.location) {
+                            const place = results[0];
+                            const newPos = {
+                                lat: place.geometry.location.lat(),
+                                lng: place.geometry.location.lng()
+                            };
+                            setPosition(newPos);
+                            map.panTo(newPos);
+                            map.setZoom(17);
+                            if (place.name) setName(place.name);
+                            if (place.formatted_address) {
+                                setReference(prev => prev ? prev : place.formatted_address || '');
+                            }
+                            return;
+                        }
+
+                        // Fallback to Geocoder if PlacesService didn't find it
+                        const geocoder = new window.google.maps.Geocoder();
+                        geocoder.geocode({ address: queryToSearch }, (geoResults, geoStatus) => {
+                            if (geoStatus === 'OK' && geoResults && geoResults[0] && geoResults[0].geometry?.location) {
+                                const geoLoc = geoResults[0].geometry.location;
+                                const newPos = {
+                                    lat: geoLoc.lat(),
+                                    lng: geoLoc.lng()
+                                };
+                                setPosition(newPos);
+                                map.panTo(newPos);
+                                map.setZoom(17);
+                                if (!name) setName(queryToSearch);
+                                if (geoResults[0].formatted_address) {
+                                    setReference(prev => prev ? prev : geoResults[0].formatted_address || '');
+                                }
+                            }
+                        });
+                    }
+                );
+                return;
+            }
+
+            // Fallback to Geocoder
+            const geocoder = new window.google.maps.Geocoder();
+            geocoder.geocode({ address: queryToSearch }, (geoResults, geoStatus) => {
+                if (geoStatus === 'OK' && geoResults && geoResults[0] && geoResults[0].geometry?.location) {
+                    const geoLoc = geoResults[0].geometry.location;
+                    const newPos = {
+                        lat: geoLoc.lat(),
+                        lng: geoLoc.lng()
+                    };
+                    setPosition(newPos);
+                    if (map) {
+                        map.panTo(newPos);
+                        map.setZoom(17);
+                    }
+                    if (!name) setName(queryToSearch);
+                    if (geoResults[0].formatted_address) {
+                        setReference(prev => prev ? prev : geoResults[0].formatted_address || '');
+                    }
+                }
+            });
+        }
+    };
+
     const handlePlaceChanged = () => {
         if (autocompleteRef.current !== null) {
             const place = autocompleteRef.current.getPlace();
-            if (place.geometry && place.geometry.location) {
+            if (place && place.geometry && place.geometry.location) {
                 const newPos = {
                     lat: place.geometry.location.lat(),
                     lng: place.geometry.location.lng()
@@ -122,11 +198,16 @@ export default function AddressPicker({ onClose, onSave, initialData }: AddressP
                 }
                 if (place.name) {
                     setName(place.name);
+                    setSearchQuery(place.name);
                 }
                 if (place.formatted_address) {
                     setReference(prev => prev ? prev : place.formatted_address || '');
                 }
+            } else if (searchQuery.trim()) {
+                executeSearch();
             }
+        } else if (searchQuery.trim()) {
+            executeSearch();
         }
     };
 
@@ -182,15 +263,28 @@ export default function AddressPicker({ onClose, onSave, initialData }: AddressP
                                         type="text"
                                         value={searchQuery}
                                         onChange={(e) => setSearchQuery(e.target.value)}
+                                        onKeyDown={(e) => {
+                                            if (e.key === 'Enter') {
+                                                e.preventDefault();
+                                                executeSearch();
+                                            }
+                                        }}
                                         placeholder="Buscar negocio, restaurante, local o dirección..."
-                                        className="w-full bg-slate-50 border-2 border-slate-200 focus:border-primary focus:bg-white pl-11 pr-4 py-3 rounded-2xl outline-none font-bold text-slate-800 text-sm shadow-xs transition-all placeholder:text-slate-400"
+                                        className="w-full bg-slate-50 border-2 border-slate-200 focus:border-primary focus:bg-white pl-11 pr-10 py-3 rounded-2xl outline-none font-bold text-slate-800 text-sm shadow-xs transition-all placeholder:text-slate-400"
                                     />
-                                    <Search className="w-5 h-5 text-slate-400 absolute left-3.5 pointer-events-none" />
+                                    <button
+                                        type="button"
+                                        onClick={() => executeSearch()}
+                                        className="absolute left-2.5 p-1 text-slate-400 hover:text-slate-900 active:scale-95 transition-all"
+                                        title="Buscar"
+                                    >
+                                        <Search className="w-5 h-5 text-slate-600" />
+                                    </button>
                                     {searchQuery && (
                                         <button
                                             type="button"
                                             onClick={() => setSearchQuery('')}
-                                            className="absolute right-3 text-slate-400 hover:text-slate-600 p-1"
+                                            className="absolute right-3 text-slate-400 hover:text-slate-600 p-1 active:scale-90 transition-transform"
                                         >
                                             <X className="w-4 h-4" />
                                         </button>

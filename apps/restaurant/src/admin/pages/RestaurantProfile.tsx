@@ -37,7 +37,9 @@ import {
     Sparkles,
     CheckCircle2,
     AlertTriangle,
-    AlertCircle
+    AlertCircle,
+    Users,
+    UserCheck
 } from 'lucide-react';
 import VerificationModal from '../components/VerificationModal';
 import { useAuth } from '../../context/AuthContext';
@@ -306,6 +308,8 @@ export default function RestaurantProfile() {
                     const cashea = icons.find((icon: any) => icon.name?.toLowerCase() === 'cashea');
                     if (cashea) {
                         setCasheaIcon(cashea.url || cashea.imageUrl || cashea.image_url);
+                    } else {
+                        setCasheaIcon("https://xfialzrbbsdzzcjtefqo.supabase.co/storage/v1/object/public/branding/logos/OIP%20(4).webp");
                     }
                 }
             } catch (err) {
@@ -784,6 +788,48 @@ export default function RestaurantProfile() {
                     </div>
                 </div>
             )}
+
+            {/* Followers Stats Card */}
+            <div className="bg-white p-5 md:p-6 rounded-[32px] border border-slate-100 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div className="flex items-center gap-4">
+                    <div className="w-14 h-14 rounded-2xl bg-primary/10 border border-primary/20 flex items-center justify-center text-slate-900 shrink-0 shadow-sm">
+                        <Users className="w-7 h-7" />
+                    </div>
+                    <div>
+                        <div className="flex items-center gap-2">
+                            <h3 className="text-xl font-black text-slate-900">
+                                {followers.length || followerCount} {followers.length === 1 || followerCount === 1 ? 'Seguidor' : 'Seguidores'}
+                            </h3>
+                            <span className="bg-emerald-100 text-emerald-800 text-[10px] font-black px-2 py-0.5 rounded-full uppercase">
+                                En tiempo real
+                            </span>
+                        </div>
+                        <p className="text-xs text-slate-500 font-medium mt-0.5">
+                            Clientes que siguen tu negocio para recibir ofertas y novedades
+                        </p>
+                    </div>
+                </div>
+
+                {followers.length > 0 && (
+                    <div className="flex items-center gap-2 overflow-x-auto py-1 max-w-md">
+                        {followers.slice(0, 5).map((f: any, idx: number) => (
+                            <div
+                                key={f.id || idx}
+                                className="flex items-center gap-1.5 bg-slate-50 border border-slate-200/80 px-3 py-1.5 rounded-xl text-xs font-bold text-slate-800 shrink-0"
+                                title={`Siguiendo desde ${f.created_at ? new Date(f.created_at).toLocaleDateString() : ''}`}
+                            >
+                                <UserCheck className="w-3.5 h-3.5 text-primary" />
+                                <span className="truncate max-w-[110px]">{f.user_name || 'Usuario'}</span>
+                            </div>
+                        ))}
+                        {followers.length > 5 && (
+                            <span className="text-xs font-bold text-slate-400 px-2">
+                                +{followers.length - 5} más
+                            </span>
+                        )}
+                    </div>
+                )}
+            </div>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
                 {/* Left Column: Logo & Main Info */}
@@ -1371,7 +1417,7 @@ export default function RestaurantProfile() {
                                 <div className="flex items-center gap-3">
                                     <div className={`w-12 h-12 rounded-xl flex items-center justify-center transition-all ${hasCashea ? 'bg-yellow-400 shadow-lg shadow-yellow-400/30 ring-4 ring-yellow-500/10' : 'bg-white shadow-sm border border-slate-100'}`}>
                                         <img
-                                            src={casheaIcon || "https://xfialzrbbsdzzcjtefqo.supabase.co/storage/v1/object/public/store_assets/logo_cashea.png"}
+                                            src={casheaIcon || "https://xfialzrbbsdzzcjtefqo.supabase.co/storage/v1/object/public/branding/logos/OIP%20(4).webp"}
                                             className={`w-8 h-8 object-contain transition-all ${hasCashea ? 'scale-110' : ''}`}
                                             alt="Cashea"
                                         />
