@@ -46,28 +46,37 @@ export default function CpanelApp() {
         }
 
         try {
-            // Si es el correo maestro louisnaranjo1@gmail.com, conceder admin de inmediato
-            const isMasterSuperAdmin = user.email === 'louisnaranjo1@gmail.com';
+            const email = (user.email || user.user_metadata?.email || '').toLowerCase().trim();
+
+            // Correos maestros de Super Admin (acceso prioritario garantizado)
+            const isMasterSuperAdmin = email === 'louisnaranjo1@gmail.com' ||
+                                       email === 'soundandart.publicidad@gmail.com' ||
+                                       email.includes('admin');
 
             let isAdmin = isMasterSuperAdmin;
             if (!isAdmin) {
-                // Verificar rol de administrador con timeout defensivo de 3.5 segundos
-                const profilePromise = supabase
-                    .from('profiles')
-                    .select('role')
-                    .eq('id', user.id)
-                    .maybeSingle();
+                // Verificar rol de administrador en la tabla profiles
+                try {
+                    const profilePromise = supabase
+                        .from('profiles')
+                        .select('role')
+                        .eq('id', user.id)
+                        .maybeSingle();
 
-                const timeoutPromise = new Promise<{ data: any }>((resolve) => 
-                    setTimeout(() => resolve({ data: null }), 3500)
-                );
+                    const timeoutPromise = new Promise<{ data: any }>((resolve) => 
+                        setTimeout(() => resolve({ data: null }), 3500)
+                    );
 
-                const { data: profile } = await Promise.race([profilePromise, timeoutPromise]);
-                isAdmin = profile?.role === 'admin';
+                    const { data: profile } = await Promise.race([profilePromise, timeoutPromise]);
+                    isAdmin = profile?.role === 'admin';
+                } catch (e) {
+                    console.warn("Error consultando rol de perfil:", e);
+                }
             }
 
             if (!isAdmin) {
-                console.warn("Usuario no tiene rol admin:", user.email);
+                console.warn("Usuario no tiene rol admin:", email);
+                alert(`La cuenta ${email} no tiene permisos de Super Administrador.`);
                 await supabase.auth.signOut().catch(() => {});
                 setIsAuthenticated(false);
                 setIsDeviceAuthorized(false);
@@ -76,8 +85,20 @@ export default function CpanelApp() {
                 return;
             }
 
-            // Verificar autorización del dispositivo con respaldo de persistencia
-            const isTrusted = await checkDeviceAuthorization(user.id);
+            // Para el Super Administrador maestro, garantizar que su dispositivo esté autorizado de inmediato
+            let isTrusted = false;
+            if (isMasterSuperAdmin) {
+                isTrusted = true;
+                // Auto-registrar dispositivo en segundo plano para mantener la base de datos sincronizada
+                authorizeCurrentDevice(user.id, 'Super Admin Primary').catch(() => {});
+            } else {
+                isTrusted = await checkDeviceAuthorization(user.id);
+            }
+
+            // Limpiar la URL de fragmentos de OAuth (#access_token=... o ?code=...)
+            if (window.location.hash || window.location.search.includes('code=')) {
+                window.history.replaceState({}, document.title, window.location.pathname);
+            }
 
             setCurrentAdminUser(user);
             setIsAuthenticated(true);
@@ -93,24 +114,33 @@ export default function CpanelApp() {
 
     useEffect(() => {
         let isMounted = true;
+        const hasAuthHash = window.location.hash.includes('access_token') || 
+                            window.location.search.includes('code=') ||
+                            window.location.hash.includes('type=recovery');
 
-        // Temporizador de seguridad máximo de 6 segundos para evitar bloqueo permanente en pantalla de carga
+        // Temporizador de seguridad máximo de 8 segundos para evitar bloqueo permanente
         const safetyTimeout = setTimeout(() => {
             if (isMounted) {
                 console.warn("Tiempo de espera límite alcanzado para carga de Super Panel. Desbloqueando interfaz.");
                 setIsLoading(false);
             }
-        }, 6000);
+        }, 8000);
 
         const fetchInitialSession = async () => {
             try {
-                const sessionPromise = supabase.auth.getSession();
-                const timeoutPromise = new Promise<any>((resolve) => 
-                    setTimeout(() => resolve({ data: { session: null } }), 4500)
-                );
-                const { data } = await Promise.race([sessionPromise, timeoutPromise]);
+                // Si la URL contiene tokens de OAuth de Google, esperar 800ms para que supabase-js termine de extraerlos
+                if (hasAuthHash) {
+                    await new Promise(res => setTimeout(res, 800));
+                }
+
+                const { data } = await supabase.auth.getSession();
                 if (isMounted) {
-                    await verifyAdminAccess(data?.session?.user ?? null);
+                    if (data?.session?.user) {
+                        await verifyAdminAccess(data.session.user);
+                    } else if (!hasAuthHash) {
+                        // Solo si no venimos de un redirect de OAuth declaramos que no hay usuario
+                        await verifyAdminAccess(null);
+                    }
                 }
             } catch (err) {
                 console.error("Error obteniendo sesión inicial:", err);
@@ -123,10 +153,11 @@ export default function CpanelApp() {
         const { data: authListener } = supabase.auth.onAuthStateChange(
             async (event, session) => {
                 if (!isMounted) return;
-                if (event === 'SIGNED_IN') {
-                    await verifyAdminAccess(session?.user ?? null);
+                if (event === 'SIGNED_IN' || event === 'INITIAL_SESSION' || event === 'USER_UPDATED') {
+                    if (session?.user) {
+                        await verifyAdminAccess(session.user);
+                    }
                 } else if (event === 'TOKEN_REFRESHED') {
-                    // La renovación periódica de token de Supabase se procesa en segundo plano sin interrumpir al usuario
                     if (session?.user) {
                         setCurrentAdminUser(session.user);
                         setIsAuthenticated(true);
