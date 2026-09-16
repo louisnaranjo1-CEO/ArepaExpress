@@ -23,6 +23,7 @@ import { Browser } from '@capacitor/browser';
 import { Capacitor } from '@capacitor/core';
 import { supabase } from './lib/supabase';
 import toast from 'react-hot-toast';
+import WhatsAppPurchaseConfirmationModal from './components/WhatsAppPurchaseConfirmationModal';
 
 function RedirectHandler({ children }: { children: React.ReactNode }) {
     const { user, userData } = useAuth();
@@ -112,6 +113,7 @@ function AppContent() {
                     </Routes>
                 </div>
                 {!isTrackRoute && <BottomNav />}
+                <WhatsAppPurchaseConfirmationModal />
             </div>
         </div>
     );

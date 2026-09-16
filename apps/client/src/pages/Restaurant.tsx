@@ -474,15 +474,55 @@ export default function RestaurantPage() {
     }
   };
 
-  const openWhatsApp = () => {
+  const openWhatsApp = async (productDetails?: { name: string; price?: number }) => {
     if (isDemoMode()) {
         setShowDemoAlert(true);
         return;
     }
-    if (restaurant.whatsapp) {
-      const number = restaurant.whatsapp.replace(/\D/g, '');
-      window.open(`https://wa.me/${number}?text=Hola, vengo de Deli Express y me gustaría hacer un pedido.`, '_blank');
+    if (!restaurant?.whatsapp) return;
+
+    const orderId = (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : `wa_${Date.now()}`;
+    const timestamp = Date.now();
+
+    const pendingOrderData = {
+      orderId,
+      restaurantId: id,
+      restaurantName: restaurant.name || 'Comercio',
+      restaurantLogo: restaurant.logoUrl || restaurant.image || '',
+      timestamp,
+      productName: productDetails?.name || null,
+      estimatedPrice: productDetails?.price || null
+    };
+
+    localStorage.setItem('deliexpress_pending_whatsapp_order', JSON.stringify(pendingOrderData));
+    window.dispatchEvent(new Event('deliexpress_whatsapp_order_created'));
+
+    // Registrar pedido inicial en estado whatsapp_contacted
+    try {
+      await supabase.from('orders').insert({
+        id: orderId,
+        restaurant_id: id,
+        restaurant_name: restaurant.name || 'Comercio',
+        user_id: user?.id || (user as any)?.uid || null,
+        user_name: user?.displayName || (user as any)?.name || 'Cliente WhatsApp',
+        total: productDetails?.price || 0,
+        subtotal: productDetails?.price || 0,
+        status: 'whatsapp_contacted',
+        whatsapp_order: true,
+        payment_method: 'whatsapp',
+        payment_status: 'pending',
+        created_at: new Date().toISOString()
+      });
+    } catch (e) {
+      console.warn("Could not pre-insert order in Supabase:", e);
     }
+
+    const number = restaurant.whatsapp.replace(/\D/g, '');
+    let text = 'Hola, vengo de Deli Express y me gustaría hacer un pedido.';
+    if (productDetails?.name) {
+      text = `Hola, vengo de Deli Express y me gustaría consultar / pedir: *${productDetails.name}*${productDetails.price ? ` ($${productDetails.price.toFixed(2)})` : ''}. ¿Está disponible?`;
+    }
+    window.open(`https://wa.me/${number}?text=${encodeURIComponent(text)}`, '_blank');
   };
 
   const getRestaurantStatus = () => {
@@ -1497,24 +1537,46 @@ export default function RestaurantPage() {
               {/* Footer / Add to Cart / Reserve */}
               <div className="absolute bottom-0 left-0 w-full p-8 bg-white/80 backdrop-blur-md border-t border-slate-100">
                 <button
-                  disabled={!isFormValid()}
+                  disabled={!isFormValid() && !selectedProduct.consultPrice}
                   onClick={() => {
+                    if (selectedProduct.consultPrice) {
+                      openWhatsApp({ name: selectedProduct.name, price: selectedProduct.promoPrice || selectedProduct.price });
+                      setSelectedProduct(null);
+                      setSelectedVariant(null);
+                      setSelectedModifiers({});
+                      return;
+                    }
                     handleAddToCart(selectedProduct, selectedVariant, selectedModifiers);
                     setSelectedProduct(null);
                     setSelectedVariant(null);
                     setSelectedModifiers({});
                   }}
                   className={`w-full py-4 rounded-3xl font-black text-base shadow-2xl flex items-center justify-center gap-3 transition-all ${
-                    !isFormValid()
+                    !isFormValid() && !selectedProduct.consultPrice
                       ? 'bg-slate-200 text-slate-400 cursor-not-allowed shadow-none'
                       : 'bg-primary text-black shadow-primary/30 hover:scale-[1.02] active:scale-[0.98]'
                   }`}
                 >
-                  {restaurant.businessType === 'hotel' ? <CheckCircle className="w-5 h-5" /> : <Plus className="w-5 h-5" />}
-                  {!isFormValid() 
+                  {restaurant.businessType === 'hotel' ? <CheckCircle className="w-5 h-5" /> : (selectedProduct.consultPrice ? <MessageSquare className="w-5 h-5" /> : <Plus className="w-5 h-5" />)}
+                  {!isFormValid() && !selectedProduct.consultPrice
                     ? 'Completa los campos' 
-                    : (selectedProduct.consultPrice ? 'Consultar Disponibilidad' : (restaurant.businessType === 'hotel' ? 'Reservar' : 'Añadir'))}
+                    : (selectedProduct.consultPrice ? 'Consultar por WhatsApp' : (restaurant.businessType === 'hotel' ? 'Reservar' : 'Añadir al Carrito'))}
                 </button>
+                {restaurant.whatsapp && !selectedProduct.consultPrice && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      openWhatsApp({ name: selectedProduct.name, price: selectedProduct.promoPrice || selectedProduct.price });
+                      setSelectedProduct(null);
+                      setSelectedVariant(null);
+                      setSelectedModifiers({});
+                    }}
+                    className="w-full mt-2.5 py-3 rounded-2xl font-bold text-xs bg-green-50 hover:bg-green-100 text-green-700 border border-green-200 flex items-center justify-center gap-2 transition-all"
+                  >
+                    <MessageSquare className="w-4 h-4 text-green-600" />
+                    Comprar directo por WhatsApp
+                  </button>
+                )}
               </div>
             </motion.div>
           </div>

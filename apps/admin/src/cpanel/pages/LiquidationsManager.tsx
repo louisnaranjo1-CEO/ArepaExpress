@@ -23,7 +23,8 @@ export default function LiquidationsManager() {
             if (data) {
                 setRestaurants(data.map(r => ({
                     ...r,
-                    deuda_delivery_acumulada: r.deuda_delivery_acumulada || 0
+                    deuda_delivery_acumulada: r.deuda_delivery_acumulada || 0,
+                    deuda_comisiones_acumulada: r.deuda_comisiones_acumulada || 0
                 })));
             }
         };
@@ -114,10 +115,37 @@ export default function LiquidationsManager() {
                 description: 'Deuda por repartos cobrados en local saldada.'
             }]);
 
-            toast.success("Deuda saldada correctamente");
+            toast.success("Deuda de repartos saldada correctamente");
         } catch (error) {
             console.error("Error clearing delivery debt:", error);
             toast.error("Error al saldar la deuda");
+        }
+    };
+
+    const handleClearCommissionDebt = async (restaurantId: string, currentDebt: number, restaurantName: string) => {
+        const bsAmount = currentDebt * bcvRate;
+        if (!window.confirm(`¿Confirmas que la tienda ${restaurantName} ha pagado su comisión de ventas WhatsApp de $${currentDebt.toFixed(2)} (${bsAmount.toFixed(2)} Bs)?`)) return;
+
+        try {
+            await supabase.from('comercios').update({
+                deuda_comisiones_acumulada: 0
+            }).eq('id', restaurantId);
+
+            await supabase.from('payouts_history').insert([{
+                target_id: restaurantId,
+                target_name: restaurantName,
+                target_type: 'restaurant',
+                amount_paid: currentDebt,
+                paid_at: new Date().toISOString(),
+                type: 'commission_cleared',
+                description: 'Comisiones de ventas por WhatsApp saldadas.'
+            }]);
+
+            toast.success("Comisiones de WhatsApp saldadas correctamente");
+            setRestaurants(prev => prev.map(r => r.id === restaurantId ? { ...r, deuda_comisiones_acumulada: 0 } : r));
+        } catch (error) {
+            console.error("Error clearing commission debt:", error);
+            toast.error("Error al saldar la comisión");
         }
     };
 
@@ -168,7 +196,7 @@ export default function LiquidationsManager() {
     };
 
     const filteredRestaurants = restaurants.filter(r => 
-        (r.deuda_delivery_acumulada || 0) > 0 &&
+        ((r.deuda_delivery_acumulada || 0) > 0 || (r.deuda_comisiones_acumulada || 0) > 0) &&
         r.name?.toLowerCase().includes(searchTerm.toLowerCase())
     );
 
@@ -193,7 +221,7 @@ export default function LiquidationsManager() {
                         <DollarSign className="w-8 h-8 text-primary" />
                         Módulo de Liquidaciones
                     </h1>
-                    <p className="text-slate-500 font-medium">Gestiona deudas de restaurantes y pagos a pilotos.</p>
+                    <p className="text-slate-500 font-medium">Gestiona comisiones y deudas de tiendas, así como pagos a pilotos.</p>
                 </div>
             </div>
 
@@ -206,7 +234,7 @@ export default function LiquidationsManager() {
                     }`}
                 >
                     <TrendingUp className="w-5 h-5" />
-                    Deuda Restaurantes
+                    Deudas y Comisiones Tiendas
                 </button>
                 <button
                     onClick={() => setActiveTab('drivers')}
@@ -234,7 +262,7 @@ export default function LiquidationsManager() {
                     <Search className="w-5 h-5 text-slate-400 absolute left-4 top-1/2 -translate-y-1/2" />
                     <input
                         type="text"
-                        placeholder={`Buscar ${activeTab === 'restaurants' ? 'restaurante' : 'piloto'}...`}
+                        placeholder={`Buscar ${activeTab === 'restaurants' ? 'tienda / comercio' : 'piloto'}...`}
                         value={searchTerm}
                         onChange={(e) => setSearchTerm(e.target.value)}
                         className="w-full pl-12 pr-4 py-3 bg-white border border-slate-200 rounded-xl outline-none focus:border-primary/50"
@@ -248,31 +276,65 @@ export default function LiquidationsManager() {
                     {filteredRestaurants.length === 0 ? (
                         <div className="text-center py-12 bg-white rounded-3xl border border-slate-200">
                             <CheckCircle className="w-12 h-12 text-green-500 mx-auto mb-3" />
-                            <h3 className="font-bold text-slate-900">Sin deudas pendientes</h3>
-                            <p className="text-slate-500 text-sm">Todos los restaurantes están al día.</p>
+                            <h3 className="font-bold text-slate-900">Sin deudas ni comisiones pendientes</h3>
+                            <p className="text-slate-500 text-sm">Todas las tiendas están al día.</p>
                         </div>
                     ) : (
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                            {filteredRestaurants.map(rest => (
-                                <div key={rest.id} className="bg-white rounded-3xl border border-red-100 p-6 shadow-sm relative overflow-hidden">
-                                    <div className="absolute top-0 right-0 w-2 h-full bg-red-500"></div>
-                                    <h3 className="font-bold text-slate-900 text-lg">{rest.name}</h3>
-                                    <p className="text-sm font-medium text-slate-500 mb-4">{rest.address || 'Sin dirección'}</p>
-                                    
-                                    <div className="p-4 bg-red-50 text-red-900 rounded-2xl mb-4">
-                                        <p className="text-xs uppercase font-bold tracking-wider opacity-75">Deuda Acumulada</p>
-                                        <DualPrice usdAmount={rest.deuda_delivery_acumulada || 0} usdClassName="text-3xl font-black" showDivider={false} className="flex flex-col" />
-                                        <p className="text-xs mt-1 leading-tight opacity-80">Por pedidos pagados en el local usando motorizados de la plataforma.</p>
+                            {filteredRestaurants.map(rest => {
+                                const deliveryDebt = rest.deuda_delivery_acumulada || 0;
+                                const commissionDebt = rest.deuda_comisiones_acumulada || 0;
+                                const totalDebt = deliveryDebt + commissionDebt;
+
+                                return (
+                                    <div key={rest.id} className="bg-white rounded-3xl border border-red-100 p-6 shadow-sm relative overflow-hidden flex flex-col justify-between">
+                                        <div className="absolute top-0 right-0 w-2 h-full bg-red-500"></div>
+                                        <div>
+                                            <h3 className="font-bold text-slate-900 text-lg">{rest.name}</h3>
+                                            <p className="text-sm font-medium text-slate-500 mb-4">{rest.address || 'Sin dirección'}</p>
+                                            
+                                            {/* Total Debt */}
+                                            <div className="p-4 bg-red-50 text-red-900 rounded-2xl mb-4">
+                                                <p className="text-[10px] uppercase font-black tracking-wider opacity-75">Deuda Total Acumulada</p>
+                                                <DualPrice usdAmount={totalDebt} usdClassName="text-3xl font-black text-red-900" showDivider={false} className="flex flex-col" />
+                                            </div>
+
+                                            {/* Breakdown */}
+                                            <div className="space-y-2 mb-5">
+                                                {commissionDebt > 0 && (
+                                                    <div className="p-3 bg-amber-50 rounded-xl border border-amber-100 flex items-center justify-between">
+                                                        <div>
+                                                            <p className="text-[10px] font-black uppercase text-amber-800">Comisión Ventas WhatsApp</p>
+                                                            <DualPrice usdAmount={commissionDebt} usdClassName="text-sm font-bold text-amber-900" showDivider={false} />
+                                                        </div>
+                                                        <button
+                                                            onClick={() => handleClearCommissionDebt(rest.id, commissionDebt, rest.name)}
+                                                            className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold rounded-lg transition-colors"
+                                                        >
+                                                            Saldar
+                                                        </button>
+                                                    </div>
+                                                )}
+
+                                                {deliveryDebt > 0 && (
+                                                    <div className="p-3 bg-slate-50 rounded-xl border border-slate-100 flex items-center justify-between">
+                                                        <div>
+                                                            <p className="text-[10px] font-black uppercase text-slate-500">Repartos Locales</p>
+                                                            <DualPrice usdAmount={deliveryDebt} usdClassName="text-sm font-bold text-slate-800" showDivider={false} />
+                                                        </div>
+                                                        <button
+                                                            onClick={() => handleClearDeliveryDebt(rest.id, deliveryDebt, rest.name)}
+                                                            className="px-3 py-1.5 bg-slate-800 hover:bg-slate-900 text-white text-xs font-bold rounded-lg transition-colors"
+                                                        >
+                                                            Saldar
+                                                        </button>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
                                     </div>
-                                    
-                                    <button 
-                                        onClick={() => handleClearDeliveryDebt(rest.id, rest.deuda_delivery_acumulada, rest.name)}
-                                        className="w-full py-3 bg-slate-900 text-white rounded-xl font-bold hover:bg-slate-800 transition-colors"
-                                    >
-                                        Saldar Deuda
-                                    </button>
-                                </div>
-                            ))}
+                                );
+                            })}
                         </div>
                     )}
                 </div>

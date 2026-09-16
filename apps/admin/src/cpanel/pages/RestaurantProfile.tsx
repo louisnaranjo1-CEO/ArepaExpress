@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import { GLOBAL_CATEGORIES, CATEGORY_SECTORS } from '../../lib/constants';
 import RestaurantRewardsManager from '../components/RestaurantRewardsManager';
+import RestaurantProductsManager from '../components/RestaurantProductsManager';
 import DualPrice from '../../components/DualPrice';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -590,13 +591,19 @@ export default function RestaurantProfile() {
                         </div>
                     )}
 
+                    {activeTab === 'products' && (
+                        <div className="animate-in fade-in slide-in-from-bottom-2 duration-500">
+                            <RestaurantProductsManager restaurantId={id!} restaurantName={restaurant?.name || 'Tienda'} />
+                        </div>
+                    )}
+
                     {activeTab === 'rewards' && (
                         <div className="animate-in fade-in slide-in-from-bottom-2 duration-500">
                             <RestaurantRewardsManager restaurantId={id!} />
                         </div>
                     )}
 
-                    {activeTab !== 'overview' && activeTab !== 'rewards' && (
+                    {activeTab !== 'overview' && activeTab !== 'rewards' && activeTab !== 'products' && (
                         <div className="bg-white rounded-[40px] border border-slate-100 p-20 text-center animate-in fade-in zoom-in-95 duration-300 shadow-sm">
                             <div className="w-20 h-20 bg-slate-50 rounded-[32px] flex items-center justify-center mx-auto mb-6">
                                 <Box className="w-10 h-10 text-slate-200" />
