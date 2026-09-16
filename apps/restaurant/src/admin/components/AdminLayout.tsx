@@ -118,7 +118,7 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
         fetchSupport();
 
         // Listen for new orders via Supabase Realtime
-        const channel = supabase.channel(`admin-layout-orders:${currentUid}`)
+        const ordersChannel = supabase.channel(`admin-layout-orders:${currentUid}`)
             .on(
                 'postgres_changes',
                 {
@@ -132,6 +132,7 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
                     if (data.status === 'pending' || data.status === 'confirmed') {
                         const newNotification = {
                             id: data.id,
+                            type: 'order',
                             title: '¡Nuevo Pedido!',
                             message: `Has recibido un nuevo pedido de ${data.user_name || 'Cliente'} por $${Number(data.total || 0).toFixed(2)}`,
                             createdAt: Date.now(),
@@ -147,9 +148,39 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
             )
             .subscribe();
 
+        // Listen for general notifications (new followers, reviews, etc.)
+        const notifsChannel = supabase.channel(`admin-layout-notifs:${currentUid}`)
+            .on(
+                'postgres_changes',
+                {
+                    event: 'INSERT',
+                    schema: 'public',
+                    table: 'notifications',
+                    filter: `restaurant_id=eq.${currentUid}`
+                },
+                (payload) => {
+                    const data = payload.new as any;
+                    const newNotification = {
+                        id: data.id || `notif_${Date.now()}`,
+                        type: data.type || 'general',
+                        title: data.title || 'Notificación del negocio',
+                        message: data.message || data.body || '',
+                        createdAt: Date.now(),
+                    };
+
+                    setNotifications(prev => [...prev, newNotification]);
+
+                    setTimeout(() => {
+                        setNotifications(prev => prev.filter(n => n.id !== newNotification.id));
+                    }, 8000);
+                }
+            )
+            .subscribe();
+
         return () => {
             isMounted = false;
-            supabase.removeChannel(channel);
+            supabase.removeChannel(ordersChannel);
+            supabase.removeChannel(notifsChannel);
         };
     }, [user, currentUid]);
 
@@ -556,7 +587,13 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
                     {notifications.map(notification => (
                         <div key={notification.id} className="bg-white rounded-2xl shadow-2xl border border-primary/20 p-4 w-80 animate-in slide-in-from-right-8 fade-in pointer-events-auto flex gap-3 items-start">
                             <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
-                                <ClipboardList className="w-5 h-5 text-slate-900" />
+                                {notification.type === 'new_follower' ? (
+                                    <UserCheck className="w-5 h-5 text-primary" />
+                                ) : notification.type === 'new_review' ? (
+                                    <Star className="w-5 h-5 text-amber-500 fill-amber-500" />
+                                ) : (
+                                    <ClipboardList className="w-5 h-5 text-slate-900" />
+                                )}
                             </div>
                             <div className="flex-1 min-w-0">
                                 <h4 className="font-black text-slate-900 text-sm">{notification.title}</h4>

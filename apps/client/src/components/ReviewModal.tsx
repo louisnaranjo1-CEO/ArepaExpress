@@ -140,6 +140,23 @@ export default function ReviewModal({ isOpen, onClose, restaurantId, orderId, on
             
             await supabase.from('orders').update(updateData).eq('id', orderId);
 
+            // Notify business in real time about the new review
+            try {
+                const reviewerName = userData?.displayName || 'Un cliente';
+                await supabase.from('notifications').insert({
+                    restaurant_id: restaurantId,
+                    user_id: user.id,
+                    type: 'new_review',
+                    title: `¡Nueva reseña (${rating}★)!`,
+                    message: `${reviewerName} ha valorado tu negocio con ${rating} estrellas: "${comment.slice(0, 80)}${comment.length > 80 ? '...' : ''}"`,
+                    body: `${reviewerName} ha valorado tu negocio con ${rating} estrellas: "${comment.slice(0, 80)}${comment.length > 80 ? '...' : ''}"`,
+                    read: false,
+                    created_at: new Date().toISOString()
+                });
+            } catch (notifErr) {
+                console.warn("Could not insert review notification:", notifErr);
+            }
+
             toast.success("¡Reseña enviada con éxito!");
             onReviewSubmitted();
         } catch (err: any) {
