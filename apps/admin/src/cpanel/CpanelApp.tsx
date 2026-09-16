@@ -52,10 +52,9 @@ export default function CpanelApp() {
         try {
             const email = (user.email || user.user_metadata?.email || '').toLowerCase().trim();
 
-            // Correos maestros de Super Admin (acceso prioritario garantizado)
+            // Correos maestros de Super Admin (exclusivamente los 2 autorizados)
             const isMasterSuperAdmin = email === 'louisnaranjo1@gmail.com' ||
-                                       email === 'soundandart.publicidad@gmail.com' ||
-                                       email.includes('admin');
+                                       email === 'soundandart.publicidad@gmail.com';
 
             let isAdmin = isMasterSuperAdmin;
             if (!isAdmin) {

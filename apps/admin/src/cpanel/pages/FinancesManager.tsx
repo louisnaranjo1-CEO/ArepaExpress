@@ -386,7 +386,7 @@ export default function FinancesManager() {
                 <button
                     onClick={() => setActiveTab('payments')}
                     className={`flex items-center gap-2 px-6 py-2.5 rounded-xl text-sm font-black transition-all ${activeTab === 'payments'
-                        ? 'bg-white text-primary shadow-sm'
+                        ? 'bg-white text-slate-900 shadow-sm'
                         : 'text-slate-500 hover:text-slate-700'
                         }`}
                 >
@@ -396,7 +396,7 @@ export default function FinancesManager() {
                 <button
                     onClick={() => setActiveTab('subscriptions')}
                     className={`flex items-center gap-2 px-6 py-2.5 rounded-xl text-sm font-black transition-all ${activeTab === 'subscriptions'
-                        ? 'bg-white text-primary shadow-sm'
+                        ? 'bg-white text-slate-900 shadow-sm'
                         : 'text-slate-500 hover:text-slate-700'
                         }`}
                 >
@@ -406,7 +406,7 @@ export default function FinancesManager() {
                 <button
                     onClick={() => setActiveTab('banners')}
                     className={`flex items-center gap-2 px-6 py-2.5 rounded-xl text-sm font-black transition-all ${activeTab === 'banners'
-                        ? 'bg-white text-primary shadow-sm'
+                        ? 'bg-white text-slate-900 shadow-sm'
                         : 'text-slate-500 hover:text-slate-700'
                         }`}
                 >

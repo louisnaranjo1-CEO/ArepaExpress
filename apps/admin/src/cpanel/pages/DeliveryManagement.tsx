@@ -518,7 +518,7 @@ _Enviado desde Deliexpress App_`
                     <button
                         key={tab}
                         onClick={() => setActiveTab(tab)}
-                        className={`relative px-6 py-2.5 rounded-xl font-bold text-sm transition-all z-10 whitespace-nowrap ${activeTab === tab ? 'text-primary' : 'text-slate-500 hover:text-slate-700'
+                        className={`relative px-6 py-2.5 rounded-xl font-black text-sm transition-all z-10 whitespace-nowrap ${activeTab === tab ? 'text-slate-900' : 'text-slate-500 hover:text-slate-700'
                             }`}
                     >
                         {activeTab === tab && (
@@ -885,7 +885,7 @@ _Enviado desde Deliexpress App_`
                                             )}
                                             <button
                                                 onClick={() => handleOpenFinanceModal(driver)}
-                                                className="text-primary text-xs font-bold hover:underline opacity-0 group-hover:opacity-100 transition-opacity"
+                                                className="text-slate-700 hover:text-slate-900 text-xs font-bold hover:underline opacity-0 group-hover:opacity-100 transition-opacity"
                                             >
                                                 Finanzas
                                             </button>

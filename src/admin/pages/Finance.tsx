@@ -227,12 +227,12 @@ export default function Finance() {
                 </div>
 
                 <div className="bg-primary text-slate-900 rounded-[35px] p-8 shadow-xl shadow-primary/20 relative overflow-hidden">
-                    <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-bl-[100px] -z-10"></div>
-                    <div className="w-14 h-14 bg-white/20 text-white rounded-2xl flex items-center justify-center mb-6 backdrop-blur-sm">
+                    <div className="absolute top-0 right-0 w-32 h-32 bg-black/5 rounded-bl-[100px] -z-10"></div>
+                    <div className="w-14 h-14 bg-black/10 text-slate-900 rounded-2xl flex items-center justify-center mb-6 backdrop-blur-sm">
                         <DollarSign className="w-7 h-7" />
                     </div>
-                    <p className="text-white/80 font-bold uppercase tracking-wider text-sm mb-1">Ganancia Neta Hoy</p>
-                    <h2 className="text-4xl font-black text-white">${netProfit.toFixed(2)}</h2>
+                    <p className="text-slate-800/80 font-bold uppercase tracking-wider text-sm mb-1">Ganancia Neta Hoy</p>
+                    <h2 className="text-4xl font-black text-slate-900">${netProfit.toFixed(2)}</h2>
                 </div>
             </div>
 

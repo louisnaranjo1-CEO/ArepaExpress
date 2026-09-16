@@ -1,6 +1,6 @@
-import React, { useState, useCallback, useEffect } from 'react';
-import { GoogleMap, useJsApiLoader, Marker } from '@react-google-maps/api';
-import { X, MapPin, Navigation, Check } from 'lucide-react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
+import { GoogleMap, useJsApiLoader, Marker, Autocomplete } from '@react-google-maps/api';
+import { X, MapPin, Navigation, Check, Search, Loader2 } from 'lucide-react';
 import { GOOGLE_MAPS_API_KEY, GOOGLE_MAPS_LIBRARIES } from '../lib/mapsConfig';
 import { googleMapsDarkStyles } from '../lib/weather';
 import { Geolocation } from '@capacitor/geolocation';
@@ -23,7 +23,7 @@ const mapOptions: google.maps.MapOptions = {
     streetViewControl: false,
     mapTypeControl: false,
     fullscreenControl: false,
-    clickableIcons: false,
+    clickableIcons: true,
     styles: googleMapsDarkStyles
 };
 
@@ -43,8 +43,11 @@ export default function AddressPicker({ onClose, onSave, initialData }: AddressP
     const [position, setPosition] = useState(initialData ? { lat: initialData.lat, lng: initialData.lng } : defaultCenter);
     const [userLocation, setUserLocation] = useState<google.maps.LatLngLiteral | null>(null);
     const [reference, setReference] = useState(initialData?.reference || '');
-    const [name, setName] = useState(initialData?.name || 'Casa');
+    const [name, setName] = useState(initialData?.name || '');
     const [map, setMap] = useState<google.maps.Map | null>(null);
+    const [isLocating, setIsLocating] = useState(false);
+    const [searchQuery, setSearchQuery] = useState('');
+    const autocompleteRef = useRef<google.maps.places.Autocomplete | null>(null);
 
     const onLoad = useCallback(function callback(map: google.maps.Map) {
         setMap(map);
@@ -54,43 +57,54 @@ export default function AddressPicker({ onClose, onSave, initialData }: AddressP
         setMap(null);
     }, []);
 
+    const handleCurrentLocation = useCallback(async () => {
+        setIsLocating(true);
+        let coords: { lat: number; lng: number } | null = null;
+
+        if (Capacitor.isNativePlatform()) {
+            try {
+                const perm = await Geolocation.requestPermissions();
+                if (perm.location === 'granted') {
+                    const pos = await Geolocation.getCurrentPosition({ enableHighAccuracy: true, timeout: 15000, maximumAge: 0 });
+                    coords = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+                }
+            } catch (e) {
+                console.warn("Native geolocation error in AddressPicker:", e);
+            }
+        }
+
+        if (!coords && navigator.geolocation) {
+            try {
+                coords = await new Promise<{ lat: number; lng: number } | null>((res) => {
+                    navigator.geolocation.getCurrentPosition(
+                        (p) => res({ lat: p.coords.latitude, lng: p.coords.longitude }),
+                        () => res(null),
+                        { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+                    );
+                });
+            } catch (e) {
+                console.warn("Web geolocation error in AddressPicker:", e);
+            }
+        }
+
+        if (coords) {
+            setPosition(coords);
+            setUserLocation(coords);
+            if (map) {
+                map.panTo(coords);
+                map.setZoom(17);
+            }
+        } else {
+            alert("No se pudo obtener tu ubicación precisa. Por favor verifica que los permisos de GPS estén habilitados.");
+        }
+        setIsLocating(false);
+    }, [map]);
+
     useEffect(() => {
         let isMounted = true;
-        const fetchInitialPos = async () => {
-            if (initialData) return;
-            let coords: { lat: number; lng: number } | null = null;
-            if (Capacitor.isNativePlatform()) {
-                try {
-                    const perm = await Geolocation.requestPermissions();
-                    if (perm.location === 'granted') {
-                        const pos = await Geolocation.getCurrentPosition({ enableHighAccuracy: true, timeout: 10000 });
-                        coords = { lat: pos.coords.latitude, lng: pos.coords.longitude };
-                    }
-                } catch (e) {
-                    console.warn("Native geolocation error in AddressPicker:", e);
-                }
-            }
-            if (!coords && navigator.geolocation) {
-                try {
-                    coords = await new Promise<{ lat: number; lng: number } | null>((res) => {
-                        navigator.geolocation.getCurrentPosition(
-                            (p) => res({ lat: p.coords.latitude, lng: p.coords.longitude }),
-                            () => res(null),
-                            { enableHighAccuracy: true, timeout: 8000 }
-                        );
-                    });
-                } catch (e) {
-                    console.warn("Web geolocation error in AddressPicker:", e);
-                }
-            }
-            if (isMounted && coords) {
-                setPosition(coords);
-                setUserLocation(coords);
-                if (map) map.panTo(coords);
-            }
-        };
-
-        fetchInitialPos();
+        if (!initialData) {
+            handleCurrentLocation();
+        }
 
         // Real-time location tracking (Blue Dot)
         let watchId: number;
@@ -105,7 +119,7 @@ export default function AddressPicker({ onClose, onSave, initialData }: AddressP
                     }
                 },
                 (err) => console.warn("Error watching location:", err),
-                { enableHighAccuracy: true }
+                { enableHighAccuracy: true, maximumAge: 1000 }
             );
         }
 
@@ -113,7 +127,30 @@ export default function AddressPicker({ onClose, onSave, initialData }: AddressP
             isMounted = false;
             if (watchId) navigator.geolocation.clearWatch(watchId);
         };
-    }, [map, initialData]);
+    }, [handleCurrentLocation, initialData]);
+
+    const handlePlaceChanged = () => {
+        if (autocompleteRef.current !== null) {
+            const place = autocompleteRef.current.getPlace();
+            if (place.geometry && place.geometry.location) {
+                const newPos = {
+                    lat: place.geometry.location.lat(),
+                    lng: place.geometry.location.lng()
+                };
+                setPosition(newPos);
+                if (map) {
+                    map.panTo(newPos);
+                    map.setZoom(17);
+                }
+                if (place.name) {
+                    setName(place.name);
+                }
+                if (place.formatted_address) {
+                    setReference(prev => prev ? prev : place.formatted_address || '');
+                }
+            }
+        }
+    };
 
     const onClick = (e: google.maps.MapMouseEvent) => {
         if (e.latLng) {
@@ -153,6 +190,38 @@ export default function AddressPicker({ onClose, onSave, initialData }: AddressP
                         <X className="w-5 h-5" />
                     </button>
                 </div>
+
+                {/* Search Bar / Buscador de Negocio o Lugar */}
+                {isLoaded && (
+                    <div className="px-6 py-2">
+                        <div className="relative">
+                            <Autocomplete
+                                onLoad={(auto) => { autocompleteRef.current = auto; }}
+                                onPlaceChanged={handlePlaceChanged}
+                            >
+                                <div className="relative flex items-center">
+                                    <input
+                                        type="text"
+                                        value={searchQuery}
+                                        onChange={(e) => setSearchQuery(e.target.value)}
+                                        placeholder="Buscar negocio, restaurante, local o dirección..."
+                                        className="w-full bg-slate-50 border-2 border-slate-200 focus:border-primary focus:bg-white pl-11 pr-4 py-3 rounded-2xl outline-none font-bold text-slate-800 text-sm shadow-xs transition-all placeholder:text-slate-400"
+                                    />
+                                    <Search className="w-5 h-5 text-slate-400 absolute left-3.5 pointer-events-none" />
+                                    {searchQuery && (
+                                        <button
+                                            type="button"
+                                            onClick={() => setSearchQuery('')}
+                                            className="absolute right-3 text-slate-400 hover:text-slate-600 p-1"
+                                        >
+                                            <X className="w-4 h-4" />
+                                        </button>
+                                    )}
+                                </div>
+                            </Autocomplete>
+                        </div>
+                    </div>
+                )}
 
                 {/* Map Container */}
                 <div className="relative">
@@ -201,30 +270,31 @@ export default function AddressPicker({ onClose, onSave, initialData }: AddressP
 
                     {/* Real-time locate button */}
                     <button
-                        onClick={() => {
-                            if (navigator.geolocation) {
-                                navigator.geolocation.getCurrentPosition((pos) => {
-                                    const newPos = { lat: pos.coords.latitude, lng: pos.coords.longitude };
-                                    setPosition(newPos);
-                                    if (map) map.panTo(newPos);
-                                });
-                            }
-                        }}
-                        className="absolute bottom-6 right-6 bg-white rounded-2xl shadow-xl flex items-center gap-2 text-slate-900 border border-slate-100 active:scale-95 transition-all p-3 group"
+                        type="button"
+                        onClick={handleCurrentLocation}
+                        disabled={isLocating}
+                        className="absolute bottom-6 right-6 bg-white/95 backdrop-blur-md rounded-2xl shadow-xl flex items-center gap-2 text-slate-900 border border-slate-200 active:scale-95 transition-all p-3.5 group cursor-pointer disabled:opacity-70"
+                        title="Obtener ubicación en tiempo real con alta precisión"
                     >
-                        <Navigation className="w-5 h-5 fill-primary/20 group-hover:animate-pulse" />
-                        <span className="text-[10px] font-black uppercase tracking-widest pr-1">Ubicación en tiempo real</span>
+                        {isLocating ? (
+                            <Loader2 className="w-5 h-5 text-primary animate-spin" />
+                        ) : (
+                            <Navigation className="w-5 h-5 fill-primary text-primary group-hover:scale-110 transition-transform" />
+                        )}
+                        <span className="text-[10px] font-black uppercase tracking-widest pr-1">
+                            {isLocating ? "Obteniendo GPS..." : "Ubicación en tiempo real"}
+                        </span>
                     </button>
                 </div>
 
                 {/* Reference Input */}
                 <div className="p-6 space-y-4">
                     <div className="space-y-2">
-                        <label className="text-xs font-black text-slate-400 uppercase tracking-widest ml-1">Nombre (Ej. Casa)</label>
+                        <label className="text-xs font-black text-slate-400 uppercase tracking-widest ml-1">Nombre (Ej: Casa, Trabajo, Local)</label>
                         <div className="relative">
                             <input
                                 type="text"
-                                placeholder="Casa, Trabajo..."
+                                placeholder="Casa, Trabajo, Local..."
                                 value={name}
                                 onChange={(e) => setName(e.target.value)}
                                 className="w-full bg-slate-50 border-2 border-transparent focus:border-primary focus:bg-white p-4 rounded-2xl outline-none font-bold text-slate-700 transition-all"

@@ -6,7 +6,7 @@ import {
     ShoppingBag, Box, Users, TrendingUp, Calendar,
     ChevronRight, ExternalLink, Instagram, MessageSquare,
     DollarSign, Clock, CheckCircle, Truck, X, Save, Upload,
-    Image as ImageIcon, Camera, Share2, Zap, Gift
+    Image as ImageIcon, Camera, Share2, Zap, Gift, ShieldCheck, FileText
 } from 'lucide-react';
 import { GLOBAL_CATEGORIES, CATEGORY_SECTORS } from '../../lib/constants';
 import RestaurantRewardsManager from '../components/RestaurantRewardsManager';
@@ -46,6 +46,9 @@ interface RestaurantData {
     };
     subscriptionEnd?: string;
     paymentMethods?: any[];
+    rif?: string;
+    isVerified?: boolean;
+    verificationStatus?: string;
 }
 
 interface StatCardProps {
@@ -106,6 +109,14 @@ export default function RestaurantProfile() {
     const [paymentMethods, setPaymentMethods] = useState<any[]>([]);
     const [editData, setEditData] = useState<any>({});
 
+    const sectors = allCategories.filter(c => !c.parentId).length > 0
+        ? allCategories.filter(c => !c.parentId)
+        : GLOBAL_CATEGORIES.map(c => ({ id: c, name: c }));
+
+    const subCats = (editData.sector && (CATEGORY_SECTORS as any)[editData.sector])
+        ? (CATEGORY_SECTORS as any)[editData.sector].map((s: string) => ({ id: s, name: s }))
+        : allCategories.filter(c => c.parentId === editData.sector);
+
     useEffect(() => {
         if (!id) return;
         const fetchData = async () => {
@@ -144,7 +155,10 @@ export default function RestaurantProfile() {
                             reference: restData.reference || ''
                         },
                         subscriptionEnd: restData.subscription_end || restData.subscriptionEnd,
-                        paymentMethods: restData.payment_methods || restData.paymentMethods || []
+                        paymentMethods: restData.payment_methods || restData.paymentMethods || [],
+                        rif: restData.rif || '',
+                        isVerified: restData.is_verified ?? restData.isVerified ?? false,
+                        verificationStatus: restData.verification_status || 'unverified'
                     };
                     setRestaurant(rData);
                     setPaymentMethods(rData.paymentMethods || []);
@@ -319,6 +333,7 @@ export default function RestaurantProfile() {
             status: restaurant.status || (restaurant.isActive !== false ? 'active' : 'unavailable'),
             billingDay: restaurant.billingDay || 1,
             billingAmount: restaurant.billingAmount || 0,
+            rif: restaurant.rif || '',
             sector: restaurant.sector || '',
             featured: restaurant.featured || false,
             hasCashea: restaurant.hasCashea || false,
@@ -445,7 +460,19 @@ export default function RestaurantProfile() {
                         </div>
                     </div>
 
-                    <div className="flex flex-col gap-3 min-w-[200px]">
+                    <div className="flex flex-col gap-3 min-w-[220px]">
+                        <div className="p-4 bg-slate-50 rounded-2xl flex items-center gap-3">
+                            <FileText className="w-5 h-5 text-primary" />
+                            <div>
+                                <div className="flex items-center gap-1.5">
+                                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">RIF Legal</p>
+                                    {restaurant.isVerified && (
+                                        <ShieldCheck className="w-3.5 h-3.5 text-emerald-500" title="Verificado" />
+                                    )}
+                                </div>
+                                <p className="font-black text-slate-800 tracking-wider text-sm">{restaurant.rif || 'Sin RIF Registrado'}</p>
+                            </div>
+                        </div>
                         <div className="p-4 bg-slate-50 rounded-2xl flex items-center gap-3">
                             <Phone className="w-5 h-5 text-slate-900" />
                             <div>
@@ -622,8 +649,17 @@ export default function RestaurantProfile() {
                             initial={{ opacity: 0, scale: 0.95, y: 20 }}
                             animate={{ opacity: 1, scale: 1, y: 0 }}
                             exit={{ opacity: 0, scale: 0.95, y: 20 }}
-                            className="bg-white rounded-[40px] w-full max-w-4xl shadow-2xl overflow-hidden my-auto"
+                            className="bg-white rounded-[40px] w-full max-w-4xl shadow-2xl overflow-hidden my-auto relative"
                         >
+                            <button
+                                type="button"
+                                onClick={() => setIsEditModalOpen(false)}
+                                className="absolute top-6 right-6 z-20 w-10 h-10 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center backdrop-blur-md transition-all active:scale-95 cursor-pointer"
+                                title="Cerrar"
+                            >
+                                <X className="w-5 h-5" />
+                            </button>
+
                             {/* Modal Header */}
                             <div className="bg-secondary p-8 md:p-12 text-white">
                                 <div className="max-w-7xl mx-auto flex flex-col md:flex-row md:items-end gap-6 md:gap-12 relative">
@@ -713,6 +749,27 @@ export default function RestaurantProfile() {
                                             />
                                         </div>
 
+                                        <div className="space-y-2">
+                                            <div className="flex items-center justify-between ml-4 mr-2">
+                                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-1.5">
+                                                    <FileText className="w-3.5 h-3.5 text-primary" /> RIF del Negocio
+                                                </label>
+                                                <span className="text-[9px] font-black bg-primary/10 text-primary px-2 py-0.5 rounded-md uppercase tracking-wider flex items-center gap-1">
+                                                    <ShieldCheck className="w-3 h-3" /> Solo Super Admin
+                                                </span>
+                                            </div>
+                                            <input
+                                                type="text"
+                                                value={editData.rif || ''}
+                                                onChange={(e) => setEditData({ ...editData, rif: e.target.value.toUpperCase() })}
+                                                className="w-full bg-slate-50 border-2 border-primary/20 focus:border-primary rounded-2xl p-4 font-black text-slate-800 tracking-wider focus:bg-white transition-all outline-none"
+                                                placeholder="Ej: J-12345678-9"
+                                            />
+                                            <p className="text-[10px] text-slate-400 font-medium ml-4">
+                                                Como Super Administrador tienes potestad única para actualizar o corregir el RIF directamente en base de datos.
+                                            </p>
+                                        </div>
+
                                         <div className="grid grid-cols-2 gap-4">
                                             <div className="space-y-2">
                                                 <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Sector</label>
@@ -773,21 +830,21 @@ export default function RestaurantProfile() {
                                                 />
                                                 <button
                                                     type="button"
-                                                    onClick={() => setConfirmStatus('active')}
+                                                    onClick={() => setEditData({ ...editData, status: 'active', isActive: true })}
                                                     className={`relative z-10 py-3 rounded-2xl text-xs font-black uppercase tracking-widest transition-all duration-300 ${editData.status === 'active' || !editData.status ? 'text-emerald-500' : 'text-slate-400 hover:text-slate-600'}`}
                                                 >
                                                     Activo
                                                 </button>
                                                 <button
                                                     type="button"
-                                                    onClick={() => setConfirmStatus('busy')}
+                                                    onClick={() => setEditData({ ...editData, status: 'busy', isActive: true })}
                                                     className={`relative z-10 py-3 rounded-2xl text-xs font-black uppercase tracking-widest transition-all duration-300 ${editData.status === 'busy' ? 'text-amber-500' : 'text-slate-400 hover:text-slate-600'}`}
                                                 >
                                                     Ocupado
                                                 </button>
                                                 <button
                                                     type="button"
-                                                    onClick={() => setConfirmStatus('unavailable')}
+                                                    onClick={() => setEditData({ ...editData, status: 'unavailable', isActive: false })}
                                                     className={`relative z-10 py-3 rounded-2xl text-xs font-black uppercase tracking-widest transition-all duration-300 ${editData.status === 'unavailable' ? 'text-slate-500' : 'text-slate-400 hover:text-slate-600'}`}
                                                 >
                                                     No Disp.

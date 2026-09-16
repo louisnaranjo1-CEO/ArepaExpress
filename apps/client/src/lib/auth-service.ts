@@ -20,34 +20,64 @@ export const processReferralCode = async (newUserId: string, referralCode: strin
     }
 }
 
+import { FirebaseAuthentication } from '@capacitor-firebase/authentication';
 import { Browser } from '@capacitor/browser';
 
 export const signInWithGoogle = async (): Promise<{ user: any, isNewUser: boolean }> => {
     try {
+        let user: any = null;
+        let isNewUser = false;
+
         if (Capacitor.isNativePlatform()) {
-            const redirectUri = 'deliexpress.app://auth/callback';
-            const { data, error } = await supabase.auth.signInWithOAuth({
-                provider: 'google',
-                options: {
-                    redirectTo: redirectUri,
-                    skipBrowserRedirect: true
+            try {
+                // Flujo nativo: Abre el selector nativo de cuentas de Google (Google Play Services / Credential Manager) directamente dentro de la app sin abrir Chrome
+                const result = await FirebaseAuthentication.signInWithGoogle({
+                    useCredentialManager: true
+                });
+                const idToken = result.credential?.idToken;
+                if (!idToken) {
+                    throw new Error("No se pudo obtener la credencial de Google.");
                 }
-            });
-            if (error) throw error;
-            if (data?.url) {
-                // Abre el flujo de Google dentro de la aplicación (In-App Browser / Custom Tab)
-                try {
+
+                const { data, error } = await supabase.auth.signInWithIdToken({
+                    provider: 'google',
+                    token: idToken
+                });
+
+                if (error) throw error;
+                user = data.user;
+
+                if (user && user.created_at && user.last_sign_in_at) {
+                    const createdTime = new Date(user.created_at).getTime();
+                    const signinTime = new Date(user.last_sign_in_at).getTime();
+                    isNewUser = (signinTime - createdTime) < 5000;
+                }
+            } catch (nativeErr: any) {
+                console.warn("Fallo en login nativo de Google, intentando fallback:", nativeErr);
+                // Si el usuario canceló manualmente el selector de Google
+                if (nativeErr?.message?.includes('cancel') || nativeErr?.code === '12501' || nativeErr?.code === '16') {
+                    throw new Error("Inicio de sesión cancelado.");
+                }
+
+                // Fallback con custom tab si el dispositivo no tuviese Play Services actualizados
+                const redirectUri = 'deliexpress.app://auth/callback';
+                const { data, error } = await supabase.auth.signInWithOAuth({
+                    provider: 'google',
+                    options: {
+                        redirectTo: redirectUri,
+                        skipBrowserRedirect: true
+                    }
+                });
+                if (error) throw error;
+                if (data?.url) {
                     await Browser.open({
                         url: data.url,
                         windowName: '_self',
                         presentationStyle: 'popover'
                     });
-                } catch (browserErr) {
-                    console.warn("Capacitor Browser error, fallback to window.location:", browserErr);
-                    window.location.href = data.url;
                 }
+                return { user: null, isNewUser: false };
             }
-            return { user: null, isNewUser: false };
         } else {
             const { data, error } = await supabase.auth.signInWithOAuth({
                 provider: 'google',
@@ -58,8 +88,14 @@ export const signInWithGoogle = async (): Promise<{ user: any, isNewUser: boolea
             if (error) throw error;
             return { user: null, isNewUser: false };
         }
-    } catch (error) {
-        console.error("Error al iniciar sesión con Google (Supabase):", error);
+
+        if (user) {
+            localStorage.setItem('deliexpress_uid', user.id);
+        }
+
+        return { user, isNewUser };
+    } catch (error: any) {
+        console.error("Error al iniciar sesión con Google:", error);
         throw error;
     }
 };

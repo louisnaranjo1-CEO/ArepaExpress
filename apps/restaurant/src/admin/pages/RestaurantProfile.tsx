@@ -944,9 +944,20 @@ export default function RestaurantProfile() {
                                             </div>
                                         )}
                                     </div>
-                                    <p className="text-[11px] text-slate-400 ml-1">
-                                        {isVerified ? 'El RIF está protegido y no es modificable tras verificación.' : `Letra venezolana (${rifPrefix}) + número de RIF`}
-                                    </p>
+                                    <div className="flex items-center justify-between gap-2">
+                                        <p className="text-[11px] text-slate-400 ml-1">
+                                            {isVerified ? 'El RIF está protegido y solo el Super Administrador puede autorizar cambios.' : `Letra venezolana (${rifPrefix}) + número de RIF`}
+                                        </p>
+                                        {isVerified && (
+                                            <button
+                                                type="button"
+                                                onClick={() => setIsVerificationModalOpen(true)}
+                                                className="text-[11px] font-black text-primary hover:underline flex items-center gap-1 cursor-pointer shrink-0"
+                                            >
+                                                Solicitar corrección de RIF →
+                                            </button>
+                                        )}
+                                    </div>
                                 </div>
 
                                 <div className="space-y-2">

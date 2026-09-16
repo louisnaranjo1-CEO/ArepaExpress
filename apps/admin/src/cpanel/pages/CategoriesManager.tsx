@@ -335,7 +335,7 @@ export default function CategoriesManager() {
                                 <div>
                                     <div className="flex items-center gap-2">
                                         <h2 className="text-xl font-black text-slate-800 tracking-tight">{sector.name}</h2>
-                                        <span className="text-[10px] font-black bg-indigo-100 text-primary px-2 py-0.5 rounded-full uppercase tracking-widest">Sector Principal</span>
+                                        <span className="text-[10px] font-black bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full uppercase tracking-widest">Sector Principal</span>
                                     </div>
                                     <p className="text-xs font-bold text-slate-400 mt-0.5 line-clamp-1">{sector.description || 'Sin descripción'}</p>
                                 </div>
@@ -344,7 +344,7 @@ export default function CategoriesManager() {
                             <div className="flex items-center gap-2">
                                 <button
                                     onClick={() => handleOpenModal('create', undefined, sector.id)}
-                                    className="flex items-center gap-2 px-4 py-2 bg-indigo-50 hover:bg-indigo-100 text-primary rounded-xl transition-all font-black text-xs"
+                                    className="flex items-center gap-2 px-4 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-900 rounded-xl transition-all font-black text-xs"
                                 >
                                     <Plus className="w-4 h-4" />
                                     Agregar Subcategoría

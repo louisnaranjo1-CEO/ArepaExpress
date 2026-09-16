@@ -1103,9 +1103,9 @@ function ProductGrid({ title, products, casheaIcon }: { title: string, products:
   const navigate = useNavigate();
 
   const handleProductClick = (product: RecommendedProduct) => {
-    // Record view and navigate
+    // Record view and navigate with productId
     recommendationsService.recordProductView(product.id!, product.category, product.restaurantId);
-    navigate(`/restaurant/${product.restaurantId}`);
+    navigate(`/restaurant/${product.restaurantId}?productId=${product.id}`);
   };
 
   return (

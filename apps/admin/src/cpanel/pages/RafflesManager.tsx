@@ -140,7 +140,7 @@ export default function RafflesManager() {
                 <div className="flex bg-slate-100 p-1 rounded-2xl w-max relative z-0 hide-scrollbar mr-4">
                     <button
                         onClick={() => setActiveTab('clients')}
-                        className={`relative px-6 py-2.5 rounded-xl font-bold text-sm transition-all z-10 whitespace-nowrap ${activeTab === 'clients' ? 'text-primary' : 'text-slate-500 hover:text-slate-700'}`}
+                        className={`relative px-6 py-2.5 rounded-xl font-black text-sm transition-all z-10 whitespace-nowrap ${activeTab === 'clients' ? 'text-slate-900' : 'text-slate-500 hover:text-slate-700'}`}
                     >
                         {activeTab === 'clients' && (
                             <div className="absolute inset-0 bg-white rounded-xl -z-10 shadow-sm" />
@@ -149,7 +149,7 @@ export default function RafflesManager() {
                     </button>
                     <button
                         onClick={() => setActiveTab('drivers')}
-                        className={`relative px-6 py-2.5 rounded-xl font-bold text-sm transition-all z-10 whitespace-nowrap ${activeTab === 'drivers' ? 'text-primary' : 'text-slate-500 hover:text-slate-700'}`}
+                        className={`relative px-6 py-2.5 rounded-xl font-black text-sm transition-all z-10 whitespace-nowrap ${activeTab === 'drivers' ? 'text-slate-900' : 'text-slate-500 hover:text-slate-700'}`}
                     >
                         {activeTab === 'drivers' && (
                             <div className="absolute inset-0 bg-white rounded-xl -z-10 shadow-sm" />

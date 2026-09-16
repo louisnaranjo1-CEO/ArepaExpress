@@ -1,6 +1,6 @@
 import { ArrowLeft, Search, Heart, Star, Clock, Plus, AlertCircle, MessageSquare, MapPin, ChevronRight, Phone, Instagram, UserPlus, UserCheck, Store, Truck, CheckCircle, User as UserIcon, Briefcase, X, Tag, Share2, Zap, Youtube, Music2, ExternalLink, Gift, Sparkles, ShoppingCart } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Link, useParams, useNavigate } from 'react-router-dom';
+import { Link, useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import { Restaurant, Product } from '../lib/seed';
@@ -16,6 +16,7 @@ import DualPrice from '../components/DualPrice';
 export default function RestaurantPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [restaurant, setRestaurant] = useState<any | null>(null);
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
@@ -256,6 +257,19 @@ export default function RestaurantPage() {
     };
     fetchReviews();
   }, [id, activeTab]);
+
+  useEffect(() => {
+    const productIdParam = searchParams.get('productId');
+    if (productIdParam && products.length > 0) {
+      const found = products.find(p => p.id === productIdParam);
+      if (found) {
+        setSelectedProduct(found);
+        setSelectedVariant(null);
+        setSelectedModifiers({});
+        recommendationsService.recordProductView(found.id!, found.category, found.restaurantId || id!);
+      }
+    }
+  }, [searchParams, products, id]);
 
   if (loading) {
     return (
@@ -546,7 +560,7 @@ export default function RestaurantPage() {
   const statusObj = getRestaurantStatus();
 
   return (
-    <div className="relative w-full min-h-screen bg-white group/design-root overflow-x-hidden flex flex-col">
+    <div className="relative w-full h-full overflow-y-auto overflow-x-hidden bg-white group/design-root flex flex-col">
       {isWaiter && (
         <div className="bg-amber-500 text-white text-center py-1.5 text-[10px] font-black uppercase tracking-[0.2em] shadow-sm z-50 relative flex justify-center items-center gap-2">
           <UserCheck className="w-3.5 h-3.5" />
@@ -735,7 +749,22 @@ export default function RestaurantPage() {
               </button>
               {restaurant.whatsapp && (
                 <button
-                  onClick={openWhatsApp}
+                  onClick={() => {
+                    if (items.length === 0) {
+                      toast('Haz tu pedido primero seleccionando aquí abajo 👇', {
+                        icon: '🛒',
+                        style: {
+                          borderRadius: '16px',
+                          background: '#0f172a',
+                          color: '#fff',
+                          fontWeight: 'bold',
+                          fontSize: '13px'
+                        }
+                      });
+                      return;
+                    }
+                    openWhatsApp();
+                  }}
                   className="flex items-center gap-1 bg-green-50 text-green-600 px-3 py-1.5 rounded-full text-xs font-bold border border-green-100 hover:bg-green-100 transition-colors"
                 >
                   <MessageSquare className="w-3.5 h-3.5" />
