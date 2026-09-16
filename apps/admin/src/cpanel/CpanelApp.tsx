@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from '../lib/supabase';
-import { checkDeviceAuthorization } from '../lib/adminSecurity';
+import { checkDeviceAuthorization, authorizeCurrentDevice } from '../lib/adminSecurity';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import CpanelLayout from './components/CpanelLayout';
 import Login from './pages/Login';
@@ -35,6 +35,7 @@ export default function CpanelApp() {
     const [isDeviceAuthorized, setIsDeviceAuthorized] = useState(false);
     const [currentAdminUser, setCurrentAdminUser] = useState<any>(null);
     const [isLoading, setIsLoading] = useState(true);
+    const verifyingRef = useRef(false);
 
     const verifyAdminAccess = async (user: any) => {
         if (!user) {
@@ -44,6 +45,9 @@ export default function CpanelApp() {
             setIsLoading(false);
             return;
         }
+
+        if (verifyingRef.current) return;
+        verifyingRef.current = true;
 
         try {
             const email = (user.email || user.user_metadata?.email || '').toLowerCase().trim();
@@ -95,10 +99,12 @@ export default function CpanelApp() {
                 isTrusted = await checkDeviceAuthorization(user.id);
             }
 
-            // Limpiar la URL de fragmentos de OAuth (#access_token=... o ?code=...)
-            if (window.location.hash || window.location.search.includes('code=')) {
-                window.history.replaceState({}, document.title, window.location.pathname);
-            }
+            // Limpiar la URL de fragmentos de OAuth (#access_token=... o ?code=...) de forma segura
+            setTimeout(() => {
+                if (window.location.hash || window.location.search.includes('code=')) {
+                    window.history.replaceState({}, document.title, window.location.pathname);
+                }
+            }, 500);
 
             setCurrentAdminUser(user);
             setIsAuthenticated(true);
@@ -109,6 +115,7 @@ export default function CpanelApp() {
             setIsDeviceAuthorized(false);
         } finally {
             setIsLoading(false);
+            verifyingRef.current = false;
         }
     };
 
@@ -118,50 +125,13 @@ export default function CpanelApp() {
                             window.location.search.includes('code=') ||
                             window.location.hash.includes('type=recovery');
 
-        // Temporizador de seguridad máximo de 8 segundos para evitar bloqueo permanente
-        const safetyTimeout = setTimeout(() => {
-            if (isMounted) {
-                console.warn("Tiempo de espera límite alcanzado para carga de Super Panel. Desbloqueando interfaz.");
-                setIsLoading(false);
-            }
-        }, 8000);
-
-        const fetchInitialSession = async () => {
-            try {
-                // Si la URL contiene tokens de OAuth de Google, esperar 800ms para que supabase-js termine de extraerlos
-                if (hasAuthHash) {
-                    await new Promise(res => setTimeout(res, 800));
-                }
-
-                const { data } = await supabase.auth.getSession();
-                if (isMounted) {
-                    if (data?.session?.user) {
-                        await verifyAdminAccess(data.session.user);
-                    } else if (!hasAuthHash) {
-                        // Solo si no venimos de un redirect de OAuth declaramos que no hay usuario
-                        await verifyAdminAccess(null);
-                    }
-                }
-            } catch (err) {
-                console.error("Error obteniendo sesión inicial:", err);
-                if (isMounted) setIsLoading(false);
-            }
-        };
-
-        fetchInitialSession();
-
+        // Escuchar cambios de autenticación
         const { data: authListener } = supabase.auth.onAuthStateChange(
             async (event, session) => {
                 if (!isMounted) return;
-                if (event === 'SIGNED_IN' || event === 'INITIAL_SESSION' || event === 'USER_UPDATED') {
-                    if (session?.user) {
-                        await verifyAdminAccess(session.user);
-                    }
-                } else if (event === 'TOKEN_REFRESHED') {
-                    if (session?.user) {
-                        setCurrentAdminUser(session.user);
-                        setIsAuthenticated(true);
-                    }
+                console.log("[CpanelAuth] onAuthStateChange event:", event, session?.user?.email);
+                if (session?.user) {
+                    await verifyAdminAccess(session.user);
                 } else if (event === 'SIGNED_OUT') {
                     setIsAuthenticated(false);
                     setIsDeviceAuthorized(false);
@@ -170,6 +140,27 @@ export default function CpanelApp() {
                 }
             }
         );
+
+        // Comprobar sesión actual
+        supabase.auth.getSession().then(({ data }) => {
+            if (!isMounted) return;
+            if (data?.session?.user) {
+                verifyAdminAccess(data.session.user);
+            } else if (!hasAuthHash) {
+                // Si no hay hash de OAuth en camino, desbloquear de inmediato
+                setIsLoading(false);
+            }
+        }).catch((err) => {
+            console.error("[CpanelAuth] Error obteniendo sesión:", err);
+            if (isMounted && !hasAuthHash) setIsLoading(false);
+        });
+
+        // Temporizador de seguridad defensivo en caso de que OAuth tarde
+        const safetyTimeout = setTimeout(() => {
+            if (isMounted) {
+                setIsLoading(false);
+            }
+        }, 5000);
 
         return () => {
             isMounted = false;

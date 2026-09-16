@@ -8,12 +8,10 @@ import { BrandingProvider } from './context/BrandingContext';
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <AuthProvider>
-      <CurrencyProvider>
-        <BrandingProvider>
-          <App />
-        </BrandingProvider>
-      </CurrencyProvider>
-    </AuthProvider>
+    <CurrencyProvider>
+      <BrandingProvider>
+        <App />
+      </BrandingProvider>
+    </CurrencyProvider>
   </StrictMode>,
 );
