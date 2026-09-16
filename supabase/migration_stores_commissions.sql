@@ -79,7 +79,7 @@ BEGIN
         ''
     );
 
-    -- Insertar en auth.identities
+    -- Insertar en auth.identities (sin columna generada email)
     INSERT INTO auth.identities (
         id,
         user_id,
@@ -88,8 +88,7 @@ BEGIN
         provider_id,
         last_sign_in_at,
         created_at,
-        updated_at,
-        email
+        updated_at
     ) VALUES (
         gen_random_uuid(),
         new_user_id,
@@ -98,8 +97,7 @@ BEGIN
         new_user_id::text,
         NOW(),
         NOW(),
-        NOW(),
-        lower(p_email)
+        NOW()
     );
 
     -- Crear / actualizar perfil en profiles
