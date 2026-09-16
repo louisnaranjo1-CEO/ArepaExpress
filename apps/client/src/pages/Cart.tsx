@@ -382,6 +382,8 @@ export default function Cart({ hideHeader = false }: CartProps) {
 
       if (isWaiter) { clearCart(); setCheckoutSuccess(true); setPurchaseConfirmed(true); return; }
 
+      const hasConsultItems = items.some(item => item.consultPrice || !item.price);
+
       let itemsList = items.map(item => {
         const itemNote = (item as any).notes ? ` - 📝 *Nota:* ${(item as any).notes}` : '';
         const variantText = (item as any).variant ? ` [${(item as any).variant}]` : '';
@@ -392,18 +394,53 @@ export default function Cart({ hideHeader = false }: CartProps) {
            if (mods) modifiersText = `\n    👉 ${mods}`;
         }
 
-        return `• ${item.quantity}x ${item.name}${variantText}${itemNote}${modifiersText} ($${((item.price || 0) * item.quantity).toFixed(2)} | ${(((item.price || 0) * item.quantity) * bcvRate).toFixed(2)} Bs)`;
+        const isConsult = item.consultPrice || !item.price;
+        const priceDisplay = isConsult
+          ? 'Consultar precio'
+          : `$${((item.price || 0) * item.quantity).toFixed(2)} | ${(((item.price || 0) * item.quantity) * bcvRate).toFixed(2)} Bs`;
+
+        return `• ${item.quantity}x ${item.name}${variantText}${itemNote}${modifiersText} (${priceDisplay})`;
       }).join('\n');
       
-      const mapsLink = (deliveryMethod === 'delivery' && selectedAddress && selectedAddress.lat) ? `\n🗺️ Ubicación GPS: https://www.google.com/maps?q=${selectedAddress.lat},${selectedAddress.lng}` : '';
+      const mapsLink = (deliveryMethod === 'app_delivery' && selectedAddress && selectedAddress.lat) ? `\n🗺️ Ubicación GPS: https://www.google.com/maps?q=${selectedAddress.lat},${selectedAddress.lng}` : '';
       const notesString = orderNote.trim() ? `\n📝 Notas: ${orderNote.trim()}` : '';
+
+      if (!isWaiter && rData?.whatsapp) {
+        const pendingOrderData = {
+          orderId: newOrderId,
+          restaurantId,
+          restaurantName: rData.name || 'Comercio',
+          restaurantLogo: rData.logoUrl || rData.logo_url || rData.logo || '',
+          timestamp: Date.now(),
+          productName: items.length === 1 ? items[0].name : `${items.length} productos`,
+          estimatedPrice: finalTotal
+        };
+        localStorage.setItem('deliexpress_pending_whatsapp_order', JSON.stringify(pendingOrderData));
+        window.dispatchEvent(new Event('deliexpress_whatsapp_order_created'));
+
+        const number = rData.whatsapp.replace(/\D/g, '');
+        let wpMessage = `Hola, vengo de Deli Express y deseo realizar el siguiente pedido a *${rData.name || 'su negocio'}*:\n\n` +
+          `📦 *Productos:*\n${itemsList}\n` +
+          (deliveryMethod === 'pickup' ? `\n🛍️ *Método:* Retiro en local (PickUp)` : `\n📍 *Entrega:* ${addressStr}${mapsLink}`) +
+          (notesString ? `\n${notesString}` : '');
+
+        if (hasConsultItems) {
+          wpMessage += `\n\n💬 *Consulta de Precios:* Por favor, ¿podrían indicarme el precio y disponibilidad de los productos marcados como "Consultar precio"?`;
+        }
+
+        if (cartSubtotalUSD > 0) {
+          wpMessage += `\n\n💵 *Total estimado:* $${finalTotal.toFixed(2)} (${(finalTotal * bcvRate).toFixed(2)} Bs)${hasConsultItems ? ' (+ productos por cotizar)' : ''}`;
+        }
+
+        window.open(`https://wa.me/${number}?text=${encodeURIComponent(wpMessage)}`, '_blank');
+      }
       
       clearCart();
       setPurchaseConfirmed(true);
       setCheckoutSuccess(true);
       
       if (!isWaiter) {
-          navigate(`/track/${docRef.id}`);
+          navigate(`/track/${newOrderId}`);
           return;
       }
       
@@ -466,9 +503,15 @@ export default function Cart({ hideHeader = false }: CartProps) {
                     <div className="flex gap-4">
                       <img src={item.image} className="size-20 rounded-2xl object-cover shadow-sm" />
                       <div className="flex-1">
-                         <div className="flex justify-between items-start mb-1">
+                         <div className="flex justify-between items-start mb-1 gap-2">
                            <p className="font-black text-slate-800 text-sm leading-tight">{item.name}</p>
-                           <DualPrice usdAmount={item.price || 0} usdClassName="text-slate-900 font-black text-sm" showDivider={false} />
+                           {item.consultPrice || !item.price ? (
+                             <span className="text-[11px] font-black text-amber-700 bg-amber-50 px-2.5 py-1 rounded-xl border border-amber-200 shrink-0">
+                               Consultar
+                             </span>
+                           ) : (
+                             <DualPrice usdAmount={item.price || 0} usdClassName="text-slate-900 font-black text-sm" showDivider={false} />
+                           )}
                          </div>
                          {(item as any).variant && (
                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Variante: {(item as any).variant}</p>
@@ -673,7 +716,13 @@ export default function Cart({ hideHeader = false }: CartProps) {
                               <p className="text-[10px] text-slate-400 font-medium italic mt-0.5">Nota: "{ (item as any).notes }"</p>
                             )}
                           </div>
-                          <DualPrice usdAmount={(item.price || 0) * item.quantity} usdClassName="font-black text-slate-900 text-sm" showDivider={false} />
+                          {item.consultPrice || !item.price ? (
+                            <span className="text-xs font-black text-amber-700 bg-amber-50 px-2.5 py-1 rounded-xl border border-amber-200 shrink-0">
+                              Consultar precio
+                            </span>
+                          ) : (
+                            <DualPrice usdAmount={(item.price || 0) * item.quantity} usdClassName="font-black text-slate-900 text-sm" showDivider={false} />
+                          )}
                         </div>
                       ))}
                     </div>
@@ -772,8 +821,27 @@ export default function Cart({ hideHeader = false }: CartProps) {
                       <div className="flex justify-between items-center bg-white/5 p-3 rounded-xl">
                         <span className="text-sm uppercase tracking-wider text-white/70">{restaurantData?.businessType === 'hotel' ? 'Subtotal Servicios' : 'Subtotal Productos'}</span>
                         <div className="text-right">
-                          <DualPrice usdAmount={cartSubtotalUSD} usdClassName="text-xl font-black text-white" bsClassName="text-[10px] text-white/50" showDivider={false} />
-                          <span className="text-[10px] block mt-1 text-white/40 font-black uppercase tracking-widest">Total a pagar a {restaurantData?.name || 'el restaurante'}</span>
+                          {items.some(i => i.consultPrice || !i.price) ? (
+                            cartSubtotalUSD > 0 ? (
+                              <>
+                                <div className="flex items-baseline justify-end gap-1.5">
+                                  <DualPrice usdAmount={cartSubtotalUSD} usdClassName="text-xl font-black text-white" bsClassName="text-[10px] text-white/50" showDivider={false} />
+                                  <span className="text-xs font-black text-amber-400">+ Consultar</span>
+                                </div>
+                                <span className="text-[10px] block mt-1 text-amber-300 font-medium">Incluye productos por consultar precio</span>
+                              </>
+                            ) : (
+                              <>
+                                <span className="text-lg font-black text-amber-400">Consultar precio</span>
+                                <span className="text-[10px] block mt-1 text-white/50 font-medium">Precio final acordado con el negocio</span>
+                              </>
+                            )
+                          ) : (
+                            <>
+                              <DualPrice usdAmount={cartSubtotalUSD} usdClassName="text-xl font-black text-white" bsClassName="text-[10px] text-white/50" showDivider={false} />
+                              <span className="text-[10px] block mt-1 text-white/40 font-black uppercase tracking-widest">Total a pagar a {restaurantData?.name || 'el restaurante'}</span>
+                            </>
+                          )}
                         </div>
                       </div>
 
@@ -825,7 +893,7 @@ export default function Cart({ hideHeader = false }: CartProps) {
                     ) : (
                       <>
                         {restaurantData?.businessType === 'hotel' ? <CheckCircle2 className="w-5 h-5" /> : <ArrowRight className="w-5 h-5" />}
-                        {isWaiter ? 'Enviar Comanda' : (restaurantData?.businessType === 'hotel' ? 'Confirmar Reservación' : 'Confirmar Pedido')}
+                        {isWaiter ? 'Enviar Comanda' : (restaurantData?.businessType === 'hotel' ? 'Confirmar Reservación' : (items.some(i => i.consultPrice || !i.price) ? 'Confirmar y Pedir' : 'Confirmar Pedido'))}
                       </>
                     )}
                   </button>

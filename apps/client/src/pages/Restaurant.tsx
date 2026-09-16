@@ -368,7 +368,7 @@ export default function RestaurantPage() {
       image: product.image,
       category: product.category,
       printerId: (product as any).printerId,
-      consultPrice: product.consultPrice,
+      consultPrice: product.consultPrice || (finalPrice === 0 && (!product.variants || product.variants.length === 0)),
       modifiersConfig: modifiers
     });
     toast.success('Añadido al carrito');
@@ -569,7 +569,23 @@ export default function RestaurantPage() {
     const number = restaurant.whatsapp.replace(/\D/g, '');
     let text = 'Hola, vengo de Deli Express y me gustaría hacer un pedido.';
     if (productDetails?.name) {
-      text = `Hola, vengo de Deli Express y me gustaría consultar / pedir: *${productDetails.name}*${productDetails.price ? ` ($${productDetails.price.toFixed(2)})` : ''}. ¿Está disponible?`;
+      const isConsult = !productDetails.price;
+      text = `Hola, vengo de Deli Express y me gustaría consultar / pedir: *${productDetails.name}*${!isConsult ? ` ($${productDetails.price!.toFixed(2)})` : ' (Consultar precio)'}. ¿Está disponible?`;
+    } else if (items.length > 0) {
+      const hasConsultItems = items.some(i => i.consultPrice || !i.price);
+      const itemsList = items.map(item => {
+        const isConsult = item.consultPrice || !item.price;
+        const priceStr = isConsult ? 'Consultar precio' : `$${((item.price || 0) * item.quantity).toFixed(2)}`;
+        return `• ${item.quantity}x ${item.name} (${priceStr})`;
+      }).join('\n');
+
+      text = `Hola, vengo de Deli Express y me gustaría consultar / pedir los siguientes productos de *${restaurant.name || 'su negocio'}*:\n\n${itemsList}`;
+      if (hasConsultItems) {
+        text += `\n\n💬 *Consulta:* Quisiera consultar el precio y disponibilidad de los productos indicados.`;
+      }
+      if (totalPrice > 0) {
+        text += `\n\n💵 *Total estimado:* $${totalPrice.toFixed(2)}${hasConsultItems ? ' (+ productos por cotizar)' : ''}`;
+      }
     }
     window.open(`https://wa.me/${number}?text=${encodeURIComponent(text)}`, '_blank');
   };
@@ -1606,30 +1622,23 @@ export default function RestaurantPage() {
               {/* Footer / Add to Cart / Reserve */}
               <div className="absolute bottom-0 left-0 w-full p-6 md:p-8 bg-white/95 backdrop-blur-md border-t border-slate-100">
                 <button
-                  disabled={!isFormValid() && !selectedProduct.consultPrice}
+                  disabled={!isFormValid()}
                   onClick={() => {
-                    if (selectedProduct.consultPrice) {
-                      openWhatsApp({ name: selectedProduct.name, price: selectedProduct.promoPrice || selectedProduct.price });
-                      setSelectedProduct(null);
-                      setSelectedVariant(null);
-                      setSelectedModifiers({});
-                      return;
-                    }
                     handleAddToCart(selectedProduct, selectedVariant, selectedModifiers);
                     setSelectedProduct(null);
                     setSelectedVariant(null);
                     setSelectedModifiers({});
                   }}
                   className={`w-full py-4 rounded-3xl font-black text-base shadow-2xl flex items-center justify-center gap-3 transition-all ${
-                    !isFormValid() && !selectedProduct.consultPrice
+                    !isFormValid()
                       ? 'bg-slate-200 text-slate-400 cursor-not-allowed shadow-none'
                       : 'bg-primary text-black shadow-primary/30 hover:scale-[1.02] active:scale-[0.98]'
                   }`}
                 >
-                  {restaurant.businessType === 'hotel' ? <CheckCircle className="w-5 h-5" /> : (selectedProduct.consultPrice ? <MessageSquare className="w-5 h-5" /> : <Plus className="w-5 h-5" />)}
-                  {!isFormValid() && !selectedProduct.consultPrice
+                  {restaurant.businessType === 'hotel' ? <CheckCircle className="w-5 h-5" /> : <Plus className="w-5 h-5" />}
+                  {!isFormValid()
                     ? 'Completa los campos' 
-                    : (selectedProduct.consultPrice ? 'Consultar por WhatsApp' : (restaurant.businessType === 'hotel' ? 'Reservar' : 'Añadir al Carrito'))}
+                    : (restaurant.businessType === 'hotel' ? 'Reservar' : 'Añadir al Carrito')}
                 </button>
               </div>
             </motion.div>

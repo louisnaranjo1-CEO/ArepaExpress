@@ -1435,46 +1435,24 @@ export default function RestaurantPage() {
               {/* Footer / Add to Cart / Reserve */}
               <div className="absolute bottom-0 left-0 w-full p-8 bg-white/80 backdrop-blur-md border-t border-slate-100">
                 <button
-                  disabled={!isFormValid() && !selectedProduct.consultPrice}
+                  disabled={!isFormValid()}
                   onClick={() => {
-                    if (selectedProduct.consultPrice) {
-                      openWhatsApp({ name: selectedProduct.name, price: selectedProduct.promoPrice || selectedProduct.price });
-                      setSelectedProduct(null);
-                      setSelectedVariant(null);
-                      setSelectedModifiers({});
-                      return;
-                    }
                     handleAddToCart(selectedProduct, selectedVariant, selectedModifiers);
                     setSelectedProduct(null);
                     setSelectedVariant(null);
                     setSelectedModifiers({});
                   }}
                   className={`w-full py-4 rounded-3xl font-black text-base shadow-2xl flex items-center justify-center gap-3 transition-all ${
-                    !isFormValid() && !selectedProduct.consultPrice
+                    !isFormValid()
                       ? 'bg-slate-200 text-slate-400 cursor-not-allowed shadow-none'
                       : 'bg-primary text-black shadow-primary/30 hover:scale-[1.02] active:scale-[0.98]'
                   }`}
                 >
-                  {restaurant.businessType === 'hotel' ? <CheckCircle className="w-5 h-5" /> : (selectedProduct.consultPrice ? <MessageSquare className="w-5 h-5" /> : <Plus className="w-5 h-5" />)}
-                  {!isFormValid() && !selectedProduct.consultPrice
+                  {restaurant.businessType === 'hotel' ? <CheckCircle className="w-5 h-5" /> : <Plus className="w-5 h-5" />}
+                  {!isFormValid()
                     ? 'Completa los campos' 
-                    : (selectedProduct.consultPrice ? 'Consultar por WhatsApp' : (restaurant.businessType === 'hotel' ? 'Reservar' : 'Añadir al Carrito'))}
+                    : (restaurant.businessType === 'hotel' ? 'Reservar' : 'Añadir al Carrito')}
                 </button>
-                {restaurant.whatsapp && !selectedProduct.consultPrice && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      openWhatsApp({ name: selectedProduct.name, price: selectedProduct.promoPrice || selectedProduct.price });
-                      setSelectedProduct(null);
-                      setSelectedVariant(null);
-                      setSelectedModifiers({});
-                    }}
-                    className="w-full mt-2.5 py-3 rounded-2xl font-bold text-xs bg-green-50 hover:bg-green-100 text-green-700 border border-green-200 flex items-center justify-center gap-2 transition-all"
-                  >
-                    <MessageSquare className="w-4 h-4 text-green-600" />
-                    Comprar directo por WhatsApp
-                  </button>
-                )}
               </div>
             </motion.div>
           </div>
