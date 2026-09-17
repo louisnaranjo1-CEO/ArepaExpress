@@ -12,6 +12,7 @@ export default function Dashboard() {
         activeProducts: 0,
         growth: 12
     });
+    const [storeName, setStoreName] = useState('');
     const [recentOrders, setRecentOrders] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
 
@@ -22,6 +23,17 @@ export default function Dashboard() {
 
         const loadDashboardData = async () => {
             try {
+                // 0. Store info
+                const { data: storeData } = await supabase
+                    .from('comercios')
+                    .select('name')
+                    .eq('id', rid)
+                    .maybeSingle();
+
+                if (storeData?.name) {
+                    setStoreName(storeData.name);
+                }
+
                 // 1. Orders
                 const { data: ordersData } = await supabase
                     .from('orders')
@@ -104,28 +116,30 @@ export default function Dashboard() {
     }
 
     return (
-        <div className="space-y-8 animate-in fade-in duration-700 pb-20">
+        <div className="space-y-4 sm:space-y-6 animate-in fade-in duration-700 pb-20">
             <div>
-                <h1 className="text-3xl font-black text-slate-900">¡Hola, {user?.displayName || 'Propietario'}! 👋</h1>
-                <p className="text-slate-500 font-medium">Aquí tienes el resumen de tu negocio para hoy.</p>
+                <h1 className="text-2xl sm:text-3xl font-black text-slate-900">¡Hola, {storeName || user?.displayName || 'Mi Negocio'}! 👋</h1>
+                <p className="text-xs sm:text-sm text-slate-500 font-medium mt-0.5">Aquí tienes el resumen de tu negocio para hoy.</p>
             </div>
 
             {/* Stats Grid */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-4">
                 {cards.map((card, i) => (
-                    <div key={i} className="bg-white p-8 rounded-[40px] shadow-sm border border-slate-100 hover:shadow-xl hover:shadow-slate-200/50 transition-all group">
-                        <div className={`w-14 h-14 ${card.bg} ${card.color} rounded-2xl flex items-center justify-center mb-6 transition-transform group-hover:scale-110 group-hover:rotate-3`}>
-                            <card.icon className="w-7 h-7" />
+                    <div key={i} className="bg-white p-3.5 sm:p-5 rounded-2xl sm:rounded-3xl shadow-sm border border-slate-100 hover:shadow-md transition-all group flex flex-col justify-between">
+                        <div className="flex items-center justify-between gap-2 mb-2 sm:mb-3">
+                            <p className="text-slate-400 font-bold text-[10px] sm:text-xs uppercase tracking-wider line-clamp-1">{card.title}</p>
+                            <div className={`w-8 h-8 sm:w-10 sm:h-10 ${card.bg} ${card.color} rounded-xl flex items-center justify-center shrink-0`}>
+                                <card.icon className="w-4 h-4 sm:w-5 sm:h-5" />
+                            </div>
                         </div>
-                        <p className="text-slate-400 font-bold text-sm uppercase tracking-widest mb-1">{card.title}</p>
-                        <h3 className="text-3xl font-black text-slate-900">{card.value}</h3>
+                        <h3 className="text-xl sm:text-2xl font-black text-slate-900">{card.value}</h3>
                     </div>
                 ))}
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-8">
                 {/* Recent Orders */}
-                <div className="lg:col-span-2 bg-white rounded-[40px] p-8 border border-slate-100 shadow-sm">
+                <div className="lg:col-span-2 bg-white rounded-2xl sm:rounded-[35px] p-4 sm:p-8 border border-slate-100 shadow-sm">
                     <div className="flex justify-between items-center mb-8">
                         <h2 className="text-xl font-black text-slate-900 flex items-center gap-2">
                             <Clock className="w-6 h-6 text-slate-900" />
@@ -167,7 +181,7 @@ export default function Dashboard() {
                 </div>
 
                 {/* Popular Products Placeholder */}
-                <div className="bg-white rounded-[40px] p-8 border border-slate-100 shadow-sm">
+                <div className="bg-white rounded-2xl sm:rounded-[35px] p-4 sm:p-8 border border-slate-100 shadow-sm">
                     <h2 className="text-xl font-black text-slate-900 mb-8 items-center gap-2 flex">
                         <TrendingUp className="w-6 h-6 text-slate-900" />
                         Populares

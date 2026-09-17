@@ -211,87 +211,90 @@ export default function Finance() {
     }
 
     return (
-        <div className="space-y-8 animate-in fade-in duration-700 pb-20">
-            <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
+        <div className="space-y-3 sm:space-y-6 animate-in fade-in duration-700 pb-20">
+            <div className="flex items-center justify-between gap-3">
                 <div>
-                    <h1 className="text-3xl font-black text-slate-900 flex items-center gap-3">
-                        <DollarSign className="w-8 h-8 text-slate-900" />
+                    <h1 className="text-xl sm:text-3xl font-black text-slate-900 flex items-center gap-2">
+                        <DollarSign className="w-6 h-6 sm:w-8 sm:h-8 text-slate-900" />
                         Finanzas y Caja
                     </h1>
-                    <p className="text-slate-500 font-medium">Gestiona tus ingresos, gastos y el cierre de caja diario.</p>
+                    <p className="text-xs sm:text-sm text-slate-500 font-medium">Gestiona ingresos, gastos y cierre de caja.</p>
                 </div>
-                <div className="flex gap-3">
+                <div className="flex gap-2 shrink-0">
                     <button
                         onClick={() => setShowExpenseModal(true)}
-                        className="bg-red-50 text-red-600 px-6 py-3 rounded-2xl font-black hover:bg-red-100 transition-all shadow-sm flex items-center gap-2"
+                        className="bg-red-50 text-red-600 px-2.5 py-2 sm:px-5 sm:py-3 rounded-xl sm:rounded-2xl font-black text-xs sm:text-sm hover:bg-red-100 transition-all shadow-xs flex items-center gap-1 sm:gap-2"
                     >
-                        <TrendingDown className="w-5 h-5" />
-                        Registrar Gasto
+                        <TrendingDown className="w-4 h-4" />
+                        <span className="hidden sm:inline">Registrar</span> Gasto
                     </button>
                     <button
                         onClick={handleCloseRegister}
-                        className="bg-slate-900 text-white px-6 py-3 rounded-2xl font-black hover:bg-slate-800 transition-all shadow-lg flex items-center gap-2"
+                        className="bg-slate-900 text-white px-2.5 py-2 sm:px-5 sm:py-3 rounded-xl sm:rounded-2xl font-black text-xs sm:text-sm hover:bg-slate-800 transition-all shadow-md flex items-center gap-1 sm:gap-2"
                     >
-                        <Calendar className="w-5 h-5" />
-                        Cerrar Caja Hoy
+                        <Calendar className="w-4 h-4" />
+                        <span className="hidden sm:inline">Cerrar</span> Caja
                     </button>
                 </div>
             </div>
 
-            {/* Metrics Dashboard */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <div className="bg-white rounded-[35px] p-8 border border-slate-100 shadow-sm relative overflow-hidden group">
-                    <div className="absolute top-0 right-0 w-32 h-32 bg-green-50 rounded-bl-[100px] -z-10 transition-transform group-hover:scale-110"></div>
-                    <div className="w-14 h-14 bg-green-100 text-green-600 rounded-2xl flex items-center justify-center mb-6">
-                        <TrendingUp className="w-7 h-7" />
+            {/* Compact Integrated Metrics Dashboard */}
+            <div className="grid grid-cols-3 gap-2 sm:gap-4 p-3 sm:p-5 bg-white rounded-2xl sm:rounded-3xl border border-slate-100 shadow-sm">
+                <div className="flex flex-col justify-between">
+                    <div className="flex items-center gap-1 sm:gap-2 mb-1">
+                        <div className="w-6 h-6 sm:w-8 sm:h-8 rounded-lg bg-green-50 text-green-600 flex items-center justify-center shrink-0">
+                            <TrendingUp className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                        </div>
+                        <span className="text-[9px] sm:text-xs font-bold text-slate-400 uppercase tracking-wider line-clamp-1">Ventas Hoy</span>
                     </div>
-                    <p className="text-slate-400 font-bold uppercase tracking-wider text-sm mb-1">Ventas Hoy</p>
-                    <h2 className="text-4xl font-black text-slate-900">${grossIncome.toFixed(2)}</h2>
+                    <p className="text-base sm:text-2xl font-black text-slate-900">${grossIncome.toFixed(2)}</p>
                 </div>
 
-                <div className="bg-white rounded-[35px] p-8 border border-slate-100 shadow-sm relative overflow-hidden group">
-                    <div className="absolute top-0 right-0 w-32 h-32 bg-red-50 rounded-bl-[100px] -z-10 transition-transform group-hover:scale-110"></div>
-                    <div className="w-14 h-14 bg-red-100 text-red-600 rounded-2xl flex items-center justify-center mb-6">
-                        <TrendingDown className="w-7 h-7" />
+                <div className="flex flex-col justify-between border-x border-slate-100 px-2 sm:px-4">
+                    <div className="flex items-center gap-1 sm:gap-2 mb-1">
+                        <div className="w-6 h-6 sm:w-8 sm:h-8 rounded-lg bg-red-50 text-red-600 flex items-center justify-center shrink-0">
+                            <TrendingDown className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                        </div>
+                        <span className="text-[9px] sm:text-xs font-bold text-slate-400 uppercase tracking-wider line-clamp-1">Gastos Hoy</span>
                     </div>
-                    <p className="text-slate-400 font-bold uppercase tracking-wider text-sm mb-1">Gastos Hoy</p>
-                    <h2 className="text-4xl font-black text-slate-900">${totalExpenses.toFixed(2)}</h2>
+                    <p className="text-base sm:text-2xl font-black text-slate-900">${totalExpenses.toFixed(2)}</p>
                 </div>
 
-                <div className="bg-primary text-slate-900 rounded-[35px] p-8 shadow-xl shadow-primary/20 relative overflow-hidden">
-                    <div className="absolute top-0 right-0 w-32 h-32 bg-black/5 rounded-bl-[100px] -z-10"></div>
-                    <div className="w-14 h-14 bg-black/10 text-slate-900 rounded-2xl flex items-center justify-center mb-6 backdrop-blur-sm">
-                        <DollarSign className="w-7 h-7" />
+                <div className="flex flex-col justify-between pl-1 sm:pl-2">
+                    <div className="flex items-center gap-1 sm:gap-2 mb-1">
+                        <div className="w-6 h-6 sm:w-8 sm:h-8 rounded-lg bg-slate-900 text-white flex items-center justify-center shrink-0">
+                            <DollarSign className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                        </div>
+                        <span className="text-[9px] sm:text-xs font-bold text-slate-400 uppercase tracking-wider line-clamp-1">Ganancia</span>
                     </div>
-                    <p className="text-slate-800/80 font-bold uppercase tracking-wider text-sm mb-1">Ganancia Neta Hoy</p>
-                    <h2 className="text-4xl font-black text-slate-900">${netProfit.toFixed(2)}</h2>
+                    <p className="text-base sm:text-2xl font-black text-emerald-600">${netProfit.toFixed(2)}</p>
                 </div>
             </div>
 
             {/* Content Tabs */}
-            <div className="bg-white rounded-[35px] border border-slate-100 shadow-sm overflow-hidden">
+            <div className="bg-white rounded-2xl sm:rounded-3xl border border-slate-100 shadow-sm overflow-hidden">
                 <div className="flex border-b border-slate-100">
                     <button
                         onClick={() => setActiveTab('sales')}
-                        className={`flex-1 py-5 font-black text-sm uppercase tracking-wider transition-colors ${activeTab === 'sales' ? 'text-slate-900 border-b-2 border-primary' : 'text-slate-400 hover:text-slate-600 hover:bg-slate-50'}`}
+                        className={`flex-1 py-3 sm:py-4 font-black text-xs sm:text-sm uppercase tracking-wider transition-colors ${activeTab === 'sales' ? 'text-slate-900 border-b-2 border-slate-900 bg-slate-50/50' : 'text-slate-400 hover:text-slate-600 hover:bg-slate-50'}`}
                     >
                         Ventas Hoy
                     </button>
                     <button
                         onClick={() => setActiveTab('expenses')}
-                        className={`flex-1 py-5 font-black text-sm uppercase tracking-wider transition-colors ${activeTab === 'expenses' ? 'text-slate-900 border-b-2 border-primary' : 'text-slate-400 hover:text-slate-600 hover:bg-slate-50'}`}
+                        className={`flex-1 py-3 sm:py-4 font-black text-xs sm:text-sm uppercase tracking-wider transition-colors ${activeTab === 'expenses' ? 'text-slate-900 border-b-2 border-slate-900 bg-slate-50/50' : 'text-slate-400 hover:text-slate-600 hover:bg-slate-50'}`}
                     >
-                        Historial de Gastos
+                        Gastos
                     </button>
                     <button
                         onClick={() => setActiveTab('closures')}
-                        className={`flex-1 py-5 font-black text-sm uppercase tracking-wider transition-colors ${activeTab === 'closures' ? 'text-slate-900 border-b-2 border-primary' : 'text-slate-400 hover:text-slate-600 hover:bg-slate-50'}`}
+                        className={`flex-1 py-3 sm:py-4 font-black text-xs sm:text-sm uppercase tracking-wider transition-colors ${activeTab === 'closures' ? 'text-slate-900 border-b-2 border-slate-900 bg-slate-50/50' : 'text-slate-400 hover:text-slate-600 hover:bg-slate-50'}`}
                     >
-                        Cierres de Caja
+                        Cierres
                     </button>
                 </div>
 
-                <div className="p-6">
+                <div className="p-3 sm:p-6">
                     {activeTab === 'sales' && (
                         <div className="space-y-4">
                             {sales.length === 0 ? (

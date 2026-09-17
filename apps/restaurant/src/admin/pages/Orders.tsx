@@ -1048,45 +1048,45 @@ export default function Orders() {
         );
     };
     const renderOrderCard = (order: any) => (
-        <div key={order.id} className="bg-white rounded-[35px] p-8 border border-slate-100 shadow-sm hover:shadow-xl transition-all group relative overflow-hidden">
+        <div key={order.id} className="bg-white rounded-2xl sm:rounded-[32px] p-3.5 sm:p-6 border border-slate-100 shadow-sm hover:shadow-md transition-all group relative overflow-hidden">
             {order.paymentStatus === 'sold' && (
-                <div className="absolute top-0 right-0 p-4">
-                    <span className="bg-green-100 text-green-600 text-[10px] font-black px-3 py-1 rounded-full uppercase tracking-widest">Venta Exitosa</span>
+                <div className="absolute top-0 right-0 p-3 sm:p-4">
+                    <span className="bg-green-100 text-green-700 text-[9px] sm:text-[10px] font-black px-2.5 py-0.5 rounded-full uppercase tracking-wider">Venta Exitosa</span>
                 </div>
             )}
             {order.paymentStatus === 'not_sold' && (
-                <div className="absolute top-0 right-0 p-4">
-                    <span className="bg-red-100 text-red-600 text-[10px] font-black px-3 py-1 rounded-full uppercase tracking-widest">No Vendido</span>
+                <div className="absolute top-0 right-0 p-3 sm:p-4">
+                    <span className="bg-red-100 text-red-600 text-[9px] sm:text-[10px] font-black px-2.5 py-0.5 rounded-full uppercase tracking-wider">No Vendido</span>
                 </div>
             )}
 
-            <div className="flex justify-between items-start mb-6">
+            <div className="flex justify-between items-start mb-3 sm:mb-5">
                 <div>
-                    <div className="flex items-center gap-2 mb-1">
-                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">PEDIDO #{order.id.slice(-6).toUpperCase()}</span>
+                    <div className="flex items-center gap-1.5 mb-1">
+                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">#{order.id.slice(-6).toUpperCase()}</span>
                         {order.source === 'waiter' ? (
-                            <span className="bg-yellow-400 text-black text-[10px] font-black px-2 py-0.5 rounded-md uppercase tracking-widest flex items-center gap-1">
+                            <span className="bg-slate-900 text-white text-[9px] font-black px-1.5 py-0.5 rounded uppercase tracking-wider flex items-center gap-1">
                                 Mesero
                             </span>
                         ) : (
-                            <span className="bg-yellow-400 text-black text-[10px] font-black px-2 py-0.5 rounded-md uppercase tracking-widest flex items-center gap-1">
-                                App
+                            <span className="bg-emerald-600 text-white text-[9px] font-black px-1.5 py-0.5 rounded uppercase tracking-wider flex items-center gap-1">
+                                App Delivery
                             </span>
                         )}
                     </div>
-                    <h3 className="text-xl font-black text-slate-900">{order.userName || 'Usuario de Deliexpress'}</h3>
-                    <p className="text-sm text-slate-400 font-bold flex items-center gap-1 mt-1">
-                        <Clock className="w-4 h-4" />
+                    <h3 className="text-base sm:text-lg font-black text-slate-900">{order.userName || 'Usuario de Deliexpress'}</h3>
+                    <p className="text-xs text-slate-400 font-bold flex items-center gap-1 mt-0.5">
+                        <Clock className="w-3.5 h-3.5" />
                         {order.createdAt?.toDate ? order.createdAt.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : (order.createdAt ? new Date(order.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '')}
                     </p>
                 </div>
                 <div className="text-right">
-                    <p className="text-2xl font-black text-slate-900">${order.total.toFixed(2)}</p>
-                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Total Cobrado</p>
+                    <p className="text-xl sm:text-2xl font-black text-slate-900">${order.total.toFixed(2)}</p>
+                    <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Total Cobrado</p>
                 </div>
             </div>
 
-            <div className="space-y-3 mb-6">
+            <div className="space-y-2 mb-3 sm:mb-5">
                 {order.items.map((item: any, idx: number) => {
                     const isMissing = (missingItemsByOrder[order.id] || []).includes(item.id);
                     return (
@@ -1380,25 +1380,25 @@ export default function Orders() {
             </div>
 
             {/* Status Tabs */}
-            <div className="grid grid-cols-2 lg:grid-cols-5 gap-2 p-2 bg-slate-100 rounded-[30px]">
+            <div className="flex items-center gap-1.5 p-1.5 bg-slate-100 rounded-2xl overflow-x-auto no-scrollbar">
                 {[
                     { id: 'pending', label: 'Pendientes', icon: Bell, color: 'bg-emerald-500' },
-                    { id: 'delivering', label: 'Camino', icon: Truck, color: 'bg-emerald-700' },
+                    { id: 'delivering', label: 'En Camino', icon: Truck, color: 'bg-emerald-700' },
                     { id: 'delivered', label: 'Entregados', icon: CheckCircle, color: 'bg-emerald-500' },
-                    { id: 'tables', label: 'Mesas', icon: Users, color: 'bg-primary' },
+                    { id: 'tables', label: 'Mesas', icon: Users, color: 'bg-slate-900' },
                     { id: 'rejected', label: 'Rechazados', icon: X, color: 'bg-slate-500' },
                 ].map((tab) => (
                     <button
                         key={tab.id}
                         onClick={() => setActiveTab(tab.id as any)}
-                        className={`flex items-center justify-center gap-2 p-4 rounded-[25px] font-black transition-all ${activeTab === tab.id
-                            ? 'bg-white shadow-lg text-slate-900'
-                            : 'text-slate-500 hover:bg-white/50'
+                        className={`flex items-center justify-center gap-1.5 px-3 py-2 sm:px-4 sm:py-2.5 rounded-xl font-black text-xs transition-all whitespace-nowrap shrink-0 sm:flex-1 ${activeTab === tab.id
+                            ? 'bg-white shadow-sm text-slate-900'
+                            : 'text-slate-500 hover:text-slate-700 hover:bg-white/50'
                             }`}
                     >
-                        <tab.icon className={`w-5 h-5 ${activeTab === tab.id ? 'text-slate-900' : ''}`} />
-                        <span className="hidden xl:inline">{tab.label}</span>
-                        <span className={`ml-1 text-[10px] px-2 py-0.5 rounded-full ${tab.id === 'tables' ? 'bg-slate-900 text-white' : 'text-white ' + tab.color}`}>
+                        <tab.icon className={`w-4 h-4 ${activeTab === tab.id ? 'text-slate-900' : 'text-slate-400'}`} />
+                        <span>{tab.label}</span>
+                        <span className={`text-[10px] font-black px-1.5 py-0.2 rounded-full ${tab.id === 'tables' ? 'bg-slate-900 text-white' : 'text-white ' + tab.color}`}>
                             {(stats as any)[tab.id]}
                         </span>
                     </button>
@@ -1406,13 +1406,13 @@ export default function Orders() {
             </div>
 
             <div className="relative">
-                <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
+                <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                 <input
                     type="text"
                     placeholder="Buscar por ID de pedido o dirección..."
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
-                    className="w-full bg-white border border-slate-200 p-4 pl-12 rounded-2xl outline-none focus:border-primary transition-all font-bold text-slate-700 shadow-sm"
+                    className="w-full bg-white border border-slate-200 p-2.5 sm:p-3.5 pl-10 rounded-xl sm:rounded-2xl outline-none focus:border-primary transition-all font-bold text-xs sm:text-sm text-slate-700 shadow-sm"
                 />
             </div>
 

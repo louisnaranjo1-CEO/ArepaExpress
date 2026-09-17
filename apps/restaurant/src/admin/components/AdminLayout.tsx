@@ -1,6 +1,6 @@
 import React from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, Store, UtensilsCrossed, ClipboardList, LogOut, ChevronRight, Menu, X, Settings, HelpCircle, Trash2, User, ChevronUp, Users, UserCheck, Printer, Key, Mail as MailIcon, AlertTriangle, Grid, CreditCard, Layout, Star, MessageSquare, Megaphone, DollarSign, Gift, Volume2, VolumeX, Shield } from 'lucide-react';
+import { LayoutDashboard, Store, UtensilsCrossed, ClipboardList, LogOut, ChevronRight, Menu, X, Settings, HelpCircle, Trash2, User, ChevronUp, Users, UserCheck, Printer, Key, Mail as MailIcon, AlertTriangle, Grid, CreditCard, Layout, Star, MessageSquare, Megaphone, DollarSign, Gift, Volume2, VolumeX, Shield, Bell } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useBranding } from '../../context/BrandingContext';
 import { updateUserEmail, updateUserPassword } from '../../lib/auth-service';
@@ -148,6 +148,35 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
             )
             .subscribe();
 
+        // Listen for followers
+        const followersChannel = supabase.channel(`admin-layout-followers:${currentUid}`)
+            .on(
+                'postgres_changes',
+                {
+                    event: 'INSERT',
+                    schema: 'public',
+                    table: 'restaurant_followers',
+                    filter: `restaurant_id=eq.${currentUid}`
+                },
+                (payload) => {
+                    const data = payload.new as any;
+                    const newNotification = {
+                        id: `follower_${Date.now()}`,
+                        type: 'new_follower',
+                        title: '¡Nuevo Seguidor!',
+                        message: `${data.user_name || 'Un usuario'} ha comenzado a seguir tu tienda`,
+                        createdAt: Date.now(),
+                    };
+
+                    setNotifications(prev => [newNotification, ...prev]);
+
+                    setTimeout(() => {
+                        setNotifications(prev => prev.filter(n => n.id !== newNotification.id));
+                    }, 8000);
+                }
+            )
+            .subscribe();
+
         // Listen for general notifications (new followers, reviews, etc.)
         const notifsChannel = supabase.channel(`admin-layout-notifs:${currentUid}`)
             .on(
@@ -180,6 +209,7 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
         return () => {
             isMounted = false;
             supabase.removeChannel(ordersChannel);
+            supabase.removeChannel(followersChannel);
             supabase.removeChannel(notifsChannel);
         };
     }, [user, currentUid]);
@@ -304,6 +334,7 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
         { path: '/orders', icon: ClipboardList, label: 'Pedidos' },
         { path: '/finance', icon: DollarSign, label: 'Caja y Finanzas' },
         { path: '/products', icon: UtensilsCrossed, label: 'Productos' },
+        { path: '/notifications', icon: Bell, label: 'Notificaciones' },
         { path: '/clients', icon: Users, label: 'Clientes' },
         { path: '/fidelization', icon: Gift, label: 'Fidelización' },
         { path: '/waiters', icon: UserCheck, label: 'Meseros' },
@@ -614,38 +645,72 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
                 </div>
 
                 {/* Mobile Bottom Navigation */}
-                <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 flex items-center justify-around pb-safe z-40 h-[65px] px-2 shadow-[0_-4px_20px_rgba(0,0,0,0.05)]">
+                <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-md border-t border-slate-200 flex items-center justify-around pb-safe z-40 h-[64px] px-1 shadow-[0_-4px_20px_rgba(0,0,0,0.06)]">
                     <NavLink
                         to="/"
                         onClick={() => vibrateSelection()}
-                        className={({ isActive }) => `flex flex-col items-center justify-center w-full h-full space-y-1 ${isActive ? 'text-primary' : 'text-slate-400'}`}
+                        className={({ isActive }) => `flex flex-col items-center justify-center flex-1 h-full py-1 transition-all ${isActive ? 'text-slate-900 font-black' : 'text-slate-400 font-bold hover:text-slate-600'}`}
                     >
-                        <LayoutDashboard className="w-5 h-5" />
-                        <span className="text-[10px] font-bold">Resumen</span>
+                        {({ isActive }) => (
+                            <>
+                                <LayoutDashboard className={`w-5 h-5 ${isActive ? 'stroke-[2.5px]' : ''}`} />
+                                <span className="text-[10px] mt-0.5">Resumen</span>
+                                {isActive && <span className="w-1 h-1 rounded-full bg-slate-900 mt-0.5"></span>}
+                            </>
+                        )}
                     </NavLink>
                     <NavLink
                         to="/orders"
                         onClick={() => vibrateSelection()}
-                        className={({ isActive }) => `flex flex-col items-center justify-center w-full h-full space-y-1 ${isActive ? 'text-primary' : 'text-slate-400'}`}
+                        className={({ isActive }) => `flex flex-col items-center justify-center flex-1 h-full py-1 transition-all ${isActive ? 'text-slate-900 font-black' : 'text-slate-400 font-bold hover:text-slate-600'}`}
                     >
-                        <ClipboardList className="w-5 h-5" />
-                        <span className="text-[10px] font-bold">Pedidos</span>
+                        {({ isActive }) => (
+                            <>
+                                <ClipboardList className={`w-5 h-5 ${isActive ? 'stroke-[2.5px]' : ''}`} />
+                                <span className="text-[10px] mt-0.5">Pedidos</span>
+                                {isActive && <span className="w-1 h-1 rounded-full bg-slate-900 mt-0.5"></span>}
+                            </>
+                        )}
+                    </NavLink>
+                    <NavLink
+                        to="/products"
+                        onClick={() => vibrateSelection()}
+                        className={({ isActive }) => `flex flex-col items-center justify-center flex-1 h-full py-1 transition-all ${isActive ? 'text-slate-900 font-black' : 'text-slate-400 font-bold hover:text-slate-600'}`}
+                    >
+                        {({ isActive }) => (
+                            <>
+                                <UtensilsCrossed className={`w-5 h-5 ${isActive ? 'stroke-[2.5px]' : ''}`} />
+                                <span className="text-[10px] mt-0.5">Menú</span>
+                                {isActive && <span className="w-1 h-1 rounded-full bg-slate-900 mt-0.5"></span>}
+                            </>
+                        )}
                     </NavLink>
                     <NavLink
                         to="/finance"
                         onClick={() => vibrateSelection()}
-                        className={({ isActive }) => `flex flex-col items-center justify-center w-full h-full space-y-1 ${isActive ? 'text-primary' : 'text-slate-400'}`}
+                        className={({ isActive }) => `flex flex-col items-center justify-center flex-1 h-full py-1 transition-all ${isActive ? 'text-slate-900 font-black' : 'text-slate-400 font-bold hover:text-slate-600'}`}
                     >
-                        <DollarSign className="w-5 h-5" />
-                        <span className="text-[10px] font-bold">Caja</span>
+                        {({ isActive }) => (
+                            <>
+                                <DollarSign className={`w-5 h-5 ${isActive ? 'stroke-[2.5px]' : ''}`} />
+                                <span className="text-[10px] mt-0.5">Caja</span>
+                                {isActive && <span className="w-1 h-1 rounded-full bg-slate-900 mt-0.5"></span>}
+                            </>
+                        )}
                     </NavLink>
-                    <button
-                        onClick={() => { vibrateSelection(); setIsSidebarOpen(true); }}
-                        className="flex flex-col items-center justify-center w-full h-full space-y-1 text-slate-400"
+                    <NavLink
+                        to="/notifications"
+                        onClick={() => vibrateSelection()}
+                        className={({ isActive }) => `flex flex-col items-center justify-center flex-1 h-full py-1 transition-all ${isActive ? 'text-slate-900 font-black' : 'text-slate-400 font-bold hover:text-slate-600'}`}
                     >
-                        <Menu className="w-5 h-5" />
-                        <span className="text-[10px] font-bold">Más</span>
-                    </button>
+                        {({ isActive }) => (
+                            <>
+                                <Bell className={`w-5 h-5 ${isActive ? 'stroke-[2.5px]' : ''}`} />
+                                <span className="text-[10px] mt-0.5">Avisos</span>
+                                {isActive && <span className="w-1 h-1 rounded-full bg-slate-900 mt-0.5"></span>}
+                            </>
+                        )}
+                    </NavLink>
                 </nav>
             </main>
             {/* Suspension Overlay */}

@@ -20,6 +20,7 @@ import Finance from './pages/Finance';
 import Fidelization from './pages/Fidelization';
 import ResuelveManager from './pages/ResuelveManager';
 import PushCampaigns from './pages/PushCampaigns';
+import Notifications from './pages/Notifications';
 
 function AdminRoutes() {
     const { user, userData, loading } = useAuth();
@@ -58,6 +59,7 @@ function AdminRoutes() {
                 <Route path="/fidelization" element={<Fidelization />} />
                 <Route path="/resuelve" element={<ResuelveManager />} />
                 <Route path="/push-campaigns" element={<PushCampaigns restaurantId={rid} />} />
+                <Route path="/notifications" element={<Notifications />} />
                 <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
         </AdminLayout>
