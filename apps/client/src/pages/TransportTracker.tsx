@@ -3,7 +3,7 @@ import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { DeliveryDriver } from '../lib/delivery-service';
 import toast from 'react-hot-toast';
-import { Navigation, Clock, CheckCircle2, Phone, ArrowLeft, Car, ShieldCheck, MessageCircle, Star, XCircle, MapPin, Package, Copy, AlertTriangle, Wind, Music, Wifi, BatteryCharging, AlertCircle } from 'lucide-react';
+import { Navigation, Clock, CheckCircle2, Phone, ArrowLeft, Car, ShieldCheck, MessageCircle, Star, XCircle, MapPin, Package, Copy, AlertTriangle, Wind, Music, Wifi, BatteryCharging, AlertCircle, X } from 'lucide-react';
 import { GoogleMap, useJsApiLoader, DirectionsRenderer, Marker } from '@react-google-maps/api';
 import { GOOGLE_MAPS_API_KEY, GOOGLE_MAPS_LIBRARIES } from '../lib/mapsConfig';
 import RideChat from '../components/RideChat';
@@ -63,6 +63,7 @@ export default function TransportTracker() {
     const [lostItemDesc, setLostItemDesc] = useState('');
     const [submittingLost, setSubmittingLost] = useState(false);
     const [lostItemSent, setLostItemSent] = useState(false);
+    const [showVehicleModal, setShowVehicleModal] = useState(false);
     
     // Notification sound
     const notificationSoundUrl = useRef<string | null>(null);
@@ -372,6 +373,29 @@ export default function TransportTracker() {
                 rated_at: new Date().toISOString(),
                 updated_at: new Date().toISOString()
             }).eq('id', requestId);
+
+            // Dynamically recalculate driver's overall rating
+            const driverId = request?.driverId || (request as any)?.driver_id;
+            if (driverId) {
+                const [ordersRes, trRes] = await Promise.all([
+                    supabase.from('orders').select('rating').eq('delivery_driver_id', driverId).not('rating', 'is', null),
+                    supabase.from('transport_requests').select('rating').eq('driver_id', driverId).not('rating', 'is', null)
+                ]);
+                const allRatings = [
+                    ...(ordersRes.data || []).map((o: any) => Number(o.rating)),
+                    ...(trRes.data || []).map((t: any) => Number(t.rating)),
+                    rating
+                ].filter(r => !isNaN(r) && r > 0);
+
+                if (allRatings.length > 0) {
+                    const avg = Number((allRatings.reduce((a, b) => a + b, 0) / allRatings.length).toFixed(1));
+                    await supabase.from('drivers').update({
+                        rating: avg,
+                        updated_at: new Date().toISOString()
+                    }).eq('id', driverId);
+                }
+            }
+
             setHasRated(true);
             toast.success("¡Gracias por tu calificación!");
         } catch (error) {
@@ -888,26 +912,60 @@ export default function TransportTracker() {
                             </div>
                         </div>
 
-                        {/* Vehicle Photo (if available) & Comfort Feature Badges */}
-                        <div className="flex flex-wrap items-center gap-1.5 pt-2 border-t border-slate-100">
-                            {((driver as any).vehicle_photo_url || driver.documents?.vehicle_photo_url || (driver.documents as any)?.vehicle_photo_url) && (
-                                <img
-                                    src={(driver as any).vehicle_photo_url || driver.documents?.vehicle_photo_url || (driver.documents as any)?.vehicle_photo_url}
-                                    alt="Vehículo"
-                                    className="w-8 h-8 rounded-lg object-cover border border-slate-200"
-                                />
-                            )}
-                            {((driver as any).comfort_features?.ac || (driver as any).comfortFeatures?.ac || driver.hasAc) && (
+                        {/* Vehicle Photo (Visual para identificar vehículo) */}
+                        {(() => {
+                            const vehiclePhotoUrl = (driver as any)?.vehicle_image_url 
+                                || (driver as any)?.vehicleImageUrl 
+                                || (driver as any)?.vehicle_photo_url 
+                                || (driver as any)?.vehiclePhotoUrl 
+                                || driver?.documents?.vehicleUrl 
+                                || (driver?.documents as any)?.vehicle_url 
+                                || (driver?.documents as any)?.vehicle_photo_url;
+                            if (!vehiclePhotoUrl) return null;
+                            return (
+                                <div className="pt-2 border-t border-slate-100 flex items-center justify-between bg-slate-50 p-2.5 rounded-xl border border-slate-100">
+                                    <div className="flex items-center gap-2.5">
+                                        <img
+                                            src={vehiclePhotoUrl}
+                                            alt="Vehículo asignado"
+                                            onClick={() => setShowVehicleModal(true)}
+                                            className="w-12 h-12 rounded-xl object-cover border border-slate-200 shadow-sm cursor-pointer active:scale-95 transition-transform"
+                                        />
+                                        <div>
+                                            <p className="text-[10px] font-black uppercase tracking-wider text-slate-600 flex items-center gap-1">
+                                                🚗 Foto del Vehículo
+                                            </p>
+                                            <p className="text-xs font-bold text-slate-800 capitalize">
+                                                {(driver as any).vehicle_brand ? `${(driver as any).vehicle_brand} ` : ''}
+                                                {(driver as any).vehicle_model || driver.vehicleType || 'Vehículo'}
+                                                {((driver as any).vehicle_color || driver.vehicleColor) ? ` • ${(driver as any).vehicle_color || driver.vehicleColor}` : ''}
+                                            </p>
+                                        </div>
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowVehicleModal(true)}
+                                        className="px-2.5 py-1 bg-white hover:bg-slate-100 border border-slate-200 text-slate-700 text-[10px] font-bold rounded-lg shadow-sm transition-colors"
+                                    >
+                                        Ver Foto
+                                    </button>
+                                </div>
+                            );
+                        })()}
+
+                        {/* Comfort Feature Badges */}
+                        <div className="flex flex-wrap items-center gap-1.5 pt-1.5">
+                            {((driver as any).comfort_features?.ac || (driver as any).comfortFeatures?.ac || (driver as any).comfort_features?.hasAc || (driver as any).comfortFeatures?.hasAc || driver.hasAc) && (
                                 <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-bold bg-cyan-50 text-cyan-700 border border-cyan-100">
                                     <Wind className="w-2.5 h-2.5" /> Aire A/A
                                 </span>
                             )}
-                            {((driver as any).comfort_features?.music || (driver as any).comfortFeatures?.music) && (
+                            {((driver as any).comfort_features?.music || (driver as any).comfortFeatures?.music || (driver as any).comfort_features?.hasMusic || (driver as any).comfortFeatures?.hasMusic) && (
                                 <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-bold bg-purple-50 text-purple-700 border border-purple-100">
-                                    <Music className="w-2.5 h-2.5" /> Música
+                                    <Music className="w-2.5 h-2.5" /> Buena Música
                                 </span>
                             )}
-                            {((driver as any).comfort_features?.wifi || (driver as any).comfortFeatures?.wifi) && (
+                            {((driver as any).comfort_features?.wifi || (driver as any).comfortFeatures?.wifi || (driver as any).comfort_features?.hasWifi || (driver as any).comfortFeatures?.hasWifi) && (
                                 <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-bold bg-blue-50 text-blue-700 border border-blue-100">
                                     <Wifi className="w-2.5 h-2.5" /> Wi-Fi
                                 </span>
@@ -1084,6 +1142,59 @@ export default function TransportTracker() {
                         </div>
                     </div>
                 )}
+
+                {/* Vehicle Photo Modal */}
+                {showVehicleModal && (() => {
+                    const vehiclePhotoUrl = (driver as any)?.vehicle_image_url 
+                        || (driver as any)?.vehicleImageUrl 
+                        || (driver as any)?.vehicle_photo_url 
+                        || (driver as any)?.vehiclePhotoUrl 
+                        || driver?.documents?.vehicleUrl 
+                        || (driver?.documents as any)?.vehicle_url 
+                        || (driver?.documents as any)?.vehicle_photo_url;
+                    if (!vehiclePhotoUrl) return null;
+                    return (
+                        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
+                            <div className="bg-white rounded-3xl max-w-sm w-full overflow-hidden shadow-2xl border border-slate-100">
+                                <div className="relative h-64 bg-slate-900 flex items-center justify-center">
+                                    <img
+                                        src={vehiclePhotoUrl}
+                                        alt="Vehículo asignado"
+                                        className="w-full h-full object-contain"
+                                    />
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowVehicleModal(false)}
+                                        className="absolute top-3 right-3 w-8 h-8 rounded-full bg-black/60 text-white flex items-center justify-center backdrop-blur-sm active:scale-95 transition-transform"
+                                    >
+                                        <X className="w-4 h-4" />
+                                    </button>
+                                </div>
+                                <div className="p-4 space-y-2">
+                                    <div className="flex items-center justify-between">
+                                        <div>
+                                            <p className="font-black text-sm text-slate-900 capitalize">
+                                                {(driver as any)?.vehicle_brand ? `${(driver as any).vehicle_brand} ` : ''}
+                                                {(driver as any)?.vehicle_model || driver?.vehicleType || 'Vehículo'}
+                                            </p>
+                                            <p className="text-xs text-slate-500 font-medium">
+                                                Color: {(driver as any)?.vehicle_color || driver?.vehicleColor || 'No especificado'}
+                                            </p>
+                                        </div>
+                                        {((driver as any)?.vehicle_plate || driver?.vehiclePlate) && (
+                                            <div className="px-3 py-1 bg-slate-900 text-yellow-400 font-mono font-black text-xs rounded-xl border border-yellow-400/30">
+                                                {((driver as any)?.vehicle_plate || driver?.vehiclePlate).toUpperCase()}
+                                            </div>
+                                        )}
+                                    </div>
+                                    <p className="text-[11px] text-slate-400 font-medium pt-2 border-t border-slate-100">
+                                        Conductor: {driver?.fullName || (driver as any)?.full_name || 'Asignado'}
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+                    );
+                })()}
 
             </div>
         </div>

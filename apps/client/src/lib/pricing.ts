@@ -168,47 +168,19 @@ export function calculateDynamicFare(params: {
     const basePrice = Number(baseFare.toFixed(2));
     const rawSubtotal = basePrice + distancePrice;
 
-    // 2. Factores Dinámicos (Surge Multiplier estilo Yango)
-    const dyn = smartSettings.dynamicFactors || DEFAULT_PRICING_SETTINGS.dynamicFactors;
-
-    // A) Factor Clima (Lluvia)
+    // 2. Factores Dinámicos: Por especificación, el clima ni el tráfico afectan a la tarifa.
+    // El clima se monitorea en pantalla como valor informativo en tiempo real pero no infla los precios.
     const isRain = forceRain !== undefined ? forceRain : Boolean(dyn.rainModeActive);
-    const rainPercent = isRain ? (Number(dyn.rainSurchargePercent) || 25) : 0;
-
-    // B) Factor Horario Nocturno
     const isNight = forceNight !== undefined
         ? forceNight
-        : (dyn.nightShift?.enabled && isCurrentTimeInShift(dyn.nightShift.start, dyn.nightShift.end));
-    const nightPercent = isNight ? (Number(dyn.nightShift?.surchargePercent) || 20) : 0;
+        : (dyn.nightShift?.enabled && isCurrentTimeInShift(dyn.nightShift?.start, dyn.nightShift?.end));
 
-    // C) Factor Oferta y Demanda (Unidades activas en vivo)
-    let demandLevel: 'normal' | 'low_supply' | 'critical_supply' = 'normal';
-    let demandPercent = 0;
-
-    if (dyn.dynamicDemandActive && availableDriversCount !== undefined) {
-        if (availableDriversCount === 0) {
-            demandLevel = 'critical_supply';
-            demandPercent = Number(dyn.criticalSupplySurchargePercent) || 30;
-        } else if (availableDriversCount <= 2) {
-            demandLevel = 'low_supply';
-            demandPercent = Number(dyn.lowSupplySurchargePercent) || 15;
-        }
-    }
-
-    // Multiplicador compuesto (tope de seguridad máximo 1.8x)
-    const totalSurchargePercent = Math.min(80, rainPercent + nightPercent + demandPercent);
-    const surgeMultiplier = Number((1 + (totalSurchargePercent / 100)).toFixed(2));
+    const surgeMultiplier = 1.0;
 
     // 3. Totales
     const clientTotal = Number((rawSubtotal * surgeMultiplier).toFixed(2));
-
-    // División de ingresos:
-    // La tarifa base se reparte según driverCutPercent.
-    // El recargo de lluvia y noche va preferentemente al conductor (100% del recargo de lluvia como compensación por riesgo).
-    const rainExtra = Number((rawSubtotal * (rainPercent / 100)).toFixed(2));
-    const regularPart = clientTotal - rainExtra;
-    const baseDriverPayout = (regularPart * (driverCut / 100));
-    const driverPayout = Number((baseDriverPayout + rainExtra).toFixed(2));
+    const baseDriverPayout = (clientTotal * (driverCut / 100));
+    const driverPayout = Number(baseDriverPayout.toFixed(2));
     const platformFee = Number(Math.max(0, clientTotal - driverPayout).toFixed(2));
 
     return {
@@ -220,11 +192,11 @@ export function calculateDynamicFare(params: {
         surgeMultiplier,
         activeFactors: {
             isRain,
-            rainPercent,
+            rainPercent: 0,
             isNight,
-            nightPercent,
-            demandLevel,
-            demandPercent
+            nightPercent: 0,
+            demandLevel: 'normal',
+            demandPercent: 0
         }
     };
 }

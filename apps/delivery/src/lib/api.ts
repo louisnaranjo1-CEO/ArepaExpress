@@ -82,6 +82,18 @@ export interface DriverProfile {
     updatedAt: string;
     audioAlertsEnabled: boolean;
     paymentMobile: { bank: string; cedula: string; phone: string } | null;
+    rating?: number;
+    acceptanceRate?: number;
+    acceptance_rate?: number;
+    totalTrips?: number;
+    total_trips?: number;
+    vehicleImageUrl?: string;
+    vehicle_image_url?: string;
+    comfortFeatures?: any;
+    comfort_features?: any;
+    payoutFrequency?: string;
+    payout_frequency?: string;
+    [key: string]: any;
 }
 
 export interface LocationPoint {
@@ -169,6 +181,7 @@ export const driversApi = {
         const profile = Array.isArray(data.profiles) ? data.profiles[0] : data.profiles;
         
         return {
+            ...data,
             id: data.id,
             email: profile?.email || '',
             fullName: profile?.full_name || '',
@@ -182,6 +195,8 @@ export const driversApi = {
             vehicleYear: data.vehicle_year,
             vehiclePlate: data.vehicle_plate,
             vehicleColor: data.vehicle_color || data.vehicleColor || '',
+            vehicleImageUrl: data.vehicle_image_url || data.vehicleImageUrl || data.documents?.vehicleUrl || '',
+            vehicle_image_url: data.vehicle_image_url || data.vehicleImageUrl || data.documents?.vehicleUrl || '',
             hasAc: data.has_ac ?? data.hasAc ?? false,
             isOnline: data.is_online,
             availability: data.availability,
@@ -195,7 +210,16 @@ export const driversApi = {
             createdAt: data.created_at,
             updatedAt: data.updated_at,
             audioAlertsEnabled: data.audio_alerts_enabled ?? true,
-            paymentMobile: data.payment_mobile || null
+            paymentMobile: data.payment_mobile || null,
+            rating: data.rating !== null && data.rating !== undefined ? Number(data.rating) : 5.0,
+            acceptanceRate: data.acceptance_rate !== null && data.acceptance_rate !== undefined ? Number(data.acceptance_rate) : 100,
+            acceptance_rate: data.acceptance_rate !== null && data.acceptance_rate !== undefined ? Number(data.acceptance_rate) : 100,
+            totalTrips: data.total_trips || 0,
+            total_trips: data.total_trips || 0,
+            comfortFeatures: data.comfort_features || data.comfortFeatures || null,
+            comfort_features: data.comfort_features || data.comfortFeatures || null,
+            payoutFrequency: data.payout_frequency || data.payoutFrequency || 'weekly_friday',
+            payout_frequency: data.payout_frequency || data.payoutFrequency || 'weekly_friday'
         };
     },
 

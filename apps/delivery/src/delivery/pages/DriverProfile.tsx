@@ -30,8 +30,57 @@ export default function DriverProfile() {
             try {
                 const data = await driversApi.getDriver(user.uid);
                 if (!isMounted) return;
-                
-                setDriverProfile(data);
+
+                // Query real orders & transport requests to calculate genuine dynamic metrics
+                const [ordersRes, transportRes] = await Promise.all([
+                    supabase.from('orders').select('id, rating, status').eq('delivery_driver_id', user.uid),
+                    supabase.from('transport_requests').select('id, rating, status').eq('driver_id', user.uid)
+                ]);
+
+                const ordersData = ordersRes.data || [];
+                const transportData = transportRes.data || [];
+
+                const completedOrders = ordersData.filter((o: any) => o.status === 'completed' || o.status === 'delivered');
+                const completedTransport = transportData.filter((t: any) => t.status === 'completed');
+                const realTotalTrips = completedOrders.length + completedTransport.length;
+
+                const ratedOrders = ordersData.filter((o: any) => typeof o.rating === 'number' && o.rating > 0).map((o: any) => Number(o.rating));
+                const ratedTransport = transportData.filter((t: any) => typeof t.rating === 'number' && t.rating > 0).map((t: any) => Number(t.rating));
+                const allRatings = [...ratedOrders, ...ratedTransport];
+
+                // Starts strictly at 5.0 stars, and averages dynamically as ratings are submitted
+                const realRating = allRatings.length > 0
+                    ? Number((allRatings.reduce((a, b) => a + b, 0) / allRatings.length).toFixed(1))
+                    : 5.0;
+
+                // Acceptance starts strictly at 100% and calculates based on completed vs cancelled
+                const driverCancelled = transportData.filter((t: any) => t.status === 'cancelled_by_driver').length;
+                const totalEngaged = realTotalTrips + driverCancelled;
+                const realAcceptance = totalEngaged > 0
+                    ? Math.max(0, Math.min(100, Math.round((realTotalTrips / totalEngaged) * 100)))
+                    : 100;
+
+                const mergedProfile = {
+                    ...data,
+                    rating: realRating,
+                    acceptance_rate: realAcceptance,
+                    acceptanceRate: realAcceptance,
+                    total_trips: realTotalTrips,
+                    totalTrips: realTotalTrips
+                };
+
+                setDriverProfile(mergedProfile);
+
+                // Auto sync metrics into drivers row if needed
+                if (data.rating !== realRating || data.acceptance_rate !== realAcceptance || data.total_trips !== realTotalTrips) {
+                    supabase.from('drivers').update({
+                        rating: realRating,
+                        acceptance_rate: realAcceptance,
+                        total_trips: realTotalTrips,
+                        updated_at: new Date().toISOString()
+                    }).eq('id', user.uid).then();
+                }
+
                 const hl = data.home_location || data.homeLocation;
                 if (hl) {
                     setLocationForm({
@@ -56,9 +105,9 @@ export default function DriverProfile() {
                 const cf = data.comfort_features || data.comfortFeatures;
                 if (cf) {
                     setComfortForm({
-                        hasAc: cf.hasAc ?? Boolean(data.has_ac),
-                        hasMusic: cf.hasMusic ?? true,
-                        hasWifi: cf.hasWifi ?? false,
+                        hasAc: cf.hasAc ?? cf.ac ?? Boolean(data.has_ac),
+                        hasMusic: cf.hasMusic ?? cf.music ?? true,
+                        hasWifi: cf.hasWifi ?? cf.wifi ?? false,
                         upholstery: cf.upholstery || 'excelente'
                     });
                 } else if (data.has_ac !== undefined) {
@@ -87,6 +136,12 @@ export default function DriverProfile() {
                     const data = await driversApi.getDriver(user.uid);
                     setDriverProfile(prev => ({ ...prev, ...data }));
                 } catch(e) {}
+            })
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'transport_requests', filter: `driver_id=eq.${user.uid}` }, () => {
+                if (isMounted) fetchProfile();
+            })
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'orders', filter: `delivery_driver_id=eq.${user.uid}` }, () => {
+                if (isMounted) fetchProfile();
             })
             .subscribe();
 
@@ -159,14 +214,27 @@ export default function DriverProfile() {
         e.preventDefault();
         setLoading(true);
         try {
+            const formattedComfort = {
+                ...comfortForm,
+                ac: comfortForm.hasAc,
+                music: comfortForm.hasMusic,
+                wifi: comfortForm.hasWifi
+            };
             const { error } = await supabase.from('drivers').update({
-                comfort_features: comfortForm,
+                comfort_features: formattedComfort,
                 has_ac: comfortForm.hasAc,
                 hasAc: comfortForm.hasAc,
                 updated_at: new Date().toISOString()
             }).eq('id', user!.uid);
 
             if (error) throw error;
+            setDriverProfile((prev: any) => ({
+                ...prev,
+                comfort_features: formattedComfort,
+                comfortFeatures: formattedComfort,
+                has_ac: comfortForm.hasAc,
+                hasAc: comfortForm.hasAc
+            }));
             alert('¡Equipamiento y confort actualizados con éxito!');
             setActiveView('profile');
         } catch (err: any) {
@@ -174,6 +242,55 @@ export default function DriverProfile() {
             alert('Error al guardar equipamiento: ' + err.message);
         } finally {
             setLoading(false);
+        }
+    };
+
+    const [uploadingVehicle, setUploadingVehicle] = useState(false);
+
+    const handleDirectVehicleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file || !user) return;
+
+        setUploadingVehicle(true);
+        try {
+            const ext = file.name.split('.').pop() || 'jpg';
+            const filePath = `delivery_docs/${user.uid}/vehicle_${Date.now()}.${ext}`;
+            const { error: upErr } = await supabase.storage.from('store_assets').upload(filePath, file, { upsert: true });
+            if (upErr) throw upErr;
+
+            const { data: pubData } = supabase.storage.from('store_assets').getPublicUrl(filePath);
+            const publicUrl = pubData.publicUrl;
+
+            const currentDocs = driverProfile?.documents || {};
+            const updatedDocs = {
+                ...currentDocs,
+                vehicleUrl: publicUrl,
+                vehicle_photo_url: publicUrl
+            };
+
+            const { error: dbErr } = await supabase.from('drivers').update({
+                vehicle_image_url: publicUrl,
+                vehicle_photo_url: publicUrl,
+                documents: updatedDocs,
+                updated_at: new Date().toISOString()
+            }).eq('id', user.uid);
+
+            if (dbErr) throw dbErr;
+
+            setDriverProfile((prev: any) => ({
+                ...prev,
+                vehicle_image_url: publicUrl,
+                vehicleImageUrl: publicUrl,
+                vehicle_photo_url: publicUrl,
+                documents: updatedDocs
+            }));
+
+            alert('¡Foto del vehículo guardada exitosamente! Tus clientes podrán verla al solicitar viajes.');
+        } catch (err: any) {
+            console.error('Error uploading vehicle image:', err);
+            alert('Error al subir la foto del vehículo: ' + (err.message || 'Error'));
+        } finally {
+            setUploadingVehicle(false);
         }
     };
 
@@ -460,8 +577,12 @@ export default function DriverProfile() {
                             className={`w-full flex items-center justify-between p-4 bg-slate-50 rounded-2xl transition-all cursor-pointer hover:bg-slate-100 ${updatingNotifications ? 'opacity-70 pointer-events-none' : ''}`}
                         >
                             <div className="flex items-center gap-3">
-                                <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center shadow-sm">
-                                    <Bell className="w-5 h-5 text-primary" />
+                                <div className={`w-10 h-10 rounded-xl flex items-center justify-center shadow-sm transition-colors duration-300 ${
+                                    userData?.notificationsEnabled || (userData?.fcmTokens && userData.fcmTokens.length > 0)
+                                        ? 'bg-emerald-100 text-emerald-600'
+                                        : 'bg-white text-slate-400'
+                                }`}>
+                                    <Bell className="w-5 h-5" />
                                 </div>
                                 <div className="flex flex-col">
                                     <span className="font-bold text-slate-700">Recibir Alertas</span>
@@ -469,15 +590,21 @@ export default function DriverProfile() {
                                 </div>
                             </div>
                             <div
-                                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${userData?.notificationsEnabled || (userData?.fcmTokens && userData.fcmTokens.length > 0) ? 'bg-primary' : 'bg-slate-300'
-                                    }`}
+                                className={`relative inline-flex h-7 w-12 items-center rounded-full transition-all duration-300 ease-in-out focus:outline-none ${
+                                    userData?.notificationsEnabled || (userData?.fcmTokens && userData.fcmTokens.length > 0)
+                                        ? 'bg-emerald-500 shadow-md shadow-emerald-500/30'
+                                        : 'bg-slate-300'
+                                }`}
                             >
                                 {updatingNotifications ? (
-                                    <div className="ml-1 w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                                    <div className="ml-1.5 w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
                                 ) : (
                                     <span
-                                        className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${userData?.notificationsEnabled || (userData?.fcmTokens && userData.fcmTokens.length > 0) ? 'translate-x-6' : 'translate-x-1'
-                                            }`}
+                                        className={`inline-block h-5 w-5 transform rounded-full bg-white shadow-md transition-transform duration-300 ease-in-out ${
+                                            userData?.notificationsEnabled || (userData?.fcmTokens && userData.fcmTokens.length > 0)
+                                                ? 'translate-x-6'
+                                                : 'translate-x-1'
+                                        }`}
                                     />
                                 )}
                             </div>
@@ -497,6 +624,7 @@ export default function DriverProfile() {
                                         audio_alerts_enabled: newValue
                                     }).eq('id', user.uid);
                                     if (error) throw error;
+                                    setDriverProfile((prev: any) => ({ ...prev, audioAlertsEnabled: newValue, audio_alerts_enabled: newValue }));
                                 } catch (err) {
                                     console.error("Error toggling audio alerts", err);
                                 } finally {
@@ -506,8 +634,12 @@ export default function DriverProfile() {
                             className={`w-full flex items-center justify-between p-4 bg-slate-50 rounded-2xl transition-all cursor-pointer hover:bg-slate-100 ${updatingNotifications ? 'opacity-70 pointer-events-none' : ''}`}
                         >
                             <div className="flex items-center gap-3">
-                                <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center shadow-sm">
-                                    <Smartphone className="w-5 h-5 text-primary" />
+                                <div className={`w-10 h-10 rounded-xl flex items-center justify-center shadow-sm transition-colors duration-300 ${
+                                    (driverProfile?.audioAlertsEnabled ?? true)
+                                        ? 'bg-emerald-100 text-emerald-600'
+                                        : 'bg-white text-slate-400'
+                                }`}>
+                                    <Smartphone className="w-5 h-5" />
                                 </div>
                                 <div className="flex flex-col">
                                     <span className="font-bold text-slate-700">Sonido de Notificación</span>
@@ -515,15 +647,21 @@ export default function DriverProfile() {
                                 </div>
                             </div>
                             <div
-                                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${(driverProfile?.audioAlertsEnabled ?? true) ? 'bg-primary' : 'bg-slate-300'
-                                    }`}
+                                className={`relative inline-flex h-7 w-12 items-center rounded-full transition-all duration-300 ease-in-out focus:outline-none ${
+                                    (driverProfile?.audioAlertsEnabled ?? true)
+                                        ? 'bg-emerald-500 shadow-md shadow-emerald-500/30'
+                                        : 'bg-slate-300'
+                                }`}
                             >
                                 {updatingNotifications ? (
-                                    <div className="ml-1 w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                                    <div className="ml-1.5 w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
                                 ) : (
                                     <span
-                                        className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${(driverProfile?.audioAlertsEnabled ?? true) ? 'translate-x-6' : 'translate-x-1'
-                                            }`}
+                                        className={`inline-block h-5 w-5 transform rounded-full bg-white shadow-md transition-transform duration-300 ease-in-out ${
+                                            (driverProfile?.audioAlertsEnabled ?? true)
+                                                ? 'translate-x-6'
+                                                : 'translate-x-1'
+                                        }`}
                                     />
                                 )}
                             </div>
@@ -567,8 +705,12 @@ export default function DriverProfile() {
                             className={`w-full flex items-center justify-between p-4 bg-slate-50 rounded-2xl transition-all cursor-pointer hover:bg-slate-100 ${updatingBiometrics ? 'opacity-70 pointer-events-none' : ''}`}
                         >
                             <div className="flex items-center gap-3">
-                                <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center shadow-sm">
-                                    <Fingerprint className="w-5 h-5 text-indigo-500" />
+                                <div className={`w-10 h-10 rounded-xl flex items-center justify-center shadow-sm transition-colors duration-300 ${
+                                    userData?.biometricLockEnabled
+                                        ? 'bg-emerald-100 text-emerald-600'
+                                        : 'bg-white text-slate-400'
+                                }`}>
+                                    <Fingerprint className="w-5 h-5" />
                                 </div>
                                 <div className="flex flex-col">
                                     <span className="font-bold text-slate-700">Bloqueo de App</span>
@@ -576,15 +718,21 @@ export default function DriverProfile() {
                                 </div>
                             </div>
                             <div
-                                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${userData?.biometricLockEnabled ? 'bg-indigo-500' : 'bg-slate-300'
-                                    }`}
+                                className={`relative inline-flex h-7 w-12 items-center rounded-full transition-all duration-300 ease-in-out focus:outline-none ${
+                                    userData?.biometricLockEnabled
+                                        ? 'bg-emerald-500 shadow-md shadow-emerald-500/30'
+                                        : 'bg-slate-300'
+                                }`}
                             >
                                 {updatingBiometrics ? (
-                                    <div className="ml-1 w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                                    <div className="ml-1.5 w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
                                 ) : (
                                     <span
-                                        className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${userData?.biometricLockEnabled ? 'translate-x-6' : 'translate-x-1'
-                                            }`}
+                                        className={`inline-block h-5 w-5 transform rounded-full bg-white shadow-md transition-transform duration-300 ease-in-out ${
+                                            userData?.biometricLockEnabled
+                                                ? 'translate-x-6'
+                                                : 'translate-x-1'
+                                        }`}
                                     />
                                 )}
                             </div>
@@ -651,8 +799,12 @@ export default function DriverProfile() {
                             className={`w-full flex items-center justify-between p-4 bg-slate-50 rounded-2xl transition-all cursor-pointer hover:bg-slate-100 ${updatingLocation ? 'opacity-70 pointer-events-none' : ''}`}
                         >
                             <div className="flex items-center gap-3">
-                                <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center shadow-sm">
-                                    <Navigation className="w-5 h-5 text-emerald-500" />
+                                <div className={`w-10 h-10 rounded-xl flex items-center justify-center shadow-sm transition-colors duration-300 ${
+                                    userData?.locationPermissionsAllowed
+                                        ? 'bg-emerald-100 text-emerald-600'
+                                        : 'bg-white text-slate-400'
+                                }`}>
+                                    <Navigation className="w-5 h-5" />
                                 </div>
                                 <div className="flex flex-col">
                                     <span className="font-bold text-slate-700">Ubicación en Tiempo Real</span>
@@ -660,15 +812,21 @@ export default function DriverProfile() {
                                 </div>
                             </div>
                             <div
-                                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${userData?.locationPermissionsAllowed ? 'bg-emerald-500' : 'bg-slate-300'
-                                    }`}
+                                className={`relative inline-flex h-7 w-12 items-center rounded-full transition-all duration-300 ease-in-out focus:outline-none ${
+                                    userData?.locationPermissionsAllowed
+                                        ? 'bg-emerald-500 shadow-md shadow-emerald-500/30'
+                                        : 'bg-slate-300'
+                                }`}
                             >
                                 {updatingLocation ? (
-                                    <div className="ml-1 w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                                    <div className="ml-1.5 w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
                                 ) : (
                                     <span
-                                        className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${userData?.locationPermissionsAllowed ? 'translate-x-6' : 'translate-x-1'
-                                            }`}
+                                        className={`inline-block h-5 w-5 transform rounded-full bg-white shadow-md transition-transform duration-300 ease-in-out ${
+                                            userData?.locationPermissionsAllowed
+                                                ? 'translate-x-6'
+                                                : 'translate-x-1'
+                                        }`}
                                     />
                                 )}
                             </div>
@@ -1313,72 +1471,168 @@ export default function DriverProfile() {
                 </div>
 
                 <form onSubmit={handleSaveComfortFeatures} className="bg-white rounded-3xl p-5 border border-slate-100 shadow-sm space-y-4">
+                    {/* Foto del Vehículo (Visible para tus Clientes) */}
+                    <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200/70 space-y-3">
+                        <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2.5">
+                                <div className="w-8 h-8 rounded-xl bg-amber-100 text-amber-800 flex items-center justify-center">
+                                    <Camera className="w-4 h-4" />
+                                </div>
+                                <div>
+                                    <p className="text-xs font-black text-slate-900">Foto del Vehículo</p>
+                                    <p className="text-[10px] text-slate-500">Visible para tus clientes al solicitar viajes</p>
+                                </div>
+                            </div>
+                            {(driverProfile?.vehicle_image_url || driverProfile?.documents?.vehicleUrl) && (
+                                <span className="text-[9px] font-bold text-emerald-600 bg-emerald-100/80 px-2 py-0.5 rounded-full">
+                                    ✓ Activa
+                                </span>
+                            )}
+                        </div>
+
+                        {/* Preview / Upload Area */}
+                        <div className="relative group/veh h-40 rounded-2xl bg-white border-2 border-dashed border-slate-300 flex flex-col items-center justify-center overflow-hidden transition-all hover:border-emerald-500">
+                            {(driverProfile?.vehicle_image_url || driverProfile?.vehicleImageUrl || driverProfile?.documents?.vehicleUrl || (driverProfile?.documents as any)?.vehicle_photo_url) ? (
+                                <>
+                                    <img
+                                        src={driverProfile?.vehicle_image_url || driverProfile?.vehicleImageUrl || driverProfile?.documents?.vehicleUrl || (driverProfile?.documents as any)?.vehicle_photo_url}
+                                        alt="Vehículo"
+                                        className="w-full h-full object-cover"
+                                    />
+                                    <div className="absolute inset-0 bg-black/40 opacity-0 group-hover/veh:opacity-100 transition-opacity flex flex-col items-center justify-center text-white gap-1">
+                                        <Camera className="w-6 h-6" />
+                                        <span className="text-[10px] font-bold">Cambiar foto</span>
+                                    </div>
+                                </>
+                            ) : (
+                                <div className="flex flex-col items-center gap-1.5 text-slate-400 p-4 text-center">
+                                    <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center text-slate-500">
+                                        <Car className="w-5 h-5" />
+                                    </div>
+                                    <span className="text-xs font-bold text-slate-700">Toca para subir foto de tu vehículo</span>
+                                    <span className="text-[10px] text-slate-400">Los clientes podrán reconocer tu vehículo al llegar</span>
+                                </div>
+                            )}
+                            <input
+                                type="file"
+                                accept="image/*"
+                                disabled={uploadingVehicle}
+                                onChange={handleDirectVehicleUpload}
+                                className="absolute inset-0 opacity-0 cursor-pointer z-10"
+                            />
+                            {uploadingVehicle && (
+                                <div className="absolute inset-0 bg-white/80 backdrop-blur-sm flex items-center justify-center gap-2 text-xs font-bold text-slate-800 z-20">
+                                    <div className="w-4 h-4 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin"></div>
+                                    <span>Subiendo foto...</span>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+
                     {/* Aire Acondicionado */}
-                    <div className="flex items-center justify-between p-3 bg-slate-50 rounded-2xl">
+                    <div
+                        onClick={() => setComfortForm(prev => ({ ...prev, hasAc: !prev.hasAc }))}
+                        className="flex items-center justify-between p-3.5 bg-slate-50 rounded-2xl cursor-pointer hover:bg-slate-100 transition-colors"
+                    >
                         <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 rounded-xl bg-cyan-100 text-cyan-700 flex items-center justify-center">
+                            <div className={`w-10 h-10 rounded-xl flex items-center justify-center transition-colors duration-300 ${
+                                comfortForm.hasAc ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-200 text-slate-400'
+                            }`}>
                                 <Wind className="w-5 h-5" />
                             </div>
                             <div>
                                 <p className="text-xs font-black text-slate-900">Aire Acondicionado (A/C)</p>
-                                <p className="text-[10px] text-slate-500">Climatización activa</p>
+                                <p className="text-[10px] text-slate-500">
+                                    {comfortForm.hasAc ? '❄️ Climatización activa' : 'Sin aire acondicionado'}
+                                </p>
                             </div>
                         </div>
-                        <input
-                            type="checkbox"
-                            checked={comfortForm.hasAc}
-                            onChange={e => setComfortForm({ ...comfortForm, hasAc: e.target.checked })}
-                            className="w-5 h-5 accent-primary rounded cursor-pointer"
-                        />
+                        <div
+                            className={`relative inline-flex h-7 w-12 shrink-0 items-center rounded-full transition-all duration-300 ease-in-out ${
+                                comfortForm.hasAc ? 'bg-emerald-500 shadow-md shadow-emerald-500/30' : 'bg-slate-300'
+                            }`}
+                        >
+                            <span
+                                className={`inline-block h-5 w-5 transform rounded-full bg-white shadow-md transition-transform duration-300 ease-in-out ${
+                                    comfortForm.hasAc ? 'translate-x-6' : 'translate-x-1'
+                                }`}
+                            />
+                        </div>
                     </div>
 
                     {/* Buena Música */}
-                    <div className="flex items-center justify-between p-3 bg-slate-50 rounded-2xl">
+                    <div
+                        onClick={() => setComfortForm(prev => ({ ...prev, hasMusic: !prev.hasMusic }))}
+                        className="flex items-center justify-between p-3.5 bg-slate-50 rounded-2xl cursor-pointer hover:bg-slate-100 transition-colors"
+                    >
                         <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 rounded-xl bg-purple-100 text-purple-700 flex items-center justify-center">
+                            <div className={`w-10 h-10 rounded-xl flex items-center justify-center transition-colors duration-300 ${
+                                comfortForm.hasMusic ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-200 text-slate-400'
+                            }`}>
                                 <Music className="w-5 h-5" />
                             </div>
                             <div>
                                 <p className="text-xs font-black text-slate-900">Buena Música</p>
-                                <p className="text-[10px] text-slate-500">Ambiente musical agradable</p>
+                                <p className="text-[10px] text-slate-500">
+                                    {comfortForm.hasMusic ? '🎵 Ambiente musical agradable' : 'Sin música'}
+                                </p>
                             </div>
                         </div>
-                        <input
-                            type="checkbox"
-                            checked={comfortForm.hasMusic}
-                            onChange={e => setComfortForm({ ...comfortForm, hasMusic: e.target.checked })}
-                            className="w-5 h-5 accent-primary rounded cursor-pointer"
-                        />
+                        <div
+                            className={`relative inline-flex h-7 w-12 shrink-0 items-center rounded-full transition-all duration-300 ease-in-out ${
+                                comfortForm.hasMusic ? 'bg-emerald-500 shadow-md shadow-emerald-500/30' : 'bg-slate-300'
+                            }`}
+                        >
+                            <span
+                                className={`inline-block h-5 w-5 transform rounded-full bg-white shadow-md transition-transform duration-300 ease-in-out ${
+                                    comfortForm.hasMusic ? 'translate-x-6' : 'translate-x-1'
+                                }`}
+                            />
+                        </div>
                     </div>
 
                     {/* Wifi */}
-                    <div className="flex items-center justify-between p-3 bg-slate-50 rounded-2xl">
+                    <div
+                        onClick={() => setComfortForm(prev => ({ ...prev, hasWifi: !prev.hasWifi }))}
+                        className="flex items-center justify-between p-3.5 bg-slate-50 rounded-2xl cursor-pointer hover:bg-slate-100 transition-colors"
+                    >
                         <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 rounded-xl bg-blue-100 text-blue-700 flex items-center justify-center">
+                            <div className={`w-10 h-10 rounded-xl flex items-center justify-center transition-colors duration-300 ${
+                                comfortForm.hasWifi ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-200 text-slate-400'
+                            }`}>
                                 <Wifi className="w-5 h-5" />
                             </div>
                             <div>
                                 <p className="text-xs font-black text-slate-900">Conexión Wi-Fi</p>
-                                <p className="text-[10px] text-slate-500">Internet compartido para pasajeros</p>
+                                <p className="text-[10px] text-slate-500">
+                                    {comfortForm.hasWifi ? '📶 Internet compartido para pasajeros' : 'Sin conexión Wi-Fi'}
+                                </p>
                             </div>
                         </div>
-                        <input
-                            type="checkbox"
-                            checked={comfortForm.hasWifi}
-                            onChange={e => setComfortForm({ ...comfortForm, hasWifi: e.target.checked })}
-                            className="w-5 h-5 accent-primary rounded cursor-pointer"
-                        />
+                        <div
+                            className={`relative inline-flex h-7 w-12 shrink-0 items-center rounded-full transition-all duration-300 ease-in-out ${
+                                comfortForm.hasWifi ? 'bg-emerald-500 shadow-md shadow-emerald-500/30' : 'bg-slate-300'
+                            }`}
+                        >
+                            <span
+                                className={`inline-block h-5 w-5 transform rounded-full bg-white shadow-md transition-transform duration-300 ease-in-out ${
+                                    comfortForm.hasWifi ? 'translate-x-6' : 'translate-x-1'
+                                }`}
+                            />
+                        </div>
                     </div>
 
                     {/* Tapicería */}
-                    <div className="p-3 bg-slate-50 rounded-2xl space-y-2">
+                    <div className="p-3.5 bg-slate-50 rounded-2xl space-y-2">
                         <label className="text-xs font-black text-slate-900 block">Calidad y Estado de Tapicería</label>
                         <div className="grid grid-cols-2 gap-2">
                             <button
                                 type="button"
                                 onClick={() => setComfortForm({ ...comfortForm, upholstery: 'excelente' })}
                                 className={`py-2.5 rounded-xl font-bold text-xs transition-all ${
-                                    comfortForm.upholstery === 'excelente' ? 'bg-primary text-slate-900 shadow-sm' : 'bg-white text-slate-600 border border-slate-200'
+                                    comfortForm.upholstery === 'excelente'
+                                        ? 'bg-emerald-500 text-white shadow-md shadow-emerald-500/20'
+                                        : 'bg-white text-slate-600 border border-slate-200'
                                 }`}
                             >
                                 ✨ Excelente
@@ -1387,7 +1641,9 @@ export default function DriverProfile() {
                                 type="button"
                                 onClick={() => setComfortForm({ ...comfortForm, upholstery: 'regular' })}
                                 className={`py-2.5 rounded-xl font-bold text-xs transition-all ${
-                                    comfortForm.upholstery === 'regular' ? 'bg-primary text-slate-900 shadow-sm' : 'bg-white text-slate-600 border border-slate-200'
+                                    comfortForm.upholstery === 'regular'
+                                        ? 'bg-slate-700 text-white shadow-md'
+                                        : 'bg-white text-slate-600 border border-slate-200'
                                 }`}
                             >
                                 Regular
@@ -1453,12 +1709,32 @@ export default function DriverProfile() {
                 </div>
             </div>
 
-            {/* Active Vehicle Card */}
-            <div className="bg-white rounded-[24px] p-4 sm:p-5 border border-slate-100 shadow-sm">
+            {/* Active Vehicle Card with Direct Vehicle Photo */}
+            <div className="bg-white rounded-[24px] p-4 sm:p-5 border border-slate-100 shadow-sm space-y-3.5">
                 <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3.5">
-                        <div className="w-12 h-12 bg-slate-100 rounded-2xl flex items-center justify-center text-slate-800 shadow-inner">
-                            {driverProfile?.vehicleType === 'moto' ? <Bike className="w-6 h-6" /> : <Car className="w-6 h-6" />}
+                        <div className="relative">
+                            {(driverProfile?.vehicle_image_url || driverProfile?.vehicleImageUrl || driverProfile?.documents?.vehicleUrl || (driverProfile?.documents as any)?.vehicle_photo_url) ? (
+                                <img
+                                    src={driverProfile?.vehicle_image_url || driverProfile?.vehicleImageUrl || driverProfile?.documents?.vehicleUrl || (driverProfile?.documents as any)?.vehicle_photo_url}
+                                    alt="Vehículo"
+                                    className="w-14 h-14 bg-slate-100 rounded-2xl object-cover border-2 border-emerald-400/60 shadow-sm"
+                                />
+                            ) : (
+                                <div className="w-14 h-14 bg-slate-100 rounded-2xl flex items-center justify-center text-slate-800 shadow-inner">
+                                    {driverProfile?.vehicleType === 'moto' ? <Bike className="w-7 h-7" /> : <Car className="w-7 h-7" />}
+                                </div>
+                            )}
+                            <label className="absolute -bottom-1 -right-1 w-6 h-6 bg-slate-900 hover:bg-emerald-600 text-white rounded-full flex items-center justify-center cursor-pointer shadow border-2 border-white transition-colors" title="Cambiar foto del vehículo">
+                                <Camera className="w-3 h-3" />
+                                <input
+                                    type="file"
+                                    accept="image/*"
+                                    disabled={uploadingVehicle}
+                                    onChange={handleDirectVehicleUpload}
+                                    className="hidden"
+                                />
+                            </label>
                         </div>
                         <div>
                             <p className="text-xs font-black text-slate-900 capitalize">
@@ -1468,6 +1744,9 @@ export default function DriverProfile() {
                                 {driverProfile?.vehicleBrand ? `${driverProfile.vehicleBrand} ` : ''}
                                 {driverProfile?.vehicleModel ? `${driverProfile.vehicleModel} ` : ''}
                                 {driverProfile?.vehicleColor ? `• ${driverProfile.vehicleColor}` : ''}
+                            </p>
+                            <p className="text-[10px] font-bold text-emerald-600 mt-0.5 flex items-center gap-1">
+                                {(driverProfile?.vehicle_image_url || driverProfile?.vehicleImageUrl || driverProfile?.documents?.vehicleUrl) ? '✓ Foto visible para tus clientes' : '⚠️ Sin foto de vehículo'}
                             </p>
                         </div>
                     </div>
@@ -1479,8 +1758,33 @@ export default function DriverProfile() {
                         <span className="text-[10px] font-bold text-slate-400 bg-slate-100 px-2.5 py-1 rounded-full">Sin Placa</span>
                     )}
                 </div>
+
+                {uploadingVehicle && (
+                    <div className="p-2 bg-emerald-50 text-emerald-700 text-xs font-bold rounded-xl flex items-center justify-center gap-2">
+                        <div className="w-4 h-4 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin"></div>
+                        Subiendo foto del vehículo...
+                    </div>
+                )}
+
+                {/* If no vehicle photo, prompt to upload one */}
+                {!(driverProfile?.vehicle_image_url || driverProfile?.vehicleImageUrl || driverProfile?.documents?.vehicleUrl || (driverProfile?.documents as any)?.vehicle_photo_url) && !uploadingVehicle && (
+                    <label className="w-full py-2.5 px-3.5 bg-amber-50 hover:bg-amber-100 border border-amber-200/80 rounded-xl flex items-center justify-between cursor-pointer transition-colors">
+                        <div className="flex items-center gap-2 text-amber-900 text-xs font-bold">
+                            <Camera className="w-4 h-4 text-amber-600" />
+                            <span>Añadir foto del vehículo para tus clientes</span>
+                        </div>
+                        <span className="text-[10px] font-black uppercase text-amber-700 bg-amber-200/60 px-2 py-0.5 rounded-lg">Subir</span>
+                        <input
+                            type="file"
+                            accept="image/*"
+                            onChange={handleDirectVehicleUpload}
+                            className="hidden"
+                        />
+                    </label>
+                )}
+
                 {driverProfile?.hasAc && (
-                    <div className="mt-3 pt-3 border-t border-slate-100 flex items-center gap-2 text-xs font-bold text-cyan-600">
+                    <div className="pt-2 border-t border-slate-100 flex items-center gap-2 text-xs font-bold text-cyan-600">
                         <span>❄️ Equipado con Aire Acondicionado (A/C)</span>
                     </div>
                 )}
@@ -1552,8 +1856,8 @@ export default function DriverProfile() {
                             <Wind className="w-5 h-5" />
                         </div>
                         <div className="text-left">
-                            <p className="font-bold text-slate-900 text-sm">Confort y Equipamiento</p>
-                            <p className="text-xs font-medium text-slate-500">Aire A/C, música, Wi-Fi y tapicería</p>
+                            <p className="font-bold text-slate-900 text-sm">Foto del Vehículo y Confort</p>
+                            <p className="text-xs font-medium text-slate-500">Foto para clientes, Aire A/C, música y Wi-Fi</p>
                         </div>
                     </div>
                     <ChevronRight className="w-5 h-5 text-slate-300 group-hover:text-cyan-600 transition-colors" />

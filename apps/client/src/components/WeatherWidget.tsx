@@ -138,30 +138,12 @@ export default function WeatherWidget({
                 </div>
 
                 {/* Minimal Informative Note */}
-                <div className="p-2.5 bg-amber-500/10 border border-amber-500/20 rounded-xl flex items-center gap-2 text-[11px] text-amber-200/90 leading-snug">
-                    <Info className="w-3.5 h-3.5 shrink-0 text-amber-400" />
+                <div className="p-2.5 bg-sky-500/10 border border-sky-500/20 rounded-xl flex items-center gap-2 text-[11px] text-sky-200/90 leading-snug">
+                    <Info className="w-3.5 h-3.5 shrink-0 text-sky-400" />
                     <p className="line-clamp-2">
-                        {isRainingNow
-                            ? 'Está lloviendo. Tarifa adaptada para compensar a los conductores.'
-                            : 'Clima favorable para viajes y entregas rápidas sin demoras.'}
+                        Monitoreo de clima en vivo para tu zona. Ni el clima ni el tráfico alteran las tarifas del servicio.
                     </p>
                 </div>
-
-                {/* Rain simulation trigger if provided */}
-                {onToggleTestRain && (
-                    <button
-                        type="button"
-                        onClick={onToggleTestRain}
-                        className={`w-full py-1.5 rounded-lg text-[10px] font-bold transition-all flex items-center justify-center gap-1.5 border ${
-                            testRainActive
-                                ? 'bg-blue-500/20 text-blue-300 border-blue-500/40'
-                                : 'bg-white/5 text-slate-400 border-white/10 hover:text-slate-200'
-                        }`}
-                    >
-                        <CloudRain className="w-3 h-3" />
-                        <span>{testRainActive ? 'Desactivar simulación lluvia' : 'Simular lluvia'}</span>
-                    </button>
-                )}
 
                 {/* Bottom Action Button */}
                 <button
@@ -177,28 +159,28 @@ export default function WeatherWidget({
 
     return (
         <>
-            {/* 1. Floating Weather Pill Button */}
+            {/* 1. Floating Weather Pill Button - Compact & Discreet */}
             <button
                 type="button"
                 onClick={() => setIsDetailsOpen(true)}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full backdrop-blur-md shadow-lg transition-all active:scale-95 border ${
+                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full backdrop-blur-md shadow-md transition-all active:scale-95 border ${
                     isRainingNow
                         ? 'bg-blue-600/90 text-white border-blue-400/50 animate-pulse'
                         : isNight
                         ? 'bg-slate-900/85 text-slate-100 border-slate-700/60 hover:bg-slate-900'
                         : 'bg-white/90 text-slate-800 border-slate-200/80 hover:bg-white'
                 }`}
-                title="Ver estado del clima en tu ubicación"
+                title="Ver clima (Solo informativo)"
             >
-                <span className="text-sm select-none">{weather.conditionEmoji}</span>
-                <span className="text-xs font-black tracking-tight">{weather.temperature}°C</span>
+                <span className="text-xs select-none">{weather.conditionEmoji}</span>
+                <span className="text-[11px] font-black tracking-tight">{weather.temperature}°C</span>
                 <div className="w-1 h-1 rounded-full bg-current opacity-40" />
-                <span className="text-[10px] font-bold opacity-90 flex items-center gap-0.5">
+                <span className="text-[9px] font-bold opacity-90 flex items-center gap-0.5">
                     <CloudRain className="w-2.5 h-2.5 inline" />
-                    {isRainingNow ? 'Lloviendo' : `${weather.rainProbability}%`}
+                    {isRainingNow ? 'Lluvia' : `${weather.rainProbability}%`}
                 </span>
                 {isNight && (
-                    <Moon className="w-2.5 h-2.5 text-indigo-300 ml-0.5" />
+                    <Moon className="w-2 h-2 text-indigo-300 ml-0.5" />
                 )}
             </button>
 
