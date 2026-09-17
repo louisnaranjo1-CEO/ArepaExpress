@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { DeliveryDriver } from '../../lib/delivery-service';
 import { driversApi } from '../../lib/api';
 import { supabase } from '../../lib/supabase';
-import { Truck, CheckCircle2, XCircle, FileText, User, DollarSign, ExternalLink, Plus, Trash2, Clock, Sun, Moon, Activity, MapPin, Map as MapIcon, Navigation, Search, CloudRain, Zap, Sparkles, Sliders, Bike, Car, ShieldCheck, Check, RefreshCw } from 'lucide-react';
+import { Truck, CheckCircle2, XCircle, FileText, User, DollarSign, ExternalLink, Plus, Trash2, Clock, Sun, Moon, Activity, MapPin, Map as MapIcon, Navigation, Search, CloudRain, Zap, Sparkles, Sliders, Bike, Car, ShieldCheck, Check, RefreshCw, Shield, CreditCard, Building2, Phone, Package } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { GoogleMap, useJsApiLoader, Marker, InfoWindow } from '@react-google-maps/api';
 import DualPrice from '../../components/DualPrice';
@@ -106,6 +106,23 @@ _Enviado desde Deliexpress App_`
     const [activeShift, setActiveShift] = useState<'day' | 'night'>('day');
     const [savingSettings, setSavingSettings] = useState(false);
 
+    // Comisiones Fijas por Categoría Un 2x3
+    const [categoryCommissions, setCategoryCommissions] = useState({
+        mototaxi: 0.50,
+        taxi: 0.80,
+        confort: 1.20,
+        delivery: 0.50,
+        mandao: 0.70
+    });
+
+    // Datos Oficiales Pago Móvil Un 2x3 para Liquidaciones
+    const [un2x3PagoMovil, setUn2x3PagoMovil] = useState({
+        bank: 'Banesco (0134)',
+        phone: '04141234567',
+        idf: 'J-50123456-7',
+        name: 'Un 2x3 Inversiones C.A.'
+    });
+
     // Simulador de Tarifas en Vivo (Live Simulator)
     const [simDistance, setSimDistance] = useState<number>(3.5);
     const [simForceRain, setSimForceRain] = useState<boolean>(false);
@@ -192,6 +209,30 @@ _Enviado desde Deliexpress App_`
                     dynamicFactors: sData.dynamicFactors || prev.dynamicFactors || DEFAULT_PRICING_SETTINGS.dynamicFactors,
                     transportRates: sData.transportRates || prev.transportRates
                 }));
+            }
+
+            const { data: commData } = await supabase
+                .from('app_settings')
+                .select('*')
+                .eq('id', 'commission_settings')
+                .maybeSingle();
+            if (commData) {
+                const cVal = commData.data || commData.value || commData;
+                if (cVal.commissions) {
+                    setCategoryCommissions(prev => ({
+                        ...prev,
+                        ...cVal.commissions
+                    }));
+                }
+                const pm = cVal.pago_movil || cVal.pagoMovil;
+                if (pm) {
+                    setUn2x3PagoMovil({
+                        bank: pm.bank || 'Banesco (0134)',
+                        phone: pm.phone || '04141234567',
+                        idf: pm.id_number || pm.idf || 'J-50123456-7',
+                        name: pm.account_name || pm.name || 'Un 2x3 Inversiones C.A.'
+                    });
+                }
             }
         };
         fetchSettings();
@@ -444,7 +485,32 @@ _Enviado desde Deliexpress App_`
                     updated_at: new Date().toISOString()
                 });
             if (error) throw error;
-            alert('¡Configuraciones guardadas correctamente en Supabase!');
+
+            // Guardar Comisiones Un 2x3 y Pago Móvil Receptor
+            const { error: commErr } = await supabase
+                .from('app_settings')
+                .upsert({
+                    id: 'commission_settings',
+                    data: {
+                        commissions: categoryCommissions,
+                        pagoMovil: {
+                            bank: un2x3PagoMovil.bank,
+                            phone: un2x3PagoMovil.phone,
+                            idf: un2x3PagoMovil.idf,
+                            name: un2x3PagoMovil.name
+                        },
+                        pago_movil: {
+                            bank: un2x3PagoMovil.bank,
+                            phone: un2x3PagoMovil.phone,
+                            id_number: un2x3PagoMovil.idf,
+                            account_name: un2x3PagoMovil.name
+                        }
+                    },
+                    updated_at: new Date().toISOString()
+                });
+            if (commErr) throw commErr;
+
+            alert('¡Configuraciones de tarifas y comisiones Un 2x3 guardadas correctamente en Supabase!');
         } catch (error) {
             console.error("Error saving settings:", error);
             alert("Error al guardar configuraciones.");
@@ -907,6 +973,281 @@ _Enviado desde Deliexpress App_`
             {/* TAB: FINANCES */}
             {activeTab === 'finances' && (
                 <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4">
+                    {/* ========================================================= */}
+                    {/* SECCIÓN 1: GESTIÓN DE COMISIONES FIJAS POR CATEGORÍA */}
+                    {/* ========================================================= */}
+                    <div className="bg-white p-6 md:p-8 rounded-[32px] border border-slate-200 shadow-sm space-y-6">
+                        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-100 pb-5">
+                            <div className="space-y-1">
+                                <div className="flex items-center gap-2">
+                                    <span className="px-3 py-1 bg-primary/20 text-slate-900 rounded-full text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5 border border-primary/30">
+                                        <Shield className="w-3.5 h-3.5 text-primary" />
+                                        Tarifa Plana por Carrera
+                                    </span>
+                                    <span className="px-2.5 py-0.5 bg-emerald-50 text-emerald-700 rounded-full text-[10px] font-bold border border-emerald-200">
+                                        Autonomía de Tarifas
+                                    </span>
+                                </div>
+                                <h3 className="text-xl font-black text-slate-900 tracking-tight">Comisiones de Plataforma Un 2x3</h3>
+                                <p className="text-xs text-slate-500 max-w-2xl font-medium leading-relaxed">
+                                    Monto fijo exacto en dólares ($ USD) que se debita automáticamente del saldo y acumula a la deuda del conductor por cada servicio completado, sin importar el monto que el conductor cobre al usuario.
+                                </p>
+                            </div>
+                            <button
+                                onClick={handleSaveSettings}
+                                disabled={savingSettings}
+                                className="px-6 py-3 bg-primary text-slate-900 font-black rounded-2xl text-xs flex items-center gap-2 shadow-lg shadow-primary/20 hover:scale-[1.02] active:scale-98 transition-all shrink-0"
+                            >
+                                <Check className="w-4 h-4" />
+                                {savingSettings ? 'Guardando...' : 'Guardar Comisiones'}
+                            </button>
+                        </div>
+
+                        {/* 5 Categories Cards */}
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+                            {/* Mototaxi */}
+                            <div className="bg-slate-50 p-5 rounded-2xl border border-slate-200/80 space-y-3 hover:border-amber-400 transition-colors">
+                                <div className="flex items-center gap-3">
+                                    <div className="w-10 h-10 rounded-xl bg-amber-500/10 text-amber-600 flex items-center justify-center font-black">
+                                        <Bike className="w-5 h-5" />
+                                    </div>
+                                    <div>
+                                        <h4 className="font-black text-slate-900 text-xs uppercase tracking-wide">Mototaxi</h4>
+                                        <p className="text-[10px] text-slate-400 font-bold">1 Pasajero</p>
+                                    </div>
+                                </div>
+                                <div>
+                                    <label className="text-[10px] font-black uppercase text-slate-400 block mb-1">Comisión Fija ($)</label>
+                                    <div className="relative">
+                                        <span className="absolute left-3 top-2.5 text-slate-400 font-bold text-xs">$</span>
+                                        <input
+                                            type="number"
+                                            step="0.05"
+                                            min="0"
+                                            value={categoryCommissions.mototaxi}
+                                            onChange={(e) => setCategoryCommissions(prev => ({ ...prev, mototaxi: parseFloat(e.target.value) || 0 }))}
+                                            className="w-full bg-white border border-slate-200 pl-7 pr-3 py-2 rounded-xl text-sm font-black text-slate-800 outline-none focus:ring-2 focus:ring-amber-500/20"
+                                        />
+                                    </div>
+                                    {bcvRate > 0 && (
+                                        <p className="text-[10px] text-slate-400 font-medium mt-1">
+                                            ≈ {(categoryCommissions.mototaxi * bcvRate).toFixed(2)} Bs
+                                        </p>
+                                    )}
+                                </div>
+                            </div>
+
+                            {/* Taxi Driver */}
+                            <div className="bg-slate-50 p-5 rounded-2xl border border-slate-200/80 space-y-3 hover:border-indigo-400 transition-colors">
+                                <div className="flex items-center gap-3">
+                                    <div className="w-10 h-10 rounded-xl bg-indigo-500/10 text-indigo-600 flex items-center justify-center font-black">
+                                        <Car className="w-5 h-5" />
+                                    </div>
+                                    <div>
+                                        <h4 className="font-black text-slate-900 text-xs uppercase tracking-wide">Taxi Driver</h4>
+                                        <p className="text-[10px] text-slate-400 font-bold">Carro Estándar</p>
+                                    </div>
+                                </div>
+                                <div>
+                                    <label className="text-[10px] font-black uppercase text-slate-400 block mb-1">Comisión Fija ($)</label>
+                                    <div className="relative">
+                                        <span className="absolute left-3 top-2.5 text-slate-400 font-bold text-xs">$</span>
+                                        <input
+                                            type="number"
+                                            step="0.05"
+                                            min="0"
+                                            value={categoryCommissions.taxi}
+                                            onChange={(e) => setCategoryCommissions(prev => ({ ...prev, taxi: parseFloat(e.target.value) || 0 }))}
+                                            className="w-full bg-white border border-slate-200 pl-7 pr-3 py-2 rounded-xl text-sm font-black text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500/20"
+                                        />
+                                    </div>
+                                    {bcvRate > 0 && (
+                                        <p className="text-[10px] text-slate-400 font-medium mt-1">
+                                            ≈ {(categoryCommissions.taxi * bcvRate).toFixed(2)} Bs
+                                        </p>
+                                    )}
+                                </div>
+                            </div>
+
+                            {/* Carro Confort */}
+                            <div className="bg-slate-50 p-5 rounded-2xl border border-slate-200/80 space-y-3 hover:border-purple-400 transition-colors">
+                                <div className="flex items-center gap-3">
+                                    <div className="w-10 h-10 rounded-xl bg-purple-500/10 text-purple-600 flex items-center justify-center font-black">
+                                        <Sparkles className="w-5 h-5" />
+                                    </div>
+                                    <div>
+                                        <h4 className="font-black text-slate-900 text-xs uppercase tracking-wide">Carro Confort</h4>
+                                        <p className="text-[10px] text-slate-400 font-bold">A/C • Maletero</p>
+                                    </div>
+                                </div>
+                                <div>
+                                    <label className="text-[10px] font-black uppercase text-slate-400 block mb-1">Comisión Fija ($)</label>
+                                    <div className="relative">
+                                        <span className="absolute left-3 top-2.5 text-slate-400 font-bold text-xs">$</span>
+                                        <input
+                                            type="number"
+                                            step="0.05"
+                                            min="0"
+                                            value={categoryCommissions.confort}
+                                            onChange={(e) => setCategoryCommissions(prev => ({ ...prev, confort: parseFloat(e.target.value) || 0 }))}
+                                            className="w-full bg-white border border-slate-200 pl-7 pr-3 py-2 rounded-xl text-sm font-black text-slate-800 outline-none focus:ring-2 focus:ring-purple-500/20"
+                                        />
+                                    </div>
+                                    {bcvRate > 0 && (
+                                        <p className="text-[10px] text-slate-400 font-medium mt-1">
+                                            ≈ {(categoryCommissions.confort * bcvRate).toFixed(2)} Bs
+                                        </p>
+                                    )}
+                                </div>
+                            </div>
+
+                            {/* Envíos / Delivery */}
+                            <div className="bg-slate-50 p-5 rounded-2xl border border-slate-200/80 space-y-3 hover:border-emerald-400 transition-colors">
+                                <div className="flex items-center gap-3">
+                                    <div className="w-10 h-10 rounded-xl bg-emerald-500/10 text-emerald-600 flex items-center justify-center font-black">
+                                        <Package className="w-5 h-5" />
+                                    </div>
+                                    <div>
+                                        <h4 className="font-black text-slate-900 text-xs uppercase tracking-wide">Envíos / Delivery</h4>
+                                        <p className="text-[10px] text-slate-400 font-bold">Paquetes / Pedidos</p>
+                                    </div>
+                                </div>
+                                <div>
+                                    <label className="text-[10px] font-black uppercase text-slate-400 block mb-1">Comisión Fija ($)</label>
+                                    <div className="relative">
+                                        <span className="absolute left-3 top-2.5 text-slate-400 font-bold text-xs">$</span>
+                                        <input
+                                            type="number"
+                                            step="0.05"
+                                            min="0"
+                                            value={categoryCommissions.delivery}
+                                            onChange={(e) => setCategoryCommissions(prev => ({ ...prev, delivery: parseFloat(e.target.value) || 0 }))}
+                                            className="w-full bg-white border border-slate-200 pl-7 pr-3 py-2 rounded-xl text-sm font-black text-slate-800 outline-none focus:ring-2 focus:ring-emerald-500/20"
+                                        />
+                                    </div>
+                                    {bcvRate > 0 && (
+                                        <p className="text-[10px] text-slate-400 font-medium mt-1">
+                                            ≈ {(categoryCommissions.delivery * bcvRate).toFixed(2)} Bs
+                                        </p>
+                                    )}
+                                </div>
+                            </div>
+
+                            {/* Muchacho e' Mandado */}
+                            <div className="bg-slate-50 p-5 rounded-2xl border border-slate-200/80 space-y-3 hover:border-amber-500 transition-colors">
+                                <div className="flex items-center gap-3">
+                                    <div className="w-10 h-10 rounded-xl bg-amber-500/10 text-amber-700 flex items-center justify-center font-black">
+                                        <Zap className="w-5 h-5" />
+                                    </div>
+                                    <div>
+                                        <h4 className="font-black text-slate-900 text-xs uppercase tracking-wide">e' Mandado</h4>
+                                        <p className="text-[10px] text-slate-400 font-bold">Diligencias / Bidding</p>
+                                    </div>
+                                </div>
+                                <div>
+                                    <label className="text-[10px] font-black uppercase text-slate-400 block mb-1">Comisión Fija ($)</label>
+                                    <div className="relative">
+                                        <span className="absolute left-3 top-2.5 text-slate-400 font-bold text-xs">$</span>
+                                        <input
+                                            type="number"
+                                            step="0.05"
+                                            min="0"
+                                            value={categoryCommissions.mandao}
+                                            onChange={(e) => setCategoryCommissions(prev => ({ ...prev, mandao: parseFloat(e.target.value) || 0 }))}
+                                            className="w-full bg-white border border-slate-200 pl-7 pr-3 py-2 rounded-xl text-sm font-black text-slate-800 outline-none focus:ring-2 focus:ring-amber-500/20"
+                                        />
+                                    </div>
+                                    {bcvRate > 0 && (
+                                        <p className="text-[10px] text-slate-400 font-medium mt-1">
+                                            ≈ {(categoryCommissions.mandao * bcvRate).toFixed(2)} Bs
+                                        </p>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* ========================================================= */}
+                    {/* SECCIÓN 2: DATOS OFICIALES PAGO MÓVIL RECEPTOR UN 2X3 */}
+                    {/* ========================================================= */}
+                    <div className="bg-white p-6 md:p-8 rounded-[32px] border border-slate-200 shadow-sm space-y-6">
+                        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-100 pb-5">
+                            <div className="space-y-1">
+                                <div className="flex items-center gap-2">
+                                    <span className="px-3 py-1 bg-amber-500/10 text-amber-700 rounded-full text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5 border border-amber-500/30">
+                                        <CreditCard className="w-3.5 h-3.5 text-amber-500" />
+                                        Cobro de Comisiones
+                                    </span>
+                                    <span className="px-2.5 py-0.5 bg-blue-50 text-blue-700 rounded-full text-[10px] font-bold border border-blue-200">
+                                        Visible para Pilotos
+                                    </span>
+                                </div>
+                                <h3 className="text-xl font-black text-slate-900 tracking-tight">Cuenta Oficial Pago Móvil Un 2x3</h3>
+                                <p className="text-xs text-slate-500 max-w-2xl font-medium leading-relaxed">
+                                    Datos bancarios oficiales donde los conductores transfieren en Bolívares (a tasa BCV) para liquidar sus comisiones adeudadas.
+                                </p>
+                            </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                            <div>
+                                <label className="text-[10px] font-black uppercase text-slate-400 block mb-1">Banco Receptor</label>
+                                <div className="relative">
+                                    <Building2 className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
+                                    <input
+                                        type="text"
+                                        value={un2x3PagoMovil.bank}
+                                        onChange={(e) => setUn2x3PagoMovil(prev => ({ ...prev, bank: e.target.value }))}
+                                        placeholder="Ej: Banesco (0134)"
+                                        className="w-full bg-slate-50 border border-slate-200 pl-9 pr-3 py-2.5 rounded-xl text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-primary/20"
+                                    />
+                                </div>
+                            </div>
+
+                            <div>
+                                <label className="text-[10px] font-black uppercase text-slate-400 block mb-1">Teléfono Pago Móvil</label>
+                                <div className="relative">
+                                    <Phone className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
+                                    <input
+                                        type="text"
+                                        value={un2x3PagoMovil.phone}
+                                        onChange={(e) => setUn2x3PagoMovil(prev => ({ ...prev, phone: e.target.value }))}
+                                        placeholder="Ej: 04141234567"
+                                        className="w-full bg-slate-50 border border-slate-200 pl-9 pr-3 py-2.5 rounded-xl text-xs font-mono font-bold text-slate-800 outline-none focus:ring-2 focus:ring-primary/20"
+                                    />
+                                </div>
+                            </div>
+
+                            <div>
+                                <label className="text-[10px] font-black uppercase text-slate-400 block mb-1">Cédula o RIF</label>
+                                <div className="relative">
+                                    <Shield className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
+                                    <input
+                                        type="text"
+                                        value={un2x3PagoMovil.idf}
+                                        onChange={(e) => setUn2x3PagoMovil(prev => ({ ...prev, idf: e.target.value }))}
+                                        placeholder="Ej: J-50123456-7"
+                                        className="w-full bg-slate-50 border border-slate-200 pl-9 pr-3 py-2.5 rounded-xl text-xs font-mono font-bold text-slate-800 outline-none focus:ring-2 focus:ring-primary/20"
+                                    />
+                                </div>
+                            </div>
+
+                            <div>
+                                <label className="text-[10px] font-black uppercase text-slate-400 block mb-1">Titular de la Cuenta</label>
+                                <div className="relative">
+                                    <User className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
+                                    <input
+                                        type="text"
+                                        value={un2x3PagoMovil.name}
+                                        onChange={(e) => setUn2x3PagoMovil(prev => ({ ...prev, name: e.target.value }))}
+                                        placeholder="Ej: Un 2x3 Inversiones C.A."
+                                        className="w-full bg-slate-50 border border-slate-200 pl-9 pr-3 py-2.5 rounded-xl text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-primary/20"
+                                    />
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
                     {/* Shift Selector */}
                     <div className="bg-white p-2 rounded-2xl border border-slate-200 w-fit flex gap-1">
                         <button

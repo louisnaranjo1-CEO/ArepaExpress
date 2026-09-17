@@ -24,7 +24,10 @@ import {
     ChevronDown,
     ChevronUp,
     SlidersHorizontal,
-    FileText
+    FileText,
+    ShoppingBag,
+    AlertTriangle,
+    DollarSign
 } from 'lucide-react';
 import { useJsApiLoader } from '@react-google-maps/api';
 import { UN2X3_LOGO } from '../lib/env';
@@ -110,6 +113,11 @@ export default function Taxi() {
     // State Machine
     const [step, setStep] = useState<'destination' | 'vehicle' | 'payment' | 'searching'>('destination');
     const [serviceCategory, setServiceCategory] = useState<'transport' | 'package'>('transport');
+    const [selectedCategory, setSelectedCategory] = useState<'mototaxi' | 'taxi_driver' | 'carro_confort' | 'delivery_envios' | 'muchacho_mandado'>('taxi_driver');
+    const [mandadoDescription, setMandadoDescription] = useState('');
+    const [mandadoStoreName, setMandadoStoreName] = useState('');
+    const [activeMandadoReqId, setActiveMandadoReqId] = useState<string | null>(null);
+    const [mandadoBids, setMandadoBids] = useState<any[]>([]);
     const [packageDescription, setPackageDescription] = useState('');
     const [driverNotes, setDriverNotes] = useState('');
     const [showNotesModal, setShowNotesModal] = useState(false);
@@ -134,8 +142,8 @@ export default function Taxi() {
     const [paymentMethods, setPaymentMethods] = useState<any>(null);
     const [serviceHours, setServiceHours] = useState<any>(null);
 
-    // Payment Selection
-    const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<string>('cash');
+    // Payment Selection (Transparent: only Cash USD, Cash VES or direct Driver Pago Móvil)
+    const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<'cash_usd' | 'cash_ves' | 'pago_movil'>('cash_usd');
     const [paymentProof, setPaymentProof] = useState<File | null>(null);
     const [paymentRef, setPaymentRef] = useState('');
     const [isUploading, setIsUploading] = useState(false);
@@ -658,6 +666,37 @@ export default function Taxi() {
         });
     }, [userLocation, origin, destination, nearbyDrivers]);
 
+    // 5.1 Real-time listener for Muchacho e' Mandado bids
+    useEffect(() => {
+        if (!activeMandadoReqId) return;
+
+        const fetchBids = async () => {
+            const { data } = await supabase
+                .from('transport_bids')
+                .select('*')
+                .eq('transport_request_id', activeMandadoReqId)
+                .order('created_at', { ascending: false });
+            if (data) setMandadoBids(data);
+        };
+
+        fetchBids();
+
+        const channel = supabase.channel(`mandado_bids_client_${activeMandadoReqId}`)
+            .on('postgres_changes', {
+                event: '*',
+                schema: 'public',
+                table: 'transport_bids',
+                filter: `transport_request_id=eq.${activeMandadoReqId}`
+            }, () => {
+                fetchBids();
+            })
+            .subscribe();
+
+        return () => {
+            supabase.removeChannel(channel);
+        };
+    }, [activeMandadoReqId]);
+
     // 6. Calculate Route & Fit Bounds
     useEffect(() => {
         if (!origin || !destination || !window.google?.maps || !mapInstanceRef.current) return;
@@ -801,7 +840,36 @@ export default function Taxi() {
         return getFareDetails(type).clientTotal.toFixed(2);
     };
 
-    // 10. Request Ride Handler
+    // Aceptar puja de conductor para Muchacho e' Mandado
+    const handleAcceptMandadoBid = async (bid: any) => {
+        try {
+            // 1. Aceptar puja seleccionada
+            await supabase.from('transport_bids').update({ status: 'accepted' }).eq('id', bid.id);
+            // 2. Rechazar otras pujas de esta solicitud
+            await supabase.from('transport_bids').update({ status: 'rejected' })
+                .eq('transport_request_id', bid.transport_request_id)
+                .neq('id', bid.id);
+            // 3. Asignar conductor al viaje
+            await supabase.from('transport_requests').update({
+                status: 'accepted',
+                driver_id: bid.driver_id,
+                driver_name: bid.driver_name,
+                driver_phone: bid.driver_phone,
+                driver_assigned_at: new Date().toISOString(),
+                price: Number(bid.amount),
+                total: Number(bid.amount),
+                commission_amount: 0.70
+            }).eq('id', bid.transport_request_id);
+
+            toast.success(`¡Oferta de ${bid.driver_name} aceptada!`);
+            navigate(`/taxi/track/${bid.transport_request_id}`);
+        } catch (err) {
+            console.error("Error accepting bid:", err);
+            toast.error("Error al aceptar la oferta.");
+        }
+    };
+
+    // 10. Request Ride Handler (Strict snake_case, UUID safety & 5-category logic)
     const handleRequestTaxi = async () => {
         if (!user && (!guestName || !guestPhone || !guestCedula)) {
             setShowGuestModal(true);
@@ -809,37 +877,57 @@ export default function Taxi() {
         }
 
         if (!origin || !destination) {
-            toast.error("Selecciona un origen y destino para viajar");
+            toast.error("Selecciona un origen y destino para continuar");
             return;
         }
 
-        const fareDetails = getFareDetails(vehicleType);
-        const clientTotal = fareDetails.clientTotal.toFixed(2);
-        const driverPayoutVal = fareDetails.driverPayout;
-        const platformFeeVal = fareDetails.platformFee;
-        const currentBalance = userData?.walletBalance || 0;
-
-        if (selectedPaymentMethod === 'wallet' && currentBalance < parseFloat(clientTotal)) {
-            toast.error("Saldo insuficiente en tu Billetera Deliexpress. Elige otro método.");
+        if (selectedCategory === 'muchacho_mandado' && !mandadoDescription.trim()) {
+            toast.error("Por favor describe qué necesitas que te compren o retiren");
             return;
         }
 
-        if (selectedPaymentMethod !== 'cash' && selectedPaymentMethod !== 'wallet' && !paymentProof && !paymentRef) {
-            toast.error("Adjunta el comprobante o número de referencia");
-            return;
+        // Determine price, vehicle type and commission
+        let clientTotal = '1.00';
+        let commAmount = 0.80;
+        let vType: 'moto' | 'carro' | 'ejecutivo' = 'carro';
+
+        if (selectedCategory === 'mototaxi') {
+            vType = 'moto';
+            commAmount = 0.50;
+            clientTotal = calculatePrice('moto');
+        } else if (selectedCategory === 'taxi_driver') {
+            vType = 'carro';
+            commAmount = 0.80;
+            clientTotal = calculatePrice('carro');
+        } else if (selectedCategory === 'carro_confort') {
+            vType = 'ejecutivo';
+            commAmount = 1.20;
+            clientTotal = calculatePrice('ejecutivo');
+        } else if (selectedCategory === 'delivery_envios') {
+            vType = 'moto';
+            commAmount = 0.50;
+            clientTotal = calculatePrice('moto');
+        } else if (selectedCategory === 'muchacho_mandado') {
+            vType = 'moto';
+            commAmount = 0.70;
+            clientTotal = '1.00'; // Base minimum, final price is defined by accepted driver bid
         }
+
+        const numTotal = parseFloat(clientTotal);
+        const driverPayoutVal = Math.max(0, numTotal - commAmount);
 
         try {
             setIsUploading(true);
-            setStep('searching');
             vibrate(50);
 
-            const uid = user?.id || user?.uid || `guest_${Date.now()}`;
-            let proofUrl = '';
+            // Valid user_id: MUST be null if guest, because Postgres user_id is a UUID!
+            const validUserId = user?.id || user?.uid || null;
+            const newReqId = crypto.randomUUID();
 
-            if (paymentProof && selectedPaymentMethod !== 'cash' && selectedPaymentMethod !== 'wallet') {
+            let proofUrl = '';
+            if (paymentProof && selectedPaymentMethod === 'pago_movil') {
                 const ext = paymentProof.name.split('.').pop() || 'jpg';
-                const path = `taxi_proofs/${uid}/${Date.now()}.${ext}`;
+                const path = `taxi_proofs/${validUserId || 'guest'}/${Date.now()}.${ext}`;
                 const { error: upErr } = await supabase.storage.from('store_assets').upload(path, paymentProof, { upsert: true });
                 if (!upErr) {
                     const { data: { publicUrl } } = supabase.storage.from('store_assets').getPublicUrl(path);
@@ -847,80 +935,68 @@ export default function Taxi() {
                 }
             }
 
-            const newReqId = (typeof crypto !== 'undefined' && crypto.randomUUID)
-                ? crypto.randomUUID()
-                : `taxi_${Date.now()}`;
-
-            const initialStatus = (selectedPaymentMethod === 'wallet' || selectedPaymentMethod === 'cash')
-                ? 'searching'
-                : 'verifying_payment';
-
-            const orderData = {
+            const orderData: any = {
                 id: newReqId,
-                type: serviceCategory === 'package' ? 'package_delivery' : 'transport',
-                packageDescription: serviceCategory === 'package' ? packageDescription : null,
-                package_description: serviceCategory === 'package' ? packageDescription : null,
-                userId: uid,
-                user_id: uid,
-                userName: userData?.displayName || user?.displayName || user?.email || guestName || 'Usuario Invitado',
+                user_id: validUserId,
                 user_name: userData?.displayName || user?.displayName || user?.email || guestName || 'Usuario Invitado',
-                userPhone: userData?.phone || guestPhone || 'Sin número',
                 user_phone: userData?.phone || guestPhone || 'Sin número',
-                userCedula: userData?.cedula || guestCedula || 'N/A',
                 user_cedula: userData?.cedula || guestCedula || 'N/A',
                 origin,
                 destination,
-                vehicleType,
-                vehicle_type: vehicleType,
                 route: routeInfo,
-                total: parseFloat(clientTotal),
-                price: parseFloat(clientTotal),
-                driverPayout: driverPayoutVal,
+                total: numTotal,
+                price: numTotal,
+                service_category: selectedCategory,
+                vehicle_type: vType,
                 driver_payout: driverPayoutVal,
-                platformFee: platformFeeVal,
-                platform_fee: platformFeeVal,
-                surgeMultiplier: fareDetails.surgeMultiplier,
-                surge_multiplier: fareDetails.surgeMultiplier,
-                driverId: null,
-                driver_id: null,
-                driverPaid: false,
-                driver_paid: false,
-                status: initialStatus,
-                paymentMethod: selectedPaymentMethod,
+                commission_amount: commAmount,
+                commission_debited: false,
+                status: 'searching',
                 payment_method: selectedPaymentMethod,
-                paymentRef: paymentRef || '',
+                payment_status: 'pending',
+                cash_currency: selectedPaymentMethod === 'cash_ves' ? 'VES' : 'USD',
                 payment_ref: paymentRef || '',
-                paymentProofUrl: proofUrl,
                 payment_proof_url: proofUrl,
                 scheduled: isScheduled,
-                scheduledAt: isScheduled && scheduledDateTime ? new Date(scheduledDateTime).toISOString() : null,
                 scheduled_at: isScheduled && scheduledDateTime ? new Date(scheduledDateTime).toISOString() : null,
                 notes: driverNotes || '',
-                createdAt: new Date().toISOString(),
-                created_at: new Date().toISOString(),
+                created_at: new Date().toISOString()
             };
 
-            const { error: insErr } = await supabase.from('transport_requests').insert(orderData);
-            if (insErr) throw insErr;
-
-            if (selectedPaymentMethod === 'wallet' && user) {
-                const newBalance = currentBalance - parseFloat(clientTotal);
-                await supabase.from('profiles').update({
-                    walletBalance: newBalance,
-                    wallet_balance: newBalance,
-                    updated_at: new Date().toISOString()
-                }).eq('id', uid);
+            if (selectedCategory === 'muchacho_mandado') {
+                orderData.type = 'muchacho_mandado';
+                orderData.mandado_details = {
+                    description: mandadoDescription,
+                    storeName: mandadoStoreName || 'Comercio Local'
+                };
+            } else if (selectedCategory === 'delivery_envios') {
+                orderData.type = 'package_delivery';
+                orderData.package_description = packageDescription;
+            } else {
+                orderData.type = 'transport';
             }
 
-            // Smooth redirect to tracker
-            setTimeout(() => {
-                navigate(`/taxi/track/${newReqId}`);
-            }, 1200);
+            const { error: insErr } = await supabase.from('transport_requests').insert(orderData);
+            if (insErr) {
+                console.error("Supabase transport_requests insert error:", insErr);
+                throw insErr;
+            }
 
-        } catch (error) {
+            if (selectedCategory === 'muchacho_mandado') {
+                setActiveMandadoReqId(newReqId);
+                setStep('searching');
+                toast.success("¡Mandado publicado! Escaneando ofertas de pilotos en tiempo real...");
+            } else {
+                setStep('searching');
+                setTimeout(() => {
+                    navigate(`/taxi/track/${newReqId}`);
+                }, 1200);
+            }
+
+        } catch (error: any) {
             console.error("Error creating transport request:", error);
             toast.error("No se pudo procesar la solicitud. Revisa tu conexión.");
-            setStep('payment');
+            setStep('vehicle');
         } finally {
             setIsUploading(false);
         }
@@ -962,8 +1038,143 @@ export default function Taxi() {
         );
     }
 
-    // Searching Screen (Radar Animation style YANGO)
+    // Searching Screen (Radar Animation style YANGO & Muchacho e' Mandado Bids)
     if (step === 'searching') {
+        if (selectedCategory === 'muchacho_mandado') {
+            return (
+                <div className="relative w-full h-full bg-slate-950 text-white flex flex-col justify-between p-6 overflow-hidden select-none">
+                    {/* Background Radar Waves */}
+                    <div className="absolute inset-0 flex items-center justify-center pointer-events-none opacity-40">
+                        <div className="w-64 h-64 border border-amber-400/30 rounded-full animate-ping [animation-duration:3s]"></div>
+                        <div className="w-96 h-96 border border-amber-400/20 rounded-full animate-ping [animation-duration:4s]"></div>
+                        <div className="w-[500px] h-[500px] border border-amber-400/10 rounded-full animate-ping [animation-duration:5s]"></div>
+                    </div>
+
+                    {/* Top Header */}
+                    <div className="relative z-10 w-full flex items-center justify-between pt-2">
+                        <button
+                            onClick={async () => {
+                                if (activeMandadoReqId) {
+                                    await supabase.from('transport_requests').update({ status: 'cancelled' }).eq('id', activeMandadoReqId);
+                                }
+                                setStep('vehicle');
+                            }}
+                            className="w-10 h-10 rounded-full bg-white/10 backdrop-blur-md flex items-center justify-center text-white active:scale-95 transition-transform"
+                        >
+                            <ArrowLeft className="w-5 h-5" />
+                        </button>
+                        <div className="flex items-center gap-2 bg-amber-400/20 border border-amber-400/40 px-3 py-1.5 rounded-full text-amber-400">
+                            <Package className="w-4 h-4 animate-bounce" />
+                            <span className="text-[11px] font-black uppercase tracking-wider">Subasta de Tarifas</span>
+                        </div>
+                    </div>
+
+                    {/* Center Content: Errand summary + Live Bids list */}
+                    <div className="relative z-10 flex-1 flex flex-col overflow-hidden my-4 max-w-md w-full mx-auto">
+                        {/* Encargo Header Card */}
+                        <div className="bg-slate-900/90 border border-slate-800 rounded-3xl p-4 mb-3 backdrop-blur-md">
+                            <span className="text-[10px] font-black uppercase tracking-wider text-amber-400">Tu Mandado Solicitado</span>
+                            <p className="text-xs font-bold text-slate-200 mt-1 line-clamp-2">{mandadoDescription}</p>
+                            {mandadoStoreName && (
+                                <p className="text-[11px] text-slate-400 mt-1">🏪 {mandadoStoreName}</p>
+                            )}
+                            <div className="mt-2.5 pt-2.5 border-t border-slate-800 text-[10px] text-amber-300 font-semibold flex items-center gap-1.5">
+                                <Shield className="w-3.5 h-3.5 shrink-0" />
+                                Cero intermediación: Paga directo al comercio por Pago Móvil.
+                            </div>
+                        </div>
+
+                        {/* Bids Tray Header */}
+                        <div className="flex items-center justify-between mb-2 px-1">
+                            <span className="text-xs font-black uppercase tracking-wider text-slate-300 flex items-center gap-2">
+                                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                                Ofertas de Pilotos ({mandadoBids.length})
+                            </span>
+                            <span className="text-[10px] font-bold text-slate-400">Elige la mejor propuesta</span>
+                        </div>
+
+                        {/* List of Incoming Driver Bids */}
+                        <div className="flex-1 overflow-y-auto space-y-3 pr-1 scrollbar-hide">
+                            {mandadoBids.length === 0 ? (
+                                <div className="h-48 flex flex-col items-center justify-center text-center p-6 bg-slate-900/40 rounded-3xl border border-slate-800/60">
+                                    <div className="w-12 h-12 rounded-full bg-amber-400/10 flex items-center justify-center text-amber-400 mb-3 animate-pulse">
+                                        <ClockIcon className="w-6 h-6" />
+                                    </div>
+                                    <h4 className="text-sm font-black text-slate-200">Buscando pilotos disponibles...</h4>
+                                    <p className="text-xs text-slate-400 max-w-[220px] mt-1">
+                                        Los conductores están revisando tu encargo y enviando sus propuestas de tarifa y tiempo.
+                                    </p>
+                                </div>
+                            ) : (
+                                mandadoBids.map((bid) => (
+                                    <div
+                                        key={bid.id}
+                                        className="bg-slate-900 border-2 border-amber-400/40 hover:border-amber-400 rounded-3xl p-4 shadow-xl flex items-center justify-between gap-3 transition-all animate-in fade-in slide-in-from-bottom-2"
+                                    >
+                                        <div className="flex items-center gap-3 min-w-0">
+                                            <div className="relative shrink-0">
+                                                <img
+                                                    src={bid.driver_photo || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100&auto=format&fit=crop&q=80'}
+                                                    alt="Piloto"
+                                                    className="w-12 h-12 rounded-2xl object-cover border border-slate-700 bg-slate-800"
+                                                />
+                                                <div className="absolute -bottom-1 -right-1 bg-amber-400 text-slate-950 text-[9px] font-black px-1 rounded-md">
+                                                    ★ {Number(bid.driver_rating || 5.0).toFixed(1)}
+                                                </div>
+                                            </div>
+                                            <div className="min-w-0">
+                                                <p className="text-sm font-black text-white truncate">{bid.driver_name}</p>
+                                                <p className="text-[10px] text-slate-400 font-bold capitalize truncate">
+                                                    {bid.vehicle_type} {bid.vehicle_plate ? `• ${bid.vehicle_plate}` : ''}
+                                                </p>
+                                                <p className="text-[10px] font-black text-emerald-400 mt-0.5">
+                                                    Llega en ~{bid.eta_minutes || 15} min
+                                                </p>
+                                            </div>
+                                        </div>
+
+                                        <div className="flex flex-col items-end shrink-0 gap-1.5">
+                                            <div className="text-right">
+                                                <div className="text-xl font-black text-amber-400 leading-none">
+                                                    ${Number(bid.amount).toFixed(2)}
+                                                </div>
+                                                {bcvRate > 0 && (
+                                                    <div className="text-[10px] font-bold text-slate-400">
+                                                        {(Number(bid.amount) * bcvRate).toFixed(0)} Bs
+                                                    </div>
+                                                )}
+                                            </div>
+                                            <button
+                                                onClick={() => handleAcceptMandadoBid(bid)}
+                                                className="px-3.5 py-2 bg-gradient-to-r from-amber-400 to-yellow-400 hover:from-amber-300 hover:to-yellow-300 text-slate-950 font-black text-xs uppercase tracking-wider rounded-xl shadow-md active:scale-95 transition-all"
+                                            >
+                                                Aceptar
+                                            </button>
+                                        </div>
+                                    </div>
+                                ))
+                            )}
+                        </div>
+                    </div>
+
+                    {/* Bottom Cancel Button */}
+                    <div className="relative z-10 w-full max-w-xs mx-auto pb-2">
+                        <button
+                            onClick={async () => {
+                                if (activeMandadoReqId) {
+                                    await supabase.from('transport_requests').update({ status: 'cancelled' }).eq('id', activeMandadoReqId);
+                                }
+                                setStep('vehicle');
+                            }}
+                            className="w-full py-3 bg-white/10 hover:bg-white/15 text-slate-300 font-bold rounded-2xl text-xs uppercase tracking-wider active:scale-95 transition-all"
+                        >
+                            Cancelar Mandado
+                        </button>
+                    </div>
+                </div>
+            );
+        }
+
         return (
             <div className="relative w-full h-full bg-slate-950 text-white flex flex-col items-center justify-between p-8 overflow-hidden select-none">
                 {/* Background Radar Waves */}
@@ -1410,26 +1621,27 @@ export default function Taxi() {
                                 </div>
                             )}
 
-                            {/* Yango Vehicle Tiers Carousel / List (Streamlined & Compact) */}
-                            <div className="grid grid-cols-3 gap-2">
-                                {/* Moto */}
+                            {/* 5 Service Categories Carousel */}
+                            <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1 scrollbar-none snap-x">
+                                {/* 1. Mototaxi */}
                                 <button
                                     type="button"
                                     onClick={() => {
                                         vibrate(30);
+                                        setSelectedCategory('mototaxi');
                                         setVehicleType('moto');
                                     }}
-                                    className={`relative flex flex-col items-center py-2 px-1.5 rounded-2xl border-2 transition-all text-center ${
-                                        vehicleType === 'moto'
+                                    className={`flex-none w-[96px] snap-start flex flex-col items-center py-2 px-1.5 rounded-2xl border-2 transition-all text-center ${
+                                        selectedCategory === 'mototaxi'
                                             ? 'border-primary bg-primary/10 shadow-md ring-2 ring-primary/20 scale-[1.02]'
                                             : 'border-slate-100 bg-slate-50 hover:border-slate-200'
                                     }`}
                                 >
                                     <div className="w-8 h-8 rounded-lg bg-white flex items-center justify-center mb-1 shadow-xs">
-                                        <Bike className="w-4 h-4 text-slate-900" />
+                                        <Bike className="w-4 h-4 text-amber-500" />
                                     </div>
-                                    <span className="text-[11px] font-black text-slate-900">Moto</span>
-                                    <span className="text-[9px] text-emerald-600 font-bold">2 min</span>
+                                    <span className="text-[11px] font-black text-slate-900 truncate max-w-full">Mototaxi</span>
+                                    <span className="text-[9px] text-emerald-600 font-bold">2-3 min</span>
                                     <span className="text-xs font-black text-slate-900 mt-0.5">
                                         ${calculatePrice('moto')}
                                     </span>
@@ -1440,15 +1652,16 @@ export default function Taxi() {
                                     )}
                                 </button>
 
-                                {/* Taxi Estándar */}
+                                {/* 2. Taxi Driver */}
                                 <button
                                     type="button"
                                     onClick={() => {
                                         vibrate(30);
+                                        setSelectedCategory('taxi_driver');
                                         setVehicleType('carro');
                                     }}
-                                    className={`relative flex flex-col items-center py-2 px-1.5 rounded-2xl border-2 transition-all text-center ${
-                                        vehicleType === 'carro'
+                                    className={`flex-none w-[96px] snap-start flex flex-col items-center py-2 px-1.5 rounded-2xl border-2 transition-all text-center ${
+                                        selectedCategory === 'taxi_driver'
                                             ? 'border-primary bg-primary text-slate-950 shadow-md shadow-primary/30 ring-2 ring-primary/30 scale-[1.03]'
                                             : 'border-slate-100 bg-slate-50 hover:border-slate-200'
                                     }`}
@@ -1456,46 +1669,148 @@ export default function Taxi() {
                                     <div className="w-8 h-8 rounded-lg bg-white flex items-center justify-center mb-1 shadow-xs">
                                         <Car className="w-4 h-4 text-slate-900" />
                                     </div>
-                                    <span className="text-[11px] font-black">Taxi</span>
-                                    <span className={`text-[9px] font-bold ${vehicleType === 'carro' ? 'text-slate-900' : 'text-emerald-600'}`}>3 min</span>
+                                    <span className="text-[11px] font-black truncate max-w-full">Taxi Driver</span>
+                                    <span className={`text-[9px] font-bold ${selectedCategory === 'taxi_driver' ? 'text-slate-900' : 'text-emerald-600'}`}>3-5 min</span>
                                     <span className="text-xs font-black mt-0.5">
                                         ${calculatePrice('carro')}
                                     </span>
                                     {bcvRate > 0 && (
-                                        <span className={`text-[8px] font-bold truncate max-w-full px-0.5 ${vehicleType === 'carro' ? 'text-slate-800' : 'text-slate-500'}`}>
+                                        <span className={`text-[8px] font-bold truncate max-w-full px-0.5 ${selectedCategory === 'taxi_driver' ? 'text-slate-800' : 'text-slate-500'}`}>
                                             {(parseFloat(calculatePrice('carro')) * bcvRate).toFixed(0)} Bs
                                         </span>
                                     )}
                                 </button>
 
-                                {/* Ejecutivo */}
+                                {/* 3. Carro Confort */}
                                 <button
                                     type="button"
                                     onClick={() => {
                                         vibrate(30);
+                                        setSelectedCategory('carro_confort');
                                         setVehicleType('ejecutivo');
                                     }}
-                                    className={`relative flex flex-col items-center py-2 px-1.5 rounded-2xl border-2 transition-all text-center ${
-                                        vehicleType === 'ejecutivo'
+                                    className={`flex-none w-[96px] snap-start flex flex-col items-center py-2 px-1.5 rounded-2xl border-2 transition-all text-center ${
+                                        selectedCategory === 'carro_confort'
                                             ? 'border-slate-900 bg-slate-900 text-white shadow-md ring-2 ring-slate-900/20 scale-[1.02]'
                                             : 'border-slate-100 bg-slate-50 hover:border-slate-200'
                                     }`}
                                 >
                                     <div className="w-8 h-8 rounded-lg bg-white flex items-center justify-center mb-1 shadow-xs">
-                                        <Car className="w-4 h-4 text-amber-500" />
+                                        <Sparkles className="w-4 h-4 text-amber-500" />
                                     </div>
-                                    <span className={`text-[11px] font-black ${vehicleType === 'ejecutivo' ? 'text-white' : 'text-slate-900'}`}>Confort</span>
-                                    <span className="text-[9px] text-amber-400 font-bold">5 min</span>
-                                    <span className={`text-xs font-black mt-0.5 ${vehicleType === 'ejecutivo' ? 'text-white' : 'text-slate-900'}`}>
+                                    <span className={`text-[11px] font-black truncate max-w-full ${selectedCategory === 'carro_confort' ? 'text-white' : 'text-slate-900'}`}>Confort A/A</span>
+                                    <span className="text-[9px] text-amber-400 font-bold">Premium</span>
+                                    <span className={`text-xs font-black mt-0.5 ${selectedCategory === 'carro_confort' ? 'text-white' : 'text-slate-900'}`}>
                                         ${calculatePrice('ejecutivo')}
                                     </span>
                                     {bcvRate > 0 && (
-                                        <span className={`text-[8px] font-bold truncate max-w-full px-0.5 ${vehicleType === 'ejecutivo' ? 'text-slate-300' : 'text-slate-500'}`}>
+                                        <span className={`text-[8px] font-bold truncate max-w-full px-0.5 ${selectedCategory === 'carro_confort' ? 'text-slate-300' : 'text-slate-500'}`}>
                                             {(parseFloat(calculatePrice('ejecutivo')) * bcvRate).toFixed(0)} Bs
                                         </span>
                                     )}
                                 </button>
+
+                                {/* 4. Delivery / Envíos */}
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        vibrate(30);
+                                        setSelectedCategory('delivery_envios');
+                                        setVehicleType('moto');
+                                    }}
+                                    className={`flex-none w-[96px] snap-start flex flex-col items-center py-2 px-1.5 rounded-2xl border-2 transition-all text-center ${
+                                        selectedCategory === 'delivery_envios'
+                                            ? 'border-primary bg-primary/10 shadow-md ring-2 ring-primary/20 scale-[1.02]'
+                                            : 'border-slate-100 bg-slate-50 hover:border-slate-200'
+                                    }`}
+                                >
+                                    <div className="w-8 h-8 rounded-lg bg-white flex items-center justify-center mb-1 shadow-xs">
+                                        <Package className="w-4 h-4 text-blue-600" />
+                                    </div>
+                                    <span className="text-[11px] font-black text-slate-900 truncate max-w-full">Envíos</span>
+                                    <span className="text-[9px] text-blue-600 font-bold">Paquetes</span>
+                                    <span className="text-xs font-black text-slate-900 mt-0.5">
+                                        ${calculatePrice('moto')}
+                                    </span>
+                                    {bcvRate > 0 && (
+                                        <span className="text-[8px] font-bold text-slate-500 truncate max-w-full px-0.5">
+                                            {(parseFloat(calculatePrice('moto')) * bcvRate).toFixed(0)} Bs
+                                        </span>
+                                    )}
+                                </button>
+
+                                {/* 5. Muchacho e' Mandado */}
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        vibrate(30);
+                                        setSelectedCategory('muchacho_mandado');
+                                        setVehicleType('moto');
+                                    }}
+                                    className={`flex-none w-[105px] snap-start flex flex-col items-center py-2 px-1.5 rounded-2xl border-2 transition-all text-center ${
+                                        selectedCategory === 'muchacho_mandado'
+                                            ? 'border-amber-500 bg-amber-50 shadow-md ring-2 ring-amber-400/30 scale-[1.02]'
+                                            : 'border-slate-100 bg-slate-50 hover:border-slate-200'
+                                    }`}
+                                >
+                                    <div className="w-8 h-8 rounded-lg bg-white flex items-center justify-center mb-1 shadow-xs">
+                                        <ShoppingBag className="w-4 h-4 text-amber-600" />
+                                    </div>
+                                    <span className="text-[11px] font-black text-slate-900 truncate max-w-full">Mandados</span>
+                                    <span className="text-[9px] text-amber-600 font-bold">Subasta viva</span>
+                                    <span className="text-xs font-black text-amber-700 mt-0.5">
+                                        Desde $1
+                                    </span>
+                                    <span className="text-[8px] font-bold text-slate-500 truncate max-w-full px-0.5">
+                                        Tú decides
+                                    </span>
+                                </button>
                             </div>
+
+                            {/* Category Specific Inputs */}
+                            {selectedCategory === 'muchacho_mandado' && (
+                                <div className="space-y-2.5 bg-amber-50/80 border border-amber-200 rounded-2xl p-3 animate-in fade-in">
+                                    <div className="flex items-start gap-2 text-xs text-amber-900">
+                                        <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                                        <div>
+                                            <p className="font-black text-[11px]">⚠️ Cero intermediación de compras</p>
+                                            <p className="text-[10px] text-amber-800 leading-snug mt-0.5">
+                                                Tú le transfieres directamente al comercio el costo de los productos por Pago Móvil. El conductor nunca financia compras; sólo cobra su tarifa de mandado mediante la subasta.
+                                            </p>
+                                        </div>
+                                    </div>
+                                    <input
+                                        type="text"
+                                        placeholder="Nombre del negocio o comercio (opcional)"
+                                        value={mandadoStoreName}
+                                        onChange={(e) => setMandadoStoreName(e.target.value)}
+                                        className="w-full bg-white border border-amber-200 px-3 py-2 rounded-xl text-xs font-bold text-slate-800 outline-none focus:border-amber-400 placeholder:text-slate-400"
+                                    />
+                                    <textarea
+                                        placeholder="¿Qué necesitas que busquemos o compremos? (Ej: Comprar 2 panes y medicina en Farmatodo ya pagada)..."
+                                        value={mandadoDescription}
+                                        onChange={(e) => setMandadoDescription(e.target.value)}
+                                        rows={2}
+                                        className="w-full bg-white border border-amber-200 px-3 py-2 rounded-xl text-xs font-bold text-slate-800 outline-none focus:border-amber-400 placeholder:text-slate-400 resize-none"
+                                    />
+                                </div>
+                            )}
+
+                            {selectedCategory === 'delivery_envios' && (
+                                <div className="space-y-2 bg-blue-50/80 border border-blue-200 rounded-2xl p-3 animate-in fade-in">
+                                    <div className="flex items-center gap-2 text-xs text-blue-900">
+                                        <Package className="w-4 h-4 text-blue-600 shrink-0" />
+                                        <span className="font-black text-[11px]">Descripción del paquete a trasladar:</span>
+                                    </div>
+                                    <input
+                                        type="text"
+                                        placeholder="Ej: Documentos en sobre, llaves, paquete mediano..."
+                                        value={packageDescription}
+                                        onChange={(e) => setPackageDescription(e.target.value)}
+                                        className="w-full bg-white border border-blue-200 px-3 py-2 rounded-xl text-xs font-bold text-slate-800 outline-none focus:border-blue-400 placeholder:text-slate-400"
+                                    />
+                                </div>
+                            )}
 
                             {/* Payment Quick Pill & Note Row */}
                             <div className="flex items-center justify-between gap-2 pt-0.5">
@@ -1507,9 +1822,9 @@ export default function Taxi() {
                                     className="flex-1 flex items-center justify-between bg-slate-100 hover:bg-slate-200 px-3 py-2 rounded-xl text-xs font-bold text-slate-800 transition-colors"
                                 >
                                     <div className="flex items-center gap-2">
-                                        <Wallet className="w-3.5 h-3.5 text-primary" />
+                                        <DollarSign className="w-3.5 h-3.5 text-primary" />
                                         <span className="text-[11px]">
-                                            {selectedPaymentMethod === 'wallet' ? 'Billetera' : selectedPaymentMethod === 'pagoMovil' ? 'Pago Móvil' : selectedPaymentMethod === 'zelle' ? 'Zelle' : 'Efectivo'}
+                                            {selectedPaymentMethod === 'cash_usd' ? 'Efectivo Divisas ($)' : selectedPaymentMethod === 'cash_ves' ? 'Efectivo Bs (BCV)' : 'Pago Móvil Conductor'}
                                         </span>
                                     </div>
                                     <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
@@ -1531,17 +1846,27 @@ export default function Taxi() {
                                 onClick={handleRequestTaxi}
                                 className="w-full py-3.5 bg-[#FFB800] text-slate-950 font-black text-xs sm:text-sm uppercase tracking-wider rounded-2xl shadow-xl shadow-amber-500/20 active:scale-95 transition-all flex items-center justify-center gap-2"
                             >
-                                <span>Pedir {vehicleType === 'moto' ? 'Moto Express' : vehicleType === 'ejecutivo' ? 'Ejecutivo Comfort' : 'Taxi Deliexpress'} • ${calculatePrice(vehicleType)}</span>
+                                <span>
+                                    {selectedCategory === 'muchacho_mandado'
+                                        ? 'Solicitar Mandado • Iniciar Subasta'
+                                        : selectedCategory === 'delivery_envios'
+                                        ? `Pedir Envío • $${calculatePrice('moto')}`
+                                        : selectedCategory === 'mototaxi'
+                                        ? `Pedir Mototaxi • $${calculatePrice('moto')}`
+                                        : selectedCategory === 'carro_confort'
+                                        ? `Pedir Confort • $${calculatePrice('ejecutivo')}`
+                                        : `Pedir Taxi • $${calculatePrice('carro')}`}
+                                </span>
                                 <ArrowRight className="w-4 h-4" />
                             </button>
                         </div>
                     )}
 
-                    {/* STEP 3: PAYMENT METHOD DETAILS */}
+                    {/* STEP 3: PAYMENT METHOD DETAILS (Cash USD, Cash VES, direct Driver Pago Móvil) */}
                     {!isSheetMinimized && step === 'payment' && (
                         <div className="space-y-4 animate-in fade-in">
                             <div className="flex items-center justify-between">
-                                <h3 className="text-base font-black text-slate-900">Selecciona Método de Pago</h3>
+                                <h3 className="text-base font-black text-slate-900">Método de Pago Directo</h3>
                                 <button
                                     onClick={() => setStep('vehicle')}
                                     className="text-xs font-bold text-primary hover:underline"
@@ -1550,101 +1875,92 @@ export default function Taxi() {
                                 </button>
                             </div>
 
-                            <div className="space-y-2.5 max-h-56 overflow-y-auto pr-1">
-                                {/* Cash */}
+                            <div className="space-y-2.5 max-h-60 overflow-y-auto pr-1">
+                                {/* Cash USD */}
                                 <button
                                     type="button"
-                                    onClick={() => setSelectedPaymentMethod('cash')}
+                                    onClick={() => {
+                                        vibrate(20);
+                                        setSelectedPaymentMethod('cash_usd');
+                                    }}
                                     className={`w-full p-3.5 rounded-2xl border-2 flex items-center justify-between text-left transition-all ${
-                                        selectedPaymentMethod === 'cash' ? 'border-primary bg-primary/5 shadow-sm' : 'border-slate-100'
+                                        selectedPaymentMethod === 'cash_usd' ? 'border-primary bg-primary/5 shadow-sm' : 'border-slate-100 bg-white'
                                     }`}
                                 >
                                     <div className="flex items-center gap-3">
-                                        <div className="w-9 h-9 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center">
-                                            💵
+                                        <div className="w-9 h-9 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center text-lg font-bold">
+                                            $
                                         </div>
                                         <div>
-                                            <p className="text-xs font-black text-slate-800">Efectivo ($ o Bs)</p>
-                                            <p className="text-[10px] text-slate-400">Paga al abordar o finalizar</p>
+                                            <p className="text-xs font-black text-slate-800">Efectivo Divisas ($)</p>
+                                            <p className="text-[10px] text-slate-400">Pagas en billetes USD directamente al conductor</p>
                                         </div>
                                     </div>
-                                    {selectedPaymentMethod === 'cash' && <Check className="w-4 h-4 text-primary" />}
+                                    {selectedPaymentMethod === 'cash_usd' && <Check className="w-4 h-4 text-primary" />}
                                 </button>
 
-                                {/* Wallet */}
+                                {/* Cash VES */}
                                 <button
                                     type="button"
-                                    onClick={() => setSelectedPaymentMethod('wallet')}
+                                    onClick={() => {
+                                        vibrate(20);
+                                        setSelectedPaymentMethod('cash_ves');
+                                    }}
                                     className={`w-full p-3.5 rounded-2xl border-2 flex items-center justify-between text-left transition-all ${
-                                        selectedPaymentMethod === 'wallet' ? 'border-primary bg-primary/5 shadow-sm' : 'border-slate-100'
+                                        selectedPaymentMethod === 'cash_ves' ? 'border-primary bg-primary/5 shadow-sm' : 'border-slate-100 bg-white'
                                     }`}
                                 >
                                     <div className="flex items-center gap-3">
-                                        <div className="w-9 h-9 rounded-xl bg-primary/20 text-primary flex items-center justify-center">
-                                            <Wallet className="w-5 h-5 text-slate-900" />
+                                        <div className="w-9 h-9 rounded-xl bg-blue-100 text-blue-700 flex items-center justify-center text-xs font-black">
+                                            Bs
                                         </div>
                                         <div>
-                                            <p className="text-xs font-black text-slate-800">Billetera Deliexpress</p>
-                                            <p className="text-[10px] text-slate-500 font-bold">
-                                                Saldo: ${(userData?.walletBalance || 0).toFixed(2)}
+                                            <p className="text-xs font-black text-slate-800">Efectivo Bolívares (Bs)</p>
+                                            <p className="text-[10px] text-slate-400">Pagas en efectivo al chofer a tasa oficial BCV</p>
+                                        </div>
+                                    </div>
+                                    {selectedPaymentMethod === 'cash_ves' && <Check className="w-4 h-4 text-primary" />}
+                                </button>
+
+                                {/* Pago Móvil directo al conductor */}
+                                <div className={`rounded-2xl border-2 p-3.5 transition-all ${
+                                    selectedPaymentMethod === 'pago_movil' ? 'border-primary bg-primary/5 shadow-sm' : 'border-slate-100 bg-white'
+                                }`}>
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            vibrate(20);
+                                            setSelectedPaymentMethod('pago_movil');
+                                        }}
+                                        className="w-full flex items-center justify-between text-left"
+                                    >
+                                        <div className="flex items-center gap-3">
+                                            <div className="w-9 h-9 rounded-xl bg-purple-100 text-purple-700 flex items-center justify-center text-xs font-black">
+                                                PM
+                                            </div>
+                                            <div>
+                                                <p className="text-xs font-black text-slate-800">Pago Móvil al Conductor</p>
+                                                <p className="text-[10px] text-slate-400">Pagas directo a la cuenta del conductor asignado</p>
+                                            </div>
+                                        </div>
+                                        {selectedPaymentMethod === 'pago_movil' && <Check className="w-4 h-4 text-primary" />}
+                                    </button>
+
+                                    {selectedPaymentMethod === 'pago_movil' && (
+                                        <div className="mt-3 pt-3 border-t border-slate-200/80 space-y-2 text-xs animate-in fade-in">
+                                            <p className="text-[11px] text-slate-600 bg-white p-2.5 rounded-xl border border-slate-200/70">
+                                                💡 Al confirmarse tu conductor, verás sus datos completos de Pago Móvil (Banco, Cédula, Teléfono) y el monto exacto en Bs con botón para copiar con 1 toque.
                                             </p>
+                                            <input
+                                                type="text"
+                                                placeholder="Referencia de pago (opcional, puedes agregarla luego)"
+                                                value={paymentRef}
+                                                onChange={(e) => setPaymentRef(e.target.value.replace(/\D/g, ''))}
+                                                className="w-full bg-white border border-slate-200 p-2.5 rounded-xl font-bold text-xs outline-none focus:border-primary"
+                                            />
                                         </div>
-                                    </div>
-                                    {selectedPaymentMethod === 'wallet' && <Check className="w-4 h-4 text-primary" />}
-                                </button>
-
-                                {/* Pago Móvil */}
-                                {paymentMethods?.pagoMovil?.active && (
-                                    <div className={`rounded-2xl border-2 p-3 transition-all ${
-                                        selectedPaymentMethod === 'pagoMovil' ? 'border-primary bg-primary/5' : 'border-slate-100'
-                                    }`}>
-                                        <button
-                                            type="button"
-                                            onClick={() => setSelectedPaymentMethod('pagoMovil')}
-                                            className="w-full flex items-center justify-between text-left"
-                                        >
-                                            <div className="flex items-center gap-3">
-                                                <div className="w-9 h-9 rounded-xl bg-blue-100 text-blue-600 flex items-center justify-center font-black text-xs">
-                                                    PM
-                                                </div>
-                                                <div>
-                                                    <p className="text-xs font-black text-slate-800">Pago Móvil (Bs)</p>
-                                                    <p className="text-[10px] text-slate-500">Tasa Oficial BCV</p>
-                                                </div>
-                                            </div>
-                                            {selectedPaymentMethod === 'pagoMovil' && <Check className="w-4 h-4 text-primary" />}
-                                        </button>
-
-                                        {selectedPaymentMethod === 'pagoMovil' && (
-                                            <div className="mt-3 pt-3 border-t border-slate-200/80 space-y-2 text-xs">
-                                                <div className="flex justify-between items-center bg-white p-2 rounded-lg border border-slate-100">
-                                                    <span>Monto: <b>{(parseFloat(calculatePrice(vehicleType)) * (bcvRate || 1)).toFixed(2)} Bs</b></span>
-                                                    <button onClick={() => handleCopy((parseFloat(calculatePrice(vehicleType)) * (bcvRate || 1)).toFixed(2), 'monto')} className="text-primary font-bold">Copiar</button>
-                                                </div>
-                                                <div className="flex justify-between items-center bg-white p-2 rounded-lg border border-slate-100">
-                                                    <span>Banco: <b>{paymentMethods.pagoMovil.bank}</b></span>
-                                                    <button onClick={() => handleCopy(paymentMethods.pagoMovil.bank, 'banco')} className="text-primary font-bold">Copiar</button>
-                                                </div>
-                                                <div className="flex justify-between items-center bg-white p-2 rounded-lg border border-slate-100">
-                                                    <span>Teléfono: <b>{paymentMethods.pagoMovil.phone}</b></span>
-                                                    <button onClick={() => handleCopy(paymentMethods.pagoMovil.phone, 'tel')} className="text-primary font-bold">Copiar</button>
-                                                </div>
-                                                <div className="flex justify-between items-center bg-white p-2 rounded-lg border border-slate-100">
-                                                    <span>Cédula: <b>{paymentMethods.pagoMovil.idf}</b></span>
-                                                    <button onClick={() => handleCopy(paymentMethods.pagoMovil.idf, 'ced')} className="text-primary font-bold">Copiar</button>
-                                                </div>
-
-                                                <input
-                                                    type="text"
-                                                    placeholder="Referencia o teléfono emisor"
-                                                    value={paymentRef}
-                                                    onChange={(e) => setPaymentRef(e.target.value.replace(/\D/g, ''))}
-                                                    className="w-full bg-white border border-slate-200 p-2.5 rounded-xl font-bold text-xs"
-                                                />
-                                            </div>
-                                        )}
-                                    </div>
-                                )}
+                                    )}
+                                </div>
                             </div>
 
                             <button

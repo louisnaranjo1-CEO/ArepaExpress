@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
-import { User, Mail, MapPin, CreditCard, LogOut, ShoppingBag, Settings, ChevronRight, Clock, FileText, Bell, Navigation, X, Shield, UploadCloud, CheckCircle2, Save, Image as ImageIcon, Key, Trash2, ArrowLeft, Camera, Truck, ShieldCheck, Smartphone, Fingerprint, Car, Bike, Star } from 'lucide-react';
+import { User, Mail, MapPin, CreditCard, LogOut, ShoppingBag, Settings, ChevronRight, Clock, FileText, Bell, Navigation, X, Shield, UploadCloud, CheckCircle2, Save, Image as ImageIcon, Key, Trash2, ArrowLeft, Camera, Truck, ShieldCheck, Smartphone, Fingerprint, Car, Bike, Star, Calendar, Sparkles, AlertTriangle, Wifi, Music, Wind, Check, Lock } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { Geolocation } from '@capacitor/geolocation';
 import { Capacitor } from '@capacitor/core';
@@ -14,7 +14,7 @@ import { supabase } from '../../lib/supabase';
 export default function DriverProfile() {
     const { user, userData } = useAuth();
     const navigate = useNavigate();
-    const [activeView, setActiveView] = useState<'profile' | 'settings' | 'update_data' | 'location' | 'payment_method'>('profile');
+    const [activeView, setActiveView] = useState<'profile' | 'settings' | 'update_data' | 'location' | 'payment_method' | 'guidelines' | 'payout_frequency' | 'comfort_features'>('profile');
     const [driverProfile, setDriverProfile] = useState<any>(null);
     const [updatingNotifications, setUpdatingNotifications] = useState(false);
     const [updatingBiometrics, setUpdatingBiometrics] = useState(false);
@@ -46,6 +46,25 @@ export default function DriverProfile() {
                     setPaymentMobileForm(pm);
                 }
 
+                if (data.payout_frequency || data.payoutFrequency) {
+                    setPayoutFrequency(data.payout_frequency || data.payoutFrequency);
+                }
+                if (data.payout_frequency_set_at || data.payoutFrequencySetAt) {
+                    setPayoutFrequencySetAt(data.payout_frequency_set_at || data.payoutFrequencySetAt);
+                }
+
+                const cf = data.comfort_features || data.comfortFeatures;
+                if (cf) {
+                    setComfortForm({
+                        hasAc: cf.hasAc ?? Boolean(data.has_ac),
+                        hasMusic: cf.hasMusic ?? true,
+                        hasWifi: cf.hasWifi ?? false,
+                        upholstery: cf.upholstery || 'excelente'
+                    });
+                } else if (data.has_ac !== undefined) {
+                    setComfortForm(prev => ({ ...prev, hasAc: Boolean(data.has_ac) }));
+                }
+
                 setUpdateForm(prev => ({
                     ...prev,
                     phone: data.phone || prev.phone,
@@ -61,7 +80,7 @@ export default function DriverProfile() {
         
         fetchProfile();
         
-        const channel = supabase.channel(`public:drivers:${user.uid}`)
+        const channel = supabase.channel(`driver_profile_realtime_${user.uid}`)
             .on('postgres_changes', { event: '*', schema: 'public', table: 'drivers', filter: `id=eq.${user.uid}` }, async () => {
                 if (!isMounted) return;
                 try {
@@ -76,6 +95,87 @@ export default function DriverProfile() {
             supabase.removeChannel(channel);
         };
     }, [user]);
+
+    // Payout frequency state (Semanal o Quincenal, con bloqueo de 120 días)
+    const [payoutFrequency, setPayoutFrequency] = useState<'weekly_friday' | 'weekly_monday' | 'biweekly'>('weekly_friday');
+    const [payoutFrequencySetAt, setPayoutFrequencySetAt] = useState<string | null>(null);
+
+    // Comfort features state (aire, musica, wifi, tapiceria)
+    const [comfortForm, setComfortForm] = useState({
+        hasAc: false,
+        hasMusic: true,
+        hasWifi: false,
+        upholstery: 'excelente' as 'excelente' | 'regular'
+    });
+
+    // Check if payout frequency is locked (120 days)
+    const isFrequencyLocked = React.useMemo(() => {
+        if (!payoutFrequencySetAt) return false;
+        const setDate = new Date(payoutFrequencySetAt).getTime();
+        const now = Date.now();
+        const diffDays = (now - setDate) / (1000 * 60 * 60 * 24);
+        return diffDays < 120;
+    }, [payoutFrequencySetAt]);
+
+    const daysRemainingLock = React.useMemo(() => {
+        if (!payoutFrequencySetAt) return 0;
+        const setDate = new Date(payoutFrequencySetAt).getTime();
+        const now = Date.now();
+        const diffDays = Math.ceil(120 - (now - setDate) / (1000 * 60 * 60 * 24));
+        return Math.max(0, diffDays);
+    }, [payoutFrequencySetAt]);
+
+    const handleSavePayoutFrequency = async (freq: 'weekly_friday' | 'weekly_monday' | 'biweekly') => {
+        if (isFrequencyLocked) {
+            alert(`No puedes cambiar tu frecuencia de liquidación aún. Quedan ${daysRemainingLock} días de bloqueo.`);
+            return;
+        }
+        setLoading(true);
+        try {
+            const nowIso = new Date().toISOString();
+            // Calculate next deadline (max 15 days)
+            const deadline = new Date(Date.now() + (freq === 'biweekly' ? 15 : 7) * 24 * 60 * 60 * 1000).toISOString();
+            const { error } = await supabase.from('drivers').update({
+                payout_frequency: freq,
+                payout_frequency_set_at: nowIso,
+                next_commission_deadline: deadline,
+                updated_at: nowIso
+            }).eq('id', user!.uid);
+
+            if (error) throw error;
+            setPayoutFrequency(freq);
+            setPayoutFrequencySetAt(nowIso);
+            alert('¡Frecuencia de liquidación guardada! Recuerda que el plazo máximo para liquidar comisiones es de 15 días antes de la suspensión preventiva.');
+            setActiveView('profile');
+        } catch (err: any) {
+            console.error('Error saving frequency:', err);
+            alert('Error al guardar frecuencia: ' + err.message);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleSaveComfortFeatures = async (e: React.FormEvent) => {
+        e.preventDefault();
+        setLoading(true);
+        try {
+            const { error } = await supabase.from('drivers').update({
+                comfort_features: comfortForm,
+                has_ac: comfortForm.hasAc,
+                hasAc: comfortForm.hasAc,
+                updated_at: new Date().toISOString()
+            }).eq('id', user!.uid);
+
+            if (error) throw error;
+            alert('¡Equipamiento y confort actualizados con éxito!');
+            setActiveView('profile');
+        } catch (err: any) {
+            console.error('Error saving comfort:', err);
+            alert('Error al guardar equipamiento: ' + err.message);
+        } finally {
+            setLoading(false);
+        }
+    };
 
     // Forms state
     const [newEmail, setNewEmail] = useState('');
@@ -1001,6 +1101,312 @@ export default function DriverProfile() {
         );
     }
 
+    if (activeView === 'guidelines') {
+        return (
+            <div className="space-y-6 animate-fade-in pb-24 px-4">
+                <button onClick={() => setActiveView('profile')} className="flex items-center gap-2 text-slate-500 font-bold mb-4">
+                    <ArrowLeft className="w-5 h-5" /> Volver al Perfil
+                </button>
+                <div className="mb-4">
+                    <div className="flex items-center gap-2 mb-1">
+                        <span className="px-3 py-1 bg-amber-100 text-amber-800 text-[10px] font-black rounded-full uppercase tracking-wider">
+                            Seguridad y Calidad
+                        </span>
+                    </div>
+                    <h2 className="text-2xl font-black text-slate-900 tracking-tight">Consejos y Normativas Un 2x3</h2>
+                    <p className="text-xs text-slate-500 font-medium mt-1">
+                        Conoce los lineamientos obligatorios para brindar el mejor servicio y maximizar tus ingresos.
+                    </p>
+                </div>
+
+                <div className="space-y-4">
+                    {/* Card 1: Delivery & Muchacho e' Mandado */}
+                    <div className="bg-white rounded-3xl p-5 border border-slate-100 shadow-sm space-y-3">
+                        <div className="flex items-center gap-3">
+                            <div className="w-12 h-12 rounded-2xl bg-amber-50 text-amber-600 flex items-center justify-center font-black">
+                                <Truck className="w-6 h-6" />
+                            </div>
+                            <div>
+                                <h3 className="font-black text-slate-900 text-sm">Delivery y Muchacho e' Mandado</h3>
+                                <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Protección de Carga</p>
+                            </div>
+                        </div>
+                        <p className="text-xs text-slate-600 font-medium leading-relaxed">
+                            Para prestar servicios de delivery o mandados, debes contar con <strong>bolso o caja térmica adecuada</strong> para proteger los productos. Nunca aceptes pedidos que superen la capacidad de carga o la seguridad de tu vehículo.
+                        </p>
+                    </div>
+
+                    {/* Card 2: Seguridad Vial */}
+                    <div className="bg-white rounded-3xl p-5 border border-slate-100 shadow-sm space-y-3">
+                        <div className="flex items-center gap-3">
+                            <div className="w-12 h-12 rounded-2xl bg-rose-50 text-rose-600 flex items-center justify-center font-black">
+                                <Shield className="w-6 h-6" />
+                            </div>
+                            <div>
+                                <h3 className="font-black text-slate-900 text-sm">Seguridad Vial Obligatoria</h3>
+                                <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Cero Excusas</p>
+                            </div>
+                        </div>
+                        <ul className="space-y-2 text-xs text-slate-600 font-medium leading-relaxed">
+                            <li className="flex items-start gap-2">
+                                <span className="text-emerald-500 font-bold shrink-0">✓</span>
+                                <span><strong>Motos:</strong> El uso de casco es <strong>obligatorio</strong> para ti y para tu pasajero en todo momento.</span>
+                            </li>
+                            <li className="flex items-start gap-2">
+                                <span className="text-emerald-500 font-bold shrink-0">✓</span>
+                                <span><strong>Carros:</strong> Uso <strong>obligatorio</strong> del cinturón de seguridad para conductor y acompañantes.</span>
+                            </li>
+                            <li className="flex items-start gap-2">
+                                <span className="text-amber-500 font-bold shrink-0">⚠</span>
+                                <span>Si un usuario se queja por tu trato o experiencia de viaje, puedes ser <strong>sancionado</strong> o suspendido.</span>
+                            </li>
+                            <li className="flex items-start gap-2">
+                                <span className="text-emerald-500 font-bold shrink-0">✓</span>
+                                <span>No superar los límites de velocidad establecidos. Conduce siempre con prudencia.</span>
+                            </li>
+                        </ul>
+                    </div>
+
+                    {/* Card 3: Presencia y Trato */}
+                    <div className="bg-white rounded-3xl p-5 border border-slate-100 shadow-sm space-y-3">
+                        <div className="flex items-center gap-3">
+                            <div className="w-12 h-12 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center font-black">
+                                <Sparkles className="w-6 h-6" />
+                            </div>
+                            <div>
+                                <h3 className="font-black text-slate-900 text-sm">Presencia, Trato y Uniforme</h3>
+                                <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Beneficios Un 2x3</p>
+                            </div>
+                        </div>
+                        <p className="text-xs text-slate-600 font-medium leading-relaxed">
+                            Tu presencia y trato definen tus propinas y calificación. Mantén tu unidad limpia y una presentación impecable.
+                        </p>
+                        <div className="bg-gradient-to-r from-amber-50 to-yellow-50 p-3.5 rounded-2xl border border-amber-200/60">
+                            <p className="text-xs font-black text-amber-900 mb-0.5">👕 ¿Quieres lucir el uniforme oficial de Un 2x3?</p>
+                            <p className="text-[11px] text-amber-800 font-medium">
+                                Solicítalo directamente en soporte/oficina. Si has completado tus <strong>primeros 50 viajes</strong>, ¡lo recibirás <strong>completamente gratis</strong>!
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        );
+    }
+
+    if (activeView === 'payout_frequency') {
+        return (
+            <div className="space-y-6 animate-fade-in pb-24 px-4">
+                <button onClick={() => setActiveView('profile')} className="flex items-center gap-2 text-slate-500 font-bold mb-4">
+                    <ArrowLeft className="w-5 h-5" /> Volver al Perfil
+                </button>
+                <div className="mb-4">
+                    <h2 className="text-2xl font-black text-slate-900 tracking-tight">Frecuencia de Pago de Comisiones</h2>
+                    <p className="text-xs text-slate-500 font-medium mt-1">
+                        Elige cada cuánto tiempo liquidarás las comisiones de la plataforma acumuladas en tu balance.
+                    </p>
+                </div>
+
+                {isFrequencyLocked && (
+                    <div className="bg-amber-50 border border-amber-200 p-4 rounded-2xl flex items-center gap-3">
+                        <Lock className="w-5 h-5 text-amber-600 shrink-0" />
+                        <div>
+                            <p className="text-xs font-black text-amber-900">Frecuencia fijada</p>
+                            <p className="text-[11px] text-amber-700">
+                                Tu modalidad está bloqueada por política de estabilidad. Quedan <strong>{daysRemainingLock} días</strong> antes de poder cambiarla nuevamente.
+                            </p>
+                        </div>
+                    </div>
+                )}
+
+                <div className="space-y-3">
+                    {/* Opción Semanal - Viernes */}
+                    <div
+                        onClick={() => !isFrequencyLocked && handleSavePayoutFrequency('weekly_friday')}
+                        className={`p-4 rounded-2xl border-2 transition-all cursor-pointer ${
+                            payoutFrequency === 'weekly_friday' ? 'border-primary bg-primary/5 shadow-sm' : 'border-slate-100 bg-white'
+                        } ${isFrequencyLocked ? 'opacity-75 cursor-not-allowed' : 'active:scale-95'}`}
+                    >
+                        <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-3">
+                                <div className="w-10 h-10 rounded-xl bg-amber-100 text-amber-800 flex items-center justify-center font-black text-xs">
+                                    <Calendar className="w-5 h-5" />
+                                </div>
+                                <div>
+                                    <p className="text-xs font-black text-slate-900">Semanal (Viernes)</p>
+                                    <p className="text-[11px] text-slate-500">Liquidas comisiones cada viernes</p>
+                                </div>
+                            </div>
+                            {payoutFrequency === 'weekly_friday' && <Check className="w-5 h-5 text-primary" />}
+                        </div>
+                    </div>
+
+                    {/* Opción Semanal - Lunes */}
+                    <div
+                        onClick={() => !isFrequencyLocked && handleSavePayoutFrequency('weekly_monday')}
+                        className={`p-4 rounded-2xl border-2 transition-all cursor-pointer ${
+                            payoutFrequency === 'weekly_monday' ? 'border-primary bg-primary/5 shadow-sm' : 'border-slate-100 bg-white'
+                        } ${isFrequencyLocked ? 'opacity-75 cursor-not-allowed' : 'active:scale-95'}`}
+                    >
+                        <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-3">
+                                <div className="w-10 h-10 rounded-xl bg-blue-100 text-blue-800 flex items-center justify-center font-black text-xs">
+                                    <Calendar className="w-5 h-5" />
+                                </div>
+                                <div>
+                                    <p className="text-xs font-black text-slate-900">Semanal (Lunes)</p>
+                                    <p className="text-[11px] text-slate-500">Liquidas comisiones cada lunes</p>
+                                </div>
+                            </div>
+                            {payoutFrequency === 'weekly_monday' && <Check className="w-5 h-5 text-primary" />}
+                        </div>
+                    </div>
+
+                    {/* Opción Quincenal */}
+                    <div
+                        onClick={() => !isFrequencyLocked && handleSavePayoutFrequency('biweekly')}
+                        className={`p-4 rounded-2xl border-2 transition-all cursor-pointer ${
+                            payoutFrequency === 'biweekly' ? 'border-primary bg-primary/5 shadow-sm' : 'border-slate-100 bg-white'
+                        } ${isFrequencyLocked ? 'opacity-75 cursor-not-allowed' : 'active:scale-95'}`}
+                    >
+                        <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-3">
+                                <div className="w-10 h-10 rounded-xl bg-purple-100 text-purple-800 flex items-center justify-center font-black text-xs">
+                                    <Calendar className="w-5 h-5" />
+                                </div>
+                                <div>
+                                    <p className="text-xs font-black text-slate-900">Quincenal (Cada 15 días)</p>
+                                    <p className="text-[11px] text-slate-500">Plazo máximo permitido</p>
+                                </div>
+                            </div>
+                            {payoutFrequency === 'biweekly' && <Check className="w-5 h-5 text-primary" />}
+                        </div>
+                    </div>
+                </div>
+
+                <div className="p-4 bg-slate-100 rounded-2xl text-xs text-slate-600 space-y-1.5 font-medium">
+                    <p className="font-bold text-slate-800 flex items-center gap-1.5">
+                        <AlertTriangle className="w-4 h-4 text-amber-500" />
+                        Límite estricto de liquidación:
+                    </p>
+                    <p>
+                        El plazo máximo no negociable es de <strong>15 días</strong>. Si alcanzas este límite sin registrar tu comprobante de pago, la cuenta se suspenderá automáticamente impidiendo recibir nuevos viajes hasta que se reporte el pago.
+                    </p>
+                    <p className="text-[11px] text-slate-500">
+                        * Al configurar tu frecuencia, quedará bloqueada durante 120 días.
+                    </p>
+                </div>
+            </div>
+        );
+    }
+
+    if (activeView === 'comfort_features') {
+        return (
+            <div className="space-y-6 animate-fade-in pb-24 px-4">
+                <button onClick={() => setActiveView('profile')} className="flex items-center gap-2 text-slate-500 font-bold mb-4">
+                    <ArrowLeft className="w-5 h-5" /> Volver al Perfil
+                </button>
+                <div className="mb-4">
+                    <h2 className="text-2xl font-black text-slate-900 tracking-tight">Equipamiento y Confort</h2>
+                    <p className="text-xs text-slate-500 font-medium mt-1">
+                        Informa a los clientes sobre las comodidades de tu vehículo para mejorar tu calificación y asignación.
+                    </p>
+                </div>
+
+                <form onSubmit={handleSaveComfortFeatures} className="bg-white rounded-3xl p-5 border border-slate-100 shadow-sm space-y-4">
+                    {/* Aire Acondicionado */}
+                    <div className="flex items-center justify-between p-3 bg-slate-50 rounded-2xl">
+                        <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-xl bg-cyan-100 text-cyan-700 flex items-center justify-center">
+                                <Wind className="w-5 h-5" />
+                            </div>
+                            <div>
+                                <p className="text-xs font-black text-slate-900">Aire Acondicionado (A/C)</p>
+                                <p className="text-[10px] text-slate-500">Climatización activa</p>
+                            </div>
+                        </div>
+                        <input
+                            type="checkbox"
+                            checked={comfortForm.hasAc}
+                            onChange={e => setComfortForm({ ...comfortForm, hasAc: e.target.checked })}
+                            className="w-5 h-5 accent-primary rounded cursor-pointer"
+                        />
+                    </div>
+
+                    {/* Buena Música */}
+                    <div className="flex items-center justify-between p-3 bg-slate-50 rounded-2xl">
+                        <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-xl bg-purple-100 text-purple-700 flex items-center justify-center">
+                                <Music className="w-5 h-5" />
+                            </div>
+                            <div>
+                                <p className="text-xs font-black text-slate-900">Buena Música</p>
+                                <p className="text-[10px] text-slate-500">Ambiente musical agradable</p>
+                            </div>
+                        </div>
+                        <input
+                            type="checkbox"
+                            checked={comfortForm.hasMusic}
+                            onChange={e => setComfortForm({ ...comfortForm, hasMusic: e.target.checked })}
+                            className="w-5 h-5 accent-primary rounded cursor-pointer"
+                        />
+                    </div>
+
+                    {/* Wifi */}
+                    <div className="flex items-center justify-between p-3 bg-slate-50 rounded-2xl">
+                        <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-xl bg-blue-100 text-blue-700 flex items-center justify-center">
+                                <Wifi className="w-5 h-5" />
+                            </div>
+                            <div>
+                                <p className="text-xs font-black text-slate-900">Conexión Wi-Fi</p>
+                                <p className="text-[10px] text-slate-500">Internet compartido para pasajeros</p>
+                            </div>
+                        </div>
+                        <input
+                            type="checkbox"
+                            checked={comfortForm.hasWifi}
+                            onChange={e => setComfortForm({ ...comfortForm, hasWifi: e.target.checked })}
+                            className="w-5 h-5 accent-primary rounded cursor-pointer"
+                        />
+                    </div>
+
+                    {/* Tapicería */}
+                    <div className="p-3 bg-slate-50 rounded-2xl space-y-2">
+                        <label className="text-xs font-black text-slate-900 block">Calidad y Estado de Tapicería</label>
+                        <div className="grid grid-cols-2 gap-2">
+                            <button
+                                type="button"
+                                onClick={() => setComfortForm({ ...comfortForm, upholstery: 'excelente' })}
+                                className={`py-2.5 rounded-xl font-bold text-xs transition-all ${
+                                    comfortForm.upholstery === 'excelente' ? 'bg-primary text-slate-900 shadow-sm' : 'bg-white text-slate-600 border border-slate-200'
+                                }`}
+                            >
+                                ✨ Excelente
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setComfortForm({ ...comfortForm, upholstery: 'regular' })}
+                                className={`py-2.5 rounded-xl font-bold text-xs transition-all ${
+                                    comfortForm.upholstery === 'regular' ? 'bg-primary text-slate-900 shadow-sm' : 'bg-white text-slate-600 border border-slate-200'
+                                }`}
+                            >
+                                Regular
+                            </button>
+                        </div>
+                    </div>
+
+                    <button
+                        type="submit"
+                        disabled={loading}
+                        className="w-full bg-primary text-slate-900 font-black py-3.5 rounded-2xl shadow-lg shadow-primary/20 active:scale-95 transition-all text-xs uppercase tracking-wider flex items-center justify-center gap-2 mt-2"
+                    >
+                        <Save className="w-4 h-4" /> Guardar Equipamiento
+                    </button>
+                </form>
+            </div>
+        );
+    }
+
     // Default Profile View
     return (
         <div className="space-y-5 animate-fade-in pb-24 px-4">
@@ -1123,6 +1529,50 @@ export default function DriverProfile() {
                         </div>
                     </div>
                     <ChevronRight className="w-5 h-5 text-slate-300 group-hover:text-orange-600 transition-colors" />
+                </button>
+
+                <button onClick={() => setActiveView('payout_frequency')} className="w-full bg-white p-4 rounded-2xl flex items-center justify-between border border-slate-100 shadow-sm active:bg-slate-50 transition-colors group">
+                    <div className="flex items-center gap-4">
+                        <div className="w-10 h-10 bg-amber-50 text-amber-600 rounded-xl flex items-center justify-center shrink-0">
+                            <Calendar className="w-5 h-5" />
+                        </div>
+                        <div className="text-left">
+                            <p className="font-bold text-slate-900 text-sm">Frecuencia de Pago de Comisiones</p>
+                            <p className="text-xs font-medium text-slate-500">
+                                {payoutFrequency === 'weekly_friday' ? 'Semanal (Viernes)' : payoutFrequency === 'weekly_monday' ? 'Semanal (Lunes)' : 'Quincenal (Cada 15 días)'}
+                            </p>
+                        </div>
+                    </div>
+                    <ChevronRight className="w-5 h-5 text-slate-300 group-hover:text-amber-600 transition-colors" />
+                </button>
+
+                <button onClick={() => setActiveView('comfort_features')} className="w-full bg-white p-4 rounded-2xl flex items-center justify-between border border-slate-100 shadow-sm active:bg-slate-50 transition-colors group">
+                    <div className="flex items-center gap-4">
+                        <div className="w-10 h-10 bg-cyan-50 text-cyan-600 rounded-xl flex items-center justify-center shrink-0">
+                            <Wind className="w-5 h-5" />
+                        </div>
+                        <div className="text-left">
+                            <p className="font-bold text-slate-900 text-sm">Confort y Equipamiento</p>
+                            <p className="text-xs font-medium text-slate-500">Aire A/C, música, Wi-Fi y tapicería</p>
+                        </div>
+                    </div>
+                    <ChevronRight className="w-5 h-5 text-slate-300 group-hover:text-cyan-600 transition-colors" />
+                </button>
+
+                <button onClick={() => setActiveView('guidelines')} className="w-full bg-gradient-to-r from-amber-500/10 to-yellow-500/10 p-4 rounded-2xl flex items-center justify-between border border-amber-300/40 shadow-sm active:scale-[0.99] transition-all group">
+                    <div className="flex items-center gap-4">
+                        <div className="w-10 h-10 bg-amber-500 text-slate-950 rounded-xl flex items-center justify-center shrink-0 shadow-md shadow-amber-500/20">
+                            <Shield className="w-5 h-5" />
+                        </div>
+                        <div className="text-left">
+                            <div className="flex items-center gap-2">
+                                <p className="font-black text-slate-900 text-sm">Consejos y Normativas Un 2x3</p>
+                                <span className="bg-amber-400 text-slate-950 px-1.5 py-0.5 rounded text-[9px] font-black uppercase">Reglas</span>
+                            </div>
+                            <p className="text-xs font-medium text-slate-600">Seguridad vial, bolsos térmicos y uniforme gratis</p>
+                        </div>
+                    </div>
+                    <ChevronRight className="w-5 h-5 text-amber-600 group-hover:translate-x-0.5 transition-transform" />
                 </button>
 
                 <button onClick={() => setActiveView('settings')} className="w-full bg-white p-4 rounded-2xl flex items-center justify-between border border-slate-100 shadow-sm active:bg-slate-50 transition-colors group">

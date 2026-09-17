@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useCurrency } from '../../context/CurrencyContext';
-import { Car, Bike, MapPin, Navigation, Phone, CheckCircle2, MessageSquare, Send, User as UserIcon, Star, MessageCircle, Clock, AlertTriangle, ArrowLeft, Package, Sparkles } from 'lucide-react';
+import { Car, Bike, MapPin, Navigation, Phone, CheckCircle2, MessageSquare, Send, User as UserIcon, Star, MessageCircle, Clock, AlertTriangle, ArrowLeft, Package, Sparkles, DollarSign, ShieldAlert, ExternalLink } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import toast from 'react-hot-toast';
 import RideChat from '../../components/RideChat';
@@ -17,6 +18,7 @@ import { driversApi } from '../../lib/api';
 export default function OrdersRadar() {
     const { user } = useAuth();
     const { bcvRate } = useCurrency();
+    const navigate = useNavigate();
     const [driverProfile, setDriverProfile] = useState<any>(null);
     const [availableOrders, setAvailableOrders] = useState<any[]>([]);
     const [availableTransport, setAvailableTransport] = useState<any[]>([]);
@@ -37,8 +39,27 @@ export default function OrdersRadar() {
     const [incomingDispatch, setIncomingDispatch] = useState<any>(null);
     const [countdownSeconds, setCountdownSeconds] = useState(20);
     
+    // Muchacho e' Mandado Bids State
+    const [mandadoBids, setMandadoBids] = useState<{ [reqId: string]: { amount: string; eta: string; submitted: boolean } }>({});
+    
     // Helper to get the current active item for calling
     const currentActiveItem = activeTransport || activeOrder;
+
+    // Suspension check: debt >= $15, suspended status, or deadline expired
+    const isSuspended = Boolean(
+        driverProfile?.commission_status === 'suspended' || 
+        Number(driverProfile?.commission_debt || 0) >= 15 || 
+        (driverProfile?.next_commission_deadline && new Date(driverProfile.next_commission_deadline).getTime() < Date.now())
+    );
+
+    const getCommissionForCategory = (categoryOrType: string) => {
+        const cat = (categoryOrType || '').toLowerCase();
+        if (cat.includes('confort') || cat.includes('ejecutivo')) return 1.20;
+        if (cat.includes('mandado')) return 0.70;
+        if (cat.includes('delivery') || cat.includes('envio') || cat.includes('paquete')) return 0.50;
+        if (cat.includes('moto')) return 0.50;
+        return 0.80; // Taxi Driver
+    };
 
     // 1. Fetch Driver Profile for vehicleType
     useEffect(() => {
@@ -240,8 +261,8 @@ export default function OrdersRadar() {
                 }
             });
 
-            // Activar modal de despacho estilo YANGO si no estamos en viaje activo
-            if (!activeOrder && !activeTransport) {
+            // Activar modal de despacho estilo YANGO si no estamos en viaje activo ni suspendidos
+            if (!activeOrder && !activeTransport && !isSuspended) {
                 const newest = availableTransport[0] || availableOrders[0];
                 if (newest) {
                     setIncomingDispatch(newest);
@@ -250,7 +271,7 @@ export default function OrdersRadar() {
         }
         
         lastAvailableCount.current = currentCount;
-    }, [availableOrders, availableTransport, activeOrder, activeTransport]);
+    }, [availableOrders, availableTransport, activeOrder, activeTransport, isSuspended]);
 
     // 3.2 Temporizador de cuenta regresiva de 20s para el despacho YANGO
     useEffect(() => {
@@ -430,6 +451,10 @@ export default function OrdersRadar() {
     // --- ACCIONES DE COMIDA (Supabase) ---
     const handleAcceptOrder = async (orderId: string) => {
         if (!user || activeOrder || activeTransport || processingAction) return;
+        if (isSuspended) {
+            toast.error("Tu cuenta está suspendida por comisiones pendientes ($15+ o plazo vencido). Ve a Ganancias para liquidar.");
+            return;
+        }
         setProcessingAction(orderId);
         try {
             const { data, error } = await supabase
@@ -526,6 +551,10 @@ export default function OrdersRadar() {
     // --- ACCIONES DE TRANSPORTE (TAXI) (Supabase) ---
     const handleAcceptTransport = async (reqId: string) => {
         if (!user || activeOrder || activeTransport || processingAction) return;
+        if (isSuspended) {
+            toast.error("Tu cuenta está suspendida por comisiones pendientes ($15+ o plazo vencido). Ve a Ganancias para liquidar.");
+            return;
+        }
         setProcessingAction(reqId);
         try {
             const { data, error } = await supabase
@@ -584,16 +613,32 @@ export default function OrdersRadar() {
         if (!activeTransport || processingAction) return;
         setProcessingAction('complete');
         try {
+            // Flat commission debiting
+            const cat = activeTransport.service_category || activeTransport.vehicle_type || 'mototaxi';
+            let comm = Number(activeTransport.commission_amount || 0);
+            if (!comm) {
+                comm = getCommissionForCategory(cat);
+            }
+
             await supabase.from('transport_requests').update({
                 status: 'completed',
-                completed_at: new Date().toISOString()
+                completed_at: new Date().toISOString(),
+                commission_amount: comm,
+                commission_debited: true
             }).eq('id', activeTransport.id);
 
-            // Increment driver total_trips
+            // Increment driver total_trips & debit commission_debt
             try {
                 const cur = Number(driverProfile?.total_trips || 0) + 1;
-                await supabase.from('drivers').update({ total_trips: cur }).eq('id', user!.uid);
-            } catch (e) {}
+                const curDebt = Number(driverProfile?.commission_debt || 0);
+                const newDebt = parseFloat((curDebt + comm).toFixed(2));
+                await supabase.from('drivers').update({
+                    total_trips: cur,
+                    commission_debt: newDebt
+                }).eq('id', user!.uid);
+            } catch (e) {
+                console.error("Error updating driver commission debt:", e);
+            }
 
             if (activeTransport.type === 'food_delivery' && activeTransport.id) {
                 try {
@@ -624,6 +669,57 @@ export default function OrdersRadar() {
             }
 
             setActiveTransport(null);
+            toast.success(`Viaje completado. Comisión Un 2x3 debitada: $${comm.toFixed(2)} USD.`);
+        } finally {
+            setProcessingAction(null);
+        }
+    };
+
+    // Puja / Oferta para Muchacho e' Mandado
+    const handleSendMandadoBid = async (reqId: string) => {
+        if (!user || processingAction) return;
+        if (isSuspended) {
+            toast.error("Tu cuenta está suspendida por comisiones pendientes ($15+ o plazo vencido). Ve a Ganancias para liquidar.");
+            return;
+        }
+        const bidInfo = mandadoBids[reqId];
+        const amount = Number(bidInfo?.amount || 0);
+        const eta = Number(bidInfo?.eta || 15);
+
+        if (isNaN(amount) || amount < 1.00) {
+            toast.error("La tarifa mínima de puja es de $1.00 USD");
+            return;
+        }
+
+        setProcessingAction(`bid_${reqId}`);
+        try {
+            const bidId = crypto.randomUUID();
+            const { error } = await supabase.from('transport_bids').insert({
+                id: bidId,
+                transport_request_id: reqId,
+                driver_id: user.uid,
+                driver_name: driverProfile?.displayName || driverProfile?.name || 'Conductor',
+                driver_photo: driverProfile?.photoURL || driverProfile?.avatar_url || null,
+                driver_phone: driverProfile?.phone || null,
+                vehicle_type: driverProfile?.vehicle_type || driverProfile?.vehicleType || 'moto',
+                vehicle_plate: driverProfile?.vehicle_plate || driverProfile?.plate || '',
+                vehicle_model: driverProfile?.vehicle_model || driverProfile?.model || '',
+                driver_rating: driverProfile?.rating || 5.0,
+                amount: amount,
+                eta_minutes: eta,
+                status: 'pending'
+            });
+
+            if (error) throw error;
+
+            setMandadoBids(prev => ({
+                ...prev,
+                [reqId]: { ...prev[reqId], submitted: true }
+            }));
+            toast.success(`¡Puja de $${amount.toFixed(2)} USD enviada al cliente!`);
+        } catch (err: any) {
+            console.error("Error enviando puja de mandado:", err);
+            toast.error("No se pudo enviar la oferta. Revisa tu conexión.");
         } finally {
             setProcessingAction(null);
         }
@@ -1086,6 +1182,35 @@ export default function OrdersRadar() {
                 </div>
             </div>
 
+            {/* Banner de Suspensión por Deuda de Comisiones */}
+            {isSuspended && (
+                <div className="bg-gradient-to-r from-red-600 to-rose-700 text-white p-5 rounded-[2.5rem] shadow-xl shadow-red-500/20 border border-red-400/30 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 animate-in fade-in slide-in-from-top-2">
+                    <div className="flex items-center gap-3">
+                        <div className="w-12 h-12 bg-white/20 rounded-2xl flex items-center justify-center shrink-0">
+                            <AlertTriangle className="w-6 h-6 text-white" />
+                        </div>
+                        <div>
+                            <h4 className="font-black text-base leading-tight">Radar Bloqueado por Saldo Pendiente</h4>
+                            <p className="text-xs text-red-100 font-medium mt-0.5">
+                                Deuda de comisiones: <strong className="text-white">${Number(driverProfile?.commission_debt || 0).toFixed(2)} USD</strong>
+                                {driverProfile?.next_commission_deadline && (
+                                    <span> • Vencimiento: {new Date(driverProfile.next_commission_deadline).toLocaleDateString()}</span>
+                                )}
+                            </p>
+                            <p className="text-[11px] text-red-200 mt-0.5">
+                                Límite máximo: $15.00 USD o 15 días continuos sin liquidar.
+                            </p>
+                        </div>
+                    </div>
+                    <button
+                        onClick={() => navigate('/delivery/earnings')}
+                        className="w-full sm:w-auto px-5 py-3 bg-white text-red-700 font-black rounded-xl text-xs uppercase tracking-wider shadow-md hover:bg-red-50 active:scale-95 transition-all shrink-0"
+                    >
+                        Pagar Comisiones Ahora
+                    </button>
+                </div>
+            )}
+
             {/* Modal de Despacho Automático estilo Yango Pro */}
             <AnimatePresence>
                 {incomingDispatch && (
@@ -1115,6 +1240,8 @@ export default function OrdersRadar() {
                                 <div className="flex items-center gap-2 px-3 py-1 bg-amber-400/10 border border-amber-400/30 text-amber-400 rounded-full text-[11px] font-black uppercase tracking-wider">
                                     {incomingDispatch.restaurantName ? (
                                         <><Bike className="w-3.5 h-3.5" /> Reparto de Comida</>
+                                    ) : (incomingDispatch.service_category === 'mandado' || incomingDispatch.type === 'muchacho_mandado') ? (
+                                        <><Package className="w-3.5 h-3.5" /> Muchacho e' Mandado</>
                                     ) : incomingDispatch.type === 'package_delivery' ? (
                                         <><Package className="w-3.5 h-3.5" /> Envío de Paquete</>
                                     ) : (incomingDispatch.vehicleType === 'moto' || incomingDispatch.vehicle_type === 'moto') ? (
@@ -1129,66 +1256,109 @@ export default function OrdersRadar() {
                                 </div>
                             </div>
 
-                            {/* Precio dual estilo Yango */}
-                            <div className="bg-slate-900/90 rounded-2xl p-4 border border-slate-800/80 flex items-center justify-between">
-                                <div>
-                                    <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Ganancia estimada</span>
-                                    <div className="text-3xl sm:text-4xl font-black text-amber-400">
-                                        ${Number(
-                                            incomingDispatch.driverPayout ||
-                                            incomingDispatch.deliveryFee ||
-                                            incomingDispatch.price ||
-                                            0
-                                        ).toFixed(2)}
-                                    </div>
-                                </div>
-                                {bcvRate > 0 && (
-                                    <div className="text-right">
-                                        <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">En Bolívares</span>
-                                        <div className="text-base font-black text-slate-300">
-                                            Bs. {(
-                                                Number(
-                                                    incomingDispatch.driverPayout ||
-                                                    incomingDispatch.deliveryFee ||
-                                                    incomingDispatch.price ||
-                                                    0
-                                                ) * bcvRate
-                                            ).toFixed(2)}
+                            {/* Ganancia Bruta, Comisión Un 2x3 y Neto */}
+                            {(() => {
+                                const gross = Number(
+                                    incomingDispatch.driverPayout ||
+                                    incomingDispatch.deliveryFee ||
+                                    incomingDispatch.price ||
+                                    0
+                                );
+                                const catKey = incomingDispatch.service_category || incomingDispatch.serviceCategory || incomingDispatch.vehicle_type || incomingDispatch.vehicleType || (incomingDispatch.restaurantName ? 'delivery' : 'mototaxi');
+                                const platformComm = Number(incomingDispatch.commission_amount || getCommissionForCategory(catKey));
+                                const net = Math.max(0, gross - platformComm);
+                                const originGps = incomingDispatch.restaurantName || incomingDispatch.origin?.address || incomingDispatch.originAddress || '';
+                                const destGps = incomingDispatch.shippingAddress?.address || incomingDispatch.destination?.address || incomingDispatch.destinationAddress || '';
+                                const mapsUrl = `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(originGps)}&destination=${encodeURIComponent(destGps)}`;
+
+                                return (
+                                    <div className="space-y-3">
+                                        <div className="bg-gradient-to-br from-slate-900 via-slate-900 to-amber-950/40 rounded-3xl p-5 border border-amber-500/20 shadow-inner">
+                                            <div className="flex items-center justify-between">
+                                                <div>
+                                                    <span className="text-[10px] font-black uppercase tracking-widest text-amber-400/90">Ganancia Bruta</span>
+                                                    <div className="text-4xl font-black text-amber-400">
+                                                        ${gross.toFixed(2)}
+                                                    </div>
+                                                </div>
+                                                {bcvRate > 0 && (
+                                                    <div className="text-right">
+                                                        <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Tasa BCV</span>
+                                                        <div className="text-sm font-black text-slate-200">
+                                                            Bs. {(gross * bcvRate).toFixed(2)}
+                                                        </div>
+                                                    </div>
+                                                )}
+                                            </div>
+
+                                            <div className="mt-3 pt-3 border-t border-slate-800 flex items-center justify-between text-xs">
+                                                <span className="text-slate-400 font-medium flex items-center gap-1">
+                                                    Tarifa Un 2x3: <strong className="text-rose-400 font-bold">-${platformComm.toFixed(2)}</strong>
+                                                </span>
+                                                <span className="text-emerald-400 font-black bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-1 rounded-xl">
+                                                    Neto libre: ${net.toFixed(2)}
+                                                </span>
+                                            </div>
                                         </div>
-                                    </div>
-                                )}
-                            </div>
 
-                            {/* Ruta: Origen y Destino */}
-                            <div className="space-y-3 bg-slate-900/50 p-4 rounded-2xl border border-slate-800">
-                                <div className="flex items-start gap-3">
-                                    <div className="w-6 h-6 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center shrink-0 mt-0.5 font-black text-xs border border-emerald-500/30">
-                                        A
-                                    </div>
-                                    <div className="flex-1 min-w-0">
-                                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-wider">
-                                            {incomingDispatch.restaurantName ? 'Restaurante / Origen' : 'Punto de Recogida'}
-                                        </p>
-                                        <p className="text-xs font-bold text-slate-200 truncate">
-                                            {incomingDispatch.restaurantName || incomingDispatch.origin?.address || incomingDispatch.originAddress || 'Ubicación de partida'}
-                                        </p>
-                                    </div>
-                                </div>
+                                        {/* Chip informativo de fecha límite de corte */}
+                                        {driverProfile?.next_commission_deadline && (
+                                            <div className="flex items-center justify-between text-[11px] bg-slate-900/90 px-3.5 py-2 rounded-2xl border border-slate-800 text-slate-400">
+                                                <span className="flex items-center gap-1.5 font-bold">
+                                                    <Clock className="w-3.5 h-3.5 text-amber-400" />
+                                                    Corte de comisiones:
+                                                </span>
+                                                <span className="font-black text-amber-400">
+                                                    {Math.max(0, Math.ceil((new Date(driverProfile.next_commission_deadline).getTime() - Date.now()) / (1000 * 60 * 60 * 24)))} días restantes (Deuda: ${Number(driverProfile.commission_debt || 0).toFixed(2)})
+                                                </span>
+                                            </div>
+                                        )}
 
-                                <div className="ml-3 border-l-2 border-dashed border-slate-700 h-3"></div>
+                                        {/* Ruta: Origen y Destino */}
+                                        <div className="space-y-3 bg-slate-900/50 p-4 rounded-2xl border border-slate-800">
+                                            <div className="flex items-start gap-3">
+                                                <div className="w-6 h-6 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center shrink-0 mt-0.5 font-black text-xs border border-emerald-500/30">
+                                                    A
+                                                </div>
+                                                <div className="flex-1 min-w-0">
+                                                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-wider">
+                                                        {incomingDispatch.restaurantName ? 'Restaurante / Origen' : 'Punto de Recogida'}
+                                                    </p>
+                                                    <p className="text-xs font-bold text-slate-200 truncate">
+                                                        {originGps || 'Ubicación de partida'}
+                                                    </p>
+                                                </div>
+                                            </div>
 
-                                <div className="flex items-start gap-3">
-                                    <div className="w-6 h-6 rounded-full bg-amber-500/20 text-amber-400 flex items-center justify-center shrink-0 mt-0.5 font-black text-xs border border-amber-500/30">
-                                        B
+                                            <div className="ml-3 border-l-2 border-dashed border-slate-700 h-3"></div>
+
+                                            <div className="flex items-start gap-3">
+                                                <div className="w-6 h-6 rounded-full bg-amber-500/20 text-amber-400 flex items-center justify-center shrink-0 mt-0.5 font-black text-xs border border-amber-500/30">
+                                                    B
+                                                </div>
+                                                <div className="flex-1 min-w-0">
+                                                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Destino</p>
+                                                    <p className="text-xs font-bold text-slate-200 truncate">
+                                                        {destGps || 'Ubicación de destino'}
+                                                    </p>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {/* Botón de Navegación 1-Tap Google Maps */}
+                                        <a
+                                            href={mapsUrl}
+                                            target="_blank"
+                                            rel="noreferrer"
+                                            className="w-full bg-slate-900 hover:bg-slate-800 active:scale-98 text-slate-300 font-bold py-3 px-4 rounded-2xl border border-slate-700/80 flex items-center justify-center gap-2 text-xs uppercase tracking-wider transition-all"
+                                        >
+                                            <Navigation className="w-4 h-4 text-emerald-400" />
+                                            Abrir GPS en Google Maps
+                                            <ExternalLink className="w-3.5 h-3.5 opacity-60" />
+                                        </a>
                                     </div>
-                                    <div className="flex-1 min-w-0">
-                                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Destino</p>
-                                        <p className="text-xs font-bold text-slate-200 truncate">
-                                            {incomingDispatch.shippingAddress?.address || incomingDispatch.destination?.address || incomingDispatch.destinationAddress || 'Ubicación de destino'}
-                                        </p>
-                                    </div>
-                                </div>
-                            </div>
+                                );
+                            })()}
 
                             {/* Botones de Acción */}
                             <div className="pt-2 flex flex-col gap-2">
@@ -1307,94 +1477,250 @@ export default function OrdersRadar() {
 
                     {/* Lista de Viajes (Taxi) */}
                     <AnimatePresence mode="popLayout">
-                        {availableTransport.map(req => (
-                            <motion.div
-                                key={req.id}
-                                initial={{ opacity: 0, x: -20 }}
-                                animate={{ opacity: 1, x: 0 }}
-                                exit={{ opacity: 0, scale: 0.95 }}
-                                className="bg-white rounded-[2.5rem] p-6 shadow-xl shadow-slate-200/50 border-2 border-primary/10 relative overflow-hidden group"
-                            >
-                                <div className="absolute top-0 right-0 w-24 h-24 bg-primary/5 rounded-full -mr-12 -mt-12 group-hover:scale-150 transition-transform duration-500"></div>
+                        {availableTransport.map(req => {
+                            const isMandado = req.service_category === 'mandado' || req.service_category === 'muchacho_mandado' || req.type === 'muchacho_mandado';
+                            const bidData = mandadoBids[req.id] || { amount: '', eta: '15', submitted: false };
+                            const bidAmountNum = parseFloat(bidData.amount) || 0;
+                            const commMandado = 0.70;
+                            const netMandado = Math.max(0, bidAmountNum - commMandado);
 
-                                <div className="flex justify-between items-center mb-6 relative">
-                                    <div className="flex items-center gap-2 px-3 py-1 bg-primary text-slate-900 rounded-full text-[10px] font-black uppercase tracking-wider shadow-lg shadow-primary/20">
-                                        {req.type === 'food_delivery' ? <Bike className="w-3.5 h-3.5" /> : (req.type === 'package_delivery' ? <Package className="w-3.5 h-3.5" /> : (req.vehicleType === 'moto' ? <Bike className="w-3.5 h-3.5" /> : <Car className="w-3.5 h-3.5" />))}
-                                        {req.scheduled ? 'VIAJE PROGRAMADO' : (req.type === 'food_delivery' ? 'REPARTO COMIDA' : (req.type === 'package_delivery' ? 'SOLICITUD ENVIO PAQUETE' : 'SOLICITUD TAXI'))}
-                                    </div>
-                                    <div className="text-2xl font-black text-emerald-600">${(req.price || 0).toFixed(2)}</div>
-                                </div>
+                            if (isMandado) {
+                                return (
+                                    <motion.div
+                                        key={req.id}
+                                        initial={{ opacity: 0, x: -20 }}
+                                        animate={{ opacity: 1, x: 0 }}
+                                        exit={{ opacity: 0, scale: 0.95 }}
+                                        className="bg-gradient-to-b from-amber-50/80 via-white to-white rounded-[2.5rem] p-6 shadow-xl shadow-amber-500/10 border-2 border-amber-300 relative overflow-hidden"
+                                    >
+                                        <div className="flex justify-between items-center mb-4">
+                                            <div className="flex items-center gap-2 px-3.5 py-1.5 bg-amber-400 text-slate-950 rounded-full text-[10px] font-black uppercase tracking-wider shadow-md shadow-amber-400/20">
+                                                <Package className="w-3.5 h-3.5" />
+                                                Muchacho e' Mandado
+                                            </div>
+                                            <div className="text-xs font-black uppercase px-2.5 py-1 bg-amber-100 text-amber-900 rounded-full border border-amber-200">
+                                                Puja Abierta
+                                            </div>
+                                        </div>
 
-                                {req.scheduled && (
-                                    <div className="flex items-center gap-2 bg-emerald-50 text-emerald-700 p-3 rounded-2xl border border-emerald-100 mb-4 animate-in fade-in slide-in-from-top-1">
-                                        <Clock className="w-4 h-4" />
-                                        <div className="flex flex-col">
-                                            <span className="text-[10px] font-black uppercase tracking-wider leading-none">Para el día:</span>
-                                            <span className="text-sm font-black">
-                                                {req.scheduledAt && typeof req.scheduledAt.toDate === 'function'
-                                                    ? req.scheduledAt.toDate().toLocaleString('es-VE', { weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })
-                                                    : req.scheduledAt
-                                                        ? new Date(req.scheduledAt).toLocaleString('es-VE', { weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })
-                                                        : 'Fecha pendiente'}
-                                            </span>
+                                        {/* Advertencia Cero Intermediación */}
+                                        <div className="bg-amber-100/70 border border-amber-300 rounded-2xl p-3.5 mb-4 text-xs font-bold text-amber-950 flex items-start gap-2.5">
+                                            <ShieldAlert className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+                                            <div>
+                                                <span className="font-black">CERO INTERMEDIACIÓN:</span> No financias compras de mercancía. El cliente le transfiere directo al comercio mediante Pago Móvil. Tú sólo cobras tu tarifa de mandado.
+                                            </div>
                                         </div>
-                                    </div>
-                                )}
 
-                                <div className="space-y-4 mb-8 relative">
-                                    <div className="flex items-start gap-4">
-                                        <div className="w-10 h-10 bg-slate-50 text-slate-400 rounded-2xl flex items-center justify-center shrink-0 border border-slate-100 shadow-inner">
-                                            <Navigation className="w-5 h-5" />
-                                        </div>
-                                        <div>
-                                            <p className="text-[10px] font-black text-slate-300 uppercase tracking-widest">Recoger:</p>
-                                            <p className="font-bold text-slate-700 leading-tight mt-0.5">{req.origin?.address}</p>
-                                        </div>
-                                    </div>
-                                    <div className="flex items-start gap-4">
-                                        <div className="w-10 h-10 bg-emerald-50 text-emerald-600 rounded-2xl flex items-center justify-center shrink-0 border border-emerald-100 shadow-inner">
-                                            <MapPin className="w-5 h-5" />
-                                        </div>
-                                        <div>
-                                            <p className="text-[10px] font-black text-emerald-600 uppercase tracking-widest mb-1">Cliente:</p>
-                                            <p className="font-bold text-slate-900 leading-tight flex flex-col gap-0.5">
-                                                <span>{req.userName}</span>
-                                                {req.userCedula && (
-                                                    <span className="text-xs text-slate-500 font-medium">
-                                                        C.I: {req.userCedula}
-                                                    </span>
-                                                )}
+                                        {/* Detalle del Encargo / Diligencia */}
+                                        <div className="bg-white border border-slate-200 p-4 rounded-2xl mb-4 space-y-2">
+                                            <div className="text-[10px] font-black uppercase text-slate-400 tracking-wider">Detalle del Mandado / Encargo:</div>
+                                            <p className="text-sm font-bold text-slate-800 leading-snug">
+                                                {req.mandado_details?.description || req.packageDescription || req.notes || 'Encargo personalizado solicitado por el cliente.'}
                                             </p>
-                                            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-2">Destino:</p>
-                                            <p className="font-bold text-slate-700 leading-tight mt-0.5 line-clamp-2">{req.destination?.address}</p>
-                                            {req.type === 'package_delivery' && req.packageDescription && (
-                                                <>
-                                                    <p className="text-[10px] font-black text-yellow-600 uppercase tracking-widest mt-2">Paquete:</p>
-                                                    <p className="font-bold text-slate-700 leading-tight mt-0.5 line-clamp-2">{req.packageDescription}</p>
-                                                </>
+                                            {req.mandado_details?.storeName && (
+                                                <p className="text-xs text-slate-600 font-medium">
+                                                    🏪 Comercio/Lugar: <span className="font-bold text-slate-800">{req.mandado_details.storeName}</span>
+                                                </p>
                                             )}
                                         </div>
-                                    </div>
-                                </div>
 
-                                <div className="pt-2 grid gap-3">
-                                    <a
-                                        href={`https://www.google.com/maps/dir/?api=1&waypoints=${encodeURIComponent(req.origin?.address || '')}&destination=${encodeURIComponent(req.destination?.address || '')}`}
-                                        target="_blank"
-                                        className="w-full bg-slate-100 text-slate-600 font-bold py-4 rounded-2xl flex justify-center items-center gap-2 active:scale-95 transition-all"
-                                    >
-                                        <Navigation className="w-5 h-5" /> Ver GPS
-                                    </a>
-                                    <button
-                                        onClick={() => handleAcceptTransport(req.id)}
-                                        disabled={processingAction !== null}
-                                        className="w-full bg-primary text-slate-900 font-black py-4 rounded-2xl shadow-lg shadow-primary/30 active:scale-95 transition-all flex items-center justify-center h-16 disabled:opacity-70 group-hover:shadow-primary/40"
-                                    >
-                                        {processingAction === req.id ? <div className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin"></div> : 'ACEPTAR VIAJE'}
-                                    </button>
-                                </div>
-                            </motion.div>
-                        ))}
+                                        {/* Direcciones */}
+                                        <div className="space-y-3 mb-5">
+                                            <div className="flex items-start gap-3">
+                                                <div className="w-8 h-8 bg-amber-100 text-amber-700 rounded-xl flex items-center justify-center shrink-0 text-xs font-black">
+                                                    1
+                                                </div>
+                                                <div className="min-w-0">
+                                                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Retiro / Compra:</p>
+                                                    <p className="text-xs font-bold text-slate-800 truncate">{req.origin?.address || 'Punto de partida'}</p>
+                                                </div>
+                                            </div>
+                                            <div className="flex items-start gap-3">
+                                                <div className="w-8 h-8 bg-emerald-100 text-emerald-700 rounded-xl flex items-center justify-center shrink-0 text-xs font-black">
+                                                    2
+                                                </div>
+                                                <div className="min-w-0">
+                                                    <p className="text-[10px] font-black text-emerald-600 uppercase tracking-widest">Entrega al Cliente:</p>
+                                                    <p className="text-xs font-bold text-slate-800 truncate">{req.destination?.address || 'Destino final'}</p>
+                                                    <p className="text-[11px] text-slate-500 font-medium">{req.userName} {req.userCedula ? `(C.I: ${req.userCedula})` : ''}</p>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {/* Formulario de Puja */}
+                                        {bidData.submitted ? (
+                                            <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-4 text-center">
+                                                <CheckCircle2 className="w-6 h-6 text-emerald-600 mx-auto mb-1" />
+                                                <p className="text-xs font-black text-emerald-900 uppercase tracking-wider">¡Oferta enviada al cliente!</p>
+                                                <p className="text-sm font-bold text-emerald-700 mt-0.5">
+                                                    Tu puja: ${Number(bidData.amount).toFixed(2)} USD • ETA: {bidData.eta} min
+                                                </p>
+                                                <p className="text-[11px] text-emerald-600/80 mt-1">
+                                                    El cliente está revisando las propuestas en su radar.
+                                                </p>
+                                            </div>
+                                        ) : (
+                                            <div className="bg-slate-50 border border-slate-200 p-4 rounded-2xl space-y-3">
+                                                <div className="grid grid-cols-2 gap-3">
+                                                    <div>
+                                                        <label className="text-[10px] font-black uppercase text-slate-500 tracking-wider block mb-1">
+                                                            Tu Tarifa ($ USD)
+                                                        </label>
+                                                        <div className="relative">
+                                                            <span className="absolute left-3 top-2.5 text-slate-400 font-black text-sm">$</span>
+                                                            <input
+                                                                type="number"
+                                                                min="1.00"
+                                                                step="0.25"
+                                                                placeholder="Min 1.00"
+                                                                value={bidData.amount}
+                                                                onChange={(e) => setMandadoBids(prev => ({
+                                                                    ...prev,
+                                                                    [req.id]: { ...bidData, amount: e.target.value }
+                                                                }))}
+                                                                className="w-full pl-7 pr-3 py-2 bg-white rounded-xl border border-slate-300 text-sm font-black text-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-400"
+                                                            />
+                                                        </div>
+                                                    </div>
+                                                    <div>
+                                                        <label className="text-[10px] font-black uppercase text-slate-500 tracking-wider block mb-1">
+                                                            Tiempo de llegada
+                                                        </label>
+                                                        <div className="relative">
+                                                            <input
+                                                                type="number"
+                                                                min="5"
+                                                                step="5"
+                                                                placeholder="15"
+                                                                value={bidData.eta}
+                                                                onChange={(e) => setMandadoBids(prev => ({
+                                                                    ...prev,
+                                                                    [req.id]: { ...bidData, eta: e.target.value }
+                                                                }))}
+                                                                className="w-full px-3 py-2 bg-white rounded-xl border border-slate-300 text-sm font-black text-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-400"
+                                                            />
+                                                            <span className="absolute right-3 top-2.5 text-slate-400 font-bold text-xs">min</span>
+                                                        </div>
+                                                    </div>
+                                                </div>
+
+                                                {/* Desglose de comisión */}
+                                                {bidAmountNum >= 1.00 && (
+                                                    <div className="text-[11px] bg-white p-2.5 rounded-xl border border-slate-200 flex items-center justify-between">
+                                                        <span className="text-slate-500">Comisión fija Un 2x3: <strong className="text-rose-500">-$0.70</strong></span>
+                                                        <span className="font-black text-emerald-600">Neto para ti: ${netMandado.toFixed(2)} USD</span>
+                                                    </div>
+                                                )}
+
+                                                <button
+                                                    onClick={() => handleSendMandadoBid(req.id)}
+                                                    disabled={processingAction === `bid_${req.id}` || !bidData.amount || Number(bidData.amount) < 1}
+                                                    className="w-full bg-slate-900 hover:bg-slate-800 active:scale-98 text-amber-400 font-black py-3.5 rounded-xl shadow-lg shadow-slate-900/10 text-xs uppercase tracking-wider flex items-center justify-center gap-2 disabled:opacity-50 transition-all"
+                                                >
+                                                    {processingAction === `bid_${req.id}` ? (
+                                                        <div className="w-5 h-5 border-2 border-amber-400 border-t-transparent rounded-full animate-spin"></div>
+                                                    ) : (
+                                                        <>
+                                                            <Send className="w-4 h-4" />
+                                                            Enviar Oferta / Puja al Cliente
+                                                        </>
+                                                    )}
+                                                </button>
+                                            </div>
+                                        )}
+                                    </motion.div>
+                                );
+                            }
+
+                            return (
+                                <motion.div
+                                    key={req.id}
+                                    initial={{ opacity: 0, x: -20 }}
+                                    animate={{ opacity: 1, x: 0 }}
+                                    exit={{ opacity: 0, scale: 0.95 }}
+                                    className="bg-white rounded-[2.5rem] p-6 shadow-xl shadow-slate-200/50 border-2 border-primary/10 relative overflow-hidden group"
+                                >
+                                    <div className="absolute top-0 right-0 w-24 h-24 bg-primary/5 rounded-full -mr-12 -mt-12 group-hover:scale-150 transition-transform duration-500"></div>
+
+                                    <div className="flex justify-between items-center mb-6 relative">
+                                        <div className="flex items-center gap-2 px-3 py-1 bg-primary text-slate-900 rounded-full text-[10px] font-black uppercase tracking-wider shadow-lg shadow-primary/20">
+                                            {req.type === 'food_delivery' ? <Bike className="w-3.5 h-3.5" /> : (req.type === 'package_delivery' ? <Package className="w-3.5 h-3.5" /> : (req.vehicleType === 'moto' ? <Bike className="w-3.5 h-3.5" /> : <Car className="w-3.5 h-3.5" />))}
+                                            {req.scheduled ? 'VIAJE PROGRAMADO' : (req.type === 'food_delivery' ? 'REPARTO COMIDA' : (req.type === 'package_delivery' ? 'SOLICITUD ENVIO PAQUETE' : 'SOLICITUD TAXI'))}
+                                        </div>
+                                        <div className="text-2xl font-black text-emerald-600">${(req.price || 0).toFixed(2)}</div>
+                                    </div>
+
+                                    {req.scheduled && (
+                                        <div className="flex items-center gap-2 bg-emerald-50 text-emerald-700 p-3 rounded-2xl border border-emerald-100 mb-4 animate-in fade-in slide-in-from-top-1">
+                                            <Clock className="w-4 h-4" />
+                                            <div className="flex flex-col">
+                                                <span className="text-[10px] font-black uppercase tracking-wider leading-none">Para el día:</span>
+                                                <span className="text-sm font-black">
+                                                    {req.scheduledAt && typeof req.scheduledAt.toDate === 'function'
+                                                        ? req.scheduledAt.toDate().toLocaleString('es-VE', { weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })
+                                                        : req.scheduledAt
+                                                            ? new Date(req.scheduledAt).toLocaleString('es-VE', { weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })
+                                                            : 'Fecha pendiente'}
+                                                </span>
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    <div className="space-y-4 mb-8 relative">
+                                        <div className="flex items-start gap-4">
+                                            <div className="w-10 h-10 bg-slate-50 text-slate-400 rounded-2xl flex items-center justify-center shrink-0 border border-slate-100 shadow-inner">
+                                                <Navigation className="w-5 h-5" />
+                                            </div>
+                                            <div>
+                                                <p className="text-[10px] font-black text-slate-300 uppercase tracking-widest">Recoger:</p>
+                                                <p className="font-bold text-slate-700 leading-tight mt-0.5">{req.origin?.address}</p>
+                                            </div>
+                                        </div>
+                                        <div className="flex items-start gap-4">
+                                            <div className="w-10 h-10 bg-emerald-50 text-emerald-600 rounded-2xl flex items-center justify-center shrink-0 border border-emerald-100 shadow-inner">
+                                                <MapPin className="w-5 h-5" />
+                                            </div>
+                                            <div>
+                                                <p className="text-[10px] font-black text-emerald-600 uppercase tracking-widest mb-1">Cliente:</p>
+                                                <p className="font-bold text-slate-900 leading-tight flex flex-col gap-0.5">
+                                                    <span>{req.userName}</span>
+                                                    {req.userCedula && (
+                                                        <span className="text-xs text-slate-500 font-medium">
+                                                            C.I: {req.userCedula}
+                                                        </span>
+                                                    )}
+                                                </p>
+                                                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-2">Destino:</p>
+                                                <p className="font-bold text-slate-700 leading-tight mt-0.5 line-clamp-2">{req.destination?.address}</p>
+                                                {req.type === 'package_delivery' && req.packageDescription && (
+                                                    <>
+                                                        <p className="text-[10px] font-black text-yellow-600 uppercase tracking-widest mt-2">Paquete:</p>
+                                                        <p className="font-bold text-slate-700 leading-tight mt-0.5 line-clamp-2">{req.packageDescription}</p>
+                                                    </>
+                                                )}
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div className="pt-2 grid gap-3">
+                                        <a
+                                            href={`https://www.google.com/maps/dir/?api=1&waypoints=${encodeURIComponent(req.origin?.address || '')}&destination=${encodeURIComponent(req.destination?.address || '')}`}
+                                            target="_blank"
+                                            className="w-full bg-slate-100 text-slate-600 font-bold py-4 rounded-2xl flex justify-center items-center gap-2 active:scale-95 transition-all"
+                                        >
+                                            <Navigation className="w-5 h-5" /> Ver GPS
+                                        </a>
+                                        <button
+                                            onClick={() => handleAcceptTransport(req.id)}
+                                            disabled={processingAction !== null}
+                                            className="w-full bg-primary text-slate-900 font-black py-4 rounded-2xl shadow-lg shadow-primary/30 active:scale-95 transition-all flex items-center justify-center h-16 disabled:opacity-70 group-hover:shadow-primary/40"
+                                        >
+                                            {processingAction === req.id ? <div className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin"></div> : 'ACEPTAR VIAJE'}
+                                        </button>
+                                    </div>
+                                </motion.div>
+                            );
+                        })}
 
                         {/* Lista de Entregas (Comida) */}
                         {availableOrders.map(order => (

@@ -3,7 +3,7 @@ import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { DeliveryDriver } from '../lib/delivery-service';
 import toast from 'react-hot-toast';
-import { Navigation, Clock, CheckCircle2, Phone, ArrowLeft, Car, ShieldCheck, MessageCircle, Star, XCircle, MapPin, Package } from 'lucide-react';
+import { Navigation, Clock, CheckCircle2, Phone, ArrowLeft, Car, ShieldCheck, MessageCircle, Star, XCircle, MapPin, Package, Copy, AlertTriangle, Wind, Music, Wifi, BatteryCharging, AlertCircle } from 'lucide-react';
 import { GoogleMap, useJsApiLoader, DirectionsRenderer, Marker } from '@react-google-maps/api';
 import { GOOGLE_MAPS_API_KEY, GOOGLE_MAPS_LIBRARIES } from '../lib/mapsConfig';
 import RideChat from '../components/RideChat';
@@ -11,6 +11,7 @@ import InAppCall from '../components/InAppCall';
 import { UN2X3_LOGO } from '../lib/env';
 import { isNightTime, yangoDarkMapStyles, yangoDayMapStyles, googleMapsDarkStyles, getWeatherByCoordinates, WeatherInfo } from '../lib/weather';
 import RainOverlay from '../components/RainOverlay';
+import { useCurrency } from '../context/CurrencyContext';
 
 const mapContainerStyle = {
     width: '100%',
@@ -39,6 +40,7 @@ const mapOptions: google.maps.MapOptions = {
 export default function TransportTracker() {
     const { requestId } = useParams();
     const navigate = useNavigate();
+    const { bcvRate } = useCurrency();
     const [request, setRequest] = useState<any>(null);
     const [driver, setDriver] = useState<DeliveryDriver | null>(null);
     const [loading, setLoading] = useState(true);
@@ -53,6 +55,9 @@ export default function TransportTracker() {
     const [unreadCount, setUnreadCount] = useState(0);
     // In-app call
     const [showCall, setShowCall] = useState(false);
+    // Cancellation modal
+    const [showCancelModal, setShowCancelModal] = useState(false);
+    const [cancellingTrip, setCancellingTrip] = useState(false);
     // Lost items
     const [showLostItem, setShowLostItem] = useState(false);
     const [lostItemDesc, setLostItemDesc] = useState('');
@@ -405,50 +410,50 @@ export default function TransportTracker() {
         }
     };
 
-    const handleCancelReservation = async () => {
+    const handleCopy = (text: string, label: string) => {
+        if (!text) return;
+        navigator.clipboard.writeText(text);
+        toast.success(`${label} copiado`);
+    };
+
+    const handleConfirmCancelTrip = async () => {
         if (!requestId || !request) return;
-        if (!confirm("¿Seguro que deseas cancelar esta reserva? El dinero será devuelto a tu billetera virtual.")) return;
+        setCancellingTrip(true);
         try {
-            await supabase.from('transport_requests').update({
-                status: 'cancelled',
-                cancelledAt: new Date().toISOString(),
-                cancelled_at: new Date().toISOString(),
-                updated_at: new Date().toISOString()
-            }).eq('id', requestId);
+            const isArriving = request.status === 'arriving';
+            const numPrice = parseFloat(request.price || request.total || 0);
+            const numComm = parseFloat(request.commission_amount || 0);
 
-            const userId = request.userId || request.user_id;
-            const price = parseFloat(request.price || 0);
-
-            if (price > 0 && userId && !userId.startsWith('guest_')) {
-                const { data: profile } = await supabase.from('profiles').select('wallet_balance, "walletBalance"').eq('id', userId).maybeSingle();
-                const currentBal = parseFloat(profile?.wallet_balance || profile?.walletBalance || 0);
-                const newBalance = currentBal + price;
-
-                await supabase.from('profiles').update({
-                    walletBalance: newBalance,
-                    wallet_balance: newBalance,
+            if (isArriving) {
+                const penaltyPrice = Math.round((numPrice * 0.5) * 100) / 100;
+                const penaltyCommission = Math.round((numComm * 0.5) * 100) / 100;
+                await supabase.from('transport_requests').update({
+                    status: 'cancelled',
+                    cancellation_penalty_applied: true,
+                    price: penaltyPrice,
+                    commission_amount: penaltyCommission,
+                    cancellation_reason: 'Cancelado por cliente con chofer en sitio (penalidad 50%)',
+                    cancelled_at: new Date().toISOString(),
                     updated_at: new Date().toISOString()
-                }).eq('id', userId);
-
-                await supabase.from('wallet_recharges').insert({
-                    id: crypto.randomUUID(),
-                    userId: userId,
-                    user_id: userId,
-                    amount: price,
-                    status: 'approved',
-                    paymentMethod: 'Reembolso',
-                    payment_method: 'Reembolso',
-                    reference: 'Cancelación Reserva ' + requestId.slice(0, 6),
-                    created_at: new Date().toISOString(),
-                    createdAt: new Date().toISOString()
-                });
+                }).eq('id', requestId);
+                toast.error("Viaje cancelado con penalidad del 50% por cancelación con conductor en punto de partida.");
+            } else {
+                await supabase.from('transport_requests').update({
+                    status: 'cancelled',
+                    cancellation_reason: 'Cancelado por el cliente',
+                    cancelled_at: new Date().toISOString(),
+                    updated_at: new Date().toISOString()
+                }).eq('id', requestId);
+                toast.success("Viaje cancelado.");
             }
 
-            toast.success("Reserva cancelada. Fondos reembolsados a tu billetera.");
+            setShowCancelModal(false);
             navigate('/taxi');
-        } catch (error) {
-            console.error("Error cancelling reservation:", error);
-            toast.error("Error al cancelar la reserva");
+        } catch (err) {
+            console.error(err);
+            toast.error("Error al cancelar viaje");
+        } finally {
+            setCancellingTrip(false);
         }
     };
 
@@ -472,11 +477,10 @@ export default function TransportTracker() {
                     destination: { lat: request.destination.lat, lng: request.destination.lng },
                     travelMode: google.maps.TravelMode.DRIVING
                 }, (result, status) => {
-                    if (status === google.maps.DirectionsStatus.OK && result) {
-
+                    if (status === 'OK' && result) {
                         if (!directionsRenderer) {
                             const renderer = new google.maps.DirectionsRenderer({
-                                map,
+                                map: map,
                                 suppressMarkers: false,
                                 polylineOptions: {
                                     strokeColor: '#FF5D00', // Brand Primary Orange
@@ -491,9 +495,12 @@ export default function TransportTracker() {
 
                         const leg = result.routes[0].legs[0];
                         if (leg) {
+                            const baseSeconds = leg.duration?.value || 0;
+                            const adjustedSeconds = Math.round(baseSeconds * 1.5);
+                            const adjustedMinutes = Math.max(1, Math.round(adjustedSeconds / 60));
                             setRouteInfo({
                                 distance: leg.distance?.text || '',
-                                duration: leg.duration?.text || ''
+                                duration: `~${adjustedMinutes} min`
                             });
                         }
                     }
@@ -825,48 +832,162 @@ export default function TransportTracker() {
 
                 {/* Driver Info (If Assigned) */}
                 {driver && (
-                    <div className="bg-white rounded-xl p-3 border border-slate-200 mb-4 flex items-center justify-between shadow-sm">
-                        <div className="flex items-center gap-3">
-                            <div className="relative">
-                                <img
-                                    src={driver.documents?.selfieUrl || (driver.documents as any)?.selfie_url || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100&auto=format&fit=crop&q=80'}
-                                    alt="Driver"
-                                    className="w-10 h-10 rounded-full object-cover bg-slate-100"
-                                    onError={(e: any) => { e.target.src = 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100&auto=format&fit=crop&q=80'; }}
-                                />
-                                <div className="absolute -bottom-1 -right-1 bg-amber-500 text-white text-[8px] font-bold px-1.5 py-0.5 rounded-full border border-white">
-                                    ★ {driver.rating ? Number(driver.rating).toFixed(1) : '5.0'}
+                    <div className="bg-white rounded-2xl p-3.5 border border-slate-200 mb-3.5 shadow-sm space-y-2.5">
+                        <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-3">
+                                <div className="relative">
+                                    <img
+                                        src={driver.documents?.selfieUrl || (driver.documents as any)?.selfie_url || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100&auto=format&fit=crop&q=80'}
+                                        alt="Driver"
+                                        className="w-12 h-12 rounded-2xl object-cover bg-slate-100 shadow-sm border border-slate-100"
+                                        onError={(e: any) => { e.target.src = 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100&auto=format&fit=crop&q=80'; }}
+                                    />
+                                    <div className="absolute -bottom-1 -right-1 bg-amber-500 text-white text-[8px] font-black px-1.5 py-0.5 rounded-full border border-white flex items-center gap-0.5">
+                                        ★ {driver.rating ? Number(driver.rating).toFixed(1) : '5.0'}
+                                    </div>
+                                </div>
+                                <div>
+                                    <p className="font-black text-slate-900 text-sm leading-tight">
+                                        {driver.fullName || (driver as any).full_name || 'Conductor Asignado'}
+                                    </p>
+                                    <p className="text-[10px] font-bold text-slate-500">
+                                        C.I: {(driver as any).cedula || (driver as any).user_cedula || 'Verificada'} • {(driver as any).total_trips || driver.totalTrips || 0} viajes
+                                    </p>
+                                    <p className="text-[11px] font-black text-primary capitalize mt-0.5">
+                                        {(driver as any).vehicle_model || driver.vehicleType || 'Vehículo'} • {(driver as any).vehicle_plate || driver.vehiclePlate || 'Sin placa'}
+                                        {((driver as any).vehicle_color || driver.vehicleColor) ? ` (${(driver as any).vehicle_color || driver.vehicleColor})` : ''}
+                                    </p>
                                 </div>
                             </div>
-                            <div>
-                                <p className="font-black text-slate-900 text-sm leading-tight">{(driver.fullName || (driver as any).full_name || 'Conductor').split(' ')[0]}</p>
-                                <p className="text-[10px] font-bold text-slate-500 capitalize">
-                                    {driver.vehicleType || (driver as any).vehicle_type || 'Vehículo'} • {driver.vehiclePlate || (driver as any).vehicle_plate || 'Sin placa'}{(driver.vehicleColor || (driver as any).vehicle_color) ? ` • ${driver.vehicleColor || (driver as any).vehicle_color}` : ''}{(driver.hasAc || (driver as any).has_ac) ? ' ❄️' : ''}
-                                </p>
+
+                            {/* In-app chat & call — Strictly 0 WhatsApp links */}
+                            <div className="flex gap-2">
+                                {['searching', 'verifying_payment', 'accepted', 'arriving', 'in_progress'].includes(request.status) && (
+                                    <button
+                                        onClick={() => setShowChat(true)}
+                                        className="w-10 h-10 bg-orange-50 text-orange-500 rounded-full flex items-center justify-center active:scale-95 transition-transform relative shadow-sm"
+                                        title="Chat con conductor"
+                                    >
+                                        <MessageCircle className="w-4 h-4" />
+                                        {unreadCount > 0 && (
+                                            <div className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white text-[9px] font-black rounded-full border border-white flex items-center justify-center animate-bounce">
+                                                {unreadCount}
+                                            </div>
+                                        )}
+                                    </button>
+                                )}
+                                {['accepted', 'arriving', 'in_progress'].includes(request.status) && (
+                                    <button
+                                        onClick={() => setShowCall(true)}
+                                        className="w-10 h-10 bg-emerald-50 text-emerald-600 rounded-full flex items-center justify-center active:scale-95 transition-transform shadow-sm"
+                                        title="Llamada en la app"
+                                    >
+                                        <Phone className="w-4 h-4 fill-current" />
+                                    </button>
+                                )}
                             </div>
                         </div>
-                        <div className="flex gap-2">
-                            {['searching', 'verifying_payment', 'accepted', 'arriving', 'in_progress'].includes(request.status) && (
-                                <button onClick={() => setShowChat(true)} className="w-10 h-10 bg-orange-50 text-orange-500 rounded-full flex items-center justify-center active:scale-95 transition-transform relative">
-                                    <MessageCircle className="w-4 h-4" />
-                                    {unreadCount > 0 && (
-                                        <div className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white text-[9px] font-black rounded-full border border-white flex items-center justify-center animate-bounce">
-                                            {unreadCount}
-                                        </div>
-                                    )}
-                                </button>
+
+                        {/* Vehicle Photo (if available) & Comfort Feature Badges */}
+                        <div className="flex flex-wrap items-center gap-1.5 pt-2 border-t border-slate-100">
+                            {((driver as any).vehicle_photo_url || driver.documents?.vehicle_photo_url || (driver.documents as any)?.vehicle_photo_url) && (
+                                <img
+                                    src={(driver as any).vehicle_photo_url || driver.documents?.vehicle_photo_url || (driver.documents as any)?.vehicle_photo_url}
+                                    alt="Vehículo"
+                                    className="w-8 h-8 rounded-lg object-cover border border-slate-200"
+                                />
                             )}
-                            {/* In-app call — only during active trip */}
-                            {['accepted', 'arriving', 'in_progress'].includes(request.status) && (
-                                <button
-                                    onClick={() => setShowCall(true)}
-                                    className="w-10 h-10 bg-emerald-50 text-emerald-600 rounded-full flex items-center justify-center active:scale-95 transition-transform"
-                                    title="Llamar al conductor"
-                                >
-                                    <Phone className="w-4 h-4 fill-current" />
-                                </button>
+                            {((driver as any).comfort_features?.ac || (driver as any).comfortFeatures?.ac || driver.hasAc) && (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-bold bg-cyan-50 text-cyan-700 border border-cyan-100">
+                                    <Wind className="w-2.5 h-2.5" /> Aire A/A
+                                </span>
+                            )}
+                            {((driver as any).comfort_features?.music || (driver as any).comfortFeatures?.music) && (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-bold bg-purple-50 text-purple-700 border border-purple-100">
+                                    <Music className="w-2.5 h-2.5" /> Música
+                                </span>
+                            )}
+                            {((driver as any).comfort_features?.wifi || (driver as any).comfortFeatures?.wifi) && (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-bold bg-blue-50 text-blue-700 border border-blue-100">
+                                    <Wifi className="w-2.5 h-2.5" /> Wi-Fi
+                                </span>
+                            )}
+                            {((driver as any).comfort_features?.charger || (driver as any).comfortFeatures?.charger) && (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-bold bg-amber-50 text-amber-700 border border-amber-100">
+                                    <BatteryCharging className="w-2.5 h-2.5" /> Cargador
+                                </span>
                             )}
                         </div>
+                    </div>
+                )}
+
+                {/* Driver Pago Móvil Details (If Payment Method is Pago Móvil) */}
+                {(request.payment_method === 'pago_movil' || request.paymentMethod === 'pagoMovil') && (
+                    <div className="bg-purple-50/80 border border-purple-200 rounded-2xl p-3 mb-3.5 space-y-2">
+                        <div className="flex items-center justify-between">
+                            <span className="text-xs font-black text-purple-900 flex items-center gap-1.5">
+                                📲 Pago Móvil al Conductor
+                            </span>
+                            <span className="text-[10px] font-bold text-purple-700 bg-white px-2 py-0.5 rounded-md border border-purple-200">
+                                Directo al Chofer
+                            </span>
+                        </div>
+
+                        {(() => {
+                            const pm = request.driver_payment_info || (driver as any)?.payment_info || (driver as any)?.paymentInfo || {};
+                            const bank = pm.bank || 'Banesco';
+                            const phone = pm.phone || driver?.phone || '0414-0000000';
+                            const idf = pm.idf || (driver as any)?.cedula || 'V-00000000';
+                            const amountBs = (parseFloat(request.price || request.total || 0) * (bcvRate || 1)).toFixed(2);
+
+                            return (
+                                <div className="space-y-1.5 text-xs">
+                                    <div className="flex justify-between items-center bg-white p-2 rounded-xl border border-purple-100">
+                                        <span className="text-[11px] text-slate-500 font-bold">Monto exacto: <b className="text-slate-900">{amountBs} Bs</b></span>
+                                        <button
+                                            onClick={() => handleCopy(amountBs, 'Monto')}
+                                            className="text-[11px] font-black text-purple-600 flex items-center gap-1 hover:underline"
+                                        >
+                                            <Copy className="w-3 h-3" /> Copiar
+                                        </button>
+                                    </div>
+                                    <div className="flex justify-between items-center bg-white p-2 rounded-xl border border-purple-100">
+                                        <span className="text-[11px] text-slate-500 font-bold">Banco: <b className="text-slate-900">{bank}</b></span>
+                                        <button
+                                            onClick={() => handleCopy(bank, 'Banco')}
+                                            className="text-[11px] font-black text-purple-600 flex items-center gap-1 hover:underline"
+                                        >
+                                            <Copy className="w-3 h-3" /> Copiar
+                                        </button>
+                                    </div>
+                                    <div className="flex justify-between items-center bg-white p-2 rounded-xl border border-purple-100">
+                                        <span className="text-[11px] text-slate-500 font-bold">Teléfono: <b className="text-slate-900">{phone}</b></span>
+                                        <button
+                                            onClick={() => handleCopy(phone, 'Teléfono')}
+                                            className="text-[11px] font-black text-purple-600 flex items-center gap-1 hover:underline"
+                                        >
+                                            <Copy className="w-3 h-3" /> Copiar
+                                        </button>
+                                    </div>
+                                    <div className="flex justify-between items-center bg-white p-2 rounded-xl border border-purple-100">
+                                        <span className="text-[11px] text-slate-500 font-bold">Cédula: <b className="text-slate-900">{idf}</b></span>
+                                        <button
+                                            onClick={() => handleCopy(idf, 'Cédula')}
+                                            className="text-[11px] font-black text-purple-600 flex items-center gap-1 hover:underline"
+                                        >
+                                            <Copy className="w-3 h-3" /> Copiar
+                                        </button>
+                                    </div>
+
+                                    <button
+                                        onClick={() => handleCopy(`Banco: ${bank}\nTeléfono: ${phone}\nCédula: ${idf}\nMonto: ${amountBs} Bs`, 'Todos los datos de Pago Móvil')}
+                                        className="w-full py-1.5 bg-purple-600 text-white font-black text-[11px] rounded-xl active:scale-95 transition-transform flex items-center justify-center gap-1.5 shadow-sm"
+                                    >
+                                        <Copy className="w-3.5 h-3.5" /> Copiar todos los datos de Pago Móvil
+                                    </button>
+                                </div>
+                            );
+                        })()}
                     </div>
                 )}
 
@@ -884,18 +1005,85 @@ export default function TransportTracker() {
                 )}
 
                 {/* Payment Summary */}
-                <div className="bg-slate-50 rounded-xl p-3 flex justify-between items-center border border-slate-100">
+                <div className="bg-slate-50 rounded-2xl p-3 flex justify-between items-center border border-slate-100">
                     <div>
-                        <p className="text-[10px] font-bold text-slate-500">Total a pagar</p>
-                        <p className="font-black text-base text-slate-900">${parseFloat(request.price).toFixed(2)}</p>
+                        <p className="text-[10px] font-bold text-slate-500">Total del Viaje</p>
+                        <p className="font-black text-base text-slate-900 leading-tight">${parseFloat(request.price || request.total || 0).toFixed(2)}</p>
+                        {bcvRate > 0 && (
+                            <p className="text-[10px] font-bold text-slate-500">
+                                {(parseFloat(request.price || request.total || 0) * bcvRate).toFixed(2)} Bs (BCV)
+                            </p>
+                        )}
                     </div>
                     <div className="text-right">
-                        <p className="text-[10px] font-bold text-slate-500">Método de pago</p>
-                        <p className="font-bold text-xs text-slate-700 capitalize">
-                            {request.paymentMethod === 'pagoMovil' ? 'Pago Móvil' : request.paymentMethod}
+                        <p className="text-[10px] font-bold text-slate-500">Forma de pago</p>
+                        <p className="font-bold text-xs text-slate-800">
+                            {request.payment_method === 'cash_usd'
+                                ? 'Efectivo Divisas ($)'
+                                : request.payment_method === 'cash_ves'
+                                ? 'Efectivo Bolívares (Bs)'
+                                : 'Pago Móvil al Conductor'}
                         </p>
                     </div>
                 </div>
+
+                {/* Cancel Trip Button */}
+                {['searching', 'accepted', 'arriving'].includes(request.status) && (
+                    <button
+                        onClick={() => setShowCancelModal(true)}
+                        className="w-full mt-3 py-2.5 bg-red-50 text-red-600 font-black text-xs rounded-xl border border-red-200/80 hover:bg-red-100 active:scale-95 transition-all flex items-center justify-center gap-1.5"
+                    >
+                        <XCircle className="w-4 h-4" /> Cancelar Viaje
+                    </button>
+                )}
+
+                {/* Cancellation Modal with 50% penalty warning if arriving */}
+                {showCancelModal && (
+                    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in">
+                        <div className="bg-white rounded-3xl p-5 max-w-sm w-full shadow-2xl space-y-3.5">
+                            <div className="flex items-center gap-2.5 text-red-600">
+                                <AlertTriangle className="w-6 h-6 shrink-0" />
+                                <h3 className="text-base font-black text-slate-900">¿Cancelar viaje?</h3>
+                            </div>
+
+                            {request.status === 'arriving' ? (
+                                <div className="bg-red-50 border border-red-200 rounded-2xl p-3 space-y-1.5 text-xs text-red-900">
+                                    <p className="font-black text-red-700">⚠️ Conductor ya en el sitio</p>
+                                    <p className="text-[11px] text-red-800 leading-snug">
+                                        El conductor ya ha llegado al punto de recogida. Si confirmas la cancelación, se aplicará una penalidad del <b>50% (${(parseFloat(request.price || request.total || 0) * 0.5).toFixed(2)})</b> para compensar el gasto de traslado del conductor.
+                                    </p>
+                                </div>
+                            ) : (
+                                <p className="text-xs text-slate-600 font-medium">
+                                    ¿Estás seguro de que deseas cancelar este servicio? Se liberará la búsqueda o asignación.
+                                </p>
+                            )}
+
+                            <div className="flex gap-2 pt-1">
+                                <button
+                                    onClick={() => setShowCancelModal(false)}
+                                    disabled={cancellingTrip}
+                                    className="flex-1 py-2.5 bg-slate-100 text-slate-700 font-black text-xs rounded-xl hover:bg-slate-200 active:scale-95 transition-all"
+                                >
+                                    Volver
+                                </button>
+                                <button
+                                    onClick={handleConfirmCancelTrip}
+                                    disabled={cancellingTrip}
+                                    className="flex-1 py-2.5 bg-red-600 text-white font-black text-xs rounded-xl active:scale-95 transition-all flex items-center justify-center gap-1.5 shadow-md shadow-red-600/30"
+                                >
+                                    {cancellingTrip ? (
+                                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                                    ) : request.status === 'arriving' ? (
+                                        'Confirmar (-50%)'
+                                    ) : (
+                                        'Confirmar'
+                                    )}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                )}
 
             </div>
         </div>

@@ -20,6 +20,7 @@ import { useCurrency } from '../context/CurrencyContext';
 import { useBranding } from '../context/BrandingContext';
 import DualPrice from '../components/DualPrice';
 import { DEMO_RESTAURANTS } from '../lib/demoData';
+import ActiveTasksWidget from '../components/ActiveTasksWidget';
 
 interface RecommendedProduct extends Product {
   restaurantId: string;
@@ -846,6 +847,9 @@ export default function Home() {
           </div>
         )}
       </AnimatePresence>
+
+      {/* Persistent Active Tasks Widget (Active rides, deliveries, and orders) */}
+      <ActiveTasksWidget />
 
       {/* Promotional Banners */}
       {banners.length > 0 && (

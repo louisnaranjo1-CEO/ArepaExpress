@@ -45,7 +45,7 @@ function DeliveryRoutes() {
 
         fetchDriver();
 
-        const channel = supabase.channel(`public:drivers:${user.uid}`)
+        const channel = supabase.channel(`driver_app_realtime_${user.uid}`)
             .on('postgres_changes', { event: '*', schema: 'public', table: 'drivers', filter: `id=eq.${user.uid}` }, async () => {
                 if (!isMounted) return;
                 try {
