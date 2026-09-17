@@ -104,8 +104,8 @@ export default function DeliveryLayout({ children }: DeliveryLayoutProps) {
 
     return (
         <div className="flex flex-col h-[100dvh] bg-slate-50 w-full max-w-md mx-auto relative overflow-hidden shadow-2xl">
-            {/* Cabecera Fija */}
-            <header className="bg-secondary text-white px-4 py-4 flex items-center justify-between shadow-md z-[60] shrink-0">
+            {/* Cabecera Fija con Safe Area para Móviles */}
+            <header className="bg-secondary text-white px-4 pt-[calc(env(safe-area-inset-top,0px)+12px)] pb-3.5 flex items-center justify-between shadow-md z-[60] shrink-0">
                 <div className="flex items-center gap-2">
                     <img
                         src={branding.app_driver_logo || UN2X3_LOGO}
@@ -168,12 +168,12 @@ export default function DeliveryLayout({ children }: DeliveryLayoutProps) {
             )}
 
             {/* Contenido Principal (Scrollable) */}
-            <main className="flex-1 overflow-y-auto pb-20 pt-4 px-4">
+            <main className="flex-1 overflow-y-auto pb-24 pt-3 px-3.5 sm:px-4">
                 {children}
             </main>
 
-            {/* Bottom Navigation Bar */}
-            <nav className="fixed bottom-0 w-full max-w-md bg-white border-t border-slate-200 px-6 py-3 flex justify-between items-center z-20 pb-safe">
+            {/* Bottom Navigation Bar con Safe Area */}
+            <nav className="fixed bottom-0 w-full max-w-md bg-white border-t border-slate-200 px-6 pt-2 pb-[calc(env(safe-area-inset-bottom,0px)+8px)] flex justify-between items-center z-20 shadow-lg">
                 {navItems.map((item) => (
                     <NavLink
                         key={item.path}

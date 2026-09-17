@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
-import { User, ChevronRight, Mail, Phone, Calendar, ShoppingBag, Heart, X, MapPin, Wallet, CheckCircle, XCircle, Search, Filter, Image as ImageIcon, Activity, Clock, ExternalLink, Gift, Users } from 'lucide-react';
+import { User, ChevronRight, Mail, Phone, Calendar, ShoppingBag, Heart, X, MapPin, Wallet, CheckCircle, XCircle, Search, Filter, Image as ImageIcon, Activity, Clock, ExternalLink, Gift, Users, Lock, Key, Shield, Copy, Check } from 'lucide-react';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import DualPrice from '../../components/DualPrice';
@@ -52,6 +52,8 @@ export default function UsersManager() {
     const [shareUrl, setShareUrl] = useState('https://deliexpress.app');
     const [savingConfig, setSavingConfig] = useState(false);
     const [restaurantNames, setRestaurantNames] = useState<Record<string, string>>({});
+    const [userCredsCopied, setUserCredsCopied] = useState(false);
+    const [sendingReset, setSendingReset] = useState(false);
 
     useEffect(() => {
         const fetchSystemConfig = async () => {
@@ -720,6 +722,67 @@ export default function UsersManager() {
 
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                                 <div className="space-y-6">
+                                    {/* Card de Credenciales y Seguridad del Usuario */}
+                                    <div className="bg-slate-900 text-white rounded-3xl p-5 space-y-3.5 shadow-lg">
+                                        <div className="flex items-center justify-between">
+                                            <div className="flex items-center gap-2">
+                                                <div className="w-8 h-8 rounded-xl bg-amber-500/20 text-amber-400 flex items-center justify-center font-black">
+                                                    <Lock className="w-4 h-4" />
+                                                </div>
+                                                <div>
+                                                    <span className="text-[10px] font-black uppercase tracking-wider text-white block">Credenciales y Acceso</span>
+                                                    <span className="text-[9px] text-slate-400 font-medium">Seguridad de la cuenta</span>
+                                                </div>
+                                            </div>
+                                            <button
+                                                onClick={() => {
+                                                    const text = `*Credenciales de Usuario - Deliexpress*\n\nNombre: ${selectedUser.displayName || selectedUser.name || 'Sin nombre'}\nCorreo: ${selectedUser.email || 'N/A'}\nUID Auth: ${selectedUser.id}\nTeléfono: ${selectedUser.phone || 'N/A'}\nRol: ${selectedUser.role || 'cliente'}`;
+                                                    navigator.clipboard.writeText(text);
+                                                    setUserCredsCopied(true);
+                                                    toast.success('¡Credenciales copiadas!');
+                                                    setTimeout(() => setUserCredsCopied(false), 3000);
+                                                }}
+                                                className="px-2.5 py-1.5 bg-white/10 hover:bg-white/20 text-white rounded-xl text-[9px] font-black uppercase tracking-wider flex items-center gap-1 transition-all border border-white/10 active:scale-95"
+                                            >
+                                                {userCredsCopied ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                                                {userCredsCopied ? 'Copiado' : 'Copiar Ficha'}
+                                            </button>
+                                        </div>
+
+                                        <div className="space-y-2 text-xs font-mono">
+                                            <div className="bg-white/5 border border-white/10 p-2.5 rounded-xl">
+                                                <span className="text-[9px] uppercase font-bold text-slate-400 font-sans block mb-0.5">Correo de Inicio de Sesión:</span>
+                                                <span className="text-white select-all break-all">{selectedUser.email || 'Sin correo asociado'}</span>
+                                            </div>
+                                            <div className="bg-white/5 border border-white/10 p-2.5 rounded-xl">
+                                                <span className="text-[9px] uppercase font-bold text-slate-400 font-sans block mb-0.5">ID de Usuario (UID):</span>
+                                                <span className="text-amber-400 select-all break-all">{selectedUser.id}</span>
+                                            </div>
+                                        </div>
+
+                                        {selectedUser.email && (
+                                            <button
+                                                disabled={sendingReset}
+                                                onClick={async () => {
+                                                    setSendingReset(true);
+                                                    try {
+                                                        const { error } = await supabase.auth.resetPasswordForEmail(selectedUser.email!);
+                                                        if (error) throw error;
+                                                        toast.success(`Enlace de restablecimiento enviado a ${selectedUser.email}`);
+                                                    } catch (err: any) {
+                                                        toast.error(err.message || "Error al enviar enlace");
+                                                    } finally {
+                                                        setSendingReset(false);
+                                                    }
+                                                }}
+                                                className="w-full py-2.5 bg-white/10 hover:bg-white/20 text-slate-200 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 active:scale-95"
+                                            >
+                                                <Key className="w-3.5 h-3.5" />
+                                                {sendingReset ? 'Enviando enlace...' : 'Enviar Correo de Restablecer Clave'}
+                                            </button>
+                                        )}
+                                    </div>
+
                                     <h3 className="text-xs font-black text-slate-900 uppercase tracking-widest flex items-center gap-2 border-b border-slate-50 pb-3">Información Personal</h3>
                                     <div className="space-y-4">
                                         <InfoItem icon={Mail} label="Correo" value={selectedUser.email || 'No proporcionado'} />

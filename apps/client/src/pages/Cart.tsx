@@ -419,17 +419,52 @@ export default function Cart({ hideHeader = false }: CartProps) {
         window.dispatchEvent(new Event('deliexpress_whatsapp_order_created'));
 
         const number = rData.whatsapp.replace(/\D/g, '');
-        let wpMessage = `Hola, vengo de Deli Express y deseo realizar el siguiente pedido a *${rData.name || 'su negocio'}*:\n\n` +
-          `📦 *Productos:*\n${itemsList}\n` +
-          (deliveryMethod === 'pickup' ? `\n🛍️ *Método:* Retiro en local (PickUp)` : `\n📍 *Entrega:* ${addressStr}${mapsLink}`) +
-          (notesString ? `\n${notesString}` : '');
+        const clientName = (user as any)?.displayName || (user as any)?.name || 'Cliente';
+        const clientCedula = (user as any)?.cedula || (user as any)?.rif || 'V-No registrada';
+        const clientPhone = (user as any)?.phone || selectedAddress?.phone || 'No registrado';
+        const deliveryFeeDisplay = deliveryMethod === 'app_delivery' 
+          ? 'PAGADO A LA APP / CONDUCTOR (⚠️ NO COBRAR DELIVERY EN LOCAL)' 
+          : `$${deliveryFee.toFixed(2)} (${(deliveryFee * bcvRate).toFixed(2)} Bs)`;
+        const totalDisplay = `$${finalTotal.toFixed(2)} (${(finalTotal * bcvRate).toFixed(2)} Bs)`;
+        const locationDisplay = deliveryMethod === 'pickup' ? 'Retiro en local (PickUp)' : `${addressStr}${mapsLink}`;
 
-        if (hasConsultItems) {
-          wpMessage += `\n\n💬 *Consulta de Precios:* Por favor, ¿podrían indicarme el precio y disponibilidad de los productos marcados como "Consultar precio"?`;
-        }
+        // Determinar plantilla según contexto
+        const chosenTemplate = deliveryMethod === 'app_delivery'
+          ? (systemSettings?.whatsappMessageTemplateAppDelivery || null)
+          : (systemSettings?.whatsappMessageTemplate || null);
 
-        if (cartSubtotalUSD > 0) {
-          wpMessage += `\n\n💵 *Total estimado:* $${finalTotal.toFixed(2)} (${(finalTotal * bcvRate).toFixed(2)} Bs)${hasConsultItems ? ' (+ productos por cotizar)' : ''}`;
+        let wpMessage = '';
+        if (chosenTemplate) {
+          wpMessage = chosenTemplate
+            .replace(/\{OrderId\}/g, newOrderId.slice(0, 8))
+            .replace(/\{RestaurantName\}/g, rData.name || 'su negocio')
+            .replace(/\{UserName\}/g, clientName)
+            .replace(/\{Cedula\}/g, clientCedula)
+            .replace(/\{UserPhone\}/g, clientPhone)
+            .replace(/\{OrderItems\}/g, itemsList)
+            .replace(/\{DeliveryFee\}/g, deliveryFeeDisplay)
+            .replace(/\{Total\}/g, totalDisplay)
+            .replace(/\{LocationText\}/g, locationDisplay)
+            .replace(/\{OrderNotes\}/g, notesString);
+        } else {
+          // Mensaje por defecto contextual
+          wpMessage = `Hola, vengo de Deli Express y deseo realizar el siguiente pedido a *${rData.name || 'su negocio'}*:\n\n` +
+            `📦 *Productos:*\n${itemsList}\n\n` +
+            (deliveryMethod === 'pickup' 
+              ? `🛍️ *Método:* Retiro en local (PickUp)` 
+              : deliveryMethod === 'app_delivery'
+                ? `🛵 *DELIVERY:* PAGADO A LA APP / CONDUCTOR\n⚠️ *NOTA:* La tienda NO debe cobrar delivery al cliente. Ya fue pagado en la app.\n📍 *Entrega:* ${addressStr}${mapsLink}`
+                : `🛵 *Delivery:* $${deliveryFee.toFixed(2)} (${(deliveryFee * bcvRate).toFixed(2)} Bs)\n📍 *Entrega:* ${addressStr}${mapsLink}`
+            ) +
+            (notesString ? `\n${notesString}` : '');
+
+          if (hasConsultItems) {
+            wpMessage += `\n\n💬 *Consulta de Precios:* Por favor, ¿podrían indicarme el precio y disponibilidad de los productos marcados como "Consultar precio"?`;
+          }
+
+          if (cartSubtotalUSD > 0) {
+            wpMessage += `\n\n💵 *Total estimado:* $${finalTotal.toFixed(2)} (${(finalTotal * bcvRate).toFixed(2)} Bs)${hasConsultItems ? ' (+ productos por cotizar)' : ''}`;
+          }
         }
 
         window.open(`https://wa.me/${number}?text=${encodeURIComponent(wpMessage)}`, '_blank');

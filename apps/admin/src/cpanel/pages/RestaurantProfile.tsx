@@ -789,15 +789,14 @@ export default function RestaurantProfile() {
                                             </div>
 
                                             <div className="space-y-2">
-                                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Subcategoría</label>
+                                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Subcategoría (Opcional)</label>
                                                 <select
-                                                    value={editData.category}
+                                                    value={editData.category || ''}
                                                     onChange={(e) => setEditData({ ...editData, category: e.target.value })}
                                                     className="w-full bg-slate-50 border border-slate-100 rounded-2xl p-4 font-bold text-slate-700 focus:bg-white focus:border-primary transition-all outline-none appearance-none"
-                                                    required
                                                     disabled={!editData.sector}
                                                 >
-                                                    <option value="">{editData.sector ? 'Seleccionar Subcategoría' : 'Primero elige un sector'}</option>
+                                                    <option value="">{editData.sector ? 'Ninguna / Seleccionar Subcategoría' : 'Primero elige un sector'}</option>
                                                     {subCats.map(cat => (
                                                         <option key={cat.id} value={cat.name}>{cat.name}</option>
                                                     ))}

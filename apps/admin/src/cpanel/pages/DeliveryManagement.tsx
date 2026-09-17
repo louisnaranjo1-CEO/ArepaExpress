@@ -101,9 +101,37 @@ Soy *{UserName}* y vengo desde la app con Deliexpress 🚀. Mi identificación e
 
 {OrderNotes}
 
-_Enviado desde Deliexpress App_`
+_Enviado desde Deliexpress App_`,
+        whatsappMessageTemplateAppDelivery: `👋 ¡Hola *{RestaurantName}*!
+Soy *{UserName}* y vengo desde la app con Deliexpress 🚀. Mi identificación es *{Cedula}* y requiero el siguiente pedido:
+
+🛒 *Detalles del Pedido:*
+{OrderItems}
+
+🛵 *DELIVERY:* PAGADO A LA APP / CONDUCTOR
+⚠️ *ATENCIÓN:* La tienda NO debe cobrar delivery al cliente. El envío ya fue gestionado y pagado mediante la app al repartidor.
+
+💰 *Total Productos:* \${Total}
+
+📍 Adjunto mi ubicación para la entrega y mi número de contacto:
+
+🗺️ *Ubicación:* {LocationText}
+📱 *Mi número:* {UserPhone}
+
+{OrderNotes}
+
+_Enviado desde Deliexpress App_`,
+        driverRadarTips: [
+            "💡 Mantén la app abierta en primer plano con volumen alto para recibir y escuchar alertas al instante.",
+            "🛵 Conduce seguro: Usa siempre tu casco abrochado, chaleco reflectivo y respeta las leyes de tránsito.",
+            "⭐ Un saludo cordial y verificar el paquete aseguran excelentes propinas y una calificación de 5 estrellas.",
+            "📍 Sitúate cerca de zonas comerciales y gastronómicas para captar pedidos mucho más rápido.",
+            "🔋 Mantén tu teléfono con cargador y conexión de datos estable para no perder ningún viaje."
+        ]
     });
     const [savingSettings, setSavingSettings] = useState(false);
+    const [activeWhatsAppTab, setActiveWhatsAppTab] = useState<'store_delivery' | 'app_delivery'>('store_delivery');
+    const [newRadarTip, setNewRadarTip] = useState('');
 
     // Comisiones Fijas por Categoría Un 2x3
     const [categoryCommissions, setCategoryCommissions] = useState({
@@ -201,7 +229,10 @@ _Enviado desde Deliexpress App_`
                     delivery: sData.delivery || prev.delivery || DEFAULT_PRICING_SETTINGS.delivery,
                     transport: sData.transport || prev.transport || DEFAULT_PRICING_SETTINGS.transport,
                     dynamicFactors: sData.dynamicFactors || prev.dynamicFactors || DEFAULT_PRICING_SETTINGS.dynamicFactors,
-                    transportRates: sData.transportRates || prev.transportRates
+                    transportRates: sData.transportRates || prev.transportRates,
+                    whatsappMessageTemplate: sData.whatsappMessageTemplate || prev.whatsappMessageTemplate,
+                    whatsappMessageTemplateAppDelivery: sData.whatsappMessageTemplateAppDelivery || prev.whatsappMessageTemplateAppDelivery,
+                    driverRadarTips: (sData.driverRadarTips && Array.isArray(sData.driverRadarTips) && sData.driverRadarTips.length > 0) ? sData.driverRadarTips : prev.driverRadarTips
                 }));
             }
 
@@ -1262,42 +1293,211 @@ _Enviado desde Deliexpress App_`
                         </div>
 
 
-                        {/* WhatsApp Template Editor */}
-                        <div className="lg:col-span-2 bg-white p-8 rounded-[32px] border border-slate-200 shadow-sm space-y-6">
-                            <div className="flex items-center gap-4 border-b border-slate-100 pb-6">
-                                <div className="w-12 h-12 bg-green-50 text-green-600 rounded-2xl flex items-center justify-center">
-                                    <FileText className="w-6 h-6" />
+                        {/* ========================================================= */}
+                        {/* SECCIÓN 4: CONSEJOS Y ANUNCIOS PARA CONDUCTORES (RADAR) */}
+                        {/* ========================================================= */}
+                        <div className="lg:col-span-2 bg-white p-6 md:p-8 rounded-[32px] border border-slate-200 shadow-sm space-y-6">
+                            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-100 pb-5">
+                                <div className="flex items-center gap-4">
+                                    <div className="w-12 h-12 bg-amber-50 text-amber-600 rounded-2xl flex items-center justify-center font-black">
+                                        <Sparkles className="w-6 h-6" />
+                                    </div>
+                                    <div>
+                                        <div className="flex items-center gap-2">
+                                            <h3 className="text-xl font-black text-slate-900 tracking-tight">Consejos y Anuncios para Conductores (Radar)</h3>
+                                            <span className="px-2.5 py-0.5 bg-amber-100 text-amber-800 rounded-full text-[10px] font-black uppercase">
+                                                En Pantalla Driver
+                                            </span>
+                                        </div>
+                                        <p className="text-xs text-slate-500 font-medium mt-0.5">
+                                            Estos consejos se muestran como anuncios rotativos debajo del radar animado en la aplicación del repartidor.
+                                        </p>
+                                    </div>
                                 </div>
-                                <div>
-                                    <h3 className="text-xl font-black text-slate-900 tracking-tight">Plantilla de WhatsApp</h3>
-                                    <p className="text-xs font-medium text-slate-500">Configura el mensaje que se enviará al confirmar un pedido.</p>
+                                <button
+                                    onClick={() => {
+                                        setSettings((prev: any) => ({
+                                            ...prev,
+                                            driverRadarTips: [
+                                                "💡 Mantén la app abierta en primer plano con volumen alto para recibir y escuchar alertas al instante.",
+                                                "🛵 Conduce seguro: Usa siempre tu casco abrochado, chaleco reflectivo y respeta las leyes de tránsito.",
+                                                "⭐ Un saludo cordial y verificar el paquete aseguran excelentes propinas y una calificación de 5 estrellas.",
+                                                "📍 Sitúate cerca de zonas comerciales y gastronómicas para captar pedidos mucho más rápido.",
+                                                "🔋 Mantén tu teléfono con cargador y conexión de datos estable para no perder ningún viaje."
+                                            ]
+                                        }));
+                                    }}
+                                    className="text-xs font-bold text-slate-400 hover:text-slate-600 underline"
+                                >
+                                    Restablecer Predeterminados
+                                </button>
+                            </div>
+
+                            {/* Lista de Consejos Actuales */}
+                            <div className="space-y-3">
+                                {(settings.driverRadarTips || []).map((tip: string, idx: number) => (
+                                    <div
+                                        key={idx}
+                                        className="flex items-center justify-between gap-3 bg-slate-50 border border-slate-200/80 p-3.5 rounded-2xl group hover:border-amber-300 transition-colors"
+                                    >
+                                        <div className="flex items-start gap-3 flex-1">
+                                            <span className="w-6 h-6 rounded-lg bg-amber-500/10 text-amber-700 font-black text-xs flex items-center justify-center shrink-0 mt-0.5">
+                                                {idx + 1}
+                                            </span>
+                                            <p className="text-xs font-bold text-slate-700 leading-relaxed">{tip}</p>
+                                        </div>
+                                        <button
+                                            onClick={() => {
+                                                const updated = (settings.driverRadarTips || []).filter((_: any, i: number) => i !== idx);
+                                                setSettings({ ...settings, driverRadarTips: updated });
+                                            }}
+                                            className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-xl transition-colors shrink-0"
+                                            title="Eliminar consejo"
+                                        >
+                                            <Trash2 className="w-4 h-4" />
+                                        </button>
+                                    </div>
+                                ))}
+
+                                {(!settings.driverRadarTips || settings.driverRadarTips.length === 0) && (
+                                    <p className="text-xs text-slate-400 italic py-3 text-center">
+                                        No hay consejos configurados. Agrega uno nuevo a continuación.
+                                    </p>
+                                )}
+                            </div>
+
+                            {/* Agregar Nuevo Consejo */}
+                            <div className="flex flex-col sm:flex-row gap-3 pt-2">
+                                <input
+                                    type="text"
+                                    value={newRadarTip}
+                                    onChange={(e) => setNewRadarTip(e.target.value)}
+                                    placeholder="Escribe un nuevo consejo o anuncio para los pilotos..."
+                                    className="flex-1 bg-slate-50 border border-slate-200 px-4 py-3 rounded-2xl text-xs font-bold text-slate-700 outline-none focus:ring-2 focus:ring-amber-500/20"
+                                    onKeyDown={(e) => {
+                                        if (e.key === 'Enter' && newRadarTip.trim()) {
+                                            e.preventDefault();
+                                            const current = settings.driverRadarTips || [];
+                                            setSettings({ ...settings, driverRadarTips: [...current, newRadarTip.trim()] });
+                                            setNewRadarTip('');
+                                        }
+                                    }}
+                                />
+                                <button
+                                    onClick={() => {
+                                        if (!newRadarTip.trim()) return;
+                                        const current = settings.driverRadarTips || [];
+                                        setSettings({ ...settings, driverRadarTips: [...current, newRadarTip.trim()] });
+                                        setNewRadarTip('');
+                                    }}
+                                    disabled={!newRadarTip.trim()}
+                                    className="px-5 py-3 bg-amber-500 text-slate-900 font-black rounded-2xl text-xs flex items-center justify-center gap-2 shadow-md shadow-amber-500/20 hover:scale-[1.02] active:scale-98 transition-all disabled:opacity-50 shrink-0"
+                                >
+                                    <Plus className="w-4 h-4" />
+                                    Agregar Consejo
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* ========================================================= */}
+                        {/* SECCIÓN 5: PLANTILLAS DE WHATSAPP SEGÚN CONTEXTO */}
+                        {/* ========================================================= */}
+                        <div className="lg:col-span-2 bg-white p-6 md:p-8 rounded-[32px] border border-slate-200 shadow-sm space-y-6">
+                            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-100 pb-5">
+                                <div className="flex items-center gap-4">
+                                    <div className="w-12 h-12 bg-green-50 text-green-600 rounded-2xl flex items-center justify-center">
+                                        <FileText className="w-6 h-6" />
+                                    </div>
+                                    <div>
+                                        <h3 className="text-xl font-black text-slate-900 tracking-tight">Plantillas de WhatsApp según Contexto</h3>
+                                        <p className="text-xs font-medium text-slate-500">
+                                            Configura los mensajes que se enviarán a la tienda según cómo se gestiona y cobra el delivery.
+                                        </p>
+                                    </div>
                                 </div>
+
+                                {/* Context Selector Tabs */}
+                                <div className="flex bg-slate-100 p-1.5 rounded-2xl border border-slate-200/80 shrink-0">
+                                    <button
+                                        type="button"
+                                        onClick={() => setActiveWhatsAppTab('store_delivery')}
+                                        className={`px-3 py-2 rounded-xl text-xs font-black transition-all ${
+                                            activeWhatsAppTab === 'store_delivery'
+                                                ? 'bg-white text-slate-900 shadow-sm'
+                                                : 'text-slate-500 hover:text-slate-800'
+                                        }`}
+                                    >
+                                        🏪 Tienda Cobra Delivery
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setActiveWhatsAppTab('app_delivery')}
+                                        className={`px-3 py-2 rounded-xl text-xs font-black transition-all ${
+                                            activeWhatsAppTab === 'app_delivery'
+                                                ? 'bg-emerald-600 text-white shadow-sm'
+                                                : 'text-slate-500 hover:text-slate-800'
+                                        }`}
+                                    >
+                                        🛵 Delivery Pagado a App (NO cobrar)
+                                    </button>
+                                </div>
+                            </div>
+
+                            {/* Contextual Notice */}
+                            <div className={`p-4 rounded-2xl border text-xs font-medium ${
+                                activeWhatsAppTab === 'store_delivery'
+                                    ? 'bg-slate-50 border-slate-200 text-slate-600'
+                                    : 'bg-emerald-50/80 border-emerald-200 text-emerald-900'
+                            }`}>
+                                {activeWhatsAppTab === 'store_delivery' ? (
+                                    <p>
+                                        📌 <strong>Plantilla 1 (Tienda cobra delivery):</strong> Se utiliza cuando el restaurante o tienda envía a su propio repartidor y cobra el monto del delivery directamente al cliente en su comanda.
+                                    </p>
+                                ) : (
+                                    <p>
+                                        🚨 <strong>Plantilla 2 (Delivery Pagado a la App / Conductor):</strong> Se utiliza cuando el cliente solicita un piloto de la app. Indica claramente que <strong className="underline font-black">la tienda NO debe cobrar delivery al cliente</strong> en su factura/cobro, porque ya se liquidó directamente en la plataforma.
+                                    </p>
+                                )}
                             </div>
 
                             <div className="space-y-4">
                                 <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100">
                                     <p className="text-xs font-bold text-slate-600 mb-2 uppercase tracking-wide">Variables Disponibles:</p>
                                     <div className="flex flex-wrap gap-2 text-[10px] font-medium text-slate-500">
-                                        <span className="bg-white px-2 py-1 rounded border border-slate-200">{"{OrderId}"}</span>
-                                        <span className="bg-white px-2 py-1 rounded border border-slate-200">{"{RestaurantName}"}</span>
-                                        <span className="bg-white px-2 py-1 rounded border border-slate-200">{"{UserName}"}</span>
-                                        <span className="bg-white px-2 py-1 rounded border border-slate-200">{"{Cedula}"}</span>
-                                        <span className="bg-white px-2 py-1 rounded border border-slate-200">{"{UserPhone}"}</span>
-                                        <span className="bg-white px-2 py-1 rounded border border-slate-200">{"{OrderItems}"}</span>
-                                        <span className="bg-white px-2 py-1 rounded border border-slate-200">{"{DeliveryFee}"}</span>
-                                        <span className="bg-white px-2 py-1 rounded border border-slate-200">{"{Total}"}</span>
-                                        <span className="bg-white px-2 py-1 rounded border border-slate-200">{"{LocationText}"}</span>
-                                        <span className="bg-white px-2 py-1 rounded border border-slate-200">{"{OrderNotes}"}</span>
+                                        <span className="bg-white px-2 py-1 rounded border border-slate-200 font-mono">{"{OrderId}"}</span>
+                                        <span className="bg-white px-2 py-1 rounded border border-slate-200 font-mono">{"{RestaurantName}"}</span>
+                                        <span className="bg-white px-2 py-1 rounded border border-slate-200 font-mono">{"{UserName}"}</span>
+                                        <span className="bg-white px-2 py-1 rounded border border-slate-200 font-mono">{"{Cedula}"}</span>
+                                        <span className="bg-white px-2 py-1 rounded border border-slate-200 font-mono">{"{UserPhone}"}</span>
+                                        <span className="bg-white px-2 py-1 rounded border border-slate-200 font-mono">{"{OrderItems}"}</span>
+                                        <span className="bg-white px-2 py-1 rounded border border-slate-200 font-mono">{"{DeliveryFee}"}</span>
+                                        <span className="bg-white px-2 py-1 rounded border border-slate-200 font-mono">{"{Total}"}</span>
+                                        <span className="bg-white px-2 py-1 rounded border border-slate-200 font-mono">{"{LocationText}"}</span>
+                                        <span className="bg-white px-2 py-1 rounded border border-slate-200 font-mono">{"{OrderNotes}"}</span>
                                     </div>
                                 </div>
 
                                 <div>
-                                    <label className="block text-xs font-black text-slate-700 uppercase mb-2 ml-1">Mensaje</label>
+                                    <label className="block text-xs font-black text-slate-700 uppercase mb-2 ml-1">
+                                        {activeWhatsAppTab === 'store_delivery'
+                                            ? 'Contenido de Plantilla: Delivery Cobrado por Tienda'
+                                            : 'Contenido de Plantilla: Delivery Pagado a la App (Tienda No Cobra)'}
+                                    </label>
                                     <textarea
-                                        value={settings.whatsappMessageTemplate}
-                                        onChange={(e) => setSettings({ ...settings, whatsappMessageTemplate: e.target.value })}
+                                        value={
+                                            activeWhatsAppTab === 'store_delivery'
+                                                ? settings.whatsappMessageTemplate || ''
+                                                : settings.whatsappMessageTemplateAppDelivery || ''
+                                        }
+                                        onChange={(e) => {
+                                            if (activeWhatsAppTab === 'store_delivery') {
+                                                setSettings({ ...settings, whatsappMessageTemplate: e.target.value });
+                                            } else {
+                                                setSettings({ ...settings, whatsappMessageTemplateAppDelivery: e.target.value });
+                                            }
+                                        }}
                                         rows={10}
-                                        className="w-full bg-slate-50 border border-slate-200 px-4 py-3 rounded-2xl text-sm font-medium text-slate-700 outline-none focus:ring-2 focus:ring-primary/20 whitespace-pre-wrap"
+                                        className="w-full bg-slate-50 border border-slate-200 px-4 py-3 rounded-2xl text-xs font-mono text-slate-800 outline-none focus:ring-2 focus:ring-primary/20 whitespace-pre-wrap leading-relaxed"
                                         placeholder="Escribe la plantilla del mensaje de WhatsApp aquí..."
                                     />
                                 </div>
@@ -1343,6 +1543,43 @@ _Enviado desde Deliexpress App_`
                             </div>
 
                             <div className="p-6 overflow-y-auto space-y-6">
+                                {/* Sección de Credenciales de Acceso del Piloto */}
+                                <div className="bg-slate-900 text-white rounded-2xl p-5 space-y-4 shadow-lg">
+                                    <div className="flex items-center justify-between">
+                                        <div className="flex items-center gap-2.5">
+                                            <div className="w-8 h-8 rounded-xl bg-amber-500/20 text-amber-400 flex items-center justify-center font-black">
+                                                <Shield className="w-4 h-4" />
+                                            </div>
+                                            <div>
+                                                <h4 className="text-xs font-black uppercase tracking-wider text-white">Credenciales de Acceso</h4>
+                                                <p className="text-[10px] text-slate-400 font-medium">Datos de inicio de sesión en la app de repartidor</p>
+                                            </div>
+                                        </div>
+                                        <button
+                                            onClick={() => {
+                                                const text = `*Credenciales de Conductor - Deliexpress*\n\nPiloto: ${selectedDriver.fullName}\nCorreo: ${selectedDriver.email}\nID Conductor: ${selectedDriver.id}\nCédula: ${selectedDriver.cedula}\nTeléfono: ${selectedDriver.phone}\nVehículo: ${selectedDriver.vehicleType} (${selectedDriver.vehiclePlate || 'N/A'})\n\nPuedes ingresar desde la app de Repartidores.`;
+                                                navigator.clipboard.writeText(text);
+                                                alert('¡Credenciales copiadas al portapapeles!');
+                                            }}
+                                            className="px-3 py-1.5 bg-white/10 hover:bg-white/20 text-white rounded-xl text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5 transition-all border border-white/15 active:scale-95"
+                                        >
+                                            <FileText className="w-3.5 h-3.5" />
+                                            Copiar Ficha
+                                        </button>
+                                    </div>
+
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                                        <div className="bg-white/5 border border-white/10 p-3 rounded-xl">
+                                            <span className="text-slate-400 text-[10px] font-bold uppercase block mb-1">Correo de Acceso:</span>
+                                            <span className="font-mono font-bold text-white select-all">{selectedDriver.email}</span>
+                                        </div>
+                                        <div className="bg-white/5 border border-white/10 p-3 rounded-xl">
+                                            <span className="text-slate-400 text-[10px] font-bold uppercase block mb-1">ID Auth (UID):</span>
+                                            <span className="font-mono font-bold text-amber-400 select-all">{selectedDriver.id}</span>
+                                        </div>
+                                    </div>
+                                </div>
+
                                 {/* Ficha de Auditoría del Piloto */}
                                 <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 space-y-3">
                                     <h4 className="text-xs font-black text-slate-500 uppercase tracking-wider">Ficha de Registro y Auditoría</h4>

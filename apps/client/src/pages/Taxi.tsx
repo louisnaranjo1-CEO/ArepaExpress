@@ -1329,14 +1329,14 @@ export default function Taxi() {
                             <div className="flex-1 min-w-0">
                                 <div className="flex items-center justify-between mb-0.5">
                                     <h4 className="text-sm sm:text-base font-black text-slate-950 tracking-tight leading-none">
-                                        Taxi / Viajes
+                                        Taxi / Mototaxi
                                     </h4>
                                     <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded-full bg-slate-950 text-[#FFB800] tracking-wider shrink-0">
                                         Pasajeros
                                     </span>
                                 </div>
                                 <p className="text-[11px] text-slate-950/90 font-bold line-clamp-1 leading-tight mt-0.5">
-                                    Mototaxi, Taxi Standard y Carro Confort con A/A.
+                                    Mototaxi, Taxi Standard y Carro Confort...
                                 </p>
                                 <div className="flex items-center gap-2 mt-1 text-[9px] text-slate-950 font-black">
                                     <span className="flex items-center gap-1">
@@ -1383,7 +1383,7 @@ export default function Taxi() {
                                     </span>
                                 </div>
                                 <p className="text-[11px] text-slate-950/90 font-bold line-clamp-1 leading-tight mt-0.5">
-                                    Encomiendas, documentos, llaves o compras punto a punto.
+                                    Encomiendas, documentos, llaves o...
                                 </p>
                                 <div className="flex items-center gap-2 mt-1 text-[9px] text-slate-950 font-black">
                                     <span>📦 Directo</span>
@@ -1420,14 +1420,14 @@ export default function Taxi() {
                                         Muchacho e' Mandao
                                     </h4>
                                     <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded-full bg-slate-950 text-[#FFB800] tracking-wider shrink-0">
-                                        Subasta en Vivo
+                                        Personal shopper
                                     </span>
                                 </div>
                                 <p className="text-[11px] text-slate-950/90 font-bold line-clamp-1 leading-tight mt-0.5">
-                                    Diligencias y trámites. Paga directo al comercio por Pago Móvil.
+                                    Diligencias y trámites. Paga directo al...
                                 </p>
                                 <div className="flex items-center gap-2 mt-1 text-[9px] text-slate-950 font-black">
-                                    <span>🏪 Diligencias y Farmacias</span>
+                                    <span>🏛️ Diligencias, compras y movilizaciones</span>
                                     <span>•</span>
                                     <span>💰 Tú eliges la mejor oferta</span>
                                 </div>
@@ -1438,11 +1438,20 @@ export default function Taxi() {
                         </button>
                     </div>
 
+                    {/* Bottom Vehicle Graphic matching Imagen 1 */}
+                    <div className="relative z-10 w-full max-w-md mx-auto flex justify-center -mb-2 overflow-hidden">
+                        <img 
+                            src="/taxi_fleet_banner.png" 
+                            alt="Flota de Taxis y Mototaxis" 
+                            className="w-full max-h-32 object-contain filter contrast-105 brightness-95"
+                        />
+                    </div>
+
                     {/* Bottom Transparency Guarantee Footer */}
                     <div className="relative z-10 w-full max-w-md mx-auto pt-2 pb-0.5 text-center border-t border-white/10 shrink-0">
                         <p className="text-[10px] text-slate-300 font-bold flex items-center justify-center gap-1.5">
                             <Shield className="w-3.5 h-3.5 text-emerald-400" />
-                            Tarifas transparentes • Ni el clima ni el tráfico alteran tu precio
+                            Tarifas transparentes
                         </p>
                     </div>
                 </div>
@@ -1522,7 +1531,7 @@ export default function Taxi() {
                             {mainMode === 'taxi' ? (
                                 <>
                                     <Car className="w-3.5 h-3.5 text-primary" />
-                                    <span>Taxi / Viajes</span>
+                                    <span>Taxi / Mototaxi</span>
                                 </>
                             ) : mainMode === 'package' ? (
                                 <>
@@ -2044,9 +2053,9 @@ export default function Taxi() {
                                             <div>
                                                 <div className="flex items-center gap-2">
                                                     <h4 className="text-xs font-black text-slate-900">Muchacho e' Mandao</h4>
-                                                    <span className="text-[9px] font-black uppercase px-2 py-0.2 rounded-full bg-amber-200 text-amber-800">Subasta en vivo</span>
+                                                    <span className="text-[9px] font-black uppercase px-2 py-0.2 rounded-full bg-amber-200 text-amber-800">Personal shopper</span>
                                                 </div>
-                                                <p className="text-[10px] text-slate-600 font-medium">Los pilotos cercanos compiten enviándote su mejor propuesta</p>
+                                                <p className="text-[10px] text-slate-600 font-medium">Asistencia personal para tus diligencias, compras y movilizaciones</p>
                                             </div>
                                         </div>
                                         <div className="text-right shrink-0">

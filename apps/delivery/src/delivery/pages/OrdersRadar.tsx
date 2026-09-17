@@ -39,6 +39,43 @@ export default function OrdersRadar() {
     const [incomingDispatch, setIncomingDispatch] = useState<any>(null);
     const [countdownSeconds, setCountdownSeconds] = useState(20);
     
+    // Consejos y Anuncios Dinámicos del Radar
+    const [radarTips, setRadarTips] = useState<string[]>([
+        "💡 Mantén la app abierta en primer plano con volumen alto para recibir y escuchar alertas al instante.",
+        "🛵 Conduce seguro: Usa siempre tu casco abrochado, chaleco reflectivo y respeta las leyes de tránsito.",
+        "⭐ Un saludo cordial y verificar el paquete aseguran excelentes propinas y una calificación de 5 estrellas.",
+        "📍 Sitúate cerca de zonas comerciales y gastronómicas para captar pedidos mucho más rápido.",
+        "🔋 Mantén tu teléfono con cargador y conexión de datos estable para no perder ningún viaje."
+    ]);
+    const [currentTipIndex, setCurrentTipIndex] = useState(0);
+
+    useEffect(() => {
+        const fetchTips = async () => {
+            try {
+                const { data } = await supabase
+                    .from('app_settings')
+                    .select('*')
+                    .eq('id', 'delivery_settings')
+                    .maybeSingle();
+                const settingsData = data?.data || data?.value || data;
+                if (settingsData?.driverRadarTips && Array.isArray(settingsData.driverRadarTips) && settingsData.driverRadarTips.length > 0) {
+                    setRadarTips(settingsData.driverRadarTips);
+                }
+            } catch (err) {
+                console.error("Error fetching driver radar tips:", err);
+            }
+        };
+        fetchTips();
+    }, []);
+
+    useEffect(() => {
+        if (radarTips.length <= 1) return;
+        const interval = setInterval(() => {
+            setCurrentTipIndex((prev) => (prev + 1) % radarTips.length);
+        }, 6500);
+        return () => clearInterval(interval);
+    }, [radarTips.length]);
+    
     // Muchacho e' Mandado Bids State
     const [mandadoBids, setMandadoBids] = useState<{ [reqId: string]: { amount: string; eta: string; submitted: boolean } }>({});
     
@@ -1419,21 +1456,128 @@ export default function OrdersRadar() {
             </AnimatePresence>
 
             {hasNoIncoming ? (
-                <motion.div
-                    initial={{ opacity: 0, scale: 0.9 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    className="flex flex-col items-center justify-center p-12 bg-white rounded-[3rem] border border-slate-100 text-center shadow-xl shadow-slate-200/20"
-                >
-                    <div className="relative mb-8">
-                        <div className="w-32 h-32 bg-primary/5 rounded-full flex items-center justify-center border-4 border-white shadow-inner">
-                            <Compass className="w-14 h-14 text-slate-900/30" />
+                <div className="space-y-4">
+                    {/* Tarjeta del Radar Interactivo Dinámico */}
+                    <motion.div
+                        initial={{ opacity: 0, scale: 0.96 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        className="bg-slate-950 rounded-[2.5rem] p-6 sm:p-8 text-center shadow-2xl border border-slate-800 relative overflow-hidden flex flex-col items-center"
+                    >
+                        {/* Background subtle grid pattern */}
+                        <div className="absolute inset-0 opacity-10 bg-[radial-gradient(#34d399_1px,transparent_1px)] [background-size:16px_16px]"></div>
+
+                        {/* Top HUD Status */}
+                        <div className="flex items-center gap-2 bg-emerald-950/80 border border-emerald-500/30 px-3.5 py-1.5 rounded-full mb-4 z-10">
+                            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span>
+                            <span className="text-[10px] font-black uppercase tracking-widest text-emerald-300">
+                                Radar Activo • Escaneo 5 km
+                            </span>
                         </div>
-                        <div className="absolute inset-0 bg-primary/20 rounded-full animate-ping opacity-10"></div>
-                        <div className="absolute inset-0 bg-primary/20 rounded-full animate-ping opacity-10 delay-300"></div>
+
+                        {/* Interactive Sonar Radar Visualizer */}
+                        <div className="relative w-52 h-52 sm:w-60 sm:h-60 rounded-full border border-emerald-500/30 bg-slate-900/80 shadow-[0_0_50px_rgba(16,185,129,0.15)] flex items-center justify-center overflow-hidden my-2">
+                            {/* Sonar Concentric Rings */}
+                            <div className="absolute w-[88%] h-[88%] rounded-full border border-emerald-500/15"></div>
+                            <div className="absolute w-[60%] h-[60%] rounded-full border border-emerald-500/20"></div>
+                            <div className="absolute w-[32%] h-[32%] rounded-full border border-emerald-500/25"></div>
+
+                            {/* Range Distance Labels */}
+                            <span className="absolute top-2 text-[8px] font-mono font-bold text-emerald-400/50">5.0 KM</span>
+                            <span className="absolute top-9 text-[8px] font-mono font-bold text-emerald-400/50">3.0 KM</span>
+                            <span className="absolute top-[37%] text-[8px] font-mono font-bold text-emerald-400/50">1.5 KM</span>
+
+                            {/* Crosshairs */}
+                            <div className="absolute w-full h-[1px] bg-emerald-500/20"></div>
+                            <div className="absolute h-full w-[1px] bg-emerald-500/20"></div>
+
+                            {/* Compass Cardinal Points */}
+                            <span className="absolute top-1 text-[9px] font-black text-emerald-400/60">N</span>
+                            <span className="absolute bottom-1 text-[9px] font-black text-emerald-400/60">S</span>
+                            <span className="absolute left-1.5 text-[9px] font-black text-emerald-400/60">O</span>
+                            <span className="absolute right-1.5 text-[9px] font-black text-emerald-400/60">E</span>
+
+                            {/* Rotating Radar Sweep Beam (Conic Gradient) */}
+                            <div
+                                className="absolute inset-0 rounded-full pointer-events-none animate-[spin_4s_linear_infinite]"
+                                style={{
+                                    background: 'conic-gradient(from 0deg at 50% 50%, rgba(52, 211, 153, 0.45) 0deg, rgba(16, 185, 129, 0.12) 45deg, transparent 75deg, transparent 360deg)'
+                                }}
+                            >
+                                {/* Glowing leading beam edge */}
+                                <div className="absolute top-0 right-1/2 w-1/2 h-[2px] bg-emerald-400 shadow-[0_0_10px_#34d399]"></div>
+                            </div>
+
+                            {/* Pulsing Sonar Waves from Center */}
+                            <div className="absolute w-12 h-12 rounded-full bg-emerald-400/20 animate-ping"></div>
+                            <div className="absolute w-20 h-20 rounded-full bg-emerald-400/10 animate-ping delay-500"></div>
+
+                            {/* Driver Center Beacon */}
+                            <div className="relative z-10 flex items-center justify-center">
+                                <div className="w-5 h-5 rounded-full bg-emerald-400 border-2 border-white shadow-[0_0_16px_#34d399] flex items-center justify-center">
+                                    <div className="w-2 h-2 rounded-full bg-slate-900"></div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="mt-4 z-10 space-y-1">
+                            <h3 className="text-lg font-black text-white tracking-tight flex items-center justify-center gap-2">
+                                <span>Buscando Clientes</span>
+                                <span className="flex h-2 w-2 relative">
+                                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                                    <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                                </span>
+                            </h3>
+                            <p className="text-slate-400 font-medium text-xs max-w-xs mx-auto">
+                                Tu señal GPS está transmitiendo en tiempo real. Al haber solicitudes cercanas, sonará la alerta en pantalla.
+                            </p>
+                        </div>
+                    </motion.div>
+
+                    {/* Banner de Consejos / Anuncios para Pilotos (Animado como Comercial/Ad) */}
+                    <div className="bg-gradient-to-br from-amber-500/10 via-amber-400/5 to-white border border-amber-500/25 rounded-3xl p-4 sm:p-5 relative overflow-hidden shadow-sm">
+                        <div className="flex items-center justify-between gap-2 mb-2.5">
+                            <div className="flex items-center gap-2">
+                                <div className="w-7 h-7 rounded-xl bg-amber-500/20 text-amber-600 flex items-center justify-center">
+                                    <Sparkles className="w-4 h-4" />
+                                </div>
+                                <span className="text-[10px] font-black uppercase tracking-widest text-amber-700">
+                                    Consejo para Pilotos
+                                </span>
+                            </div>
+                            {/* Pagination Dots */}
+                            <div className="flex items-center gap-1.5">
+                                {radarTips.map((_, idx) => (
+                                    <button
+                                        key={idx}
+                                        onClick={() => setCurrentTipIndex(idx)}
+                                        className={`h-1.5 rounded-full transition-all ${
+                                            idx === currentTipIndex ? 'w-5 bg-amber-500' : 'w-1.5 bg-amber-300/40'
+                                        }`}
+                                        aria-label={`Ver consejo ${idx + 1}`}
+                                    />
+                                ))}
+                            </div>
+                        </div>
+
+                        {/* Animated Tip Content with AnimatePresence */}
+                        <div className="min-h-[46px] flex items-center">
+                            <AnimatePresence mode="wait">
+                                <motion.div
+                                    key={currentTipIndex}
+                                    initial={{ opacity: 0, y: 10 }}
+                                    animate={{ opacity: 1, y: 0 }}
+                                    exit={{ opacity: 0, y: -10 }}
+                                    transition={{ duration: 0.3 }}
+                                    className="w-full"
+                                >
+                                    <p className="text-xs font-bold text-slate-800 leading-relaxed">
+                                        {radarTips[currentTipIndex]}
+                                    </p>
+                                </motion.div>
+                            </AnimatePresence>
+                        </div>
                     </div>
-                    <h3 className="text-xl font-black text-slate-800 mb-2">Escaneando Zona...</h3>
-                    <p className="text-slate-400 font-bold text-sm max-w-[200px] mx-auto">Pronto aparecerán solicitudes cerca de ti.</p>
-                </motion.div>
+                </div>
             ) : (
                 <div className="space-y-5">
                     {/* Mis Reservas */}
