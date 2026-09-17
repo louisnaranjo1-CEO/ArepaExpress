@@ -15,11 +15,38 @@ export default defineConfig(({ mode }) => {
       tailwindcss(),
       VitePWA({
         registerType: 'autoUpdate',
+        injectRegister: 'auto',
+        includeAssets: ['favicon.png', 'apple-touch-icon.png', 'pwa-192x192.png', 'pwa-512x512.png'],
         manifest: {
-          name: '2X3 Cliente',
-          short_name: '2X3',
-          description: 'Delivery 2X3 - Rápido y confiable',
-          theme_color: '#f48c25',
+          name: 'Deliexpress',
+          short_name: 'Deliexpress',
+          description: 'Pide comida, envíos y transporte en un 2x3 con Deliexpress',
+          theme_color: '#facc15',
+          background_color: '#ffffff',
+          display: 'standalone',
+          orientation: 'portrait',
+          scope: '/',
+          start_url: '/',
+          icons: [
+            {
+              src: '/pwa-192x192.png',
+              sizes: '192x192',
+              type: 'image/png',
+              purpose: 'any'
+            },
+            {
+              src: '/pwa-512x512.png',
+              sizes: '512x512',
+              type: 'image/png',
+              purpose: 'any'
+            },
+            {
+              src: '/pwa-512x512.png',
+              sizes: '512x512',
+              type: 'image/png',
+              purpose: 'maskable'
+            }
+          ]
         },
         workbox: {
           maximumFileSizeToCacheInBytes: 5242880, // 5 MiB
