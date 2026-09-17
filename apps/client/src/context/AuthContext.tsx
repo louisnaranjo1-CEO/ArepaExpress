@@ -124,6 +124,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                     fcmTokens: data.fcm_tokens ?? data.fcmTokens ?? [],
                     fcm_tokens: data.fcm_tokens ?? data.fcmTokens ?? [],
                 } as UserData);
+
+                const hasBioLock = Boolean(data.biometric_lock_enabled ?? data.biometricLockEnabled ?? false);
+                if (hasBioLock) {
+                    const isUnlockedSession = sessionStorage.getItem('deliexpress_is_unlocked') === 'true';
+                    if (!isUnlockedSession) {
+                        setIsUnlocked(false);
+                    }
+                }
             } else {
                 setUserData({
                     displayName: profileName,

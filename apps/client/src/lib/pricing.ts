@@ -170,10 +170,11 @@ export function calculateDynamicFare(params: {
 
     // 2. Factores Dinámicos: Por especificación, el clima ni el tráfico afectan a la tarifa.
     // El clima se monitorea en pantalla como valor informativo en tiempo real pero no infla los precios.
+    const dyn = smartSettings.dynamicFactors || DEFAULT_PRICING_SETTINGS.dynamicFactors || ({} as any);
     const isRain = forceRain !== undefined ? forceRain : Boolean(dyn.rainModeActive);
     const isNight = forceNight !== undefined
         ? forceNight
-        : (dyn.nightShift?.enabled && isCurrentTimeInShift(dyn.nightShift?.start, dyn.nightShift?.end));
+        : Boolean(dyn.nightShift?.enabled && isCurrentTimeInShift(dyn.nightShift?.start, dyn.nightShift?.end));
 
     const surgeMultiplier = 1.0;
 

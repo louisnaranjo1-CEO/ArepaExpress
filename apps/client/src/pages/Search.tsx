@@ -117,9 +117,26 @@ export default function Search() {
                     } as Restaurant;
                 });
 
-                const fetchedResults = fetched.filter(r => 
+                let fetchedResults = fetched.filter(r => 
                     r.isActive && r.isVisible
                 );
+
+                if (manualCity) {
+                    const normalizeLoc = (str?: string) => str ? str.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim() : '';
+                    const mCity = normalizeLoc(manualCity);
+                    fetchedResults = fetchedResults.filter(rest => {
+                        const c = normalizeLoc(rest.location?.city || (rest as any).city);
+                        if (c && (c === mCity || c.includes(mCity) || mCity.includes(c))) return true;
+                        if (Array.isArray((rest as any).locations)) {
+                            return (rest as any).locations.some((loc: any) => {
+                                const locCity = normalizeLoc(loc.city);
+                                return locCity && (locCity === mCity || locCity.includes(mCity) || mCity.includes(locCity));
+                            });
+                        }
+                        return false;
+                    });
+                }
+
                 const shuffled = fetchedResults.sort(() => Math.random() - 0.5);
                 setRestaurants(shuffled);
             } catch (error) {

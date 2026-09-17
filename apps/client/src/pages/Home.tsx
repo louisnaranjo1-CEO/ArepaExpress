@@ -100,7 +100,14 @@ export default function Home() {
       const coords = { lat: defaultAddress.lat, lng: defaultAddress.lng };
       setUserLocation(coords);
       if (!manualCity) {
-        setLocationName(defaultAddress.reference?.split(',')[0] || defaultAddress.city || 'Ubicación');
+        const city = defaultAddress.city || defaultAddress.reference?.split(',')[0];
+        if (city) {
+          setLocationName(city);
+          localStorage.setItem('userCity', city);
+          setManualCity(city);
+        } else {
+          setLocationName('Ubicación');
+        }
       }
       return;
     }
@@ -347,16 +354,15 @@ export default function Home() {
                 
                 fetchedRestaurants = fetchedRestaurants.filter(rest => {
                    const c = normalizeLoc(rest.location?.city || (rest as any).city);
-                   const s = normalizeLoc(rest.location?.state || (rest as any).state);
-                   const a = normalizeLoc(rest.location?.address || (rest as any).address);
-                   
-                   if (c === mCity || c.includes(mCity) || a.includes(mCity) || s.includes(mCity)) {
+                   if (c && (c === mCity || c.includes(mCity) || mCity.includes(c))) {
                        return true;
                    }
-
-                   // Bulletproof fallback: search the entire object string for the city name
-                   const jsonStr = normalizeLoc(JSON.stringify(rest));
-                   if (jsonStr.includes(mCity)) return true;
+                   if (Array.isArray((rest as any).locations)) {
+                     return (rest as any).locations.some((loc: any) => {
+                       const locCity = normalizeLoc(loc.city);
+                       return locCity && (locCity === mCity || locCity.includes(mCity) || mCity.includes(locCity));
+                     });
+                   }
 
                    return false;
                 });
@@ -434,8 +440,12 @@ export default function Home() {
           });
           setRandomProducts(topProducts.slice(0, 12));
 
+          const allowedRestIds = new Set(fetchedRestaurants.map(r => r.id));
           setRecentlyViewed(
-            history.map(h => allProducts.find(p => p.id === h.id)).filter(Boolean) as RecommendedProduct[]
+            history
+              .filter(h => allowedRestIds.has(h.restaurantId))
+              .map(h => allProducts.find(p => p.id === h.id))
+              .filter(Boolean) as RecommendedProduct[]
           );
 
           setInterestedProducts(

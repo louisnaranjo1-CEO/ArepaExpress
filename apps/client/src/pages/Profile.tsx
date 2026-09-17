@@ -77,7 +77,7 @@ const RestaurantPointCard: React.FC<{ restId: string, points: number }> = ({ res
 };
 
 export default function Profile() {
-    const { user, userData, setUserData, isProfileComplete, refreshUserData } = useAuth();
+    const { user, userData, setUserData, isProfileComplete, refreshUserData, setIsUnlocked } = useAuth();
     const navigate = useNavigate();
     const [searchParams] = useSearchParams();
     const [isSigningIn, setIsSigningIn] = useState(false);
@@ -1712,17 +1712,26 @@ export default function Profile() {
                                         if (!uid) return;
                                         setUpdatingBiometrics(true);
                                         try {
-                                            if (userData?.biometricLockEnabled) {
+                                            const isCurrentlyActive = Boolean(userData?.biometricLockEnabled || userData?.biometric_lock_enabled);
+                                            if (isCurrentlyActive) {
                                                 // Disable
                                                 await supabase.from('profiles').update({
                                                     biometricLockEnabled: false,
                                                     biometric_lock_enabled: false,
                                                     updated_at: new Date().toISOString()
                                                 }).eq('id', uid);
+                                                setUserData((prev) => prev ? {
+                                                    ...prev,
+                                                    biometricLockEnabled: false,
+                                                    biometric_lock_enabled: false
+                                                } : prev);
+                                                sessionStorage.removeItem('deliexpress_is_unlocked');
+                                                setIsUnlocked(true);
                                                 toast.success('Bloqueo biométrico desactivado');
                                             } else {
                                                 // Enable
-                                                const biometricData = await registerBiometric(uid, user.email || '');
+                                                const email = user?.email || userData?.email || '';
+                                                const biometricData = await registerBiometric(uid, email);
                                                 if (biometricData) {
                                                     await supabase.from('profiles').update({
                                                         biometricLockEnabled: true,
@@ -1731,14 +1740,23 @@ export default function Profile() {
                                                         biometric_credential_id: biometricData.id,
                                                         updated_at: new Date().toISOString()
                                                     }).eq('id', uid);
+                                                    setUserData((prev) => prev ? {
+                                                        ...prev,
+                                                        biometricLockEnabled: true,
+                                                        biometric_lock_enabled: true,
+                                                        biometricCredentialId: biometricData.id,
+                                                        biometric_credential_id: biometricData.id
+                                                    } : prev);
+                                                    sessionStorage.setItem('deliexpress_is_unlocked', 'true');
+                                                    setIsUnlocked(true);
                                                     toast.success('Bloqueo biométrico activado');
                                                 } else {
                                                     toast.error('No se pudo activar la biometría');
                                                 }
                                             }
                                         } catch (err: any) {
-                                            console.error(err);
-                                            toast.error(`Error: ${err.message || 'Error al configurar biometría'}`);
+                                            console.error("Error setting up biometrics:", err);
+                                            toast.error(err.message || 'Error al configurar biometría');
                                         } finally {
                                             setUpdatingBiometrics(false);
                                         }
@@ -1747,22 +1765,22 @@ export default function Profile() {
                                 >
                                     <div className="flex items-center gap-3">
                                         <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center shadow-sm">
-                                            <Fingerprint className="w-5 h-5 text-indigo-500" />
+                                            <Fingerprint className={`w-5 h-5 transition-colors duration-300 ${Boolean(userData?.biometricLockEnabled || userData?.biometric_lock_enabled) ? 'text-green-600' : 'text-slate-500'}`} />
                                         </div>
                                         <div className="flex flex-col">
                                             <span className="font-bold text-slate-700">Bloqueo Biométrico</span>
-                                            <span className="text-[10px] text-slate-400 font-medium font-bold">Protege tu cuenta con tu huella o rostro</span>
+                                            <span className="text-[10px] text-slate-400 font-bold">Protege tu cuenta con tu huella o rostro</span>
                                         </div>
                                     </div>
                                     <div
-                                        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${userData?.biometricLockEnabled ? 'bg-indigo-500' : 'bg-slate-300'
+                                        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors duration-300 focus:outline-none ${Boolean(userData?.biometricLockEnabled || userData?.biometric_lock_enabled) ? 'bg-green-500' : 'bg-slate-300'
                                             }`}
                                     >
                                         {updatingBiometrics ? (
                                             <div className="ml-1 w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
                                         ) : (
                                             <span
-                                                className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${userData?.biometricLockEnabled ? 'translate-x-6' : 'translate-x-1'
+                                                className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform duration-300 shadow-sm ${Boolean(userData?.biometricLockEnabled || userData?.biometric_lock_enabled) ? 'translate-x-6' : 'translate-x-1'
                                                     }`}
                                             />
                                         )}

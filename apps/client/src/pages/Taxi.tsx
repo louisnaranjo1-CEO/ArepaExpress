@@ -1265,23 +1265,28 @@ export default function Taxi() {
             )}
 
             {/* 0. PANTALLA INICIAL DE SELECCIÓN DE SERVICIO (Un 2x3 Movilidad) */}
+            {/* 0. PANTALLA INICIAL DE SELECCIÓN DE SERVICIO (Un 2x3 Movilidad) */}
             {step === 'categories' && (
-                <div className="absolute inset-0 z-40 bg-slate-950/85 backdrop-blur-lg flex flex-col justify-between p-4 sm:p-6 overflow-y-auto animate-in fade-in duration-200 select-none">
+                <div className="absolute inset-0 z-40 bg-slate-950/65 backdrop-blur-[10px] flex flex-col justify-between p-3.5 sm:p-5 overflow-hidden animate-in fade-in duration-200 select-none">
+                    {/* GPS Map Blurred Aesthetic Overlay (Grid & Navigation Waypoints) */}
+                    <div className="absolute inset-0 pointer-events-none opacity-25 bg-[radial-gradient(#ffffff_1px,transparent_1px)] [background-size:24px_24px]" />
+                    <div className="absolute inset-0 pointer-events-none opacity-15 bg-[linear-gradient(to_right,#ffffff15_1px,transparent_1px),linear-gradient(to_bottom,#ffffff15_1px,transparent_1px)] bg-[size:3.5rem_3.5rem]" />
+
                     {/* Top Bar with Home Back and Discreet Weather on the Side */}
-                    <div className="w-full max-w-md mx-auto flex items-center justify-between pb-4 pt-1 border-b border-white/10">
+                    <div className="relative z-10 w-full max-w-md mx-auto flex items-center justify-between pb-2 pt-0.5 border-b border-white/10 shrink-0">
                         <button
                             onClick={() => navigate('/')}
-                            className="w-10 h-10 rounded-2xl bg-white/10 hover:bg-white/15 backdrop-blur-md flex items-center justify-center text-white active:scale-95 transition-all"
+                            className="w-9 h-9 rounded-xl bg-white/15 hover:bg-white/20 backdrop-blur-md flex items-center justify-center text-white active:scale-95 transition-all shadow-sm"
                             title="Volver al inicio"
                         >
                             <ArrowLeft className="w-5 h-5" />
                         </button>
                         <div className="text-center">
-                            <h2 className="text-base font-black text-white tracking-tight flex items-center justify-center gap-1.5">
-                                <span className="w-2 h-2 rounded-full bg-primary animate-pulse"></span>
+                            <h2 className="text-sm sm:text-base font-black text-white tracking-tight flex items-center justify-center gap-1.5">
+                                <span className="w-2 h-2 rounded-full bg-[#FFB800] animate-pulse"></span>
                                 Un 2x3 Movilidad
                             </h2>
-                            <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">
+                            <p className="text-[9px] text-slate-300 font-bold uppercase tracking-wider">
                                 Elige tu servicio
                             </p>
                         </div>
@@ -1294,13 +1299,13 @@ export default function Taxi() {
                         />
                     </div>
 
-                    {/* Main Options Cards */}
-                    <div className="w-full max-w-md mx-auto my-auto py-4 space-y-3.5">
-                        <div className="text-center mb-2">
-                            <h3 className="text-xl sm:text-2xl font-black text-white tracking-tight">
+                    {/* Main Options Cards - Minimalist, Compact & Vibrant Yellow with Black Letters */}
+                    <div className="relative z-10 w-full max-w-md mx-auto my-auto py-1 space-y-2.5 sm:space-y-3 flex-1 flex flex-col justify-center">
+                        <div className="text-center mb-0.5">
+                            <h3 className="text-lg sm:text-xl font-black text-white tracking-tight leading-tight">
                                 ¿Qué necesitas hoy?
                             </h3>
-                            <p className="text-xs text-slate-400 font-medium mt-1">
+                            <p className="text-[11px] text-slate-300 font-medium mt-0.5">
                                 Selecciona una opción para comenzar tu solicitud personalizada
                             </p>
                         </div>
@@ -1316,38 +1321,40 @@ export default function Taxi() {
                                 setVehicleType('carro');
                                 setStep('destination');
                             }}
-                            className="w-full bg-gradient-to-br from-slate-900 via-slate-900 to-slate-800 border-2 border-slate-700/80 hover:border-primary p-4 sm:p-5 rounded-3xl text-left shadow-xl transition-all active:scale-[0.98] group flex items-center gap-4"
+                            className="w-full bg-[#FFB800] hover:bg-[#ffc21a] border-2 border-amber-300/80 p-3 sm:p-3.5 rounded-2xl sm:rounded-3xl text-left shadow-lg shadow-amber-500/20 active:scale-[0.98] transition-all group flex items-center gap-3"
                         >
-                            <div className="w-14 h-14 rounded-2xl bg-primary/20 text-primary flex items-center justify-center flex-shrink-0 group-hover:scale-110 group-hover:bg-primary group-hover:text-slate-950 transition-all shadow-lg shadow-primary/10">
-                                <Car className="w-7 h-7" />
+                            <div className="w-11 h-11 rounded-2xl bg-slate-950 text-[#FFB800] flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform shadow-md">
+                                <Car className="w-6 h-6" />
                             </div>
                             <div className="flex-1 min-w-0">
                                 <div className="flex items-center justify-between mb-0.5">
-                                    <h4 className="text-base sm:text-lg font-black text-white group-hover:text-primary transition-colors">
+                                    <h4 className="text-sm sm:text-base font-black text-slate-950 tracking-tight leading-none">
                                         Taxi / Viajes
                                     </h4>
-                                    <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-full bg-primary/20 text-primary border border-primary/30">
+                                    <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded-full bg-slate-950 text-[#FFB800] tracking-wider shrink-0">
                                         Pasajeros
                                     </span>
                                 </div>
-                                <p className="text-xs text-slate-300 font-medium line-clamp-2">
-                                    Mototaxi, Taxi Standard y Carro Confort con A/A. Traslados rápidos y seguros.
+                                <p className="text-[11px] text-slate-950/90 font-bold line-clamp-1 leading-tight mt-0.5">
+                                    Mototaxi, Taxi Standard y Carro Confort con A/A.
                                 </p>
-                                <div className="flex items-center gap-3 mt-2 text-[10px] text-slate-400 font-bold">
+                                <div className="flex items-center gap-2 mt-1 text-[9px] text-slate-950 font-black">
                                     <span className="flex items-center gap-1">
-                                        <Bike className="w-3 h-3 text-amber-400" /> Moto
+                                        <Bike className="w-3 h-3 text-slate-950" /> Moto
                                     </span>
                                     <span>•</span>
                                     <span className="flex items-center gap-1">
-                                        <Car className="w-3 h-3 text-sky-400" /> Taxi
+                                        <Car className="w-3 h-3 text-slate-950" /> Taxi
                                     </span>
                                     <span>•</span>
                                     <span className="flex items-center gap-1">
-                                        <Sparkles className="w-3 h-3 text-purple-400" /> Confort
+                                        <Sparkles className="w-3 h-3 text-slate-950" /> Confort
                                     </span>
                                 </div>
                             </div>
-                            <ArrowRight className="w-5 h-5 text-slate-500 group-hover:text-primary group-hover:translate-x-1 transition-all flex-shrink-0" />
+                            <div className="w-7 h-7 rounded-full bg-slate-950/10 text-slate-950 flex items-center justify-center group-hover:bg-slate-950 group-hover:text-[#FFB800] transition-all shrink-0">
+                                <ArrowRight className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />
+                            </div>
                         </button>
 
                         {/* Opción 2: Envío de Paquete */}
@@ -1361,32 +1368,34 @@ export default function Taxi() {
                                 setVehicleType('moto');
                                 setStep('destination');
                             }}
-                            className="w-full bg-gradient-to-br from-slate-900 via-slate-900 to-slate-800 border-2 border-slate-700/80 hover:border-blue-400 p-4 sm:p-5 rounded-3xl text-left shadow-xl transition-all active:scale-[0.98] group flex items-center gap-4"
+                            className="w-full bg-[#FFB800] hover:bg-[#ffc21a] border-2 border-amber-300/80 p-3 sm:p-3.5 rounded-2xl sm:rounded-3xl text-left shadow-lg shadow-amber-500/20 active:scale-[0.98] transition-all group flex items-center gap-3"
                         >
-                            <div className="w-14 h-14 rounded-2xl bg-blue-500/20 text-blue-400 flex items-center justify-center flex-shrink-0 group-hover:scale-110 group-hover:bg-blue-500 group-hover:text-white transition-all shadow-lg shadow-blue-500/10">
-                                <Package className="w-7 h-7" />
+                            <div className="w-11 h-11 rounded-2xl bg-slate-950 text-[#FFB800] flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform shadow-md">
+                                <Package className="w-6 h-6" />
                             </div>
                             <div className="flex-1 min-w-0">
                                 <div className="flex items-center justify-between mb-0.5">
-                                    <h4 className="text-base sm:text-lg font-black text-white group-hover:text-blue-400 transition-colors">
+                                    <h4 className="text-sm sm:text-base font-black text-slate-950 tracking-tight leading-none">
                                         Envío de Paquete
                                     </h4>
-                                    <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-300 border border-blue-400/30">
+                                    <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded-full bg-slate-950 text-[#FFB800] tracking-wider shrink-0">
                                         Delivery Express
                                     </span>
                                 </div>
-                                <p className="text-xs text-slate-300 font-medium line-clamp-2">
-                                    Encomiendas, documentos, llaves o compras entre particulares punto a punto.
+                                <p className="text-[11px] text-slate-950/90 font-bold line-clamp-1 leading-tight mt-0.5">
+                                    Encomiendas, documentos, llaves o compras punto a punto.
                                 </p>
-                                <div className="flex items-center gap-3 mt-2 text-[10px] text-slate-400 font-bold">
-                                    <span>📦 Entrega directa</span>
+                                <div className="flex items-center gap-2 mt-1 text-[9px] text-slate-950 font-black">
+                                    <span>📦 Directo</span>
                                     <span>•</span>
                                     <span>⚡ Sin escalas</span>
                                     <span>•</span>
                                     <span>🔒 Conductor verificado</span>
                                 </div>
                             </div>
-                            <ArrowRight className="w-5 h-5 text-slate-500 group-hover:text-blue-400 group-hover:translate-x-1 transition-all flex-shrink-0" />
+                            <div className="w-7 h-7 rounded-full bg-slate-950/10 text-slate-950 flex items-center justify-center group-hover:bg-slate-950 group-hover:text-[#FFB800] transition-all shrink-0">
+                                <ArrowRight className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />
+                            </div>
                         </button>
 
                         {/* Opción 3: Muchacho e' Mandao */}
@@ -1400,38 +1409,40 @@ export default function Taxi() {
                                 setVehicleType('moto');
                                 setStep('destination');
                             }}
-                            className="w-full bg-gradient-to-br from-amber-950/40 via-slate-900 to-slate-900 border-2 border-amber-500/50 hover:border-amber-400 p-4 sm:p-5 rounded-3xl text-left shadow-xl transition-all active:scale-[0.98] group flex items-center gap-4 ring-1 ring-amber-500/20"
+                            className="w-full bg-[#FFB800] hover:bg-[#ffc21a] border-2 border-amber-300/80 p-3 sm:p-3.5 rounded-2xl sm:rounded-3xl text-left shadow-lg shadow-amber-500/20 active:scale-[0.98] transition-all group flex items-center gap-3"
                         >
-                            <div className="w-14 h-14 rounded-2xl bg-gradient-to-tr from-amber-500 to-yellow-400 text-slate-950 flex items-center justify-center flex-shrink-0 group-hover:scale-110 transition-all shadow-lg shadow-amber-500/20 font-black">
-                                <ShoppingBag className="w-7 h-7" />
+                            <div className="w-11 h-11 rounded-2xl bg-slate-950 text-[#FFB800] flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform shadow-md">
+                                <ShoppingBag className="w-6 h-6" />
                             </div>
                             <div className="flex-1 min-w-0">
                                 <div className="flex items-center justify-between mb-0.5">
-                                    <h4 className="text-base sm:text-lg font-black text-amber-300 group-hover:text-amber-200 transition-colors">
+                                    <h4 className="text-sm sm:text-base font-black text-slate-950 tracking-tight leading-none">
                                         Muchacho e' Mandao
                                     </h4>
-                                    <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-full bg-amber-400/20 text-amber-300 border border-amber-400/30">
+                                    <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded-full bg-slate-950 text-[#FFB800] tracking-wider shrink-0">
                                         Subasta en Vivo
                                     </span>
                                 </div>
-                                <p className="text-xs text-slate-300 font-medium line-clamp-2">
-                                    Diligencias, trámites y compras. Paga directo al comercio por Pago Móvil sin intermediación.
+                                <p className="text-[11px] text-slate-950/90 font-bold line-clamp-1 leading-tight mt-0.5">
+                                    Diligencias y trámites. Paga directo al comercio por Pago Móvil.
                                 </p>
-                                <div className="flex items-center gap-3 mt-2 text-[10px] text-amber-400/90 font-bold">
+                                <div className="flex items-center gap-2 mt-1 text-[9px] text-slate-950 font-black">
                                     <span>🏪 Diligencias y Farmacias</span>
                                     <span>•</span>
                                     <span>💰 Tú eliges la mejor oferta</span>
                                 </div>
                             </div>
-                            <ArrowRight className="w-5 h-5 text-amber-400/60 group-hover:text-amber-400 group-hover:translate-x-1 transition-all flex-shrink-0" />
+                            <div className="w-7 h-7 rounded-full bg-slate-950/10 text-slate-950 flex items-center justify-center group-hover:bg-slate-950 group-hover:text-[#FFB800] transition-all shrink-0">
+                                <ArrowRight className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />
+                            </div>
                         </button>
                     </div>
 
                     {/* Bottom Transparency Guarantee Footer */}
-                    <div className="w-full max-w-md mx-auto pt-3 text-center border-t border-white/10">
-                        <p className="text-[10px] text-slate-400 font-medium flex items-center justify-center gap-1.5">
+                    <div className="relative z-10 w-full max-w-md mx-auto pt-2 pb-0.5 text-center border-t border-white/10 shrink-0">
+                        <p className="text-[10px] text-slate-300 font-bold flex items-center justify-center gap-1.5">
                             <Shield className="w-3.5 h-3.5 text-emerald-400" />
-                            Tarifas justas y transparentes • Clima y tráfico no alteran tu precio
+                            Tarifas transparentes • Ni el clima ni el tráfico alteran tu precio
                         </p>
                     </div>
                 </div>

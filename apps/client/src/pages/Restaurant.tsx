@@ -123,8 +123,24 @@ export default function RestaurantPage() {
             setLoading(false);
             return;
           }
+
+          // Fetch exact follower count from restaurant_followers
+          let totalFollowers = docSnap.follower_count ?? docSnap.followerCount ?? 0;
+          try {
+            const { count: realFollowers } = await supabase
+              .from('restaurant_followers')
+              .select('*', { count: 'exact', head: true })
+              .eq('restaurant_id', id);
+            if (realFollowers !== null && realFollowers !== undefined) {
+              totalFollowers = realFollowers;
+            }
+          } catch (cntErr) {
+            console.warn("Could not fetch exact follower count:", cntErr);
+          }
+
+          data.followerCount = totalFollowers;
           setRestaurant(data);
-          setFollowerCount(data.followerCount || 0);
+          setFollowerCount(totalFollowers);
 
           const uid = user?.id || user?.uid;
 
@@ -470,8 +486,7 @@ export default function RestaurantPage() {
         await supabase
           .from('comercios')
           .update({
-            follower_count: newCount,
-            followerCount: newCount
+            follower_count: newCount
           })
           .eq('id', id);
         toast('Dejaste de seguir este negocio', { icon: '👋' });
@@ -479,7 +494,7 @@ export default function RestaurantPage() {
         setIsFollowing(true);
         const newCount = followerCount + 1;
         setFollowerCount(newCount);
-        await supabase
+        const { error: insErr } = await supabase
           .from('restaurant_followers')
           .upsert({
             restaurant_id: id,
@@ -488,11 +503,15 @@ export default function RestaurantPage() {
             created_at: new Date().toISOString()
           }, { onConflict: 'restaurant_id,user_id' });
 
+        if (insErr) {
+          console.error("Error inserting follower:", insErr);
+          throw insErr;
+        }
+
         await supabase
           .from('comercios')
           .update({
-            follower_count: newCount,
-            followerCount: newCount
+            follower_count: newCount
           })
           .eq('id', id);
 
@@ -538,15 +557,16 @@ export default function RestaurantPage() {
       restaurantId: id,
       restaurantName: restaurant.name || 'Comercio',
       restaurantLogo: restaurant.logoUrl || restaurant.image || '',
+      whatsapp: restaurant.whatsapp,
+      items: productDetails ? [{ ...productDetails, quantity: 1 }] : items,
+      totalPrice: productDetails?.price || totalPrice,
       timestamp,
-      productName: productDetails?.name || null,
-      estimatedPrice: productDetails?.price || null
+      confirmed: false
     };
 
-    localStorage.setItem('deliexpress_pending_whatsapp_order', JSON.stringify(pendingOrderData));
-    window.dispatchEvent(new Event('deliexpress_whatsapp_order_created'));
+    localStorage.setItem('pendingWhatsAppOrder', JSON.stringify(pendingOrderData));
+    localStorage.setItem('lastWhatsAppOrderRestaurantId', id!);
 
-    // Registrar pedido inicial en estado whatsapp_contacted
     try {
       await supabase.from('orders').insert({
         id: orderId,
@@ -748,17 +768,14 @@ export default function RestaurantPage() {
               </div>
               <div className="flex-1">
                 <div className="flex items-center gap-2">
-                  <p className="text-[10px] font-black uppercase tracking-[0.25em] leading-none mb-1 text-amber-700">Servicio Activo</p>
-                  <span className="flex items-center gap-1 bg-yellow-400 text-[8px] font-black text-white px-2 py-0.5 rounded-full uppercase tracking-widest leading-none mb-1 shadow-sm">
-                    Oficial
-                  </span>
+                  <span className="text-[10px] font-black tracking-wider uppercase text-yellow-600">Servicio Activo</span>
+                  <span className="bg-yellow-400 text-slate-900 text-[9px] font-black px-2 py-0.5 rounded-full uppercase">Oficial</span>
                 </div>
-                <h4 className="font-black text-slate-800 flex items-center gap-1.5 text-base leading-none">
-                  Compra con Cashea <Zap className="w-4 h-4 text-slate-900 fill-primary" />
-                </h4>
-                <p className="text-[11px] text-slate-500 font-bold mt-1 leading-none">Paga en cuotas sin interés</p>
+                <h3 className="font-black text-base text-slate-900">Compra con Cashea</h3>
+                <p className="text-xs text-slate-500 font-medium">Paga en cuotas sin interés</p>
               </div>
-              <div className="w-8 h-8 rounded-full bg-yellow-50 flex items-center justify-center text-amber-700 opacity-50 group-hover:opacity-100 group-hover:bg-yellow-400 group-hover:text-white transition-all">
+              <div className="flex items-center gap-1 text-slate-400">
+                <Zap className="w-4 h-4 text-yellow-500 fill-yellow-500" />
                 <ChevronRight className="w-5 h-5" />
               </div>
             </motion.div>
@@ -783,21 +800,30 @@ export default function RestaurantPage() {
             </button>
           )}
 
-          <div className="flex items-center justify-between mt-2">
-            <p className="text-slate-600 text-sm leading-relaxed">
-              {restaurant.category} • {restaurant.distance || "Cerca de ti"}
-            </p>
-            <div className="flex items-center gap-2">
+          {/* Action Carousel / Ruleta de Botones */}
+          <div className="flex flex-col gap-2 mt-2">
+            <div className="flex items-center justify-between">
+              <p className="text-slate-600 text-xs font-semibold leading-relaxed truncate">
+                {restaurant.category} {restaurant.location?.city ? `• ${restaurant.location.city}` : ''}
+              </p>
+            </div>
+
+            {/* Ruleta Horizontal Deslizable con Efecto Ruleta */}
+            <div className="flex items-center gap-2 overflow-x-auto pb-2 pt-0.5 no-scrollbar scroll-smooth snap-x">
+              {/* 1. Botón Seguir */}
               <button
                 onClick={toggleFollow}
-                className={`flex items-center gap-2 px-4 py-2 rounded-full text-xs font-black transition-all ${isFollowing
-                  ? 'bg-slate-100 text-slate-500 border border-slate-200'
-                  : 'bg-primary text-slate-900 shadow-lg shadow-primary/20 scale-105 hover:scale-110'
+                className={`snap-start flex items-center gap-1.5 px-3.5 py-2 rounded-full text-xs font-black whitespace-nowrap transition-all active:scale-95 shrink-0 ${isFollowing
+                  ? 'bg-slate-100 text-slate-600 border border-slate-200'
+                  : 'bg-primary text-slate-950 shadow-md shadow-primary/20'
                   }`}
               >
-                {isFollowing ? <UserCheck className="w-4 h-4" /> : <UserPlus className="w-4 h-4" />}
-                {isFollowing ? 'Siguiendo' : 'Seguir'}
+                {isFollowing ? <UserCheck className="w-3.5 h-3.5 text-slate-600" /> : <UserPlus className="w-3.5 h-3.5 text-slate-950" />}
+                <span>{isFollowing ? 'Siguiendo' : 'Seguir'}</span>
+                <span className="text-[10px] font-bold opacity-80 ml-0.5">({followerCount})</span>
               </button>
+
+              {/* 2. Botón WhatsApp */}
               {restaurant.whatsapp && (
                 <button
                   onClick={() => {
@@ -816,23 +842,45 @@ export default function RestaurantPage() {
                     }
                     openWhatsApp();
                   }}
-                  className="flex items-center gap-1 bg-green-50 text-green-600 px-3 py-1.5 rounded-full text-xs font-bold border border-green-100 hover:bg-green-100 transition-colors"
+                  className="snap-start flex items-center gap-1.5 bg-emerald-50 text-emerald-700 px-3.5 py-2 rounded-full text-xs font-bold border border-emerald-200 hover:bg-emerald-100 whitespace-nowrap transition-all active:scale-95 shrink-0"
                 >
-                  <MessageSquare className="w-3.5 h-3.5" />
-                  WhatsApp
+                  <MessageSquare className="w-3.5 h-3.5 text-emerald-600" />
+                  <span>WhatsApp</span>
                 </button>
               )}
+
+              {/* 3. Botón Mapa */}
               {restaurant.location?.coords && (
                 <a
                   href={`https://www.google.com/maps/search/?api=1&query=${restaurant.location.coords.lat},${restaurant.location.coords.lng}`}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="flex items-center gap-1 bg-blue-50 text-blue-600 px-3 py-1.5 rounded-full text-xs font-bold border border-blue-100 hover:bg-blue-100 transition-colors"
+                  className="snap-start flex items-center gap-1.5 bg-blue-50 text-blue-700 px-3.5 py-2 rounded-full text-xs font-bold border border-blue-200 hover:bg-blue-100 whitespace-nowrap transition-all active:scale-95 shrink-0"
                 >
-                  <MapPin className="w-3.5 h-3.5" />
-                  Mapa
+                  <MapPin className="w-3.5 h-3.5 text-blue-600" />
+                  <span>Ver en Mapa</span>
                 </a>
               )}
+
+              {/* 4. Botón Llamar */}
+              {restaurant.whatsapp && (
+                <a
+                  href={`tel:${restaurant.whatsapp.replace(/\D/g, '')}`}
+                  className="snap-start flex items-center gap-1.5 bg-amber-50 text-amber-800 px-3.5 py-2 rounded-full text-xs font-bold border border-amber-200 hover:bg-amber-100 whitespace-nowrap transition-all active:scale-95 shrink-0"
+                >
+                  <Phone className="w-3.5 h-3.5 text-amber-600" />
+                  <span>Llamar</span>
+                </a>
+              )}
+
+              {/* 5. Botón Compartir */}
+              <button
+                onClick={handleShare}
+                className="snap-start flex items-center gap-1.5 bg-slate-50 text-slate-700 px-3.5 py-2 rounded-full text-xs font-bold border border-slate-200 hover:bg-slate-100 whitespace-nowrap transition-all active:scale-95 shrink-0"
+              >
+                <Share2 className="w-3.5 h-3.5 text-slate-600" />
+                <span>Compartir</span>
+              </button>
             </div>
           </div>
 
