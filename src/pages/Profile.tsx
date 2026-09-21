@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { User, Mail, MapPin, CreditCard, LogOut, ShoppingBag, Settings, ChevronRight, Clock, FileText, Bell, Navigation, X, Shield, UploadCloud, Star, Wallet, Gift, Award, MessageSquareWarning, Plus, Send, AlertCircle, CheckCircle, Store, Handshake, LifeBuoy, Fingerprint, Calendar } from 'lucide-react';
+import { User, Mail, MapPin, CreditCard, LogOut, ShoppingBag, Settings, ChevronRight, Clock, FileText, Bell, Navigation, X, Shield, UploadCloud, Star, Wallet, Gift, Award, MessageSquareWarning, Plus, Send, AlertCircle, CheckCircle, Store, Handshake, Fingerprint, Calendar, Trash2, AlertTriangle } from 'lucide-react';
 import { Geolocation } from '@capacitor/geolocation';
 import { Capacitor } from '@capacitor/core';
 import { isDemoMode, UN2X3_LOGO } from '../lib/env';
@@ -77,7 +77,7 @@ const RestaurantPointCard: React.FC<{ restId: string, points: number }> = ({ res
 };
 
 export default function Profile() {
-    const { user, userData, setUserData, isProfileComplete, refreshUserData } = useAuth();
+    const { user, userData, setUserData, isProfileComplete, refreshUserData, setIsUnlocked } = useAuth();
     const navigate = useNavigate();
     const [searchParams] = useSearchParams();
     const [isSigningIn, setIsSigningIn] = useState(false);
@@ -85,6 +85,8 @@ export default function Profile() {
     const [loadingActivities, setLoadingActivities] = useState(false);
     const [showAddressPicker, setShowAddressPicker] = useState(false);
     const [showEditProfileModal, setShowEditProfileModal] = useState(false);
+    const [showDeleteAccountModal, setShowDeleteAccountModal] = useState(false);
+    const [isDeletingAccount, setIsDeletingAccount] = useState(false);
     const [updatingNotifications, setUpdatingNotifications] = useState(false);
     const [updatingBiometrics, setUpdatingBiometrics] = useState(false);
     const [updatingLocation, setUpdatingLocation] = useState(false);
@@ -117,14 +119,9 @@ export default function Profile() {
     const [logoFile, setLogoFile] = useState<File | null>(null);
     const [logoPreview, setLogoPreview] = useState<string | null>(null);
 
-    // Wallet State
-    const [showWalletModal, setShowWalletModal] = useState(false);
-    const [rechargeAmount, setRechargeAmount] = useState('');
-    const [rechargeProof, setRechargeProof] = useState<File | null>(null);
-    const [isRecharging, setIsRecharging] = useState(false);
-    const [paymentMethods, setPaymentMethods] = useState<any>(null);
+    // Rewards & Points State
+    const [showRewardsModal, setShowRewardsModal] = useState(false);
     const [copiedId, setCopiedId] = useState<string | null>(null);
-    const [rechargeRef, setRechargeRef] = useState('');
 
     // Referral State
     const [referralCodeInput, setReferralCodeInput] = useState('');
@@ -690,6 +687,7 @@ export default function Profile() {
                     phone: fullPhone,
                     cedula: fullCedula,
                     birthdate: profileForm.birthdate,
+                    gender: profileForm.gender || null,
                     photo_url: photoURL || null,
                     updated_at: new Date().toISOString()
                 })
@@ -723,56 +721,44 @@ export default function Profile() {
         }
     };
 
-    const handleRechargeSubmit = async (e: React.FormEvent) => {
-        e.preventDefault();
-        const uid = user?.id || user?.uid;
-        if (!uid || (!rechargeAmount && !rechargeProof)) return;
-
-        setIsRecharging(true);
+    const handleDeleteAccount = async () => {
+        if (!user) return;
         try {
-            let proofUrl = '';
-            if (rechargeProof) {
-                const ext = rechargeProof.name.split('.').pop() || 'jpg';
-                const path = `wallet_recharges/${uid}/${Date.now()}.${ext}`;
-                const { error: upErr } = await supabase.storage.from('store_assets').upload(path, rechargeProof, { upsert: true });
-                if (!upErr) {
-                    const { data: { publicUrl } } = supabase.storage.from('store_assets').getPublicUrl(path);
-                    proofUrl = publicUrl;
-                }
-            }
+            setIsDeletingAccount(true);
+            vibrate(50);
 
-            await supabase.from('wallet_recharges').insert({
-                user_id: uid,
-                userId: uid,
-                user_name: userData?.displayName || user.displayName || 'Usuario',
-                userName: userData?.displayName || user.displayName || 'Usuario',
-                user_phone: userData?.phone || '',
-                userPhone: userData?.phone || '',
-                amount: parseFloat(rechargeAmount),
-                proof_url: proofUrl,
-                proofUrl,
-                payment_ref: rechargeRef,
-                paymentRef: rechargeRef,
-                status: 'pending',
-                created_at: new Date().toISOString()
-            });
+            const { error } = await supabase.rpc('delete_user_account');
+            if (error) throw error;
 
-            alert("¡Recarga enviada! Verificaremos los datos pronto.");
-            setShowWalletModal(false);
-            setRechargeAmount('');
-            setRechargeProof(null);
+            toast.success("Tu cuenta ha sido eliminada por completo de la base de datos.");
+            setShowDeleteAccountModal(false);
+            setShowEditProfileModal(false);
+
+            await supabase.auth.signOut();
+            localStorage.clear();
+            sessionStorage.clear();
+            window.location.href = '/';
         } catch (err: any) {
-            console.error("Error submitting recharge:", err);
-            const errorMsg = err?.message || "Error desconocido";
-            alert(`Error al procesar la recarga: ${errorMsg}`);
+            console.error("Error al eliminar la cuenta:", err);
+            toast.error(err.message || "No se pudo eliminar la cuenta. Intenta de nuevo.");
         } finally {
-            setIsRecharging(false);
+            setIsDeletingAccount(false);
         }
+    };
+
+    const handleRedeemReward = (rewardName: string, requiredPoints: number) => {
+        const currentPoints = Math.floor(userData?.points || 0);
+        if (currentPoints < requiredPoints) {
+            toast.error(`Necesitas ${requiredPoints} puntos para canjear esta recompensa (tienes ${currentPoints} pts).`);
+            return;
+        }
+        vibrate(30);
+        toast.success(`¡Cupón de "${rewardName}" canjeado con éxito! Se aplicará automáticamente a tu cuenta.`);
     };
 
     if (!user) {
         return (
-            <div className="flex flex-col items-center justify-center min-h-[80vh] px-6 text-center animate-in fade-in slide-in-from-bottom-4 duration-500">
+            <div className="w-full h-full overflow-y-auto overflow-x-hidden flex flex-col items-center justify-center min-h-[80vh] px-6 py-8 text-center animate-in fade-in slide-in-from-bottom-4 duration-500">
                 <div 
                     onClick={() => toast('¡Epale! ¿Iniciamos ya?', { icon: '🚀', style: { borderRadius: '15px', background: '#333', color: '#fff' } })}
                     className="w-80 h-32 flex items-center justify-center mb-8 cursor-pointer active:scale-95 transition-transform p-2 overflow-visible"
@@ -1166,7 +1152,7 @@ export default function Profile() {
     // Profile Completion Overlay/View
     if (user && !isProfileComplete) {
         return (
-            <div className="flex flex-col items-center justify-center min-h-[80vh] px-6 py-12 animate-in fade-in slide-in-from-bottom-4 duration-500">
+            <div className="w-full h-full overflow-y-auto overflow-x-hidden flex flex-col items-center justify-center min-h-[80vh] px-6 py-12 animate-in fade-in slide-in-from-bottom-4 duration-500">
                 <div className="w-24 h-24 bg-primary/10 rounded-full flex items-center justify-center mb-6 overflow-hidden">
                     <User className="w-12 h-12 text-slate-900" />
                 </div>
@@ -1277,6 +1263,26 @@ export default function Profile() {
                         <p className="text-[10px] text-slate-400 font-medium ml-1">¡Recibirás promociones y descuentos especiales en tu cumpleaños!</p>
                     </div>
 
+                    <div className="space-y-1">
+                        <label className="text-xs font-bold text-slate-500 uppercase tracking-wider ml-1">Género (Para personalización)</label>
+                        <div className="flex gap-3 p-1 bg-slate-100 rounded-2xl">
+                            <button
+                                type="button"
+                                onClick={() => setProfileForm({ ...profileForm, gender: 'masculine' })}
+                                className={`flex-1 py-3 rounded-xl font-black text-xs transition-all ${profileForm.gender === 'masculine' ? 'bg-primary text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}
+                            >
+                                MASCULINO
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setProfileForm({ ...profileForm, gender: 'feminine' })}
+                                className={`flex-1 py-3 rounded-xl font-black text-xs transition-all ${profileForm.gender === 'feminine' ? 'bg-primary text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}
+                            >
+                                FEMENINO
+                            </button>
+                        </div>
+                    </div>
+
                     <button
                         type="submit"
                         disabled={completingProfile}
@@ -1302,17 +1308,11 @@ export default function Profile() {
 
     return (
         <>
-            <div className="pb-24 animate-in fade-in duration-500">
+            <div className="w-full h-full overflow-y-auto overflow-x-hidden pb-32 overscroll-contain animate-in fade-in duration-500">
                 <div className="bg-gradient-to-br from-secondary to-[#003B85] p-8 pt-12 pb-16 text-white rounded-b-[40px] shadow-xl">
                     <div className="relative flex items-center gap-4">
-                        {/* Settings & Support Buttons - Positioned top right to avoid overflow */}
+                        {/* Settings Button - Positioned top right to avoid overflow */}
                         <div className="absolute -top-6 -right-4 flex items-center gap-2">
-                            <button
-                                onClick={() => navigate('/support')}
-                                className="bg-white/10 backdrop-blur-md p-2.5 rounded-xl hover:bg-white/20 transition-all active:scale-90 border border-white/10"
-                            >
-                                <LifeBuoy className="w-5 h-5 text-white/80" />
-                            </button>
                             <button
                                 onClick={() => setShowEditProfileModal(true)}
                                 className="bg-white/10 backdrop-blur-md p-2.5 rounded-xl hover:bg-white/20 transition-all active:scale-90 border border-white/10"
@@ -1362,11 +1362,11 @@ export default function Profile() {
                     <div className="bg-white rounded-3xl p-6 shadow-xl shadow-slate-200/50 space-y-6">
                         <div className="grid grid-cols-4 gap-2">
                             <div
-                                onClick={() => setShowWalletModal(true)}
-                                className="bg-yellow-50 p-3 rounded-2xl flex flex-col items-center justify-center gap-1.5 group cursor-pointer hover:bg-yellow-100 transition-colors"
+                                onClick={() => setShowRewardsModal(true)}
+                                className="bg-amber-50 p-3 rounded-2xl flex flex-col items-center justify-center gap-1.5 group cursor-pointer hover:bg-amber-100 transition-colors border border-amber-200/50"
                             >
-                                <Wallet className="w-6 h-6 text-amber-700 group-hover:scale-110 transition-transform" />
-                                <span className="text-[10px] font-bold text-slate-700 text-center leading-tight">Mi Billetera</span>
+                                <Award className="w-6 h-6 text-amber-600 group-hover:scale-110 transition-transform" />
+                                <span className="text-[10px] font-bold text-slate-700 text-center leading-tight">Mis Puntos</span>
                             </div>
                             <div
                                 onClick={scrollToOrders}
@@ -1582,7 +1582,12 @@ export default function Profile() {
                                                     </div>
                                                     <div className="flex items-center gap-1 text-xs text-slate-500 mt-1.5 ml-8">
                                                         <Clock className="w-3 h-3" />
-                                                        <span>{activity.createdAt?.toDate().toLocaleDateString()} a las {activity.createdAt?.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                                                        <span>
+                                                            {(() => {
+                                                                const actDate = activity.createdAt?.toDate ? activity.createdAt.toDate() : (activity.createdAt ? new Date(activity.createdAt) : null);
+                                                                return actDate ? `${actDate.toLocaleDateString()} a las ${actDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : 'Reciente';
+                                                            })()}
+                                                        </span>
                                                     </div>
                                                 </div>
                                                 <span className={`px-2 py-1 rounded text-[10px] font-bold uppercase tracking-wider mt-1 ${
@@ -1728,17 +1733,26 @@ export default function Profile() {
                                         if (!uid) return;
                                         setUpdatingBiometrics(true);
                                         try {
-                                            if (userData?.biometricLockEnabled) {
+                                            const isCurrentlyActive = Boolean(userData?.biometricLockEnabled || userData?.biometric_lock_enabled);
+                                            if (isCurrentlyActive) {
                                                 // Disable
                                                 await supabase.from('profiles').update({
                                                     biometricLockEnabled: false,
                                                     biometric_lock_enabled: false,
                                                     updated_at: new Date().toISOString()
                                                 }).eq('id', uid);
+                                                setUserData((prev) => prev ? {
+                                                    ...prev,
+                                                    biometricLockEnabled: false,
+                                                    biometric_lock_enabled: false
+                                                } : prev);
+                                                sessionStorage.removeItem('deliexpress_is_unlocked');
+                                                setIsUnlocked(true);
                                                 toast.success('Bloqueo biométrico desactivado');
                                             } else {
                                                 // Enable
-                                                const biometricData = await registerBiometric(uid, user.email || '');
+                                                const email = user?.email || userData?.email || '';
+                                                const biometricData = await registerBiometric(uid, email);
                                                 if (biometricData) {
                                                     await supabase.from('profiles').update({
                                                         biometricLockEnabled: true,
@@ -1747,14 +1761,23 @@ export default function Profile() {
                                                         biometric_credential_id: biometricData.id,
                                                         updated_at: new Date().toISOString()
                                                     }).eq('id', uid);
+                                                    setUserData((prev) => prev ? {
+                                                        ...prev,
+                                                        biometricLockEnabled: true,
+                                                        biometric_lock_enabled: true,
+                                                        biometricCredentialId: biometricData.id,
+                                                        biometric_credential_id: biometricData.id
+                                                    } : prev);
+                                                    sessionStorage.setItem('deliexpress_is_unlocked', 'true');
+                                                    setIsUnlocked(true);
                                                     toast.success('Bloqueo biométrico activado');
                                                 } else {
                                                     toast.error('No se pudo activar la biometría');
                                                 }
                                             }
                                         } catch (err: any) {
-                                            console.error(err);
-                                            toast.error(`Error: ${err.message || 'Error al configurar biometría'}`);
+                                            console.error("Error setting up biometrics:", err);
+                                            toast.error(err.message || 'Error al configurar biometría');
                                         } finally {
                                             setUpdatingBiometrics(false);
                                         }
@@ -1763,22 +1786,22 @@ export default function Profile() {
                                 >
                                     <div className="flex items-center gap-3">
                                         <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center shadow-sm">
-                                            <Fingerprint className="w-5 h-5 text-indigo-500" />
+                                            <Fingerprint className={`w-5 h-5 transition-colors duration-300 ${Boolean(userData?.biometricLockEnabled || userData?.biometric_lock_enabled) ? 'text-green-600' : 'text-slate-500'}`} />
                                         </div>
                                         <div className="flex flex-col">
                                             <span className="font-bold text-slate-700">Bloqueo Biométrico</span>
-                                            <span className="text-[10px] text-slate-400 font-medium font-bold">Protege tu cuenta con tu huella o rostro</span>
+                                            <span className="text-[10px] text-slate-400 font-bold">Protege tu cuenta con tu huella o rostro</span>
                                         </div>
                                     </div>
                                     <div
-                                        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${userData?.biometricLockEnabled ? 'bg-indigo-500' : 'bg-slate-300'
+                                        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors duration-300 focus:outline-none ${Boolean(userData?.biometricLockEnabled || userData?.biometric_lock_enabled) ? 'bg-green-500' : 'bg-slate-300'
                                             }`}
                                     >
                                         {updatingBiometrics ? (
                                             <div className="ml-1 w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
                                         ) : (
                                             <span
-                                                className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${userData?.biometricLockEnabled ? 'translate-x-6' : 'translate-x-1'
+                                                className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform duration-300 shadow-sm ${Boolean(userData?.biometricLockEnabled || userData?.biometric_lock_enabled) ? 'translate-x-6' : 'translate-x-1'
                                                     }`}
                                             />
                                         )}
@@ -2403,27 +2426,41 @@ export default function Profile() {
                                     </div>
                                 </div>
 
-                                <div className="mt-12 flex gap-4 pt-8 border-t border-slate-100">
+                                <div className="mt-10 pt-6 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-4">
                                     <button
                                         type="button"
-                                        onClick={() => setShowEditProfileModal(false)}
-                                        className="flex-1 py-4 bg-slate-100 text-slate-500 rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-slate-200 transition-all shadow-sm active:scale-95"
+                                        onClick={() => {
+                                            vibrate(30);
+                                            setShowDeleteAccountModal(true);
+                                        }}
+                                        className="w-full sm:w-auto py-3.5 px-5 bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200/80 rounded-2xl font-black text-xs uppercase tracking-wider flex items-center justify-center gap-2 active:scale-95 transition-all"
                                     >
-                                        Cancelar
+                                        <Trash2 className="w-4 h-4 text-rose-500" />
+                                        Eliminar Cuenta
                                     </button>
-                                    <button
-                                        type="submit"
-                                        disabled={completingProfile}
-                                        className="flex-[2] py-4 bg-primary text-slate-900 rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-orange-600 transition-all shadow-xl shadow-orange-500/30 flex items-center justify-center gap-2 active:scale-[0.98] disabled:opacity-50"
-                                    >
-                                        {completingProfile ? (
-                                            <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
-                                        ) : (
-                                            <>
-                                                <Save className="w-4 h-4" /> Guardar Cambios
-                                            </>
-                                        )}
-                                    </button>
+
+                                    <div className="flex gap-3 w-full sm:w-auto flex-1 sm:justify-end">
+                                        <button
+                                            type="button"
+                                            onClick={() => setShowEditProfileModal(false)}
+                                            className="flex-1 sm:flex-initial px-6 py-4 bg-slate-100 text-slate-500 rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-slate-200 transition-all shadow-sm active:scale-95"
+                                        >
+                                            Cancelar
+                                        </button>
+                                        <button
+                                            type="submit"
+                                            disabled={completingProfile}
+                                            className="flex-[2] sm:flex-initial px-8 py-4 bg-primary text-slate-900 rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-orange-600 transition-all shadow-xl shadow-orange-500/30 flex items-center justify-center gap-2 active:scale-[0.98] disabled:opacity-50"
+                                        >
+                                            {completingProfile ? (
+                                                <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                                            ) : (
+                                                <>
+                                                    <Save className="w-4 h-4" /> Guardar Cambios
+                                                </>
+                                            )}
+                                        </button>
+                                    </div>
                                 </div>
                             </form>
                         </motion.div>
@@ -2431,9 +2468,66 @@ export default function Profile() {
                 )}
             </AnimatePresence>
 
-            {/* Wallet Modal */}
+            {/* Delete Account Confirmation Modal */}
             <AnimatePresence>
-                {showWalletModal && (
+                {showDeleteAccountModal && (
+                    <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-black/70 backdrop-blur-md overflow-y-auto">
+                        <motion.div
+                            initial={{ opacity: 0, scale: 0.95, y: 20 }}
+                            animate={{ opacity: 1, scale: 1, y: 0 }}
+                            exit={{ opacity: 0, scale: 0.95, y: 20 }}
+                            className="bg-white rounded-[36px] w-full max-w-sm shadow-2xl p-7 text-center space-y-4 my-auto border border-rose-100"
+                        >
+                            <div className="w-16 h-16 bg-rose-50 text-rose-500 rounded-3xl flex items-center justify-center mx-auto shadow-lg shadow-rose-500/10">
+                                <Trash2 className="w-8 h-8" />
+                            </div>
+
+                            <div>
+                                <h3 className="text-xl font-black text-slate-900">¿Eliminar tu cuenta?</h3>
+                                <p className="text-xs text-slate-500 font-medium mt-2 leading-relaxed">
+                                    Esta acción es <span className="font-bold text-rose-600">permanente e irreversible</span>. Tu información de perfil, billetera, historial de pedidos y servicios de taxi se borrarán completamente de la base de datos.
+                                </p>
+                            </div>
+
+                            <div className="p-3 bg-amber-50 rounded-2xl border border-amber-200/60 text-left flex items-start gap-2.5">
+                                <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                                <p className="text-[11px] font-bold text-amber-800 leading-tight">
+                                    No podrás recuperar tu cuenta ni volver a acceder con tus credenciales actuales.
+                                </p>
+                            </div>
+
+                            <div className="space-y-2 pt-2">
+                                <button
+                                    type="button"
+                                    disabled={isDeletingAccount}
+                                    onClick={handleDeleteAccount}
+                                    className="w-full py-4 bg-rose-600 hover:bg-rose-700 text-white rounded-2xl font-black text-xs uppercase tracking-widest flex items-center justify-center gap-2 shadow-lg shadow-rose-600/20 active:scale-95 disabled:opacity-50 transition-all"
+                                >
+                                    {isDeletingAccount ? (
+                                        <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                                    ) : (
+                                        <>
+                                            <Trash2 className="w-4 h-4" /> Sí, Eliminar Definitivamente
+                                        </>
+                                    )}
+                                </button>
+                                <button
+                                    type="button"
+                                    disabled={isDeletingAccount}
+                                    onClick={() => setShowDeleteAccountModal(false)}
+                                    className="w-full py-3.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-2xl font-bold text-xs uppercase tracking-widest active:scale-95 transition-all"
+                                >
+                                    Cancelar
+                                </button>
+                            </div>
+                        </motion.div>
+                    </div>
+                )}
+            </AnimatePresence>
+
+            {/* Mis Puntos y Premios Catalog Modal */}
+            <AnimatePresence>
+                {showRewardsModal && (
                     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm overflow-y-auto">
                         <motion.div
                             initial={{ opacity: 0, scale: 0.95, y: 20 }}
@@ -2441,191 +2535,148 @@ export default function Profile() {
                             exit={{ opacity: 0, scale: 0.95, y: 20 }}
                             className="bg-white rounded-[40px] w-full max-w-sm shadow-2xl overflow-hidden my-auto"
                         >
-                            <div className="p-8 border-b border-slate-50 flex items-center justify-between bg-slate-50/50">
+                            <div className="p-6 border-b border-slate-50 flex items-center justify-between bg-slate-50/50">
                                 <div>
                                     <h3 className="text-xl font-black text-slate-900 flex items-center gap-2">
-                                        <Wallet className="w-6 h-6 text-slate-900" /> Mi Billetera de Transporte
+                                        <Award className="w-6 h-6 text-amber-500" /> Mis Puntos y Premios
                                     </h3>
-                                    <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1">Fondos para Transporte</p>
+                                    <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-0.5">Programa de Lealtad Un 2x3</p>
                                 </div>
-                                <button onClick={() => setShowWalletModal(false)} className="p-2 hover:bg-slate-200 rounded-xl transition-all">
+                                <button onClick={() => setShowRewardsModal(false)} className="p-2 hover:bg-slate-200 rounded-xl transition-all">
                                     <X className="w-6 h-6 text-slate-400" />
                                 </button>
                             </div>
 
-                            <div className="p-6 space-y-6 max-h-[70vh] overflow-y-auto hide-scrollbar">
-                                {/* Virtual Card */}
-                                <div className="relative w-full aspect-[1.586/1] rounded-2xl overflow-hidden shadow-xl shadow-primary/20 group">
-                                    {/* Card Pattern Background */}
-                                    <div className="absolute inset-0 bg-gradient-to-br from-slate-900 via-slate-800 to-black transition-transform duration-700 group-hover:scale-105" />
-                                    <div className="absolute inset-0 opacity-10 bg-[radial-gradient(circle_at_50%_50%,rgba(255,255,255,0.4)_0,transparent_100%)]" style={{ backgroundSize: '20px 20px' }} />
+                            <div className="p-6 space-y-5 max-h-[70vh] overflow-y-auto hide-scrollbar">
+                                {/* Virtual VIP Points Card */}
+                                <div className="relative w-full aspect-[1.586/1] rounded-2xl overflow-hidden shadow-xl shadow-amber-500/10 group">
+                                    <div className="absolute inset-0 bg-gradient-to-br from-amber-500 via-amber-600 to-yellow-600" />
+                                    <div className="absolute inset-0 opacity-15 bg-[radial-gradient(circle_at_50%_50%,rgba(255,255,255,0.8)_0,transparent_100%)]" style={{ backgroundSize: '20px 20px' }} />
 
-                                    <div className="absolute inset-0 flex flex-col justify-between p-6 z-10">
+                                    <div className="absolute inset-0 flex flex-col justify-between p-6 z-10 text-white">
                                         <div className="flex justify-between items-start">
-                                            <div 
-                                                className="w-12 h-12 bg-white/10 backdrop-blur-md rounded-xl p-2 flex items-center justify-center border border-white/20 cursor-pointer active:scale-95 transition-transform"
-                                                onClick={(e) => {
-                                                    e.stopPropagation();
-                                                    window.location.href = 'https://deliexpress.app';
-                                                }}
-                                            >
-                                                <img
-                                                    src={UN2X3_LOGO}
-                                                    alt="Deliexpress"
-                                                    className="w-full h-full object-contain brightness-0 invert"
-                                                />
+                                            <div className="w-10 h-10 bg-white/20 backdrop-blur-md rounded-xl p-1.5 flex items-center justify-center border border-white/30">
+                                                <Award className="w-6 h-6 text-white" />
                                             </div>
-                                            <span className="text-[10px] font-black text-white/40 uppercase tracking-[0.3em] font-mono">Billetera Digital</span>
+                                            <span className="text-[10px] font-black uppercase tracking-widest bg-white/20 px-2 py-0.5 rounded-full border border-white/20">
+                                                {Math.floor(userData?.points || 0) < 50
+                                                    ? 'Nivel Bronce 🥉'
+                                                    : Math.floor(userData?.points || 0) < 150
+                                                    ? 'Nivel Plata 🥈'
+                                                    : Math.floor(userData?.points || 0) < 500
+                                                    ? 'Nivel Oro 🥇'
+                                                    : 'Nivel Diamante 💎'}
+                                            </span>
                                         </div>
 
                                         <div>
-                                            <p className="text-white/40 text-[9px] font-black uppercase tracking-widest mb-1 italic">Titular de la tarjeta</p>
-                                            <p className="text-white text-lg font-black tracking-wider uppercase drop-shadow-md truncate max-w-full">
-                                                {userData?.displayName || user?.displayName || 'Usuario Deliexpress'}
-                                            </p>
-
-                                            <div className="mt-4 flex justify-between items-end">
-                                                <div>
-                                                    <p className="text-white/40 text-[9px] font-black uppercase tracking-widest mb-1 italic">Saldo Disponible</p>
-                                                    <div className="flex items-baseline gap-1">
-                                                        <span className={`${(userData?.walletBalance || 0) > 0 ? 'text-emerald-400' : 'text-red-500'} text-3xl font-black drop-shadow-[0_2px_4px_rgba(0,0,0,0.3)]`}>${(userData?.walletBalance || 0).toFixed(2)}</span>
-                                                        <span className="text-white/20 text-xs font-black">USD</span>
-                                                    </div>
-                                                </div>
-                                                <div className="w-10 h-6 bg-white/5 backdrop-blur-md rounded border border-white/10 flex items-center justify-center">
-                                                    <div className="w-3 h-3 rounded-full bg-primary/40 -mr-1.5" />
-                                                    <div className="w-3 h-3 rounded-full bg-primary/20" />
-                                                </div>
+                                            <p className="text-white/80 text-[9px] font-black uppercase tracking-widest mb-0.5">Tus Puntos Acumulados</p>
+                                            <div className="flex items-baseline gap-2">
+                                                <span className="text-3xl font-black drop-shadow-md">
+                                                    {Math.floor(userData?.points || 0).toLocaleString()}
+                                                </span>
+                                                <span className="text-xs font-black text-white/80">PUNTOS</span>
                                             </div>
+                                            <p className="text-[10px] text-white/90 font-bold mt-1">
+                                                $1 gastado = 1 punto acumulado
+                                            </p>
                                         </div>
                                     </div>
-
-                                    {/* Glossy Overlay */}
-                                    <div className="absolute inset-0 bg-gradient-to-tr from-transparent via-white/5 to-white/10 pointer-events-none" />
                                 </div>
 
-                                <div className="bg-primary/5 p-4 rounded-2xl flex gap-3 text-slate-900 border border-primary/10">
-                                    <Shield className="w-5 h-5 shrink-0 text-slate-900 mt-0.5" />
-                                    <p className="text-xs font-bold leading-relaxed">Estos fondos son exclusivos para pagar tus viajes de <strong>Taxi</strong> y Moto. No aplican para compras de comida o tienda.</p>
+                                {/* Transparent Info Banner */}
+                                <div className="bg-amber-50 border border-amber-200/80 p-3.5 rounded-2xl text-xs text-amber-900 leading-relaxed space-y-1">
+                                    <p className="font-black text-[11px] flex items-center gap-1.5">
+                                        <Gift className="w-4 h-4 text-amber-600" />
+                                        ¡Cero intermediación, 100% beneficios!
+                                    </p>
+                                    <p className="text-[10px] text-amber-800">
+                                        Pagas tus viajes y pedidos directo al conductor o comercio en Efectivo o Pago Móvil. Con cada compra sumas puntos para canjear descuentos y premios.
+                                    </p>
                                 </div>
 
-                                {/* Recharge Instructions */}
-                                {paymentMethods && (
-                                    <div className="space-y-4">
-                                        <h4 className="text-[10px] font-black uppercase text-slate-400 tracking-widest ml-1">Instrucciones de Recarga</h4>
+                                {/* Rewards Catalog */}
+                                <div className="space-y-3">
+                                    <h4 className="text-[10px] font-black uppercase text-slate-400 tracking-widest ml-1">
+                                        Catálogo de Premios Canjeables
+                                    </h4>
 
-                                        {/* Pago Móvil */}
-                                        {paymentMethods.pagoMovil?.active && (
-                                            <div className="bg-slate-50 rounded-2xl p-4 border border-slate-100 relative group">
-                                                <div className="flex items-center gap-3 mb-3">
-                                                    <div className="w-8 h-8 bg-primary/10 rounded-xl flex items-center justify-center">
-                                                        <Smartphone className="w-4 h-4 text-slate-900" />
-                                                    </div>
-                                                    <span className="font-black text-slate-800 text-sm italic">Pago Móvil (Bs)</span>
-                                                </div>
-                                                <div className="space-y-2 text-[12px] font-medium text-slate-600">
-                                                    <div className="flex justify-between items-center bg-white p-2 rounded-xl">
-                                                        <span>Banco: <strong>{paymentMethods.pagoMovil.bank}</strong></span>
-                                                        <button onClick={() => handleCopy(paymentMethods.pagoMovil.bank, 'bank')} className="p-1 hover:bg-slate-50 rounded text-slate-900">
-                                                            {copiedId === 'bank' ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
-                                                        </button>
-                                                    </div>
-                                                    <div className="flex justify-between items-center bg-white p-2 rounded-xl">
-                                                        <span>Teléfono: <strong>{paymentMethods.pagoMovil.phone}</strong></span>
-                                                        <button onClick={() => handleCopy(paymentMethods.pagoMovil.phone, 'phone')} className="p-1 hover:bg-slate-50 rounded text-slate-900">
-                                                            {copiedId === 'phone' ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
-                                                        </button>
-                                                    </div>
-                                                    <div className="flex justify-between items-center bg-white p-2 rounded-xl">
-                                                        <span>Cédula: <strong>{paymentMethods.pagoMovil.idf}</strong></span>
-                                                        <button onClick={() => handleCopy(paymentMethods.pagoMovil.idf, 'idf')} className="p-1 hover:bg-slate-50 rounded text-slate-900">
-                                                            {copiedId === 'idf' ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
-                                                        </button>
-                                                    </div>
-                                                </div>
+                                    {/* Reward 1 */}
+                                    <div className="bg-slate-50 border border-slate-100 rounded-2xl p-3.5 flex items-center justify-between gap-3">
+                                        <div className="flex items-center gap-3">
+                                            <div className="w-10 h-10 rounded-xl bg-amber-100 text-amber-700 flex items-center justify-center font-black text-sm shrink-0">
+                                                $1
                                             </div>
-                                        )}
-
-                                        {/* Zelle */}
-                                        {paymentMethods.zelle?.active && (
-                                            <div className="bg-slate-50 rounded-2xl p-4 border border-slate-100 mt-3">
-                                                <div className="flex items-center gap-3 mb-3">
-                                                    <div className="w-8 h-8 bg-indigo-100 rounded-xl flex items-center justify-center">
-                                                        <Star className="w-4 h-4 text-primary fill-primary" />
-                                                    </div>
-                                                    <span className="font-black text-slate-800 text-sm italic">Zelle (USD)</span>
-                                                </div>
-                                                <div className="space-y-2 text-[12px] font-medium text-slate-600">
-                                                    <div className="flex justify-between items-center bg-white p-2 rounded-xl">
-                                                        <span className="truncate">Email: <strong>{paymentMethods.zelle.email}</strong></span>
-                                                        <button onClick={() => handleCopy(paymentMethods.zelle.email, 'zelleEmail')} className="p-1 hover:bg-slate-50 rounded text-primary">
-                                                            {copiedId === 'zelleEmail' ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
-                                                        </button>
-                                                    </div>
-                                                    <div className="flex justify-between items-center bg-white p-2 rounded-xl">
-                                                        <span className="truncate">Nombre: <strong>{paymentMethods.zelle.name}</strong></span>
-                                                    </div>
-                                                </div>
+                                            <div>
+                                                <p className="text-xs font-black text-slate-800">$1 Desc. en Viajes</p>
+                                                <p className="text-[10px] text-slate-400 font-bold">Válido en Taxi o Mototaxi</p>
                                             </div>
-                                        )}
+                                        </div>
+                                        <button
+                                            onClick={() => handleRedeemReward('$1 Desc. en Viajes', 50)}
+                                            className="px-3 py-1.5 bg-primary text-slate-900 font-black text-[11px] rounded-xl active:scale-95 transition-transform shrink-0"
+                                        >
+                                            50 pts
+                                        </button>
                                     </div>
-                                )}
 
-                                <div className="h-px bg-slate-100 my-2" />
+                                    {/* Reward 2 */}
+                                    <div className="bg-slate-50 border border-slate-100 rounded-2xl p-3.5 flex items-center justify-between gap-3">
+                                        <div className="flex items-center gap-3">
+                                            <div className="w-10 h-10 rounded-xl bg-blue-100 text-blue-700 flex items-center justify-center font-black text-xs shrink-0">
+                                                FREE
+                                            </div>
+                                            <div>
+                                                <p className="text-xs font-black text-slate-800">Envío Gratis</p>
+                                                <p className="text-[10px] text-slate-400 font-bold">En restaurantes aliados</p>
+                                            </div>
+                                        </div>
+                                        <button
+                                            onClick={() => handleRedeemReward('Envío Gratis', 80)}
+                                            className="px-3 py-1.5 bg-primary text-slate-900 font-black text-[11px] rounded-xl active:scale-95 transition-transform shrink-0"
+                                        >
+                                            80 pts
+                                        </button>
+                                    </div>
 
-                                <form onSubmit={handleRechargeSubmit} className="space-y-4">
-                                    <div className="space-y-1">
-                                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Monto a Recargar ($)</label>
-                                        <input
-                                            type="number"
-                                            required
-                                            min="1"
-                                            step="0.01"
-                                            value={rechargeAmount}
-                                            onChange={(e) => setRechargeAmount(e.target.value)}
-                                            className="w-full bg-slate-50 border-2 border-slate-100 focus:border-primary px-4 py-4 rounded-2xl outline-none font-black text-slate-700 transition-all text-xl"
-                                            placeholder="Ej. 10.00"
-                                        />
+                                    {/* Reward 3 */}
+                                    <div className="bg-slate-50 border border-slate-100 rounded-2xl p-3.5 flex items-center justify-between gap-3">
+                                        <div className="flex items-center gap-3">
+                                            <div className="w-10 h-10 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center font-black text-sm shrink-0">
+                                                $3
+                                            </div>
+                                            <div>
+                                                <p className="text-xs font-black text-slate-800">$3 Desc. en Comida</p>
+                                                <p className="text-[10px] text-slate-400 font-bold">En pedidos superiores a $10</p>
+                                            </div>
+                                        </div>
+                                        <button
+                                            onClick={() => handleRedeemReward('$3 Desc. en Comida', 120)}
+                                            className="px-3 py-1.5 bg-primary text-slate-900 font-black text-[11px] rounded-xl active:scale-95 transition-transform shrink-0"
+                                        >
+                                            120 pts
+                                        </button>
                                     </div>
-                                    <div className="space-y-1">
-                                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Referencia / Teléfono Emisor</label>
-                                        <input
-                                            type="text"
-                                            required
-                                            value={rechargeRef}
-                                            onChange={(e) => setRechargeRef(e.target.value)}
-                                            className="w-full bg-slate-50 border-2 border-slate-100 focus:border-primary px-4 py-4 rounded-2xl outline-none font-bold text-slate-700 transition-all"
-                                            placeholder="Nro. de Referencia"
-                                        />
+
+                                    {/* Reward 4 */}
+                                    <div className="bg-slate-50 border border-slate-100 rounded-2xl p-3.5 flex items-center justify-between gap-3">
+                                        <div className="flex items-center gap-3">
+                                            <div className="w-10 h-10 rounded-xl bg-purple-100 text-purple-700 flex items-center justify-center font-black text-sm shrink-0">
+                                                $5
+                                            </div>
+                                            <div>
+                                                <p className="text-xs font-black text-slate-800">$5 Desc. Carro Confort</p>
+                                                <p className="text-[10px] text-slate-400 font-bold">Viajes ejecutivos premium</p>
+                                            </div>
+                                        </div>
+                                        <button
+                                            onClick={() => handleRedeemReward('$5 Desc. Carro Confort', 200)}
+                                            className="px-3 py-1.5 bg-primary text-slate-900 font-black text-[11px] rounded-xl active:scale-95 transition-transform shrink-0"
+                                        >
+                                            200 pts
+                                        </button>
                                     </div>
-                                    <div className="space-y-1">
-                                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Capture de Pantalla</label>
-                                        <label className="w-full flex items-center justify-center gap-3 p-4 rounded-2xl border-2 border-dashed border-slate-200 bg-slate-50 hover:bg-slate-100 cursor-pointer transition-all">
-                                            <UploadCloud className="w-5 h-5 text-slate-400" />
-                                            <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
-                                                {rechargeProof ? rechargeProof.name : 'Elegir archivo'}
-                                            </span>
-                                            <input
-                                                type="file"
-                                                required
-                                                accept="image/*"
-                                                onChange={(e) => setRechargeProof(e.target.files?.[0] || null)}
-                                                className="hidden"
-                                            />
-                                        </label>
-                                    </div>
-                                    <button
-                                        type="submit"
-                                        disabled={isRecharging}
-                                        className="w-full bg-primary text-slate-900 py-5 rounded-[24px] font-black shadow-xl shadow-primary/30 hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-70 mt-2 flex items-center justify-center gap-2 uppercase tracking-[0.2em] text-sm"
-                                    >
-                                        {isRecharging ? (
-                                            <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
-                                        ) : (
-                                            "Reportar Recarga"
-                                        )}
-                                    </button>
-                                </form>
+                                </div>
                             </div>
                         </motion.div>
                     </div>

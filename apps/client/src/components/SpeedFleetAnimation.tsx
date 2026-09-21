@@ -1,8 +1,58 @@
-import React from 'react';
+import React, { useState, useRef, useEffect } from 'react';
+import { vibrate } from '../utils/haptics';
+
+const DIALOGUE_PHRASES = [
+  "¡Vamos en un 2x3!",
+  "¿Te buscamos?",
+  "Hacemos las diligencias por ti.",
+  "Solo aceptamos pago movil",
+  "¿No llegues tarde nunca?",
+  "Recuerda calificarnos, nos ayuda mucho.",
+  "Esto es divertido, ¿no?",
+  "Y si te ganas un viaje?",
+  "¡Gracias por venir con nosotros!",
+  "Yaaa voooooy!."
+];
+
+interface BubbleState {
+  phrase: string;
+  pctX: number;
+  id: number;
+}
 
 export default function SpeedFleetAnimation() {
+  const [activeBubble, setActiveBubble] = useState<BubbleState | null>(null);
+  const bubbleTimerRef = useRef<any>(null);
+
+  const handleVehicleClick = (pctX: number) => {
+    try {
+      vibrate(25);
+    } catch (e) {}
+
+    // Choose random phrase different from current
+    const available = DIALOGUE_PHRASES.filter(p => p !== activeBubble?.phrase);
+    const randomPhrase = available[Math.floor(Math.random() * available.length)];
+
+    setActiveBubble({
+      phrase: randomPhrase,
+      pctX,
+      id: Date.now()
+    });
+
+    if (bubbleTimerRef.current) clearTimeout(bubbleTimerRef.current);
+    bubbleTimerRef.current = setTimeout(() => {
+      setActiveBubble(null);
+    }, 3800);
+  };
+
+  useEffect(() => {
+    return () => {
+      if (bubbleTimerRef.current) clearTimeout(bubbleTimerRef.current);
+    };
+  }, []);
+
   return (
-    <div className="relative w-full max-w-lg mx-auto h-36 sm:h-40 overflow-hidden select-none pointer-events-none flex flex-col justify-end">
+    <div className="relative w-full max-w-lg mx-auto h-36 sm:h-40 overflow-visible select-none flex flex-col justify-end">
       {/* Dynamic CSS animations embedded */}
       <style>{`
         @keyframes roadDash {
@@ -62,8 +112,28 @@ export default function SpeedFleetAnimation() {
         }
       `}</style>
 
+      {/* Floating Dialogue Speech Bubble */}
+      {activeBubble && (
+        <div
+          key={activeBubble.id}
+          className="absolute z-30 pointer-events-none transition-all duration-300 animate-in zoom-in-90 fade-in slide-in-from-bottom-2"
+          style={{
+            left: `${Math.max(16, Math.min(84, activeBubble.pctX))}%`,
+            top: '2px',
+            transform: 'translateX(-50%)'
+          }}
+        >
+          <div className="relative bg-slate-950 text-yellow-300 font-black text-[11px] sm:text-xs px-3.5 py-1.5 rounded-2xl shadow-xl border-2 border-yellow-400 whitespace-nowrap flex items-center gap-1.5 tracking-tight">
+            <span>💬</span>
+            <span className="text-white">{activeBubble.phrase}</span>
+            {/* Bubble arrow / tail */}
+            <div className="absolute -bottom-2 left-1/2 -translate-x-1/2 w-0 h-0 border-x-[5px] border-x-transparent border-t-[7px] border-t-yellow-400"></div>
+          </div>
+        </div>
+      )}
+
       {/* Wind & Speed Lines in Background */}
-      <div className="absolute inset-0 z-0 overflow-hidden">
+      <div className="absolute inset-0 z-0 overflow-hidden pointer-events-none">
         <div className="absolute top-4 w-24 h-[1.5px] bg-gradient-to-l from-white/60 via-amber-300/40 to-transparent rounded-full anim-wind-fast" style={{ animationDelay: '0s' }}></div>
         <div className="absolute top-10 w-36 h-[1px] bg-gradient-to-l from-white/70 via-cyan-300/30 to-transparent rounded-full anim-wind-mid" style={{ animationDelay: '0.2s' }}></div>
         <div className="absolute top-16 w-20 h-[1.5px] bg-gradient-to-l from-white/50 to-transparent rounded-full anim-wind-fast" style={{ animationDelay: '0.4s' }}></div>
@@ -101,7 +171,7 @@ export default function SpeedFleetAnimation() {
             <stop offset="0%" stopColor="#EAB308" />
             <stop offset="100%" stopColor="#FACC15" />
           </linearGradient>
-          <linearGradient id="mototaxiBody" x1="0%" y1="0%" x2="100%" y2="0%">
+          <linearGradient id="moto2Body" x1="0%" y1="0%" x2="100%" y2="0%">
             <stop offset="0%" stopColor="#DC2626" />
             <stop offset="100%" stopColor="#EF4444" />
           </linearGradient>
@@ -114,7 +184,11 @@ export default function SpeedFleetAnimation() {
         {/* ---------------------------------------------------- */}
         {/* VEHICLE 1: CAMIÓN FLETE (Back left, largest, solid) */}
         {/* ---------------------------------------------------- */}
-        <g className="anim-vibe-2" style={{ transformOrigin: '70px 115px' }}>
+        <g 
+          className="anim-vibe-2 cursor-pointer transition-opacity hover:opacity-90" 
+          style={{ transformOrigin: '70px 115px' }}
+          onClick={() => handleVehicleClick(12)}
+        >
           {/* Cargo Box */}
           <rect x="5" y="46" width="92" height="66" rx="4" fill="url(#truckBody)" stroke="#1E293B" strokeWidth="2" />
           {/* Cargo rib lines */}
@@ -154,7 +228,11 @@ export default function SpeedFleetAnimation() {
         {/* ---------------------------------------------------- */}
         {/* VEHICLE 2: CAMIONETA TAXI (SUV / Pickup Taxi, Mid-lane) */}
         {/* ---------------------------------------------------- */}
-        <g className="anim-vibe-1" style={{ transformOrigin: '195px 120px' }}>
+        <g 
+          className="anim-vibe-1 cursor-pointer transition-opacity hover:opacity-90" 
+          style={{ transformOrigin: '195px 120px' }}
+          onClick={() => handleVehicleClick(32)}
+        >
           {/* Headlight beam */}
           <polygon points="256,102 380,88 380,132 256,112" fill="url(#headlightGlow)" className="anim-headlight" opacity="0.45" />
 
@@ -189,7 +267,11 @@ export default function SpeedFleetAnimation() {
         {/* ---------------------------------------------------- */}
         {/* VEHICLE 3: CARRO TAXI (Sedan Taxi, Center Stage)     */}
         {/* ---------------------------------------------------- */}
-        <g className="anim-vibe-3" style={{ transformOrigin: '320px 122px' }}>
+        <g 
+          className="anim-vibe-3 cursor-pointer transition-opacity hover:opacity-90" 
+          style={{ transformOrigin: '320px 122px' }}
+          onClick={() => handleVehicleClick(52)}
+        >
           {/* Headlight beam */}
           <polygon points="378,106 500,92 500,136 378,116" fill="url(#headlightGlow)" className="anim-headlight" opacity="0.55" />
 
@@ -223,68 +305,108 @@ export default function SpeedFleetAnimation() {
         </g>
 
         {/* ---------------------------------------------------- */}
-        {/* VEHICLE 4: MOTOTAXI (Passenger & Driver with Canopy) */}
+        {/* VEHICLE 4: MOTO CON PASAJERO (Conductor y Pasajero con Cascos) */}
         {/* ---------------------------------------------------- */}
-        <g className="anim-vibe-1" style={{ transformOrigin: '425px 120px' }}>
-          {/* Mototaxi Canopy & Frame */}
-          <path d="M394 84 Q414 74 438 84" stroke="#DC2626" strokeWidth="3.5" strokeLinecap="round" fill="none" />
-          <line x1="395" y1="85" x2="397" y2="114" stroke="#1E293B" strokeWidth="2" />
-          <line x1="436" y1="85" x2="433" y2="108" stroke="#1E293B" strokeWidth="2" />
+        <g 
+          className="anim-vibe-1 cursor-pointer transition-opacity hover:opacity-90" 
+          style={{ transformOrigin: '425px 120px' }}
+          onClick={() => handleVehicleClick(70)}
+        >
+          {/* Headlight beam */}
+          <polygon points="458,110 540,98 540,135 458,118" fill="url(#headlightGlow)" className="anim-headlight" opacity="0.5" />
 
-          {/* Driver figure */}
-          <circle cx="426" cy="92" r="4" fill="#FBBF24" stroke="#0F172A" strokeWidth="1.5" />
-          <path d="M424 96 L421 108 L428 114" stroke="#1E293B" strokeWidth="2.5" strokeLinecap="round" fill="none" />
+          {/* Passenger Figure (Back Rider with Helmet) */}
+          <g>
+            {/* Passenger Helmet */}
+            <circle cx="408" cy="85" r="5" fill="#2563EB" stroke="#0F172A" strokeWidth="1.5" />
+            {/* Passenger Helmet Visor */}
+            <path d="M410 84 Q413 85 411 87" stroke="#93C5FD" strokeWidth="1.5" strokeLinecap="round" />
+            {/* Passenger Body */}
+            <path d="M407 90 L411 100 L418 106" stroke="#1E293B" strokeWidth="3.5" strokeLinecap="round" fill="none" />
+            {/* Passenger Arm holding driver */}
+            <path d="M410 93 L421 95" stroke="#2563EB" strokeWidth="2.5" strokeLinecap="round" fill="none" />
+            {/* Passenger Leg */}
+            <path d="M412 101 L416 114" stroke="#0F172A" strokeWidth="2" strokeLinecap="round" />
+          </g>
 
-          {/* Passenger figure */}
-          <circle cx="406" cy="94" r="4" fill="#60A5FA" stroke="#0F172A" strokeWidth="1.5" />
-          <path d="M405 98 L405 109 L412 114" stroke="#1E293B" strokeWidth="2.5" strokeLinecap="round" fill="none" />
+          {/* Driver Figure (Front Rider with Helmet) */}
+          <g>
+            {/* Driver Helmet */}
+            <circle cx="427" cy="83" r="5.5" fill="#DC2626" stroke="#0F172A" strokeWidth="1.5" />
+            {/* Driver Helmet Visor */}
+            <path d="M429 82 Q433 84 430 86" stroke="#FEF08A" strokeWidth="1.8" strokeLinecap="round" />
+            {/* Driver Body */}
+            <path d="M426 88 L430 98 L435 107" stroke="#DC2626" strokeWidth="4" strokeLinecap="round" fill="none" />
+            {/* Driver Arm reaching handlebar */}
+            <path d="M428 92 L440 98" stroke="#0F172A" strokeWidth="2.5" strokeLinecap="round" fill="none" />
+            {/* Driver Leg */}
+            <path d="M431 101 L436 115" stroke="#0F172A" strokeWidth="2.5" strokeLinecap="round" />
+          </g>
 
-          {/* Mototaxi Chassis */}
-          <path d="M392 114 L440 114 L444 104 L432 104 Z" fill="url(#mototaxiBody)" stroke="#0F172A" strokeWidth="1.5" />
+          {/* Motorcycle Frame & Fuel Tank */}
+          <path d="M398 114 L415 106 L434 104 L448 99 L458 108 L446 116 L418 116 Z" fill="url(#moto2Body)" stroke="#0F172A" strokeWidth="1.5" />
+          {/* Seat Cushion */}
+          <path d="M402 104 L432 101" stroke="#0F172A" strokeWidth="4" strokeLinecap="round" />
+          {/* Handlebar & Front Fork */}
+          <line x1="440" y1="96" x2="452" y2="120" stroke="#0F172A" strokeWidth="2.5" strokeLinecap="round" />
+          <line x1="437" y1="96" x2="444" y2="96" stroke="#CBD5E1" strokeWidth="2" strokeLinecap="round" />
+          {/* Exhaust Pipe */}
+          <path d="M414 116 L435 116 L440 114" stroke="#94A3B8" strokeWidth="2.5" strokeLinecap="round" fill="none" />
 
-          {/* Taxi Plate badge */}
-          <rect x="408" y="103" width="16" height="6" rx="1.5" fill="#FACC15" stroke="#0F172A" strokeWidth="1" />
-          <text x="416" y="108" fill="#0F172A" fontSize="4" fontWeight="900" textAnchor="middle">MOTO</text>
+          {/* Front Headlight */}
+          <circle cx="456" cy="107" r="2.5" fill="#FEF08A" />
 
-          {/* Mototaxi Wheels */}
+          {/* Motorcycle Wheels */}
           <circle cx="398" cy="122" r="7.5" fill="#0F172A" />
           <circle cx="398" cy="122" r="3.5" fill="url(#chromeWheel)" />
-          <circle cx="438" cy="122" r="7.5" fill="#0F172A" />
-          <circle cx="438" cy="122" r="3.5" fill="url(#chromeWheel)" />
+          <circle cx="448" cy="122" r="7.5" fill="#0F172A" />
+          <circle cx="448" cy="122" r="3.5" fill="url(#chromeWheel)" />
         </g>
 
         {/* ---------------------------------------------------- */}
-        {/* VEHICLE 5: MOTO DELIVERY (Agile front leader with box) */}
+        {/* VEHICLE 5: MOTO DELIVERY (Repartidor con Casco y Morral/Caja Térmica) */}
         {/* ---------------------------------------------------- */}
-        <g className="anim-vibe-2" style={{ transformOrigin: '530px 120px' }}>
+        <g 
+          className="anim-vibe-2 cursor-pointer transition-opacity hover:opacity-90" 
+          style={{ transformOrigin: '530px 120px' }}
+          onClick={() => handleVehicleClick(88)}
+        >
           {/* Delivery Headlight beam cutting forward */}
           <polygon points="562,110 630,96 630,138 562,118" fill="url(#headlightGlow)" className="anim-headlight" opacity="0.75" />
 
-          {/* Delivery Courier Backpack / Thermal Box with 2X3 branding */}
-          <rect x="480" y="85" width="22" height="22" rx="4" fill="url(#deliveryBody)" stroke="#0F172A" strokeWidth="2" />
-          <circle cx="491" cy="94" r="5" fill="#FFFFFF" />
-          <text x="491" y="96.5" fill="#EA580C" fontSize="5.5" fontWeight="900" textAnchor="middle">2x3</text>
-          <rect x="483" y="102" width="16" height="2" fill="#FFFFFF" opacity="0.8" />
+          {/* Delivery Courier Square Thermal Box / Backpack on Back */}
+          <rect x="492" y="74" width="22" height="22" rx="3" fill="url(#deliveryBody)" stroke="#0F172A" strokeWidth="2" />
+          {/* Thermal Box Reflective Stripe */}
+          <rect x="494" y="89" width="18" height="3" rx="1" fill="#FFFFFF" opacity="0.9" />
+          {/* 2x3 Branding Circle & Text */}
+          <circle cx="503" cy="82" r="4.5" fill="#FFFFFF" />
+          <text x="503" y="84.5" fill="#EA580C" fontSize="5" fontWeight="900" textAnchor="middle">2x3</text>
 
-          {/* Driver leaning aggressively forward */}
-          <circle cx="510" cy="91" r="4.5" fill="#0F172A" />
-          {/* Driver helmet visor */}
-          <path d="M512 90 Q515 91 513 93" stroke="#38BDF8" strokeWidth="1.5" strokeLinecap="round" />
-          {/* Rider body & arms reaching handlebar */}
-          <path d="M504 97 L516 102 L528 107" stroke="#EA580C" strokeWidth="3.5" strokeLinecap="round" fill="none" />
-          <path d="M512 102 L518 114 L525 116" stroke="#0F172A" strokeWidth="2.5" strokeLinecap="round" fill="none" />
+          {/* Courier Driver with Full Helmet */}
+          <g>
+            {/* Helmet */}
+            <circle cx="522" cy="82" r="5.5" fill="#0F172A" stroke="#EA580C" strokeWidth="1.5" />
+            {/* Helmet Visor with Cyan reflection */}
+            <path d="M524 81 Q528 82 525 85" stroke="#38BDF8" strokeWidth="1.8" strokeLinecap="round" />
+            {/* Rider torso leaning aggressively forward */}
+            <path d="M514 88 L526 95 L538 103" stroke="#EA580C" strokeWidth="4" strokeLinecap="round" fill="none" />
+            {/* Rider legs */}
+            <path d="M524 99 L530 114 L536 116" stroke="#0F172A" strokeWidth="2.5" strokeLinecap="round" fill="none" />
+            {/* Rider arms to handlebars */}
+            <path d="M526 93 L542 99" stroke="#0F172A" strokeWidth="2.5" strokeLinecap="round" fill="none" />
+          </g>
 
-          {/* Moto Delivery Frame */}
-          <path d="M492 118 L516 112 L538 112 L556 106 L548 118 Z" fill="url(#deliveryBody)" stroke="#0F172A" strokeWidth="1.5" />
-          {/* Fork & Handlebar */}
-          <line x1="538" y1="104" x2="550" y2="122" stroke="#0F172A" strokeWidth="2" strokeLinecap="round" />
-          <circle cx="557" cy="110" r="2.5" fill="#FEF08A" />
+          {/* Moto Delivery Frame & Fuel Tank */}
+          <path d="M504 116 L524 110 L544 104 L558 103 L556 112 L544 116 Z" fill="url(#deliveryBody)" stroke="#0F172A" strokeWidth="1.5" />
+          {/* Fork & Handlebars */}
+          <line x1="544" y1="97" x2="554" y2="120" stroke="#0F172A" strokeWidth="2.5" strokeLinecap="round" />
+          <circle cx="557" cy="107" r="3" fill="#FEF08A" />
 
           {/* Spoke Wheels with fast blur effect */}
-          <circle cx="490" cy="122" r="8" fill="#0F172A" />
-          <circle cx="490" cy="122" r="4" fill="url(#chromeWheel)" />
-          <circle cx="550" cy="122" r="8" fill="#0F172A" />
-          <circle cx="550" cy="122" r="4" fill="url(#chromeWheel)" />
+          <circle cx="502" cy="122" r="7.5" fill="#0F172A" />
+          <circle cx="502" cy="122" r="3.5" fill="url(#chromeWheel)" />
+          <circle cx="552" cy="122" r="7.5" fill="#0F172A" />
+          <circle cx="552" cy="122" r="3.5" fill="url(#chromeWheel)" />
         </g>
 
         {/* ---------------------------------------------------- */}

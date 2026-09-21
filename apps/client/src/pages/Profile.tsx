@@ -687,6 +687,7 @@ export default function Profile() {
                     phone: fullPhone,
                     cedula: fullCedula,
                     birthdate: profileForm.birthdate,
+                    gender: profileForm.gender || null,
                     photo_url: photoURL || null,
                     updated_at: new Date().toISOString()
                 })
@@ -1260,6 +1261,26 @@ export default function Profile() {
                             className="w-full bg-slate-50 border-2 border-slate-100 focus:border-primary px-4 py-4 rounded-2xl outline-none font-bold text-slate-700 transition-all cursor-pointer"
                         />
                         <p className="text-[10px] text-slate-400 font-medium ml-1">¡Recibirás promociones y descuentos especiales en tu cumpleaños!</p>
+                    </div>
+
+                    <div className="space-y-1">
+                        <label className="text-xs font-bold text-slate-500 uppercase tracking-wider ml-1">Género (Para personalización)</label>
+                        <div className="flex gap-3 p-1 bg-slate-100 rounded-2xl">
+                            <button
+                                type="button"
+                                onClick={() => setProfileForm({ ...profileForm, gender: 'masculine' })}
+                                className={`flex-1 py-3 rounded-xl font-black text-xs transition-all ${profileForm.gender === 'masculine' ? 'bg-primary text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}
+                            >
+                                MASCULINO
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setProfileForm({ ...profileForm, gender: 'feminine' })}
+                                className={`flex-1 py-3 rounded-xl font-black text-xs transition-all ${profileForm.gender === 'feminine' ? 'bg-primary text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}
+                            >
+                                FEMENINO
+                            </button>
+                        </div>
                     </div>
 
                     <button

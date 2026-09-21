@@ -54,7 +54,7 @@ import { App as CapApp } from '@capacitor/app';
 import { promptEnableLocation, isLocationHardwareEnabled, openNativeLocationSettings } from '../lib/location-helper';
 import RainOverlay from '../components/RainOverlay';
 import WeatherWidget from '../components/WeatherWidget';
-import MandadoRequestModal from '../components/MandadoRequestModal';
+import MandadoRequestModal, { MandadoSubmitData } from '../components/MandadoRequestModal';
 
 interface Location {
     lat: number;
@@ -874,18 +874,13 @@ export default function Taxi() {
         }
     };
 
-    // Publicar solicitud de Muchacho e' Mandado desde el modal amplio
-    const handleSubmitMandadoRequest = async (data: {
-        description: string;
-        storeName: string;
-        destinationAddress: string;
-        destinationCoords?: { lat: number; lng: number };
-        audioBlob?: Blob;
-    }) => {
+    // Publicar solicitud de Muchacho e' Mandado desde el modal en pasos
+    const handleSubmitMandadoRequest = async (data: MandadoSubmitData) => {
         setIsSubmittingMandado(true);
         try {
             const validUserId = user?.id || user?.uid || null;
             let audioUrl = '';
+            let referenceUrl = '';
 
             // 1. Subir audio si existe a Supabase Storage
             if (data.audioBlob) {
@@ -900,7 +895,21 @@ export default function Taxi() {
                 }
             }
 
-            // 2. Crear solicitud con estado searching
+            // 2. Subir imagen de referencia si existe
+            if (data.referenceFile) {
+                const ext = data.referenceFile.name.split('.').pop() || 'jpg';
+                const refPath = `mandados/references/${validUserId || 'guest'}_${Date.now()}.${ext}`;
+                const { error: refErr } = await supabase.storage.from('store_assets').upload(refPath, data.referenceFile, {
+                    contentType: data.referenceFile.type || 'image/jpeg',
+                    upsert: true
+                });
+                if (!refErr) {
+                    const { data: { publicUrl } } = supabase.storage.from('store_assets').getPublicUrl(refPath);
+                    referenceUrl = publicUrl;
+                }
+            }
+
+            // 3. Crear solicitud con estado searching
             const newReqId = crypto.randomUUID();
             const orderData: any = {
                 id: newReqId,
@@ -911,7 +920,9 @@ export default function Taxi() {
                 origin: userLocation ? { 
                     lat: userLocation.lat, 
                     lng: userLocation.lng, 
-                    address: data.storeName ? `Comercio: ${data.storeName}` : 'Punto de Inicio / Comercio' 
+                    address: data.storeName 
+                        ? `Comercio: ${data.storeName}${data.storeAddresses ? ` (${data.storeAddresses})` : ''}` 
+                        : (data.hasExactStores ? 'Lugares de compra definidos' : 'Sugerencia de lugares por piloto')
                 } : null,
                 destination: {
                     lat: data.destinationCoords?.lat || userLocation?.lat || 0,
@@ -929,7 +940,12 @@ export default function Taxi() {
                 mandado_details: {
                     description: data.description,
                     storeName: data.storeName,
-                    audioUrl: audioUrl || null
+                    hasExactStores: data.hasExactStores,
+                    storeAddresses: data.storeAddresses,
+                    transportPassenger: data.transportPassenger,
+                    deliveryOption: data.deliveryOption,
+                    audioUrl: audioUrl || null,
+                    referenceUrl: referenceUrl || null
                 },
                 notes: data.description,
                 audio_url: audioUrl || null,
@@ -940,7 +956,7 @@ export default function Taxi() {
             if (insErr) throw insErr;
 
             setMandadoDescription(data.description);
-            setMandadoStoreName(data.storeName);
+            setMandadoStoreName(data.storeName || (data.hasExactStores ? 'Comercios definidos' : 'Lugares a sugerir'));
             setActiveMandadoReqId(newReqId);
             setSelectedCategory('muchacho_mandado');
             setIsMandadoModalOpen(false);
@@ -1405,9 +1421,9 @@ export default function Taxi() {
                                 setVehicleType('carro');
                                 setStep('destination');
                             }}
-                            className="w-full bg-[#FFB800] hover:bg-[#ffc21a] border-2 border-amber-300/90 p-3.5 sm:p-4 rounded-[2rem] text-left shadow-xl shadow-amber-500/20 active:scale-[0.98] transition-all group flex items-center gap-3.5 relative overflow-hidden"
+                            className="w-full bg-primary hover:bg-[#f5f500] border-2 border-yellow-300/80 p-3.5 sm:p-4 rounded-[2rem] text-left shadow-xl shadow-yellow-500/20 active:scale-[0.98] transition-all group flex items-center gap-3.5 relative overflow-hidden"
                         >
-                            <div className="w-12 h-12 rounded-2xl bg-slate-950 text-[#FFB800] flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform shadow-md">
+                            <div className="w-12 h-12 rounded-2xl bg-slate-950 text-primary flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform shadow-md">
                                 <Car className="w-6 h-6" />
                             </div>
                             <div className="flex-1 min-w-0">
@@ -1415,7 +1431,7 @@ export default function Taxi() {
                                     <h4 className="text-sm sm:text-base font-black text-slate-950 tracking-tight leading-none">
                                         Taxi / Mototaxi
                                     </h4>
-                                    <span className="text-[9px] font-black uppercase px-2.5 py-0.5 rounded-full bg-slate-950 text-[#FFB800] tracking-wider shrink-0">
+                                    <span className="text-[9px] font-black uppercase px-2.5 py-0.5 rounded-full bg-slate-950 text-primary tracking-wider shrink-0">
                                         Pasajeros
                                     </span>
                                 </div>
@@ -1436,7 +1452,7 @@ export default function Taxi() {
                                     </span>
                                 </div>
                             </div>
-                            <div className="w-8 h-8 rounded-full bg-slate-950/10 text-slate-950 flex items-center justify-center group-hover:bg-slate-950 group-hover:text-[#FFB800] transition-all shrink-0">
+                            <div className="w-8 h-8 rounded-full bg-slate-950/10 text-slate-950 flex items-center justify-center group-hover:bg-slate-950 group-hover:text-primary transition-all shrink-0">
                                 <ArrowRight className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />
                             </div>
                         </button>
@@ -1452,9 +1468,9 @@ export default function Taxi() {
                                 setVehicleType('moto');
                                 setStep('destination');
                             }}
-                            className="w-full bg-[#FFB800] hover:bg-[#ffc21a] border-2 border-amber-300/90 p-3.5 sm:p-4 rounded-[2rem] text-left shadow-xl shadow-amber-500/20 active:scale-[0.98] transition-all group flex items-center gap-3.5 relative overflow-hidden"
+                            className="w-full bg-primary hover:bg-[#f5f500] border-2 border-yellow-300/80 p-3.5 sm:p-4 rounded-[2rem] text-left shadow-xl shadow-yellow-500/20 active:scale-[0.98] transition-all group flex items-center gap-3.5 relative overflow-hidden"
                         >
-                            <div className="w-12 h-12 rounded-2xl bg-slate-950 text-[#FFB800] flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform shadow-md">
+                            <div className="w-12 h-12 rounded-2xl bg-slate-950 text-primary flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform shadow-md">
                                 <Package className="w-6 h-6" />
                             </div>
                             <div className="flex-1 min-w-0">
@@ -1462,7 +1478,7 @@ export default function Taxi() {
                                     <h4 className="text-sm sm:text-base font-black text-slate-950 tracking-tight leading-none">
                                         Envío de Paquete
                                     </h4>
-                                    <span className="text-[9px] font-black uppercase px-2.5 py-0.5 rounded-full bg-slate-950 text-[#FFB800] tracking-wider shrink-0">
+                                    <span className="text-[9px] font-black uppercase px-2.5 py-0.5 rounded-full bg-slate-950 text-primary tracking-wider shrink-0">
                                         Delivery Express
                                     </span>
                                 </div>
@@ -1477,7 +1493,7 @@ export default function Taxi() {
                                     <span>🔒 Conductor verificado</span>
                                 </div>
                             </div>
-                            <div className="w-8 h-8 rounded-full bg-slate-950/10 text-slate-950 flex items-center justify-center group-hover:bg-slate-950 group-hover:text-[#FFB800] transition-all shrink-0">
+                            <div className="w-8 h-8 rounded-full bg-slate-950/10 text-slate-950 flex items-center justify-center group-hover:bg-slate-950 group-hover:text-primary transition-all shrink-0">
                                 <ArrowRight className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />
                             </div>
                         </button>
@@ -1489,9 +1505,9 @@ export default function Taxi() {
                                 vibrate(30);
                                 setIsMandadoModalOpen(true);
                             }}
-                            className="w-full bg-[#FFB800] hover:bg-[#ffc21a] border-2 border-amber-300/90 p-3.5 sm:p-4 rounded-[2rem] text-left shadow-xl shadow-amber-500/20 active:scale-[0.98] transition-all group flex items-center gap-3.5 relative overflow-hidden"
+                            className="w-full bg-primary hover:bg-[#f5f500] border-2 border-yellow-300/80 p-3.5 sm:p-4 rounded-[2rem] text-left shadow-xl shadow-yellow-500/20 active:scale-[0.98] transition-all group flex items-center gap-3.5 relative overflow-hidden"
                         >
-                            <div className="w-12 h-12 rounded-2xl bg-slate-950 text-[#FFB800] flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform shadow-md">
+                            <div className="w-12 h-12 rounded-2xl bg-slate-950 text-primary flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform shadow-md">
                                 <ShoppingBag className="w-6 h-6" />
                             </div>
                             <div className="flex-1 min-w-0">
@@ -1499,7 +1515,7 @@ export default function Taxi() {
                                     <h4 className="text-sm sm:text-base font-black text-slate-950 tracking-tight leading-none">
                                         Muchacho e' Mandao
                                     </h4>
-                                    <span className="text-[9px] font-black uppercase px-2.5 py-0.5 rounded-full bg-slate-950 text-[#FFB800] tracking-wider shrink-0">
+                                    <span className="text-[9px] font-black uppercase px-2.5 py-0.5 rounded-full bg-slate-950 text-primary tracking-wider shrink-0">
                                         Personal Shopper
                                     </span>
                                 </div>
@@ -1514,7 +1530,7 @@ export default function Taxi() {
                                     <span>💰 Subasta de tarifas</span>
                                 </div>
                             </div>
-                            <div className="w-8 h-8 rounded-full bg-slate-950/10 text-slate-950 flex items-center justify-center group-hover:bg-slate-950 group-hover:text-[#FFB800] transition-all shrink-0">
+                            <div className="w-8 h-8 rounded-full bg-slate-950/10 text-slate-950 flex items-center justify-center group-hover:bg-slate-950 group-hover:text-primary transition-all shrink-0">
                                 <ArrowRight className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />
                             </div>
                         </button>
