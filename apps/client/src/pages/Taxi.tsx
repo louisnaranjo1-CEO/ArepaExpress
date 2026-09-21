@@ -39,6 +39,7 @@ import DemoAlertModal from '../components/DemoAlertModal';
 import { useCurrency } from '../context/CurrencyContext';
 import { GOOGLE_MAPS_API_KEY, GOOGLE_MAPS_LIBRARIES } from '../lib/mapsConfig';
 import { calculateDynamicFare, FareCalculationResult } from '../lib/pricing';
+import SpeedFleetAnimation from '../components/SpeedFleetAnimation';
 import {
     getWeatherByCoordinates,
     isNightTime,
@@ -1438,13 +1439,9 @@ export default function Taxi() {
                         </button>
                     </div>
 
-                    {/* Bottom Vehicle Graphic matching Imagen 1 */}
+                    {/* Bottom Fleet Speed Animation (Taxi, Camioneta, Camión Flete, Mototaxi, Moto Delivery) */}
                     <div className="relative z-10 w-full max-w-md mx-auto flex justify-center -mb-2 overflow-hidden">
-                        <img 
-                            src="/taxi_fleet_banner.png" 
-                            alt="Flota de Taxis y Mototaxis" 
-                            className="w-full max-h-32 object-contain filter contrast-105 brightness-95"
-                        />
+                        <SpeedFleetAnimation />
                     </div>
 
                     {/* Bottom Transparency Guarantee Footer */}

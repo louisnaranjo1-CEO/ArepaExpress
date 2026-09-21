@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Trash2, Plus, Image as ImageIcon, Clock, ExternalLink, Timer, Upload, AlertCircle, Pencil, Save } from 'lucide-react';
+import { Trash2, Plus, Image as ImageIcon, Clock, ExternalLink, Timer, Upload, AlertCircle, Pencil, Save, Shield, FileText, Check, Layout } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { motion, AnimatePresence } from 'motion/react';
 import { toast } from 'react-hot-toast';
@@ -23,6 +23,9 @@ export interface GlobalLoyaltyBanner {
 import { VENEZUELA_DATA, VENEZUELA_STATES } from '../../lib/venezuelaData';
 import { Globe, Map as MapIcon, MapPin as PinIcon } from 'lucide-react';
 
+const DEFAULT_DISCLAIMER =
+    "Grupo Un 2x3 VE, C.A. (RIF J-cambiar Rif-0) no está autorizado por la Superintendencia de Instituciones del Sector Bancario (SUDEBAN) para intermediar o fungir como pasarela de pagos entre clientes y comercios. Grupo Un 2x3 es un portal que ofrece a los clientes acceder a compras a plazo en comercios afiliados pero son estos últimos quienes otorgan dicho beneficio. Los clientes abonarán o depositarán los pagos o cuotas directamente en las cuentas bancarias de los comercios.";
+
 export default function BannersManager() {
     const [banners, setBanners] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
@@ -33,13 +36,21 @@ export default function BannersManager() {
     const [newBanner, setNewBanner] = useState({
         imageUrl: '',
         title: '',
+        subtitle: '',
         linkUrl: '',
         duration: 5,
-        type: 'top_banner' as 'top_banner' | 'welcome_popup',
+        type: 'top_banner' as 'top_banner' | 'welcome_popup' | 'card_banner',
+        bgColor: '#FEF9C3',
         visibilityScope: 'national' as 'national' | 'state' | 'city',
         targetState: '',
         targetCity: ''
     });
+
+    // SUDEBAN Legal Disclaimer State
+    const [disclaimerText, setDisclaimerText] = useState(DEFAULT_DISCLAIMER);
+    const [isDisclaimerActive, setIsDisclaimerActive] = useState(true);
+    const [savingDisclaimer, setSavingDisclaimer] = useState(false);
+
     // Existing banner states
     const [editingId, setEditingId] = useState<string | null>(null);
 
@@ -79,10 +90,46 @@ export default function BannersManager() {
                 targetCity: b.target_city || b.targetCity
             }));
             setBanners(mapped);
+
+            // Fetch SUDEBAN Disclaimer config
+            try {
+                const { data: discData } = await supabase
+                    .from('system_configs')
+                    .select('*')
+                    .eq('id', 'home_disclaimer')
+                    .maybeSingle();
+                if (discData) {
+                    if (discData.text) setDisclaimerText(discData.text);
+                    if (discData.is_active !== undefined) setIsDisclaimerActive(discData.is_active);
+                }
+            } catch (e) {
+                console.warn("Could not fetch home disclaimer:", e);
+            }
         } catch (error) {
             console.error("Error fetching banners: ", error);
         } finally {
             setLoading(false);
+        }
+    };
+
+    const handleSaveDisclaimer = async () => {
+        setSavingDisclaimer(true);
+        try {
+            const { error } = await supabase
+                .from('system_configs')
+                .upsert({
+                    id: 'home_disclaimer',
+                    text: disclaimerText,
+                    is_active: isDisclaimerActive,
+                    updated_at: new Date().toISOString()
+                });
+            if (error) throw error;
+            toast.success("Aviso legal SUDEBAN guardado con éxito");
+        } catch (err: any) {
+            console.error(err);
+            toast.error("Error al guardar aviso legal: " + (err.message || "Error de red"));
+        } finally {
+            setSavingDisclaimer(false);
         }
     };
 
@@ -242,6 +289,8 @@ export default function BannersManager() {
 
             const bannerData = {
                 title: newBanner.title,
+                explanation: newBanner.subtitle || '',
+                target_screen: newBanner.bgColor || '#FEF9C3',
                 image_url: finalImageUrl,
                 link_url: newBanner.linkUrl,
                 duration: newBanner.duration,
@@ -269,9 +318,11 @@ export default function BannersManager() {
             setNewBanner({
                 imageUrl: '',
                 title: '',
+                subtitle: '',
                 linkUrl: '',
                 duration: 5,
                 type: 'top_banner',
+                bgColor: '#FEF9C3',
                 visibilityScope: 'national',
                 targetState: '',
                 targetCity: ''
@@ -327,9 +378,11 @@ export default function BannersManager() {
             setNewBanner({
                 imageUrl: banner.imageUrl || '',
                 title: banner.title || '',
+                subtitle: banner.explanation || '',
                 linkUrl: banner.linkUrl || '',
                 duration: banner.duration || 5,
                 type: banner.type || 'top_banner',
+                bgColor: banner.target_screen || banner.targetScreen || '#FEF9C3',
                 visibilityScope: banner.visibilityScope || 'national',
                 targetState: banner.targetState || '',
                 targetCity: banner.targetCity || ''
@@ -598,6 +651,78 @@ export default function BannersManager() {
                 </div>
             </div>
 
+            {/* SUDEBAN Legal Disclaimer Configuration */}
+            <div className="bg-white rounded-[2.5rem] shadow-xl shadow-slate-200/50 border border-slate-100 overflow-hidden mb-8">
+                <div className="p-6 border-b border-slate-50 bg-amber-50/40 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                    <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-2xl bg-amber-100 flex items-center justify-center text-amber-700 shadow-sm shrink-0">
+                            <Shield className="w-5 h-5" />
+                        </div>
+                        <div>
+                            <h3 className="font-black text-slate-800 uppercase tracking-widest text-sm flex items-center gap-2">
+                                Aviso Legal SUDEBAN (Pie de Banner en Inicio)
+                            </h3>
+                            <p className="text-xs text-slate-500 font-medium">
+                                Texto legal obligatorio mostrado en la pantalla de inicio debajo de las tarjetas/banners. Modifica tu RIF o condiciones.
+                            </p>
+                        </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <span className="text-xs font-bold text-slate-500">Mostrar en App:</span>
+                        <button
+                            type="button"
+                            onClick={() => setIsDisclaimerActive(!isDisclaimerActive)}
+                            className={`px-3 py-1.5 rounded-xl text-xs font-black uppercase transition-all ${
+                                isDisclaimerActive
+                                    ? 'bg-emerald-100 text-emerald-700 border border-emerald-200'
+                                    : 'bg-slate-100 text-slate-400 border border-slate-200'
+                            }`}
+                        >
+                            {isDisclaimerActive ? 'Activo' : 'Oculto'}
+                        </button>
+                    </div>
+                </div>
+
+                <div className="p-6 space-y-4">
+                    <div>
+                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">
+                            Contenido del Mensaje Legal
+                        </label>
+                        <textarea
+                            rows={4}
+                            value={disclaimerText}
+                            onChange={(e) => setDisclaimerText(e.target.value)}
+                            placeholder="Escribe el texto legal..."
+                            className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl p-4 font-medium text-xs sm:text-sm text-slate-700 outline-none focus:border-amber-400 focus:bg-white transition-all resize-none mt-1.5"
+                        />
+                    </div>
+
+                    <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-2">
+                        <button
+                            type="button"
+                            onClick={() => setDisclaimerText(DEFAULT_DISCLAIMER)}
+                            className="text-xs font-bold text-slate-400 hover:text-slate-600 underline"
+                        >
+                            Restaurar texto predeterminado
+                        </button>
+
+                        <button
+                            type="button"
+                            disabled={savingDisclaimer}
+                            onClick={handleSaveDisclaimer}
+                            className="bg-slate-900 hover:bg-black text-white text-xs font-black px-6 py-3 rounded-xl shadow-md transition-all active:scale-95 flex items-center gap-2 disabled:opacity-50"
+                        >
+                            {savingDisclaimer ? (
+                                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                            ) : (
+                                <Save className="w-4 h-4 text-amber-400" />
+                            )}
+                            Guardar Aviso Legal
+                        </button>
+                    </div>
+                </div>
+            </div>
+
             {/* Banners List Header */}
             <div className="flex items-center gap-4 bg-slate-50 p-6 rounded-[2.5rem] border border-slate-100 mt-8 mb-4">
                 <ImageIcon className="w-8 h-8 text-primary" />
@@ -624,7 +749,7 @@ export default function BannersManager() {
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                             <div className="space-y-4">
                                 <label className="block text-xs font-black text-slate-400 uppercase tracking-widest pl-1">Tipo de Publicidad</label>
-                                <div className="flex gap-2 p-1 bg-slate-100 rounded-2xl">
+                                <div className="flex flex-wrap gap-2 p-1 bg-slate-100 rounded-2xl">
                                     <button
                                         type="button"
                                         onClick={() => setNewBanner({ ...newBanner, type: 'top_banner' })}
@@ -639,19 +764,77 @@ export default function BannersManager() {
                                     >
                                         Ventana Emergente
                                     </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setNewBanner({ ...newBanner, type: 'card_banner' })}
+                                        className={`flex-1 py-2 px-3 rounded-xl font-bold text-xs transition-all ${newBanner.type === 'card_banner' ? 'bg-white text-amber-600 shadow-sm font-black' : 'text-slate-500'}`}
+                                    >
+                                        Tarjeta Inicio (Img 2)
+                                    </button>
                                 </div>
                             </div>
                             <div className="space-y-2">
-                                <label className="block text-xs font-black text-slate-400 uppercase tracking-widest pl-1">Título / Nombre Interno</label>
+                                <label className="block text-xs font-black text-slate-400 uppercase tracking-widest pl-1">
+                                    {newBanner.type === 'card_banner' ? 'Título Principal (ej: Creemos en tu negocio.)' : 'Título / Nombre Interno'}
+                                </label>
                                 <input
                                     type="text"
                                     required
                                     value={newBanner.title}
                                     onChange={e => setNewBanner({ ...newBanner, title: e.target.value })}
                                     className="w-full bg-slate-50 border-2 border-slate-100 rounded-[1.25rem] px-5 py-3.5 focus:border-primary focus:bg-white focus:ring-4 focus:ring-indigo-100 outline-none transition-all font-bold text-slate-700"
-                                    placeholder="Ej: Promo San Valentín"
+                                    placeholder={newBanner.type === 'card_banner' ? "Creemos en tu negocio." : "Ej: Promo San Valentín"}
                                 />
                             </div>
+
+                            {newBanner.type === 'card_banner' && (
+                                <>
+                                    <div className="space-y-2">
+                                        <label className="block text-xs font-black text-slate-400 uppercase tracking-widest pl-1">
+                                            Subtítulo (ej: Regístrate como aliado en Un 2x3)
+                                        </label>
+                                        <input
+                                            type="text"
+                                            value={newBanner.subtitle}
+                                            onChange={e => setNewBanner({ ...newBanner, subtitle: e.target.value })}
+                                            className="w-full bg-slate-50 border-2 border-slate-100 rounded-[1.25rem] px-5 py-3.5 focus:border-primary focus:bg-white outline-none transition-all font-bold text-slate-700"
+                                            placeholder="Regístrate como aliado en Un 2x3."
+                                        />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <label className="block text-xs font-black text-slate-400 uppercase tracking-widest pl-1">
+                                            Color de Fondo de la Tarjeta
+                                        </label>
+                                        <div className="flex items-center gap-2">
+                                            {[
+                                                { label: 'Amarillo Cashea', color: '#FEF9C3' },
+                                                { label: 'Blanco', color: '#FFFFFF' },
+                                                { label: 'Gris suave', color: '#F8FAFC' },
+                                                { label: 'Azul suave', color: '#EFF6FF' },
+                                                { label: 'Verde suave', color: '#ECFDF5' },
+                                            ].map(c => (
+                                                <button
+                                                    key={c.color}
+                                                    type="button"
+                                                    title={c.label}
+                                                    onClick={() => setNewBanner({ ...newBanner, bgColor: c.color })}
+                                                    style={{ backgroundColor: c.color }}
+                                                    className={`w-8 h-8 rounded-xl border-2 transition-transform ${
+                                                        newBanner.bgColor === c.color ? 'border-amber-500 scale-110 shadow-md' : 'border-slate-200'
+                                                    }`}
+                                                />
+                                            ))}
+                                            <input
+                                                type="text"
+                                                value={newBanner.bgColor}
+                                                onChange={e => setNewBanner({ ...newBanner, bgColor: e.target.value })}
+                                                className="w-24 bg-slate-50 border border-slate-200 rounded-xl px-2 py-1.5 text-xs font-bold text-slate-700 outline-none text-center"
+                                                placeholder="#FEF9C3"
+                                            />
+                                        </div>
+                                    </div>
+                                </>
+                            )}
                             <div className="space-y-2 md:col-span-2">
                                 <label className="block text-xs font-black text-slate-400 uppercase tracking-widest pl-1 flex items-center gap-2">
                                     <ImageIcon className="w-3 h-3" /> Imagen del Banner (1000 x 450 px recomendados)
@@ -846,11 +1029,13 @@ export default function BannersManager() {
                                 <div className="bg-white/90 backdrop-blur-md px-3 py-1.5 rounded-xl shadow-sm flex items-center gap-1.5 border border-white">
                                     {banner.type === 'welcome_popup' ? (
                                         <div className="w-2 h-2 rounded-full bg-rose-500 animate-pulse"></div>
+                                    ) : banner.type === 'card_banner' ? (
+                                        <Layout className="w-3.5 h-3.5 text-amber-500" />
                                     ) : (
                                         <Timer className="w-3.5 h-3.5 text-primary" />
                                     )}
                                     <span className="text-xs font-black text-slate-900">
-                                        {banner.type === 'welcome_popup' ? 'Welcome Popup' : `${banner.duration}s`}
+                                        {banner.type === 'welcome_popup' ? 'Welcome Popup' : banner.type === 'card_banner' ? 'Tarjeta Inicio' : `${banner.duration}s`}
                                     </span>
                                 </div>
                                 <div className="bg-primary text-slate-900 px-3 py-1.5 rounded-xl shadow-sm flex items-center gap-1.5 border border-primary">

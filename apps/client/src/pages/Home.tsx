@@ -21,6 +21,8 @@ import { useBranding } from '../context/BrandingContext';
 import DualPrice from '../components/DualPrice';
 import { DEMO_RESTAURANTS } from '../lib/demoData';
 import ActiveTasksWidget from '../components/ActiveTasksWidget';
+import AvailableStoresRow from '../components/AvailableStoresRow';
+import HomePromotionCard, { CardBannerItem } from '../components/HomePromotionCard';
 
 interface RecommendedProduct extends Product {
   restaurantId: string;
@@ -45,6 +47,9 @@ export default function Home() {
   const navigate = useNavigate();
   const [restaurants, setRestaurants] = useState<Restaurant[]>([]);
   const [banners, setBanners] = useState<any[]>([]);
+  const [cardBanners, setCardBanners] = useState<CardBannerItem[]>([]);
+  const [disclaimerText, setDisclaimerText] = useState<string>('');
+  const [showDisclaimer, setShowDisclaimer] = useState<boolean>(true);
   const [categories, setCategories] = useState<Category[]>([]);
   const [categoryMode, setCategoryMode] = useState<'manual' | 'algorithm'>('manual');
   const [loading, setLoading] = useState(true);
@@ -222,6 +227,43 @@ export default function Home() {
         });
         // Shuffle the filtered banners randomly
         const shuffledBanners = [...filteredBanners].sort(() => Math.random() - 0.5);
+
+        // Card Banners (Image 2 style)
+        const activeCardBanners = mappedBanners.filter((b: any) =>
+          b.isActive && b.type === 'card_banner'
+        );
+        const filteredCardBanners = activeCardBanners.filter((banner: any) => {
+          if (isDemoMode()) return banner.visibilityScope === 'national' || !banner.visibilityScope;
+          const scope = banner.visibilityScope || 'national';
+          if (scope === 'national') return true;
+          if (scope === 'state') return banner.targetState === manualState;
+          if (scope === 'city') return banner.targetCity === manualCity;
+          return false;
+        });
+        setCardBanners(filteredCardBanners.map((b: any) => ({
+          id: b.id,
+          title: b.title,
+          subtitle: b.explanation || b.subtitle || '',
+          imageUrl: b.imageUrl,
+          linkUrl: b.linkUrl,
+          bgColor: b.target_screen || b.targetScreen || '#FEF9C3',
+          isActive: b.isActive
+        })));
+
+        // SUDEBAN Disclaimer config
+        try {
+          const { data: discConfig } = await supabase
+            .from('system_configs')
+            .select('*')
+            .eq('id', 'home_disclaimer')
+            .maybeSingle();
+          if (discConfig) {
+            if (discConfig.text) setDisclaimerText(discConfig.text);
+            if (discConfig.is_active !== undefined) setShowDisclaimer(discConfig.is_active);
+          }
+        } catch (discErr) {
+          console.warn("Could not fetch home disclaimer:", discErr);
+        }
 
         setBanners(shuffledBanners);
       } catch (error) {
@@ -861,6 +903,9 @@ export default function Home() {
       {/* Persistent Active Tasks Widget (Active rides, deliveries, and orders) */}
       <ActiveTasksWidget />
 
+      {/* Available Stores by User Zone/City (Matching Image 1) */}
+      <AvailableStoresRow restaurants={restaurants} cityName={manualCity || locationName} />
+
       {/* Promotional Banners */}
       {banners.length > 0 && (
         <section className="mt-4 px-5">
@@ -924,6 +969,13 @@ export default function Home() {
           </div>
         </section>
       )}
+
+      {/* Card Banner & SUDEBAN Legal Disclaimer (Matching Image 2) */}
+      <HomePromotionCard
+        cards={cardBanners}
+        disclaimerText={disclaimerText || undefined}
+        showDisclaimer={showDisclaimer}
+      />
 
       {/* Categories moved/hidden as per request */}
       {/* <section className="mt-4 pl-5">

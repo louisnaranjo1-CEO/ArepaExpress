@@ -17,8 +17,12 @@ import PointsModal from '../components/PointsModal';
 import BCVCalculatorModal from '../components/BCVCalculatorModal';
 import { isDemoMode, UN2X3_LOGO } from '../lib/env';
 import { useCurrency } from '../context/CurrencyContext';
+import { useBranding } from '../context/BrandingContext';
 import DualPrice from '../components/DualPrice';
 import { DEMO_RESTAURANTS } from '../lib/demoData';
+import ActiveTasksWidget from '../components/ActiveTasksWidget';
+import AvailableStoresRow from '../components/AvailableStoresRow';
+import HomePromotionCard, { CardBannerItem } from '../components/HomePromotionCard';
 
 interface RecommendedProduct extends Product {
   restaurantId: string;
@@ -43,6 +47,9 @@ export default function Home() {
   const navigate = useNavigate();
   const [restaurants, setRestaurants] = useState<Restaurant[]>([]);
   const [banners, setBanners] = useState<any[]>([]);
+  const [cardBanners, setCardBanners] = useState<CardBannerItem[]>([]);
+  const [disclaimerText, setDisclaimerText] = useState<string>('');
+  const [showDisclaimer, setShowDisclaimer] = useState<boolean>(true);
   const [categories, setCategories] = useState<Category[]>([]);
   const [categoryMode, setCategoryMode] = useState<'manual' | 'algorithm'>('manual');
   const [loading, setLoading] = useState(true);
@@ -50,6 +57,8 @@ export default function Home() {
   const [currentBannerIndex, setCurrentBannerIndex] = useState(0);
 
   const { bcvRate } = useCurrency();
+  const { branding } = useBranding();
+  const clientLogo = branding.app_client_logo || UN2X3_LOGO;
   const [isCalculatorOpen, setIsCalculatorOpen] = useState(false);
   const [isMapModalOpen, setIsMapModalOpen] = useState(false);
 
@@ -96,7 +105,14 @@ export default function Home() {
       const coords = { lat: defaultAddress.lat, lng: defaultAddress.lng };
       setUserLocation(coords);
       if (!manualCity) {
-        setLocationName(defaultAddress.reference?.split(',')[0] || defaultAddress.city || 'Ubicación');
+        const city = defaultAddress.city || defaultAddress.reference?.split(',')[0];
+        if (city) {
+          setLocationName(city);
+          localStorage.setItem('userCity', city);
+          setManualCity(city);
+        } else {
+          setLocationName('Ubicación');
+        }
       }
       return;
     }
@@ -211,6 +227,43 @@ export default function Home() {
         });
         // Shuffle the filtered banners randomly
         const shuffledBanners = [...filteredBanners].sort(() => Math.random() - 0.5);
+
+        // Card Banners (Image 2 style)
+        const activeCardBanners = mappedBanners.filter((b: any) =>
+          b.isActive && b.type === 'card_banner'
+        );
+        const filteredCardBanners = activeCardBanners.filter((banner: any) => {
+          if (isDemoMode()) return banner.visibilityScope === 'national' || !banner.visibilityScope;
+          const scope = banner.visibilityScope || 'national';
+          if (scope === 'national') return true;
+          if (scope === 'state') return banner.targetState === manualState;
+          if (scope === 'city') return banner.targetCity === manualCity;
+          return false;
+        });
+        setCardBanners(filteredCardBanners.map((b: any) => ({
+          id: b.id,
+          title: b.title,
+          subtitle: b.explanation || b.subtitle || '',
+          imageUrl: b.imageUrl,
+          linkUrl: b.linkUrl,
+          bgColor: b.target_screen || b.targetScreen || '#FEF9C3',
+          isActive: b.isActive
+        })));
+
+        // SUDEBAN Disclaimer config
+        try {
+          const { data: discConfig } = await supabase
+            .from('system_configs')
+            .select('*')
+            .eq('id', 'home_disclaimer')
+            .maybeSingle();
+          if (discConfig) {
+            if (discConfig.text) setDisclaimerText(discConfig.text);
+            if (discConfig.is_active !== undefined) setShowDisclaimer(discConfig.is_active);
+          }
+        } catch (discErr) {
+          console.warn("Could not fetch home disclaimer:", discErr);
+        }
 
         setBanners(shuffledBanners);
       } catch (error) {
@@ -343,16 +396,15 @@ export default function Home() {
                 
                 fetchedRestaurants = fetchedRestaurants.filter(rest => {
                    const c = normalizeLoc(rest.location?.city || (rest as any).city);
-                   const s = normalizeLoc(rest.location?.state || (rest as any).state);
-                   const a = normalizeLoc(rest.location?.address || (rest as any).address);
-                   
-                   if (c === mCity || c.includes(mCity) || a.includes(mCity) || s.includes(mCity)) {
+                   if (c && (c === mCity || c.includes(mCity) || mCity.includes(c))) {
                        return true;
                    }
-
-                   // Bulletproof fallback: search the entire object string for the city name
-                   const jsonStr = normalizeLoc(JSON.stringify(rest));
-                   if (jsonStr.includes(mCity)) return true;
+                   if (Array.isArray((rest as any).locations)) {
+                     return (rest as any).locations.some((loc: any) => {
+                       const locCity = normalizeLoc(loc.city);
+                       return locCity && (locCity === mCity || locCity.includes(mCity) || mCity.includes(locCity));
+                     });
+                   }
 
                    return false;
                 });
@@ -430,8 +482,12 @@ export default function Home() {
           });
           setRandomProducts(topProducts.slice(0, 12));
 
+          const allowedRestIds = new Set(fetchedRestaurants.map(r => r.id));
           setRecentlyViewed(
-            history.map(h => allProducts.find(p => p.id === h.id)).filter(Boolean) as RecommendedProduct[]
+            history
+              .filter(h => allowedRestIds.has(h.restaurantId))
+              .map(h => allProducts.find(p => p.id === h.id))
+              .filter(Boolean) as RecommendedProduct[]
           );
 
           setInterestedProducts(
@@ -593,8 +649,8 @@ export default function Home() {
             className="flex-1 flex items-center justify-start cursor-pointer active:scale-95 transition-transform overflow-visible"
           >
             <img
-              src={UN2X3_LOGO}
-              alt="Deliexpress Logo"
+              src={clientLogo}
+              alt={branding.app_client_name || "Logo"}
               className="h-10 w-auto object-contain"
             />
           </div>
@@ -768,8 +824,8 @@ export default function Home() {
                 <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-32 h-32 bg-primary/20 rounded-full blur-2xl animate-pulse"></div>
                 <div className="w-28 h-28 bg-white rounded-full p-2.5 shadow-xl shadow-primary/20 border border-primary/10 flex items-center justify-center relative z-10 animate-pulse">
                   <img
-                    src={UN2X3_LOGO}
-                    alt="Deliexpress Logo"
+                    src={clientLogo}
+                    alt={branding.app_client_name || "Logo"}
                     className="w-full h-full object-contain drop-shadow-[0_0_15px_rgba(255,102,0,0.5)]"
                   />
                 </div>
@@ -844,6 +900,12 @@ export default function Home() {
         )}
       </AnimatePresence>
 
+      {/* Persistent Active Tasks Widget (Active rides, deliveries, and orders) */}
+      <ActiveTasksWidget />
+
+      {/* Available Stores by User Zone/City (Matching Image 1) */}
+      <AvailableStoresRow restaurants={restaurants} cityName={manualCity || locationName} />
+
       {/* Promotional Banners */}
       {banners.length > 0 && (
         <section className="mt-4 px-5">
@@ -907,6 +969,13 @@ export default function Home() {
           </div>
         </section>
       )}
+
+      {/* Card Banner & SUDEBAN Legal Disclaimer (Matching Image 2) */}
+      <HomePromotionCard
+        cards={cardBanners}
+        disclaimerText={disclaimerText || undefined}
+        showDisclaimer={showDisclaimer}
+      />
 
       {/* Categories moved/hidden as per request */}
       {/* <section className="mt-4 pl-5">
@@ -1100,9 +1169,9 @@ function ProductGrid({ title, products, casheaIcon }: { title: string, products:
   const navigate = useNavigate();
 
   const handleProductClick = (product: RecommendedProduct) => {
-    // Record view and navigate
+    // Record view and navigate with productId
     recommendationsService.recordProductView(product.id!, product.category, product.restaurantId);
-    navigate(`/restaurant/${product.restaurantId}`);
+    navigate(`/restaurant/${product.restaurantId}?productId=${product.id}`);
   };
 
   return (
