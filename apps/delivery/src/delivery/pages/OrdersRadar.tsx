@@ -79,11 +79,6 @@ export default function OrdersRadar() {
     // Tabs de navegación del centro de mando
     const [activeTab, setActiveTab] = useState<'all' | 'taxis' | 'deliveries' | 'mandados'>('all');
 
-    // Modal de detalle y cotización de Muchacho e' Mandao
-    const [selectedMandadoDetail, setSelectedMandadoDetail] = useState<any>(null);
-    const [modalBidPrice, setModalBidPrice] = useState<string>('2.50');
-    const [modalBidEta, setModalBidEta] = useState<string>('15');
-
     // Estado en espera de Muchacho e' Mandao postulados
     const [myPendingBids, setMyPendingBids] = useState<any[]>([]);
 
@@ -385,8 +380,14 @@ export default function OrdersRadar() {
             });
 
             // Activar modal de despacho estilo YANGO si no estamos en viaje activo, ni suspendidos y con tarifas configuradas
+            // NOTA: Los mandados NO usan despacho automático directo de 20s porque requieren cotización/puja libre en el radar
             if (!activeOrder && !activeTransport && !isSuspended && hasFaresConfigured) {
-                const newest = availableTransport[0] || availableOrders[0];
+                const newestTransport = availableTransport.find((t: any) => {
+                    const reqType = t.type || t.service_category || 'transport';
+                    const isMandado = reqType === 'muchacho_mandado' || t.service_category === 'muchacho_mandado' || t.service_category === 'mandado';
+                    return !isMandado;
+                });
+                const newest = newestTransport || availableOrders[0];
                 if (newest) {
                     setIncomingDispatch(newest);
                 }
@@ -821,10 +822,12 @@ export default function OrdersRadar() {
         setProcessingAction(`bid_${reqId}`);
         try {
             const bidId = crypto.randomUUID();
-            const { error } = await supabase.from('transport_bids').insert({
+            const driverId = user.uid || (user as any).id;
+            const insertPayload = {
                 id: bidId,
                 transport_request_id: reqId,
-                driver_id: user.uid,
+                request_id: reqId,
+                driver_id: driverId,
                 driver_name: driverProfile?.displayName || driverProfile?.name || driverProfile?.full_name || 'Conductor',
                 driver_photo: driverProfile?.photoURL || driverProfile?.avatar_url || driverProfile?.photo_url || null,
                 driver_phone: driverProfile?.phone || null,
@@ -833,21 +836,27 @@ export default function OrdersRadar() {
                 vehicle_model: driverProfile?.vehicle_model || driverProfile?.model || '',
                 driver_rating: driverProfile?.rating || 5.0,
                 amount: amount,
+                offered_price: amount,
                 eta_minutes: eta,
+                estimated_eta_minutes: eta,
                 status: 'pending'
-            });
+            };
 
-            if (error) throw error;
+            const { error } = await supabase.from('transport_bids').insert(insertPayload);
+
+            if (error) {
+                console.error("Error al insertar oferta en transport_bids:", error);
+                throw error;
+            }
 
             setMandadoBids(prev => ({
                 ...prev,
-                [reqId]: { ...prev[reqId], submitted: true }
+                [reqId]: { amount: String(amount), eta: String(eta), submitted: true }
             }));
-            setSelectedMandadoDetail(null);
             toast.success(`¡Puja de $${amount.toFixed(2)} USD enviada al cliente! En espera de respuesta...`);
         } catch (err: any) {
             console.error("Error enviando puja de mandado:", err);
-            toast.error("No se pudo enviar la oferta. Revisa tu conexión.");
+            toast.error(err?.message || "No se pudo enviar la oferta. Revisa tu conexión.");
         } finally {
             setProcessingAction(null);
         }
@@ -1598,274 +1607,28 @@ export default function OrdersRadar() {
 
                             {/* Botones de Acción */}
                             <div className="pt-2 flex flex-col gap-2">
-                                {(() => {
-                                    const isMandado = (incomingDispatch.service_category === 'mandado' || incomingDispatch.service_category === 'muchacho_mandado' || incomingDispatch.type === 'muchacho_mandado');
-                                    const isOrder = Boolean(incomingDispatch.restaurantName || incomingDispatch.shippingAddress);
-
-                                    if (isMandado) {
-                                        return (
-                                            <button
-                                                onClick={() => {
-                                                    const item = incomingDispatch;
-                                                    setIncomingDispatch(null);
-                                                    setModalBidPrice('2.50');
-                                                    setModalBidEta('15');
-                                                    setSelectedMandadoDetail(item);
-                                                }}
-                                                className="w-full bg-gradient-to-r from-amber-400 to-yellow-400 hover:from-amber-300 hover:to-yellow-300 text-slate-950 font-black py-4 rounded-2xl shadow-xl shadow-amber-400/20 active:scale-95 transition-all text-base uppercase tracking-wider flex items-center justify-center gap-2"
-                                            >
-                                                <Package className="w-5 h-5" />
-                                                Ver mandado
-                                            </button>
-                                        );
-                                    }
-
-                                    return (
-                                        <button
-                                            onClick={() => {
-                                                const id = incomingDispatch.id;
-                                                setIncomingDispatch(null);
-                                                if (isOrder) {
-                                                    handleAcceptOrder(id);
-                                                } else {
-                                                    handleAcceptTransport(id);
-                                                }
-                                            }}
-                                            disabled={hasReachedServiceLimit}
-                                            className="w-full bg-gradient-to-r from-amber-400 to-yellow-400 hover:from-amber-300 hover:to-yellow-300 text-slate-950 font-black py-4 rounded-2xl shadow-xl shadow-amber-400/20 active:scale-95 transition-all text-base uppercase tracking-wider flex items-center justify-center gap-2 disabled:opacity-50"
-                                        >
-                                            <Sparkles className="w-5 h-5" />
-                                            {isOrder ? 'Aceptar Reparto' : 'Aceptar Viaje'}
-                                        </button>
-                                    );
-                                })()}
+                                <button
+                                    onClick={() => {
+                                        const id = incomingDispatch.id;
+                                        setIncomingDispatch(null);
+                                        const isOrder = Boolean(incomingDispatch.restaurantName || incomingDispatch.shippingAddress);
+                                        if (isOrder) {
+                                            handleAcceptOrder(id);
+                                        } else {
+                                            handleAcceptTransport(id);
+                                        }
+                                    }}
+                                    disabled={hasReachedServiceLimit}
+                                    className="w-full bg-gradient-to-r from-amber-400 to-yellow-400 hover:from-amber-300 hover:to-yellow-300 text-slate-950 font-black py-4 rounded-2xl shadow-xl shadow-amber-400/20 active:scale-95 transition-all text-base uppercase tracking-wider flex items-center justify-center gap-2 disabled:opacity-50"
+                                >
+                                    <Sparkles className="w-5 h-5" />
+                                    {Boolean(incomingDispatch.restaurantName || incomingDispatch.shippingAddress) ? 'Aceptar Reparto' : 'Aceptar Viaje'}
+                                </button>
                                 <button
                                     onClick={() => setIncomingDispatch(null)}
                                     className="w-full py-2.5 text-slate-400 hover:text-slate-200 font-bold text-xs uppercase tracking-wider text-center active:scale-95 transition-all"
                                 >
                                     Rechazar / Omitir
-                                </button>
-                            </div>
-                        </motion.div>
-                    </motion.div>
-                )}
-            </AnimatePresence>
-
-            {/* Modal de Detalle Completo de Muchacho e' Mandao para Cotización */}
-            <AnimatePresence>
-                {selectedMandadoDetail && (
-                    <motion.div
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 1 }}
-                        exit={{ opacity: 0 }}
-                        className="fixed inset-0 z-[130] bg-black/80 backdrop-blur-md flex items-end sm:items-center justify-center p-3 sm:p-4 overflow-y-auto"
-                    >
-                        <motion.div
-                            initial={{ scale: 0.95, y: 40, opacity: 0 }}
-                            animate={{ scale: 1, y: 0, opacity: 1 }}
-                            exit={{ scale: 0.95, y: 40, opacity: 0 }}
-                            className="bg-slate-950 text-white w-full max-w-lg rounded-[2.5rem] p-6 shadow-2xl border border-slate-800 relative flex flex-col gap-4 my-auto max-h-[90vh] overflow-y-auto"
-                        >
-                            {/* Header */}
-                            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-                                <div className="flex items-center gap-2.5">
-                                    <div className="w-10 h-10 rounded-2xl bg-amber-400 text-slate-950 flex items-center justify-center font-black shadow-sm">
-                                        <Package className="w-5 h-5" />
-                                    </div>
-                                    <div>
-                                        <h3 className="font-black text-base text-white">Detalle de Muchacho e' Mandao</h3>
-                                        <p className="text-[11px] text-amber-400 font-bold uppercase tracking-wider">Revisa antes de cotizar</p>
-                                    </div>
-                                </div>
-                                <button
-                                    onClick={() => setSelectedMandadoDetail(null)}
-                                    className="w-9 h-9 rounded-full bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white flex items-center justify-center transition-all"
-                                >
-                                    <X className="w-5 h-5" />
-                                </button>
-                            </div>
-
-                            {/* Cliente */}
-                            <div className="bg-slate-900/80 p-3.5 rounded-2xl border border-slate-800 flex items-center justify-between">
-                                <div>
-                                    <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Cliente solicitante</span>
-                                    <p className="text-sm font-black text-white">{selectedMandadoDetail.userName || selectedMandadoDetail.user_name || 'Cliente'}</p>
-                                    {selectedMandadoDetail.userCedula && (
-                                        <p className="text-[10px] text-slate-400 font-semibold">C.I: {selectedMandadoDetail.userCedula}</p>
-                                    )}
-                                </div>
-                                <div className="px-3 py-1 bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-[10px] font-black rounded-full uppercase">
-                                    Verificado
-                                </div>
-                            </div>
-
-                            {/* Detalle del encargo */}
-                            <div className="bg-amber-950/20 border border-amber-500/30 rounded-2xl p-4 space-y-2">
-                                <span className="text-[10px] font-black uppercase tracking-widest text-amber-400">¿Qué te están pidiendo?</span>
-                                <p className="text-sm font-bold text-slate-200 leading-relaxed whitespace-pre-wrap">
-                                    {selectedMandadoDetail.mandado_details?.description || selectedMandadoDetail.description || selectedMandadoDetail.notes || selectedMandadoDetail.packageDescription || 'Encargo personalizado solicitado por el cliente.'}
-                                </p>
-                            </div>
-
-                            {/* Nota de voz si existe */}
-                            {(selectedMandadoDetail.mandado_details?.audioUrl || selectedMandadoDetail.audio_url) && (
-                                <div className="bg-slate-900 border border-amber-500/40 rounded-2xl p-3.5 space-y-2">
-                                    <div className="flex items-center gap-2 text-xs font-black uppercase tracking-wider text-amber-400">
-                                        <Volume2 className="w-4 h-4" />
-                                        Nota de voz explicativa del cliente
-                                    </div>
-                                    <audio
-                                        controls
-                                        src={selectedMandadoDetail.mandado_details?.audioUrl || selectedMandadoDetail.audio_url}
-                                        className="w-full h-9 rounded-xl accent-amber-400"
-                                        preload="metadata"
-                                    />
-                                </div>
-                            )}
-
-                            {/* Imagen de referencia si existe */}
-                            {(selectedMandadoDetail.mandado_details?.referenceUrl || selectedMandadoDetail.reference_url) && (
-                                <div className="bg-slate-900 border border-slate-800 rounded-2xl p-3.5 space-y-2">
-                                    <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Foto o factura de referencia</span>
-                                    <a
-                                        href={selectedMandadoDetail.mandado_details?.referenceUrl || selectedMandadoDetail.reference_url}
-                                        target="_blank"
-                                        rel="noreferrer"
-                                        className="block rounded-xl overflow-hidden border border-slate-700 max-h-48 group relative"
-                                    >
-                                        <img
-                                            src={selectedMandadoDetail.mandado_details?.referenceUrl || selectedMandadoDetail.reference_url}
-                                            alt="Referencia mandado"
-                                            className="w-full h-full object-cover group-hover:scale-105 transition-transform"
-                                        />
-                                        <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                                            <span className="text-xs font-black text-white bg-slate-900/80 px-3 py-1 rounded-lg">Ver foto completa</span>
-                                        </div>
-                                    </a>
-                                </div>
-                            )}
-
-                            {/* Puntos de Ruta / Comercios a Visitar */}
-                            <div className="bg-slate-900/50 p-4 rounded-2xl border border-slate-800 space-y-3">
-                                <div className="flex items-start gap-3">
-                                    <div className="w-6 h-6 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center shrink-0 mt-0.5 font-black text-xs border border-emerald-500/30">
-                                        1
-                                    </div>
-                                    <div className="flex-1 min-w-0">
-                                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-wider">
-                                            {selectedMandadoDetail.mandado_details?.storeName ? `Comercio: ${selectedMandadoDetail.mandado_details.storeName}` : 'Punto de Compra / Retiro'}
-                                        </p>
-                                        <p className="text-xs font-bold text-slate-200 truncate">
-                                            {selectedMandadoDetail.origin?.address || selectedMandadoDetail.mandado_details?.storeAddresses || 'Ubicación indicada en detalle'}
-                                        </p>
-                                    </div>
-                                </div>
-
-                                <div className="ml-3 border-l-2 border-dashed border-slate-700 h-3"></div>
-
-                                <div className="flex items-start gap-3">
-                                    <div className="w-6 h-6 rounded-full bg-amber-500/20 text-amber-400 flex items-center justify-center shrink-0 mt-0.5 font-black text-xs border border-amber-500/30">
-                                        2
-                                    </div>
-                                    <div className="flex-1 min-w-0">
-                                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Destino de Entrega</p>
-                                        <p className="text-xs font-bold text-slate-200 truncate">
-                                            {selectedMandadoDetail.destination?.address || 'Ubicación del cliente'}
-                                        </p>
-                                    </div>
-                                </div>
-                            </div>
-
-                            {/* Indicador de si incluye traslado de persona */}
-                            <div className="flex items-center gap-2 p-3 rounded-2xl border text-xs font-bold bg-slate-900 border-slate-800">
-                                {selectedMandadoDetail.mandado_details?.transportPassenger ? (
-                                    <div className="text-amber-400 flex items-center gap-2">
-                                        <span className="w-2.5 h-2.5 rounded-full bg-amber-400 animate-ping shrink-0" />
-                                        <span>⚠️ Este mandado incluye el traslado de una persona</span>
-                                    </div>
-                                ) : (
-                                    <div className="text-emerald-400 flex items-center gap-2">
-                                        <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 shrink-0" />
-                                        <span>🛍️ Solo diligencias / compras (sin traslado de personas)</span>
-                                    </div>
-                                )}
-                            </div>
-
-                            {/* Advertencia Cero Intermediación */}
-                            <div className="bg-amber-500/10 border border-amber-500/20 rounded-2xl p-3 text-[11px] text-amber-300 flex items-start gap-2 font-medium">
-                                <ShieldAlert className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
-                                <span>No financias compras: El cliente le transfiere directo al comercio por Pago Móvil. Tú sólo cobras tu tarifa ofertada.</span>
-                            </div>
-
-                            {/* Casilla de Oferta / Cotización */}
-                            <div className="bg-gradient-to-br from-slate-900 to-slate-950 p-4 rounded-2xl border border-amber-400/30 space-y-3">
-                                <span className="text-[10px] font-black uppercase tracking-widest text-amber-400 block">Tu Oferta Personalizada</span>
-                                <div className="grid grid-cols-2 gap-3">
-                                    <div>
-                                        <label className="text-[10px] font-black uppercase text-slate-400 block mb-1">
-                                            Tarifa que cobras ($ USD)
-                                        </label>
-                                        <div className="relative">
-                                            <span className="absolute left-3 top-2.5 text-amber-400 font-black text-sm">$</span>
-                                            <input
-                                                type="number"
-                                                min="0.50"
-                                                step="0.25"
-                                                placeholder="Ej: 3.00"
-                                                value={modalBidPrice}
-                                                onChange={(e) => setModalBidPrice(e.target.value)}
-                                                className="w-full pl-7 pr-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-white font-black text-sm focus:border-amber-400 outline-none"
-                                            />
-                                        </div>
-                                    </div>
-                                    <div>
-                                        <label className="text-[10px] font-black uppercase text-slate-400 block mb-1">
-                                            Tiempo de llegada
-                                        </label>
-                                        <div className="relative">
-                                            <input
-                                                type="number"
-                                                min="5"
-                                                step="5"
-                                                placeholder="15"
-                                                value={modalBidEta}
-                                                onChange={(e) => setModalBidEta(e.target.value)}
-                                                className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-white font-black text-sm focus:border-amber-400 outline-none"
-                                            />
-                                            <span className="absolute right-3 top-2.5 text-slate-400 font-bold text-xs">min</span>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                {Number(modalBidPrice) >= 0.50 && (
-                                    <div className="text-xs bg-slate-950 p-3 rounded-xl border border-slate-800 flex items-center justify-between">
-                                        <span className="text-slate-400 font-medium">Tarifa Un 2x3: <strong className="text-rose-400 font-bold">-$0.70</strong></span>
-                                        <span className="text-emerald-400 font-black">Neto para ti: ${Math.max(0, Number(modalBidPrice) - 0.70).toFixed(2)} USD</span>
-                                    </div>
-                                )}
-                            </div>
-
-                            {/* Botón Postularme / Enviar Cotización */}
-                            <div className="pt-2 flex flex-col gap-2">
-                                <button
-                                    onClick={() => handleSendMandadoBid(selectedMandadoDetail.id, Number(modalBidPrice), Number(modalBidEta))}
-                                    disabled={processingAction !== null || !modalBidPrice || Number(modalBidPrice) < 0.50}
-                                    className="w-full bg-gradient-to-r from-amber-400 to-yellow-400 hover:from-amber-300 hover:to-yellow-300 text-slate-950 font-black py-4 rounded-2xl shadow-xl shadow-amber-400/20 active:scale-95 transition-all text-base uppercase tracking-wider flex items-center justify-center gap-2 disabled:opacity-50"
-                                >
-                                    {processingAction === `bid_${selectedMandadoDetail.id}` ? (
-                                        <div className="w-6 h-6 border-2 border-slate-950 border-t-transparent rounded-full animate-spin"></div>
-                                    ) : (
-                                        <>
-                                            <Send className="w-5 h-5" />
-                                            Postularme / Enviar cotización
-                                        </>
-                                    )}
-                                </button>
-                                <button
-                                    onClick={() => setSelectedMandadoDetail(null)}
-                                    className="w-full py-2.5 text-slate-400 hover:text-slate-200 font-bold text-xs uppercase tracking-wider text-center"
-                                >
-                                    Volver al centro de mando
                                 </button>
                             </div>
                         </motion.div>
@@ -2238,16 +2001,42 @@ export default function OrdersRadar() {
                                             </div>
                                         </div>
 
-                                        {/* Botón Ver Mandado completo */}
-                                        <div className="mb-3">
-                                            <button
-                                                onClick={() => setSelectedMandadoDetail(req)}
-                                                className="w-full py-2.5 bg-amber-100 hover:bg-amber-200 text-amber-900 font-black text-xs rounded-xl uppercase tracking-wider transition-colors flex items-center justify-center gap-1.5"
-                                            >
-                                                <Package className="w-4 h-4" />
-                                                Ver Mandado Completo
-                                            </button>
+                                        {/* Indicador de traslado de persona o diligencia */}
+                                        <div className="flex items-center gap-2 p-3 rounded-2xl border text-xs font-bold mb-3 bg-slate-50 border-slate-200">
+                                            {req.mandado_details?.transportPassenger ? (
+                                                <div className="text-amber-600 flex items-center gap-2">
+                                                    <span className="w-2.5 h-2.5 rounded-full bg-amber-500 animate-ping shrink-0" />
+                                                    <span>⚠️ Este mandado incluye el traslado de una persona</span>
+                                                </div>
+                                            ) : (
+                                                <div className="text-emerald-700 flex items-center gap-2">
+                                                    <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 shrink-0" />
+                                                    <span>🛍️ Solo diligencias / compras (sin traslado de personas)</span>
+                                                </div>
+                                            )}
                                         </div>
+
+                                        {/* Foto o factura de referencia si existe */}
+                                        {(req.mandado_details?.referenceUrl || req.reference_url) && (
+                                            <div className="bg-slate-50 border border-slate-200 rounded-2xl p-3 mb-3 space-y-2">
+                                                <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">Foto o factura de referencia:</span>
+                                                <a
+                                                    href={req.mandado_details?.referenceUrl || req.reference_url}
+                                                    target="_blank"
+                                                    rel="noreferrer"
+                                                    className="block rounded-xl overflow-hidden border border-slate-300 max-h-48 group relative shadow-sm"
+                                                >
+                                                    <img
+                                                        src={req.mandado_details?.referenceUrl || req.reference_url}
+                                                        alt="Referencia mandado"
+                                                        className="w-full h-full object-cover group-hover:scale-105 transition-transform"
+                                                    />
+                                                    <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                                                        <span className="text-xs font-black text-white bg-slate-900/80 px-3 py-1 rounded-lg">Ver foto completa</span>
+                                                    </div>
+                                                </a>
+                                            </div>
+                                        )}
 
                                         {/* Formulario de Puja */}
                                         {bidData.submitted ? (

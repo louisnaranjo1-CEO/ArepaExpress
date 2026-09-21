@@ -958,11 +958,14 @@ export default function Taxi() {
     // Aceptar puja de conductor para Muchacho e' Mandado
     const handleAcceptMandadoBid = async (bid: any) => {
         try {
+            const reqId = bid.transport_request_id || bid.request_id;
+            const finalPrice = Number(bid.amount || bid.offered_price || 0);
+
             // 1. Aceptar puja seleccionada
             await supabase.from('transport_bids').update({ status: 'accepted' }).eq('id', bid.id);
             // 2. Rechazar otras pujas de esta solicitud
             await supabase.from('transport_bids').update({ status: 'rejected' })
-                .eq('transport_request_id', bid.transport_request_id)
+                .or(`transport_request_id.eq.${reqId},request_id.eq.${reqId}`)
                 .neq('id', bid.id);
             // 3. Asignar conductor al viaje
             await supabase.from('transport_requests').update({
@@ -971,13 +974,13 @@ export default function Taxi() {
                 driver_name: bid.driver_name,
                 driver_phone: bid.driver_phone,
                 driver_assigned_at: new Date().toISOString(),
-                price: Number(bid.amount),
-                total: Number(bid.amount),
+                price: finalPrice,
+                total: finalPrice,
                 commission_amount: 0.70
-            }).eq('id', bid.transport_request_id);
+            }).eq('id', reqId);
 
             toast.success(`¡Oferta de ${bid.driver_name} aceptada!`);
-            navigate(`/taxi/track/${bid.transport_request_id}`);
+            navigate(`/taxi/track/${reqId}`);
         } catch (err) {
             console.error("Error accepting bid:", err);
             toast.error("Error al aceptar la oferta.");
