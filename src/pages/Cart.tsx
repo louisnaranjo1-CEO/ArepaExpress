@@ -4,22 +4,21 @@ import { useCart } from '../context/CartContext';
 import { useAuth } from '../context/AuthContext';
 import { useCurrency } from '../context/CurrencyContext';
 import { useState, useEffect } from 'react';
-import { collection, addDoc, serverTimestamp, doc, getDoc, updateDoc, getDocs, query, where, increment, collectionGroup } from 'firebase/firestore';
-import { db } from '../lib/firebase';
+import { supabase } from '../lib/supabase';
 import { calculateDistance, formatDistance } from '../lib/geo';
 import AddressPicker from '../components/AddressPicker';
-import WaiterLayout from '../waiter/components/WaiterLayout';
 import { isDemoMode } from '../lib/env';
 import DemoAlertModal from '../components/DemoAlertModal';
 import DualPrice from '../components/DualPrice';
 import LocationRequiredModal from '../components/LocationRequiredModal';
+import { calculateDynamicFare } from '../lib/pricing';
 
 interface CartProps {
   hideHeader?: boolean;
 }
 
 export default function Cart({ hideHeader = false }: CartProps) {
-  const { items, totalPrice, updateQuantity, removeItem, clearCart } = useCart();
+  const { items, totalPrice, updateQuantity, removeItem, clearCart, clearStoreCart, storeIds, storeCarts, activeRestaurantId, setActiveRestaurantId } = useCart();
   const { user, userData } = useAuth();
   const navigate = useNavigate();
   const [isCheckingOut, setIsCheckingOut] = useState(false);
@@ -67,9 +66,11 @@ export default function Cart({ hideHeader = false }: CartProps) {
     const checkCredits = async () => {
       if (!user?.email) return;
       try {
-        const creditsQuery = query(collectionGroup(db, 'credits'), where('userEmail', '==', user.email));
-        const snap = await getDocs(creditsQuery);
-        const isDefaulted = snap.docs.some(d => d.data().status === 'defaulted');
+        const { data: credits } = await supabase
+          .from('restaurant_credits')
+          .select('status')
+          .eq('user_email', user.email);
+        const isDefaulted = (credits || []).some((d: any) => d.status === 'defaulted');
         setHasDefaultedCredit(isDefaulted);
       } catch (err) {
         console.error(err);
@@ -117,8 +118,12 @@ export default function Cart({ hideHeader = false }: CartProps) {
   useEffect(() => {
     const fetchSettings = async () => {
       try {
-        const sDoc = await getDoc(doc(db, 'delivery_settings', 'settings'));
-        if (sDoc.exists()) setSystemSettings(sDoc.data());
+        const { data: sDoc } = await supabase
+          .from('app_settings')
+          .select('*')
+          .eq('id', 'delivery_settings')
+          .maybeSingle();
+        if (sDoc) setSystemSettings(sDoc.data || sDoc.value || sDoc);
       } catch (err) { console.error(err); }
     };
     fetchSettings();
@@ -140,9 +145,25 @@ export default function Cart({ hideHeader = false }: CartProps) {
       if (items.length > 0) {
         setLoadingDistance(true);
         try {
-          const rDoc = await getDoc(doc(db, 'restaurants', items[0].restaurantId));
-          if (rDoc.exists()) {
-            const data = rDoc.data();
+          const { data: rDoc } = await supabase
+            .from('comercios')
+            .select('*')
+            .eq('id', items[0].restaurantId)
+            .maybeSingle();
+
+          if (rDoc) {
+            const data = {
+              id: rDoc.id,
+              name: rDoc.name,
+              category: rDoc.category,
+              whatsapp: rDoc.whatsapp,
+              ownDelivery: rDoc.own_delivery ?? rDoc.ownDelivery,
+              appDelivery: rDoc.app_delivery ?? rDoc.appDelivery,
+              pickupOnly: rDoc.pickup_only ?? rDoc.pickupOnly,
+              deliveryRates: rDoc.delivery_rates || rDoc.deliveryRates || [],
+              location: rDoc.location,
+              ...rDoc
+            };
             setRestaurantData(data);
             if (!data.ownDelivery && !data.appDelivery && data.pickupOnly) {
               setDeliveryMethod('pickup');
@@ -156,8 +177,12 @@ export default function Cart({ hideHeader = false }: CartProps) {
               setDistance(d);
             }
           }
-          const rewSnap = await getDocs(query(collection(db, 'restaurants', items[0].restaurantId, 'rewards'), where('isActive', '==', true)));
-          setRestaurantRewards(rewSnap.docs.map(d => ({ id: d.id, ...d.data() })));
+          const { data: rewSnap } = await supabase
+            .from('rewards')
+            .select('*')
+            .eq('restaurant_id', items[0].restaurantId)
+            .eq('is_active', true);
+          if (rewSnap) setRestaurantRewards(rewSnap.map((d: any) => ({ id: d.id, ...d })));
         } catch (err) { console.error(err); } finally { setLoadingDistance(false); }
       }
     };
@@ -177,6 +202,18 @@ export default function Cart({ hideHeader = false }: CartProps) {
       }
     }
     if (systemSettings) {
+      if (systemSettings.pricingModel === 'smart' || systemSettings.delivery) {
+        const fare = calculateDynamicFare({
+          serviceType: 'delivery',
+          distanceKm: distance,
+          settings: systemSettings
+        });
+        return {
+          clientFee: fare.clientTotal,
+          driverPayout: fare.driverPayout,
+          shift: fare.activeFactors.isNight ? 'night' : 'day'
+        };
+      }
       const now = new Date();
       const currentTimeStr = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
       let activeShift: 'day' | 'night' = isTimeInRange(currentTimeStr, systemSettings.dayShift?.start || '08:00', systemSettings.dayShift?.end || '20:00') ? 'day' : 'night';
@@ -212,8 +249,12 @@ export default function Cart({ hideHeader = false }: CartProps) {
     setError(null);
     try {
       const restaurantId = items[0].restaurantId;
-      const restaurantDoc = await getDoc(doc(db, 'restaurants', restaurantId));
-      const rData = restaurantDoc.exists() ? restaurantDoc.data() : null;
+      const { data: rDoc } = await supabase
+        .from('comercios')
+        .select('*')
+        .eq('id', restaurantId)
+        .maybeSingle();
+      const rData = rDoc;
       if (!isWaiter && !rData?.whatsapp) throw new Error("No WhatsApp config");
 
       let addressStr = isWaiter ? `Mesa: ${tableNumber}` : (deliveryMethod === 'pickup' ? "Recoger en local" : (selectedAddress ? `${selectedAddress.name} - ${selectedAddress.reference || ''}` : "Recoger en local"));
@@ -228,65 +269,108 @@ export default function Cart({ hideHeader = false }: CartProps) {
       let tableId = null;
       if (isWaiter && tableNumber) {
         try {
-          const tablesRef = collection(db, 'restaurants', restaurantId, 'tables');
-          const q = query(tablesRef, where('number', '==', tableNumber));
-          const qSnap = await getDocs(q);
-          if (!qSnap.empty) {
-            tableId = qSnap.docs[0].id;
+          const { data: tData } = await supabase
+            .from('restaurant_tables')
+            .select('id')
+            .eq('restaurant_id', restaurantId)
+            .eq('number', tableNumber)
+            .maybeSingle();
+          if (tData) {
+            tableId = tData.id;
           }
         } catch (err) {
           console.error("Error fetching tableId:", err);
         }
       }
 
-      const orderData = {
+      const newOrderId = (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : `order_${Date.now()}`;
+
+      let storeCommission = 0.30;
+      if (cartSubtotalUSD > 20) {
+        storeCommission = 0.75;
+      } else if (cartSubtotalUSD >= 10) {
+        storeCommission = 0.55;
+      } else {
+        storeCommission = 0.30;
+      }
+
+      const orderData: any = {
+        id: newOrderId,
+        user_id: isWaiter ? (waiterData.id || 'waiter') : (user?.uid || 'guest_' + Date.now()),
         userId: isWaiter ? (waiterData.id || 'waiter') : (user?.uid || 'guest_' + Date.now()),
+        user_name: isWaiter ? (customerName || `Cliente Mesa ${tableNumber || 'N/A'}`) : (user?.displayName || guestName || 'Cliente Invitado'),
         userName: isWaiter ? (customerName || `Cliente Mesa ${tableNumber || 'N/A'}`) : (user?.displayName || guestName || 'Cliente Invitado'),
+        user_phone: isWaiter ? '' : (userData?.phone || guestPhone || ''),
         userPhone: isWaiter ? '' : (userData?.phone || guestPhone || ''),
+        user_cedula: isWaiter ? '' : (userData?.cedula || guestCedula || ''),
         userCedula: isWaiter ? '' : (userData?.cedula || guestCedula || ''),
+        user_email: isWaiter ? (waiterData.email || 'N/A') : (user?.email || 'N/A'),
         userEmail: isWaiter ? (waiterData.email || 'N/A') : (user?.email || 'N/A'),
+        restaurant_id: restaurantId,
         restaurantId,
+        restaurant_name: rData?.name || 'Deliexpress Restaurant',
         restaurantName: rData?.name || 'Deliexpress Restaurant',
+        restaurant_city: rData?.location?.city || '',
         restaurantCity: rData?.location?.city || '',
         source: isWaiter ? 'waiter' : 'client',
+        waiter_id: isWaiter ? (waiterData.id || null) : null,
         waiterId: isWaiter ? (waiterData.id || null) : null,
+        waiter_name: isWaiter ? (waiterData.name || null) : null,
         waiterName: isWaiter ? (waiterData.name || null) : null,
         table: isWaiter ? (tableNumber || null) : null,
+        table_id: isWaiter ? (tableId || null) : null,
         tableId: isWaiter ? (tableId || null) : null,
+        table_number: isWaiter ? (tableNumber || null) : null,
         tableNumber: isWaiter ? (tableNumber || null) : null,
         items: sanitizedItems,
         subtotal: cartSubtotalUSD || 0, 
+        delivery_fee: deliveryFee || 0, 
         deliveryFee: deliveryFee || 0, 
-        driverPayout: driverPayout || 0, 
-        deliveryShift: currentShift || 'day', 
+        driver_payout: driverPayout || 0, 
+        driverPayout: driverPayout || 0,
+        delivery_shift: currentShift || 'day', 
+        deliveryShift: currentShift || 'day',
         distance: distance || 0,
         total: finalTotal || 0, 
+        commission_amount: storeCommission,
+        commissionAmount: storeCommission,
+        delivery_method: deliveryMethod,
+        deliveryMethod: deliveryMethod,
         status: isWaiter ? 'preparing' : 'pendiente_pago', 
-        paymentStatus: isWaiter ? paymentStatus : 'pending', // Use the selected payment status
+        payment_status: isWaiter ? paymentStatus : 'pending',
+        paymentStatus: isWaiter ? paymentStatus : 'pending',
         notified: false,
-        deliveryAddress: addressStr, 
+        delivery_address: addressStr, 
+        deliveryAddress: addressStr,
+        delivery_coords: (!isWaiter && deliveryMethod === 'app_delivery' && selectedAddress && selectedAddress.lat) ? { lat: selectedAddress.lat, lng: selectedAddress.lng } : null,
         deliveryCoords: (!isWaiter && deliveryMethod === 'app_delivery' && selectedAddress && selectedAddress.lat) ? { lat: selectedAddress.lat, lng: selectedAddress.lng } : null,
-        createdAt: serverTimestamp(), 
+        created_at: new Date().toISOString(), 
+        createdAt: new Date().toISOString(),
+        order_note: orderNote.trim() || '',
         orderNote: orderNote.trim() || ''
       };
 
       // Remove any undefined keys at the root level
       Object.keys(orderData).forEach(key => (orderData as any)[key] === undefined && delete (orderData as any)[key]);
 
-      const docRef = await addDoc(collection(db, 'orders'), orderData);
-      setOrderId(docRef.id);
+      const { error: insErr } = await supabase.from('orders').insert(orderData);
+      if (insErr) throw insErr;
+      setOrderId(newOrderId);
 
       // Auto-insert first chat message from the restaurant
       if (!isWaiter) {
           try {
-              // Wait for importing collection and addDoc is already available
-              await addDoc(collection(db, 'orders', docRef.id, 'messages'), {
-                  text: 'Gracias por elegirnos! En este momento serás atendido por uno de nuestros cajeros para confirmar la existencia de cada item de tu pedido! Lo haremos en un 2x3!',
+              await supabase.from('messages').insert({
+                  order_id: newOrderId,
+                  orderId: newOrderId,
+                  text: '¡Hola! Gracias por tu pedido. Estamos revisando la disponibilidad de tus productos. En un momento te confirmaremos.',
+                  sender_id: restaurantId,
                   senderId: restaurantId,
-                  senderName: 'Atención al Cliente',
+                  sender_name: rData?.name || 'Comercio',
+                  senderName: rData?.name || 'Comercio',
+                  sender_role: 'restaurant',
                   senderRole: 'restaurant',
-                  timestamp: serverTimestamp(),
-                  isRead: false
+                  created_at: new Date().toISOString()
               });
           } catch(e) {
              console.error('Error adding welcome chat message', e);
@@ -297,12 +381,11 @@ export default function Cart({ hideHeader = false }: CartProps) {
       if (isWaiter && tableId) {
         setIsSyncingTable(true);
         try {
-          const tableRef = doc(db, 'restaurants', restaurantId, 'tables', tableId);
-          await updateDoc(tableRef, {
+          await supabase.from('restaurant_tables').update({
             status: 'occupied',
-            lastOrderId: docRef.id,
-            updatedAt: serverTimestamp()
-          });
+            last_order_id: newOrderId,
+            updated_at: new Date().toISOString()
+          }).eq('id', tableId);
         } catch (tableErr) {
           console.error("Error updating table status:", tableErr);
         } finally {
@@ -332,33 +415,77 @@ export default function Cart({ hideHeader = false }: CartProps) {
         return `• ${item.quantity}x ${item.name}${variantText}${itemNote}${modifiersText} (${priceDisplay})`;
       }).join('\n');
       
-      const mapsLink = (deliveryMethod === 'delivery' && selectedAddress && selectedAddress.lat) ? `\n🗺️ Ubicación GPS: https://www.google.com/maps?q=${selectedAddress.lat},${selectedAddress.lng}` : '';
+      const mapsLink = (deliveryMethod === 'app_delivery' && selectedAddress && selectedAddress.lat) ? `\n🗺️ Ubicación GPS: https://www.google.com/maps?q=${selectedAddress.lat},${selectedAddress.lng}` : '';
       const notesString = orderNote.trim() ? `\n📝 Notas: ${orderNote.trim()}` : '';
 
       if (!isWaiter && rData?.whatsapp) {
         const number = rData.whatsapp.replace(/\D/g, '');
-        let wpMessage = `Hola, vengo de Deli Express y deseo realizar el siguiente pedido a *${rData.name || 'su negocio'}*:\n\n` +
-          `📦 *Productos:*\n${itemsList}\n` +
-          (deliveryMethod === 'pickup' ? `\n🛍️ *Método:* Retiro en local (PickUp)` : `\n📍 *Entrega:* ${addressStr}${mapsLink}`) +
-          (notesString ? `\n${notesString}` : '');
+        const clientName = (user as any)?.displayName || (user as any)?.name || 'Cliente';
+        const clientCedula = (user as any)?.cedula || (user as any)?.rif || 'V-No registrada';
+        const clientPhone = (user as any)?.phone || selectedAddress?.phone || 'No registrado';
+        const deliveryFeeDisplay = deliveryMethod === 'app_delivery' 
+          ? 'PAGADO A LA APP / CONDUCTOR (⚠️ NO COBRAR DELIVERY EN LOCAL)' 
+          : `$${deliveryFee.toFixed(2)} (${(deliveryFee * bcvRate).toFixed(2)} Bs)`;
+        const totalDisplay = `$${finalTotal.toFixed(2)} (${(finalTotal * bcvRate).toFixed(2)} Bs)`;
+        const locationDisplay = deliveryMethod === 'pickup' ? 'Retiro en local (PickUp)' : `${addressStr}${mapsLink}`;
 
-        if (hasConsultItems) {
-          wpMessage += `\n\n💬 *Consulta de Precios:* Por favor, ¿podrían indicarme el precio y disponibilidad de los productos marcados como "Consultar precio"?`;
+        // Determinar plantilla según contexto
+        const chosenTemplate = deliveryMethod === 'app_delivery'
+          ? (systemSettings?.whatsappMessageTemplateAppDelivery || null)
+          : (systemSettings?.whatsappMessageTemplate || null);
+
+        let wpMessage = '';
+        if (chosenTemplate) {
+          wpMessage = chosenTemplate
+            .replace(/\{OrderId\}/g, newOrderId.slice(0, 8))
+            .replace(/\{RestaurantName\}/g, rData.name || 'su negocio')
+            .replace(/\{UserName\}/g, clientName)
+            .replace(/\{Cedula\}/g, clientCedula)
+            .replace(/\{UserPhone\}/g, clientPhone)
+            .replace(/\{OrderItems\}/g, itemsList)
+            .replace(/\{DeliveryFee\}/g, deliveryFeeDisplay)
+            .replace(/\{Total\}/g, totalDisplay)
+            .replace(/\{LocationText\}/g, locationDisplay)
+            .replace(/\{OrderNotes\}/g, notesString);
+        } else {
+          // Mensaje por defecto contextual
+          wpMessage = `Hola, vengo de Deli Express y deseo realizar el siguiente pedido a *${rData.name || 'su negocio'}*:\n\n` +
+            `📦 *Productos:*\n${itemsList}\n\n` +
+            (deliveryMethod === 'pickup' 
+              ? `🛍️ *Método:* Retiro en local (PickUp)` 
+              : deliveryMethod === 'app_delivery'
+                ? `🛵 *DELIVERY:* PAGADO A LA APP / CONDUCTOR\n⚠️ *NOTA:* La tienda NO debe cobrar delivery al cliente. Ya fue pagado en la app.\n📍 *Entrega:* ${addressStr}${mapsLink}`
+                : `🛵 *Delivery:* $${deliveryFee.toFixed(2)} (${(deliveryFee * bcvRate).toFixed(2)} Bs)\n📍 *Entrega:* ${addressStr}${mapsLink}`
+            ) +
+            (notesString ? `\n${notesString}` : '');
+
+          if (hasConsultItems) {
+            wpMessage += `\n\n💬 *Consulta de Precios:* Por favor, ¿podrían indicarme el precio y disponibilidad de los productos marcados como "Consultar precio"?`;
+          }
+
+          if (cartSubtotalUSD > 0) {
+            wpMessage += `\n\n💵 *Total estimado:* $${finalTotal.toFixed(2)} (${(finalTotal * bcvRate).toFixed(2)} Bs)${hasConsultItems ? ' (+ productos por cotizar)' : ''}`;
+          }
         }
 
-        if (cartSubtotalUSD > 0) {
-          wpMessage += `\n\n💵 *Total estimado:* $${finalTotal.toFixed(2)} (${(finalTotal * bcvRate).toFixed(2)} Bs)${hasConsultItems ? ' (+ productos por cotizar)' : ''}`;
-        }
-
-        window.open(`https://wa.me/${number}?text=${encodeURIComponent(wpMessage)}`, '_blank');
+        // Guardar plantilla de WhatsApp para botón de respaldo con temporizador en TrackOrder
+        try {
+          localStorage.setItem(`wa_fallback_${newOrderId}`, JSON.stringify({
+            number,
+            message: wpMessage,
+            restaurantName: rData.name,
+            timestamp: Date.now()
+          }));
+        } catch(e) {}
       }
       
-      clearCart();
+      // Limpiar únicamente el carrito de este comercio para preservar carritos de otras tiendas
+      clearStoreCart(restaurantId);
       setPurchaseConfirmed(true);
       setCheckoutSuccess(true);
       
       if (!isWaiter) {
-          navigate(`/track/${docRef.id}`);
+          navigate(`/track/${newOrderId}`);
           return;
       }
       
@@ -403,6 +530,39 @@ export default function Cart({ hideHeader = false }: CartProps) {
               <p className="text-xs text-red-600 mt-1 leading-snug">
                 Puedes continuar con tu compra, pero recuerda ponerte al día con tus compromisos en "Mis Cuotas 2x3" para evitar que el establecimiento suspenda tus beneficios de crédito.
               </p>
+            </div>
+          </div>
+        )}
+
+        {storeIds.length > 1 && (
+          <div className="bg-amber-50 border border-amber-200 rounded-2xl p-3 space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-black text-amber-900 flex items-center gap-1.5">
+                🛍️ Tienes carritos en {storeIds.length} comercios
+              </span>
+              <span className="text-[10px] font-bold text-amber-700 bg-white px-2 py-0.5 rounded-full border border-amber-200">
+                Cobro por comercio
+              </span>
+            </div>
+            <div className="flex gap-2 overflow-x-auto pb-1 hide-scrollbar">
+              {storeIds.map(sId => {
+                const sItems = storeCarts[sId] || [];
+                const isCurrent = sId === activeRestaurantId;
+                return (
+                  <button
+                    key={sId}
+                    type="button"
+                    onClick={() => setActiveRestaurantId(sId)}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all flex items-center gap-1.5 ${
+                      isCurrent 
+                        ? 'bg-slate-900 text-white shadow-md' 
+                        : 'bg-white text-slate-700 border border-amber-200 hover:bg-amber-100/50'
+                    }`}
+                  >
+                    <span>🏪 {sItems[0]?.name ? `${sItems.length} items` : 'Comercio'}</span>
+                  </button>
+                );
+              })}
             </div>
           </div>
         )}
@@ -860,5 +1020,5 @@ export default function Cart({ hideHeader = false }: CartProps) {
     </div>
   );
 
-  return isWaiter ? <WaiterLayout>{content}</WaiterLayout> : content;
+  return content;
 }

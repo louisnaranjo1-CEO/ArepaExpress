@@ -142,6 +142,13 @@ _Enviado desde Deliexpress App_`,
         mandao: 0.70
     });
 
+    // Comisiones por Ventas en Comercios (Por Carrito)
+    const [storeCommissionTiers, setStoreCommissionTiers] = useState({
+        under10: 0.30,
+        from10to20: 0.55,
+        over20: 0.75
+    });
+
     // Datos Oficiales Pago Móvil Un 2x3 para Liquidaciones
     const [un2x3PagoMovil, setUn2x3PagoMovil] = useState({
         bank: 'Banesco (0134)',
@@ -256,6 +263,14 @@ _Enviado desde Deliexpress App_`,
                         phone: pm.phone || '04141234567',
                         idf: pm.id_number || pm.idf || 'J-50123456-7',
                         name: pm.account_name || pm.name || 'Un 2x3 Inversiones C.A.'
+                    });
+                }
+                const sct = cVal.store_commission_tiers || cVal.storeCommissionTiers;
+                if (sct) {
+                    setStoreCommissionTiers({
+                        under10: sct.under10 !== undefined ? Number(sct.under10) : 0.30,
+                        from10to20: sct.from10to20 !== undefined ? Number(sct.from10to20) : 0.55,
+                        over20: sct.over20 !== undefined ? Number(sct.over20) : 0.75
                     });
                 }
             }
@@ -499,7 +514,8 @@ _Enviado desde Deliexpress App_`,
             const payloadToSave = {
                 ...settings,
                 pricingModel: 'smart',
-                transportRates: updatedTransportRates
+                transportRates: updatedTransportRates,
+                store_commission_tiers: storeCommissionTiers
             };
 
             const { error } = await supabase
@@ -511,13 +527,15 @@ _Enviado desde Deliexpress App_`,
                 });
             if (error) throw error;
 
-            // Guardar Comisiones Un 2x3 y Pago Móvil Receptor
+            // Guardar Comisiones Un 2x3, Pago Móvil Receptor y Comisiones de Comercios
             const { error: commErr } = await supabase
                 .from('app_settings')
                 .upsert({
                     id: 'commission_settings',
                     data: {
                         commissions: categoryCommissions,
+                        store_commission_tiers: storeCommissionTiers,
+                        storeCommissionTiers: storeCommissionTiers,
                         pagoMovil: {
                             bank: un2x3PagoMovil.bank,
                             phone: un2x3PagoMovil.phone,
@@ -1153,6 +1171,127 @@ _Enviado desde Deliexpress App_`,
                                     {bcvRate > 0 && (
                                         <p className="text-[10px] text-slate-400 font-medium mt-1">
                                             ≈ {(categoryCommissions.mandao * bcvRate).toFixed(2)} Bs
+                                        </p>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* ========================================================= */}
+                    {/* SECCIÓN 1.5: COMISIONES POR VENTAS EN COMERCIOS (POR CARRITO) */}
+                    {/* ========================================================= */}
+                    <div className="bg-white p-6 md:p-8 rounded-[32px] border border-slate-200 shadow-sm space-y-6">
+                        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-100 pb-5">
+                            <div className="space-y-1">
+                                <div className="flex items-center gap-2">
+                                    <span className="px-3 py-1 bg-emerald-500/10 text-emerald-700 rounded-full text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5 border border-emerald-500/30">
+                                        <Store className="w-3.5 h-3.5 text-emerald-600" />
+                                        Tiendas y Comercios
+                                    </span>
+                                    <span className="px-2.5 py-0.5 bg-amber-50 text-amber-700 rounded-full text-[10px] font-bold border border-amber-200">
+                                        Por Carrito de Compra
+                                    </span>
+                                </div>
+                                <h3 className="text-xl font-black text-slate-900 tracking-tight">Comisiones por Ventas en Comercios</h3>
+                                <p className="text-xs text-slate-500 max-w-2xl font-medium leading-relaxed">
+                                    Esquema escalonado según el subtotal de productos en el carrito del cliente para cada negocio. Aplica independientemente por tienda.
+                                </p>
+                            </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+                            {/* Tier 1: Menos de $10 */}
+                            <div className="bg-slate-50 p-5 rounded-2xl border border-slate-200/80 space-y-3 hover:border-emerald-400 transition-colors">
+                                <div className="flex items-center gap-3">
+                                    <div className="w-10 h-10 rounded-xl bg-emerald-500/10 text-emerald-600 flex items-center justify-center font-black">
+                                        <ShoppingBag className="w-5 h-5" />
+                                    </div>
+                                    <div>
+                                        <h4 className="font-black text-slate-900 text-xs uppercase tracking-wide">Menos de $10 USD</h4>
+                                        <p className="text-[10px] text-slate-400 font-bold">Carrito &lt; $10.00</p>
+                                    </div>
+                                </div>
+                                <div>
+                                    <label className="text-[10px] font-black uppercase text-slate-400 block mb-1">Comisión de la App ($)</label>
+                                    <div className="relative">
+                                        <span className="absolute left-3 top-2.5 text-slate-400 font-bold text-xs">$</span>
+                                        <input
+                                            type="number"
+                                            step="0.05"
+                                            min="0"
+                                            value={storeCommissionTiers.under10}
+                                            onChange={(e) => setStoreCommissionTiers(prev => ({ ...prev, under10: parseFloat(e.target.value) || 0 }))}
+                                            className="w-full bg-white border border-slate-200 pl-7 pr-3 py-2 rounded-xl text-sm font-black text-slate-800 outline-none focus:ring-2 focus:ring-emerald-500/20"
+                                        />
+                                    </div>
+                                    {bcvRate > 0 && (
+                                        <p className="text-[10px] text-slate-400 font-medium mt-1">
+                                            ≈ {(storeCommissionTiers.under10 * bcvRate).toFixed(2)} Bs
+                                        </p>
+                                    )}
+                                </div>
+                            </div>
+
+                            {/* Tier 2: De $10 a $20 */}
+                            <div className="bg-slate-50 p-5 rounded-2xl border border-slate-200/80 space-y-3 hover:border-blue-400 transition-colors">
+                                <div className="flex items-center gap-3">
+                                    <div className="w-10 h-10 rounded-xl bg-blue-500/10 text-blue-600 flex items-center justify-center font-black">
+                                        <ShoppingBag className="w-5 h-5" />
+                                    </div>
+                                    <div>
+                                        <h4 className="font-black text-slate-900 text-xs uppercase tracking-wide">De $10 a $20 USD</h4>
+                                        <p className="text-[10px] text-slate-400 font-bold">Carrito $10.00 – $20.00</p>
+                                    </div>
+                                </div>
+                                <div>
+                                    <label className="text-[10px] font-black uppercase text-slate-400 block mb-1">Comisión de la App ($)</label>
+                                    <div className="relative">
+                                        <span className="absolute left-3 top-2.5 text-slate-400 font-bold text-xs">$</span>
+                                        <input
+                                            type="number"
+                                            step="0.05"
+                                            min="0"
+                                            value={storeCommissionTiers.from10to20}
+                                            onChange={(e) => setStoreCommissionTiers(prev => ({ ...prev, from10to20: parseFloat(e.target.value) || 0 }))}
+                                            className="w-full bg-white border border-slate-200 pl-7 pr-3 py-2 rounded-xl text-sm font-black text-slate-800 outline-none focus:ring-2 focus:ring-blue-500/20"
+                                        />
+                                    </div>
+                                    {bcvRate > 0 && (
+                                        <p className="text-[10px] text-slate-400 font-medium mt-1">
+                                            ≈ {(storeCommissionTiers.from10to20 * bcvRate).toFixed(2)} Bs
+                                        </p>
+                                    )}
+                                </div>
+                            </div>
+
+                            {/* Tier 3: Más de $20 */}
+                            <div className="bg-slate-50 p-5 rounded-2xl border border-slate-200/80 space-y-3 hover:border-purple-400 transition-colors">
+                                <div className="flex items-center gap-3">
+                                    <div className="w-10 h-10 rounded-xl bg-purple-500/10 text-purple-600 flex items-center justify-center font-black">
+                                        <ShoppingBag className="w-5 h-5" />
+                                    </div>
+                                    <div>
+                                        <h4 className="font-black text-slate-900 text-xs uppercase tracking-wide">Más de $20 USD</h4>
+                                        <p className="text-[10px] text-slate-400 font-bold">Carrito &gt; $20.00</p>
+                                    </div>
+                                </div>
+                                <div>
+                                    <label className="text-[10px] font-black uppercase text-slate-400 block mb-1">Comisión de la App ($)</label>
+                                    <div className="relative">
+                                        <span className="absolute left-3 top-2.5 text-slate-400 font-bold text-xs">$</span>
+                                        <input
+                                            type="number"
+                                            step="0.05"
+                                            min="0"
+                                            value={storeCommissionTiers.over20}
+                                            onChange={(e) => setStoreCommissionTiers(prev => ({ ...prev, over20: parseFloat(e.target.value) || 0 }))}
+                                            className="w-full bg-white border border-slate-200 pl-7 pr-3 py-2 rounded-xl text-sm font-black text-slate-800 outline-none focus:ring-2 focus:ring-purple-500/20"
+                                        />
+                                    </div>
+                                    {bcvRate > 0 && (
+                                        <p className="text-[10px] text-slate-400 font-medium mt-1">
+                                            ≈ {(storeCommissionTiers.over20 * bcvRate).toFixed(2)} Bs
                                         </p>
                                     )}
                                 </div>

@@ -147,6 +147,7 @@ export default function RestaurantProfile() {
     const [workingHours, setWorkingHours] = useState<WorkingHour[]>(DEFAULT_WORKING_HOURS);
     const [followerCount, setFollowerCount] = useState(0);
     const [followers, setFollowers] = useState<any[]>([]);
+    const [businessDescription, setBusinessDescription] = useState('');
 
     // UI states for image uploads
     const [logoFile, setLogoFile] = useState<File | null>(null);
@@ -253,16 +254,28 @@ export default function RestaurantProfile() {
                     setCoverUrl(data.cover_url || data.coverUrl || '');
                     setLocation(data.location || (data.locations && data.locations.length > 0 ? data.locations[0] : null));
                     setDeliveryRates(data.delivery_rates || data.deliveryRates || []);
-                    setWorkingHours(data.working_hours || data.workingHours || DEFAULT_WORKING_HOURS);
+
+                    // Safely parse working_hours
+                    const rawWh = data.working_hours || data.workingHours;
+                    let parsedWh: WorkingHour[] = DEFAULT_WORKING_HOURS;
+                    if (Array.isArray(rawWh) && rawWh.length > 0) {
+                        parsedWh = rawWh;
+                    } else if (typeof rawWh === 'string') {
+                        try {
+                            const parsed = JSON.parse(rawWh);
+                            if (Array.isArray(parsed) && parsed.length > 0) parsedWh = parsed;
+                        } catch (_) {}
+                    }
+                    setWorkingHours(parsedWh);
+
+                    setBusinessDescription(data.business_description || data.businessDescription || data.verification_data?.businessDescription || '');
                     setFollowerCount(data.follower_count || data.followerCount || 0);
                     setSocialLinks(data.social_links || data.socialLinks || []);
                     setCategoryId(data.category_id || data.categoryId || (data.category ? data.category : ''));
                     setSubCategoryId(data.sub_category_id || data.subCategoryId || '');
                     setHasCashea(data.has_cashea ?? data.hasCashea ?? false);
                     setCasheaQrUrl(data.cashea_qr_url || data.casheaQrUrl || '');
-                    setHasTwoByThree(data.has_two_by_three ?? data.hasTwoByThree ?? false);
-                    setTwoByThreeInitial(data.two_by_three_initial ?? data.twoByThreeInitial ?? 50);
-                    setTwoByThreeInstallments(data.two_by_three_installments ?? data.twoByThreeInstallments ?? 2);
+                    setHasTwoByThree(false);
                     setBusinessType(data.business_type || data.businessType || 'restaurant');
                     setPaymentMethods(data.payment_methods || data.paymentMethods || []);
 
@@ -502,13 +515,12 @@ export default function RestaurantProfile() {
                 social_links: socialLinks || [],
                 has_cashea: hasCashea || false,
                 cashea_qr_url: currentCasheaQrUrl || '',
-                has_two_by_three: hasTwoByThree || false,
-                two_by_three_initial: twoByThreeInitial || 50,
-                two_by_three_installments: twoByThreeInstallments || 2,
+                has_two_by_three: false,
                 payment_methods: paymentMethods || [],
                 is_visible: isVisible,
                 isVisible: isVisible,
                 address_reference: addressReference || location?.reference || '',
+                business_description: businessDescription || '',
                 tiktok: tiktok || '',
                 instagram: instagram || '',
                 updated_at: new Date().toISOString()
@@ -1182,6 +1194,20 @@ export default function RestaurantProfile() {
                                         </div>
                                     </div>
                                 )}
+
+                                {/* ¿De qué se trata tu negocio? */}
+                                <div className="space-y-1.5 pt-2">
+                                    <label className="text-xs font-bold text-slate-600 ml-1">
+                                        ¿De qué se trata tu negocio? (Descripción breve)
+                                    </label>
+                                    <textarea
+                                        value={businessDescription}
+                                        onChange={(e) => setBusinessDescription(e.target.value)}
+                                        rows={2}
+                                        placeholder="Ej: Venta de comida típica venezolana, repuestos automotrices, barbería y cuidado personal..."
+                                        className="w-full bg-white border border-slate-200 p-3 rounded-xl outline-none focus:border-primary font-bold text-slate-700 text-sm resize-none"
+                                    />
+                                </div>
                             </div>
                         </div>
                     </section>
@@ -1281,130 +1307,26 @@ export default function RestaurantProfile() {
                 <div className="space-y-6">
                     <section className="bg-white p-8 rounded-[40px] shadow-sm border border-slate-100 space-y-6">
                         <h2 className="text-xl font-black text-slate-900 flex items-center gap-2">
-                            <Truck className="w-6 h-6 text-slate-900" />
-                            Logística
+                            <Clock className="w-6 h-6 text-slate-900" />
+                            Logística y Preparación
                         </h2>
 
-                        <div className="space-y-4">
-                            <div
-                                className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl cursor-pointer group"
-                                onClick={() => {
-                                    setOwnDelivery(!ownDelivery);
-                                    if (!ownDelivery) {
-                                        setAppDelivery(false);
-                                    }
-                                }}
-                            >
-                                <span className="font-bold text-slate-700">Servicio de Delivery Propio</span>
-                                <div className={`w-12 h-6 rounded-full relative transition-colors ${ownDelivery ? 'bg-primary' : 'bg-slate-200'}`}>
-                                    <div className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow-sm transition-all ${ownDelivery ? 'left-7' : 'left-1'}`}></div>
-                                </div>
-                            </div>
-
-                            <div
-                                className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl cursor-pointer group"
-                                onClick={() => {
-                                    setAppDelivery(!appDelivery);
-                                    if (!appDelivery) {
-                                        setOwnDelivery(false);
-                                    }
-                                }}
-                            >
-                                <span className="font-bold text-slate-700">Utilizar Delivery de la App (2x3)</span>
-                                <div className={`w-12 h-6 rounded-full relative transition-colors ${appDelivery ? 'bg-primary' : 'bg-slate-200'}`}>
-                                    <div className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow-sm transition-all ${appDelivery ? 'left-7' : 'left-1'}`}></div>
-                                </div>
-                            </div>
-
-                            <div
-                                className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl cursor-pointer group"
-                                onClick={() => {
-                                    setPickupOnly(!pickupOnly);
-                                }}
-                            >
-                                <div>
-                                    <span className="font-bold text-slate-700 block">PickUp</span>
-                                    <span className="text-xs text-slate-500">Permitir a los clientes recoger su pedido en el local.</span>
-                                </div>
-                                <div className={`w-12 h-6 rounded-full relative transition-colors ${pickupOnly ? 'bg-primary' : 'bg-slate-200'}`}>
-                                    <div className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow-sm transition-all ${pickupOnly ? 'left-7' : 'left-1'}`}></div>
-                                </div>
-                            </div>
-                        </div>
-
-                        {ownDelivery && (
-                            <div className="space-y-4 pt-2">
-                                <div className="flex justify-between items-center">
-                                    <h3 className="text-sm font-black text-slate-400 uppercase tracking-wider">Tarifas por Distancia</h3>
-                                    <button
-                                        onClick={addDeliveryRate}
-                                        className="text-slate-900 text-xs font-bold flex items-center gap-1 hover:underline"
-                                    >
-                                        <Plus className="w-3 h-3" />
-                                        Añadir Rango
-                                    </button>
-                                </div>
-
-                                {deliveryRates.length === 0 ? (
-                                    <p className="text-xs text-slate-400 italic text-center py-4 bg-slate-50 rounded-xl">No hay tarifas configuradas. Se aplicará tarifa fija.</p>
-                                ) : (
-                                    <div className="space-y-3">
-                                        {deliveryRates.map((rate, idx) => (
-                                            <div key={idx} className="flex items-center gap-3 bg-white p-3 rounded-xl border border-slate-100 shadow-sm">
-                                                <div className="flex-1 flex items-center gap-2">
-                                                    <input
-                                                        type="number"
-                                                        value={rate.minKm}
-                                                        onChange={(e) => updateDeliveryRate(idx, 'minKm', parseFloat(e.target.value))}
-                                                        className="w-16 bg-slate-50 p-2 rounded-lg text-xs font-bold text-center outline-none focus:border-primary border border-transparent"
-                                                    />
-                                                    <span className="text-slate-400 text-[10px] font-bold">A</span>
-                                                    <input
-                                                        type="number"
-                                                        value={rate.maxKm}
-                                                        onChange={(e) => updateDeliveryRate(idx, 'maxKm', parseFloat(e.target.value))}
-                                                        className="w-16 bg-slate-50 p-2 rounded-lg text-xs font-bold text-center outline-none focus:border-primary border border-transparent"
-                                                    />
-                                                    <span className="text-slate-400 text-[10px] font-bold uppercase">KM</span>
-                                                </div>
-                                                <div className={`flex items-center gap-1 px-3 py-2 rounded-lg border transition-all ${rate.price === 0 ? 'bg-emerald-50 border-emerald-100 ring-2 ring-emerald-500/20' : 'bg-green-50 border-green-100'}`}>
-                                                    <span className={`${rate.price === 0 ? 'text-emerald-600' : 'text-green-600'} text-[10px] font-black`}>$</span>
-                                                    <input
-                                                        type="number"
-                                                        value={rate.price}
-                                                        onChange={(e) => updateDeliveryRate(idx, 'price', parseFloat(e.target.value))}
-                                                        className={`w-16 bg-transparent text-xs font-black outline-none ${rate.price === 0 ? 'text-emerald-700' : 'text-green-700'}`}
-                                                    />
-                                                    {rate.price === 0 && (
-                                                        <span className="text-[9px] font-black text-emerald-500 uppercase tracking-tighter ml-1">GRATIS</span>
-                                                    )}
-                                                </div>
-                                                <button
-                                                    onClick={() => removeDeliveryRate(idx)}
-                                                    className="p-2 text-slate-300 hover:text-red-500 transition-colors"
-                                                >
-                                                    <Trash2 className="w-4 h-4" />
-                                                </button>
-                                            </div>
-                                        ))}
-                                    </div>
-                                )}
-                            </div>
-                        )}
-
                         <div className="space-y-2">
-                            <label className="text-sm font-bold text-slate-500 ml-2">Tiempo Prep. Promedio</label>
+                            <label className="text-sm font-bold text-slate-500 ml-2">Tiempo de Preparación Promedio</label>
                             <div className="relative">
                                 <Clock className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
                                 <select
                                     value={deliveryTime}
                                     onChange={(e) => setDeliveryTime(e.target.value)}
-                                    className="w-full bg-slate-50 border-2 border-transparent focus:border-primary focus:bg-white p-4 pl-12 rounded-2xl outline-none transition-all font-bold text-slate-700 appearance-none"
+                                    className="w-full bg-slate-50 border-2 border-transparent focus:border-primary focus:bg-white p-4 pl-12 rounded-2xl outline-none transition-all font-bold text-slate-700 appearance-none cursor-pointer"
                                 >
-                                    <option value="15-30 min">15-30 min</option>
-                                    <option value="30-45 min">30-45 min</option>
-                                    <option value="45-60 min">45-60 min</option>
-                                    <option value="60+ min">Más de 1 hora</option>
+                                    <option value="5 min">5 min</option>
+                                    <option value="10 min">10 min</option>
+                                    <option value="15 min">15 min</option>
+                                    <option value="20 min">20 min</option>
+                                    <option value="30 min">30 min</option>
+                                    <option value="45 min">45 min</option>
+                                    <option value="1 hora">1 hora</option>
                                 </select>
                             </div>
                         </div>
@@ -1471,59 +1393,6 @@ export default function RestaurantProfile() {
                                 </div>
                             )}
                         </div>
-
-                        {/* 2x3 Config */}
-                        <div className={`p-4 rounded-2xl border-2 transition-all ${hasTwoByThree ? 'bg-primary/5 border-primary/20' : 'bg-slate-50 border-transparent hover:border-slate-100'}`}>
-                            <div 
-                                className="flex items-center justify-between cursor-pointer"
-                                onClick={() => setHasTwoByThree(!hasTwoByThree)}
-                            >
-                                <div className="flex items-center gap-3">
-                                    <div className={`w-12 h-12 rounded-xl flex items-center justify-center transition-all ${hasTwoByThree ? 'bg-primary shadow-lg shadow-primary/30' : 'bg-white shadow-sm border border-slate-100'}`}>
-                                        <span className={`font-black text-xl italic ${hasTwoByThree ? 'text-white' : 'text-slate-400'}`}>2x3</span>
-                                    </div>
-                                    <div>
-                                        <p className={`font-black tracking-tight leading-none mb-1 ${hasTwoByThree ? 'text-slate-900' : 'text-slate-700'}`}>Sistema "2x3 Resuelve"</p>
-                                        <p className={`text-[10px] font-bold ${hasTwoByThree ? 'text-slate-900/70' : 'text-slate-400'}`}>
-                                            Permitir pagos financiados en cuotas
-                                        </p>
-                                    </div>
-                                </div>
-                                <div className={`w-12 h-6 rounded-full relative transition-colors ${hasTwoByThree ? 'bg-primary' : 'bg-slate-200'}`}>
-                                    <div className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow-sm transition-all ${hasTwoByThree ? 'left-7' : 'left-1'}`}></div>
-                                </div>
-                            </div>
-
-                            {hasTwoByThree && (
-                                <div className="mt-4 pt-4 border-t border-primary/10 grid grid-cols-2 gap-4">
-                                    <div className="space-y-1">
-                                        <label className="text-[10px] font-black text-slate-500 uppercase ml-1">Pago Inicial (%)</label>
-                                        <div className="relative">
-                                            <input 
-                                                type="number" 
-                                                min="10" max="90"
-                                                value={twoByThreeInitial}
-                                                onChange={(e) => setTwoByThreeInitial(Number(e.target.value))}
-                                                className="w-full bg-white border border-slate-200 p-3 pr-8 rounded-xl outline-none focus:border-primary font-bold text-slate-700 text-sm"
-                                            />
-                                            <span className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 font-bold">%</span>
-                                        </div>
-                                    </div>
-                                    <div className="space-y-1">
-                                        <label className="text-[10px] font-black text-slate-500 uppercase ml-1">Nº de Cuotas Restantes</label>
-                                        <div className="relative">
-                                            <input 
-                                                type="number" 
-                                                min="1" max="10"
-                                                value={twoByThreeInstallments}
-                                                onChange={(e) => setTwoByThreeInstallments(Number(e.target.value))}
-                                                className="w-full bg-white border border-slate-200 p-3 rounded-xl outline-none focus:border-primary font-bold text-slate-700 text-sm"
-                                            />
-                                        </div>
-                                    </div>
-                                </div>
-                            )}
-                        </div>
                     </section>
 
                     <section className="bg-white p-6 md:p-8 rounded-[40px] shadow-sm border border-slate-100 space-y-5">
@@ -1576,23 +1445,23 @@ export default function RestaurantProfile() {
                                     {/* Center: Hours inputs or Closed badge */}
                                     <div className="flex-1 flex items-center justify-start sm:justify-center">
                                         {!wh.closed ? (
-                                            <div className="inline-flex items-center gap-2 bg-white px-3 py-1.5 rounded-xl border border-slate-200 shadow-xs">
+                                            <div className="inline-flex items-center gap-2 bg-white px-3 py-2 rounded-xl border border-slate-200 shadow-xs">
                                                 <input
                                                     type="time"
                                                     value={wh.open}
                                                     onChange={(e) => updateWorkingHours(idx, 'open', e.target.value)}
-                                                    className="bg-transparent text-xs font-bold text-slate-700 outline-none cursor-pointer"
+                                                    className="bg-transparent text-xs font-bold text-slate-700 outline-none cursor-pointer p-0.5 touch-manipulation"
                                                 />
                                                 <span className="text-slate-300 font-bold text-xs">—</span>
                                                 <input
                                                     type="time"
                                                     value={wh.close}
                                                     onChange={(e) => updateWorkingHours(idx, 'close', e.target.value)}
-                                                    className="bg-transparent text-xs font-bold text-slate-700 outline-none cursor-pointer"
+                                                    className="bg-transparent text-xs font-bold text-slate-700 outline-none cursor-pointer p-0.5 touch-manipulation"
                                                 />
                                             </div>
                                         ) : (
-                                            <span className="text-xs font-semibold text-slate-400 bg-slate-100 px-3 py-1 rounded-xl">
+                                            <span className="text-xs font-semibold text-slate-400 bg-slate-100 px-3 py-1.5 rounded-xl">
                                                 No laborable / Cerrado
                                             </span>
                                         )}
@@ -1603,10 +1472,10 @@ export default function RestaurantProfile() {
                                         <button
                                             type="button"
                                             onClick={() => updateWorkingHours(idx, 'closed', !wh.closed)}
-                                            className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all ${
+                                            className={`px-4 py-2 min-h-[38px] rounded-xl text-xs font-bold transition-all touch-manipulation cursor-pointer active:scale-95 ${
                                                 wh.closed
                                                     ? 'bg-slate-100 text-slate-500 hover:bg-slate-200 hover:text-slate-700'
-                                                    : 'bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100'
+                                                    : 'bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100 shadow-xs'
                                             }`}
                                         >
                                             {wh.closed ? 'Cerrado' : 'Abierto'}
@@ -1898,7 +1767,9 @@ export default function RestaurantProfile() {
                     workingHoursSummary: 'Lunes a Domingo: 08:00 AM - 10:00 PM',
                     whatsappNumber: whatsappNumber,
                     requiresDelivery: requiresDelivery,
-                    existingRifUrl: existingRifUrl
+                    existingRifUrl: existingRifUrl,
+                    businessDescription: businessDescription,
+                    category: categoryId
                 }}
                 onSuccess={(updated) => {
                     setVerificationStatus(updated.verificationStatus);
@@ -1912,7 +1783,15 @@ export default function RestaurantProfile() {
                     setTiktok(updated.tiktok);
                     setAddressReference(updated.addressReference);
                     setWhatsappNumber(updated.whatsapp);
-                    setRequiresDelivery(updated.requiresDelivery);
+                    if (updated.requiresDelivery !== undefined) {
+                        setRequiresDelivery(updated.requiresDelivery);
+                    }
+                    if (updated.businessDescription) {
+                        setBusinessDescription(updated.businessDescription);
+                    }
+                    if (updated.category) {
+                        setCategoryId(updated.category);
+                    }
                     setExistingRifUrl(updated.rifPhotoUrl);
                     if (location) {
                         setLocation({

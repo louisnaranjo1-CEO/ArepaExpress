@@ -5,7 +5,7 @@ import { supabase } from '../../lib/supabase';
 import { useNavigate } from 'react-router-dom';
 
 export default function CashierLogin() {
-    const [cashierEmail, setCashierEmail] = useState('');
+    const [identifier, setIdentifier] = useState('');
     const [cashierPassword, setCashierPassword] = useState('');
     const [isSigningIn, setIsSigningIn] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -16,20 +16,25 @@ export default function CashierLogin() {
         setIsSigningIn(true);
         setError(null);
         try {
-            const { data: cashier, error: fetchErr } = await supabase
+            const inputVal = identifier.trim();
+            const pinVal = cashierPassword.trim();
+
+            const { data: cashiers, error: fetchErr } = await supabase
                 .from('cashiers')
                 .select('*')
-                .ilike('email', cashierEmail.trim())
-                .maybeSingle();
+                .or(`email.ilike.${inputVal},username.ilike.${inputVal},name.ilike.${inputVal}`);
+
+            const cashier = cashiers && cashiers.length > 0 ? cashiers[0] : null;
 
             if (fetchErr || !cashier) {
-                setError("Credenciales incorrectas (Usuario).");
+                setError("Credenciales incorrectas (Usuario o Email no encontrado).");
                 setIsSigningIn(false);
                 return;
             }
 
-            if (cashier.passcode !== cashierPassword.trim()) {
-                setError("Credenciales incorrectas (Contraseña).");
+            const isMatch = cashier.passcode === pinVal || cashier.pin === pinVal;
+            if (!isMatch) {
+                setError("Clave PIN incorrecta.");
                 setIsSigningIn(false);
                 return;
             }
@@ -111,11 +116,11 @@ export default function CashierLogin() {
                         <div className="space-y-1.5">
                             <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Email / Usuario</label>
                             <input
-                                type="email"
+                                type="text"
                                 required
-                                value={cashierEmail}
-                                onChange={(e) => setCashierEmail(e.target.value)}
-                                placeholder="cajera@deliexpress.app"
+                                value={identifier}
+                                onChange={(e) => setIdentifier(e.target.value)}
+                                placeholder="ej: cajero1 o cajero@correo.com"
                                 className="w-full bg-slate-50 border-2 border-slate-100 focus:border-primary px-4 py-4 rounded-2xl outline-none font-bold text-slate-700 transition-all focus:bg-white"
                             />
                         </div>

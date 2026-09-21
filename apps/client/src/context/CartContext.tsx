@@ -22,14 +22,23 @@ export interface CartItem {
     modifiersConfig?: { [modifierName: string]: CartModifierItem[] };
 }
 
+export type StoreCartMap = { [restaurantId: string]: CartItem[] };
+
 interface CartContextType {
     items: CartItem[];
+    storeCarts: StoreCartMap;
+    activeRestaurantId: string | null;
+    setActiveRestaurantId: (restaurantId: string) => void;
+    storeIds: string[];
     addItem: (item: CartItem) => void;
-    removeItem: (id: string) => void;
-    updateQuantity: (id: string, newQuantity: number) => void;
+    removeItem: (id: string, restaurantId?: string) => void;
+    updateQuantity: (id: string, newQuantity: number, restaurantId?: string) => void;
     clearCart: () => void;
+    clearStoreCart: (restaurantId: string) => void;
+    clearAllCarts: () => void;
     totalItems: number;
     totalPrice: number;
+    allStoresTotalItems: number;
 }
 
 const CartContext = createContext<CartContextType | undefined>(undefined);
@@ -43,99 +52,167 @@ export const useCart = () => {
 };
 
 export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-    const [items, setItems] = useState<CartItem[]>(() => {
-        // try to load from local storage
+    const [storeCarts, setStoreCarts] = useState<StoreCartMap>(() => {
+        // First check multi-store storage
+        const savedMulti = localStorage.getItem('arepa-express-store-carts');
+        if (savedMulti) {
+            try {
+                const parsed = JSON.parse(savedMulti);
+                if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+                    return parsed;
+                }
+            } catch (e) {}
+        }
+
+        // Backward compatibility: check single-store legacy array
         const saved = localStorage.getItem('arepa-express-cart');
         if (saved) {
             try {
                 const parsedData = JSON.parse(saved);
-                // CLEANUP: Remove test items like "Louis Hamburguesa" as requested by user
-                if (Array.isArray(parsedData)) {
-                    return parsedData.filter(item =>
-                        !item.name?.toLowerCase().includes('louis') &&
-                        !item.name?.toLowerCase().includes('hamnurguesa')
-                    );
-                }
-                return [];
-            } catch (e) {
-                return [];
-            }
-        }
-        return [];
-    });
-
-    useEffect(() => {
-        localStorage.setItem('arepa-express-cart', JSON.stringify(items));
-    }, [items]);
-
-    const addItem = (newItem: CartItem) => {
-        setItems((currentItems) => {
-            // Check if we are adding from a different restaurant
-            if (currentItems.length > 0 && currentItems[0].restaurantId !== newItem.restaurantId) {
-                // Optional: you could ask user to clear cart, for MVP we just clear it
-                return [newItem];
-            }
-
-            const existingIndex = currentItems.findIndex(i => i.id === newItem.id);
-            if (existingIndex >= 0) {
-                // Update quantity if existing
-                const updated = [...currentItems];
-                updated[existingIndex].quantity += newItem.quantity;
-                return updated;
-            }
-
-            return [...currentItems, newItem];
-        });
-    };
-
-    const removeItem = (id: string) => {
-        setItems((current) => {
-            const next = current.filter(item => item.id !== id && (item as any).productId !== id);
-            try {
-                if (next.length === 0) {
-                    localStorage.removeItem('arepa-express-cart');
-                } else {
-                    localStorage.setItem('arepa-express-cart', JSON.stringify(next));
+                if (Array.isArray(parsedData) && parsedData.length > 0) {
+                    const migrated: StoreCartMap = {};
+                    parsedData.forEach((item: CartItem) => {
+                        if (item && item.restaurantId) {
+                            if (!migrated[item.restaurantId]) migrated[item.restaurantId] = [];
+                            migrated[item.restaurantId].push(item);
+                        }
+                    });
+                    return migrated;
                 }
             } catch (e) {}
-            return next;
+        }
+        return {};
+    });
+
+    const [activeRestaurantId, setActiveRestaurantIdState] = useState<string | null>(() => {
+        const savedActive = localStorage.getItem('arepa-express-active-store');
+        if (savedActive) return savedActive;
+        const keys = Object.keys(storeCarts).filter(k => (storeCarts[k] || []).length > 0);
+        return keys[0] || null;
+    });
+
+    const storeIds = Object.keys(storeCarts).filter(k => (storeCarts[k] || []).length > 0);
+
+    // Sync effective active store
+    const effectiveRestId = (activeRestaurantId && storeCarts[activeRestaurantId]?.length)
+        ? activeRestaurantId
+        : (storeIds[0] || null);
+
+    const setActiveRestaurantId = (id: string) => {
+        setActiveRestaurantIdState(id);
+        try {
+            localStorage.setItem('arepa-express-active-store', id);
+        } catch (e) {}
+    };
+
+    const items = effectiveRestId ? (storeCarts[effectiveRestId] || []) : [];
+
+    useEffect(() => {
+        try {
+            localStorage.setItem('arepa-express-store-carts', JSON.stringify(storeCarts));
+            localStorage.setItem('arepa-express-cart', JSON.stringify(items));
+            if (effectiveRestId) {
+                localStorage.setItem('arepa-express-active-store', effectiveRestId);
+            }
+        } catch (e) {}
+    }, [storeCarts, items, effectiveRestId]);
+
+    const addItem = (newItem: CartItem) => {
+        const restId = newItem.restaurantId;
+        setStoreCarts((currentCarts) => {
+            const currentItems = currentCarts[restId] || [];
+            const existingIndex = currentItems.findIndex(i => i.id === newItem.id);
+            let updatedItems: CartItem[];
+            if (existingIndex >= 0) {
+                updatedItems = [...currentItems];
+                updatedItems[existingIndex].quantity += newItem.quantity;
+            } else {
+                updatedItems = [...currentItems, newItem];
+            }
+            return {
+                ...currentCarts,
+                [restId]: updatedItems
+            };
+        });
+        setActiveRestaurantId(restId);
+    };
+
+    const removeItem = (id: string, restaurantId?: string) => {
+        setStoreCarts((currentCarts) => {
+            const targetRestId = restaurantId || effectiveRestId;
+            if (!targetRestId || !currentCarts[targetRestId]) return currentCarts;
+            const nextItems = currentCarts[targetRestId].filter(item => item.id !== id && (item as any).productId !== id);
+            const updated = { ...currentCarts };
+            if (nextItems.length === 0) {
+                delete updated[targetRestId];
+            } else {
+                updated[targetRestId] = nextItems;
+            }
+            return updated;
         });
     };
 
-    const updateQuantity = (id: string, newQuantity: number) => {
+    const updateQuantity = (id: string, newQuantity: number, restaurantId?: string) => {
         if (newQuantity <= 0) {
-            removeItem(id);
+            removeItem(id, restaurantId);
             return;
         }
 
-        setItems((current) => {
-            const next = current.map(item => item.id === id ? { ...item, quantity: newQuantity } : item);
-            try {
-                localStorage.setItem('arepa-express-cart', JSON.stringify(next));
-            } catch (e) {}
+        setStoreCarts((currentCarts) => {
+            const targetRestId = restaurantId || effectiveRestId;
+            if (!targetRestId || !currentCarts[targetRestId]) return currentCarts;
+            const nextItems = currentCarts[targetRestId].map(item => item.id === id ? { ...item, quantity: newQuantity } : item);
+            return {
+                ...currentCarts,
+                [targetRestId]: nextItems
+            };
+        });
+    };
+
+    const clearStoreCart = (restaurantId: string) => {
+        setStoreCarts((prev) => {
+            const next = { ...prev };
+            delete next[restaurantId];
             return next;
         });
     };
 
     const clearCart = () => {
-        setItems([]);
+        if (effectiveRestId) {
+            clearStoreCart(effectiveRestId);
+        }
+    };
+
+    const clearAllCarts = () => {
+        setStoreCarts({});
+        setActiveRestaurantIdState(null);
         try {
+            localStorage.removeItem('arepa-express-store-carts');
             localStorage.removeItem('arepa-express-cart');
+            localStorage.removeItem('arepa-express-active-store');
         } catch (e) {}
     };
 
-    const totalItems = (items || []).reduce((sum, item) => sum + (item?.quantity || 0), 0);
-    const totalPrice = (items || []).reduce((sum, item) => sum + ((item?.price || 0) * (item?.quantity || 0)), 0);
+    const totalItems = items.reduce((sum, item) => sum + (item?.quantity || 0), 0);
+    const totalPrice = items.reduce((sum, item) => sum + ((item?.price || 0) * (item?.quantity || 0)), 0);
+    const allStoresTotalItems = Object.values(storeCarts).flat().reduce((sum, item) => sum + (item?.quantity || 0), 0);
 
     return (
         <CartContext.Provider value={{
             items,
+            storeCarts,
+            activeRestaurantId: effectiveRestId,
+            setActiveRestaurantId,
+            storeIds,
             addItem,
             removeItem,
             updateQuantity,
             clearCart,
+            clearStoreCart,
+            clearAllCarts,
             totalItems,
-            totalPrice
+            totalPrice,
+            allStoresTotalItems
         }}>
             {children}
         </CartContext.Provider>

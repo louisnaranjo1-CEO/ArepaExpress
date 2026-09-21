@@ -18,7 +18,7 @@ interface CartProps {
 }
 
 export default function Cart({ hideHeader = false }: CartProps) {
-  const { items, totalPrice, updateQuantity, removeItem, clearCart } = useCart();
+  const { items, totalPrice, updateQuantity, removeItem, clearCart, clearStoreCart, storeIds, storeCarts, activeRestaurantId, setActiveRestaurantId } = useCart();
   const { user, userData } = useAuth();
   const navigate = useNavigate();
   const [isCheckingOut, setIsCheckingOut] = useState(false);
@@ -285,6 +285,15 @@ export default function Cart({ hideHeader = false }: CartProps) {
 
       const newOrderId = (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : `order_${Date.now()}`;
 
+      let storeCommission = 0.30;
+      if (cartSubtotalUSD > 20) {
+        storeCommission = 0.75;
+      } else if (cartSubtotalUSD >= 10) {
+        storeCommission = 0.55;
+      } else {
+        storeCommission = 0.30;
+      }
+
       const orderData: any = {
         id: newOrderId,
         user_id: isWaiter ? (waiterData.id || 'waiter') : (user?.uid || 'guest_' + Date.now()),
@@ -316,13 +325,17 @@ export default function Cart({ hideHeader = false }: CartProps) {
         items: sanitizedItems,
         subtotal: cartSubtotalUSD || 0, 
         delivery_fee: deliveryFee || 0, 
-        deliveryFee: deliveryFee || 0,
+        deliveryFee: deliveryFee || 0, 
         driver_payout: driverPayout || 0, 
         driverPayout: driverPayout || 0,
         delivery_shift: currentShift || 'day', 
         deliveryShift: currentShift || 'day',
         distance: distance || 0,
         total: finalTotal || 0, 
+        commission_amount: storeCommission,
+        commissionAmount: storeCommission,
+        delivery_method: deliveryMethod,
+        deliveryMethod: deliveryMethod,
         status: isWaiter ? 'preparing' : 'pendiente_pago', 
         payment_status: isWaiter ? paymentStatus : 'pending',
         paymentStatus: isWaiter ? paymentStatus : 'pending',
@@ -350,11 +363,11 @@ export default function Cart({ hideHeader = false }: CartProps) {
               await supabase.from('messages').insert({
                   order_id: newOrderId,
                   orderId: newOrderId,
-                  text: 'Gracias por elegirnos! En este momento serás atendido por uno de nuestros cajeros para confirmar la existencia de cada item de tu pedido! Lo haremos en un 2x3!',
+                  text: '¡Hola! Gracias por tu pedido. Estamos revisando la disponibilidad de tus productos. En un momento te confirmaremos.',
                   sender_id: restaurantId,
                   senderId: restaurantId,
-                  sender_name: 'Atención al Cliente',
-                  senderName: 'Atención al Cliente',
+                  sender_name: rData?.name || 'Comercio',
+                  senderName: rData?.name || 'Comercio',
                   sender_role: 'restaurant',
                   senderRole: 'restaurant',
                   created_at: new Date().toISOString()
@@ -406,18 +419,6 @@ export default function Cart({ hideHeader = false }: CartProps) {
       const notesString = orderNote.trim() ? `\n📝 Notas: ${orderNote.trim()}` : '';
 
       if (!isWaiter && rData?.whatsapp) {
-        const pendingOrderData = {
-          orderId: newOrderId,
-          restaurantId,
-          restaurantName: rData.name || 'Comercio',
-          restaurantLogo: rData.logoUrl || rData.logo_url || rData.logo || '',
-          timestamp: Date.now(),
-          productName: items.length === 1 ? items[0].name : `${items.length} productos`,
-          estimatedPrice: finalTotal
-        };
-        localStorage.setItem('deliexpress_pending_whatsapp_order', JSON.stringify(pendingOrderData));
-        window.dispatchEvent(new Event('deliexpress_whatsapp_order_created'));
-
         const number = rData.whatsapp.replace(/\D/g, '');
         const clientName = (user as any)?.displayName || (user as any)?.name || 'Cliente';
         const clientCedula = (user as any)?.cedula || (user as any)?.rif || 'V-No registrada';
@@ -467,10 +468,19 @@ export default function Cart({ hideHeader = false }: CartProps) {
           }
         }
 
-        window.open(`https://wa.me/${number}?text=${encodeURIComponent(wpMessage)}`, '_blank');
+        // Guardar plantilla de WhatsApp para botón de respaldo con temporizador en TrackOrder
+        try {
+          localStorage.setItem(`wa_fallback_${newOrderId}`, JSON.stringify({
+            number,
+            message: wpMessage,
+            restaurantName: rData.name,
+            timestamp: Date.now()
+          }));
+        } catch(e) {}
       }
       
-      clearCart();
+      // Limpiar únicamente el carrito de este comercio para preservar carritos de otras tiendas
+      clearStoreCart(restaurantId);
       setPurchaseConfirmed(true);
       setCheckoutSuccess(true);
       
@@ -520,6 +530,39 @@ export default function Cart({ hideHeader = false }: CartProps) {
               <p className="text-xs text-red-600 mt-1 leading-snug">
                 Puedes continuar con tu compra, pero recuerda ponerte al día con tus compromisos en "Mis Cuotas 2x3" para evitar que el establecimiento suspenda tus beneficios de crédito.
               </p>
+            </div>
+          </div>
+        )}
+
+        {storeIds.length > 1 && (
+          <div className="bg-amber-50 border border-amber-200 rounded-2xl p-3 space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-black text-amber-900 flex items-center gap-1.5">
+                🛍️ Tienes carritos en {storeIds.length} comercios
+              </span>
+              <span className="text-[10px] font-bold text-amber-700 bg-white px-2 py-0.5 rounded-full border border-amber-200">
+                Cobro por comercio
+              </span>
+            </div>
+            <div className="flex gap-2 overflow-x-auto pb-1 hide-scrollbar">
+              {storeIds.map(sId => {
+                const sItems = storeCarts[sId] || [];
+                const isCurrent = sId === activeRestaurantId;
+                return (
+                  <button
+                    key={sId}
+                    type="button"
+                    onClick={() => setActiveRestaurantId(sId)}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all flex items-center gap-1.5 ${
+                      isCurrent 
+                        ? 'bg-slate-900 text-white shadow-md' 
+                        : 'bg-white text-slate-700 border border-amber-200 hover:bg-amber-100/50'
+                    }`}
+                  >
+                    <span>🏪 {sItems[0]?.name ? `${sItems.length} items` : 'Comercio'}</span>
+                  </button>
+                );
+              })}
             </div>
           </div>
         )}

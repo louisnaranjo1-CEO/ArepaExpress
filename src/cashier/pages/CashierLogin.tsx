@@ -1,13 +1,11 @@
 import React, { useState } from 'react';
 import { Shield } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { doc, getDoc, updateDoc } from 'firebase/firestore';
-import { db, auth } from '../../lib/firebase';
-import { signInAnonymously } from 'firebase/auth';
+import { supabase } from '../../lib/supabase';
 import { useNavigate } from 'react-router-dom';
 
 export default function CashierLogin() {
-    const [cashierEmail, setCashierEmail] = useState('');
+    const [identifier, setIdentifier] = useState('');
     const [cashierPassword, setCashierPassword] = useState('');
     const [isSigningIn, setIsSigningIn] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -18,69 +16,55 @@ export default function CashierLogin() {
         setIsSigningIn(true);
         setError(null);
         try {
-            // Sign in anonymously first so we have a valid auth session to read collections
-            const authResult = await signInAnonymously(auth);
-            const currentUid = authResult.user.uid;
+            const inputVal = identifier.trim();
+            const pinVal = cashierPassword.trim();
 
-            const indexSnap = await getDoc(doc(db, 'cashier_index', cashierEmail.toLowerCase()));
+            const { data: cashiers, error: fetchErr } = await supabase
+                .from('cashiers')
+                .select('*')
+                .or(`email.ilike.${inputVal},username.ilike.${inputVal},name.ilike.${inputVal}`);
 
-            if (!indexSnap.exists()) {
-                setError("Credenciales incorrectas (Usuario).");
+            const cashier = cashiers && cashiers.length > 0 ? cashiers[0] : null;
+
+            if (fetchErr || !cashier) {
+                setError("Credenciales incorrectas (Usuario o Email no encontrado).");
                 setIsSigningIn(false);
                 return;
             }
 
-            const { restaurantId, cashierId } = indexSnap.data();
-
-            const cashierDoc = await getDoc(doc(db, 'restaurants', restaurantId, 'cashiers', cashierId));
-
-            if (!cashierDoc.exists()) {
-                setError("No se encontraron los datos de la cajera.");
+            const isMatch = cashier.passcode === pinVal || cashier.pin === pinVal;
+            if (!isMatch) {
+                setError("Clave PIN incorrecta.");
                 setIsSigningIn(false);
                 return;
             }
 
-            const data = cashierDoc.data();
-
-            if (data.passcode !== cashierPassword) {
-                setError("Credenciales incorrectas (Contraseña).");
-                setIsSigningIn(false);
-                return;
-            }
-
-            if (!data.isActive) {
+            if (cashier.is_active === false) {
                 setError("Esta cuenta de cajera está inactiva. Contacte al administrador.");
                 setIsSigningIn(false);
                 return;
             }
 
             const cashierData = {
-                id: cashierDoc.id,
-                ...data
+                id: cashier.id,
+                name: cashier.name,
+                email: cashier.email,
+                phone: cashier.phone,
+                permissions: cashier.permissions || [],
+                restaurantId: cashier.restaurant_id
             };
 
-            // Link this session UID to the cashier document
-            await updateDoc(doc(db, 'restaurants', restaurantId, 'cashiers', cashierId), {
-                    currentSessionUid: currentUid,
-                    lastLogin: new Date().toISOString()
-                });
-                
-                // Register session in top-level sessions collection for rules to validate
-                const { setDoc } = await import('firebase/firestore');
-                await setDoc(doc(db, 'sessions', currentUid), {
-                    restaurantId: restaurantId,
-                    role: 'cashier',
-                    userId: cashierId,
-                    createdAt: new Date().toISOString()
-                });
-                
-                console.log("Cashier authenticated with UID:", currentUid);
+            // Update last login
+            await supabase
+                .from('cashiers')
+                .update({ last_active_at: new Date().toISOString() })
+                .eq('id', cashier.id);
 
-                localStorage.setItem('cashierData', JSON.stringify(cashierData));
-                localStorage.setItem('cashierRestaurantId', restaurantId);
-                localStorage.setItem('isCashier', 'true');
+            localStorage.setItem('cashierData', JSON.stringify(cashierData));
+            localStorage.setItem('cashierRestaurantId', cashier.restaurant_id);
+            localStorage.setItem('isCashier', 'true');
 
-                navigate('/');
+            navigate('/');
         } catch (err: any) {
             console.error("Failed to sign in as cashier", err);
             setError(err.message || "Error al iniciar sesión. Intenta de nuevo.");
@@ -88,6 +72,7 @@ export default function CashierLogin() {
             setIsSigningIn(false);
         }
     };
+
 
     return (
         <div className="min-h-screen bg-slate-50 flex flex-col justify-center p-6 relative">
@@ -131,11 +116,11 @@ export default function CashierLogin() {
                         <div className="space-y-1.5">
                             <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Email / Usuario</label>
                             <input
-                                type="email"
+                                type="text"
                                 required
-                                value={cashierEmail}
-                                onChange={(e) => setCashierEmail(e.target.value)}
-                                placeholder="cajera@deliexpress.app"
+                                value={identifier}
+                                onChange={(e) => setIdentifier(e.target.value)}
+                                placeholder="ej: cajero1 o cajero@correo.com"
                                 className="w-full bg-slate-50 border-2 border-slate-100 focus:border-primary px-4 py-4 rounded-2xl outline-none font-bold text-slate-700 transition-all focus:bg-white"
                             />
                         </div>

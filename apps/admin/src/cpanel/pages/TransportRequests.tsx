@@ -450,247 +450,245 @@ export default function TransportRequests() {
                             filteredRequests.map((req) => {
                                 const isMandado = req.service_category === 'muchacho_mandado' || req.type === 'muchacho_mandado' || !!req.mandado_details;
                                 return (
-                                <div key={req.id} className="bg-white rounded-3xl p-6 border border-slate-200 shadow-sm transition-all hover:shadow-md">
-
-                                    <div className="flex flex-col md:flex-row justify-between gap-6 mb-6">
-                                        {/* User & Type Info */}
-                                        <div className="flex items-start gap-4">
-                                            <div className={`w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 ${
-                                                isMandado
-                                                    ? 'bg-amber-400 text-slate-950 shadow-md shadow-amber-400/20'
-                                                    : req.type === 'food_delivery' 
-                                                        ? 'bg-orange-100 text-orange-600'
-                                                        : req.vehicleType === 'moto' 
-                                                            ? 'bg-primary/20 text-slate-900' 
-                                                            : 'bg-slate-100 text-slate-700'
-                                            }`}>
-                                                {isMandado ? (
-                                                    <ShoppingBag className="w-6 h-6" />
-                                                ) : req.type === 'food_delivery' ? (
-                                                    <ShoppingBag className="w-6 h-6" />
-                                                ) : req.vehicleType === 'moto' ? (
-                                                    <Bike className="w-6 h-6" />
-                                                ) : (
-                                                    <Car className="w-6 h-6" />
-                                                )}
-                                            </div>
-                                            <div>
-                                                <div className="flex items-center gap-2 mb-1 flex-wrap">
-                                                    <span className="font-black text-slate-900 text-lg uppercase">
-                                                        ID: {req.id.slice(0, 6)}
-                                                    </span>
-                                                    {getStatusBadge(req.status)}
-                                                    {isMandado && (
-                                                        <span className="bg-amber-400 text-slate-950 px-2.5 py-0.5 rounded-full text-xs font-black shadow-sm">
-                                                            🛍️ Muchacho e' Mandao
-                                                        </span>
-                                                    )}
-                                                    {req.scheduled && (
-                                                        <span className="bg-purple-100 text-purple-800 px-3 py-1 rounded-full text-xs font-black flex items-center gap-1">
-                                                            <Clock className="w-3 h-3" /> RESERVA
-                                                        </span>
+                                <div key={req.id} className="bg-white rounded-3xl p-5 md:p-6 border border-slate-200 shadow-sm transition-all hover:shadow-md">
+                                    <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start mb-4">
+                                        {/* Col 1: Trip & Passenger Info */}
+                                        <div className="lg:col-span-4 space-y-3">
+                                            <div className="flex items-start gap-3">
+                                                <div className={`w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 ${
+                                                    isMandado
+                                                        ? 'bg-amber-400 text-slate-950 shadow-md shadow-amber-400/20'
+                                                        : req.type === 'food_delivery' 
+                                                            ? 'bg-orange-100 text-orange-600'
+                                                            : req.vehicleType === 'moto' 
+                                                                ? 'bg-primary/20 text-slate-900' 
+                                                                : 'bg-slate-100 text-slate-700'
+                                                }`}>
+                                                    {isMandado ? (
+                                                        <ShoppingBag className="w-6 h-6" />
+                                                    ) : req.type === 'food_delivery' ? (
+                                                        <ShoppingBag className="w-6 h-6" />
+                                                    ) : req.vehicleType === 'moto' ? (
+                                                        <Bike className="w-6 h-6" />
+                                                    ) : (
+                                                        <Car className="w-6 h-6" />
                                                     )}
                                                 </div>
-                                                <div className="flex flex-col gap-2 mt-2">
-                                                    <div className="flex items-center gap-3 text-sm font-medium text-slate-500 flex-wrap">
-                                                        <span className="flex items-center gap-1 bg-slate-100 px-3 py-1.5 rounded-xl border border-slate-200">
-                                                            <User className="w-4 h-4 text-slate-500" />
-                                                            <div className="flex flex-col">
-                                                                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest leading-none">Cliente</span>
-                                                                <span className="font-bold text-slate-800 leading-none mt-1">{req.userName}</span>
-                                                            </div>
-                                                            {req.userCedula && (
-                                                                <span className="text-xs font-bold bg-white px-1.5 py-0.5 rounded border border-slate-200 text-slate-500 ml-2">
-                                                                    C.I: {req.userCedula}
-                                                                </span>
-                                                            )}
-                                                            {req.userPhone && (
-                                                                <div className="flex items-center gap-1 ml-2 border-l border-slate-300 pl-2">
-                                                                    <a href={`tel:${req.userPhone}`} className="w-7 h-7 bg-white rounded-lg border border-slate-200 flex items-center justify-center text-slate-500 hover:text-primary hover:border-primary transition-colors" title="Llamar Cliente">
-                                                                        <Phone className="w-3.5 h-3.5" />
-                                                                    </a>
-                                                                    <a href={`https://wa.me/${req.userPhone.replace(/\D/g, '')}`} target="_blank" rel="noopener noreferrer" className="w-7 h-7 bg-white rounded-lg border border-emerald-200 flex items-center justify-center text-emerald-500 hover:bg-emerald-50 transition-colors" title="WhatsApp Cliente">
-                                                                        <MessageCircle className="w-3.5 h-3.5" />
-                                                                    </a>
-                                                                    <span className="text-xs font-bold text-slate-500 ml-1">{req.userPhone}</span>
-                                                                </div>
-                                                            )}
+                                                <div className="flex-1 min-w-0">
+                                                    <div className="flex items-center gap-1.5 flex-wrap mb-1">
+                                                        <span className="font-black text-slate-900 text-base uppercase">
+                                                            ID: {req.id.slice(0, 6)}
                                                         </span>
-                                                    </div>
-
-                                                    {req.driverId && (
-                                                        <div className="flex items-center gap-3 text-sm font-medium text-slate-500 flex-wrap">
-                                                            <span className="flex items-center gap-1 bg-primary/5 px-3 py-1.5 rounded-xl border border-primary/20">
-                                                                {req.vehicleType === 'moto' ? <Bike className="w-4 h-4 text-primary" /> : <Car className="w-4 h-4 text-primary" />}
-                                                                <div className="flex flex-col">
-                                                                    <span className="text-[10px] font-bold text-primary uppercase tracking-widest leading-none">Piloto Asignado</span>
-                                                                    <span className="font-bold text-slate-800 leading-none mt-1">{req.driverName || 'Desconocido'}</span>
-                                                                </div>
-                                                                {req.driverPhone && (
-                                                                    <div className="flex items-center gap-1 ml-2 border-l border-primary/30 pl-2">
-                                                                        <a href={`tel:${req.driverPhone}`} className="w-7 h-7 bg-white rounded-lg border border-primary/20 flex items-center justify-center text-slate-600 hover:text-primary hover:border-primary transition-colors" title="Llamar Piloto">
-                                                                            <Phone className="w-3.5 h-3.5" />
-                                                                        </a>
-                                                                        <a href={`https://wa.me/${req.driverPhone.replace(/\D/g, '')}`} target="_blank" rel="noopener noreferrer" className="w-7 h-7 bg-white rounded-lg border border-emerald-200 flex items-center justify-center text-emerald-500 hover:bg-emerald-50 transition-colors" title="WhatsApp Piloto">
-                                                                            <MessageCircle className="w-3.5 h-3.5" />
-                                                                        </a>
-                                                                        <span className="text-xs font-bold text-slate-600 ml-1">{req.driverPhone}</span>
-                                                                    </div>
-                                                                )}
-                                                            </span>
-                                                        </div>
-                                                    )}
-
-                                                    {req.assignedDriverId && (
-                                                        <div className="flex items-center gap-3 text-sm font-medium text-slate-500 flex-wrap">
-                                                            <span className="flex items-center gap-1.5 bg-amber-50 px-3 py-1.5 rounded-xl border border-amber-200 text-amber-900">
-                                                                <Star className="w-4 h-4 text-amber-500 fill-amber-400" />
-                                                                <div className="flex flex-col">
-                                                                    <span className="text-[10px] font-bold text-amber-700 uppercase tracking-widest leading-none">Selección Directa del Cliente</span>
-                                                                    <span className="font-bold text-slate-900 leading-none mt-1">Conductor ID: {req.assignedDriverId.slice(0, 8)}...</span>
-                                                                </div>
-                                                            </span>
-                                                        </div>
-                                                    )}
-
-                                                    <div className="flex items-center gap-3 text-sm font-medium text-slate-500 flex-wrap mt-1">
-                                                        <span className="flex items-center gap-1">
-                                                            <Calendar className="w-4 h-4" /> 
-                                                            {req.scheduled ? (
-                                                                <span className="text-primary font-black">
-                                                                    Para: {(() => {
-                                                                        const d = req.scheduledAt?.toDate ? req.scheduledAt.toDate() : (req.scheduledAt ? new Date(req.scheduledAt) : null);
-                                                                        return d && !isNaN(d.getTime()) ? d.toLocaleString('es-VE') : 'Fecha pendiente';
-                                                                    })()}
-                                                                </span>
-                                                            ) : (
-                                                                (() => {
-                                                                    const d = req.createdAt?.toDate ? req.createdAt.toDate() : (req.createdAt ? new Date(req.createdAt) : null);
-                                                                    return d && !isNaN(d.getTime()) ? d.toLocaleString('es-VE') : 'Fecha desconocida';
-                                                                })()
-                                                            )}
-                                                        </span>
-                                                        {((req.driverAssignedAt && req.driverArrivedAt) || req.arrivalDuration !== undefined) && (
-                                                            <span className="flex items-center gap-1 text-amber-600 bg-amber-50 px-2 py-0.5 rounded border border-amber-100 font-bold ml-2">
-                                                                <Clock className="w-4 h-4" /> 
-                                                                Llegó en: {req.arrivalDuration !== undefined ? (
-                                                                    formatDuration(req.arrivalDuration)
-                                                                ) : (() => {
-                                                                    const arr = req.driverArrivedAt?.toDate ? req.driverArrivedAt.toDate().getTime() : (req.driverArrivedAt ? new Date(req.driverArrivedAt).getTime() : 0);
-                                                                    const ass = req.driverAssignedAt?.toDate ? req.driverAssignedAt.toDate().getTime() : (req.driverAssignedAt ? new Date(req.driverAssignedAt).getTime() : 0);
-                                                                    return (arr && ass) ? `${Math.max(1, Math.round((arr - ass) / 60000))} min` : '--';
-                                                                })()}
+                                                        {getStatusBadge(req.status)}
+                                                        {isMandado && (
+                                                            <span className="bg-amber-400 text-slate-950 px-2 py-0.5 rounded-full text-[10px] font-black shadow-sm">
+                                                                🛍️ Muchacho e' Mandao
                                                             </span>
                                                         )}
+                                                        {req.scheduled && (
+                                                            <span className="bg-purple-100 text-purple-800 px-2.5 py-0.5 rounded-full text-[10px] font-black flex items-center gap-1">
+                                                                <Clock className="w-3 h-3" /> RESERVA
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                    <div className="text-[11px] font-medium text-slate-400 flex items-center gap-1">
+                                                        <Calendar className="w-3.5 h-3.5" />
+                                                        {req.scheduled ? (
+                                                            <span className="text-primary font-black">
+                                                                Para: {(() => {
+                                                                    const d = req.scheduledAt?.toDate ? req.scheduledAt.toDate() : (req.scheduledAt ? new Date(req.scheduledAt) : null);
+                                                                    return d && !isNaN(d.getTime()) ? d.toLocaleString('es-VE') : 'Fecha pendiente';
+                                                                })()}
+                                                            </span>
+                                                        ) : (
+                                                            (() => {
+                                                                const d = req.createdAt?.toDate ? req.createdAt.toDate() : (req.createdAt ? new Date(req.createdAt) : null);
+                                                                return d && !isNaN(d.getTime()) ? d.toLocaleString('es-VE') : 'Fecha desconocida';
+                                                            })()
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            {/* Client & Driver Details */}
+                                            <div className="space-y-2">
+                                                <div className="flex items-center gap-2 bg-slate-50 px-3 py-2 rounded-xl border border-slate-100 text-xs">
+                                                    <User className="w-4 h-4 text-slate-400 shrink-0" />
+                                                    <div className="flex-1 min-w-0">
+                                                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Cliente</span>
+                                                        <span className="font-black text-slate-800 truncate block">{req.userName}</span>
+                                                    </div>
+                                                    {req.userCedula && (
+                                                        <span className="text-[10px] font-bold bg-white px-1.5 py-0.5 rounded border border-slate-200 text-slate-500">
+                                                            C.I: {req.userCedula}
+                                                        </span>
+                                                    )}
+                                                    {req.userPhone && (
+                                                        <div className="flex items-center gap-1 shrink-0">
+                                                            <a href={`tel:${req.userPhone}`} className="w-6 h-6 bg-white rounded-lg border border-slate-200 flex items-center justify-center text-slate-500 hover:text-primary transition-colors" title="Llamar">
+                                                                <Phone className="w-3 h-3" />
+                                                            </a>
+                                                            <a href={`https://wa.me/${req.userPhone.replace(/\D/g, '')}`} target="_blank" rel="noopener noreferrer" className="w-6 h-6 bg-white rounded-lg border border-emerald-200 flex items-center justify-center text-emerald-500 hover:bg-emerald-50 transition-colors" title="WhatsApp">
+                                                                <MessageCircle className="w-3 h-3" />
+                                                            </a>
+                                                        </div>
+                                                    )}
+                                                </div>
+
+                                                {req.driverId ? (
+                                                    <div className="flex items-center gap-2 bg-primary/5 px-3 py-2 rounded-xl border border-primary/20 text-xs">
+                                                        {req.vehicleType === 'moto' ? <Bike className="w-4 h-4 text-primary shrink-0" /> : <Car className="w-4 h-4 text-primary shrink-0" />}
+                                                        <div className="flex-1 min-w-0">
+                                                            <span className="text-[10px] font-bold text-primary uppercase tracking-wider block">Piloto Asignado</span>
+                                                            <span className="font-black text-slate-800 truncate block">{req.driverName || 'Desconocido'}</span>
+                                                        </div>
+                                                        {req.driverPhone && (
+                                                            <div className="flex items-center gap-1 shrink-0">
+                                                                <a href={`tel:${req.driverPhone}`} className="w-6 h-6 bg-white rounded-lg border border-primary/20 flex items-center justify-center text-slate-600 hover:text-primary transition-colors" title="Llamar Piloto">
+                                                                    <Phone className="w-3 h-3" />
+                                                                </a>
+                                                                <a href={`https://wa.me/${req.driverPhone.replace(/\D/g, '')}`} target="_blank" rel="noopener noreferrer" className="w-6 h-6 bg-white rounded-lg border border-emerald-200 flex items-center justify-center text-emerald-500 hover:bg-emerald-50 transition-colors" title="WhatsApp Piloto">
+                                                                    <MessageCircle className="w-3 h-3" />
+                                                                </a>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                ) : (
+                                                    <div className="text-[11px] font-bold text-slate-400 bg-slate-50 px-3 py-1.5 rounded-xl border border-dashed border-slate-200 text-center">
+                                                        Sin chofer asignado aún
+                                                    </div>
+                                                )}
+
+                                                {req.assignedDriverId && (
+                                                    <div className="flex items-center gap-2 bg-amber-50 px-3 py-1.5 rounded-xl border border-amber-200 text-amber-900 text-xs font-bold">
+                                                        <Star className="w-3.5 h-3.5 text-amber-500 fill-amber-400 shrink-0" />
+                                                        <span className="truncate">Selección directa: {req.assignedDriverId.slice(0, 8)}...</span>
+                                                    </div>
+                                                )}
+
+                                                {((req.driverAssignedAt && req.driverArrivedAt) || req.arrivalDuration !== undefined) && (
+                                                    <div className="flex items-center gap-1.5 text-amber-700 bg-amber-50 px-3 py-1.5 rounded-xl border border-amber-200 text-xs font-bold">
+                                                        <Clock className="w-3.5 h-3.5 text-amber-500" />
+                                                        <span>Llegó en: {req.arrivalDuration !== undefined ? (
+                                                            formatDuration(req.arrivalDuration)
+                                                        ) : (() => {
+                                                            const arr = req.driverArrivedAt?.toDate ? req.driverArrivedAt.toDate().getTime() : (req.driverArrivedAt ? new Date(req.driverArrivedAt).getTime() : 0);
+                                                            const ass = req.driverAssignedAt?.toDate ? req.driverAssignedAt.toDate().getTime() : (req.driverAssignedAt ? new Date(req.driverAssignedAt).getTime() : 0);
+                                                            return (arr && ass) ? `${Math.max(1, Math.round((arr - ass) / 60000))} min` : '--';
+                                                        })()}</span>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+
+                                        {/* Col 2: Route Points & Mandado Details */}
+                                        <div className="lg:col-span-5 space-y-3">
+                                            {isMandado && (
+                                                <div className="bg-amber-50 border border-amber-200 rounded-2xl p-3 space-y-2">
+                                                    <div className="flex items-center justify-between gap-2">
+                                                        <span className="text-[10px] font-black uppercase text-amber-900 tracking-wider">
+                                                            🛍️ Detalle del Encargo:
+                                                        </span>
+                                                        {req.mandado_details?.storeName && (
+                                                            <span className="text-xs font-black text-slate-800 bg-white px-2 py-0.5 rounded-lg border border-amber-200">
+                                                                🏪 {req.mandado_details.storeName}
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                    <p className="text-xs font-bold text-slate-800 bg-white p-2.5 rounded-xl border border-amber-200/60 leading-relaxed">
+                                                        {req.mandado_details?.description || req.packageDescription || req.notes || 'Encargo personalizado solicitado por el cliente.'}
+                                                    </p>
+                                                    {(req.mandado_details?.audioUrl || req.audio_url) && (
+                                                        <div className="bg-white border border-amber-200 p-2 rounded-xl">
+                                                            <div className="flex items-center gap-1.5 text-[10px] font-black uppercase text-amber-900 tracking-wider mb-1">
+                                                                <Volume2 className="w-3 h-3 text-amber-600" />
+                                                                Nota de Voz:
+                                                            </div>
+                                                            <audio 
+                                                                controls 
+                                                                src={req.mandado_details?.audioUrl || req.audio_url} 
+                                                                className="w-full h-7 accent-amber-500 rounded"
+                                                                preload="metadata"
+                                                            />
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            )}
+
+                                            <div className="space-y-2">
+                                                <div className="flex gap-2.5 bg-slate-50 p-3 rounded-2xl border border-slate-100 relative overflow-hidden">
+                                                    <div className="absolute left-0 top-0 bottom-0 w-1 bg-slate-400"></div>
+                                                    {req.type === 'food_delivery' ? (
+                                                        <Store className="w-4 h-4 text-slate-400 shrink-0 mt-0.5" />
+                                                    ) : (
+                                                        <MapPin className="w-4 h-4 text-slate-400 shrink-0 mt-0.5" />
+                                                    )}
+                                                    <div className="min-w-0">
+                                                        <p className="text-[10px] font-bold text-slate-400 uppercase leading-none mb-1">
+                                                            {req.type === 'food_delivery' ? 'Punto A: Comercio' : 'Origen'}
+                                                        </p>
+                                                        <p className="font-bold text-slate-700 text-xs line-clamp-2">{req.origin?.address}</p>
+                                                    </div>
+                                                </div>
+                                                <div className="flex gap-2.5 bg-primary/10 p-3 rounded-2xl border border-primary/20 relative overflow-hidden">
+                                                    <div className="absolute left-0 top-0 bottom-0 w-1 bg-primary"></div>
+                                                    <MapPin className="w-4 h-4 text-primary shrink-0 mt-0.5" />
+                                                    <div className="min-w-0">
+                                                        <p className="text-[10px] font-bold text-slate-600 uppercase leading-none mb-1">
+                                                            {req.type === 'food_delivery' ? 'Punto B: Cliente' : 'Destino'}
+                                                        </p>
+                                                        <p className="font-bold text-slate-900 text-xs line-clamp-2">{req.destination?.address}</p>
                                                     </div>
                                                 </div>
                                             </div>
                                         </div>
 
-                                        {/* Financial Info */}
-                                        <div className="bg-slate-100/50 rounded-2xl p-4 md:text-right min-w-[240px] border border-slate-100 flex flex-col justify-center">
-                                            <div className="grid grid-cols-3 gap-4 md:grid-cols-1 md:gap-2">
-                                                <div>
-                                                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1">Costo Cliente</p>
+                                        {/* Col 3: Financial Info & Actions */}
+                                        <div className="lg:col-span-3 bg-slate-50 rounded-2xl p-4 border border-slate-200/80 flex flex-col justify-between space-y-4">
+                                            <div className="grid grid-cols-2 gap-3 lg:grid-cols-1">
+                                                <div className="bg-white p-3 rounded-xl border border-slate-100 shadow-sm">
+                                                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1.5">Tarifa</p>
                                                     <DualPrice usdAmount={parseFloat(req.clientTotal || req.price || 0)} usdClassName="text-xl font-black text-emerald-600" showDivider={false} className="flex flex-col" />
                                                 </div>
-                                                <div className="border-l md:border-l-0 md:border-t border-slate-200 pl-4 md:pl-0 md:pt-2">
-                                                    <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest leading-none mb-1">Pago a Taxi</p>
-                                                    <DualPrice usdAmount={parseFloat(req.driverPayout || req.price || 0)} usdClassName="text-lg font-black text-slate-900" showDivider={false} className="flex flex-col" />
-                                                </div>
-                                                <div className="border-l md:border-l-0 md:border-t border-slate-200 pl-4 md:pl-0 md:pt-2">
-                                                    <p className="text-[10px] font-black text-amber-500 uppercase tracking-widest leading-none mb-1">Ganancia Admin</p>
-                                                    <DualPrice usdAmount={parseFloat(req.clientTotal || req.price || 0) - parseFloat(req.driverPayout || req.price || 0)} usdClassName="text-lg font-black text-amber-600" showDivider={false} className="flex flex-col" />
+                                                <div className="bg-white p-3 rounded-xl border border-slate-100 shadow-sm">
+                                                    <p className="text-[10px] font-black text-amber-500 uppercase tracking-widest leading-none mb-1.5">Comisión de la aplicación</p>
+                                                    <DualPrice usdAmount={parseFloat(req.commission_amount !== undefined ? req.commission_amount : 0.70)} usdClassName="text-lg font-black text-amber-600" showDivider={false} className="flex flex-col" />
                                                 </div>
                                             </div>
-                                            <div className="flex items-center gap-2 mt-3 md:justify-end text-[10px] font-bold flex-wrap">
+
+                                            <div className="space-y-2 pt-2 border-t border-slate-200/60">
+                                                <div className="flex items-center justify-between text-[11px] font-bold text-slate-600 bg-white px-2.5 py-1.5 rounded-xl border border-slate-200">
+                                                    <span className="flex items-center gap-1">
+                                                        <DollarSign className="w-3.5 h-3.5 text-emerald-500" /> Método:
+                                                    </span>
+                                                    <span className="font-black text-slate-900">{req.paymentMethod === 'pagoMovil' ? 'Pago Móvil' : req.paymentMethod === 'cash' ? 'Efectivo' : req.paymentMethod}</span>
+                                                </div>
+
+                                                <div className="flex items-center gap-1.5 flex-wrap">
                                                     {isMandado && (
                                                         <button
                                                             onClick={() => handleOpenMandadoAudit(req)}
-                                                            className="bg-amber-400 hover:bg-amber-500 text-slate-950 px-2 py-1 rounded shadow-sm text-[10px] font-black flex items-center gap-1 transition-colors"
+                                                            className="flex-1 bg-amber-400 hover:bg-amber-500 text-slate-950 px-2.5 py-2 rounded-xl text-xs font-black flex items-center justify-center gap-1 transition-colors shadow-sm"
                                                         >
-                                                            <SlidersHorizontal className="w-3 h-3" /> Subasta
+                                                            <SlidersHorizontal className="w-3.5 h-3.5" /> Subasta
                                                         </button>
                                                     )}
                                                     <button
                                                         onClick={() => setSelectedChatRequest(req.id)}
-                                                        className="bg-white px-2 py-1 rounded shadow-sm text-slate-900 border border-primary flex items-center gap-1 hover:bg-primary transition-colors"
+                                                        className="flex-1 bg-white hover:bg-primary/20 text-slate-900 px-2.5 py-2 rounded-xl text-xs font-bold border border-slate-200 flex items-center justify-center gap-1 transition-colors shadow-sm"
                                                     >
-                                                        <MessageSquare className="w-3 h-3" /> Ver Chat
+                                                        <MessageSquare className="w-3.5 h-3.5 text-primary" /> Chat
                                                     </button>
                                                     <button
                                                         onClick={() => {
                                                             setSelectedMapRequest(req);
                                                             setShowMapModal(true);
                                                         }}
-                                                        className="bg-slate-900 px-2 py-1 rounded shadow-sm text-white flex items-center gap-1 hover:bg-slate-800 transition-colors"
+                                                        className="flex-1 bg-slate-900 hover:bg-slate-800 text-white px-2.5 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1 transition-colors shadow-sm"
                                                     >
-                                                        <Navigation className="w-3 h-3" /> Ver GPS
+                                                        <Navigation className="w-3.5 h-3.5" /> GPS
                                                     </button>
-                                                    <span className="bg-white px-2 py-1 rounded shadow-sm text-slate-600 border border-slate-200 flex items-center gap-1">
-                                                    <DollarSign className="w-3 h-3 text-emerald-500" /> {req.paymentMethod === 'pagoMovil' ? 'Pago Móvil' : req.paymentMethod === 'cash' ? 'Efectivo' : req.paymentMethod}
-                                                </span>
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    {/* Mandado Errand Details & Audio Player (SuperAdmin Audit) */}
-                                    {isMandado && (
-                                        <div className="bg-amber-50 border-2 border-amber-200/90 rounded-2xl p-4 mb-6 space-y-3">
-                                            <div className="flex items-center justify-between flex-wrap gap-2">
-                                                <span className="text-[10px] font-black uppercase text-amber-900 tracking-wider">
-                                                    Detalle del Encargo / Diligencia:
-                                                </span>
-                                                {req.mandado_details?.storeName && (
-                                                    <span className="text-xs font-bold text-slate-800 bg-white px-2.5 py-1 rounded-xl border border-amber-200">
-                                                        🏪 Comercio: <span className="font-black">{req.mandado_details.storeName}</span>
-                                                    </span>
-                                                )}
-                                            </div>
-                                            <p className="text-sm font-bold text-slate-800 bg-white p-3 rounded-xl border border-amber-200/60 leading-relaxed">
-                                                {req.mandado_details?.description || req.packageDescription || req.notes || 'Encargo personalizado solicitado por el cliente.'}
-                                            </p>
-                                            {(req.mandado_details?.audioUrl || req.audio_url) && (
-                                                <div className="bg-white border border-amber-200 p-3 rounded-xl">
-                                                    <div className="flex items-center gap-1.5 text-[10px] font-black uppercase text-amber-900 tracking-wider mb-1.5">
-                                                        <Volume2 className="w-3.5 h-3.5 text-amber-600" />
-                                                        Nota de Voz del Cliente:
-                                                    </div>
-                                                    <audio 
-                                                        controls 
-                                                        src={req.mandado_details?.audioUrl || req.audio_url} 
-                                                        className="w-full h-8 accent-amber-500 rounded-lg"
-                                                        preload="metadata"
-                                                    />
                                                 </div>
-                                            )}
-                                        </div>
-                                    )}
-
-                                    {/* Locations Layout */}
-                                    <div className="grid md:grid-cols-2 gap-4 mb-6">
-                                        <div className="flex gap-3 bg-slate-50 p-4 rounded-2xl border border-slate-100 relative overflow-hidden">
-                                            <div className="absolute left-0 top-0 bottom-0 w-1 bg-slate-400"></div>
-                                            {req.type === 'food_delivery' ? (
-                                                <Store className="w-5 h-5 text-slate-400 shrink-0 mt-0.5" />
-                                            ) : (
-                                                <MapPin className="w-5 h-5 text-slate-400 shrink-0 mt-0.5" />
-                                            )}
-                                            <div>
-                                                <p className="text-xs font-bold text-slate-400 uppercase mb-1">
-                                                    {req.type === 'food_delivery' ? 'Punto A: Restaurante' : 'Punto de Origen'}
-                                                </p>
-                                                <p className="font-bold text-slate-700 text-sm">{req.origin?.address}</p>
-                                            </div>
-                                        </div>
-                                        <div className="flex gap-3 bg-primary/10 p-4 rounded-2xl border border-primary/20 relative overflow-hidden">
-                                            <div className="absolute left-0 top-0 bottom-0 w-1 bg-primary"></div>
-                                            <MapPin className="w-5 h-5 text-primary shrink-0 mt-0.5" />
-                                            <div>
-                                                <p className="text-xs font-bold text-slate-600 uppercase mb-1">
-                                                    {req.type === 'food_delivery' ? 'Punto B: Cliente' : 'Destino'}
-                                                </p>
-                                                <p className="font-bold text-slate-900 text-sm">{req.destination?.address}</p>
                                             </div>
                                         </div>
                                     </div>
@@ -845,7 +843,7 @@ export default function TransportRequests() {
                                     </div>
 
                                     <div className="bg-amber-50 p-4 rounded-2xl border border-amber-100 mb-6">
-                                        <p className="text-[10px] font-black text-amber-600 uppercase tracking-widest mb-1">Ganancia Admin</p>
+                                        <p className="text-[10px] font-black text-amber-600 uppercase tracking-widest mb-1">Comisión de la aplicación</p>
                                         <DualPrice usdAmount={stat.adminProfit} usdClassName="text-2xl font-black text-amber-700" showDivider={false} className="flex flex-col" />
                                         <p className="text-[10px] font-bold text-amber-600 mt-1 uppercase tracking-tighter">Total de {stat.totalTripsCount} viajes</p>
                                     </div>

@@ -6,8 +6,8 @@ import CashierPOS from './pages/CashierPOS';
 import { Toaster } from 'react-hot-toast';
 
 export default function CashierApp() {
-    const isCashierSubdomain = window.location.hostname.startsWith('caja.');
-    const basename = isCashierSubdomain ? '/' : '/caja';
+    const isSubpathCaja = window.location.pathname.startsWith('/caja');
+    const basename = isSubpathCaja ? '/caja' : '/';
 
     return (
         <>
