@@ -54,6 +54,7 @@ import { App as CapApp } from '@capacitor/app';
 import { promptEnableLocation, isLocationHardwareEnabled, openNativeLocationSettings } from '../lib/location-helper';
 import RainOverlay from '../components/RainOverlay';
 import WeatherWidget from '../components/WeatherWidget';
+import MandadoRequestModal from '../components/MandadoRequestModal';
 
 interface Location {
     lat: number;
@@ -120,6 +121,8 @@ export default function Taxi() {
     const [mandadoStoreName, setMandadoStoreName] = useState('');
     const [activeMandadoReqId, setActiveMandadoReqId] = useState<string | null>(null);
     const [mandadoBids, setMandadoBids] = useState<any[]>([]);
+    const [isMandadoModalOpen, setIsMandadoModalOpen] = useState(false);
+    const [isSubmittingMandado, setIsSubmittingMandado] = useState(false);
     const [packageDescription, setPackageDescription] = useState('');
     const [driverNotes, setDriverNotes] = useState('');
     const [showNotesModal, setShowNotesModal] = useState(false);
@@ -871,6 +874,86 @@ export default function Taxi() {
         }
     };
 
+    // Publicar solicitud de Muchacho e' Mandado desde el modal amplio
+    const handleSubmitMandadoRequest = async (data: {
+        description: string;
+        storeName: string;
+        destinationAddress: string;
+        destinationCoords?: { lat: number; lng: number };
+        audioBlob?: Blob;
+    }) => {
+        setIsSubmittingMandado(true);
+        try {
+            const validUserId = user?.id || user?.uid || null;
+            let audioUrl = '';
+
+            // 1. Subir audio si existe a Supabase Storage
+            if (data.audioBlob) {
+                const audioPath = `mandados/audios/${validUserId || 'guest'}_${Date.now()}.webm`;
+                const { error: upErr } = await supabase.storage.from('store_assets').upload(audioPath, data.audioBlob, {
+                    contentType: 'audio/webm',
+                    upsert: true
+                });
+                if (!upErr) {
+                    const { data: { publicUrl } } = supabase.storage.from('store_assets').getPublicUrl(audioPath);
+                    audioUrl = publicUrl;
+                }
+            }
+
+            // 2. Crear solicitud con estado searching
+            const newReqId = crypto.randomUUID();
+            const orderData: any = {
+                id: newReqId,
+                user_id: validUserId,
+                user_name: userData?.displayName || user?.displayName || user?.email || 'Usuario',
+                user_phone: userData?.phone || 'Sin número',
+                user_cedula: userData?.cedula || 'N/A',
+                origin: userLocation ? { 
+                    lat: userLocation.lat, 
+                    lng: userLocation.lng, 
+                    address: data.storeName ? `Comercio: ${data.storeName}` : 'Punto de Inicio / Comercio' 
+                } : null,
+                destination: {
+                    lat: data.destinationCoords?.lat || userLocation?.lat || 0,
+                    lng: data.destinationCoords?.lng || userLocation?.lng || 0,
+                    address: data.destinationAddress
+                },
+                service_category: 'muchacho_mandado',
+                type: 'muchacho_mandado',
+                vehicle_type: 'moto',
+                total: 1.00,
+                price: 1.00,
+                commission_amount: 0.70,
+                status: 'searching',
+                payment_method: 'pago_movil',
+                mandado_details: {
+                    description: data.description,
+                    storeName: data.storeName,
+                    audioUrl: audioUrl || null
+                },
+                notes: data.description,
+                audio_url: audioUrl || null,
+                created_at: new Date().toISOString()
+            };
+
+            const { error: insErr } = await supabase.from('transport_requests').insert(orderData);
+            if (insErr) throw insErr;
+
+            setMandadoDescription(data.description);
+            setMandadoStoreName(data.storeName);
+            setActiveMandadoReqId(newReqId);
+            setSelectedCategory('muchacho_mandado');
+            setIsMandadoModalOpen(false);
+            setStep('searching');
+            toast.success("¡Mandado publicado! Escaneando ofertas de pilotos en tiempo real...", { icon: '🛍️', duration: 4000 });
+        } catch (error: any) {
+            console.error("Error creating mandado request:", error);
+            toast.error("No se pudo publicar el mandado. Revisa tu conexión.");
+        } finally {
+            setIsSubmittingMandado(false);
+        }
+    };
+
     // 10. Request Ride Handler (Strict snake_case, UUID safety & 5-category logic)
     const handleRequestTaxi = async () => {
         if (!user && (!guestName || !guestPhone || !guestCedula)) {
@@ -1311,7 +1394,7 @@ export default function Taxi() {
                             </p>
                         </div>
 
-                        {/* Opción 1: Taxi / Viajes */}
+                        {/* Opción 1: Taxi / Mototaxi */}
                         <button
                             type="button"
                             onClick={() => {
@@ -1322,9 +1405,9 @@ export default function Taxi() {
                                 setVehicleType('carro');
                                 setStep('destination');
                             }}
-                            className="w-full bg-[#FFB800] hover:bg-[#ffc21a] border-2 border-amber-300/80 p-3 sm:p-3.5 rounded-2xl sm:rounded-3xl text-left shadow-lg shadow-amber-500/20 active:scale-[0.98] transition-all group flex items-center gap-3"
+                            className="w-full bg-[#FFB800] hover:bg-[#ffc21a] border-2 border-amber-300/90 p-3.5 sm:p-4 rounded-[2rem] text-left shadow-xl shadow-amber-500/20 active:scale-[0.98] transition-all group flex items-center gap-3.5 relative overflow-hidden"
                         >
-                            <div className="w-11 h-11 rounded-2xl bg-slate-950 text-[#FFB800] flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform shadow-md">
+                            <div className="w-12 h-12 rounded-2xl bg-slate-950 text-[#FFB800] flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform shadow-md">
                                 <Car className="w-6 h-6" />
                             </div>
                             <div className="flex-1 min-w-0">
@@ -1332,14 +1415,14 @@ export default function Taxi() {
                                     <h4 className="text-sm sm:text-base font-black text-slate-950 tracking-tight leading-none">
                                         Taxi / Mototaxi
                                     </h4>
-                                    <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded-full bg-slate-950 text-[#FFB800] tracking-wider shrink-0">
+                                    <span className="text-[9px] font-black uppercase px-2.5 py-0.5 rounded-full bg-slate-950 text-[#FFB800] tracking-wider shrink-0">
                                         Pasajeros
                                     </span>
                                 </div>
-                                <p className="text-[11px] text-slate-950/90 font-bold line-clamp-1 leading-tight mt-0.5">
-                                    Mototaxi, Taxi Standard y Carro Confort...
+                                <p className="text-[11px] sm:text-xs text-slate-950/90 font-bold line-clamp-1 leading-tight mt-0.5">
+                                    Mototaxi, Taxi Standard y Carro Confort
                                 </p>
-                                <div className="flex items-center gap-2 mt-1 text-[9px] text-slate-950 font-black">
+                                <div className="flex items-center gap-2 mt-1.5 text-[9px] text-slate-950 font-black">
                                     <span className="flex items-center gap-1">
                                         <Bike className="w-3 h-3 text-slate-950" /> Moto
                                     </span>
@@ -1353,7 +1436,7 @@ export default function Taxi() {
                                     </span>
                                 </div>
                             </div>
-                            <div className="w-7 h-7 rounded-full bg-slate-950/10 text-slate-950 flex items-center justify-center group-hover:bg-slate-950 group-hover:text-[#FFB800] transition-all shrink-0">
+                            <div className="w-8 h-8 rounded-full bg-slate-950/10 text-slate-950 flex items-center justify-center group-hover:bg-slate-950 group-hover:text-[#FFB800] transition-all shrink-0">
                                 <ArrowRight className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />
                             </div>
                         </button>
@@ -1369,9 +1452,9 @@ export default function Taxi() {
                                 setVehicleType('moto');
                                 setStep('destination');
                             }}
-                            className="w-full bg-[#FFB800] hover:bg-[#ffc21a] border-2 border-amber-300/80 p-3 sm:p-3.5 rounded-2xl sm:rounded-3xl text-left shadow-lg shadow-amber-500/20 active:scale-[0.98] transition-all group flex items-center gap-3"
+                            className="w-full bg-[#FFB800] hover:bg-[#ffc21a] border-2 border-amber-300/90 p-3.5 sm:p-4 rounded-[2rem] text-left shadow-xl shadow-amber-500/20 active:scale-[0.98] transition-all group flex items-center gap-3.5 relative overflow-hidden"
                         >
-                            <div className="w-11 h-11 rounded-2xl bg-slate-950 text-[#FFB800] flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform shadow-md">
+                            <div className="w-12 h-12 rounded-2xl bg-slate-950 text-[#FFB800] flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform shadow-md">
                                 <Package className="w-6 h-6" />
                             </div>
                             <div className="flex-1 min-w-0">
@@ -1379,14 +1462,14 @@ export default function Taxi() {
                                     <h4 className="text-sm sm:text-base font-black text-slate-950 tracking-tight leading-none">
                                         Envío de Paquete
                                     </h4>
-                                    <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded-full bg-slate-950 text-[#FFB800] tracking-wider shrink-0">
+                                    <span className="text-[9px] font-black uppercase px-2.5 py-0.5 rounded-full bg-slate-950 text-[#FFB800] tracking-wider shrink-0">
                                         Delivery Express
                                     </span>
                                 </div>
-                                <p className="text-[11px] text-slate-950/90 font-bold line-clamp-1 leading-tight mt-0.5">
-                                    Encomiendas, documentos, llaves o...
+                                <p className="text-[11px] sm:text-xs text-slate-950/90 font-bold line-clamp-1 leading-tight mt-0.5">
+                                    Encomiendas, documentos, llaves o paquetes
                                 </p>
-                                <div className="flex items-center gap-2 mt-1 text-[9px] text-slate-950 font-black">
+                                <div className="flex items-center gap-2 mt-1.5 text-[9px] text-slate-950 font-black">
                                     <span>📦 Directo</span>
                                     <span>•</span>
                                     <span>⚡ Sin escalas</span>
@@ -1394,7 +1477,7 @@ export default function Taxi() {
                                     <span>🔒 Conductor verificado</span>
                                 </div>
                             </div>
-                            <div className="w-7 h-7 rounded-full bg-slate-950/10 text-slate-950 flex items-center justify-center group-hover:bg-slate-950 group-hover:text-[#FFB800] transition-all shrink-0">
+                            <div className="w-8 h-8 rounded-full bg-slate-950/10 text-slate-950 flex items-center justify-center group-hover:bg-slate-950 group-hover:text-[#FFB800] transition-all shrink-0">
                                 <ArrowRight className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />
                             </div>
                         </button>
@@ -1404,15 +1487,11 @@ export default function Taxi() {
                             type="button"
                             onClick={() => {
                                 vibrate(30);
-                                setMainMode('mandado');
-                                setServiceCategory('package');
-                                setSelectedCategory('muchacho_mandado');
-                                setVehicleType('moto');
-                                setStep('destination');
+                                setIsMandadoModalOpen(true);
                             }}
-                            className="w-full bg-[#FFB800] hover:bg-[#ffc21a] border-2 border-amber-300/80 p-3 sm:p-3.5 rounded-2xl sm:rounded-3xl text-left shadow-lg shadow-amber-500/20 active:scale-[0.98] transition-all group flex items-center gap-3"
+                            className="w-full bg-[#FFB800] hover:bg-[#ffc21a] border-2 border-amber-300/90 p-3.5 sm:p-4 rounded-[2rem] text-left shadow-xl shadow-amber-500/20 active:scale-[0.98] transition-all group flex items-center gap-3.5 relative overflow-hidden"
                         >
-                            <div className="w-11 h-11 rounded-2xl bg-slate-950 text-[#FFB800] flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform shadow-md">
+                            <div className="w-12 h-12 rounded-2xl bg-slate-950 text-[#FFB800] flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform shadow-md">
                                 <ShoppingBag className="w-6 h-6" />
                             </div>
                             <div className="flex-1 min-w-0">
@@ -1420,20 +1499,22 @@ export default function Taxi() {
                                     <h4 className="text-sm sm:text-base font-black text-slate-950 tracking-tight leading-none">
                                         Muchacho e' Mandao
                                     </h4>
-                                    <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded-full bg-slate-950 text-[#FFB800] tracking-wider shrink-0">
-                                        Personal shopper
+                                    <span className="text-[9px] font-black uppercase px-2.5 py-0.5 rounded-full bg-slate-950 text-[#FFB800] tracking-wider shrink-0">
+                                        Personal Shopper
                                     </span>
                                 </div>
-                                <p className="text-[11px] text-slate-950/90 font-bold line-clamp-1 leading-tight mt-0.5">
-                                    Diligencias y trámites. Paga directo al...
+                                <p className="text-[11px] sm:text-xs text-slate-950/90 font-bold line-clamp-1 leading-tight mt-0.5">
+                                    Compras, trámites y diligencias a medida
                                 </p>
-                                <div className="flex items-center gap-2 mt-1 text-[9px] text-slate-950 font-black">
-                                    <span>🏛️ Diligencias, compras y movilizaciones</span>
+                                <div className="flex items-center gap-2 mt-1.5 text-[9px] text-slate-950 font-black">
+                                    <span>🏛️ Diligencias</span>
                                     <span>•</span>
-                                    <span>💰 Tú eliges la mejor oferta</span>
+                                    <span>🎤 Nota de voz</span>
+                                    <span>•</span>
+                                    <span>💰 Subasta de tarifas</span>
                                 </div>
                             </div>
-                            <div className="w-7 h-7 rounded-full bg-slate-950/10 text-slate-950 flex items-center justify-center group-hover:bg-slate-950 group-hover:text-[#FFB800] transition-all shrink-0">
+                            <div className="w-8 h-8 rounded-full bg-slate-950/10 text-slate-950 flex items-center justify-center group-hover:bg-slate-950 group-hover:text-[#FFB800] transition-all shrink-0">
                                 <ArrowRight className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />
                             </div>
                         </button>
@@ -2363,6 +2444,15 @@ export default function Taxi() {
                     </div>
                 </div>
             )}
+
+            <MandadoRequestModal
+                isOpen={isMandadoModalOpen}
+                onClose={() => setIsMandadoModalOpen(false)}
+                userLocation={userLocation}
+                defaultAddress={origin?.address || (userData?.addresses?.[0]?.address) || ''}
+                onSubmit={handleSubmitMandadoRequest}
+                isSubmitting={isSubmittingMandado}
+            />
 
             <DemoAlertModal isOpen={showDemoAlert} onClose={() => setShowDemoAlert(false)} />
         </div>

@@ -332,7 +332,7 @@ export default function TransportTracker() {
     }, [requestId, showChat, request?.userId, request?.user_id]);
 
     useEffect(() => {
-        if (request && ['completed', 'cancelled'].includes(request.status)) {
+        if (request && ['cancelled'].includes(request.status)) {
             setShowChat(false);
         }
     }, [request?.status]);
@@ -667,7 +667,13 @@ export default function TransportTracker() {
             {showChat && (
                 <div className="fixed inset-0 z-[100] bg-slate-900/40 flex flex-col justify-end animate-fade-in pointer-events-auto">
                     <div className="h-[75vh] w-full bg-white rounded-t-3xl overflow-hidden shadow-[0_-10px_40px_rgba(0,0,0,0.2)] animate-slide-up">
-                        <RideChat requestId={requestId!} onClose={() => setShowChat(false)} />
+                        <RideChat 
+                            requestId={requestId!} 
+                            onClose={() => setShowChat(false)} 
+                            serviceCategory={request?.service_category}
+                            requestStatus={request?.status}
+                            completedAt={request?.completed_at || (request as any)?.updated_at}
+                        />
                     </div>
                 </div>
             )}
@@ -886,7 +892,7 @@ export default function TransportTracker() {
 
                             {/* In-app chat & call — Strictly 0 WhatsApp links */}
                             <div className="flex gap-2">
-                                {['searching', 'verifying_payment', 'accepted', 'arriving', 'in_progress'].includes(request.status) && (
+                                {['searching', 'verifying_payment', 'accepted', 'arriving', 'in_progress', 'completed'].includes(request.status) && (
                                     <button
                                         onClick={() => setShowChat(true)}
                                         className="w-10 h-10 bg-orange-50 text-orange-500 rounded-full flex items-center justify-center active:scale-95 transition-transform relative shadow-sm"

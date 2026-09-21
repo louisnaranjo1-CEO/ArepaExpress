@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from '../../lib/supabase';
-import { Car, Bike, Clock, CheckCircle2, XCircle, Search, Calendar, DollarSign, MapPin, User, ShieldCheck, Upload, Image as ImageIcon, MessageSquare, Star, Phone, MessageCircle, ShoppingBag, Store, Navigation, Map } from 'lucide-react';
+import { Car, Bike, Clock, CheckCircle2, XCircle, Search, Calendar, DollarSign, MapPin, User, ShieldCheck, Upload, Image as ImageIcon, MessageSquare, Star, Phone, MessageCircle, ShoppingBag, Store, Navigation, Map, SlidersHorizontal, Volume2, X } from 'lucide-react';
 import { GoogleMap, useJsApiLoader, Marker } from '@react-google-maps/api';
 import { motion, AnimatePresence } from 'motion/react';
 import toast from 'react-hot-toast';
@@ -45,6 +45,31 @@ export default function TransportRequests() {
     // Map States
     const [showMapModal, setShowMapModal] = useState(false);
     const [selectedMapRequest, setSelectedMapRequest] = useState<any>(null);
+
+    // Mandado Audit States
+    const [selectedMandadoAudit, setSelectedMandadoAudit] = useState<any | null>(null);
+    const [mandadoBidsList, setMandadoBidsList] = useState<any[]>([]);
+    const [loadingBids, setLoadingBids] = useState(false);
+
+    const handleOpenMandadoAudit = async (req: any) => {
+        setSelectedMandadoAudit(req);
+        setLoadingBids(true);
+        setMandadoBidsList([]);
+        try {
+            const { data, error } = await supabase
+                .from('transport_bids')
+                .select('*')
+                .eq('transport_request_id', req.id)
+                .order('created_at', { ascending: false });
+            if (!error && data) {
+                setMandadoBidsList(data);
+            }
+        } catch (e) {
+            console.error("Error fetching mandado bids:", e);
+        } finally {
+            setLoadingBids(false);
+        }
+    };
 
     const { isLoaded } = useJsApiLoader({
         id: 'google-map-script',
@@ -194,7 +219,10 @@ export default function TransportRequests() {
     const filteredRequests = validRequests.filter(req => {
         if (!req) return false;
         if (filter !== 'all') {
-            if (filter === 'in_progress') {
+            if (filter === 'muchacho_mandado') {
+                const isMandado = req.service_category === 'muchacho_mandado' || req.type === 'muchacho_mandado' || !!req.mandado_details;
+                if (!isMandado) return false;
+            } else if (filter === 'in_progress') {
                 if (!['accepted', 'arriving', 'in_progress'].includes(req.status)) return false;
             } else {
                 if (req.status !== filter) return false;
@@ -392,7 +420,7 @@ export default function TransportRequests() {
                             />
                         </div>
                         <div className="flex gap-2 w-full md:w-auto overflow-x-auto pb-2 md:pb-0 hide-scrollbar">
-                            {['all', 'verifying_payment', 'searching', 'in_progress', 'completed'].map(f => (
+                            {['all', 'verifying_payment', 'searching', 'in_progress', 'completed', 'muchacho_mandado'].map(f => (
                                 <button
                                     key={f}
                                     onClick={() => setFilter(f)}
@@ -402,7 +430,8 @@ export default function TransportRequests() {
                                     {f === 'all' ? 'Todos' :
                                         f === 'verifying_payment' ? 'Por Verificar' :
                                             f === 'searching' ? 'Buscando' :
-                                                f === 'in_progress' ? 'En Curso' : 'Completados'}
+                                                f === 'in_progress' ? 'En Curso' : 
+                                                    f === 'muchacho_mandado' ? "🛍️ Muchacho e' Mandao" : 'Completados'}
                                 </button>
                             ))}
                         </div>
@@ -417,20 +446,26 @@ export default function TransportRequests() {
                                 <p className="text-slate-500 mt-2">No se encontraron solicitudes con los filtros actuales.</p>
                             </div>
                         ) : (
-                            filteredRequests.map((req) => (
+                            filteredRequests.map((req) => {
+                                const isMandado = req.service_category === 'muchacho_mandado' || req.type === 'muchacho_mandado' || !!req.mandado_details;
+                                return (
                                 <div key={req.id} className="bg-white rounded-3xl p-6 border border-slate-200 shadow-sm transition-all hover:shadow-md">
 
                                     <div className="flex flex-col md:flex-row justify-between gap-6 mb-6">
                                         {/* User & Type Info */}
                                         <div className="flex items-start gap-4">
                                             <div className={`w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 ${
-                                                req.type === 'food_delivery' 
-                                                    ? 'bg-orange-100 text-orange-600'
-                                                    : req.vehicleType === 'moto' 
-                                                        ? 'bg-primary/20 text-slate-900' 
-                                                        : 'bg-slate-100 text-slate-700'
+                                                isMandado
+                                                    ? 'bg-amber-400 text-slate-950 shadow-md shadow-amber-400/20'
+                                                    : req.type === 'food_delivery' 
+                                                        ? 'bg-orange-100 text-orange-600'
+                                                        : req.vehicleType === 'moto' 
+                                                            ? 'bg-primary/20 text-slate-900' 
+                                                            : 'bg-slate-100 text-slate-700'
                                             }`}>
-                                                {req.type === 'food_delivery' ? (
+                                                {isMandado ? (
+                                                    <ShoppingBag className="w-6 h-6" />
+                                                ) : req.type === 'food_delivery' ? (
                                                     <ShoppingBag className="w-6 h-6" />
                                                 ) : req.vehicleType === 'moto' ? (
                                                     <Bike className="w-6 h-6" />
@@ -439,11 +474,16 @@ export default function TransportRequests() {
                                                 )}
                                             </div>
                                             <div>
-                                                <div className="flex items-center gap-2 mb-1">
+                                                <div className="flex items-center gap-2 mb-1 flex-wrap">
                                                     <span className="font-black text-slate-900 text-lg uppercase">
                                                         ID: {req.id.slice(0, 6)}
                                                     </span>
                                                     {getStatusBadge(req.status)}
+                                                    {isMandado && (
+                                                        <span className="bg-amber-400 text-slate-950 px-2.5 py-0.5 rounded-full text-xs font-black shadow-sm">
+                                                            🛍️ Muchacho e' Mandao
+                                                        </span>
+                                                    )}
                                                     {req.scheduled && (
                                                         <span className="bg-purple-100 text-purple-800 px-3 py-1 rounded-full text-xs font-black flex items-center gap-1">
                                                             <Clock className="w-3 h-3" /> RESERVA
@@ -550,7 +590,15 @@ export default function TransportRequests() {
                                                     <DualPrice usdAmount={parseFloat(req.clientTotal || req.price || 0) - parseFloat(req.driverPayout || req.price || 0)} usdClassName="text-lg font-black text-amber-600" showDivider={false} className="flex flex-col" />
                                                 </div>
                                             </div>
-                                            <div className="flex items-center gap-2 mt-3 md:justify-end text-[10px] font-bold">
+                                            <div className="flex items-center gap-2 mt-3 md:justify-end text-[10px] font-bold flex-wrap">
+                                                    {isMandado && (
+                                                        <button
+                                                            onClick={() => handleOpenMandadoAudit(req)}
+                                                            className="bg-amber-400 hover:bg-amber-500 text-slate-950 px-2 py-1 rounded shadow-sm text-[10px] font-black flex items-center gap-1 transition-colors"
+                                                        >
+                                                            <SlidersHorizontal className="w-3 h-3" /> Subasta
+                                                        </button>
+                                                    )}
                                                     <button
                                                         onClick={() => setSelectedChatRequest(req.id)}
                                                         className="bg-white px-2 py-1 rounded shadow-sm text-slate-900 border border-primary flex items-center gap-1 hover:bg-primary transition-colors"
@@ -572,6 +620,39 @@ export default function TransportRequests() {
                                             </div>
                                         </div>
                                     </div>
+
+                                    {/* Mandado Errand Details & Audio Player (SuperAdmin Audit) */}
+                                    {isMandado && (
+                                        <div className="bg-amber-50 border-2 border-amber-200/90 rounded-2xl p-4 mb-6 space-y-3">
+                                            <div className="flex items-center justify-between flex-wrap gap-2">
+                                                <span className="text-[10px] font-black uppercase text-amber-900 tracking-wider">
+                                                    Detalle del Encargo / Diligencia:
+                                                </span>
+                                                {req.mandado_details?.storeName && (
+                                                    <span className="text-xs font-bold text-slate-800 bg-white px-2.5 py-1 rounded-xl border border-amber-200">
+                                                        🏪 Comercio: <span className="font-black">{req.mandado_details.storeName}</span>
+                                                    </span>
+                                                )}
+                                            </div>
+                                            <p className="text-sm font-bold text-slate-800 bg-white p-3 rounded-xl border border-amber-200/60 leading-relaxed">
+                                                {req.mandado_details?.description || req.packageDescription || req.notes || 'Encargo personalizado solicitado por el cliente.'}
+                                            </p>
+                                            {(req.mandado_details?.audioUrl || req.audio_url) && (
+                                                <div className="bg-white border border-amber-200 p-3 rounded-xl">
+                                                    <div className="flex items-center gap-1.5 text-[10px] font-black uppercase text-amber-900 tracking-wider mb-1.5">
+                                                        <Volume2 className="w-3.5 h-3.5 text-amber-600" />
+                                                        Nota de Voz del Cliente:
+                                                    </div>
+                                                    <audio 
+                                                        controls 
+                                                        src={req.mandado_details?.audioUrl || req.audio_url} 
+                                                        className="w-full h-8 accent-amber-500 rounded-lg"
+                                                        preload="metadata"
+                                                    />
+                                                </div>
+                                            )}
+                                        </div>
+                                    )}
 
                                     {/* Locations Layout */}
                                     <div className="grid md:grid-cols-2 gap-4 mb-6">
@@ -710,7 +791,8 @@ export default function TransportRequests() {
                                         </div>
                                     )}
                                 </div>
-                            ))
+                                );
+                            })
                         )}
                     </div>
                 </>
@@ -998,6 +1080,180 @@ export default function TransportRequests() {
                             onClose={() => setSelectedChatRequest(null)}
                             readOnly={true}
                         />
+                    </div>
+                </div>
+            )}
+
+            {/* Mandado Auction Audit Modal */}
+            {selectedMandadoAudit && (
+                <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4 z-[90]">
+                    <div className="bg-white rounded-3xl w-full max-w-2xl max-h-[85vh] shadow-2xl overflow-hidden flex flex-col border border-slate-200">
+                        {/* Header */}
+                        <div className="p-5 bg-gradient-to-r from-amber-400 to-amber-500 text-slate-950 flex items-center justify-between">
+                            <div className="flex items-center gap-2.5">
+                                <div className="w-10 h-10 rounded-2xl bg-slate-950 text-amber-400 flex items-center justify-center shadow">
+                                    <ShoppingBag className="w-5 h-5" />
+                                </div>
+                                <div>
+                                    <h3 className="font-black text-lg leading-tight">Auditoría: Muchacho e' Mandao</h3>
+                                    <p className="text-xs font-bold text-slate-900/80">
+                                        ID: {selectedMandadoAudit.id.slice(0, 8)} • Cliente: {selectedMandadoAudit.userName || 'Usuario'}
+                                    </p>
+                                </div>
+                            </div>
+                            <button
+                                onClick={() => setSelectedMandadoAudit(null)}
+                                className="w-8 h-8 rounded-full bg-slate-950/20 hover:bg-slate-950/30 flex items-center justify-center text-slate-950 font-black transition-colors"
+                            >
+                                <X className="w-4 h-4" />
+                            </button>
+                        </div>
+
+                        {/* Content Scrollable */}
+                        <div className="p-5 overflow-y-auto space-y-5 flex-1">
+                            {/* Encargo Detalle */}
+                            <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4">
+                                <div className="text-[10px] font-black uppercase text-slate-400 tracking-wider mb-1">
+                                    Instrucciones del Cliente:
+                                </div>
+                                <p className="text-sm font-bold text-slate-800 leading-relaxed">
+                                    {selectedMandadoAudit.mandado_details?.description || selectedMandadoAudit.packageDescription || selectedMandadoAudit.notes || 'Sin descripción'}
+                                </p>
+                                {selectedMandadoAudit.mandado_details?.storeName && (
+                                    <p className="text-xs font-bold text-slate-600 mt-2">
+                                        🏪 Comercio/Lugar: <span className="text-slate-900 font-black">{selectedMandadoAudit.mandado_details.storeName}</span>
+                                    </p>
+                                )}
+                                {(selectedMandadoAudit.mandado_details?.audioUrl || selectedMandadoAudit.audio_url) && (
+                                    <div className="mt-3 pt-3 border-t border-slate-200">
+                                        <span className="text-[10px] font-black uppercase text-slate-500 block mb-1.5 flex items-center gap-1.5">
+                                            <Volume2 className="w-3.5 h-3.5 text-amber-600" /> Nota de Voz del Cliente:
+                                        </span>
+                                        <audio 
+                                            controls 
+                                            src={selectedMandadoAudit.mandado_details?.audioUrl || selectedMandadoAudit.audio_url} 
+                                            className="w-full h-8 accent-amber-500"
+                                            preload="metadata"
+                                        />
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Resumen del Servicio */}
+                            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                                <div className="bg-slate-100/70 p-3 rounded-xl border border-slate-200">
+                                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider block">Estado</span>
+                                    <span className="text-xs font-bold text-slate-800">{getStatusBadge(selectedMandadoAudit.status)}</span>
+                                </div>
+                                <div className="bg-slate-100/70 p-3 rounded-xl border border-slate-200">
+                                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider block">Piloto Asignado</span>
+                                    <span className="text-xs font-bold text-slate-800">{selectedMandadoAudit.driverName || 'Sin asignar'}</span>
+                                </div>
+                                <div className="bg-slate-100/70 p-3 rounded-xl border border-slate-200 col-span-2 sm:col-span-1">
+                                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider block">Tarifa Final Acordada</span>
+                                    <span className="text-sm font-black text-emerald-600">${Number(selectedMandadoAudit.total || selectedMandadoAudit.price || 0).toFixed(2)} USD</span>
+                                </div>
+                            </div>
+
+                            {/* Subasta / Postulaciones de Pilotos */}
+                            <div>
+                                <div className="flex items-center justify-between mb-2.5">
+                                    <h4 className="text-xs font-black uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
+                                        <SlidersHorizontal className="w-3.5 h-3.5 text-primary" />
+                                        Ofertas y Cotizaciones de Pilotos ({mandadoBidsList.length})
+                                    </h4>
+                                </div>
+
+                                {loadingBids ? (
+                                    <div className="py-8 text-center text-slate-400 font-bold text-xs animate-pulse">
+                                        Cargando ofertas de la subasta...
+                                    </div>
+                                ) : mandadoBidsList.length === 0 ? (
+                                    <div className="bg-slate-50 border border-slate-200 rounded-2xl p-6 text-center text-xs font-bold text-slate-400">
+                                        Ningún conductor ha enviado ofertas para esta solicitud aún.
+                                    </div>
+                                ) : (
+                                    <div className="space-y-2.5">
+                                        {mandadoBidsList.map((bid) => {
+                                            const isAccepted = bid.status === 'accepted';
+                                            return (
+                                                <div 
+                                                    key={bid.id} 
+                                                    className={`p-3.5 rounded-2xl border flex items-center justify-between gap-3 ${
+                                                        isAccepted 
+                                                            ? 'bg-emerald-50/80 border-emerald-300' 
+                                                            : bid.status === 'rejected'
+                                                                ? 'bg-slate-50 border-slate-200 opacity-60'
+                                                                : 'bg-white border-slate-200 shadow-sm'
+                                                    }`}
+                                                >
+                                                    <div className="flex items-center gap-3 min-w-0">
+                                                        <div className="w-10 h-10 rounded-full bg-slate-200 flex items-center justify-center font-black text-slate-700 overflow-hidden shrink-0">
+                                                            {bid.driver_photo ? (
+                                                                <img src={bid.driver_photo} alt={bid.driver_name} className="w-full h-full object-cover" />
+                                                            ) : (
+                                                                <User className="w-5 h-5 text-slate-400" />
+                                                            )}
+                                                        </div>
+                                                        <div className="min-w-0">
+                                                            <div className="flex items-center gap-1.5">
+                                                                <p className="text-xs font-black text-slate-900 truncate">{bid.driver_name || 'Conductor'}</p>
+                                                                {bid.driver_rating && (
+                                                                    <span className="text-[10px] font-bold text-amber-600 flex items-center">
+                                                                        ★ {Number(bid.driver_rating).toFixed(1)}
+                                                                    </span>
+                                                                )}
+                                                            </div>
+                                                            <p className="text-[10px] text-slate-500 font-medium">
+                                                                {bid.vehicle_type} {bid.vehicle_plate ? `• ${bid.vehicle_plate}` : ''} • Llegada: ~{bid.eta_minutes || 15} min
+                                                            </p>
+                                                            {bid.driver_phone && (
+                                                                <p className="text-[10px] text-slate-400 font-medium">{bid.driver_phone}</p>
+                                                            )}
+                                                        </div>
+                                                    </div>
+
+                                                    <div className="text-right shrink-0">
+                                                        <div className="text-sm font-black text-slate-900">
+                                                            ${Number(bid.amount).toFixed(2)} USD
+                                                        </div>
+                                                        <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-full inline-block mt-0.5 ${
+                                                            isAccepted 
+                                                                ? 'bg-emerald-100 text-emerald-800 border border-emerald-200' 
+                                                                : bid.status === 'rejected'
+                                                                    ? 'bg-red-100 text-red-800'
+                                                                    : 'bg-amber-100 text-amber-800'
+                                                        }`}>
+                                                            {isAccepted ? 'Aceptada por Cliente' : bid.status === 'rejected' ? 'Rechazada' : 'Pendiente'}
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+
+                        {/* Footer with action to open chat */}
+                        <div className="p-4 bg-slate-50 border-t border-slate-200 flex justify-between items-center gap-3">
+                            <button
+                                onClick={() => {
+                                    setSelectedChatRequest(selectedMandadoAudit.id);
+                                    setSelectedMandadoAudit(null);
+                                }}
+                                className="px-4 py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-black flex items-center gap-2 transition-all shadow"
+                            >
+                                <MessageSquare className="w-3.5 h-3.5 text-primary" />
+                                Auditar Chat y Comprobantes
+                            </button>
+                            <button
+                                onClick={() => setSelectedMandadoAudit(null)}
+                                className="px-4 py-2.5 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-xl text-xs font-bold transition-all"
+                            >
+                                Cerrar
+                            </button>
+                        </div>
                     </div>
                 </div>
             )}

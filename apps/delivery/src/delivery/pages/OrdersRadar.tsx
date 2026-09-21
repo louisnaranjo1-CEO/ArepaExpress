@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useCurrency } from '../../context/CurrencyContext';
-import { Car, Bike, MapPin, Navigation, Phone, CheckCircle2, MessageSquare, Send, User as UserIcon, Star, MessageCircle, Clock, AlertTriangle, ArrowLeft, Package, Sparkles, DollarSign, ShieldAlert, ExternalLink } from 'lucide-react';
+import { Car, Bike, MapPin, Navigation, Phone, CheckCircle2, MessageSquare, Send, User as UserIcon, Star, MessageCircle, Clock, AlertTriangle, ArrowLeft, Package, Sparkles, DollarSign, ShieldAlert, ExternalLink, Volume2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import toast from 'react-hot-toast';
 import RideChat from '../../components/RideChat';
@@ -227,8 +227,23 @@ export default function OrdersRadar() {
             
             if (data) {
                 const drvVehicle = (driverProfile?.vehicle_type || driverProfile?.vehicleType || 'moto').toLowerCase();
+                const drvLoc = driverProfile?.current_location;
                 const reqs = data.filter((req: any) => {
-                    const reqType = req.type || 'transport';
+                    const reqType = req.type || req.service_category || 'transport';
+                    const isMandado = reqType === 'muchacho_mandado' || req.service_category === 'muchacho_mandado';
+
+                    // Geolocation proximity filter: if driver has known GPS and request has coordinates,
+                    // restrict to drivers within 35km radius (same city/metropolitan zone)
+                    if (drvLoc?.lat && drvLoc?.lng && (req.origin?.lat || req.destination?.lat)) {
+                        const targetLat = req.origin?.lat || req.destination?.lat;
+                        const targetLng = req.origin?.lng || req.destination?.lng;
+                        const distM = calculateDistance(drvLoc.lat, drvLoc.lng, targetLat, targetLng);
+                        if (distM > 35000) {
+                            return false;
+                        }
+                    }
+
+                    if (isMandado) return true;
                     if (reqType === 'food_delivery' || reqType === 'package_delivery') return true;
                     const reqVehicle = (req.vehicle_type || req.vehicleType || 'moto').toLowerCase();
                     if (reqVehicle === drvVehicle) return true;
@@ -1296,9 +1311,10 @@ export default function OrdersRadar() {
                             {/* Ganancia Bruta, Comisión Un 2x3 y Neto */}
                             {(() => {
                                 const gross = Number(
-                                    incomingDispatch.driverPayout ||
-                                    incomingDispatch.deliveryFee ||
                                     incomingDispatch.price ||
+                                    incomingDispatch.total ||
+                                    incomingDispatch.deliveryFee ||
+                                    incomingDispatch.driverPayout ||
                                     0
                                 );
                                 const catKey = incomingDispatch.service_category || incomingDispatch.serviceCategory || incomingDispatch.vehicle_type || incomingDispatch.vehicleType || (incomingDispatch.restaurantName ? 'delivery' : 'mototaxi');
@@ -1665,6 +1681,20 @@ export default function OrdersRadar() {
                                                 <p className="text-xs text-slate-600 font-medium">
                                                     🏪 Comercio/Lugar: <span className="font-bold text-slate-800">{req.mandado_details.storeName}</span>
                                                 </p>
+                                            )}
+                                            {(req.mandado_details?.audioUrl || req.audio_url) && (
+                                                <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 flex flex-col gap-2 mt-2">
+                                                    <div className="flex items-center gap-1.5 text-[10px] font-black uppercase text-amber-900 tracking-wider">
+                                                        <Volume2 className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                                                        Nota de voz del cliente
+                                                    </div>
+                                                    <audio 
+                                                        controls 
+                                                        src={req.mandado_details?.audioUrl || req.audio_url} 
+                                                        className="w-full h-8 accent-amber-500 rounded-lg"
+                                                        preload="metadata"
+                                                    />
+                                                </div>
                                             )}
                                         </div>
 

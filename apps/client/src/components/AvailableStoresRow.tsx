@@ -37,10 +37,11 @@ export default function AvailableStoresRow({ restaurants, cityName }: AvailableS
         >
           <div className="flex items-center gap-2">
             <h3 className="text-sm md:text-base font-extrabold text-slate-900 tracking-tight group-hover:text-amber-600 transition-colors">
-              Ver todas las tiendas disponibles
+              Tiendas en tu zona
             </h3>
           </div>
-          <div className="w-7 h-7 rounded-full bg-slate-50 group-hover:bg-amber-50 group-hover:text-amber-600 flex items-center justify-center text-slate-500 transition-all">
+          <div className="flex items-center gap-1 text-slate-400 group-hover:text-amber-600 text-xs font-bold transition-all">
+            <span>Ver todas</span>
             <ChevronRight className="w-4 h-4" />
           </div>
         </button>

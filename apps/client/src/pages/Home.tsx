@@ -5,10 +5,10 @@ import { useState, useEffect, useMemo } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import { calculateDistance, formatDistance } from '../lib/geo';
-import CitySelectorModal from '../components/CitySelectorModal';
 import WelcomePopup from '../components/WelcomePopup';
 import ExploreMapModal from '../components/ExploreMapModal';
-import { getCityCoordinates } from '../lib/venezuelaData';
+import { getCityCoordinates, getNearestCity } from '../lib/venezuelaData';
+import GPSLockScreen from '../components/GPSLockScreen';
 import { GOOGLE_MAPS_API_KEY } from '../lib/mapsConfig';
 import { recommendationsService } from '../lib/recommendations';
 import { toast } from 'react-hot-toast';
@@ -76,111 +76,140 @@ export default function Home() {
   const [locationName, setLocationName] = useState(() => {
     return localStorage.getItem('userCity') ? `${localStorage.getItem('userCity')}` : 'Buscando...';
   });
-  const [isCityModalOpen, setIsCityModalOpen] = useState(false);
-  const [showLocationTutorial, setShowLocationTutorial] = useState(false);
+  // GPS Mandatory State
+  const [isGpsBlocked, setIsGpsBlocked] = useState<boolean>(false);
+  const [isGpsChecking, setIsGpsChecking] = useState<boolean>(true);
+  const [gpsErrorMessage, setGpsErrorMessage] = useState<string>('');
+
   const [isInfoModalOpen, setIsInfoModalOpen] = useState(false);
   const [isPointsModalOpen, setIsPointsModalOpen] = useState(false);
 
+  const handleGpsSuccess = async (position: GeolocationPosition) => {
+    const coords = {
+      lat: position.coords.latitude,
+      lng: position.coords.longitude
+    };
+    setUserLocation(coords);
+    localStorage.setItem('userLat', coords.lat.toString());
+    localStorage.setItem('userLng', coords.lng.toString());
 
-  useEffect(() => {
-    // 1. Check if we already have coordinates in localStorage
-    const savedLat = localStorage.getItem('userLat');
-    const savedLng = localStorage.getItem('userLng');
-    if (savedLat && savedLng && !isNaN(parseFloat(savedLat)) && !isNaN(parseFloat(savedLng))) {
-      setUserLocation({ lat: parseFloat(savedLat), lng: parseFloat(savedLng) });
-    } else if (manualCity) {
-      const fallback = getCityCoordinates(manualCity, manualState);
-      if (fallback) {
-        setUserLocation(fallback);
-      }
-    }
+    // 1. Calculate nearest Venezuelan city
+    const nearest = getNearestCity(coords.lat, coords.lng);
+    let detectedCity = nearest.city;
+    let detectedState = nearest.state;
 
-    if (manualCity) {
-      setLocationName(`${manualCity}`);
-    }
-
-    // 2. If we have a saved address in user profile, use it
-    const defaultAddress = userData?.addresses?.find((a: any) => a.isDefault) || userData?.address;
-    if (defaultAddress && defaultAddress.lat && defaultAddress.lng) {
-      const coords = { lat: defaultAddress.lat, lng: defaultAddress.lng };
-      setUserLocation(coords);
-      if (!manualCity) {
-        const city = defaultAddress.city || defaultAddress.reference?.split(',')[0];
-        if (city) {
-          setLocationName(city);
-          localStorage.setItem('userCity', city);
-          setManualCity(city);
-        } else {
-          setLocationName('Ubicación');
+    // 2. Reverse geocode via Google Maps API if configured
+    try {
+      if (GOOGLE_MAPS_API_KEY) {
+        const response = await fetch(
+          `https://maps.googleapis.com/maps/api/geocode/json?latlng=${coords.lat},${coords.lng}&key=${GOOGLE_MAPS_API_KEY}`
+        );
+        const data = await response.json();
+        if (data.results && data.results[0]) {
+          const addressComponents = data.results[0].address_components;
+          const cityComp =
+            addressComponents.find((c: any) => c.types.includes('locality'))?.long_name ||
+            addressComponents.find((c: any) => c.types.includes('administrative_area_level_2'))?.long_name;
+          const stateComp = addressComponents.find((c: any) => c.types.includes('administrative_area_level_1'))?.long_name;
+          if (cityComp) {
+            detectedCity = cityComp;
+          }
+          if (stateComp) {
+            detectedState = stateComp;
+          }
         }
       }
+    } catch (e) {
+      console.warn("Google reverse geocode fallback to nearest Venezuelan city:", e);
+    }
+
+    setManualCity(detectedCity);
+    setManualState(detectedState);
+    setLocationName(detectedCity);
+    localStorage.setItem('userCity', detectedCity);
+    localStorage.setItem('userState', detectedState);
+
+    // Sync with Supabase profiles if logged in
+    const uid = userData?.uid || userData?.id;
+    if (uid) {
+      supabase.from('profiles').update({
+        last_city: detectedCity,
+        lastCity: detectedCity,
+        last_state: detectedState,
+        lastState: detectedState,
+        coords: coords,
+        updated_at: new Date().toISOString()
+      }).eq('id', uid).then(() => {}).catch(console.error);
+    }
+
+    setIsGpsBlocked(false);
+    setIsGpsChecking(false);
+    setGpsErrorMessage('');
+  };
+
+  const handleGpsError = (err: GeolocationPositionError) => {
+    console.warn("GPS error/denied:", err);
+    setIsGpsBlocked(true);
+    setIsGpsChecking(false);
+    let msg = 'Es obligatorio tener la ubicación GPS encendida para utilizar la aplicación.';
+    if (err.code === err.PERMISSION_DENIED) {
+      msg = 'Has denegado el permiso de ubicación. Por favor actívalo en los ajustes de tu navegador o dispositivo.';
+    } else if (err.code === err.POSITION_UNAVAILABLE) {
+      msg = 'Tu señal de GPS está apagada o no disponible. Enciende la ubicación en los ajustes de tu teléfono.';
+    } else if (err.code === err.TIMEOUT) {
+      msg = 'Tiempo de espera agotado buscando tu señal de GPS. Por favor reintenta.';
+    }
+    setGpsErrorMessage(msg);
+  };
+
+  const requestGpsLocation = () => {
+    if (!navigator.geolocation) {
+      setIsGpsBlocked(true);
+      setIsGpsChecking(false);
+      setGpsErrorMessage('Tu dispositivo o navegador no soporta geolocalización por GPS.');
       return;
     }
 
-    // 3. Detect high-accuracy GPS coordinates
-    if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(
-        async (position) => {
-          const coords = {
-            lat: position.coords.latitude,
-            lng: position.coords.longitude
-          };
-          setUserLocation(coords);
-          localStorage.setItem('userLat', coords.lat.toString());
-          localStorage.setItem('userLng', coords.lng.toString());
+    setIsGpsChecking(true);
+    setGpsErrorMessage('');
+    navigator.geolocation.getCurrentPosition(
+      handleGpsSuccess,
+      handleGpsError,
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+    );
+  };
 
-          // Reverse geocoding only if user hasn't explicitly picked a manual city
-          if (!manualCity) {
-            try {
-              const response = await fetch(`https://maps.googleapis.com/maps/api/geocode/json?latlng=${coords.lat},${coords.lng}&key=${GOOGLE_MAPS_API_KEY}`);
-              const data = await response.json();
-              if (data.results && data.results[0]) {
-                const addressComponents = data.results[0].address_components;
-                const city = addressComponents.find((c: any) => c.types.includes('locality'))?.long_name ||
-                  addressComponents.find((c: any) => c.types.includes('administrative_area_level_2'))?.long_name;
-                const state = addressComponents.find((c: any) => c.types.includes('administrative_area_level_1'))?.short_name;
-                if (city) {
-                  setLocationName(`${city}`);
-                  localStorage.setItem('userCity', city);
-                  setManualCity(city);
-                  if (state) {
-                    localStorage.setItem('userState', state);
-                    setManualState(state);
-                  }
-                  const uid = userData?.uid || userData?.id;
-                  if (uid) {
-                    try {
-                      await supabase.from('profiles').update({
-                        last_city: city,
-                        lastCity: city,
-                        last_state: state,
-                        lastState: state,
-                        coords: coords,
-                        updated_at: new Date().toISOString()
-                      }).eq('id', uid);
-                    } catch (e) {
-                      console.error("Error syncing location:", e);
-                    }
-                  }
-                }
-              }
-            } catch (error) {
-              console.error("Geocoding error:", error);
-            }
-          }
-        },
-        (error) => {
-          console.warn("Geolocation warning/permission:", error);
-          if (!manualCity && !savedLat) {
-            setLocationName('Seleccionar ciudad');
-          }
-        },
-        { enableHighAccuracy: true, timeout: 8000 }
+  useEffect(() => {
+    // 1. Initial attempt to obtain GPS location
+    requestGpsLocation();
+
+    // 2. Watch position continuously to react immediately if GPS is toggled
+    let watchId: number | null = null;
+    if (navigator.geolocation) {
+      watchId = navigator.geolocation.watchPosition(
+        handleGpsSuccess,
+        handleGpsError,
+        { enableHighAccuracy: true, timeout: 15000, maximumAge: 5000 }
       );
-    } else if (!manualCity && !savedLat) {
-      setLocationName('Seleccionar ciudad');
     }
-  }, [userData, manualCity, manualState]);
+
+    // 3. Re-check when user switches back to the app window/tab
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        requestGpsLocation();
+      }
+    };
+    window.addEventListener('visibilitychange', handleVisibility);
+    window.addEventListener('focus', handleVisibility);
+
+    return () => {
+      if (watchId !== null && navigator.geolocation) {
+        navigator.geolocation.clearWatch(watchId);
+      }
+      window.removeEventListener('visibilitychange', handleVisibility);
+      window.removeEventListener('focus', handleVisibility);
+    };
+  }, [userData]);
 
   useEffect(() => {
     const fetchBanners = async () => {
@@ -605,40 +634,9 @@ export default function Home() {
     }
   };
 
-  const handleCitySelect = (state: string, city: string) => {
-    localStorage.setItem('userState', state);
-    localStorage.setItem('userCity', city);
-    setManualState(state);
-    setManualCity(city);
-    setLocationName(`${city}`);
-    
-    // Set coordinates for city immediately so distance calculation never displays 'Distancia desconocida'
-    const cityCoords = getCityCoordinates(city, state);
-    if (cityCoords) {
-      setUserLocation(cityCoords);
-      localStorage.setItem('userLat', cityCoords.lat.toString());
-      localStorage.setItem('userLng', cityCoords.lng.toString());
-    }
-
-    // Sync with Supabase if logged in
-    const uid = userData?.uid || userData?.id;
-    if (uid) {
-      supabase.from('profiles').update({
-        last_city: city,
-        lastCity: city,
-        last_state: state,
-        lastState: state,
-        ...(cityCoords ? { coords: cityCoords } : {}),
-        updated_at: new Date().toISOString()
-      }).eq('id', uid).then(() => {}).catch(console.error);
-    }
-  };
-
   return (
     <div className="relative flex h-full w-full flex-col overflow-x-hidden bg-white">
       <WelcomePopup manualState={manualState} manualCity={manualCity} />
-      
-
 
       {/* Header */}
       <header className="sticky top-0 z-40 bg-primary px-4 pt-6 pb-2">
@@ -706,18 +704,21 @@ export default function Home() {
           </div>
         </div>
 
-        {/* Location Selector & Map Explore Button */}
+        {/* Location Display (Auto GPS with active pulsing green dot) & Map Explore Button */}
         <div className="flex items-center justify-between gap-2">
-          <button
-            onClick={() => setShowLocationTutorial(true)}
-            className="flex items-center gap-1.5 text-secondary hover:text-black transition-all active:scale-95 py-1 min-w-0"
+          <div
+            className="flex items-center gap-2 text-secondary py-1 min-w-0"
+            title="Ubicación detectada automáticamente por GPS"
           >
-            <MapPin className="w-5 h-5 shrink-0" />
-            <span className="text-[15px] font-normal leading-none tracking-tight truncate max-w-[200px]">
-              {locationName !== 'Buscando...' && locationName !== 'Ubicación Desconocida' ? locationName : 'Ingresa tu ubicación'}
+            <div className="relative flex h-2.5 w-2.5 items-center justify-center shrink-0">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500 shadow-sm shadow-emerald-500/50"></span>
+            </div>
+            <MapPin className="w-4 h-4 text-secondary shrink-0" />
+            <span className="text-[14px] font-bold leading-none tracking-tight truncate max-w-[200px]">
+              {locationName !== 'Buscando...' && locationName !== 'Ubicación Desconocida' ? locationName : 'Detectando GPS...'}
             </span>
-            <ChevronRight className="w-5 h-5 transition-colors shrink-0" />
-          </button>
+          </div>
 
           <button
             onClick={() => { vibrate(20); setIsMapModalOpen(true); }}
@@ -732,55 +733,6 @@ export default function Home() {
 
       {/* Banner Section Background Fade */}
       <div className="absolute top-[170px] left-0 right-0 h-40 bg-gradient-to-b from-primary to-white z-0 pointer-events-none"></div>
-
-
-      {/* Location Tutorial Modal */}
-      <AnimatePresence>
-        {showLocationTutorial && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-            <motion.div
-              initial={{ scale: 0.9, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.9, opacity: 0 }}
-              className="bg-white rounded-[32px] overflow-hidden shadow-2xl w-full max-w-sm"
-            >
-              <div className="bg-primary p-8 flex flex-col items-center">
-                <div className="w-20 h-20 bg-white rounded-full flex items-center justify-center mb-6 shadow-lg shadow-black/10">
-                  <MapPin className="w-10 h-10 text-secondary" />
-                </div>
-                <h3 className="text-xl font-black text-secondary text-center leading-tight">
-                  Tu ubicación en un 2x3
-                </h3>
-              </div>
-              <div className="p-8">
-                <p className="text-slate-600 text-center font-bold text-lg leading-relaxed">
-                  "Ahora donde vayas podrás conseguir tus lugares favoritos y recomendados en un 2x3"
-                </p>
-                <div className="mt-8">
-                  <button
-                    onClick={() => {
-                      vibrate(30);
-                      setShowLocationTutorial(false);
-                      setIsCityModalOpen(true);
-                    }}
-                    className="w-full bg-primary hover:bg-emerald-600 active:bg-emerald-700 text-secondary font-black py-4 rounded-2xl shadow-xl shadow-primary/20 transition-all flex items-center justify-center gap-2"
-                  >
-                    <span>Entendido</span>
-                    <ChevronRight className="w-5 h-5" />
-                  </button>
-                </div>
-              </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
-      <CitySelectorModal
-        isOpen={isCityModalOpen}
-        onClose={() => setIsCityModalOpen(false)}
-        onSelect={handleCitySelect}
-        initialState={manualState}
-        initialCity={manualCity}
-      />
 
       {/* Free Interactive Leaflet/OSM Map Modal */}
       <ExploreMapModal
@@ -900,13 +852,7 @@ export default function Home() {
         )}
       </AnimatePresence>
 
-      {/* Persistent Active Tasks Widget (Active rides, deliveries, and orders) */}
-      <ActiveTasksWidget />
-
-      {/* Available Stores by User Zone/City (Matching Image 1) */}
-      <AvailableStoresRow restaurants={restaurants} cityName={manualCity || locationName} />
-
-      {/* Promotional Banners */}
+      {/* 2. Promotional Banners (FIRST directly below Header) */}
       {banners.length > 0 && (
         <section className="mt-4 px-5">
           <div className="relative w-full aspect-[2/1] rounded-2xl overflow-hidden shadow-lg border border-slate-100 bg-slate-50">
@@ -970,12 +916,11 @@ export default function Home() {
         </section>
       )}
 
-      {/* Card Banner & SUDEBAN Legal Disclaimer (Matching Image 2) */}
-      <HomePromotionCard
-        cards={cardBanners}
-        disclaimerText={disclaimerText || undefined}
-        showDisclaimer={showDisclaimer}
-      />
+      {/* 3. Persistent Active Tasks Widget (Active rides, deliveries, and orders - hidden if empty) */}
+      <ActiveTasksWidget />
+
+      {/* 4. Available Stores by User Zone/City (Matching Image 1) */}
+      <AvailableStoresRow restaurants={restaurants} cityName={manualCity || locationName} />
 
       {/* Categories moved/hidden as per request */}
       {/* <section className="mt-4 pl-5">
@@ -1130,27 +1075,20 @@ export default function Home() {
                 );
                 })
 
-            ) : !manualCity ? (
-                <div className="flex flex-col items-center justify-center py-20 px-6 text-center animate-in fade-in slide-in-from-bottom-4 relative">
-                <div className="absolute -top-12 2xl:-top-16 opacity-70 flex flex-col items-center animate-bounce">
-                    <span className="text-slate-900 font-black uppercase text-[10px] tracking-widest mb-1 text-center bg-white px-3 py-1 rounded-full shadow-sm border border-orange-100">¡Presiona Aquí Arriba!</span>
-                    <ArrowUp className="w-8 h-8 text-slate-900" strokeWidth={3} />
-                </div>
-                
-                <div className="w-24 h-24 bg-orange-100 rounded-[2.5rem] flex items-center justify-center mb-6 shadow-md border-4 border-white rotate-3">
-                    <MapPin className="w-12 h-12 text-slate-900" />
-                </div>
-                
-                <h3 className="text-2xl font-black text-slate-800 mb-3">¡Épale! 👋</h3>
-                <p className="text-slate-500 font-bold max-w-[280px] leading-relaxed">
-                    Selecciona arriba tu <span className="text-slate-900 font-black">Estado y Ciudad</span> en la que vives para presentarte lugares increíbles.
-                </p>
-                </div>
             ) : (
-                <div className="text-center py-12 text-slate-500">
-                No hay restaurantes disponibles en este momento.
+                <div className="text-center py-12 text-slate-500 font-medium">
+                  No hay comercios disponibles en tu zona actualmente.
                 </div>
             )}
+            </div>
+
+            {/* 6. Card Banner & SUDEBAN Legal Disclaimer at the very end of scroll (Matching Image 2) */}
+            <div className="mt-8">
+              <HomePromotionCard
+                cards={cardBanners}
+                disclaimerText={disclaimerText || undefined}
+                showDisclaimer={showDisclaimer}
+              />
             </div>
         </div>
       </main>
@@ -1158,6 +1096,15 @@ export default function Home() {
         isOpen={isPointsModalOpen} 
         onClose={() => setIsPointsModalOpen(false)} 
       />
+
+      {/* Mandatory GPS Blocking Screen */}
+      {isGpsBlocked && (
+        <GPSLockScreen
+          isChecking={isGpsChecking}
+          errorMessage={gpsErrorMessage}
+          onRetry={requestGpsLocation}
+        />
+      )}
     </div>
   );
 }

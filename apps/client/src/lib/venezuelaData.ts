@@ -151,3 +151,44 @@ export function getCityCoordinates(city?: string, state?: string): { lat: number
     }
     return null;
 }
+
+export function getNearestCity(lat: number, lng: number): { city: string; state: string; distanceKm: number } {
+    let bestCity = 'Caracas';
+    let bestState = 'Distrito Capital';
+    let minDistance = Infinity;
+
+    const rad = (x: number) => (x * Math.PI) / 180;
+    const calcDist = (lat1: number, lon1: number, lat2: number, lon2: number) => {
+        const R = 6371;
+        const dLat = rad(lat2 - lat1);
+        const dLon = rad(lon2 - lon1);
+        const a =
+            Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+            Math.cos(rad(lat1)) * Math.cos(rad(lat2)) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
+        return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    };
+
+    const cityStateMap: Record<string, string> = {};
+    for (const [st, cities] of Object.entries(VENEZUELA_DATA)) {
+        for (const c of cities) {
+            cityStateMap[c.toLowerCase().trim()] = st;
+        }
+    }
+
+    for (const [cityNameKey, coords] of Object.entries(CITY_COORDINATES)) {
+        const d = calcDist(lat, lng, coords.lat, coords.lng);
+        if (d < minDistance) {
+            minDistance = d;
+            const matchedState = cityStateMap[cityNameKey] || '';
+            let properCity = cityNameKey.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+            if (matchedState && VENEZUELA_DATA[matchedState]) {
+                const found = VENEZUELA_DATA[matchedState].find(c => c.toLowerCase().trim() === cityNameKey);
+                if (found) properCity = found;
+            }
+            bestCity = properCity;
+            bestState = matchedState;
+        }
+    }
+
+    return { city: bestCity, state: bestState, distanceKm: minDistance };
+}
