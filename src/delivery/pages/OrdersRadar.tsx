@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useCurrency } from '../../context/CurrencyContext';
-import { Car, Bike, MapPin, Navigation, Phone, CheckCircle2, MessageSquare, Send, User as UserIcon, Star, MessageCircle, Clock, AlertTriangle, ArrowLeft, Package, Sparkles, DollarSign, ShieldAlert, ExternalLink, Volume2 } from 'lucide-react';
+import { Car, Bike, MapPin, Navigation, Phone, CheckCircle2, MessageSquare, Send, User as UserIcon, Star, MessageCircle, Clock, AlertTriangle, ArrowLeft, Package, Sparkles, DollarSign, ShieldAlert, ExternalLink, Volume2, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import toast from 'react-hot-toast';
 import RideChat from '../../components/RideChat';
@@ -76,17 +76,38 @@ export default function OrdersRadar() {
         return () => clearInterval(interval);
     }, [radarTips.length]);
     
+    // Tabs de navegación del centro de mando
+    const [activeTab, setActiveTab] = useState<'all' | 'taxis' | 'deliveries' | 'mandados'>('all');
+
+    // Modal de detalle y cotización de Muchacho e' Mandao
+    const [selectedMandadoDetail, setSelectedMandadoDetail] = useState<any>(null);
+    const [modalBidPrice, setModalBidPrice] = useState<string>('2.50');
+    const [modalBidEta, setModalBidEta] = useState<string>('15');
+
+    // Estado en espera de Muchacho e' Mandao postulados
+    const [myPendingBids, setMyPendingBids] = useState<any[]>([]);
+
     // Muchacho e' Mandado Bids State
     const [mandadoBids, setMandadoBids] = useState<{ [reqId: string]: { amount: string; eta: string; submitted: boolean } }>({});
     
     // Helper to get the current active item for calling
     const currentActiveItem = activeTransport || activeOrder;
 
+    // Límite de servicios simultáneos: Máximo 1 en curso + 1 en cola (2 en total)
+    const activeServicesCount = (activeTransport ? 1 : 0) + (activeOrder ? 1 : 0) + myReservations.length;
+    const hasReachedServiceLimit = activeServicesCount >= 2;
+
     // Suspension check: debt >= $15, suspended status, or deadline expired
     const isSuspended = Boolean(
         driverProfile?.commission_status === 'suspended' || 
         Number(driverProfile?.commission_debt || 0) >= 15 || 
         (driverProfile?.next_commission_deadline && new Date(driverProfile.next_commission_deadline).getTime() < Date.now())
+    );
+
+    // Driver fares check: Driver must configure rates (>= $0.50) before being enabled/visible to receive trips
+    const hasFaresConfigured = Boolean(
+        driverProfile?.driver_fares && 
+        Number(driverProfile?.driver_fares?.base_fare) >= 0.50
     );
 
     const getCommissionForCategory = (categoryOrType: string) => {
@@ -97,6 +118,51 @@ export default function OrdersRadar() {
         if (cat.includes('moto')) return 0.50;
         return 0.80; // Taxi Driver
     };
+
+    // Escuchar postulaciones pendientes del conductor en tiempo real
+    useEffect(() => {
+        if (!user) return;
+        let channel: any;
+
+        const fetchPendingBids = async () => {
+            const { data } = await supabase
+                .from('transport_bids')
+                .select('*, transport_requests(*)')
+                .eq('driver_id', user.uid)
+                .eq('status', 'pending')
+                .order('created_at', { ascending: false });
+            if (data) {
+                setMyPendingBids(data);
+            }
+        };
+
+        fetchPendingBids();
+
+        channel = supabase.channel(`driver_pending_bids_${user.uid}`)
+            .on('postgres_changes', {
+                event: '*',
+                schema: 'public',
+                table: 'transport_bids',
+                filter: `driver_id=eq.${user.uid}`
+            }, (payload: any) => {
+                fetchPendingBids();
+                if (payload.eventType === 'UPDATE' && payload.new?.status === 'accepted') {
+                    if (notificationSoundUrl.current) {
+                        const audio = new Audio(notificationSoundUrl.current);
+                        audio.play().catch(() => {});
+                    }
+                    toast.success('🎉 ¡El cliente seleccionó tu oferta de mandado! Servicio asignado.', {
+                        duration: 6000,
+                        icon: '🛍️'
+                    });
+                }
+            })
+            .subscribe();
+
+        return () => {
+            if (channel) supabase.removeChannel(channel);
+        };
+    }, [user]);
 
     // 1. Fetch Driver Profile for vehicleType
     useEffect(() => {
@@ -229,6 +295,11 @@ export default function OrdersRadar() {
                 const drvVehicle = (driverProfile?.vehicle_type || driverProfile?.vehicleType || 'moto').toLowerCase();
                 const drvLoc = driverProfile?.current_location;
                 const reqs = data.filter((req: any) => {
+                    // Si el viaje fue solicitado directamente a otro conductor específico, no mostrarlo ni sonar para mí
+                    if (req.assigned_driver_id && req.assigned_driver_id !== user?.uid) {
+                        return false;
+                    }
+
                     const reqType = req.type || req.service_category || 'transport';
                     const isMandado = reqType === 'muchacho_mandado' || req.service_category === 'muchacho_mandado';
 
@@ -265,7 +336,7 @@ export default function OrdersRadar() {
         return () => {
             if (channel) supabase.removeChannel(channel);
         };
-    }, [driverProfile]);
+    }, [driverProfile, user]);
 
     // 3.1 Listen for incoming in-app calls when driver has an active transport
     useEffect(() => {
@@ -313,8 +384,8 @@ export default function OrdersRadar() {
                 }
             });
 
-            // Activar modal de despacho estilo YANGO si no estamos en viaje activo ni suspendidos
-            if (!activeOrder && !activeTransport && !isSuspended) {
+            // Activar modal de despacho estilo YANGO si no estamos en viaje activo, ni suspendidos y con tarifas configuradas
+            if (!activeOrder && !activeTransport && !isSuspended && hasFaresConfigured) {
                 const newest = availableTransport[0] || availableOrders[0];
                 if (newest) {
                     setIncomingDispatch(newest);
@@ -323,7 +394,7 @@ export default function OrdersRadar() {
         }
         
         lastAvailableCount.current = currentCount;
-    }, [availableOrders, availableTransport, activeOrder, activeTransport, isSuspended]);
+    }, [availableOrders, availableTransport, activeOrder, activeTransport, isSuspended, hasFaresConfigured]);
 
     // 3.2 Temporizador de cuenta regresiva de 20s para el despacho YANGO
     useEffect(() => {
@@ -728,18 +799,22 @@ export default function OrdersRadar() {
     };
 
     // Puja / Oferta para Muchacho e' Mandado
-    const handleSendMandadoBid = async (reqId: string) => {
+    const handleSendMandadoBid = async (reqId: string, customAmount?: number, customEta?: number) => {
         if (!user || processingAction) return;
         if (isSuspended) {
             toast.error("Tu cuenta está suspendida por comisiones pendientes ($15+ o plazo vencido). Ve a Ganancias para liquidar.");
             return;
         }
+        if (hasReachedServiceLimit) {
+            toast.error("Has alcanzado tu límite de servicios simultáneos (1 en curso + 1 en cola). Concluye tu viaje actual.");
+            return;
+        }
         const bidInfo = mandadoBids[reqId];
-        const amount = Number(bidInfo?.amount || 0);
-        const eta = Number(bidInfo?.eta || 15);
+        const amount = customAmount !== undefined ? customAmount : Number(bidInfo?.amount || 0);
+        const eta = customEta !== undefined ? customEta : Number(bidInfo?.eta || 15);
 
-        if (isNaN(amount) || amount < 1.00) {
-            toast.error("La tarifa mínima de puja es de $1.00 USD");
+        if (isNaN(amount) || amount < 0.50) {
+            toast.error("La tarifa mínima de puja es de $0.50 USD");
             return;
         }
 
@@ -750,8 +825,8 @@ export default function OrdersRadar() {
                 id: bidId,
                 transport_request_id: reqId,
                 driver_id: user.uid,
-                driver_name: driverProfile?.displayName || driverProfile?.name || 'Conductor',
-                driver_photo: driverProfile?.photoURL || driverProfile?.avatar_url || null,
+                driver_name: driverProfile?.displayName || driverProfile?.name || driverProfile?.full_name || 'Conductor',
+                driver_photo: driverProfile?.photoURL || driverProfile?.avatar_url || driverProfile?.photo_url || null,
                 driver_phone: driverProfile?.phone || null,
                 vehicle_type: driverProfile?.vehicle_type || driverProfile?.vehicleType || 'moto',
                 vehicle_plate: driverProfile?.vehicle_plate || driverProfile?.plate || '',
@@ -768,12 +843,26 @@ export default function OrdersRadar() {
                 ...prev,
                 [reqId]: { ...prev[reqId], submitted: true }
             }));
-            toast.success(`¡Puja de $${amount.toFixed(2)} USD enviada al cliente!`);
+            setSelectedMandadoDetail(null);
+            toast.success(`¡Puja de $${amount.toFixed(2)} USD enviada al cliente! En espera de respuesta...`);
         } catch (err: any) {
             console.error("Error enviando puja de mandado:", err);
             toast.error("No se pudo enviar la oferta. Revisa tu conexión.");
         } finally {
             setProcessingAction(null);
+        }
+    };
+
+    // Cancelar postulación de mandado
+    const handleCancelBid = async (bidId: string) => {
+        try {
+            const { error } = await supabase.from('transport_bids').delete().eq('id', bidId);
+            if (error) throw error;
+            setMyPendingBids(prev => prev.filter(b => b.id !== bidId));
+            toast.success("Postulación cancelada");
+        } catch (e) {
+            console.error("Error al cancelar la postulación:", e);
+            toast.error("No se pudo cancelar la postulación");
         }
     };
 
@@ -1221,18 +1310,112 @@ export default function OrdersRadar() {
         );
     }
 
-    const hasNoIncoming = availableOrders.length === 0 && availableTransport.length === 0 && myReservations.length === 0;
+    // Listas organizadas por categorías de servicios
+    const taxisList = availableTransport.filter(r => 
+        r.service_category !== 'mandado' && 
+        r.service_category !== 'muchacho_mandado' && 
+        r.type !== 'muchacho_mandado' && 
+        r.type !== 'food_delivery' && 
+        r.type !== 'package_delivery'
+    );
+
+    const deliveriesList = [
+        ...availableOrders,
+        ...availableTransport.filter(r => r.type === 'package_delivery' || r.type === 'food_delivery')
+    ];
+
+    const mandadosList = availableTransport.filter(r => 
+        r.service_category === 'mandado' || 
+        r.service_category === 'muchacho_mandado' || 
+        r.type === 'muchacho_mandado'
+    );
+
+    const allCount = taxisList.length + deliveriesList.length + mandadosList.length + myReservations.length;
+
+    const isFilteredListEmpty = (
+        (activeTab === 'all' && allCount === 0) ||
+        (activeTab === 'taxis' && taxisList.length === 0) ||
+        (activeTab === 'deliveries' && deliveriesList.length === 0) ||
+        (activeTab === 'mandados' && mandadosList.length === 0)
+    );
 
     return (
-        <div className="space-y-6 pb-10">
-            <div className="flex items-center justify-between px-2">
-                <h2 className="text-2xl font-black text-slate-800 tracking-tight">Radar Real-Time</h2>
-                <div className="flex gap-1">
-                    <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></div>
-                    <div className="w-2 h-2 bg-emerald-500/40 rounded-full animate-pulse delay-75"></div>
-                    <div className="w-2 h-2 bg-emerald-500/10 rounded-full animate-pulse delay-150"></div>
+        <div className="space-y-5 pb-10">
+            {/* Cabecera del Centro de Mando: Estado en Línea & Capacidad */}
+            <div className="bg-slate-950 text-white p-4 sm:p-5 rounded-[2.5rem] border border-slate-800 shadow-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="flex items-center gap-3">
+                    <div className="relative">
+                        <div className={`w-3.5 h-3.5 rounded-full ${hasFaresConfigured ? 'bg-emerald-400' : 'bg-rose-500'}`} />
+                        {hasFaresConfigured && (
+                            <div className="absolute inset-0 rounded-full bg-emerald-400 animate-ping opacity-75" />
+                        )}
+                    </div>
+                    <div>
+                        <div className="flex items-center gap-2">
+                            <span className="font-black text-sm tracking-tight text-white">
+                                {hasFaresConfigured ? 'En línea y disponible' : 'Tarifas pendientes'}
+                            </span>
+                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-800 text-amber-400 border border-slate-700 uppercase">
+                                {(driverProfile?.vehicle_type || driverProfile?.vehicleType || 'moto').toUpperCase()}
+                            </span>
+                        </div>
+                        <p className="text-[11px] text-slate-400 font-medium">
+                            {hasFaresConfigured ? 'Transmitiendo GPS en tiempo real' : 'Configura tus tarifas para recibir viajes'}
+                        </p>
+                    </div>
+                </div>
+
+                <div className="flex items-center gap-2 self-start sm:self-auto">
+                    <div className={`px-3 py-1.5 rounded-xl border text-xs font-black flex items-center gap-1.5 ${
+                        hasReachedServiceLimit 
+                            ? 'bg-rose-500/10 border-rose-500/30 text-rose-400' 
+                            : activeServicesCount === 1 
+                            ? 'bg-amber-500/10 border-amber-500/30 text-amber-400'
+                            : 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400'
+                    }`}>
+                        <Clock className="w-3.5 h-3.5" />
+                        <span>Capacidad: {activeServicesCount}/2 ({activeServicesCount === 0 ? 'Libre' : activeServicesCount === 1 ? '1 en curso' : 'Lleno'})</span>
+                    </div>
                 </div>
             </div>
+
+            {/* Aviso de Límite Máximo Alcanzado (1 en curso + 1 en cola) */}
+            {hasReachedServiceLimit && (
+                <div className="bg-amber-50 border-2 border-amber-300 p-4 rounded-2xl flex items-center gap-3 text-amber-950 animate-in fade-in">
+                    <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0" />
+                    <div>
+                        <p className="text-xs font-black uppercase tracking-wide">Capacidad máxima alcanzada (2/2)</p>
+                        <p className="text-[11px] text-amber-800 font-medium">
+                            Tienes 1 servicio en curso + 1 en cola. No puedes aceptar más solicitudes hasta concluir el actual.
+                        </p>
+                    </div>
+                </div>
+            )}
+
+            {/* Banner Obligatorio: Configuración de Tarifas */}
+            {!hasFaresConfigured && (
+                <div className="bg-gradient-to-r from-red-600 via-rose-600 to-red-700 text-white p-5 rounded-[2.5rem] shadow-xl shadow-red-500/20 border-2 border-red-400/50 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 animate-in fade-in slide-in-from-top-2">
+                    <div className="flex items-center gap-3.5">
+                        <div className="w-12 h-12 bg-white/20 rounded-2xl flex items-center justify-center shrink-0 animate-pulse">
+                            <AlertTriangle className="w-6 h-6 text-white" />
+                        </div>
+                        <div>
+                            <h4 className="font-black text-base leading-tight flex items-center gap-2">
+                                Configura tus tarifas para empezar a recibir viajes
+                            </h4>
+                            <p className="text-xs text-red-100 font-medium mt-0.5">
+                                Para quedar habilitado y visible a los clientes, debes configurar tus tarifas (mínimo $0.50 USD).
+                            </p>
+                        </div>
+                    </div>
+                    <button
+                        onClick={() => navigate('/delivery/earnings?tab=fares')}
+                        className="w-full sm:w-auto px-5 py-3 bg-white hover:bg-red-50 text-red-700 font-black rounded-xl text-xs uppercase tracking-wider shadow-lg active:scale-95 transition-all shrink-0 flex items-center justify-center gap-2"
+                    >
+                        <span>Configurar Tarifas</span>
+                    </button>
+                </div>
+            )}
 
             {/* Banner de Suspensión por Deuda de Comisiones */}
             {isSuspended && (
@@ -1415,22 +1598,47 @@ export default function OrdersRadar() {
 
                             {/* Botones de Acción */}
                             <div className="pt-2 flex flex-col gap-2">
-                                <button
-                                    onClick={() => {
-                                        const isOrder = Boolean(incomingDispatch.restaurantName || incomingDispatch.shippingAddress);
-                                        const id = incomingDispatch.id;
-                                        setIncomingDispatch(null);
-                                        if (isOrder) {
-                                            handleAcceptOrder(id);
-                                        } else {
-                                            handleAcceptTransport(id);
-                                        }
-                                    }}
-                                    className="w-full bg-gradient-to-r from-amber-400 to-yellow-400 hover:from-amber-300 hover:to-yellow-300 text-slate-950 font-black py-4 rounded-2xl shadow-xl shadow-amber-400/20 active:scale-95 transition-all text-base uppercase tracking-wider flex items-center justify-center gap-2"
-                                >
-                                    <Sparkles className="w-5 h-5" />
-                                    {incomingDispatch.restaurantName ? 'Aceptar Reparto' : 'Aceptar Viaje'}
-                                </button>
+                                {(() => {
+                                    const isMandado = (incomingDispatch.service_category === 'mandado' || incomingDispatch.service_category === 'muchacho_mandado' || incomingDispatch.type === 'muchacho_mandado');
+                                    const isOrder = Boolean(incomingDispatch.restaurantName || incomingDispatch.shippingAddress);
+
+                                    if (isMandado) {
+                                        return (
+                                            <button
+                                                onClick={() => {
+                                                    const item = incomingDispatch;
+                                                    setIncomingDispatch(null);
+                                                    setModalBidPrice('2.50');
+                                                    setModalBidEta('15');
+                                                    setSelectedMandadoDetail(item);
+                                                }}
+                                                className="w-full bg-gradient-to-r from-amber-400 to-yellow-400 hover:from-amber-300 hover:to-yellow-300 text-slate-950 font-black py-4 rounded-2xl shadow-xl shadow-amber-400/20 active:scale-95 transition-all text-base uppercase tracking-wider flex items-center justify-center gap-2"
+                                            >
+                                                <Package className="w-5 h-5" />
+                                                Ver mandado
+                                            </button>
+                                        );
+                                    }
+
+                                    return (
+                                        <button
+                                            onClick={() => {
+                                                const id = incomingDispatch.id;
+                                                setIncomingDispatch(null);
+                                                if (isOrder) {
+                                                    handleAcceptOrder(id);
+                                                } else {
+                                                    handleAcceptTransport(id);
+                                                }
+                                            }}
+                                            disabled={hasReachedServiceLimit}
+                                            className="w-full bg-gradient-to-r from-amber-400 to-yellow-400 hover:from-amber-300 hover:to-yellow-300 text-slate-950 font-black py-4 rounded-2xl shadow-xl shadow-amber-400/20 active:scale-95 transition-all text-base uppercase tracking-wider flex items-center justify-center gap-2 disabled:opacity-50"
+                                        >
+                                            <Sparkles className="w-5 h-5" />
+                                            {isOrder ? 'Aceptar Reparto' : 'Aceptar Viaje'}
+                                        </button>
+                                    );
+                                })()}
                                 <button
                                     onClick={() => setIncomingDispatch(null)}
                                     className="w-full py-2.5 text-slate-400 hover:text-slate-200 font-bold text-xs uppercase tracking-wider text-center active:scale-95 transition-all"
@@ -1442,6 +1650,332 @@ export default function OrdersRadar() {
                     </motion.div>
                 )}
             </AnimatePresence>
+
+            {/* Modal de Detalle Completo de Muchacho e' Mandao para Cotización */}
+            <AnimatePresence>
+                {selectedMandadoDetail && (
+                    <motion.div
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        className="fixed inset-0 z-[130] bg-black/80 backdrop-blur-md flex items-end sm:items-center justify-center p-3 sm:p-4 overflow-y-auto"
+                    >
+                        <motion.div
+                            initial={{ scale: 0.95, y: 40, opacity: 0 }}
+                            animate={{ scale: 1, y: 0, opacity: 1 }}
+                            exit={{ scale: 0.95, y: 40, opacity: 0 }}
+                            className="bg-slate-950 text-white w-full max-w-lg rounded-[2.5rem] p-6 shadow-2xl border border-slate-800 relative flex flex-col gap-4 my-auto max-h-[90vh] overflow-y-auto"
+                        >
+                            {/* Header */}
+                            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+                                <div className="flex items-center gap-2.5">
+                                    <div className="w-10 h-10 rounded-2xl bg-amber-400 text-slate-950 flex items-center justify-center font-black shadow-sm">
+                                        <Package className="w-5 h-5" />
+                                    </div>
+                                    <div>
+                                        <h3 className="font-black text-base text-white">Detalle de Muchacho e' Mandao</h3>
+                                        <p className="text-[11px] text-amber-400 font-bold uppercase tracking-wider">Revisa antes de cotizar</p>
+                                    </div>
+                                </div>
+                                <button
+                                    onClick={() => setSelectedMandadoDetail(null)}
+                                    className="w-9 h-9 rounded-full bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white flex items-center justify-center transition-all"
+                                >
+                                    <X className="w-5 h-5" />
+                                </button>
+                            </div>
+
+                            {/* Cliente */}
+                            <div className="bg-slate-900/80 p-3.5 rounded-2xl border border-slate-800 flex items-center justify-between">
+                                <div>
+                                    <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Cliente solicitante</span>
+                                    <p className="text-sm font-black text-white">{selectedMandadoDetail.userName || selectedMandadoDetail.user_name || 'Cliente'}</p>
+                                    {selectedMandadoDetail.userCedula && (
+                                        <p className="text-[10px] text-slate-400 font-semibold">C.I: {selectedMandadoDetail.userCedula}</p>
+                                    )}
+                                </div>
+                                <div className="px-3 py-1 bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-[10px] font-black rounded-full uppercase">
+                                    Verificado
+                                </div>
+                            </div>
+
+                            {/* Detalle del encargo */}
+                            <div className="bg-amber-950/20 border border-amber-500/30 rounded-2xl p-4 space-y-2">
+                                <span className="text-[10px] font-black uppercase tracking-widest text-amber-400">¿Qué te están pidiendo?</span>
+                                <p className="text-sm font-bold text-slate-200 leading-relaxed whitespace-pre-wrap">
+                                    {selectedMandadoDetail.mandado_details?.description || selectedMandadoDetail.description || selectedMandadoDetail.notes || selectedMandadoDetail.packageDescription || 'Encargo personalizado solicitado por el cliente.'}
+                                </p>
+                            </div>
+
+                            {/* Nota de voz si existe */}
+                            {(selectedMandadoDetail.mandado_details?.audioUrl || selectedMandadoDetail.audio_url) && (
+                                <div className="bg-slate-900 border border-amber-500/40 rounded-2xl p-3.5 space-y-2">
+                                    <div className="flex items-center gap-2 text-xs font-black uppercase tracking-wider text-amber-400">
+                                        <Volume2 className="w-4 h-4" />
+                                        Nota de voz explicativa del cliente
+                                    </div>
+                                    <audio
+                                        controls
+                                        src={selectedMandadoDetail.mandado_details?.audioUrl || selectedMandadoDetail.audio_url}
+                                        className="w-full h-9 rounded-xl accent-amber-400"
+                                        preload="metadata"
+                                    />
+                                </div>
+                            )}
+
+                            {/* Imagen de referencia si existe */}
+                            {(selectedMandadoDetail.mandado_details?.referenceUrl || selectedMandadoDetail.reference_url) && (
+                                <div className="bg-slate-900 border border-slate-800 rounded-2xl p-3.5 space-y-2">
+                                    <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Foto o factura de referencia</span>
+                                    <a
+                                        href={selectedMandadoDetail.mandado_details?.referenceUrl || selectedMandadoDetail.reference_url}
+                                        target="_blank"
+                                        rel="noreferrer"
+                                        className="block rounded-xl overflow-hidden border border-slate-700 max-h-48 group relative"
+                                    >
+                                        <img
+                                            src={selectedMandadoDetail.mandado_details?.referenceUrl || selectedMandadoDetail.reference_url}
+                                            alt="Referencia mandado"
+                                            className="w-full h-full object-cover group-hover:scale-105 transition-transform"
+                                        />
+                                        <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                                            <span className="text-xs font-black text-white bg-slate-900/80 px-3 py-1 rounded-lg">Ver foto completa</span>
+                                        </div>
+                                    </a>
+                                </div>
+                            )}
+
+                            {/* Puntos de Ruta / Comercios a Visitar */}
+                            <div className="bg-slate-900/50 p-4 rounded-2xl border border-slate-800 space-y-3">
+                                <div className="flex items-start gap-3">
+                                    <div className="w-6 h-6 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center shrink-0 mt-0.5 font-black text-xs border border-emerald-500/30">
+                                        1
+                                    </div>
+                                    <div className="flex-1 min-w-0">
+                                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-wider">
+                                            {selectedMandadoDetail.mandado_details?.storeName ? `Comercio: ${selectedMandadoDetail.mandado_details.storeName}` : 'Punto de Compra / Retiro'}
+                                        </p>
+                                        <p className="text-xs font-bold text-slate-200 truncate">
+                                            {selectedMandadoDetail.origin?.address || selectedMandadoDetail.mandado_details?.storeAddresses || 'Ubicación indicada en detalle'}
+                                        </p>
+                                    </div>
+                                </div>
+
+                                <div className="ml-3 border-l-2 border-dashed border-slate-700 h-3"></div>
+
+                                <div className="flex items-start gap-3">
+                                    <div className="w-6 h-6 rounded-full bg-amber-500/20 text-amber-400 flex items-center justify-center shrink-0 mt-0.5 font-black text-xs border border-amber-500/30">
+                                        2
+                                    </div>
+                                    <div className="flex-1 min-w-0">
+                                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Destino de Entrega</p>
+                                        <p className="text-xs font-bold text-slate-200 truncate">
+                                            {selectedMandadoDetail.destination?.address || 'Ubicación del cliente'}
+                                        </p>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Indicador de si incluye traslado de persona */}
+                            <div className="flex items-center gap-2 p-3 rounded-2xl border text-xs font-bold bg-slate-900 border-slate-800">
+                                {selectedMandadoDetail.mandado_details?.transportPassenger ? (
+                                    <div className="text-amber-400 flex items-center gap-2">
+                                        <span className="w-2.5 h-2.5 rounded-full bg-amber-400 animate-ping shrink-0" />
+                                        <span>⚠️ Este mandado incluye el traslado de una persona</span>
+                                    </div>
+                                ) : (
+                                    <div className="text-emerald-400 flex items-center gap-2">
+                                        <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 shrink-0" />
+                                        <span>🛍️ Solo diligencias / compras (sin traslado de personas)</span>
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Advertencia Cero Intermediación */}
+                            <div className="bg-amber-500/10 border border-amber-500/20 rounded-2xl p-3 text-[11px] text-amber-300 flex items-start gap-2 font-medium">
+                                <ShieldAlert className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                                <span>No financias compras: El cliente le transfiere directo al comercio por Pago Móvil. Tú sólo cobras tu tarifa ofertada.</span>
+                            </div>
+
+                            {/* Casilla de Oferta / Cotización */}
+                            <div className="bg-gradient-to-br from-slate-900 to-slate-950 p-4 rounded-2xl border border-amber-400/30 space-y-3">
+                                <span className="text-[10px] font-black uppercase tracking-widest text-amber-400 block">Tu Oferta Personalizada</span>
+                                <div className="grid grid-cols-2 gap-3">
+                                    <div>
+                                        <label className="text-[10px] font-black uppercase text-slate-400 block mb-1">
+                                            Tarifa que cobras ($ USD)
+                                        </label>
+                                        <div className="relative">
+                                            <span className="absolute left-3 top-2.5 text-amber-400 font-black text-sm">$</span>
+                                            <input
+                                                type="number"
+                                                min="0.50"
+                                                step="0.25"
+                                                placeholder="Ej: 3.00"
+                                                value={modalBidPrice}
+                                                onChange={(e) => setModalBidPrice(e.target.value)}
+                                                className="w-full pl-7 pr-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-white font-black text-sm focus:border-amber-400 outline-none"
+                                            />
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <label className="text-[10px] font-black uppercase text-slate-400 block mb-1">
+                                            Tiempo de llegada
+                                        </label>
+                                        <div className="relative">
+                                            <input
+                                                type="number"
+                                                min="5"
+                                                step="5"
+                                                placeholder="15"
+                                                value={modalBidEta}
+                                                onChange={(e) => setModalBidEta(e.target.value)}
+                                                className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-white font-black text-sm focus:border-amber-400 outline-none"
+                                            />
+                                            <span className="absolute right-3 top-2.5 text-slate-400 font-bold text-xs">min</span>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {Number(modalBidPrice) >= 0.50 && (
+                                    <div className="text-xs bg-slate-950 p-3 rounded-xl border border-slate-800 flex items-center justify-between">
+                                        <span className="text-slate-400 font-medium">Tarifa Un 2x3: <strong className="text-rose-400 font-bold">-$0.70</strong></span>
+                                        <span className="text-emerald-400 font-black">Neto para ti: ${Math.max(0, Number(modalBidPrice) - 0.70).toFixed(2)} USD</span>
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Botón Postularme / Enviar Cotización */}
+                            <div className="pt-2 flex flex-col gap-2">
+                                <button
+                                    onClick={() => handleSendMandadoBid(selectedMandadoDetail.id, Number(modalBidPrice), Number(modalBidEta))}
+                                    disabled={processingAction !== null || !modalBidPrice || Number(modalBidPrice) < 0.50}
+                                    className="w-full bg-gradient-to-r from-amber-400 to-yellow-400 hover:from-amber-300 hover:to-yellow-300 text-slate-950 font-black py-4 rounded-2xl shadow-xl shadow-amber-400/20 active:scale-95 transition-all text-base uppercase tracking-wider flex items-center justify-center gap-2 disabled:opacity-50"
+                                >
+                                    {processingAction === `bid_${selectedMandadoDetail.id}` ? (
+                                        <div className="w-6 h-6 border-2 border-slate-950 border-t-transparent rounded-full animate-spin"></div>
+                                    ) : (
+                                        <>
+                                            <Send className="w-5 h-5" />
+                                            Postularme / Enviar cotización
+                                        </>
+                                    )}
+                                </button>
+                                <button
+                                    onClick={() => setSelectedMandadoDetail(null)}
+                                    className="w-full py-2.5 text-slate-400 hover:text-slate-200 font-bold text-xs uppercase tracking-wider text-center"
+                                >
+                                    Volver al centro de mando
+                                </button>
+                            </div>
+                        </motion.div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
+
+            {/* Pestañas de Servicios Organizados (Rediseño del Centro de Mando) */}
+            <div className="flex gap-2 p-1.5 bg-slate-100 rounded-2xl overflow-x-auto scrollbar-none border border-slate-200">
+                <button
+                    onClick={() => setActiveTab('all')}
+                    className={`flex-1 min-w-[85px] py-2 px-3 rounded-xl font-black text-xs uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 ${
+                        activeTab === 'all' ? 'bg-slate-950 text-white shadow-md' : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                >
+                    <span>Todos</span>
+                    <span className={`text-[10px] px-1.5 py-0.2 rounded-full ${activeTab === 'all' ? 'bg-amber-400 text-slate-950 font-black' : 'bg-slate-200 text-slate-700'}`}>
+                        {allCount}
+                    </span>
+                </button>
+
+                <button
+                    onClick={() => setActiveTab('taxis')}
+                    className={`flex-1 min-w-[85px] py-2 px-3 rounded-xl font-black text-xs uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 ${
+                        activeTab === 'taxis' ? 'bg-slate-950 text-white shadow-md' : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                >
+                    <Car className="w-3.5 h-3.5" />
+                    <span>Taxis</span>
+                    <span className={`text-[10px] px-1.5 py-0.2 rounded-full ${activeTab === 'taxis' ? 'bg-amber-400 text-slate-950 font-black' : 'bg-slate-200 text-slate-700'}`}>
+                        {taxisList.length}
+                    </span>
+                </button>
+
+                <button
+                    onClick={() => setActiveTab('deliveries')}
+                    className={`flex-1 min-w-[95px] py-2 px-3 rounded-xl font-black text-xs uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 ${
+                        activeTab === 'deliveries' ? 'bg-slate-950 text-white shadow-md' : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                >
+                    <Bike className="w-3.5 h-3.5" />
+                    <span>Deliveries</span>
+                    <span className={`text-[10px] px-1.5 py-0.2 rounded-full ${activeTab === 'deliveries' ? 'bg-amber-400 text-slate-950 font-black' : 'bg-slate-200 text-slate-700'}`}>
+                        {deliveriesList.length}
+                    </span>
+                </button>
+
+                <button
+                    onClick={() => setActiveTab('mandados')}
+                    className={`flex-1 min-w-[105px] py-2 px-3 rounded-xl font-black text-xs uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 ${
+                        activeTab === 'mandados' ? 'bg-slate-950 text-white shadow-md' : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                >
+                    <Package className="w-3.5 h-3.5" />
+                    <span>Mandao</span>
+                    <span className={`text-[10px] px-1.5 py-0.2 rounded-full ${activeTab === 'mandados' ? 'bg-amber-400 text-slate-950 font-black' : 'bg-slate-200 text-slate-700'}`}>
+                        {mandadosList.length}
+                    </span>
+                </button>
+            </div>
+
+            {/* Tarjetas de Mandados Postulados / En Espera de Respuesta */}
+            {myPendingBids.length > 0 && (activeTab === 'all' || activeTab === 'mandados') && (
+                <div className="space-y-3">
+                    <h3 className="text-[11px] font-black uppercase text-amber-800 tracking-wider flex items-center gap-1.5 px-1">
+                        <Clock className="w-3.5 h-3.5 text-amber-600" /> Mandados Postulados / En Espera de Respuesta
+                    </h3>
+                    <div className="space-y-2.5">
+                        {myPendingBids.map((bid) => (
+                            <motion.div
+                                key={bid.id}
+                                initial={{ opacity: 0, y: 10 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                className="bg-gradient-to-br from-amber-50 to-yellow-50/70 border-2 border-amber-300 rounded-3xl p-4 shadow-md space-y-3"
+                            >
+                                <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-2.5">
+                                        <div className="w-9 h-9 rounded-2xl bg-amber-400 text-slate-950 flex items-center justify-center font-black shadow-sm">
+                                            <Package className="w-5 h-5" />
+                                        </div>
+                                        <div>
+                                            <span className="text-[10px] font-black uppercase text-amber-800 tracking-wider block">Mandado Postulado</span>
+                                            <span className="text-xs font-black text-slate-900">{bid.transport_requests?.user_name || 'Cliente'}</span>
+                                        </div>
+                                    </div>
+                                    <div className="text-right">
+                                        <span className="text-base font-black text-emerald-700">${Number(bid.amount).toFixed(2)} USD</span>
+                                        <span className="text-[10px] text-slate-500 font-bold block">ETA: {bid.eta_minutes || 15} min</span>
+                                    </div>
+                                </div>
+
+                                <div className="bg-white/90 border border-amber-200 p-3 rounded-2xl flex items-center justify-between gap-3 text-xs">
+                                    <div className="flex items-center gap-2 min-w-0">
+                                        <span className="w-2.5 h-2.5 rounded-full bg-amber-400 animate-ping shrink-0" />
+                                        <span className="font-bold text-amber-950 truncate">
+                                            En espera de respuesta del cliente...
+                                        </span>
+                                    </div>
+                                    <button
+                                        onClick={() => handleCancelBid(bid.id)}
+                                        className="px-3 py-1.5 bg-slate-100 hover:bg-rose-50 hover:text-rose-700 text-slate-700 font-black text-[10px] rounded-xl uppercase transition-colors shrink-0"
+                                    >
+                                        Retirar oferta
+                                    </button>
+                                </div>
+                            </motion.div>
+                        ))}
+                    </div>
+                </div>
+            )}
 
             {/* Recent Feedback for Driver */}
             <AnimatePresence>
@@ -1471,85 +2005,70 @@ export default function OrdersRadar() {
                 )}
             </AnimatePresence>
 
-            {hasNoIncoming ? (
+            {isFilteredListEmpty ? (
                 <div className="space-y-4">
-                    {/* Tarjeta del Radar Interactivo Dinámico */}
+                    {/* Tarjeta de Control Limpia y Minimalista */}
                     <motion.div
-                        initial={{ opacity: 0, scale: 0.96 }}
+                        initial={{ opacity: 0, scale: 0.98 }}
                         animate={{ opacity: 1, scale: 1 }}
-                        className="bg-slate-950 rounded-[2.5rem] p-6 sm:p-8 text-center shadow-2xl border border-slate-800 relative overflow-hidden flex flex-col items-center"
+                        className="bg-slate-950 rounded-[2.5rem] p-8 sm:p-10 text-center shadow-2xl border border-slate-800 relative overflow-hidden flex flex-col items-center"
                     >
                         {/* Background subtle grid pattern */}
                         <div className="absolute inset-0 opacity-10 bg-[radial-gradient(#34d399_1px,transparent_1px)] [background-size:16px_16px]"></div>
 
                         {/* Top HUD Status */}
-                        <div className="flex items-center gap-2 bg-emerald-950/80 border border-emerald-500/30 px-3.5 py-1.5 rounded-full mb-4 z-10">
-                            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span>
-                            <span className="text-[10px] font-black uppercase tracking-widest text-emerald-300">
-                                Radar Activo • Escaneo 5 km
+                        <div className="flex items-center gap-2 bg-emerald-950/80 border border-emerald-500/30 px-4 py-1.5 rounded-full mb-6 z-10">
+                            <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-ping"></span>
+                            <span className="text-[11px] font-black uppercase tracking-widest text-emerald-300">
+                                {hasFaresConfigured ? 'Radar Activo • Escaneo 5 km' : 'Tarifas Pendientes'}
                             </span>
                         </div>
 
-                        {/* Interactive Sonar Radar Visualizer */}
-                        <div className="relative w-52 h-52 sm:w-60 sm:h-60 rounded-full border border-emerald-500/30 bg-slate-900/80 shadow-[0_0_50px_rgba(16,185,129,0.15)] flex items-center justify-center overflow-hidden my-2">
-                            {/* Sonar Concentric Rings */}
-                            <div className="absolute w-[88%] h-[88%] rounded-full border border-emerald-500/15"></div>
-                            <div className="absolute w-[60%] h-[60%] rounded-full border border-emerald-500/20"></div>
-                            <div className="absolute w-[32%] h-[32%] rounded-full border border-emerald-500/25"></div>
-
-                            {/* Range Distance Labels */}
-                            <span className="absolute top-2 text-[8px] font-mono font-bold text-emerald-400/50">5.0 KM</span>
-                            <span className="absolute top-9 text-[8px] font-mono font-bold text-emerald-400/50">3.0 KM</span>
-                            <span className="absolute top-[37%] text-[8px] font-mono font-bold text-emerald-400/50">1.5 KM</span>
-
-                            {/* Crosshairs */}
-                            <div className="absolute w-full h-[1px] bg-emerald-500/20"></div>
-                            <div className="absolute h-full w-[1px] bg-emerald-500/20"></div>
-
-                            {/* Compass Cardinal Points */}
-                            <span className="absolute top-1 text-[9px] font-black text-emerald-400/60">N</span>
-                            <span className="absolute bottom-1 text-[9px] font-black text-emerald-400/60">S</span>
-                            <span className="absolute left-1.5 text-[9px] font-black text-emerald-400/60">O</span>
-                            <span className="absolute right-1.5 text-[9px] font-black text-emerald-400/60">E</span>
-
-                            {/* Rotating Radar Sweep Beam (Conic Gradient) */}
-                            <div
-                                className="absolute inset-0 rounded-full pointer-events-none animate-[spin_4s_linear_infinite]"
-                                style={{
-                                    background: 'conic-gradient(from 0deg at 50% 50%, rgba(52, 211, 153, 0.45) 0deg, rgba(16, 185, 129, 0.12) 45deg, transparent 75deg, transparent 360deg)'
-                                }}
-                            >
-                                {/* Glowing leading beam edge */}
-                                <div className="absolute top-0 right-1/2 w-1/2 h-[2px] bg-emerald-400 shadow-[0_0_10px_#34d399]"></div>
-                            </div>
-
-                            {/* Pulsing Sonar Waves from Center */}
-                            <div className="absolute w-12 h-12 rounded-full bg-emerald-400/20 animate-ping"></div>
-                            <div className="absolute w-20 h-20 rounded-full bg-emerald-400/10 animate-ping delay-500"></div>
-
-                            {/* Driver Center Beacon */}
-                            <div className="relative z-10 flex items-center justify-center">
-                                <div className="w-5 h-5 rounded-full bg-emerald-400 border-2 border-white shadow-[0_0_16px_#34d399] flex items-center justify-center">
-                                    <div className="w-2 h-2 rounded-full bg-slate-900"></div>
-                                </div>
-                            </div>
+                        {/* Modern Minimalist Icon Graphic */}
+                        <div className="relative w-28 h-28 rounded-3xl bg-slate-900 border border-slate-800 shadow-inner flex items-center justify-center my-2 z-10">
+                            <div className="absolute inset-0 rounded-3xl bg-emerald-500/5 animate-pulse"></div>
+                            {activeTab === 'mandados' ? (
+                                <Package className="w-12 h-12 text-amber-400" />
+                            ) : activeTab === 'deliveries' ? (
+                                <Bike className="w-12 h-12 text-emerald-400" />
+                            ) : activeTab === 'taxis' ? (
+                                <Car className="w-12 h-12 text-emerald-400" />
+                            ) : (
+                                <Navigation className="w-12 h-12 text-emerald-400" />
+                            )}
                         </div>
 
-                        <div className="mt-4 z-10 space-y-1">
+                        <div className="mt-4 z-10 space-y-1.5 max-w-sm">
                             <h3 className="text-lg font-black text-white tracking-tight flex items-center justify-center gap-2">
-                                <span>Buscando Clientes</span>
-                                <span className="flex h-2 w-2 relative">
-                                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                                    <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
-                                </span>
+                                {hasFaresConfigured ? (
+                                    <>
+                                        <span>
+                                            {activeTab === 'mandados'
+                                                ? 'Buscando Mandados'
+                                                : activeTab === 'deliveries'
+                                                ? 'Buscando Deliveries'
+                                                : activeTab === 'taxis'
+                                                ? 'Buscando Viajes Taxi'
+                                                : 'Buscando Clientes'}
+                                        </span>
+                                        <span className="flex h-2 w-2 relative">
+                                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                                            <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                                        </span>
+                                    </>
+                                ) : (
+                                    <span className="text-rose-400">Configuración Requerida</span>
+                                )}
                             </h3>
-                            <p className="text-slate-400 font-medium text-xs max-w-xs mx-auto">
-                                Tu señal GPS está transmitiendo en tiempo real. Al haber solicitudes cercanas, sonará la alerta en pantalla.
+                            <p className="text-slate-400 font-medium text-xs leading-relaxed">
+                                {hasFaresConfigured
+                                    ? "Tu señal GPS está activa. Cuando haya una solicitud en tu área, sonará una alerta en tu pantalla."
+                                    : "Configura tus tarifas arriba para activar la visibilidad en el radar y empezar a recibir solicitudes."}
                             </p>
                         </div>
                     </motion.div>
 
-                    {/* Banner de Consejos / Anuncios para Pilotos (Animado como Comercial/Ad) */}
+                    {/* Banner de Consejos / Anuncios para Pilotos */}
                     <div className="bg-gradient-to-br from-amber-500/10 via-amber-400/5 to-white border border-amber-500/25 rounded-3xl p-4 sm:p-5 relative overflow-hidden shadow-sm">
                         <div className="flex items-center justify-between gap-2 mb-2.5">
                             <div className="flex items-center gap-2">
@@ -1575,7 +2094,6 @@ export default function OrdersRadar() {
                             </div>
                         </div>
 
-                        {/* Animated Tip Content with AnimatePresence */}
                         <div className="min-h-[46px] flex items-center">
                             <AnimatePresence mode="wait">
                                 <motion.div
@@ -1596,9 +2114,9 @@ export default function OrdersRadar() {
                 </div>
             ) : (
                 <div className="space-y-5">
-                    {/* Mis Reservas */}
-                    {myReservations.length > 0 && (
-                        <div className="mb-8">
+                    {/* Mis Reservas (Visible en "Todos" y "Taxis") */}
+                    {(activeTab === 'all' || activeTab === 'taxis') && myReservations.length > 0 && (
+                        <div className="mb-6">
                             <h3 className="text-[12px] font-black uppercase text-emerald-600 tracking-widest pl-2 mb-3">Mis Próximas Reservas</h3>
                             <div className="space-y-4">
                                 {myReservations.map(req => (
@@ -1635,16 +2153,15 @@ export default function OrdersRadar() {
                         </div>
                     )}
 
-                    {/* Lista de Viajes (Taxi) */}
-                    <AnimatePresence mode="popLayout">
-                        {availableTransport.map(req => {
-                            const isMandado = req.service_category === 'mandado' || req.service_category === 'muchacho_mandado' || req.type === 'muchacho_mandado';
-                            const bidData = mandadoBids[req.id] || { amount: '', eta: '15', submitted: false };
-                            const bidAmountNum = parseFloat(bidData.amount) || 0;
-                            const commMandado = 0.70;
-                            const netMandado = Math.max(0, bidAmountNum - commMandado);
+                    {/* Lista de Muchacho e' Mandao (Visible en "Todos" y "Mandao") */}
+                    {(activeTab === 'all' || activeTab === 'mandados') && (
+                        <AnimatePresence mode="popLayout">
+                            {mandadosList.map(req => {
+                                const bidData = mandadoBids[req.id] || { amount: '', eta: '15', submitted: false };
+                                const bidAmountNum = parseFloat(bidData.amount) || 0;
+                                const commMandado = 0.70;
+                                const netMandado = Math.max(0, bidAmountNum - commMandado);
 
-                            if (isMandado) {
                                 return (
                                     <motion.div
                                         key={req.id}
@@ -1721,6 +2238,17 @@ export default function OrdersRadar() {
                                             </div>
                                         </div>
 
+                                        {/* Botón Ver Mandado completo */}
+                                        <div className="mb-3">
+                                            <button
+                                                onClick={() => setSelectedMandadoDetail(req)}
+                                                className="w-full py-2.5 bg-amber-100 hover:bg-amber-200 text-amber-900 font-black text-xs rounded-xl uppercase tracking-wider transition-colors flex items-center justify-center gap-1.5"
+                                            >
+                                                <Package className="w-4 h-4" />
+                                                Ver Mandado Completo
+                                            </button>
+                                        </div>
+
                                         {/* Formulario de Puja */}
                                         {bidData.submitted ? (
                                             <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-4 text-center">
@@ -1744,9 +2272,9 @@ export default function OrdersRadar() {
                                                             <span className="absolute left-3 top-2.5 text-slate-400 font-black text-sm">$</span>
                                                             <input
                                                                 type="number"
-                                                                min="1.00"
+                                                                min="0.50"
                                                                 step="0.25"
-                                                                placeholder="Min 1.00"
+                                                                placeholder="Min 0.50"
                                                                 value={bidData.amount}
                                                                 onChange={(e) => setMandadoBids(prev => ({
                                                                     ...prev,
@@ -1758,7 +2286,7 @@ export default function OrdersRadar() {
                                                     </div>
                                                     <div>
                                                         <label className="text-[10px] font-black uppercase text-slate-500 tracking-wider block mb-1">
-                                                            Tiempo de llegada
+                                                            Tiempo llegada
                                                         </label>
                                                         <div className="relative">
                                                             <input
@@ -1779,24 +2307,26 @@ export default function OrdersRadar() {
                                                 </div>
 
                                                 {/* Desglose de comisión */}
-                                                {bidAmountNum >= 1.00 && (
+                                                {bidAmountNum >= 0.50 && (
                                                     <div className="text-[11px] bg-white p-2.5 rounded-xl border border-slate-200 flex items-center justify-between">
-                                                        <span className="text-slate-500">Comisión fija Un 2x3: <strong className="text-rose-500">-$0.70</strong></span>
-                                                        <span className="font-black text-emerald-600">Neto para ti: ${netMandado.toFixed(2)} USD</span>
+                                                        <span className="text-slate-500">Comisión Un 2x3: <strong className="text-rose-500">-$0.70</strong></span>
+                                                        <span className="font-black text-emerald-600">Neto: ${netMandado.toFixed(2)} USD</span>
                                                     </div>
                                                 )}
 
                                                 <button
                                                     onClick={() => handleSendMandadoBid(req.id)}
-                                                    disabled={processingAction === `bid_${req.id}` || !bidData.amount || Number(bidData.amount) < 1}
+                                                    disabled={processingAction === `bid_${req.id}` || !bidData.amount || Number(bidData.amount) < 0.50 || hasReachedServiceLimit}
                                                     className="w-full bg-slate-900 hover:bg-slate-800 active:scale-98 text-amber-400 font-black py-3.5 rounded-xl shadow-lg shadow-slate-900/10 text-xs uppercase tracking-wider flex items-center justify-center gap-2 disabled:opacity-50 transition-all"
                                                 >
                                                     {processingAction === `bid_${req.id}` ? (
                                                         <div className="w-5 h-5 border-2 border-amber-400 border-t-transparent rounded-full animate-spin"></div>
+                                                    ) : hasReachedServiceLimit ? (
+                                                        'Límite Alcanzado (2/2)'
                                                     ) : (
                                                         <>
                                                             <Send className="w-4 h-4" />
-                                                            Enviar Oferta / Puja al Cliente
+                                                            Enviar Oferta / Puja
                                                         </>
                                                     )}
                                                 </button>
@@ -1804,50 +2334,246 @@ export default function OrdersRadar() {
                                         )}
                                     </motion.div>
                                 );
-                            }
+                            })}
+                        </AnimatePresence>
+                    )}
 
-                            return (
-                                <motion.div
-                                    key={req.id}
-                                    initial={{ opacity: 0, x: -20 }}
-                                    animate={{ opacity: 1, x: 0 }}
-                                    exit={{ opacity: 0, scale: 0.95 }}
-                                    className="bg-white rounded-[2.5rem] p-6 shadow-xl shadow-slate-200/50 border-2 border-primary/10 relative overflow-hidden group"
-                                >
-                                    <div className="absolute top-0 right-0 w-24 h-24 bg-primary/5 rounded-full -mr-12 -mt-12 group-hover:scale-150 transition-transform duration-500"></div>
+                    {/* Lista de Viajes Taxi (Visible en "Todos" y "Taxis") */}
+                    {(activeTab === 'all' || activeTab === 'taxis') && (
+                        <AnimatePresence mode="popLayout">
+                            {taxisList.map(req => {
+                                const isDirectlyAssigned = req.assigned_driver_id === user?.uid;
 
-                                    <div className="flex justify-between items-center mb-6 relative">
-                                        <div className="flex items-center gap-2 px-3 py-1 bg-primary text-slate-900 rounded-full text-[10px] font-black uppercase tracking-wider shadow-lg shadow-primary/20">
-                                            {req.type === 'food_delivery' ? <Bike className="w-3.5 h-3.5" /> : (req.type === 'package_delivery' ? <Package className="w-3.5 h-3.5" /> : (req.vehicleType === 'moto' ? <Bike className="w-3.5 h-3.5" /> : <Car className="w-3.5 h-3.5" />))}
-                                            {req.scheduled ? 'VIAJE PROGRAMADO' : (req.type === 'food_delivery' ? 'REPARTO COMIDA' : (req.type === 'package_delivery' ? 'SOLICITUD ENVIO PAQUETE' : 'SOLICITUD TAXI'))}
+                                return (
+                                    <motion.div
+                                        key={req.id}
+                                        initial={{ opacity: 0, x: -20 }}
+                                        animate={{ opacity: 1, x: 0 }}
+                                        exit={{ opacity: 0, scale: 0.95 }}
+                                        className={`bg-white rounded-[2.5rem] p-6 shadow-xl relative overflow-hidden group ${
+                                            isDirectlyAssigned 
+                                                ? 'border-2 border-amber-400 ring-2 ring-amber-400/20 shadow-amber-500/10' 
+                                                : 'border-2 border-primary/10 shadow-slate-200/50'
+                                        }`}
+                                    >
+                                        <div className="absolute top-0 right-0 w-24 h-24 bg-primary/5 rounded-full -mr-12 -mt-12 group-hover:scale-150 transition-transform duration-500"></div>
+
+                                        {/* Direct Driver Assignment Highlight */}
+                                        {isDirectlyAssigned && (
+                                            <div className="bg-amber-400/20 border border-amber-400 text-amber-950 px-3.5 py-2 rounded-2xl text-xs font-black flex items-center gap-2 mb-4 animate-pulse">
+                                                <Star className="w-4 h-4 text-amber-500 fill-amber-400 shrink-0" />
+                                                <span>⭐ VIAJE ASIGNADO DIRECTAMENTE A TI POR EL CLIENTE</span>
+                                            </div>
+                                        )}
+
+                                        <div className="flex justify-between items-center mb-6 relative">
+                                            <div className="flex items-center gap-2 px-3 py-1 bg-primary text-slate-900 rounded-full text-[10px] font-black uppercase tracking-wider shadow-lg shadow-primary/20">
+                                                {req.vehicleType === 'moto' ? <Bike className="w-3.5 h-3.5" /> : <Car className="w-3.5 h-3.5" />}
+                                                {req.scheduled ? 'VIAJE PROGRAMADO' : (req.vehicleType === 'moto' ? 'SOLICITUD MOTOTAXI' : 'SOLICITUD TAXI')}
+                                            </div>
+                                            <div className="text-2xl font-black text-emerald-600">${(req.price || 0).toFixed(2)}</div>
                                         </div>
-                                        <div className="text-2xl font-black text-emerald-600">${(req.price || 0).toFixed(2)}</div>
-                                    </div>
 
-                                    {req.scheduled && (
-                                        <div className="flex items-center gap-2 bg-emerald-50 text-emerald-700 p-3 rounded-2xl border border-emerald-100 mb-4 animate-in fade-in slide-in-from-top-1">
-                                            <Clock className="w-4 h-4" />
-                                            <div className="flex flex-col">
-                                                <span className="text-[10px] font-black uppercase tracking-wider leading-none">Para el día:</span>
-                                                <span className="text-sm font-black">
-                                                    {req.scheduledAt && typeof req.scheduledAt.toDate === 'function'
-                                                        ? req.scheduledAt.toDate().toLocaleString('es-VE', { weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })
-                                                        : req.scheduledAt
-                                                            ? new Date(req.scheduledAt).toLocaleString('es-VE', { weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })
-                                                            : 'Fecha pendiente'}
-                                                </span>
+                                        {req.scheduled && (
+                                            <div className="flex items-center gap-2 bg-emerald-50 text-emerald-700 p-3 rounded-2xl border border-emerald-100 mb-4 animate-in fade-in slide-in-from-top-1">
+                                                <Clock className="w-4 h-4" />
+                                                <div className="flex flex-col">
+                                                    <span className="text-[10px] font-black uppercase tracking-wider leading-none">Para el día:</span>
+                                                    <span className="text-sm font-black">
+                                                        {req.scheduledAt && typeof req.scheduledAt.toDate === 'function'
+                                                            ? req.scheduledAt.toDate().toLocaleString('es-VE', { weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })
+                                                            : req.scheduledAt
+                                                                ? new Date(req.scheduledAt).toLocaleString('es-VE', { weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })
+                                                                : 'Fecha pendiente'}
+                                                    </span>
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        <div className="space-y-4 mb-8 relative">
+                                            <div className="flex items-start gap-4">
+                                                <div className="w-10 h-10 bg-slate-50 text-slate-400 rounded-2xl flex items-center justify-center shrink-0 border border-slate-100 shadow-inner">
+                                                    <Navigation className="w-5 h-5" />
+                                                </div>
+                                                <div>
+                                                    <p className="text-[10px] font-black text-slate-300 uppercase tracking-widest">Recoger:</p>
+                                                    <p className="font-bold text-slate-700 leading-tight mt-0.5">{req.origin?.address}</p>
+                                                </div>
+                                            </div>
+                                            <div className="flex items-start gap-4">
+                                                <div className="w-10 h-10 bg-emerald-50 text-emerald-600 rounded-2xl flex items-center justify-center shrink-0 border border-emerald-100 shadow-inner">
+                                                    <MapPin className="w-5 h-5" />
+                                                </div>
+                                                <div>
+                                                    <p className="text-[10px] font-black text-emerald-600 uppercase tracking-widest mb-1">Cliente:</p>
+                                                    <p className="font-bold text-slate-900 leading-tight flex flex-col gap-0.5">
+                                                        <span>{req.userName}</span>
+                                                        {req.userCedula && (
+                                                            <span className="text-xs text-slate-500 font-medium">
+                                                                C.I: {req.userCedula}
+                                                            </span>
+                                                        )}
+                                                    </p>
+                                                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-2">Destino:</p>
+                                                    <p className="font-bold text-slate-700 leading-tight mt-0.5 line-clamp-2">{req.destination?.address}</p>
+                                                </div>
                                             </div>
                                         </div>
-                                    )}
+
+                                        <div className="pt-2 grid gap-3">
+                                            <a
+                                                href={`https://www.google.com/maps/dir/?api=1&waypoints=${encodeURIComponent(req.origin?.address || '')}&destination=${encodeURIComponent(req.destination?.address || '')}`}
+                                                target="_blank"
+                                                className="w-full bg-slate-100 text-slate-600 font-bold py-4 rounded-2xl flex justify-center items-center gap-2 active:scale-95 transition-all"
+                                            >
+                                                <Navigation className="w-5 h-5" /> Ver GPS
+                                            </a>
+                                            <button
+                                                onClick={() => handleAcceptTransport(req.id)}
+                                                disabled={processingAction !== null || hasReachedServiceLimit}
+                                                className="w-full bg-primary text-slate-900 font-black py-4 rounded-2xl shadow-lg shadow-primary/30 active:scale-95 transition-all flex items-center justify-center h-16 disabled:opacity-50 disabled:cursor-not-allowed group-hover:shadow-primary/40"
+                                            >
+                                                {processingAction === req.id ? (
+                                                    <div className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                                                ) : hasReachedServiceLimit ? (
+                                                    'LÍMITE ALCANZADO (2/2)'
+                                                ) : (
+                                                    'ACEPTAR VIAJE'
+                                                )}
+                                            </button>
+                                        </div>
+                                    </motion.div>
+                                );
+                            })}
+                        </AnimatePresence>
+                    )}
+
+                    {/* Lista de Deliveries: Envíos y Comida (Visible en "Todos" y "Deliveries") */}
+                    {(activeTab === 'all' || activeTab === 'deliveries') && (
+                        <AnimatePresence mode="popLayout">
+                            {/* Envíos de Paquete */}
+                            {availableTransport.filter(r => r.type === 'package_delivery' || r.type === 'food_delivery').map(req => {
+                                const isDirectlyAssigned = req.assigned_driver_id === user?.uid;
+
+                                return (
+                                    <motion.div
+                                        key={req.id}
+                                        initial={{ opacity: 0, x: -20 }}
+                                        animate={{ opacity: 1, x: 0 }}
+                                        exit={{ opacity: 0, scale: 0.95 }}
+                                        className={`bg-white rounded-[2.5rem] p-6 shadow-xl relative overflow-hidden group ${
+                                            isDirectlyAssigned 
+                                                ? 'border-2 border-amber-400 ring-2 ring-amber-400/20 shadow-amber-500/10' 
+                                                : 'border-2 border-primary/10 shadow-slate-200/50'
+                                        }`}
+                                    >
+                                        {isDirectlyAssigned && (
+                                            <div className="bg-amber-400/20 border border-amber-400 text-amber-950 px-3.5 py-2 rounded-2xl text-xs font-black flex items-center gap-2 mb-4 animate-pulse">
+                                                <Star className="w-4 h-4 text-amber-500 fill-amber-400 shrink-0" />
+                                                <span>⭐ ENVÍO ASIGNADO DIRECTAMENTE A TI POR EL CLIENTE</span>
+                                            </div>
+                                        )}
+
+                                        <div className="flex justify-between items-center mb-6 relative">
+                                            <div className="flex items-center gap-2 px-3 py-1 bg-amber-400 text-slate-900 rounded-full text-[10px] font-black uppercase tracking-wider shadow-lg shadow-amber-400/20">
+                                                <Package className="w-3.5 h-3.5" />
+                                                ENVÍO DE PAQUETE
+                                            </div>
+                                            <div className="text-2xl font-black text-emerald-600">${(req.price || 0).toFixed(2)}</div>
+                                        </div>
+
+                                        <div className="space-y-4 mb-8 relative">
+                                            <div className="flex items-start gap-4">
+                                                <div className="w-10 h-10 bg-slate-50 text-slate-400 rounded-2xl flex items-center justify-center shrink-0 border border-slate-100 shadow-inner">
+                                                    <Navigation className="w-5 h-5" />
+                                                </div>
+                                                <div>
+                                                    <p className="text-[10px] font-black text-slate-300 uppercase tracking-widest">Recoger Paquete:</p>
+                                                    <p className="font-bold text-slate-700 leading-tight mt-0.5">{req.origin?.address}</p>
+                                                </div>
+                                            </div>
+                                            <div className="flex items-start gap-4">
+                                                <div className="w-10 h-10 bg-emerald-50 text-emerald-600 rounded-2xl flex items-center justify-center shrink-0 border border-emerald-100 shadow-inner">
+                                                    <MapPin className="w-5 h-5" />
+                                                </div>
+                                                <div>
+                                                    <p className="text-[10px] font-black text-emerald-600 uppercase tracking-widest mb-1">Destinatario:</p>
+                                                    <p className="font-bold text-slate-900 leading-tight flex flex-col gap-0.5">
+                                                        <span>{req.userName}</span>
+                                                        {req.userCedula && (
+                                                            <span className="text-xs text-slate-500 font-medium">
+                                                                C.I: {req.userCedula}
+                                                            </span>
+                                                        )}
+                                                    </p>
+                                                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-2">Destino:</p>
+                                                    <p className="font-bold text-slate-700 leading-tight mt-0.5 line-clamp-2">{req.destination?.address}</p>
+                                                    {req.packageDescription && (
+                                                        <div className="mt-2 p-3 bg-amber-50 rounded-xl border border-amber-200">
+                                                            <p className="text-[10px] font-black text-amber-800 uppercase tracking-widest">Descripción del paquete:</p>
+                                                            <p className="font-bold text-slate-800 text-xs mt-0.5">{req.packageDescription}</p>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <div className="pt-2 grid gap-3">
+                                            <a
+                                                href={`https://www.google.com/maps/dir/?api=1&waypoints=${encodeURIComponent(req.origin?.address || '')}&destination=${encodeURIComponent(req.destination?.address || '')}`}
+                                                target="_blank"
+                                                className="w-full bg-slate-100 text-slate-600 font-bold py-4 rounded-2xl flex justify-center items-center gap-2 active:scale-95 transition-all"
+                                            >
+                                                <Navigation className="w-5 h-5" /> Ver GPS
+                                            </a>
+                                            <button
+                                                onClick={() => handleAcceptTransport(req.id)}
+                                                disabled={processingAction !== null || hasReachedServiceLimit}
+                                                className="w-full bg-amber-400 text-slate-950 font-black py-4 rounded-2xl shadow-lg shadow-amber-400/30 active:scale-95 transition-all flex items-center justify-center h-16 disabled:opacity-50 disabled:cursor-not-allowed"
+                                            >
+                                                {processingAction === req.id ? (
+                                                    <div className="w-6 h-6 border-2 border-slate-900 border-t-transparent rounded-full animate-spin"></div>
+                                                ) : hasReachedServiceLimit ? (
+                                                    'LÍMITE ALCANZADO (2/2)'
+                                                ) : (
+                                                    'ACEPTAR ENVÍO'
+                                                )}
+                                            </button>
+                                        </div>
+                                    </motion.div>
+                                );
+                            })}
+
+                            {/* Repartos de Comida de Tiendas */}
+                            {availableOrders.map(order => (
+                                <motion.div
+                                    key={order.id}
+                                    initial={{ opacity: 0, x: 20 }}
+                                    animate={{ opacity: 1, x: 0 }}
+                                    exit={{ opacity: 0, scale: 0.95 }}
+                                    className="bg-white rounded-[2.5rem] p-6 shadow-xl shadow-slate-200/50 border border-slate-100 group relative overflow-hidden"
+                                >
+                                    <div className="absolute bottom-0 right-0 w-24 h-24 bg-slate-50 rounded-full -mr-12 -mb-12"></div>
+
+                                    <div className="flex justify-between items-center mb-6 relative">
+                                        <div className="flex items-center gap-2 px-3 py-1 bg-slate-100 text-slate-500 rounded-full text-[10px] font-black uppercase tracking-wider">
+                                            <Bike className="w-3.5 h-3.5" />
+                                            REPARTO COMIDA
+                                        </div>
+                                        <div className="flex flex-col items-end">
+                                            <div className="text-2xl font-black text-emerald-600">${(order.driverPayout || order.deliveryFee || 0).toFixed(2)}</div>
+                                            <div className="text-[10px] font-black text-primary uppercase mt-0.5 tracking-wider">Ganancia</div>
+                                        </div>
+                                    </div>
 
                                     <div className="space-y-4 mb-8 relative">
                                         <div className="flex items-start gap-4">
-                                            <div className="w-10 h-10 bg-slate-50 text-slate-400 rounded-2xl flex items-center justify-center shrink-0 border border-slate-100 shadow-inner">
-                                                <Navigation className="w-5 h-5" />
+                                            <div className="w-10 h-10 bg-slate-50 text-slate-400 rounded-2xl flex items-center justify-center shrink-0 border border-slate-100">
+                                                <Bike className="w-5 h-5" />
                                             </div>
                                             <div>
-                                                <p className="text-[10px] font-black text-slate-300 uppercase tracking-widest">Recoger:</p>
-                                                <p className="font-bold text-slate-700 leading-tight mt-0.5">{req.origin?.address}</p>
+                                                <p className="text-[10px] font-black text-slate-300 uppercase tracking-widest">Tienda / Local:</p>
+                                                <p className="font-bold text-slate-800 leading-tight mt-0.5">{order.restaurantName}</p>
                                             </div>
                                         </div>
                                         <div className="flex items-start gap-4">
@@ -1855,109 +2581,38 @@ export default function OrdersRadar() {
                                                 <MapPin className="w-5 h-5" />
                                             </div>
                                             <div>
-                                                <p className="text-[10px] font-black text-emerald-600 uppercase tracking-widest mb-1">Cliente:</p>
-                                                <p className="font-bold text-slate-900 leading-tight flex flex-col gap-0.5">
-                                                    <span>{req.userName}</span>
-                                                    {req.userCedula && (
-                                                        <span className="text-xs text-slate-500 font-medium">
-                                                            C.I: {req.userCedula}
-                                                        </span>
-                                                    )}
-                                                </p>
-                                                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-2">Destino:</p>
-                                                <p className="font-bold text-slate-700 leading-tight mt-0.5 line-clamp-2">{req.destination?.address}</p>
-                                                {req.type === 'package_delivery' && req.packageDescription && (
-                                                    <>
-                                                        <p className="text-[10px] font-black text-yellow-600 uppercase tracking-widest mt-2">Paquete:</p>
-                                                        <p className="font-bold text-slate-700 leading-tight mt-0.5 line-clamp-2">{req.packageDescription}</p>
-                                                    </>
-                                                )}
+                                                <p className="text-[10px] font-black text-emerald-600 uppercase tracking-widest">Entrega:</p>
+                                                <p className="font-bold text-slate-700 leading-tight mt-0.5 line-clamp-2">{order.shippingAddress?.address}</p>
                                             </div>
                                         </div>
                                     </div>
 
                                     <div className="pt-2 grid gap-3">
                                         <a
-                                            href={`https://www.google.com/maps/dir/?api=1&waypoints=${encodeURIComponent(req.origin?.address || '')}&destination=${encodeURIComponent(req.destination?.address || '')}`}
+                                            href={`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(order.shippingAddress?.address || '')}`}
                                             target="_blank"
                                             className="w-full bg-slate-100 text-slate-600 font-bold py-4 rounded-2xl flex justify-center items-center gap-2 active:scale-95 transition-all"
                                         >
                                             <Navigation className="w-5 h-5" /> Ver GPS
                                         </a>
                                         <button
-                                            onClick={() => handleAcceptTransport(req.id)}
-                                            disabled={processingAction !== null}
-                                            className="w-full bg-primary text-slate-900 font-black py-4 rounded-2xl shadow-lg shadow-primary/30 active:scale-95 transition-all flex items-center justify-center h-16 disabled:opacity-70 group-hover:shadow-primary/40"
+                                            onClick={() => handleAcceptOrder(order.id)}
+                                            disabled={processingAction !== null || hasReachedServiceLimit}
+                                            className="w-full bg-primary text-slate-900 font-black py-4 rounded-2xl shadow-lg shadow-primary/30 active:scale-95 transition-all flex items-center justify-center h-16 disabled:opacity-50 disabled:cursor-not-allowed group-hover:bg-primary"
                                         >
-                                            {processingAction === req.id ? <div className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin"></div> : 'ACEPTAR VIAJE'}
+                                            {processingAction === order.id ? (
+                                                <div className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                                            ) : hasReachedServiceLimit ? (
+                                                'LÍMITE ALCANZADO (2/2)'
+                                            ) : (
+                                                'TOMAR REPARTO'
+                                            )}
                                         </button>
                                     </div>
                                 </motion.div>
-                            );
-                        })}
-
-                        {/* Lista de Entregas (Comida) */}
-                        {availableOrders.map(order => (
-                            <motion.div
-                                key={order.id}
-                                initial={{ opacity: 0, x: 20 }}
-                                animate={{ opacity: 1, x: 0 }}
-                                exit={{ opacity: 0, scale: 0.95 }}
-                                className="bg-white rounded-[2.5rem] p-6 shadow-xl shadow-slate-200/50 border border-slate-100 group relative overflow-hidden"
-                            >
-                                <div className="absolute bottom-0 right-0 w-24 h-24 bg-slate-50 rounded-full -mr-12 -mb-12"></div>
-
-                                <div className="flex justify-between items-center mb-6 relative">
-                                    <div className="flex items-center gap-2 px-3 py-1 bg-slate-100 text-slate-500 rounded-full text-[10px] font-black uppercase tracking-wider">
-                                        <Bike className="w-3.5 h-3.5" />
-                                        REPARTO COMIDA
-                                    </div>
-                                    <div className="flex flex-col items-end">
-                                        <div className="text-2xl font-black text-emerald-600">${(order.driverPayout || order.deliveryFee || 0).toFixed(2)}</div>
-                                        <div className="text-[10px] font-black text-primary uppercase mt-0.5 tracking-wider">Ganancia</div>
-                                    </div>
-                                </div>
-
-                                <div className="space-y-4 mb-8 relative">
-                                    <div className="flex items-start gap-4">
-                                        <div className="w-10 h-10 bg-slate-50 text-slate-400 rounded-2xl flex items-center justify-center shrink-0 border border-slate-100">
-                                            <Bike className="w-5 h-5" />
-                                        </div>
-                                        <div>
-                                            <p className="text-[10px] font-black text-slate-300 uppercase tracking-widest">Restaurante:</p>
-                                            <p className="font-bold text-slate-800 leading-tight mt-0.5">{order.restaurantName}</p>
-                                        </div>
-                                    </div>
-                                    <div className="flex items-start gap-4">
-                                        <div className="w-10 h-10 bg-emerald-50 text-emerald-600 rounded-2xl flex items-center justify-center shrink-0 border border-emerald-100 shadow-inner">
-                                            <MapPin className="w-5 h-5" />
-                                        </div>
-                                        <div>
-                                            <p className="text-[10px] font-black text-emerald-600 uppercase tracking-widest">Entrega:</p>
-                                            <p className="font-bold text-slate-700 leading-tight mt-0.5 line-clamp-2">{order.shippingAddress?.address}</p>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <div className="pt-2 grid gap-3">
-                                    <a
-                                        href={`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(order.shippingAddress?.address || '')}`}
-                                        target="_blank"
-                                        className="w-full bg-slate-100 text-slate-600 font-bold py-4 rounded-2xl flex justify-center items-center gap-2 active:scale-95 transition-all"
-                                    >
-                                        <Navigation className="w-5 h-5" /> Ver GPS
-                                    </a>
-                                    <button
-                                        onClick={() => handleAcceptOrder(order.id)}
-                                        disabled={processingAction !== null}
-                                        className="w-full bg-primary text-slate-900 font-black py-4 rounded-2xl shadow-lg shadow-primary/30 active:scale-95 transition-all flex items-center justify-center h-16 disabled:opacity-70 group-hover:bg-primary"
-                                    >
-                                        {processingAction === order.id ? <div className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin"></div> : 'TOMAR REPARTO'}
-                                    </button>
-                                </div>
-                            </motion.div>
-                        ))}
-                    </AnimatePresence>
+                            ))}
+                        </AnimatePresence>
+                    )}
                 </div>
             )}
         </div>

@@ -6,6 +6,8 @@ import { driversApi } from '../../lib/api';
 import { supabase } from '../../lib/supabase';
 import { setDriverAvailability, AvailabilityStatus } from '../../lib/delivery-service';
 import { useGlobalAudioAlerts } from '../../hooks/useGlobalAudioAlerts';
+import { UN2X3_LOGO } from '../../lib/env';
+import { useBranding } from '../../context/BrandingContext';
 
 interface DeliveryLayoutProps {
     children: React.ReactNode;
@@ -13,11 +15,67 @@ interface DeliveryLayoutProps {
 
 export default function DeliveryLayout({ children }: DeliveryLayoutProps) {
     const { user } = useAuth();
+    const { branding } = useBranding();
     const [driverStatus, setDriverStatus] = useState<AvailabilityStatus>('offline');
     const [updating, setUpdating] = useState(false);
     const [showPicker, setShowPicker] = useState(false);
+    const [hasActiveService, setHasActiveService] = useState(false);
 
     useGlobalAudioAlerts('delivery', user?.uid);
+
+    // Monitor active service in real time for persistent banner & recovery
+    useEffect(() => {
+        if (!user) return;
+        let isMounted = true;
+
+        const checkActive = async () => {
+            try {
+                const { data: transports } = await supabase
+                    .from('transport_requests')
+                    .select('id')
+                    .or(`driver_id.eq.${user.uid},driverId.eq.${user.uid}`)
+                    .in('status', ['accepted', 'arriving', 'in_progress'])
+                    .limit(1);
+
+                if (transports && transports.length > 0) {
+                    if (isMounted) setHasActiveService(true);
+                    return;
+                }
+
+                const { data: orders } = await supabase
+                    .from('orders')
+                    .select('id')
+                    .or(`delivery_driver_id.eq.${user.uid},deliveryDriverId.eq.${user.uid}`)
+                    .in('status', ['en_camino', 'in_transit'])
+                    .limit(1);
+
+                if (orders && orders.length > 0) {
+                    if (isMounted) setHasActiveService(true);
+                    return;
+                }
+
+                if (isMounted) setHasActiveService(false);
+            } catch (e) {
+                console.error("Error checking active service:", e);
+            }
+        };
+
+        checkActive();
+
+        const channelTransport = supabase.channel(`layout_active_trans_${user.uid}`)
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'transport_requests' }, checkActive)
+            .subscribe();
+
+        const channelOrder = supabase.channel(`layout_active_ord_${user.uid}`)
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, checkActive)
+            .subscribe();
+
+        return () => {
+            isMounted = false;
+            supabase.removeChannel(channelTransport);
+            supabase.removeChannel(channelOrder);
+        };
+    }, [user]);
 
     useEffect(() => {
         let isMounted = true;
@@ -27,7 +85,11 @@ export default function DeliveryLayout({ children }: DeliveryLayoutProps) {
             try {
                 const profile = await driversApi.getDriver(user.uid);
                 if (isMounted) {
-                    setDriverStatus((profile.availability as AvailabilityStatus) || (profile.isOnline ? 'active' : 'offline'));
+                    if (profile) {
+                        setDriverStatus((profile.availability as AvailabilityStatus) || (profile.isOnline ? 'active' : 'offline'));
+                    } else {
+                        setDriverStatus('offline');
+                    }
                 }
             } catch (error) {
                 console.error("Error fetching driver status:", error);
@@ -41,7 +103,11 @@ export default function DeliveryLayout({ children }: DeliveryLayoutProps) {
                 if (!isMounted) return;
                 try {
                     const profile = await driversApi.getDriver(user.uid);
-                    setDriverStatus((profile.availability as AvailabilityStatus) || (profile.isOnline ? 'active' : 'offline'));
+                    if (profile) {
+                        setDriverStatus((profile.availability as AvailabilityStatus) || (profile.isOnline ? 'active' : 'offline'));
+                    } else {
+                        setDriverStatus('offline');
+                    }
                 } catch(e) {}
             })
             .subscribe();
@@ -93,13 +159,14 @@ export default function DeliveryLayout({ children }: DeliveryLayoutProps) {
 
     return (
         <div className="flex flex-col h-[100dvh] bg-slate-50 w-full max-w-md mx-auto relative overflow-hidden shadow-2xl">
-            {/* Cabecera Fija */}
-            <header className="bg-secondary text-white px-4 py-4 flex items-center justify-between shadow-md z-[60] shrink-0">
+            {/* Cabecera Fija con Safe Area para Móviles */}
+            <header className="bg-secondary text-white px-4 pt-[calc(env(safe-area-inset-top,0px)+12px)] pb-3.5 flex items-center justify-between shadow-md z-[60] shrink-0">
                 <div className="flex items-center gap-2">
                     <img
-                        src="https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/logo.png?alt=media&v=1.1"
-                        alt="Deliexpress"
+                        src={branding.app_driver_logo || UN2X3_LOGO}
+                        alt="Logo Repartidor"
                         className="w-10 h-10 object-contain"
+                        onError={(e: any) => { e.target.src = '/icon-192.png'; }}
                     />
                     <div>
                         <h1 className="font-black text-lg tracking-tighter leading-none">Centro de comandas</h1>
@@ -147,6 +214,32 @@ export default function DeliveryLayout({ children }: DeliveryLayoutProps) {
                 </div>
             </header>
 
+            {/* Banner Persistente de Alta Prioridad: Servicio en Curso */}
+            {hasActiveService && (
+                <div className="bg-amber-400 border-b-2 border-amber-500 text-slate-950 px-4 py-2.5 flex items-center justify-between shadow-lg z-50 shrink-0 animate-in slide-in-from-top-2">
+                    <div className="flex items-center gap-2.5 min-w-0">
+                        <span className="flex h-2.5 w-2.5 relative shrink-0">
+                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-slate-950 opacity-75"></span>
+                            <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-slate-950"></span>
+                        </span>
+                        <div className="truncate">
+                            <p className="text-[11px] font-black uppercase tracking-wider truncate">
+                                ⚠️ SERVICIO EN CURSO ACTIVO
+                            </p>
+                            <p className="text-[9px] font-bold text-slate-800 leading-tight">
+                                Viaje o entrega en desarrollo
+                            </p>
+                        </div>
+                    </div>
+                    <NavLink
+                        to="/radar"
+                        className="px-3.5 py-1.5 bg-slate-950 hover:bg-slate-900 active:scale-95 text-amber-400 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all shadow-md shrink-0 ml-2"
+                    >
+                        Ver Servicio
+                    </NavLink>
+                </div>
+            )}
+
             {/* Click-away backdrop when picker is open */}
             {showPicker && (
                 <div
@@ -156,12 +249,12 @@ export default function DeliveryLayout({ children }: DeliveryLayoutProps) {
             )}
 
             {/* Contenido Principal (Scrollable) */}
-            <main className="flex-1 overflow-y-auto pb-20 pt-4 px-4">
+            <main className="flex-1 overflow-y-auto pb-24 pt-3 px-3.5 sm:px-4">
                 {children}
             </main>
 
-            {/* Bottom Navigation Bar */}
-            <nav className="fixed bottom-0 w-full max-w-md bg-white border-t border-slate-200 px-6 py-3 flex justify-between items-center z-20 pb-safe">
+            {/* Bottom Navigation Bar con Safe Area */}
+            <nav className="fixed bottom-0 w-full max-w-md bg-white border-t border-slate-200 px-6 pt-2 pb-[calc(env(safe-area-inset-bottom,0px)+8px)] flex justify-between items-center z-20 shadow-lg">
                 {navItems.map((item) => (
                     <NavLink
                         key={item.path}

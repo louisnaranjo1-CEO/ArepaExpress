@@ -3,7 +3,7 @@ import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { DeliveryDriver } from '../lib/delivery-service';
 import toast from 'react-hot-toast';
-import { Navigation, Clock, CheckCircle2, Phone, ArrowLeft, Car, ShieldCheck, MessageCircle, Star, XCircle, MapPin, Package, Copy, AlertTriangle, Wind, Music, Wifi, BatteryCharging, AlertCircle, X } from 'lucide-react';
+import { Navigation, Clock, CheckCircle2, Phone, ArrowLeft, Car, ShieldCheck, MessageCircle, Star, XCircle, MapPin, Package, Copy, AlertTriangle, Wind, Music, Wifi, BatteryCharging, AlertCircle, X, ShoppingBag, Shield } from 'lucide-react';
 import { GoogleMap, useJsApiLoader, DirectionsRenderer, Marker } from '@react-google-maps/api';
 import { GOOGLE_MAPS_API_KEY, GOOGLE_MAPS_LIBRARIES } from '../lib/mapsConfig';
 import RideChat from '../components/RideChat';
@@ -99,6 +99,71 @@ export default function TransportTracker() {
     const [directionsRenderer, setDirectionsRenderer] = useState<google.maps.DirectionsRenderer | null>(null);
     const [routeInfo, setRouteInfo] = useState<{ distance: string, duration: string } | null>(null);
     const [userLocation, setUserLocation] = useState<google.maps.LatLngLiteral | null>(null);
+    const [mandadoBids, setMandadoBids] = useState<any[]>([]);
+    const [acceptingBidId, setAcceptingBidId] = useState<string | null>(null);
+
+    // Fetch and subscribe to bids if muchacho_mandado and searching
+    useEffect(() => {
+        if (!requestId || request?.service_category !== 'muchacho_mandado' || request?.status !== 'searching') return;
+
+        const fetchBids = async () => {
+            const { data } = await supabase
+                .from('transport_bids')
+                .select('*')
+                .eq('transport_request_id', requestId)
+                .eq('status', 'pending')
+                .order('created_at', { ascending: false });
+            if (data) setMandadoBids(data);
+        };
+
+        fetchBids();
+
+        const channel = supabase.channel(`tracker_bids_${requestId}`)
+            .on('postgres_changes', {
+                event: '*',
+                schema: 'public',
+                table: 'transport_bids',
+                filter: `transport_request_id=eq.${requestId}`
+            }, () => {
+                fetchBids();
+            })
+            .subscribe();
+
+        return () => {
+            supabase.removeChannel(channel);
+        };
+    }, [requestId, request?.service_category, request?.status]);
+
+    const handleAcceptMandadoBid = async (bid: any) => {
+        if (!requestId) return;
+        setAcceptingBidId(bid.id);
+        try {
+            // 1. Accept bid
+            await supabase.from('transport_bids').update({ status: 'accepted' }).eq('id', bid.id);
+            // 2. Reject others
+            await supabase.from('transport_bids').update({ status: 'rejected' })
+                .eq('transport_request_id', requestId)
+                .neq('id', bid.id);
+            // 3. Assign driver
+            await supabase.from('transport_requests').update({
+                status: 'accepted',
+                driver_id: bid.driver_id,
+                driver_name: bid.driver_name,
+                driver_phone: bid.driver_phone,
+                driver_assigned_at: new Date().toISOString(),
+                price: Number(bid.amount),
+                total: Number(bid.amount),
+                commission_amount: 0.70
+            }).eq('id', requestId);
+
+            toast.success(`¡Oferta de ${bid.driver_name} aceptada!`);
+        } catch (err) {
+            console.error('Error accepting bid in tracker:', err);
+            toast.error('Error al aceptar la oferta.');
+        } finally {
+            setAcceptingBidId(null);
+        }
+    };
 
 
     useEffect(() => {
@@ -471,8 +536,13 @@ export default function TransportTracker() {
                 toast.success("Viaje cancelado.");
             }
 
+            // If mandado, remove bids
+            if (request.service_category === 'muchacho_mandado') {
+                await supabase.from('transport_bids').delete().eq('transport_request_id', requestId);
+            }
+
             setShowCancelModal(false);
-            navigate('/taxi');
+            navigate('/');
         } catch (err) {
             console.error(err);
             toast.error("Error al cancelar viaje");
@@ -556,6 +626,15 @@ export default function TransportTracker() {
             case 'verifying_payment':
                 return { title: "Verificando Pago", subtitle: "Validando tu comprobante...", color: "text-amber-500", bg: "bg-amber-50", icon: ShieldCheck };
             case 'searching':
+                if (request.service_category === 'muchacho_mandado') {
+                    return {
+                        title: mandadoBids.length > 0 ? `${mandadoBids.length} ${mandadoBids.length === 1 ? 'Oferta de Piloto' : 'Ofertas de Pilotos'}` : "Buscando Pilotos",
+                        subtitle: mandadoBids.length > 0 ? "Pilotos disponibles enviaron sus cotizaciones" : "Buscando pilotos disponibles en la zona...",
+                        color: "text-amber-600",
+                        bg: "bg-amber-50",
+                        icon: ShoppingBag
+                    };
+                }
                 return { title: "Buscando Conductor", subtitle: "Conectando con vehículos cercanos...", color: "text-orange-600", bg: "bg-orange-50", icon: Clock };
             case 'accepted':
                 return { title: "Conductor en Camino", subtitle: "Tu transporte va hacia tu ubicación", color: "text-blue-500", bg: "bg-blue-50", icon: Car };
@@ -703,6 +782,96 @@ export default function TransportTracker() {
                         </p>
                     </div>
                 </div>
+
+                {/* Muchacho e' Mandao: Encargo details & Live Driver Bids in Tracker */}
+                {request.service_category === 'muchacho_mandado' && request.status === 'searching' && (
+                    <div className="mb-4 space-y-3">
+                        <div className="bg-slate-900 text-white rounded-2xl p-3.5 border border-slate-800 shadow-sm">
+                            <span className="text-[10px] font-black uppercase tracking-wider text-amber-400">Tu Mandado Solicitado</span>
+                            <p className="text-xs font-bold text-slate-200 mt-1 line-clamp-2">
+                                {request.mandado_details?.description || request.notes || 'Sin descripción'}
+                            </p>
+                            {request.mandado_details?.storeName && (
+                                <p className="text-[11px] text-slate-400 mt-1">🏪 {request.mandado_details.storeName}</p>
+                            )}
+                            <div className="mt-2 pt-2 border-t border-slate-800 text-[10px] text-amber-300 font-semibold flex items-center gap-1.5">
+                                <Shield className="w-3.5 h-3.5 shrink-0" />
+                                Cero intermediación: Paga directo al comercio por Pago Móvil.
+                            </div>
+                        </div>
+
+                        <div className="flex items-center justify-between px-1">
+                            <span className="text-xs font-black uppercase tracking-wider text-slate-800 flex items-center gap-1.5">
+                                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                                Ofertas de Pilotos ({mandadoBids.length})
+                            </span>
+                            <span className="text-[10px] font-bold text-slate-500">Elige la mejor propuesta</span>
+                        </div>
+
+                        <div className="space-y-2 max-h-60 overflow-y-auto">
+                            {mandadoBids.length === 0 ? (
+                                <div className="p-5 text-center bg-slate-50 rounded-2xl border border-slate-200">
+                                    <Clock className="w-6 h-6 text-amber-500 mx-auto mb-2 animate-pulse" />
+                                    <h4 className="text-xs font-black text-slate-800">Buscando pilotos disponibles...</h4>
+                                    <p className="text-[11px] text-slate-500 mt-0.5">
+                                        Los conductores están revisando tu mandado y enviando sus cotizaciones.
+                                    </p>
+                                </div>
+                            ) : (
+                                mandadoBids.map((bid) => (
+                                    <div
+                                        key={bid.id}
+                                        className="bg-white border-2 border-amber-400/50 hover:border-amber-400 rounded-2xl p-3 shadow-sm flex items-center justify-between gap-3 transition-all"
+                                    >
+                                        <div className="flex items-center gap-2.5 min-w-0">
+                                            <div className="relative shrink-0">
+                                                <img
+                                                    src={bid.driver_photo || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100&auto=format&fit=crop&q=80'}
+                                                    alt={bid.driver_name}
+                                                    className="w-10 h-10 rounded-xl object-cover border border-slate-200 bg-slate-100"
+                                                    onError={(e: any) => { e.currentTarget.src = 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100&auto=format&fit=crop&q=80'; }}
+                                                />
+                                                <div className="absolute -bottom-1 -right-1 bg-amber-400 text-slate-950 text-[8px] font-black px-1 rounded-md">
+                                                    ★ {Number(bid.driver_rating || 5.0).toFixed(1)}
+                                                </div>
+                                            </div>
+                                            <div className="min-w-0">
+                                                <p className="text-xs font-black text-slate-900 truncate">{bid.driver_name}</p>
+                                                <p className="text-[10px] text-slate-500 font-bold capitalize truncate">
+                                                    {bid.vehicle_type} {bid.vehicle_plate ? `• ${bid.vehicle_plate}` : ''}
+                                                </p>
+                                                <p className="text-[10px] font-black text-emerald-600">
+                                                    Llega en ~{bid.eta_minutes || 15} min
+                                                </p>
+                                            </div>
+                                        </div>
+
+                                        <div className="flex flex-col items-end shrink-0 gap-1">
+                                            <div className="text-right">
+                                                <div className="text-base font-black text-slate-900 leading-tight">
+                                                    ${Number(bid.amount).toFixed(2)}
+                                                </div>
+                                                {bcvRate > 0 && (
+                                                    <div className="text-[9px] font-bold text-slate-500">
+                                                        {(Number(bid.amount) * bcvRate).toFixed(0)} Bs
+                                                    </div>
+                                                )}
+                                            </div>
+                                            <button
+                                                type="button"
+                                                disabled={acceptingBidId === bid.id}
+                                                onClick={() => handleAcceptMandadoBid(bid)}
+                                                className="px-3 py-1.5 bg-gradient-to-r from-amber-400 to-yellow-400 hover:from-amber-300 hover:to-yellow-300 text-slate-950 font-black text-[10px] uppercase tracking-wider rounded-lg shadow-sm active:scale-95 transition-all disabled:opacity-50"
+                                            >
+                                                {acceptingBidId === bid.id ? 'Aceptando...' : 'Aceptar'}
+                                            </button>
+                                        </div>
+                                    </div>
+                                ))
+                            )}
+                        </div>
+                    </div>
+                )}
 
                 {/* Cancelar Reserva Botón */}
                 {request.scheduled && ['searching', 'accepted'].includes(request.status) && (

@@ -19,8 +19,63 @@ export default function DeliveryLayout({ children }: DeliveryLayoutProps) {
     const [driverStatus, setDriverStatus] = useState<AvailabilityStatus>('offline');
     const [updating, setUpdating] = useState(false);
     const [showPicker, setShowPicker] = useState(false);
+    const [hasActiveService, setHasActiveService] = useState(false);
 
     useGlobalAudioAlerts('delivery', user?.uid);
+
+    // Monitor active service in real time for persistent banner & recovery
+    useEffect(() => {
+        if (!user) return;
+        let isMounted = true;
+
+        const checkActive = async () => {
+            try {
+                const { data: transports } = await supabase
+                    .from('transport_requests')
+                    .select('id')
+                    .or(`driver_id.eq.${user.uid},driverId.eq.${user.uid}`)
+                    .in('status', ['accepted', 'arriving', 'in_progress'])
+                    .limit(1);
+
+                if (transports && transports.length > 0) {
+                    if (isMounted) setHasActiveService(true);
+                    return;
+                }
+
+                const { data: orders } = await supabase
+                    .from('orders')
+                    .select('id')
+                    .or(`delivery_driver_id.eq.${user.uid},deliveryDriverId.eq.${user.uid}`)
+                    .in('status', ['en_camino', 'in_transit'])
+                    .limit(1);
+
+                if (orders && orders.length > 0) {
+                    if (isMounted) setHasActiveService(true);
+                    return;
+                }
+
+                if (isMounted) setHasActiveService(false);
+            } catch (e) {
+                console.error("Error checking active service:", e);
+            }
+        };
+
+        checkActive();
+
+        const channelTransport = supabase.channel(`layout_active_trans_${user.uid}`)
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'transport_requests' }, checkActive)
+            .subscribe();
+
+        const channelOrder = supabase.channel(`layout_active_ord_${user.uid}`)
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, checkActive)
+            .subscribe();
+
+        return () => {
+            isMounted = false;
+            supabase.removeChannel(channelTransport);
+            supabase.removeChannel(channelOrder);
+        };
+    }, [user]);
 
     useEffect(() => {
         let isMounted = true;
@@ -158,6 +213,32 @@ export default function DeliveryLayout({ children }: DeliveryLayoutProps) {
                     )}
                 </div>
             </header>
+
+            {/* Banner Persistente de Alta Prioridad: Servicio en Curso */}
+            {hasActiveService && (
+                <div className="bg-amber-400 border-b-2 border-amber-500 text-slate-950 px-4 py-2.5 flex items-center justify-between shadow-lg z-50 shrink-0 animate-in slide-in-from-top-2">
+                    <div className="flex items-center gap-2.5 min-w-0">
+                        <span className="flex h-2.5 w-2.5 relative shrink-0">
+                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-slate-950 opacity-75"></span>
+                            <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-slate-950"></span>
+                        </span>
+                        <div className="truncate">
+                            <p className="text-[11px] font-black uppercase tracking-wider truncate">
+                                ⚠️ SERVICIO EN CURSO ACTIVO
+                            </p>
+                            <p className="text-[9px] font-bold text-slate-800 leading-tight">
+                                Viaje o entrega en desarrollo
+                            </p>
+                        </div>
+                    </div>
+                    <NavLink
+                        to="/radar"
+                        className="px-3.5 py-1.5 bg-slate-950 hover:bg-slate-900 active:scale-95 text-amber-400 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all shadow-md shrink-0 ml-2"
+                    >
+                        Ver Servicio
+                    </NavLink>
+                </div>
+            )}
 
             {/* Click-away backdrop when picker is open */}
             {showPicker && (

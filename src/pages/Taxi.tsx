@@ -27,7 +27,9 @@ import {
     FileText,
     ShoppingBag,
     AlertTriangle,
-    DollarSign
+    DollarSign,
+    Star,
+    User as UserIcon
 } from 'lucide-react';
 import { useJsApiLoader } from '@react-google-maps/api';
 import { UN2X3_LOGO } from '../lib/env';
@@ -70,6 +72,19 @@ interface NearbyDriver {
     lng: number;
     distanceKm: number;
     etaMinutes: number;
+    photoUrl?: string | null;
+    vehicleModel?: string;
+    vehiclePlate?: string;
+    vehicleColor?: string;
+    rating?: number;
+    totalTrips?: number;
+    driverFares?: {
+        base_fare?: number;
+        per_km_fare?: number;
+        pricing_type?: 'flat' | 'per_km';
+        base_km?: number;
+    } | null;
+    calculatedPrice?: number;
 }
 
 // Helper to get initial map render center from the user's known address or cache
@@ -171,6 +186,8 @@ export default function Taxi() {
     // Nearby Drivers
     const [nearbyDrivers, setNearbyDrivers] = useState<NearbyDriver[]>([]);
     const [activeDriversCount, setActiveDriversCount] = useState({ moto: 1, carro: 1, ejecutivo: 1 });
+    const [selectedDriver, setSelectedDriver] = useState<NearbyDriver | null>(null);
+    const [showDriverSelectionModal, setShowDriverSelectionModal] = useState(false);
 
     // Bottom Sheet Collapse / Expand State & Drag Handling
     const [isSheetMinimized, setIsSheetMinimized] = useState(false);
@@ -239,6 +256,38 @@ export default function Taxi() {
         checkActive();
     }, [user, navigate]);
 
+    // 0.3 Realtime Driver Bids for Muchacho e' Mandao
+    useEffect(() => {
+        if (!activeMandadoReqId) return;
+
+        const fetchBids = async () => {
+            const { data } = await supabase
+                .from('transport_bids')
+                .select('*')
+                .eq('transport_request_id', activeMandadoReqId)
+                .eq('status', 'pending')
+                .order('created_at', { ascending: false });
+            if (data) setMandadoBids(data);
+        };
+
+        fetchBids();
+
+        const channel = supabase.channel(`taxi_page_bids_${activeMandadoReqId}`)
+            .on('postgres_changes', {
+                event: '*',
+                schema: 'public',
+                table: 'transport_bids',
+                filter: `transport_request_id=eq.${activeMandadoReqId}`
+            }, () => {
+                fetchBids();
+            })
+            .subscribe();
+
+        return () => {
+            supabase.removeChannel(channel);
+        };
+    }, [activeMandadoReqId]);
+
     // 1. Fetch Admin Rates and Configs
     useEffect(() => {
         const fetchConfigs = async () => {
@@ -283,7 +332,7 @@ export default function Taxi() {
         try {
             let { data: driversData } = await supabase
                 .from('drivers')
-                .select('id, full_name, vehicle_type, current_location, availability, is_online')
+                .select('id, full_name, name, vehicle_type, vehicleType, vehicle_model, vehicleModel, vehicle_plate, vehiclePlate, vehicle_color, vehicleColor, current_location, availability, is_online, driver_fares, photo_url, photoURL, avatar_url, rating, total_trips')
                 .eq('is_online', true);
 
             if (!driversData || driversData.length === 0) {
@@ -308,12 +357,19 @@ export default function Taxi() {
                         const eta = Math.max(2, Math.ceil(distKm * 3));
                         validDrivers.push({
                             id: d.id,
-                            fullName: d.full_name || 'Conductor',
+                            fullName: d.full_name || d.name || 'Conductor',
                             vehicleType: vType,
                             lat: loc.lat,
                             lng: loc.lng,
                             distanceKm: distKm,
-                            etaMinutes: eta
+                            etaMinutes: eta,
+                            photoUrl: d.photo_url || d.photoURL || d.avatar_url || null,
+                            vehicleModel: d.vehicle_model || d.vehicleModel || (vType === 'moto' ? 'Motocicleta' : 'Automóvil'),
+                            vehiclePlate: d.vehicle_plate || d.vehiclePlate || 'S/P',
+                            vehicleColor: d.vehicle_color || d.vehicleColor || '',
+                            rating: d.rating || 5.0,
+                            totalTrips: d.total_trips || 0,
+                            driverFares: d.driver_fares || null
                         });
                         counts[vType]++;
                     }
@@ -845,6 +901,59 @@ export default function Taxi() {
         return getFareDetails(type).clientTotal.toFixed(2);
     };
 
+    // Helper to calculate specific driver trip price based on their configured driver_fares
+    const calculateDriverTripPrice = useCallback((driver: NearbyDriver, tripDistanceKm?: number): number => {
+        const dist = tripDistanceKm !== undefined ? tripDistanceKm : (routeInfo ? routeInfo.distance : 1);
+        const fares = driver.driverFares;
+        if (fares && Number(fares.base_fare) >= 0.50) {
+            const base = Number(fares.base_fare);
+            if (fares.pricing_type === 'flat') {
+                return Math.max(0.50, base);
+            }
+            const perKm = Number(fares.per_km_fare || 0);
+            const baseKm = Number(fares.base_km || 2);
+            const extraKm = Math.max(0, dist - baseKm);
+            const total = base + (extraKm * perKm);
+            return Math.max(0.50, Number(total.toFixed(2)));
+        }
+        return parseFloat(calculatePrice(driver.vehicleType));
+    }, [routeInfo, adminRates, activeDriversCount, weather, testRain]);
+
+    // Dynamic price range calculation: "Desde $X.XX hasta $Y.YY"
+    const getCategoryPriceRange = useCallback((cat: 'moto' | 'carro' | 'ejecutivo') => {
+        const tripDist = routeInfo ? routeInfo.distance : 1;
+        const matchingDrivers = nearbyDrivers.filter(d => d.vehicleType === cat);
+        if (matchingDrivers.length === 0) {
+            const p = calculatePrice(cat);
+            return {
+                text: `$${p}`,
+                hasRange: false,
+                min: parseFloat(p),
+                max: parseFloat(p),
+                driversCount: 0
+            };
+        }
+        const prices = matchingDrivers.map(d => calculateDriverTripPrice(d, tripDist));
+        const minPrice = Math.min(...prices);
+        const maxPrice = Math.max(...prices);
+        if (minPrice === maxPrice) {
+            return {
+                text: `$${minPrice.toFixed(2)}`,
+                hasRange: false,
+                min: minPrice,
+                max: maxPrice,
+                driversCount: matchingDrivers.length
+            };
+        }
+        return {
+            text: `Desde $${minPrice.toFixed(2)} hasta $${maxPrice.toFixed(2)}`,
+            hasRange: true,
+            min: minPrice,
+            max: maxPrice,
+            driversCount: matchingDrivers.length
+        };
+    }, [nearbyDrivers, routeInfo, calculateDriverTripPrice, calculatePrice]);
+
     // Aceptar puja de conductor para Muchacho e' Mandado
     const handleAcceptMandadoBid = async (bid: any) => {
         try {
@@ -1024,7 +1133,8 @@ export default function Taxi() {
         }
 
         const numTotal = parseFloat(clientTotal);
-        const driverPayoutVal = Math.max(0, numTotal - commAmount);
+        const finalTripPrice = selectedDriver ? calculateDriverTripPrice(selectedDriver) : numTotal;
+        const driverPayoutVal = Math.max(0, finalTripPrice - commAmount);
 
         try {
             setIsUploading(true);
@@ -1054,8 +1164,9 @@ export default function Taxi() {
                 origin,
                 destination,
                 route: routeInfo,
-                total: numTotal,
-                price: numTotal,
+                total: finalTripPrice,
+                price: finalTripPrice,
+                assigned_driver_id: selectedDriver ? selectedDriver.id : null,
                 service_category: selectedCategory,
                 vehicle_type: vType,
                 driver_payout: driverPayoutVal,
@@ -1990,162 +2101,267 @@ export default function Taxi() {
                                 </div>
                             )}
 
+                            {/* Selected Driver Banner */}
+                            {selectedDriver && (
+                                <div className="bg-amber-400 border-2 border-amber-500 rounded-2xl p-2.5 px-3.5 flex items-center justify-between text-slate-950 shadow-md">
+                                    <div className="flex items-center gap-2.5 min-w-0">
+                                        <Star className="w-4 h-4 text-slate-950 fill-slate-950 shrink-0" />
+                                        <div className="truncate">
+                                            <p className="text-[10px] font-black uppercase tracking-wider leading-none">
+                                                Conductor Seleccionado
+                                            </p>
+                                            <p className="text-xs font-black text-slate-950 truncate mt-0.5">
+                                                {selectedDriver.fullName} • ${calculateDriverTripPrice(selectedDriver).toFixed(2)} USD
+                                            </p>
+                                        </div>
+                                    </div>
+                                    <div className="flex items-center gap-1 shrink-0">
+                                        <button
+                                            type="button"
+                                            onClick={() => setShowDriverSelectionModal(true)}
+                                            className="text-[10px] font-black underline uppercase px-2 py-1"
+                                        >
+                                            Cambiar
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => setSelectedDriver(null)}
+                                            className="w-6 h-6 rounded-full bg-slate-950/10 hover:bg-slate-950/20 text-slate-950 flex items-center justify-center text-xs font-black"
+                                            title="Quitar selección"
+                                        >
+                                            ✕
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
+
                             {/* Service Categories Carousel Filtered by mainMode */}
                             <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1 scrollbar-none snap-x">
-                                {mainMode === 'taxi' && (
-                                    <>
-                                        {/* 1. Mototaxi */}
-                                        <button
-                                            type="button"
-                                            onClick={() => {
-                                                vibrate(30);
-                                                setSelectedCategory('mototaxi');
-                                                setVehicleType('moto');
-                                            }}
-                                            className={`flex-none w-[105px] snap-start flex flex-col items-center py-2.5 px-2 rounded-2xl border-2 transition-all text-center ${
-                                                selectedCategory === 'mototaxi'
-                                                    ? 'border-primary bg-primary/10 shadow-md ring-2 ring-primary/20 scale-[1.02]'
-                                                    : 'border-slate-100 bg-slate-50 hover:border-slate-200'
-                                            }`}
-                                        >
-                                            <div className="w-8 h-8 rounded-lg bg-white flex items-center justify-center mb-1 shadow-xs">
-                                                <Bike className="w-4 h-4 text-amber-500" />
-                                            </div>
-                                            <span className="text-[11px] font-black text-slate-900 truncate max-w-full">Mototaxi</span>
-                                            <span className="text-[9px] text-emerald-600 font-bold">2-3 min</span>
-                                            <span className="text-xs font-black text-slate-900 mt-0.5">
-                                                ${calculatePrice('moto')}
-                                            </span>
-                                            {bcvRate > 0 && (
-                                                <span className="text-[8px] font-bold text-slate-500 truncate max-w-full px-0.5">
-                                                    {(parseFloat(calculatePrice('moto')) * bcvRate).toFixed(0)} Bs
+                                {mainMode === 'taxi' && (() => {
+                                    const motoRange = getCategoryPriceRange('moto');
+                                    const carroRange = getCategoryPriceRange('carro');
+                                    const ejecutivoRange = getCategoryPriceRange('ejecutivo');
+
+                                    return (
+                                        <>
+                                            {/* 1. Mototaxi */}
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    vibrate(30);
+                                                    setSelectedCategory('mototaxi');
+                                                    setVehicleType('moto');
+                                                }}
+                                                className={`flex-none w-[115px] snap-start flex flex-col items-center py-2.5 px-2 rounded-2xl border-2 transition-all text-center ${
+                                                    selectedCategory === 'mototaxi'
+                                                        ? 'border-primary bg-primary/10 shadow-md ring-2 ring-primary/20 scale-[1.02]'
+                                                        : 'border-slate-100 bg-slate-50 hover:border-slate-200'
+                                                }`}
+                                            >
+                                                <div className="w-8 h-8 rounded-lg bg-white flex items-center justify-center mb-1 shadow-xs">
+                                                    <Bike className="w-4 h-4 text-amber-500" />
+                                                </div>
+                                                <span className="text-[11px] font-black text-slate-900 truncate max-w-full">Mototaxi</span>
+                                                <span className="text-[9px] text-emerald-600 font-bold">2-3 min</span>
+                                                <span className="text-xs font-black text-slate-900 mt-0.5 leading-tight">
+                                                    {selectedDriver && selectedDriver.vehicleType === 'moto'
+                                                        ? `$${calculateDriverTripPrice(selectedDriver).toFixed(2)}`
+                                                        : motoRange.text}
                                                 </span>
-                                            )}
-                                        </button>
-
-                                        {/* 2. Taxi Driver */}
-                                        <button
-                                            type="button"
-                                            onClick={() => {
-                                                vibrate(30);
-                                                setSelectedCategory('taxi_driver');
-                                                setVehicleType('carro');
-                                            }}
-                                            className={`flex-none w-[105px] snap-start flex flex-col items-center py-2.5 px-2 rounded-2xl border-2 transition-all text-center ${
-                                                selectedCategory === 'taxi_driver'
-                                                    ? 'border-primary bg-primary text-slate-950 shadow-md shadow-primary/30 ring-2 ring-primary/30 scale-[1.03]'
-                                                    : 'border-slate-100 bg-slate-50 hover:border-slate-200'
-                                            }`}
-                                        >
-                                            <div className="w-8 h-8 rounded-lg bg-white flex items-center justify-center mb-1 shadow-xs">
-                                                <Car className="w-4 h-4 text-slate-900" />
-                                            </div>
-                                            <span className="text-[11px] font-black truncate max-w-full">Taxi Driver</span>
-                                            <span className={`text-[9px] font-bold ${selectedCategory === 'taxi_driver' ? 'text-slate-900' : 'text-emerald-600'}`}>3-5 min</span>
-                                            <span className="text-xs font-black mt-0.5">
-                                                ${calculatePrice('carro')}
-                                            </span>
-                                            {bcvRate > 0 && (
-                                                <span className={`text-[8px] font-bold truncate max-w-full px-0.5 ${selectedCategory === 'taxi_driver' ? 'text-slate-800' : 'text-slate-500'}`}>
-                                                    {(parseFloat(calculatePrice('carro')) * bcvRate).toFixed(0)} Bs
+                                                {bcvRate > 0 && (
+                                                    <span className="text-[8px] font-bold text-slate-500 truncate max-w-full px-0.5">
+                                                        {((selectedDriver && selectedDriver.vehicleType === 'moto' ? calculateDriverTripPrice(selectedDriver) : motoRange.min) * bcvRate).toFixed(0)} Bs
+                                                    </span>
+                                                )}
+                                                <span
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        vibrate(30);
+                                                        setSelectedCategory('mototaxi');
+                                                        setVehicleType('moto');
+                                                        setShowDriverSelectionModal(true);
+                                                    }}
+                                                    className="mt-1 text-[8.5px] font-black text-amber-700 hover:text-amber-900 underline block cursor-pointer"
+                                                >
+                                                    Elegir piloto
                                                 </span>
-                                            )}
-                                        </button>
+                                            </button>
 
-                                        {/* 3. Carro Confort */}
-                                        <button
-                                            type="button"
-                                            onClick={() => {
-                                                vibrate(30);
-                                                setSelectedCategory('carro_confort');
-                                                setVehicleType('ejecutivo');
-                                            }}
-                                            className={`flex-none w-[105px] snap-start flex flex-col items-center py-2.5 px-2 rounded-2xl border-2 transition-all text-center ${
-                                                selectedCategory === 'carro_confort'
-                                                    ? 'border-slate-900 bg-slate-900 text-white shadow-md ring-2 ring-slate-900/20 scale-[1.02]'
-                                                    : 'border-slate-100 bg-slate-50 hover:border-slate-200'
-                                            }`}
-                                        >
-                                            <div className="w-8 h-8 rounded-lg bg-white flex items-center justify-center mb-1 shadow-xs">
-                                                <Sparkles className="w-4 h-4 text-amber-500" />
-                                            </div>
-                                            <span className={`text-[11px] font-black truncate max-w-full ${selectedCategory === 'carro_confort' ? 'text-white' : 'text-slate-900'}`}>Confort A/A</span>
-                                            <span className="text-[9px] text-amber-400 font-bold">Premium</span>
-                                            <span className={`text-xs font-black mt-0.5 ${selectedCategory === 'carro_confort' ? 'text-white' : 'text-slate-900'}`}>
-                                                ${calculatePrice('ejecutivo')}
-                                            </span>
-                                            {bcvRate > 0 && (
-                                                <span className={`text-[8px] font-bold truncate max-w-full px-0.5 ${selectedCategory === 'carro_confort' ? 'text-slate-300' : 'text-slate-500'}`}>
-                                                    {(parseFloat(calculatePrice('ejecutivo')) * bcvRate).toFixed(0)} Bs
+                                            {/* 2. Taxi Driver */}
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    vibrate(30);
+                                                    setSelectedCategory('taxi_driver');
+                                                    setVehicleType('carro');
+                                                }}
+                                                className={`flex-none w-[115px] snap-start flex flex-col items-center py-2.5 px-2 rounded-2xl border-2 transition-all text-center ${
+                                                    selectedCategory === 'taxi_driver'
+                                                        ? 'border-primary bg-primary text-slate-950 shadow-md shadow-primary/30 ring-2 ring-primary/30 scale-[1.03]'
+                                                        : 'border-slate-100 bg-slate-50 hover:border-slate-200'
+                                                }`}
+                                            >
+                                                <div className="w-8 h-8 rounded-lg bg-white flex items-center justify-center mb-1 shadow-xs">
+                                                    <Car className="w-4 h-4 text-slate-900" />
+                                                </div>
+                                                <span className="text-[11px] font-black truncate max-w-full">Taxi Driver</span>
+                                                <span className={`text-[9px] font-bold ${selectedCategory === 'taxi_driver' ? 'text-slate-900' : 'text-emerald-600'}`}>3-5 min</span>
+                                                <span className="text-xs font-black mt-0.5 leading-tight">
+                                                    {selectedDriver && selectedDriver.vehicleType === 'carro'
+                                                        ? `$${calculateDriverTripPrice(selectedDriver).toFixed(2)}`
+                                                        : carroRange.text}
                                                 </span>
-                                            )}
-                                        </button>
-                                    </>
-                                )}
+                                                {bcvRate > 0 && (
+                                                    <span className={`text-[8px] font-bold truncate max-w-full px-0.5 ${selectedCategory === 'taxi_driver' ? 'text-slate-800' : 'text-slate-500'}`}>
+                                                        {((selectedDriver && selectedDriver.vehicleType === 'carro' ? calculateDriverTripPrice(selectedDriver) : carroRange.min) * bcvRate).toFixed(0)} Bs
+                                                    </span>
+                                                )}
+                                                <span
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        vibrate(30);
+                                                        setSelectedCategory('taxi_driver');
+                                                        setVehicleType('carro');
+                                                        setShowDriverSelectionModal(true);
+                                                    }}
+                                                    className={`mt-1 text-[8.5px] font-black underline block cursor-pointer ${selectedCategory === 'taxi_driver' ? 'text-slate-950 hover:text-black' : 'text-amber-700 hover:text-amber-900'}`}
+                                                >
+                                                    Elegir conductor
+                                                </span>
+                                            </button>
 
-                                {mainMode === 'package' && (
-                                    <>
-                                        <button
-                                            type="button"
-                                            onClick={() => {
-                                                vibrate(30);
-                                                setSelectedCategory('delivery_envios');
-                                                setVehicleType('moto');
-                                            }}
-                                            className={`flex-1 min-w-[140px] flex items-center gap-3 py-3 px-3.5 rounded-2xl border-2 transition-all text-left ${
-                                                vehicleType === 'moto'
-                                                    ? 'border-blue-500 bg-blue-50/80 shadow-md ring-2 ring-blue-500/20'
-                                                    : 'border-slate-100 bg-slate-50'
-                                            }`}
-                                        >
-                                            <div className="w-10 h-10 rounded-xl bg-blue-500/20 text-blue-600 flex items-center justify-center shrink-0">
-                                                <Bike className="w-5 h-5" />
-                                            </div>
-                                            <div className="flex-1 min-w-0">
-                                                <p className="text-xs font-black text-slate-900 truncate">Moto Envíos</p>
-                                                <p className="text-[10px] text-slate-500 font-medium truncate">Documentos y paquetes</p>
-                                                <p className="text-xs font-black text-blue-700 mt-0.5">
-                                                    ${calculatePrice('moto')}
-                                                    {bcvRate > 0 && (
-                                                        <span className="text-[9px] font-bold text-slate-500 ml-1">
-                                                            ({(parseFloat(calculatePrice('moto')) * bcvRate).toFixed(0)} Bs)
-                                                        </span>
-                                                    )}
-                                                </p>
-                                            </div>
-                                        </button>
+                                            {/* 3. Carro Confort */}
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    vibrate(30);
+                                                    setSelectedCategory('carro_confort');
+                                                    setVehicleType('ejecutivo');
+                                                }}
+                                                className={`flex-none w-[115px] snap-start flex flex-col items-center py-2.5 px-2 rounded-2xl border-2 transition-all text-center ${
+                                                    selectedCategory === 'carro_confort'
+                                                        ? 'border-slate-900 bg-slate-900 text-white shadow-md ring-2 ring-slate-900/20 scale-[1.02]'
+                                                        : 'border-slate-100 bg-slate-50 hover:border-slate-200'
+                                                }`}
+                                            >
+                                                <div className="w-8 h-8 rounded-lg bg-white flex items-center justify-center mb-1 shadow-xs">
+                                                    <Sparkles className="w-4 h-4 text-amber-500" />
+                                                </div>
+                                                <span className={`text-[11px] font-black truncate max-w-full ${selectedCategory === 'carro_confort' ? 'text-white' : 'text-slate-900'}`}>Confort A/A</span>
+                                                <span className="text-[9px] text-amber-400 font-bold">Premium</span>
+                                                <span className={`text-xs font-black mt-0.5 leading-tight ${selectedCategory === 'carro_confort' ? 'text-white' : 'text-slate-900'}`}>
+                                                    {selectedDriver && selectedDriver.vehicleType === 'ejecutivo'
+                                                        ? `$${calculateDriverTripPrice(selectedDriver).toFixed(2)}`
+                                                        : ejecutivoRange.text}
+                                                </span>
+                                                {bcvRate > 0 && (
+                                                    <span className={`text-[8px] font-bold truncate max-w-full px-0.5 ${selectedCategory === 'carro_confort' ? 'text-slate-300' : 'text-slate-500'}`}>
+                                                        {((selectedDriver && selectedDriver.vehicleType === 'ejecutivo' ? calculateDriverTripPrice(selectedDriver) : ejecutivoRange.min) * bcvRate).toFixed(0)} Bs
+                                                    </span>
+                                                )}
+                                                <span
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        vibrate(30);
+                                                        setSelectedCategory('carro_confort');
+                                                        setVehicleType('ejecutivo');
+                                                        setShowDriverSelectionModal(true);
+                                                    }}
+                                                    className={`mt-1 text-[8.5px] font-black underline block cursor-pointer ${selectedCategory === 'carro_confort' ? 'text-amber-400 hover:text-amber-300' : 'text-amber-700 hover:text-amber-900'}`}
+                                                >
+                                                    Elegir chofer
+                                                </span>
+                                            </button>
+                                        </>
+                                    );
+                                })()}
 
-                                        <button
-                                            type="button"
-                                            onClick={() => {
-                                                vibrate(30);
-                                                setSelectedCategory('delivery_envios');
-                                                setVehicleType('carro');
-                                            }}
-                                            className={`flex-1 min-w-[140px] flex items-center gap-3 py-3 px-3.5 rounded-2xl border-2 transition-all text-left ${
-                                                vehicleType === 'carro'
-                                                    ? 'border-blue-500 bg-blue-50/80 shadow-md ring-2 ring-blue-500/20'
-                                                    : 'border-slate-100 bg-slate-50'
-                                            }`}
-                                        >
-                                            <div className="w-10 h-10 rounded-xl bg-blue-500/20 text-blue-600 flex items-center justify-center shrink-0">
-                                                <Car className="w-5 h-5" />
-                                            </div>
-                                            <div className="flex-1 min-w-0">
-                                                <p className="text-xs font-black text-slate-900 truncate">Auto Envíos</p>
-                                                <p className="text-[10px] text-slate-500 font-medium truncate">Cajas o bultos medianos</p>
-                                                <p className="text-xs font-black text-blue-700 mt-0.5">
-                                                    ${calculatePrice('carro')}
-                                                    {bcvRate > 0 && (
-                                                        <span className="text-[9px] font-bold text-slate-500 ml-1">
-                                                            ({(parseFloat(calculatePrice('carro')) * bcvRate).toFixed(0)} Bs)
-                                                        </span>
-                                                    )}
-                                                </p>
-                                            </div>
-                                        </button>
-                                    </>
-                                )}
+                                {mainMode === 'package' && (() => {
+                                    const motoPackageRange = getCategoryPriceRange('moto');
+                                    const carroPackageRange = getCategoryPriceRange('carro');
+
+                                    return (
+                                        <>
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    vibrate(30);
+                                                    setSelectedCategory('delivery_envios');
+                                                    setVehicleType('moto');
+                                                }}
+                                                className={`flex-1 min-w-[145px] flex items-center gap-3 py-3 px-3.5 rounded-2xl border-2 transition-all text-left ${
+                                                    vehicleType === 'moto'
+                                                        ? 'border-blue-500 bg-blue-50/80 shadow-md ring-2 ring-blue-500/20'
+                                                        : 'border-slate-100 bg-slate-50'
+                                                }`}
+                                            >
+                                                <div className="w-10 h-10 rounded-xl bg-blue-500/20 text-blue-600 flex items-center justify-center shrink-0">
+                                                    <Bike className="w-5 h-5" />
+                                                </div>
+                                                <div className="flex-1 min-w-0">
+                                                    <p className="text-xs font-black text-slate-900 truncate">Moto Envíos</p>
+                                                    <p className="text-[10px] text-slate-500 font-medium truncate">Documentos y paquetes</p>
+                                                    <p className="text-xs font-black text-blue-700 mt-0.5 leading-tight">
+                                                        {selectedDriver && selectedDriver.vehicleType === 'moto'
+                                                            ? `$${calculateDriverTripPrice(selectedDriver).toFixed(2)}`
+                                                            : motoPackageRange.text}
+                                                    </p>
+                                                    <span
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            vibrate(30);
+                                                            setSelectedCategory('delivery_envios');
+                                                            setVehicleType('moto');
+                                                            setShowDriverSelectionModal(true);
+                                                        }}
+                                                        className="text-[8.5px] font-black text-blue-700 hover:text-blue-900 underline block mt-0.5 cursor-pointer"
+                                                    >
+                                                        Elegir piloto
+                                                    </span>
+                                                </div>
+                                            </button>
+
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    vibrate(30);
+                                                    setSelectedCategory('delivery_envios');
+                                                    setVehicleType('carro');
+                                                }}
+                                                className={`flex-1 min-w-[145px] flex items-center gap-3 py-3 px-3.5 rounded-2xl border-2 transition-all text-left ${
+                                                    vehicleType === 'carro'
+                                                        ? 'border-blue-500 bg-blue-50/80 shadow-md ring-2 ring-blue-500/20'
+                                                        : 'border-slate-100 bg-slate-50'
+                                                }`}
+                                            >
+                                                <div className="w-10 h-10 rounded-xl bg-blue-500/20 text-blue-600 flex items-center justify-center shrink-0">
+                                                    <Car className="w-5 h-5" />
+                                                </div>
+                                                <div className="flex-1 min-w-0">
+                                                    <p className="text-xs font-black text-slate-900 truncate">Auto Envíos</p>
+                                                    <p className="text-[10px] text-slate-500 font-medium truncate">Cajas o bultos medianos</p>
+                                                    <p className="text-xs font-black text-blue-700 mt-0.5 leading-tight">
+                                                        {selectedDriver && selectedDriver.vehicleType === 'carro'
+                                                            ? `$${calculateDriverTripPrice(selectedDriver).toFixed(2)}`
+                                                            : carroPackageRange.text}
+                                                    </p>
+                                                    <span
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            vibrate(30);
+                                                            setSelectedCategory('delivery_envios');
+                                                            setVehicleType('carro');
+                                                            setShowDriverSelectionModal(true);
+                                                        }}
+                                                        className="text-[8.5px] font-black text-blue-700 hover:text-blue-900 underline block mt-0.5 cursor-pointer"
+                                                    >
+                                                        Elegir conductor
+                                                    </span>
+                                                </div>
+                                            </button>
+                                        </>
+                                    );
+                                })()}
 
                                 {mainMode === 'mandado' && (
                                     <div className="w-full bg-amber-50/90 border-2 border-amber-400 rounded-2xl p-3 flex items-center justify-between gap-3">
@@ -2480,6 +2696,178 @@ export default function Taxi() {
             />
 
             <DemoAlertModal isOpen={showDemoAlert} onClose={() => setShowDemoAlert(false)} />
+
+            {/* Modal de Selección Directa de Conductor */}
+            <AnimatePresence>
+                {showDriverSelectionModal && (
+                    <div className="fixed inset-0 z-[120] bg-black/70 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4">
+                        <div className="bg-white w-full sm:max-w-lg rounded-t-[2.5rem] sm:rounded-[2.5rem] p-6 shadow-2xl max-h-[85vh] flex flex-col relative animate-in slide-in-from-bottom-5">
+                            {/* Header */}
+                            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+                                <div className="flex items-center gap-2.5">
+                                    <div className="w-10 h-10 rounded-2xl bg-amber-400 text-slate-950 flex items-center justify-center font-black">
+                                        <Car className="w-5 h-5" />
+                                    </div>
+                                    <div>
+                                        <h3 className="text-base font-black text-slate-950 tracking-tight">
+                                            Elegir Conductor
+                                        </h3>
+                                        <p className="text-[11px] text-slate-500 font-bold">
+                                            {selectedCategory === 'mototaxi' ? 'Mototaxis' : selectedCategory === 'carro_confort' ? 'Carros Confort' : 'Taxis'} disponibles en tu zona
+                                        </p>
+                                    </div>
+                                </div>
+                                <button
+                                    onClick={() => setShowDriverSelectionModal(false)}
+                                    className="w-9 h-9 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-600 flex items-center justify-center transition-colors"
+                                >
+                                    <X className="w-4 h-4" />
+                                </button>
+                            </div>
+
+                            {/* Informative notice */}
+                            <div className="my-3 bg-amber-50 border border-amber-200 rounded-2xl p-3 text-xs text-amber-900 flex items-start gap-2">
+                                <Sparkles className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                                <p className="text-[11px] font-medium leading-snug">
+                                    Al elegir un conductor, la solicitud le timbrará directamente a él con su tarifa asignada. Si no eliges uno, se transmitirá en abierto a todos los pilotos cercanos.
+                                </p>
+                            </div>
+
+                            {/* Drivers List */}
+                            <div className="overflow-y-auto space-y-3 py-1 flex-1 pr-1">
+                                {(() => {
+                                    const targetType = selectedCategory === 'mototaxi' ? 'moto' : selectedCategory === 'carro_confort' ? 'ejecutivo' : (selectedCategory === 'delivery_envios' ? vehicleType : 'carro');
+                                    const catDrivers = nearbyDrivers.filter(d => d.vehicleType === targetType);
+                                    const tripDist = routeInfo ? routeInfo.distance : 1;
+
+                                    if (catDrivers.length === 0) {
+                                        return (
+                                            <div className="text-center py-10 px-4">
+                                                <div className="w-14 h-14 rounded-full bg-slate-100 flex items-center justify-center mx-auto mb-3 text-slate-400">
+                                                    <Car className="w-7 h-7" />
+                                                </div>
+                                                <h4 className="font-black text-sm text-slate-800">Sin conductores específicos en línea</h4>
+                                                <p className="text-xs text-slate-500 mt-1 max-w-xs mx-auto">
+                                                    No hay conductores con tarifas personalizadas activas en esta categoría en este momento. Tu solicitud se enviará a todos los conductores disponibles por radar.
+                                                </p>
+                                            </div>
+                                        );
+                                    }
+
+                                    return catDrivers.map(d => {
+                                        const price = calculateDriverTripPrice(d, tripDist);
+                                        const isChosen = selectedDriver?.id === d.id;
+
+                                        return (
+                                            <div
+                                                key={d.id}
+                                                className={`p-4 rounded-2xl border-2 transition-all flex flex-col gap-3 ${
+                                                    isChosen 
+                                                        ? 'border-amber-400 bg-amber-50/50 shadow-md ring-2 ring-amber-400/20' 
+                                                        : 'border-slate-200 bg-white hover:border-slate-300'
+                                                }`}
+                                            >
+                                                <div className="flex items-center justify-between gap-3">
+                                                    <div className="flex items-center gap-3 min-w-0">
+                                                        <div className="relative shrink-0">
+                                                            {d.photoUrl ? (
+                                                                <img
+                                                                    src={d.photoUrl}
+                                                                    alt={d.fullName}
+                                                                    className="w-12 h-12 rounded-2xl object-cover border border-slate-200"
+                                                                />
+                                                            ) : (
+                                                                <div className="w-12 h-12 rounded-2xl bg-slate-900 text-white font-black text-sm flex items-center justify-center">
+                                                                    {d.fullName.slice(0, 2).toUpperCase()}
+                                                                </div>
+                                                            )}
+                                                            <span className="absolute -bottom-1 -right-1 w-3.5 h-3.5 bg-emerald-500 border-2 border-white rounded-full"></span>
+                                                        </div>
+                                                        <div className="min-w-0">
+                                                            <h4 className="font-black text-sm text-slate-900 truncate flex items-center gap-1.5">
+                                                                <span>{d.fullName}</span>
+                                                            </h4>
+                                                            <div className="flex items-center gap-2 text-[11px] text-slate-500 font-bold mt-0.5">
+                                                                <span className="flex items-center gap-0.5 text-amber-500">
+                                                                    <Star className="w-3.5 h-3.5 fill-amber-400" />
+                                                                    <span>{Number(d.rating || 5.0).toFixed(1)}</span>
+                                                                </span>
+                                                                <span>•</span>
+                                                                <span>{d.totalTrips || 0} viajes</span>
+                                                                <span>•</span>
+                                                                <span className="text-emerald-600">~{d.etaMinutes} min</span>
+                                                            </div>
+                                                            <p className="text-[10px] text-slate-400 font-semibold truncate mt-0.5">
+                                                                {d.vehicleModel} {d.vehicleColor ? `• ${d.vehicleColor}` : ''} • Placa: {d.vehiclePlate}
+                                                            </p>
+                                                        </div>
+                                                    </div>
+
+                                                    <div className="text-right shrink-0">
+                                                        <span className="text-base font-black text-slate-900 block leading-tight">
+                                                            ${price.toFixed(2)}
+                                                        </span>
+                                                        {bcvRate > 0 && (
+                                                            <span className="text-[10px] font-bold text-slate-500 block">
+                                                                {(price * bcvRate).toFixed(0)} Bs
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                </div>
+
+                                                <div className="flex items-center justify-end gap-2 pt-1 border-t border-slate-100">
+                                                    {isChosen ? (
+                                                        <div className="flex items-center gap-2">
+                                                            <span className="text-xs font-black text-emerald-700 bg-emerald-100 px-3 py-1.5 rounded-xl flex items-center gap-1">
+                                                                <Check className="w-3.5 h-3.5" /> Seleccionado
+                                                            </span>
+                                                            <button
+                                                                onClick={() => {
+                                                                    setSelectedDriver(null);
+                                                                    setShowDriverSelectionModal(false);
+                                                                }}
+                                                                className="text-xs font-bold text-slate-500 hover:text-rose-600 px-2 py-1"
+                                                            >
+                                                                Quitar selección
+                                                            </button>
+                                                        </div>
+                                                    ) : (
+                                                        <button
+                                                            onClick={() => {
+                                                                setSelectedDriver(d);
+                                                                setShowDriverSelectionModal(false);
+                                                                toast.success(`Conductor ${d.fullName} seleccionado ($${price.toFixed(2)} USD)`);
+                                                            }}
+                                                            className="px-4 py-2 bg-slate-950 hover:bg-slate-900 text-amber-400 rounded-xl font-black text-xs uppercase tracking-wider transition-transform active:scale-95 shadow-sm"
+                                                        >
+                                                            Elegir Conductor
+                                                        </button>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        );
+                                    });
+                                })()}
+                            </div>
+
+                            {/* Option to clear selection */}
+                            {selectedDriver && (
+                                <div className="pt-3 border-t border-slate-100">
+                                    <button
+                                        onClick={() => {
+                                            setSelectedDriver(null);
+                                            setShowDriverSelectionModal(false);
+                                        }}
+                                        className="w-full py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-black text-xs rounded-xl uppercase tracking-wider"
+                                    >
+                                        Transmitir a todos los conductores (Sin selección directa)
+                                    </button>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                )}
+            </AnimatePresence>
         </div>
     );
 }

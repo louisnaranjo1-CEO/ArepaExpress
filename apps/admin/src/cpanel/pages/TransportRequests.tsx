@@ -97,7 +97,8 @@ export default function TransportRequests() {
                     driverPayout: d.driver_payout || d.driverPayout,
                     driverPaid: d.driver_paid !== undefined ? d.driver_paid : d.driverPaid,
                     paymentProof: d.payment_proof || d.paymentProof,
-                    paymentProofUrl: d.payment_proof_url || d.paymentProofUrl
+                    paymentProofUrl: d.payment_proof_url || d.paymentProofUrl,
+                    assignedDriverId: d.assigned_driver_id || d.assignedDriverId
                 }));
                 setRequests(mapped);
             }
@@ -536,6 +537,18 @@ export default function TransportRequests() {
                                                                         <span className="text-xs font-bold text-slate-600 ml-1">{req.driverPhone}</span>
                                                                     </div>
                                                                 )}
+                                                            </span>
+                                                        </div>
+                                                    )}
+
+                                                    {req.assignedDriverId && (
+                                                        <div className="flex items-center gap-3 text-sm font-medium text-slate-500 flex-wrap">
+                                                            <span className="flex items-center gap-1.5 bg-amber-50 px-3 py-1.5 rounded-xl border border-amber-200 text-amber-900">
+                                                                <Star className="w-4 h-4 text-amber-500 fill-amber-400" />
+                                                                <div className="flex flex-col">
+                                                                    <span className="text-[10px] font-bold text-amber-700 uppercase tracking-widest leading-none">Selección Directa del Cliente</span>
+                                                                    <span className="font-bold text-slate-900 leading-none mt-1">Conductor ID: {req.assignedDriverId.slice(0, 8)}...</span>
+                                                                </div>
                                                             </span>
                                                         </div>
                                                     )}
