@@ -89,6 +89,12 @@ export default function OrdersRadar() {
         (driverProfile?.next_commission_deadline && new Date(driverProfile.next_commission_deadline).getTime() < Date.now())
     );
 
+    // Driver fares check: Driver must configure rates (>= $0.50) before being enabled/visible to receive trips
+    const hasFaresConfigured = Boolean(
+        driverProfile?.driver_fares && 
+        Number(driverProfile?.driver_fares?.base_fare) >= 0.50
+    );
+
     const getCommissionForCategory = (categoryOrType: string) => {
         const cat = (categoryOrType || '').toLowerCase();
         if (cat.includes('confort') || cat.includes('ejecutivo')) return 1.20;
@@ -313,8 +319,8 @@ export default function OrdersRadar() {
                 }
             });
 
-            // Activar modal de despacho estilo YANGO si no estamos en viaje activo ni suspendidos
-            if (!activeOrder && !activeTransport && !isSuspended) {
+            // Activar modal de despacho estilo YANGO si no estamos en viaje activo, ni suspendidos y con tarifas configuradas
+            if (!activeOrder && !activeTransport && !isSuspended && hasFaresConfigured) {
                 const newest = availableTransport[0] || availableOrders[0];
                 if (newest) {
                     setIncomingDispatch(newest);
@@ -323,7 +329,7 @@ export default function OrdersRadar() {
         }
         
         lastAvailableCount.current = currentCount;
-    }, [availableOrders, availableTransport, activeOrder, activeTransport, isSuspended]);
+    }, [availableOrders, availableTransport, activeOrder, activeTransport, isSuspended, hasFaresConfigured]);
 
     // 3.2 Temporizador de cuenta regresiva de 20s para el despacho YANGO
     useEffect(() => {
@@ -1234,6 +1240,31 @@ export default function OrdersRadar() {
                 </div>
             </div>
 
+            {/* Banner Obligatorio: Configuración de Tarifas */}
+            {!hasFaresConfigured && (
+                <div className="bg-gradient-to-r from-red-600 via-rose-600 to-red-700 text-white p-5 rounded-[2.5rem] shadow-xl shadow-red-500/20 border-2 border-red-400/50 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 animate-in fade-in slide-in-from-top-2">
+                    <div className="flex items-center gap-3.5">
+                        <div className="w-12 h-12 bg-white/20 rounded-2xl flex items-center justify-center shrink-0 animate-pulse">
+                            <AlertTriangle className="w-6 h-6 text-white" />
+                        </div>
+                        <div>
+                            <h4 className="font-black text-base leading-tight flex items-center gap-2">
+                                Configura tus tarifas para empezar a recibir viajes
+                            </h4>
+                            <p className="text-xs text-red-100 font-medium mt-0.5">
+                                Para quedar habilitado y visible a los clientes, debes configurar tus tarifas (mínimo $0.50 USD).
+                            </p>
+                        </div>
+                    </div>
+                    <button
+                        onClick={() => navigate('/delivery/earnings?tab=fares')}
+                        className="w-full sm:w-auto px-5 py-3 bg-white hover:bg-red-50 text-red-700 font-black rounded-xl text-xs uppercase tracking-wider shadow-lg active:scale-95 transition-all shrink-0 flex items-center justify-center gap-2"
+                    >
+                        <span>Configurar Tarifas</span>
+                    </button>
+                </div>
+            )}
+
             {/* Banner de Suspensión por Deuda de Comisiones */}
             {isSuspended && (
                 <div className="bg-gradient-to-r from-red-600 to-rose-700 text-white p-5 rounded-[2.5rem] shadow-xl shadow-red-500/20 border border-red-400/30 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 animate-in fade-in slide-in-from-top-2">
@@ -1537,14 +1568,22 @@ export default function OrdersRadar() {
 
                         <div className="mt-4 z-10 space-y-1">
                             <h3 className="text-lg font-black text-white tracking-tight flex items-center justify-center gap-2">
-                                <span>Buscando Clientes</span>
-                                <span className="flex h-2 w-2 relative">
-                                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                                    <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
-                                </span>
+                                {hasFaresConfigured ? (
+                                    <>
+                                        <span>Buscando Clientes</span>
+                                        <span className="flex h-2 w-2 relative">
+                                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                                            <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                                        </span>
+                                    </>
+                                ) : (
+                                    <span className="text-rose-400">Tarifas Pendientes</span>
+                                )}
                             </h3>
                             <p className="text-slate-400 font-medium text-xs max-w-xs mx-auto">
-                                Tu señal GPS está transmitiendo en tiempo real. Al haber solicitudes cercanas, sonará la alerta en pantalla.
+                                {hasFaresConfigured
+                                    ? "Tu señal GPS está transmitiendo en tiempo real. Al haber solicitudes cercanas, sonará la alerta en pantalla."
+                                    : "Configura tus tarifas arriba para activar la visibilidad del radar y empezar a recibir viajes."}
                             </p>
                         </div>
                     </motion.div>

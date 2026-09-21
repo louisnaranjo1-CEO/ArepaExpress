@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { X, Navigation, Store, Star, Clock, Truck, ChevronRight, MapPin } from 'lucide-react';
+import { X, Navigation, Store, Star, Clock, ChevronRight, MapPin } from 'lucide-react';
 import { Restaurant } from '../lib/seed';
 import { calculateDistance, formatDistance } from '../lib/geo';
 import { useNavigate } from 'react-router-dom';
@@ -23,59 +23,90 @@ export const ExploreMapModal: React.FC<ExploreMapModalProps> = ({
   const navigate = useNavigate();
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<L.Map | null>(null);
-  const markersRef = useRef<L.Marker[]>([]);
+  const userMarkerRef = useRef<L.Marker | null>(null);
+  const markersLayerRef = useRef<L.LayerGroup | null>(null);
   const [selectedRestaurant, setSelectedRestaurant] = useState<Restaurant | null>(null);
 
-  const defaultCenter = userLocation || {
-    lat: 8.9326, // Calabozo default
-    lng: -67.4264
-  };
-
+  // Initialize Map ONCE when modal opens
   useEffect(() => {
     if (!isOpen || !mapContainerRef.current) return;
 
-    // Clean existing map instance if any
     if (mapInstanceRef.current) {
-      mapInstanceRef.current.remove();
-      mapInstanceRef.current = null;
+      return;
     }
 
+    const initialCenter = userLocation || {
+      lat: 8.9326, // Calabozo default
+      lng: -67.4264
+    };
+
     const map = L.map(mapContainerRef.current, {
-      center: [defaultCenter.lat, defaultCenter.lng],
+      center: [initialCenter.lat, initialCenter.lng],
       zoom: userLocation ? 14 : 12,
       zoomControl: false,
     });
 
-    // 100% Free OpenStreetMap tile layer (no API key, completely free)
+    // 100% Free OpenStreetMap tile layer
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       maxZoom: 19,
       attribution: '&copy; OpenStreetMap contributors'
     }).addTo(map);
 
     L.control.zoom({ position: 'topright' }).addTo(map);
+
+    // Layer group for markers
+    markersLayerRef.current = L.layerGroup().addTo(map);
     mapInstanceRef.current = map;
 
-    // Add User Marker if available
-    if (userLocation) {
-      const userIcon = L.divIcon({
-        className: 'custom-user-marker',
-        html: `
-          <div style="position: relative; width: 24px; height: 24px;">
-            <div style="position: absolute; inset: -8px; background: rgba(59, 130, 246, 0.3); border-radius: 50%; animation: ping 1.5s cubic-bezier(0, 0, 0.2, 1) infinite;"></div>
-            <div style="width: 24px; height: 24px; background: #2563eb; border: 3px solid #ffffff; border-radius: 50%; box-shadow: 0 4px 12px rgba(0,0,0,0.3);"></div>
-          </div>
-        `,
-        iconSize: [24, 24],
-        iconAnchor: [12, 12]
-      });
+    const timeout = setTimeout(() => {
+      map.invalidateSize();
+    }, 250);
 
-      L.marker([userLocation.lat, userLocation.lng], { icon: userIcon })
+    return () => {
+      clearTimeout(timeout);
+      if (mapInstanceRef.current) {
+        mapInstanceRef.current.remove();
+        mapInstanceRef.current = null;
+        userMarkerRef.current = null;
+        markersLayerRef.current = null;
+      }
+    };
+  }, [isOpen]);
+
+  // Update User Marker without re-centering or destroying the map
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    if (!map || !userLocation) return;
+
+    const userIcon = L.divIcon({
+      className: 'custom-user-marker',
+      html: `
+        <div style="position: relative; width: 24px; height: 24px;">
+          <div style="position: absolute; inset: -8px; background: rgba(59, 130, 246, 0.3); border-radius: 50%; animation: ping 1.5s cubic-bezier(0, 0, 0.2, 1) infinite;"></div>
+          <div style="width: 24px; height: 24px; background: #2563eb; border: 3px solid #ffffff; border-radius: 50%; box-shadow: 0 4px 12px rgba(0,0,0,0.3);"></div>
+        </div>
+      `,
+      iconSize: [24, 24],
+      iconAnchor: [12, 12]
+    });
+
+    if (userMarkerRef.current) {
+      userMarkerRef.current.setLatLng([userLocation.lat, userLocation.lng]);
+    } else {
+      userMarkerRef.current = L.marker([userLocation.lat, userLocation.lng], { icon: userIcon })
         .addTo(map)
         .bindPopup('<b>Tu ubicación</b>');
     }
+  }, [userLocation]);
 
-    // Add Markers for all stores with coordinates
-    markersRef.current = [];
+  // Update Store Markers without re-centering or destroying the map
+  useEffect(() => {
+    const layer = markersLayerRef.current;
+    const map = mapInstanceRef.current;
+    if (!layer || !map) return;
+
+    layer.clearLayers();
+
     const validRestaurants = restaurants.filter(
       r => r.location?.coords?.lat && r.location?.coords?.lng
     );
@@ -99,26 +130,14 @@ export const ExploreMapModal: React.FC<ExploreMapModalProps> = ({
         iconAnchor: [22, 52]
       });
 
-      const marker = L.marker([lat, lng], { icon: storeIcon }).addTo(map);
+      const marker = L.marker([lat, lng], { icon: storeIcon });
       marker.on('click', () => {
         setSelectedRestaurant(rest);
         map.panTo([lat, lng]);
       });
-      markersRef.current.push(marker);
+      layer.addLayer(marker);
     });
-
-    const timeout = setTimeout(() => {
-      map.invalidateSize();
-    }, 200);
-
-    return () => {
-      clearTimeout(timeout);
-      if (mapInstanceRef.current) {
-        mapInstanceRef.current.remove();
-        mapInstanceRef.current = null;
-      }
-    };
-  }, [isOpen, restaurants, userLocation]);
+  }, [restaurants]);
 
   if (!isOpen) return null;
 

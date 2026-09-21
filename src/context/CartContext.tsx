@@ -89,7 +89,17 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
 
     const removeItem = (id: string) => {
-        setItems((current) => current.filter(item => item.id !== id));
+        setItems((current) => {
+            const next = current.filter(item => item.id !== id && (item as any).productId !== id);
+            try {
+                if (next.length === 0) {
+                    localStorage.removeItem('arepa-express-cart');
+                } else {
+                    localStorage.setItem('arepa-express-cart', JSON.stringify(next));
+                }
+            } catch (e) {}
+            return next;
+        });
     };
 
     const updateQuantity = (id: string, newQuantity: number) => {
@@ -98,12 +108,21 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
             return;
         }
 
-        setItems((current) =>
-            current.map(item => item.id === id ? { ...item, quantity: newQuantity } : item)
-        );
+        setItems((current) => {
+            const next = current.map(item => item.id === id ? { ...item, quantity: newQuantity } : item);
+            try {
+                localStorage.setItem('arepa-express-cart', JSON.stringify(next));
+            } catch (e) {}
+            return next;
+        });
     };
 
-    const clearCart = () => setItems([]);
+    const clearCart = () => {
+        setItems([]);
+        try {
+            localStorage.removeItem('arepa-express-cart');
+        } catch (e) {}
+    };
 
     const totalItems = (items || []).reduce((sum, item) => sum + (item?.quantity || 0), 0);
     const totalPrice = (items || []).reduce((sum, item) => sum + ((item?.price || 0) * (item?.quantity || 0)), 0);

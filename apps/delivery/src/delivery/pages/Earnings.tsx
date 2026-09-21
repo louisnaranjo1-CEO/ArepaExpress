@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { DollarSign, Activity, Calendar, ArrowUpRight, Star, ExternalLink, PackageCheck, AlertCircle, Ticket, Gift, Sparkles, Clock, Copy, Check, UploadCloud, X, ShieldAlert, CheckCircle2, Sliders, Info, Shield, CreditCard } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { supabase } from '../../lib/supabase';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useCurrency } from '../../context/CurrencyContext';
 import { toast } from 'react-hot-toast';
 
@@ -52,9 +52,11 @@ interface DriverFares {
 
 export default function Earnings() {
     const { user, profile } = useAuth();
+    const [searchParams] = useSearchParams();
     const [earnings, setEarnings] = useState<EarningsItem[]>([]);
     const [loading, setLoading] = useState(true);
-    const [activeTab, setActiveTab] = useState<'rides' | 'commissions' | 'fares'>('rides');
+    const initialTab = (searchParams.get('tab') as 'rides' | 'commissions' | 'fares') || 'rides';
+    const [activeTab, setActiveTab] = useState<'rides' | 'commissions' | 'fares'>(initialTab);
     const navigate = useNavigate();
 
     const [activeRaffles, setActiveRaffles] = useState<DriverRaffle[]>([]);
@@ -476,8 +478,8 @@ export default function Earnings() {
         e.preventDefault();
         if (!user) return;
 
-        if (fares.base_fare < 1.0) {
-            toast.error('La tarifa base mínima permitida es de $1.00 USD.');
+        if (fares.base_fare < 0.50) {
+            toast.error('La tarifa base mínima permitida es de $0.50 USD.');
             return;
         }
 
@@ -876,17 +878,17 @@ export default function Earnings() {
                                     <span className="absolute left-3.5 top-3 text-slate-400 font-bold text-sm">$</span>
                                     <input
                                         type="number"
-                                        step="0.10"
-                                        min="1.00"
+                                        step="0.05"
+                                        min="0.50"
                                         value={fares.base_fare}
                                         onChange={(e) => setFares(prev => ({ ...prev, base_fare: parseFloat(e.target.value) || 0 }))}
                                         className="w-full pl-8 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-2xl text-slate-800 text-sm font-bold focus:outline-none focus:border-amber-500"
-                                        placeholder="1.50"
+                                        placeholder="0.50"
                                         required
                                     />
                                 </div>
                                 <span className="text-[10px] text-slate-400 mt-1 block">
-                                    * Tarifa mínima obligatoria por normativa de la plataforma: $1.00 USD.
+                                    * Tarifa mínima obligatoria por normativa de la plataforma: $0.50 USD.
                                 </span>
                             </div>
 
@@ -936,7 +938,7 @@ export default function Earnings() {
                         {/* Save Button */}
                         <button
                             type="submit"
-                            disabled={savingFares || fares.base_fare < 1.0}
+                            disabled={savingFares || fares.base_fare < 0.50}
                             className="w-full py-3.5 bg-slate-900 hover:bg-slate-800 disabled:opacity-40 active:scale-98 text-white text-xs font-black uppercase tracking-wider rounded-2xl transition-all shadow-md flex items-center justify-center gap-2"
                         >
                             {savingFares ? 'Guardando...' : 'Guardar Mis Tarifas'}

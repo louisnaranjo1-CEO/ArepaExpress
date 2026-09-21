@@ -910,10 +910,15 @@ export default function Taxi() {
             }
 
             // 3. Crear solicitud con estado searching
+            const isValidUUID = (str: string | null | undefined): boolean => {
+                if (!str) return false;
+                return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(str);
+            };
+
             const newReqId = crypto.randomUUID();
             const orderData: any = {
                 id: newReqId,
-                user_id: validUserId,
+                user_id: isValidUUID(validUserId) ? validUserId : null,
                 user_name: userData?.displayName || user?.displayName || user?.email || 'Usuario',
                 user_phone: userData?.phone || 'Sin número',
                 user_cedula: userData?.cedula || 'N/A',
@@ -949,11 +954,15 @@ export default function Taxi() {
                 },
                 notes: data.description,
                 audio_url: audioUrl || null,
+                reference_url: referenceUrl || null,
                 created_at: new Date().toISOString()
             };
 
             const { error: insErr } = await supabase.from('transport_requests').insert(orderData);
-            if (insErr) throw insErr;
+            if (insErr) {
+                console.error("Supabase insert error:", insErr);
+                throw insErr;
+            }
 
             setMandadoDescription(data.description);
             setMandadoStoreName(data.storeName || (data.hasExactStores ? 'Comercios definidos' : 'Lugares a sugerir'));
@@ -964,7 +973,7 @@ export default function Taxi() {
             toast.success("¡Mandado publicado! Escaneando ofertas de pilotos en tiempo real...", { icon: '🛍️', duration: 4000 });
         } catch (error: any) {
             console.error("Error creating mandado request:", error);
-            toast.error("No se pudo publicar el mandado. Revisa tu conexión.");
+            toast.error(error?.message || "No se pudo publicar el mandado. Revisa tu conexión.");
         } finally {
             setIsSubmittingMandado(false);
         }

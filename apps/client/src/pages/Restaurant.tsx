@@ -321,11 +321,11 @@ export default function RestaurantPage() {
   // Extract unique product categories for tabs
   const categories = ['Todos', ...Array.from(new Set(products.map(p => p.category)))];
 
-  // Filter products by active category and availability
+  // Filter products by active category and active status
   const filteredProducts = products.filter(p => {
     const matchesCategory = activeCategory === 'Todos' || p.category === activeCategory;
-    const isAvailable = p.isAvailable !== false; // Default to true if undefined
-    return matchesCategory && isAvailable;
+    const isActive = p.isActive !== false; // Hide only if explicitly inactive/archived
+    return matchesCategory && isActive;
   });
 
   const handleAddToCart = (product: Product, variant?: any, modifiers?: any) => {
@@ -1194,23 +1194,29 @@ export default function RestaurantPage() {
                         </div>
                       )}
 
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          if ((product.variants && product.variants.length > 0) || (product.modifiers && product.modifiers.length > 0)) {
-                            setSelectedProduct(product);
-                            setSelectedVariant(null);
-                            setSelectedModifiers({});
-                          } else {
-                            handleAddToCart(product);
-                          }
-                          // Adding to cart also counts as a strong view
-                          recommendationsService.recordProductView(product.id!, product.category, restaurant.id!);
-                        }}
-                        className="absolute -bottom-2 -right-2 w-10 h-10 bg-white border border-slate-100 rounded-full flex items-center justify-center text-slate-900 shadow-lg hover:scale-110 active:scale-95 transition-all z-10"
-                      >
-                        <Plus className="w-5 h-5 font-bold" />
-                      </button>
+                      {product.isAvailable === false ? (
+                        <div className="absolute -bottom-2 -right-2 px-2.5 py-1 bg-slate-100 border border-slate-200 rounded-full text-[9px] font-black uppercase text-slate-500 shadow-sm z-10">
+                          Agotado
+                        </div>
+                      ) : (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if ((product.variants && product.variants.length > 0) || (product.modifiers && product.modifiers.length > 0)) {
+                              setSelectedProduct(product);
+                              setSelectedVariant(null);
+                              setSelectedModifiers({});
+                            } else {
+                              handleAddToCart(product);
+                            }
+                            // Adding to cart also counts as a strong view
+                            recommendationsService.recordProductView(product.id!, product.category, restaurant.id!);
+                          }}
+                          className="absolute -bottom-2 -right-2 w-10 h-10 bg-white border border-slate-100 rounded-full flex items-center justify-center text-slate-900 shadow-lg hover:scale-110 active:scale-95 transition-all z-10"
+                        >
+                          <Plus className="w-5 h-5 font-bold" />
+                        </button>
+                      )}
 
                       {productImages.length > 1 && (
                         <div className="absolute top-2 left-2 bg-black/40 backdrop-blur-md px-2 py-0.5 rounded-full text-[8px] font-black text-white uppercase tracking-tighter">

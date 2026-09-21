@@ -179,13 +179,13 @@ export default function Orders() {
                         </div>
                         <div className="space-y-2 relative z-10">
                             <h3 className="text-xl font-black text-slate-900">No tienes pedidos activos</h3>
-                            <p className="text-slate-500 text-sm font-medium leading-relaxed">¿Tienes hambre? Explora nuestros restaurantes y pide algo delicioso ahora mismo.</p>
+                            <p className="text-slate-500 text-sm font-medium leading-relaxed">Explora todas las tiendas y pide ahora mismo.</p>
                         </div>
                         <button
                             onClick={() => navigate('/')}
                             className="bg-primary text-slate-900 px-8 py-4 rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl shadow-primary/30 active:scale-95 transition-all w-full"
                         >
-                            Ir a Restaurantes
+                            Ir a Tiendas
                         </button>
                     </div>
                 ) : (
