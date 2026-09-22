@@ -663,6 +663,14 @@ export default function TransportTracker() {
 
     const getStatusInfo = () => {
         switch (request.status) {
+            case 'driver_busy':
+                return {
+                    title: "Conductor Ocupado",
+                    subtitle: request.rejection_reason || "El conductor seleccionado se encuentra ocupado llevando a otra persona en este momento. Por favor, selecciona otro disponible.",
+                    color: "text-rose-600",
+                    bg: "bg-rose-50",
+                    icon: AlertCircle
+                };
             case 'verifying_payment':
                 return { title: "Verificando Pago", subtitle: "Validando tu comprobante...", color: "text-amber-500", bg: "bg-amber-50", icon: ShieldCheck };
             case 'searching':
@@ -789,6 +797,8 @@ export default function TransportTracker() {
                         <RideChat 
                             requestId={requestId!} 
                             onClose={() => setShowChat(false)} 
+                            onStartCall={() => { setShowChat(false); setShowCall(true); }}
+                            driverPhone={driver?.phone}
                             serviceCategory={request?.service_category}
                             requestStatus={request?.status}
                             completedAt={request?.completed_at || (request as any)?.updated_at}
@@ -822,6 +832,42 @@ export default function TransportTracker() {
                         </p>
                     </div>
                 </div>
+
+                {/* Conductor Ocupado: Mensaje y Reasignación Directa */}
+                {request.status === 'driver_busy' && (
+                    <div className="mb-4 bg-gradient-to-b from-amber-50 to-orange-50 border-2 border-amber-300 rounded-[2rem] p-5 shadow-lg space-y-4">
+                        <div className="flex items-start gap-3">
+                            <div className="w-11 h-11 rounded-2xl bg-amber-400 text-slate-950 flex items-center justify-center shrink-0 shadow-md">
+                                <AlertCircle className="w-6 h-6" />
+                            </div>
+                            <div>
+                                <h3 className="text-sm font-black text-slate-900 leading-tight">
+                                    Conductor Ocupado
+                                </h3>
+                                <p className="text-xs font-bold text-slate-700 mt-1 leading-relaxed">
+                                    {request.rejection_reason || "El conductor seleccionado se encuentra ocupado llevando a otra persona en este momento. Por favor, selecciona otro disponible."}
+                                </p>
+                            </div>
+                        </div>
+
+                        <button
+                            onClick={() => {
+                                localStorage.removeItem('active_transport_req_id');
+                                navigate('/taxi', { 
+                                    state: { 
+                                        origin: request.origin, 
+                                        destination: request.destination,
+                                        category: request.service_category || 'taxi_driver'
+                                    } 
+                                });
+                            }}
+                            className="w-full py-4 bg-slate-950 hover:bg-slate-900 active:scale-95 text-amber-400 font-black text-xs uppercase tracking-wider rounded-2xl shadow-xl shadow-slate-950/20 transition-all flex items-center justify-center gap-2"
+                        >
+                            <Car className="w-4 h-4" />
+                            <span>Seleccionar otro conductor disponible</span>
+                        </button>
+                    </div>
+                )}
 
                 {/* Muchacho e' Mandao: Encargo details & Live Driver Bids in Tracker */}
                 {request.service_category === 'muchacho_mandado' && request.status === 'searching' && (
@@ -1114,7 +1160,7 @@ export default function TransportTracker() {
                                     <p className="text-[10px] font-bold text-slate-500">
                                         C.I: {(driver as any).cedula || (driver as any).user_cedula || 'Verificada'} • {(driver as any).total_trips || driver.totalTrips || 0} viajes
                                     </p>
-                                    <p className="text-[11px] font-black text-primary capitalize mt-0.5">
+                                    <p className="text-[11px] font-black text-slate-900 capitalize mt-0.5">
                                         {(driver as any).vehicle_model || driver.vehicleType || 'Vehículo'} • {(driver as any).vehicle_plate || driver.vehiclePlate || 'Sin placa'}
                                         {((driver as any).vehicle_color || driver.vehicleColor) ? ` (${(driver as any).vehicle_color || driver.vehicleColor})` : ''}
                                     </p>

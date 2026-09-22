@@ -17,6 +17,8 @@ import { Copy, Check } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { vibrate } from '../utils/haptics';
 import { registerBiometric } from '../utils/security';
+import { useCurrency } from '../context/CurrencyContext';
+import RideChat from '../components/RideChat';
 
 interface SupportTicket {
     id: string;
@@ -93,6 +95,93 @@ export default function Profile() {
     const [completingProfile, setCompletingProfile] = useState(false);
     const [reviewModalData, setReviewModalData] = useState<{ isOpen: boolean; orderId: string; restaurantId: string } | null>(null);
     const ordersRef = useRef<HTMLDivElement>(null);
+    const { bcvRate } = useCurrency();
+    const [historyFilter, setHistoryFilter] = useState<'all' | 'transport' | 'mandado' | 'order'>('all');
+    const [selectedDetailActivity, setSelectedDetailActivity] = useState<any | null>(null);
+    const [activeChatRequestId, setActiveChatRequestId] = useState<string | null>(null);
+
+    const getActivityCategoryMeta = (activity: any) => {
+        if (activity.type === 'transport') {
+            const cat = activity.service_category || activity.serviceCategory || activity.vehicle_type || activity.vehicleType;
+            if (cat === 'mototaxi' || cat === 'moto') {
+                return { label: 'Mototaxi Express', emoji: '🛵', color: 'bg-amber-100 text-amber-900 border-amber-300', tag: 'mototaxi' };
+            }
+            if (cat === 'mandado' || cat === 'muchacho_mandado') {
+                return { label: 'Muchacho e\' Mandao', emoji: '📦', color: 'bg-orange-100 text-orange-900 border-orange-300', tag: 'mandado' };
+            }
+            if (cat === 'encomienda') {
+                return { label: 'Encomienda / Paquete', emoji: '📬', color: 'bg-purple-100 text-purple-900 border-purple-300', tag: 'encomienda' };
+            }
+            if (cat === 'confort') {
+                return { label: 'Taxi Confort VIP', emoji: '🚘', color: 'bg-indigo-100 text-indigo-900 border-indigo-300', tag: 'confort' };
+            }
+            return { label: 'Taxi Tradicional', emoji: '🚕', color: 'bg-yellow-100 text-yellow-900 border-yellow-300', tag: 'taxi' };
+        }
+        if (activity.type === 'wallet_recharge') {
+            return { label: 'Recarga de Saldo', emoji: '💳', color: 'bg-emerald-100 text-emerald-900 border-emerald-300', tag: 'wallet' };
+        }
+        return { label: activity.restaurantName || activity.restaurant_name ? `Pedido: ${activity.restaurantName || activity.restaurant_name}` : 'Pedido Comida / Tienda', emoji: '🛍️', color: 'bg-rose-100 text-rose-900 border-rose-300', tag: 'order' };
+    };
+
+    const getStatusBadgeClass = (status: string) => {
+        switch (status) {
+            case 'completed':
+            case 'delivered':
+            case 'paid':
+            case 'approved':
+            case 'sold':
+                return 'bg-emerald-100 text-emerald-700 border border-emerald-200';
+            case 'cancelled':
+            case 'rejected':
+            case 'failed':
+            case 'driver_busy':
+                return 'bg-rose-100 text-rose-700 border border-rose-200';
+            case 'in_progress':
+            case 'in_transit':
+            case 'arriving':
+            case 'accepted':
+            case 'driver_assigned':
+            case 'preparing':
+                return 'bg-blue-100 text-blue-700 border border-blue-200';
+            case 'pending':
+            case 'finding_driver':
+            case 'searching':
+            default:
+                return 'bg-amber-100 text-amber-800 border border-amber-200';
+        }
+    };
+
+    const getStatusLabel = (status: string, type?: string) => {
+        switch (status) {
+            case 'completed':
+            case 'delivered':
+            case 'sold':
+                return 'Completado';
+            case 'cancelled':
+                return 'Cancelado';
+            case 'driver_busy':
+                return 'Conductor Ocupado';
+            case 'rejected':
+                return 'Rechazado';
+            case 'in_progress':
+            case 'in_transit':
+                return 'En Curso';
+            case 'arriving':
+                return 'Llegando';
+            case 'accepted':
+            case 'driver_assigned':
+                return 'Conductor Asignado';
+            case 'preparing':
+                return 'Preparando';
+            case 'finding_driver':
+            case 'searching':
+                return 'Buscando Piloto';
+            case 'pending':
+                return type === 'wallet_recharge' ? 'Pendiente' : 'En Espera';
+            default:
+                return status || 'Procesando';
+        }
+    };
 
     // Profile completion form state
     const [profileForm, setProfileForm] = useState({
@@ -203,7 +292,7 @@ export default function Profile() {
                 const { data: orderData } = await supabase
                     .from('orders')
                     .select('*')
-                    .or(`user_id.eq.${uid},userId.eq.${uid}`)
+                    .eq('user_id', uid)
                     .order('created_at', { ascending: false });
 
                 const fetchedOrders = (orderData || []).map((data: any) => {
@@ -220,7 +309,7 @@ export default function Profile() {
                 const { data: transportData } = await supabase
                     .from('transport_requests')
                     .select('*')
-                    .or(`user_id.eq.${uid},userId.eq.${uid}`)
+                    .eq('user_id', uid)
                     .order('created_at', { ascending: false });
 
                 const fetchedTransports = (transportData || []).map((data: any) => {
@@ -235,7 +324,7 @@ export default function Profile() {
                 const { data: rechargeData } = await supabase
                     .from('wallet_recharges')
                     .select('*')
-                    .or(`user_id.eq.${uid},userId.eq.${uid}`)
+                    .eq('user_id', uid)
                     .order('created_at', { ascending: false });
 
                 const fetchedRecharges = (rechargeData || []).map((data: any) => {
@@ -290,7 +379,7 @@ export default function Profile() {
                 const { data: snapshot } = await supabase
                     .from('support_tickets')
                     .select('*')
-                    .or(`user_id.eq.${uid},userId.eq.${uid}`)
+                    .eq('user_id', uid)
                     .order('created_at', { ascending: false });
 
                 const fetchedTickets = (snapshot || []).map((data: any) => ({
@@ -352,16 +441,12 @@ export default function Profile() {
             const uid = user.id || user.uid;
             const newTicket = {
                 user_id: uid,
-                userId: uid,
                 user_name: userData.displayName || 'Usuario sin nombre',
-                userName: userData.displayName || 'Usuario sin nombre',
                 user_email: user.email || '',
-                userEmail: user.email || '',
                 user_phone: userData.phone || '',
-                userPhone: userData.phone || '',
                 title: ticketForm.title,
                 description: ticketForm.description,
-                status: 'open',
+                status: 'open' as const,
                 created_at: new Date().toISOString()
             };
 
@@ -371,11 +456,17 @@ export default function Profile() {
                 .select()
                 .single();
 
+            if (insErr) throw insErr;
+
             const ticketId = insData?.id || `ticket_${Date.now()}`;
             
             // Add locally to update UI immediately
             setSupportTickets(prev => [{
                 ...newTicket,
+                userId: uid,
+                userName: userData.displayName || 'Usuario sin nombre',
+                userEmail: user.email || '',
+                userPhone: userData.phone || '',
                 id: ticketId,
                 createdAt: new Date().toISOString()
             } as any, ...prev]);
@@ -1551,142 +1642,170 @@ export default function Profile() {
 
                         {/* Activity History */}
                         <div ref={ordersRef} className="space-y-4 pt-2">
-                            <h3 className="text-lg font-black text-slate-900 px-2 flex items-center gap-2">
-                                <FileText className="w-5 h-5 text-slate-900" />
-                                Historial de Actividad
-                            </h3>
+                            <div className="flex items-center justify-between px-2">
+                                <h3 className="text-lg font-black text-slate-900 flex items-center gap-2">
+                                    <FileText className="w-5 h-5 text-slate-900" />
+                                    Historial de Actividad
+                                </h3>
+                                <span className="text-xs font-bold text-slate-500 bg-slate-100 px-2.5 py-1 rounded-full">
+                                    {activities.length} total
+                                </span>
+                            </div>
+
+                            {/* Category Filter Tabs */}
+                            <div className="flex items-center gap-1.5 overflow-x-auto pb-1 px-1 scrollbar-none">
+                                {[
+                                    { id: 'all', label: 'Todos', count: activities.length },
+                                    { 
+                                        id: 'transport', 
+                                        label: 'Viajes', 
+                                        count: activities.filter(a => {
+                                            const cat = a.service_category || (a as any).serviceCategory || (a as any).vehicle_type || a.vehicleType;
+                                            return a.type === 'transport' && (cat === 'taxi' || cat === 'confort' || cat === 'mototaxi' || cat === 'moto' || !cat);
+                                        }).length 
+                                    },
+                                    { 
+                                        id: 'mandado', 
+                                        label: 'Mandados', 
+                                        count: activities.filter(a => {
+                                            const cat = a.service_category || (a as any).serviceCategory;
+                                            return a.type === 'transport' && (cat === 'mandado' || cat === 'muchacho_mandado' || cat === 'encomienda');
+                                        }).length 
+                                    },
+                                    { 
+                                        id: 'order', 
+                                        label: 'Pedidos', 
+                                        count: activities.filter(a => a.type === 'order').length 
+                                    }
+                                ].map(tab => (
+                                    <button
+                                        key={tab.id}
+                                        type="button"
+                                        onClick={() => setHistoryFilter(tab.id as any)}
+                                        className={`px-3 py-1.5 rounded-full text-xs font-black shrink-0 transition-all flex items-center gap-1.5 ${
+                                            historyFilter === tab.id
+                                                ? 'bg-slate-900 text-white shadow-sm'
+                                                : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                                        }`}
+                                    >
+                                        <span>{tab.label}</span>
+                                        <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
+                                            historyFilter === tab.id ? 'bg-white/20 text-white' : 'bg-slate-200 text-slate-700'
+                                        }`}>
+                                            {tab.count}
+                                        </span>
+                                    </button>
+                                ))}
+                            </div>
 
                             {loadingActivities ? (
-                                <div className="flex justify-center py-4">
+                                <div className="flex justify-center py-6">
                                     <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin"></div>
                                 </div>
                             ) : activities.length > 0 ? (
-                                <div className="space-y-3">
-                                    {activities.map(activity => (
-                                        <div key={activity.id} className="bg-slate-50 border border-slate-100 p-4 rounded-2xl flex flex-col gap-2">
-                                            <div className="flex justify-between items-start">
-                                                <div>
-                                                    <div className="flex items-center gap-2">
-                                                        {activity.type === 'transport' ? (
-                                                            <div className="p-1.5 bg-blue-100 rounded-lg text-blue-600">
-                                                                <Navigation className="w-4 h-4" />
-                                                            </div>
-                                                        ) : (
-                                                            <div className="p-1.5 bg-orange-100 rounded-lg text-orange-600">
-                                                                <ShoppingBag className="w-4 h-4" />
-                                                            </div>
-                                                        )}
-                                                        <p className="font-bold text-slate-900 text-sm">
-                                                            {activity.type === 'transport' ? 'Viaje en Taxi' : 'Pedido de Comida'} <span className="text-slate-400 text-xs">#{activity.id.slice(-6).toUpperCase()}</span>
-                                                        </p>
-                                                    </div>
-                                                    <div className="flex items-center gap-1 text-xs text-slate-500 mt-1.5 ml-8">
-                                                        <Clock className="w-3 h-3" />
-                                                        <span>
-                                                            {(() => {
-                                                                const actDate = activity.createdAt?.toDate ? activity.createdAt.toDate() : (activity.createdAt ? new Date(activity.createdAt) : null);
-                                                                return actDate ? `${actDate.toLocaleDateString()} a las ${actDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : 'Reciente';
-                                                            })()}
-                                                        </span>
-                                                    </div>
-                                                </div>
-                                                <span className={`px-2 py-1 rounded text-[10px] font-bold uppercase tracking-wider mt-1 ${
-                                                    activity.status === 'pending' || activity.status === 'finding_driver' || activity.status === 'searching' ? 'bg-orange-100 text-orange-600' :
-                                                    activity.status === 'completed' || activity.status === 'delivered' || activity.status === 'paid' || activity.status === 'approved' || activity.status === 'sold' ? 'bg-emerald-100 text-emerald-600' :
-                                                    (activity.status === 'accepted' || activity.status === 'arriving' || activity.status === 'in_progress' || activity.status === 'in_transit' || activity.status === 'driver_assigned' || activity.status === 'preparing') ? 'bg-blue-100 text-blue-600' :
-                                                    activity.status === 'cancelled' || activity.status === 'rejected' || activity.status === 'failed' ? 'bg-red-100 text-red-600' :
-                                                    'bg-slate-200 text-slate-600'
-                                                }`}>
-                                                    {activity.status === 'pending' ? (activity.type === 'wallet_recharge' ? 'Pendiente' : 'Buscando') :
-                                                    activity.status === 'finding_driver' || activity.status === 'searching' ? 'Buscando Piloto' :
-                                                    activity.status === 'driver_assigned' || activity.status === 'accepted' ? 'Asignado' :
-                                                    activity.status === 'preparing' ? 'Preparando' :
-                                                    activity.status === 'in_transit' || activity.status === 'in_progress' || activity.status === 'arriving' ? 'En Camino' :
-                                                    activity.status === 'completed' || activity.status === 'delivered' || activity.status === 'sold' ? 'Completado' : 
-                                                    activity.status === 'approved' || activity.status === 'paid' ? 'Aprobado' :
-                                                    activity.status === 'cancelled' || activity.status === 'rejected' || activity.status === 'failed' ? 'Cancelado' : activity.status}
-                                                </span>
+                                (() => {
+                                    const filtered = activities.filter(activity => {
+                                        if (historyFilter === 'all') return true;
+                                        if (historyFilter === 'transport') {
+                                            const cat = activity.service_category || (activity as any).serviceCategory || (activity as any).vehicle_type || activity.vehicleType;
+                                            return activity.type === 'transport' && (cat === 'taxi' || cat === 'confort' || cat === 'mototaxi' || cat === 'moto' || !cat);
+                                        }
+                                        if (historyFilter === 'mandado') {
+                                            const cat = activity.service_category || (activity as any).serviceCategory;
+                                            return activity.type === 'transport' && (cat === 'mandado' || cat === 'muchacho_mandado' || cat === 'encomienda');
+                                        }
+                                        if (historyFilter === 'order') {
+                                            return activity.type === 'order';
+                                        }
+                                        return true;
+                                    });
+
+                                    if (filtered.length === 0) {
+                                        return (
+                                            <div className="bg-slate-50 border border-slate-100 p-6 rounded-2xl text-center flex flex-col items-center justify-center">
+                                                <ShoppingBag className="w-8 h-8 text-slate-300 mb-2" />
+                                                <p className="text-sm font-bold text-slate-500">No hay registros en esta categoría</p>
                                             </div>
-                                            <div className="h-px bg-slate-200 my-1"></div>
-                                            
-                                            {/* Details Section */}
-                                            {activity.type === 'transport' ? (
-                                                <div className="text-xs text-slate-500 flex flex-col gap-1.5">
-                                                    <div className="flex items-center gap-2">
-                                                        <div className="p-1.5 bg-slate-100 rounded-lg text-slate-600">
-                                                            <Navigation className="w-4 h-4" />
+                                        );
+                                    }
+
+                                    return (
+                                        <div className="space-y-3">
+                                            {filtered.map(activity => {
+                                                const meta = getActivityCategoryMeta(activity);
+                                                const actDate = activity.created_at ? new Date(activity.created_at) : (activity.createdAt?.toDate ? activity.createdAt.toDate() : (activity.createdAt ? new Date(activity.createdAt) : null));
+                                                const isTransport = activity.type === 'transport';
+                                                const isOrder = activity.type === 'order';
+                                                const isRecharge = activity.type === 'wallet_recharge';
+                                                const amountUsd = isRecharge ? (activity.amount || 0) : isTransport ? (parseFloat((activity as any).price || activity.fare || 0)) : (parseFloat(activity.total || 0) + parseFloat((activity as any).deliveryFee || (activity as any).delivery_fee || 0));
+                                                const amountBs = bcvRate > 0 ? (amountUsd * bcvRate).toFixed(2) : null;
+
+                                                return (
+                                                    <div 
+                                                        key={activity.id} 
+                                                        onClick={() => setSelectedDetailActivity(activity)}
+                                                        className="bg-white hover:bg-slate-50 border border-slate-200/80 hover:border-amber-400 p-4 rounded-2xl flex flex-col gap-2.5 transition-all cursor-pointer shadow-sm active:scale-[0.99]"
+                                                    >
+                                                        <div className="flex justify-between items-start gap-2">
+                                                            <div className="flex items-start gap-2.5 min-w-0">
+                                                                <span className="text-2xl select-none shrink-0 p-1.5 bg-slate-100 rounded-xl">{meta.emoji}</span>
+                                                                <div className="min-w-0">
+                                                                    <div className="flex items-center gap-1.5 flex-wrap">
+                                                                        <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-full border ${meta.color}`}>
+                                                                            {meta.label}
+                                                                        </span>
+                                                                        <span className="text-slate-400 text-xs font-mono font-bold">
+                                                                            #{activity.id.slice(-5).toUpperCase()}
+                                                                        </span>
+                                                                    </div>
+                                                                    <p className="font-bold text-slate-800 text-sm truncate mt-1">
+                                                                        {isTransport 
+                                                                            ? ((activity as any).destination_address || activity.destination?.address || 'Viaje en ruta')
+                                                                            : isOrder 
+                                                                            ? (activity.restaurantName || (activity as any).restaurant_name || 'Pedido en Tienda')
+                                                                            : 'Recarga de Saldo'}
+                                                                    </p>
+                                                                    <div className="flex items-center gap-1 text-[11px] text-slate-400 mt-0.5">
+                                                                        <Clock className="w-3 h-3 shrink-0" />
+                                                                        <span>
+                                                                            {actDate ? `${actDate.toLocaleDateString()} • ${actDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : 'Reciente'}
+                                                                        </span>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+
+                                                            <div className="text-right shrink-0">
+                                                                <span className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider block mb-1 ${getStatusBadgeClass(activity.status)}`}>
+                                                                    {getStatusLabel(activity.status, activity.type)}
+                                                                </span>
+                                                                <p className="font-black text-slate-900 text-base">
+                                                                    ${amountUsd.toFixed(2)}
+                                                                </p>
+                                                                {amountBs && (
+                                                                    <p className="text-[10px] font-bold text-slate-500">
+                                                                        {amountBs} Bs
+                                                                    </p>
+                                                                )}
+                                                            </div>
                                                         </div>
-                                                        <span className="font-bold text-slate-800 text-sm capitalize">
-                                                            Vehículo: {activity.vehicleType || 'No especificado'}
-                                                        </span>
-                                                    </div>
-                                                </div>
-                                            ) : activity.type === 'wallet_recharge' ? (
-                                                <div className="text-xs text-slate-500 flex items-center gap-1.5">
-                                                    <div className="p-1.5 bg-green-100 rounded-lg text-green-600">
-                                                        <Wallet className="w-4 h-4" />
-                                                    </div>
-                                                    <span className="font-bold text-slate-800 text-sm">
-                                                        Recarga de Saldo - Ref: {activity.paymentRef || 'S/N'}
-                                                    </span>
-                                                </div>
-                                            ) : (
-                                                <div className="text-xs text-slate-500 flex items-center gap-1.5">
-                                                    <div className="p-1.5 bg-slate-100 rounded-lg text-slate-400">
-                                                        <Store className="w-4 h-4" />
-                                                    </div>
-                                                    <span className="font-bold text-slate-700 text-sm truncate max-w-[150px]">
-                                                        {activity.restaurantName || 'Negocio'}
-                                                    </span>
-                                                    <span className="text-slate-300 mx-1">|</span>
-                                                    <span className="bg-slate-200 px-2 py-0.5 rounded-md font-bold text-slate-600">
-                                                        {activity.items?.length || 0} art.
-                                                    </span>
-                                                    <span className="line-clamp-1 italic text-[10px]">{activity.items?.map(i => i.name).join(', ')}</span>
-                                                </div>
-                                            )}
 
-                                            <div className="flex justify-end items-end mt-1">
-                                                <span className="font-black text-slate-900 text-base">
-                                                    ${(activity.type === 'wallet_recharge' ? (activity.amount || 0) : activity.type === 'transport' ? (activity.price || activity.fare || 0) : ((activity.total || 0) + (activity.deliveryFee || 0))).toFixed(2)}
-                                                </span>
-                                            </div>
-                                            
-                                            {/* Action Buttons */}
-                                            {activity.type === 'transport' && (activity.status === 'finding_driver' || activity.status === 'accepted' || activity.status === 'arriving' || activity.status === 'in_progress') && (
-                                                <button
-                                                    onClick={() => navigate(`/taxi/track/${activity.id}`)}
-                                                    className="mt-2 w-full bg-secondary/10 text-secondary font-bold py-3 rounded-xl flex justify-center items-center gap-2 active:scale-95 transition-transform"
-                                                >
-                                                    <Navigation className="w-4 h-4" /> Ver Viaje
-                                                </button>
-                                            )}
-                                            {activity.type === 'order' && activity.deliveryMethod === 'app_delivery' && (activity.status === 'finding_driver' || activity.status === 'driver_assigned' || activity.status === 'in_transit') && (
-                                                <button
-                                                    onClick={() => navigate(`/track/${activity.id}`)}
-                                                    className="mt-2 w-full bg-secondary/10 text-secondary font-bold py-3 rounded-xl flex justify-center items-center gap-2 active:scale-95 transition-transform"
-                                                >
-                                                    <Navigation className="w-4 h-4" /> Rastrear Pedido
-                                                </button>
-                                            )}
-
-                                            {/* Leave Review Button (Only for orders currently based on existing code) */}
-                                            {activity.type === 'order' && activity.status === 'completed' && !activity.hasReviewed && activity.restaurantId && (
-                                                <button
-                                                    onClick={() => setReviewModalData({ isOpen: true, orderId: activity.id, restaurantId: activity.restaurantId! })}
-                                                    className="mt-2 w-full bg-orange-50 text-orange-600 font-bold py-3 rounded-xl flex justify-center items-center gap-2 active:scale-95 transition-transform"
-                                                >
-                                                    <Star className="w-4 h-4 fill-orange-600" /> Dejar Reseña
-                                                </button>
-                                            )}
-                                            {activity.type === 'order' && activity.hasReviewed && (
-                                                <div className="mt-2 w-full bg-slate-50 text-slate-400 font-bold py-2 rounded-xl flex justify-center items-center gap-2 text-xs">
-                                                    <Star className="w-4 h-4 fill-slate-300" /> Reseña Enviada
-                                                </div>
-                                            )}
+                                                        {/* Quick footer details */}
+                                                        <div className="border-t border-slate-100 pt-2 flex items-center justify-between text-xs text-slate-500">
+                                                            <span className="text-[11px] font-medium text-amber-700">
+                                                                Toca para ver desglose y soporte →
+                                                            </span>
+                                                            {isTransport && (activity.status === 'in_progress' || activity.status === 'accepted' || activity.status === 'arriving') && (
+                                                                <span className="text-[10px] font-black uppercase text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full animate-pulse">
+                                                                    En Vivo
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })}
                                         </div>
-                                    ))}
-                                </div>
+                                    );
+                                })()
                             ) : (
                                 <div className="bg-slate-50 border border-slate-100 p-6 rounded-2xl text-center flex flex-col items-center justify-center">
                                     <ShoppingBag className="w-8 h-8 text-slate-300 mb-2" />
@@ -2682,6 +2801,199 @@ export default function Profile() {
                     </div>
                 )}
             </AnimatePresence>
+
+            {/* Interactive Activity Detail Modal */}
+            {selectedDetailActivity && (
+                <div className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-sm flex items-center justify-center p-4">
+                    <div className="bg-white rounded-3xl p-5 w-full max-w-md max-h-[90vh] overflow-y-auto space-y-4 shadow-2xl border border-slate-100 animate-slide-up">
+                        {/* Modal Header */}
+                        <div className="flex items-start justify-between">
+                            <div className="flex items-center gap-2.5 min-w-0">
+                                <span className="text-3xl p-2 bg-slate-100 rounded-2xl shrink-0">
+                                    {getActivityCategoryMeta(selectedDetailActivity).emoji}
+                                </span>
+                                <div className="min-w-0">
+                                    <h4 className="font-black text-slate-900 text-base truncate">
+                                        {getActivityCategoryMeta(selectedDetailActivity).label}
+                                    </h4>
+                                    <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider inline-block mt-0.5 ${getStatusBadgeClass(selectedDetailActivity.status)}`}>
+                                        {getStatusLabel(selectedDetailActivity.status, selectedDetailActivity.type)}
+                                    </span>
+                                </div>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => setSelectedDetailActivity(null)}
+                                className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-600 flex items-center justify-center transition-all active:scale-90 shrink-0"
+                            >
+                                <X className="w-4 h-4" />
+                            </button>
+                        </div>
+
+                        {/* Service & Route Details */}
+                        <div className="bg-slate-50 rounded-2xl p-3.5 space-y-2.5 border border-slate-200/60 text-xs">
+                            <div className="flex justify-between items-center text-slate-400 text-[11px] font-bold">
+                                <span>ID de Servicio:</span>
+                                <span className="font-mono text-slate-700">#{selectedDetailActivity.id}</span>
+                            </div>
+                            
+                            {selectedDetailActivity.type === 'transport' && (
+                                <>
+                                    <div className="flex items-start gap-2 pt-1">
+                                        <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 mt-1 shrink-0"></div>
+                                        <div>
+                                            <span className="text-[10px] font-bold text-slate-400 uppercase">Origen / Salida:</span>
+                                            <p className="font-bold text-slate-800 text-xs">
+                                                {(selectedDetailActivity as any).origin_address || selectedDetailActivity.origin?.address || 'Ubicación de partida'}
+                                            </p>
+                                        </div>
+                                    </div>
+                                    <div className="flex items-start gap-2 pt-1">
+                                        <div className="w-2.5 h-2.5 rounded-full bg-rose-500 mt-1 shrink-0"></div>
+                                        <div>
+                                            <span className="text-[10px] font-bold text-slate-400 uppercase">Destino / Entrega:</span>
+                                            <p className="font-bold text-slate-800 text-xs">
+                                                {(selectedDetailActivity as any).destination_address || selectedDetailActivity.destination?.address || 'Ubicación de destino'}
+                                            </p>
+                                        </div>
+                                    </div>
+
+                                    {/* Mandado Details if applicable */}
+                                    {(selectedDetailActivity as any).mandado_details && (
+                                        <div className="mt-2 p-2.5 bg-amber-50/80 rounded-xl border border-amber-200/70 text-slate-800 space-y-1">
+                                            <span className="text-[10px] font-black uppercase text-amber-800">Detalles del Mandado:</span>
+                                            <p className="font-medium text-xs">{(selectedDetailActivity as any).mandado_details.itemsDescription || (selectedDetailActivity as any).mandado_details.purchaseList}</p>
+                                            {(selectedDetailActivity as any).mandado_details.passengerRouteDescription && (
+                                                <div className="mt-1 pt-1 border-t border-amber-200 text-amber-900">
+                                                    <span className="text-[10px] font-bold">Ruta del Pasajero: </span>
+                                                    <span>{(selectedDetailActivity as any).mandado_details.passengerRouteDescription}</span>
+                                                </div>
+                                            )}
+                                        </div>
+                                    )}
+                                </>
+                            )}
+
+                            {selectedDetailActivity.type === 'order' && (
+                                <>
+                                    <div className="pt-1">
+                                        <span className="text-[10px] font-bold text-slate-400 uppercase">Comercio / Tienda:</span>
+                                        <p className="font-bold text-slate-800 text-sm">
+                                            {selectedDetailActivity.restaurantName || (selectedDetailActivity as any).restaurant_name || 'Comercio Local'}
+                                        </p>
+                                    </div>
+                                    {selectedDetailActivity.items && selectedDetailActivity.items.length > 0 && (
+                                        <div className="space-y-1 pt-1 border-t border-slate-200">
+                                            <span className="text-[10px] font-bold text-slate-400 uppercase">Productos ({selectedDetailActivity.items.length}):</span>
+                                            {selectedDetailActivity.items.map((item: any, idx: number) => (
+                                                <div key={idx} className="flex justify-between text-xs text-slate-700 font-medium">
+                                                    <span>{item.quantity || 1}x {item.name}</span>
+                                                    <span className="font-bold">${((item.price || 0) * (item.quantity || 1)).toFixed(2)}</span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                </>
+                            )}
+                        </div>
+
+                        {/* Financial Breakdown in $ and Bs */}
+                        <div className="bg-gradient-to-br from-amber-500/10 to-orange-500/10 border border-amber-200/80 rounded-2xl p-4 space-y-2">
+                            <div className="flex justify-between items-baseline">
+                                <span className="text-xs font-bold text-slate-600">Total en Divisa ($):</span>
+                                <span className="text-lg font-black text-slate-900">
+                                    ${(selectedDetailActivity.type === 'wallet_recharge'
+                                        ? (selectedDetailActivity.amount || 0)
+                                        : selectedDetailActivity.type === 'transport'
+                                        ? (parseFloat((selectedDetailActivity as any).price || selectedDetailActivity.fare || 0))
+                                        : (parseFloat(selectedDetailActivity.total || 0) + parseFloat((selectedDetailActivity as any).deliveryFee || (selectedDetailActivity as any).delivery_fee || 0))
+                                    ).toFixed(2)} USD
+                                </span>
+                            </div>
+                            {bcvRate > 0 && (
+                                <div className="flex justify-between items-baseline">
+                                    <span className="text-xs font-bold text-slate-600">Total en Bolívares (Bs):</span>
+                                    <span className="text-base font-black text-amber-900">
+                                        {(
+                                            (selectedDetailActivity.type === 'wallet_recharge'
+                                                ? (selectedDetailActivity.amount || 0)
+                                                : selectedDetailActivity.type === 'transport'
+                                                ? (parseFloat((selectedDetailActivity as any).price || selectedDetailActivity.fare || 0))
+                                                : (parseFloat(selectedDetailActivity.total || 0) + parseFloat((selectedDetailActivity as any).deliveryFee || (selectedDetailActivity as any).delivery_fee || 0))
+                                            ) * bcvRate
+                                        ).toFixed(2)} Bs
+                                    </span>
+                                </div>
+                            )}
+                            <div className="flex justify-between items-center text-[10px] text-slate-500 pt-1 border-t border-amber-200/60 font-medium">
+                                <span>Método: {(selectedDetailActivity as any).payment_method || (selectedDetailActivity as any).paymentMethod || 'Pago Móvil / Efectivo'}</span>
+                                {bcvRate > 0 && <span>Tasa BCV: {bcvRate.toFixed(2)} Bs/$</span>}
+                            </div>
+                        </div>
+
+                        {/* Actions */}
+                        <div className="space-y-2 pt-1">
+                            {selectedDetailActivity.type === 'transport' && (
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        const reqId = selectedDetailActivity.id;
+                                        setSelectedDetailActivity(null);
+                                        setActiveChatRequestId(reqId);
+                                    }}
+                                    className="w-full py-3 px-4 bg-slate-900 hover:bg-slate-800 text-white font-black text-xs rounded-xl flex items-center justify-center gap-2 transition-all shadow-sm active:scale-98"
+                                >
+                                    <MessageSquareWarning className="w-4 h-4 text-amber-400" />
+                                    <span>Ver Chat y Comprobantes (Respaldo 48h)</span>
+                                </button>
+                            )}
+
+                            {/* Live Track if Active */}
+                            {selectedDetailActivity.type === 'transport' && (selectedDetailActivity.status === 'in_progress' || selectedDetailActivity.status === 'accepted' || selectedDetailActivity.status === 'arriving' || selectedDetailActivity.status === 'finding_driver') && (
+                                <button
+                                    type="button"
+                                    onClick={() => navigate(`/taxi/track/${selectedDetailActivity.id}`)}
+                                    className="w-full py-3 px-4 bg-[#FFB800] hover:bg-amber-400 text-slate-950 font-black text-xs rounded-xl flex items-center justify-center gap-2 transition-all shadow-sm active:scale-98"
+                                >
+                                    <Navigation className="w-4 h-4" />
+                                    <span>Rastrear Viaje en Vivo</span>
+                                </button>
+                            )}
+
+                            {/* Support Ticket trigger */}
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    const sId = selectedDetailActivity.id;
+                                    setTicketForm({
+                                        title: `Problema con servicio #${sId.slice(-6).toUpperCase()}`,
+                                        description: `Hola soporte, necesito asistencia con mi ${getActivityCategoryMeta(selectedDetailActivity).label} (ID: ${sId}) de fecha ${new Date(selectedDetailActivity.created_at || Date.now()).toLocaleDateString()}. Motivo: `
+                                    });
+                                    setSelectedDetailActivity(null);
+                                    setShowNewTicketModal(true);
+                                }}
+                                className="w-full py-2.5 px-4 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl flex items-center justify-center gap-1.5 transition-all active:scale-98"
+                            >
+                                <AlertCircle className="w-4 h-4 text-rose-500" />
+                                <span>Reportar Problema / Ayuda con este Servicio</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Modal for viewing RideChat history from profile */}
+            {activeChatRequestId && (
+                <div className="fixed inset-0 z-[100] bg-slate-950/70 backdrop-blur-sm flex flex-col justify-end">
+                    <div className="h-[80vh] w-full bg-white rounded-t-3xl overflow-hidden shadow-2xl">
+                        <RideChat
+                            requestId={activeChatRequestId}
+                            onClose={() => setActiveChatRequestId(null)}
+                            readOnly={true}
+                        />
+                    </div>
+                </div>
+            )}
         </>
     );
 }

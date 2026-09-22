@@ -200,6 +200,74 @@ export default function Taxi() {
     const [selectedDriver, setSelectedDriver] = useState<NearbyDriver | null>(null);
     const [showDriverSelectionModal, setShowDriverSelectionModal] = useState(false);
 
+    // Dynamic commissions synced from Superadmin
+    const [liveCommissions, setLiveCommissions] = useState<{
+        taxi: number;
+        mandao: number;
+        confort: number;
+        delivery: number;
+        mototaxi: number;
+    }>({
+        taxi: 0.80,
+        mandao: 0.25,
+        confort: 1.00,
+        delivery: 0.25,
+        mototaxi: 0.25
+    });
+
+    useEffect(() => {
+        const fetchCommissions = async () => {
+            try {
+                const { data } = await supabase
+                    .from('app_settings')
+                    .select('*')
+                    .eq('id', 'commission_settings')
+                    .maybeSingle();
+                const cVal = data?.data || data?.value || data;
+                if (cVal?.commissions) {
+                    setLiveCommissions({
+                        taxi: Number(cVal.commissions.taxi ?? 0.80),
+                        mandao: Number(cVal.commissions.mandao ?? 0.25),
+                        confort: Number(cVal.commissions.confort ?? 1.00),
+                        delivery: Number(cVal.commissions.delivery ?? 0.25),
+                        mototaxi: Number(cVal.commissions.mototaxi ?? 0.25)
+                    });
+                }
+            } catch (err) {
+                console.error("Error fetching live commissions in Taxi:", err);
+            }
+        };
+
+        fetchCommissions();
+    }, []);
+
+    // Driver Public Reviews Modal State
+    const [viewingDriverReviews, setViewingDriverReviews] = useState<NearbyDriver | null>(null);
+    const [driverReviewsList, setDriverReviewsList] = useState<any[]>([]);
+    const [loadingDriverReviews, setLoadingDriverReviews] = useState(false);
+
+    useEffect(() => {
+        if (!viewingDriverReviews) return;
+        const fetchReviews = async () => {
+            setLoadingDriverReviews(true);
+            try {
+                const { data } = await supabase
+                    .from('transport_requests')
+                    .select('id, rating, rating_comment, rating_tags, created_at, user_name')
+                    .eq('driver_id', viewingDriverReviews.id)
+                    .not('rating', 'is', null)
+                    .order('created_at', { ascending: false })
+                    .limit(20);
+                setDriverReviewsList(data || []);
+            } catch (err) {
+                console.error("Error fetching driver reviews:", err);
+            } finally {
+                setLoadingDriverReviews(false);
+            }
+        };
+        fetchReviews();
+    }, [viewingDriverReviews]);
+
     // Bottom Sheet Collapse / Expand State & Drag Handling
     const [isSheetMinimized, setIsSheetMinimized] = useState(false);
     const touchStartYRef = useRef<number | null>(null);
@@ -1163,7 +1231,7 @@ export default function Taxi() {
                 vehicle_type: 'moto',
                 total: 1.00,
                 price: 1.00,
-                commission_amount: 0.70,
+                commission_amount: liveCommissions.mandao,
                 status: 'searching',
                 payment_method: 'pago_movil',
                 mandado_details: {
@@ -1172,6 +1240,7 @@ export default function Taxi() {
                     hasExactStores: data.hasExactStores,
                     storeAddresses: data.storeAddresses,
                     transportPassenger: data.transportPassenger,
+                    passengerRouteDescription: data.passengerRouteDescription,
                     deliveryOption: data.deliveryOption,
                     audioUrl: audioUrl || null,
                     referenceUrl: referenceUrl || null
@@ -1221,30 +1290,30 @@ export default function Taxi() {
             return;
         }
 
-        // Determine price, vehicle type and commission
+        // Determine price, vehicle type and commission dynamically from liveCommissions
         let clientTotal = '1.00';
-        let commAmount = 0.80;
+        let commAmount = liveCommissions.taxi;
         let vType: 'moto' | 'carro' | 'ejecutivo' = 'carro';
 
         if (selectedCategory === 'mototaxi') {
             vType = 'moto';
-            commAmount = 0.50;
+            commAmount = liveCommissions.mototaxi;
             clientTotal = calculatePrice('moto');
         } else if (selectedCategory === 'taxi_driver') {
             vType = 'carro';
-            commAmount = 0.80;
+            commAmount = liveCommissions.taxi;
             clientTotal = calculatePrice('carro');
         } else if (selectedCategory === 'carro_confort') {
             vType = 'ejecutivo';
-            commAmount = 1.20;
+            commAmount = liveCommissions.confort;
             clientTotal = calculatePrice('ejecutivo');
         } else if (selectedCategory === 'delivery_envios') {
             vType = 'moto';
-            commAmount = 0.50;
+            commAmount = liveCommissions.delivery;
             clientTotal = calculatePrice('moto');
         } else if (selectedCategory === 'muchacho_mandado') {
             vType = 'moto';
-            commAmount = 0.70;
+            commAmount = liveCommissions.mandao;
             clientTotal = '1.00'; // Base minimum, final price is defined by accepted driver bid
         }
 
@@ -3047,59 +3116,161 @@ export default function Taxi() {
                                                     </div>
                                                 </div>
 
-                                                <div className="flex items-center justify-end gap-2 pt-1 border-t border-slate-100">
-                                                    {isChosen ? (
-                                                        <div className="flex items-center gap-2">
-                                                            <span className="text-xs font-black text-emerald-700 bg-emerald-100 px-3 py-1.5 rounded-xl flex items-center gap-1">
-                                                                <Check className="w-3.5 h-3.5" /> Seleccionado
-                                                            </span>
+                                                    <div className="flex items-center justify-end gap-2 pt-1 border-t border-slate-100">
+                                                        <button
+                                                            type="button"
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                setViewingDriverReviews(d);
+                                                            }}
+                                                            className="text-xs font-bold text-slate-600 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 px-3 py-2 rounded-xl flex items-center gap-1.5 transition-all active:scale-95"
+                                                        >
+                                                            <Star className="w-3.5 h-3.5 text-amber-500 fill-amber-400" />
+                                                            <span>Reseñas</span>
+                                                        </button>
+                                                        {isChosen ? (
+                                                            <div className="flex items-center gap-2">
+                                                                <span className="text-xs font-black text-emerald-700 bg-emerald-100 px-3 py-1.5 rounded-xl flex items-center gap-1">
+                                                                    <Check className="w-3.5 h-3.5" /> Seleccionado
+                                                                </span>
+                                                                <button
+                                                                    onClick={() => {
+                                                                        setSelectedDriver(null);
+                                                                        setShowDriverSelectionModal(false);
+                                                                    }}
+                                                                    className="text-xs font-bold text-slate-500 hover:text-rose-600 px-2 py-1"
+                                                                >
+                                                                    Quitar selección
+                                                                </button>
+                                                            </div>
+                                                        ) : (
                                                             <button
                                                                 onClick={() => {
-                                                                    setSelectedDriver(null);
+                                                                    setSelectedDriver(d);
                                                                     setShowDriverSelectionModal(false);
+                                                                    toast.success(`Conductor ${d.fullName} seleccionado ($${price.toFixed(2)} USD)`);
                                                                 }}
-                                                                className="text-xs font-bold text-slate-500 hover:text-rose-600 px-2 py-1"
+                                                                className="px-4 py-2 bg-slate-950 hover:bg-slate-900 text-amber-400 rounded-xl font-black text-xs uppercase tracking-wider transition-transform active:scale-95 shadow-sm"
                                                             >
-                                                                Quitar selección
+                                                                Elegir Conductor
                                                             </button>
-                                                        </div>
-                                                    ) : (
-                                                        <button
-                                                            onClick={() => {
-                                                                setSelectedDriver(d);
-                                                                setShowDriverSelectionModal(false);
-                                                                toast.success(`Conductor ${d.fullName} seleccionado ($${price.toFixed(2)} USD)`);
-                                                            }}
-                                                            className="px-4 py-2 bg-slate-950 hover:bg-slate-900 text-amber-400 rounded-xl font-black text-xs uppercase tracking-wider transition-transform active:scale-95 shadow-sm"
-                                                        >
-                                                            Elegir Conductor
-                                                        </button>
-                                                    )}
+                                                        )}
+                                                    </div>
                                                 </div>
-                                            </div>
-                                        );
-                                    });
-                                })()}
-                            </div>
+                                            );
+                                        });
+                                    })()}
+                                </div>
 
-                            {/* Option to clear selection */}
-                            {selectedDriver && (
-                                <div className="pt-3 border-t border-slate-100">
+                                {/* Option to clear selection */}
+                                {selectedDriver && (
+                                    <div className="pt-3 border-t border-slate-100">
+                                        <button
+                                            onClick={() => {
+                                                setSelectedDriver(null);
+                                                setShowDriverSelectionModal(false);
+                                            }}
+                                            className="w-full py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-black text-xs rounded-xl uppercase tracking-wider"
+                                        >
+                                            Transmitir a todos los conductores (Sin selección directa)
+                                        </button>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    )}
+                </AnimatePresence>
+
+                {/* Modal de Reseñas Públicas del Conductor */}
+                <AnimatePresence>
+                    {viewingDriverReviews && (
+                        <div className="fixed inset-0 z-[130] bg-black/70 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4">
+                            <div className="bg-white w-full sm:max-w-md rounded-t-[2.5rem] sm:rounded-[2.5rem] p-6 shadow-2xl max-h-[80vh] flex flex-col relative animate-in slide-in-from-bottom-5">
+                                <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+                                    <div className="flex items-center gap-3">
+                                        <div className="relative">
+                                            {viewingDriverReviews.photoUrl ? (
+                                                <img 
+                                                    src={viewingDriverReviews.photoUrl} 
+                                                    alt={viewingDriverReviews.fullName} 
+                                                    className="w-11 h-11 rounded-2xl object-cover border border-slate-200" 
+                                                />
+                                            ) : (
+                                                <div className="w-11 h-11 rounded-2xl bg-amber-400 text-slate-950 font-black flex items-center justify-center text-sm">
+                                                    {viewingDriverReviews.fullName.slice(0, 2).toUpperCase()}
+                                                </div>
+                                            )}
+                                        </div>
+                                        <div>
+                                            <h3 className="font-black text-slate-900 text-sm">{viewingDriverReviews.fullName}</h3>
+                                            <div className="flex items-center gap-1.5 text-xs text-amber-500 font-bold">
+                                                <Star className="w-3.5 h-3.5 fill-amber-400" />
+                                                <span>{Number(viewingDriverReviews.rating || 5.0).toFixed(1)}</span>
+                                                <span className="text-slate-400 font-medium">• {viewingDriverReviews.totalTrips || 0} viajes</span>
+                                            </div>
+                                        </div>
+                                    </div>
                                     <button
-                                        onClick={() => {
-                                            setSelectedDriver(null);
-                                            setShowDriverSelectionModal(false);
-                                        }}
-                                        className="w-full py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-black text-xs rounded-xl uppercase tracking-wider"
+                                        onClick={() => setViewingDriverReviews(null)}
+                                        className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-600 flex items-center justify-center"
                                     >
-                                        Transmitir a todos los conductores (Sin selección directa)
+                                        <X className="w-4 h-4" />
                                     </button>
                                 </div>
-                            )}
+
+                                <div className="overflow-y-auto py-3 space-y-2.5 flex-1 pr-1">
+                                    <h4 className="text-[10px] font-black uppercase text-slate-400 tracking-wider">Opiniones de Clientes</h4>
+                                    {loadingDriverReviews ? (
+                                        <div className="text-center py-8">
+                                            <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-2"></div>
+                                            <p className="text-xs text-slate-400 font-medium">Cargando reseñas...</p>
+                                        </div>
+                                    ) : driverReviewsList.length === 0 ? (
+                                        <div className="p-6 text-center bg-slate-50 rounded-2xl border border-slate-100">
+                                            <Star className="w-8 h-8 text-amber-400 mx-auto mb-2 opacity-50" />
+                                            <p className="text-xs font-black text-slate-700">Sin reseñas escritas aún</p>
+                                            <p className="text-[11px] text-slate-400 mt-0.5">El conductor tiene calificación positiva de 5★</p>
+                                        </div>
+                                    ) : (
+                                        driverReviewsList.map((rev) => (
+                                            <div key={rev.id} className="p-3.5 bg-slate-50 rounded-2xl border border-slate-100 space-y-1.5">
+                                                <div className="flex items-center justify-between">
+                                                    <span className="text-xs font-bold text-slate-900">{rev.user_name || 'Cliente Verificado'}</span>
+                                                    <div className="flex items-center gap-0.5 text-amber-500 text-xs font-black">
+                                                        {Array.from({ length: rev.rating || 5 }).map((_, i) => (
+                                                            <Star key={i} className="w-3 h-3 fill-amber-400" />
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                                {rev.rating_comment && (
+                                                    <p className="text-xs text-slate-600 font-medium leading-relaxed italic">
+                                                        "{rev.rating_comment}"
+                                                    </p>
+                                                )}
+                                                {rev.rating_tags && Array.isArray(rev.rating_tags) && rev.rating_tags.length > 0 && (
+                                                    <div className="flex flex-wrap gap-1 pt-1">
+                                                        {rev.rating_tags.map((tag: string, idx: number) => (
+                                                            <span key={idx} className="text-[9px] font-bold bg-amber-100/70 text-amber-900 px-2 py-0.5 rounded-md">
+                                                                {tag}
+                                                            </span>
+                                                        ))}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        ))
+                                    )}
+                                </div>
+
+                                <button
+                                    onClick={() => setViewingDriverReviews(null)}
+                                    className="w-full mt-2 py-3 bg-slate-900 text-white font-black text-xs uppercase tracking-wider rounded-xl active:scale-95"
+                                >
+                                    Cerrar Reseñas
+                                </button>
+                            </div>
                         </div>
-                    </div>
-                )}
-            </AnimatePresence>
+                    )}
+                </AnimatePresence>
         </div>
     );
 }

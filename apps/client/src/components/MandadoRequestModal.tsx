@@ -32,6 +32,7 @@ export interface MandadoSubmitData {
     hasExactStores: boolean;
     storeAddresses?: string;
     transportPassenger: boolean;
+    passengerRouteDescription?: string;
     destinationAddress: string;
     destinationCoords?: { lat: number; lng: number };
     audioBlob?: Blob;
@@ -78,6 +79,7 @@ export default function MandadoRequestModal({
     const [storeName, setStoreName] = useState('');
     const [storeAddress, setStoreAddress] = useState('');
     const [transportPassenger, setTransportPassenger] = useState(false);
+    const [passengerRouteDescription, setPassengerRouteDescription] = useState('');
 
     // Step 3: Delivery destination
     const [deliveryOption, setDeliveryOption] = useState<'current_location' | 'other_address'>('current_location');
@@ -231,6 +233,10 @@ export default function MandadoRequestModal({
             toast.error("Selecciona si tienes los lugares de compra definidos o si prefieres sugerencias.");
             return;
         }
+        if (transportPassenger && !passengerRouteDescription.trim()) {
+            toast.error("Indica desde dónde y hacia dónde se trasladará a la persona");
+            return;
+        }
         vibrate(25);
         setStep(3);
     };
@@ -256,6 +262,7 @@ export default function MandadoRequestModal({
             hasExactStores: Boolean(hasExactStores),
             storeAddresses: storeAddress.trim(),
             transportPassenger,
+            passengerRouteDescription: passengerRouteDescription.trim(),
             destinationAddress: finalDestAddress,
             destinationCoords: finalDestCoords,
             audioBlob: audioBlob || undefined,
@@ -655,6 +662,22 @@ export default function MandadoRequestModal({
                                         </div>
                                     </button>
                                 </div>
+
+                                {transportPassenger && (
+                                    <div className="space-y-1.5 pt-2 animate-in fade-in duration-200">
+                                        <label className="text-xs font-black text-amber-950 uppercase tracking-wider flex items-center justify-between">
+                                            <span>Ruta del traslado de la persona *</span>
+                                            <span className="text-[10px] text-amber-700 font-bold normal-case">Obligatorio</span>
+                                        </label>
+                                        <textarea
+                                            value={passengerRouteDescription}
+                                            onChange={(e) => setPassengerRouteDescription(e.target.value)}
+                                            rows={3}
+                                            placeholder="Indica desde dónde y hacia dónde se trasladará a la persona (puntos de partida y llegada específicos)..."
+                                            className="w-full bg-amber-50/60 border-2 border-amber-300 focus:border-amber-500 focus:bg-white rounded-2xl p-3.5 text-xs text-slate-900 font-medium placeholder:text-amber-800/60 focus:outline-none transition-all resize-none shadow-inner leading-relaxed"
+                                        />
+                                    </div>
+                                )}
                             </div>
 
                             {/* Buttons Navigation */}

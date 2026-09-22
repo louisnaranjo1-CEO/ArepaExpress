@@ -97,7 +97,7 @@ export default function OrdersRadar() {
         }
     });
 
-    const handleDismissRequest = (requestId: string) => {
+    const handleDismissRequest = async (requestId: string) => {
         vibrate(30);
         setDismissedRequestIds(prev => {
             if (prev.includes(requestId)) return prev;
@@ -112,6 +112,28 @@ export default function OrdersRadar() {
         if (incomingDispatch?.id === requestId) {
             setIncomingDispatch(null);
         }
+
+        // Si la solicitud era asignada directamente a este chofer, actualizar estado a driver_busy para notificar al cliente de inmediato
+        try {
+            const targetReq = availableTransport.find(r => r.id === requestId) || (incomingDispatch?.id === requestId ? incomingDispatch : null);
+            if (targetReq && (targetReq.assigned_driver_id === user?.uid || targetReq.driver_id === user?.uid)) {
+                await supabase.from('transport_requests').update({
+                    status: 'driver_busy',
+                    rejection_reason: 'El conductor seleccionado se encuentra ocupado llevando a otra persona en este momento.'
+                }).eq('id', requestId);
+            } else {
+                const { data: dbReq } = await supabase.from('transport_requests').select('assigned_driver_id, driver_id, status').eq('id', requestId).maybeSingle();
+                if (dbReq && (dbReq.assigned_driver_id === user?.uid || dbReq.driver_id === user?.uid) && dbReq.status === 'searching') {
+                    await supabase.from('transport_requests').update({
+                        status: 'driver_busy',
+                        rejection_reason: 'El conductor seleccionado se encuentra ocupado llevando a otra persona en este momento.'
+                    }).eq('id', requestId);
+                }
+            }
+        } catch (e) {
+            console.error("Error setting driver_busy on request dismissal:", e);
+        }
+
         toast('Solicitud omitida de tu radar', { icon: '👁️‍🗨️', duration: 2500 });
     };
 
@@ -146,13 +168,69 @@ export default function OrdersRadar() {
         Number(driverProfile?.driver_fares?.base_fare) >= 0.50
     );
 
+    // Comisiones sincronizadas en tiempo real desde app_settings (Superadmin)
+    const [liveCommissions, setLiveCommissions] = useState<{
+        taxi: number;
+        mandao: number;
+        confort: number;
+        delivery: number;
+        mototaxi: number;
+    }>({
+        taxi: 0.80,
+        mandao: 0.25,
+        confort: 1.00,
+        delivery: 0.25,
+        mototaxi: 0.25
+    });
+
+    useEffect(() => {
+        const fetchCommissions = async () => {
+            try {
+                const { data } = await supabase
+                    .from('app_settings')
+                    .select('*')
+                    .eq('id', 'commission_settings')
+                    .maybeSingle();
+                const cVal = data?.data || data?.value || data;
+                if (cVal?.commissions) {
+                    setLiveCommissions({
+                        taxi: Number(cVal.commissions.taxi ?? 0.80),
+                        mandao: Number(cVal.commissions.mandao ?? 0.25),
+                        confort: Number(cVal.commissions.confort ?? 1.00),
+                        delivery: Number(cVal.commissions.delivery ?? 0.25),
+                        mototaxi: Number(cVal.commissions.mototaxi ?? 0.25)
+                    });
+                }
+            } catch (err) {
+                console.error("Error fetching live commissions:", err);
+            }
+        };
+
+        fetchCommissions();
+
+        const channel = supabase.channel('radar_commission_settings')
+            .on('postgres_changes', {
+                event: '*',
+                schema: 'public',
+                table: 'app_settings',
+                filter: 'id=eq.commission_settings'
+            }, () => {
+                fetchCommissions();
+            })
+            .subscribe();
+
+        return () => {
+            supabase.removeChannel(channel);
+        };
+    }, []);
+
     const getCommissionForCategory = (categoryOrType: string) => {
         const cat = (categoryOrType || '').toLowerCase();
-        if (cat.includes('confort') || cat.includes('ejecutivo')) return 1.20;
-        if (cat.includes('mandado')) return 0.70;
-        if (cat.includes('delivery') || cat.includes('envio') || cat.includes('paquete')) return 0.50;
-        if (cat.includes('moto')) return 0.50;
-        return 0.80; // Taxi Driver
+        if (cat.includes('confort') || cat.includes('ejecutivo')) return liveCommissions.confort;
+        if (cat.includes('mandao') || cat.includes('mandado')) return liveCommissions.mandao;
+        if (cat.includes('delivery') || cat.includes('envio') || cat.includes('paquete') || cat.includes('food') || cat.includes('comida')) return liveCommissions.delivery;
+        if (cat.includes('moto')) return liveCommissions.mototaxi;
+        return liveCommissions.taxi;
     };
 
     // Escuchar postulaciones pendientes del conductor en tiempo real
@@ -464,11 +542,13 @@ export default function OrdersRadar() {
     // 3.2 Temporizador de cuenta regresiva de 20s para el despacho YANGO
     useEffect(() => {
         if (!incomingDispatch) return;
+        const currentDispatchId = incomingDispatch.id;
         setCountdownSeconds(20);
         const timer = setInterval(() => {
             setCountdownSeconds(prev => {
                 if (prev <= 1) {
                     clearInterval(timer);
+                    handleDismissRequest(currentDispatchId);
                     setIncomingDispatch(null);
                     return 0;
                 }
@@ -560,23 +640,26 @@ export default function OrdersRadar() {
 
         const fetchLatestMessage = async () => {
             const { data, error } = await supabase
-                .from('order_messages')
+                .from('messages')
                 .select('*')
-                .eq('order_id', activeTransport.id)
+                .or(`chat_path.eq.transport_requests/${activeTransport.id},order_id.eq.${activeTransport.id}`)
                 .order('created_at', { ascending: false })
                 .limit(1);
 
             if (data && data.length > 0) {
                 const latestMsg = data[0];
+                const msgSenderId = latestMsg.sender_id || latestMsg.senderId;
+                const msgSenderRole = latestMsg.sender_role || latestMsg.senderRole;
                 
                 // Si es un mensaje nuevo y no es mío
-                if (lastChatIdSeen.current !== null && 
-                    lastChatIdSeen.current !== latestMsg.id && 
-                    latestMsg.user_id !== user.uid) {
+                const isMine = msgSenderRole === 'delivery' || msgSenderRole === 'driver' || msgSenderId === user.uid;
+                if (!isMine && 
+                    lastChatIdSeen.current !== null && 
+                    lastChatIdSeen.current !== latestMsg.id) {
                     
                     const now = Date.now();
                     const msgTime = new Date(latestMsg.created_at).getTime();
-                    if (now - msgTime < 30000) {
+                    if (now - msgTime < 45000) {
                         // Play sound
                         if (notificationSoundUrl.current) {
                             const audio = new Audio(notificationSoundUrl.current);
@@ -588,10 +671,10 @@ export default function OrdersRadar() {
                             <div className="flex flex-col gap-1 p-1">
                                 <p className="font-black text-slate-900 text-sm flex items-center gap-2">
                                     <MessageCircle className="w-4 h-4 text-emerald-500" />
-                                    Nuevo Mensaje
+                                    Nuevo Mensaje del Cliente
                                 </p>
                                 <p className="text-slate-500 text-xs font-bold leading-tight line-clamp-2">
-                                    {latestMsg.message || "Ha enviado un archivo o ubicación"}
+                                    {latestMsg.text || latestMsg.message || "Ha enviado un archivo o nota de voz"}
                                 </p>
                             </div>
                         ), {
@@ -619,8 +702,8 @@ export default function OrdersRadar() {
 
         fetchLatestMessage();
 
-        channel = supabase.channel('order_messages_changes')
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'order_messages', filter: `order_id=eq.${activeTransport.id}` }, fetchLatestMessage)
+        channel = supabase.channel(`messages_radar_${activeTransport.id}`)
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'messages', filter: `order_id=eq.${activeTransport.id}` }, fetchLatestMessage)
             .subscribe();
 
         return () => {
@@ -893,7 +976,7 @@ export default function OrdersRadar() {
                 id: bidId,
                 transport_request_id: reqId,
                 request_id: reqId,
-                driver_id: driverId,
+                driver_id: user.uid,
                 driver_name: driverProfile?.full_name || driverProfile?.fullName || driverProfile?.displayName || driverProfile?.name || 'Conductor',
                 driver_photo: realSelfie,
                 driver_phone: driverProfile?.phone || null,
@@ -1171,6 +1254,11 @@ export default function OrdersRadar() {
                         <RideChat
                             requestId={activeTransport.id}
                             onClose={() => setShowChat(false)}
+                            serviceCategory={activeTransport.service_category}
+                            clientPhone={activeTransport.passenger_phone || (activeTransport as any).user_phone}
+                            requestStatus={activeTransport.status}
+                            completedAt={activeTransport.completed_at || (activeTransport as any).updated_at}
+                            isDriver={true}
                         />
                     </motion.div>
                 )}
@@ -2017,7 +2105,7 @@ export default function OrdersRadar() {
                             {mandadosList.map(req => {
                                 const bidData = mandadoBids[req.id] || { amount: '', eta: '15', submitted: false };
                                 const bidAmountNum = parseFloat(bidData.amount) || 0;
-                                const commMandado = 0.70;
+                                const commMandado = getCommissionForCategory('mandao');
                                 const netMandado = Math.max(0, bidAmountNum - commMandado);
 
                                 return (
@@ -2107,12 +2195,22 @@ export default function OrdersRadar() {
                                         </div>
 
                                         {/* Indicador de traslado de persona o diligencia */}
-                                        <div className="flex items-center gap-2 p-3 rounded-2xl border text-xs font-bold mb-3 bg-slate-50 border-slate-200">
+                                        <div className="p-3.5 rounded-2xl border text-xs font-bold mb-3 bg-slate-50 border-slate-200 space-y-2">
                                             {req.mandado_details?.transportPassenger ? (
-                                                <div className="text-amber-600 flex items-center gap-2">
-                                                    <span className="w-2.5 h-2.5 rounded-full bg-amber-500 animate-ping shrink-0" />
-                                                    <span>⚠️ Este mandado incluye el traslado de una persona</span>
-                                                </div>
+                                                <>
+                                                    <div className="text-amber-600 flex items-center gap-2">
+                                                        <span className="w-2.5 h-2.5 rounded-full bg-amber-500 animate-ping shrink-0" />
+                                                        <span>⚠️ Este mandado incluye el traslado de una persona</span>
+                                                    </div>
+                                                    <div className="p-3 bg-amber-100/90 border border-amber-300 rounded-xl space-y-1">
+                                                        <div className="text-[10px] font-black uppercase text-amber-900 tracking-wider">
+                                                            📍 Ruta de traslado de la persona:
+                                                        </div>
+                                                        <p className="text-xs font-black text-amber-950 leading-relaxed">
+                                                            {req.mandado_details?.passengerRouteDescription || req.mandado_details?.passenger_route_description || 'Ruta no especificada'}
+                                                        </p>
+                                                    </div>
+                                                </>
                                             ) : (
                                                 <div className="text-emerald-700 flex items-center gap-2">
                                                     <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 shrink-0" />
@@ -2211,7 +2309,7 @@ export default function OrdersRadar() {
                                                 {/* Desglose de comisión */}
                                                 {bidAmountNum >= 0.50 && (
                                                     <div className="text-[11px] bg-white p-2.5 rounded-xl border border-slate-200 flex items-center justify-between">
-                                                        <span className="text-slate-500">Comisión Un 2x3: <strong className="text-rose-500">-$0.70</strong></span>
+                                                        <span className="text-slate-500">Comisión Un 2x3: <strong className="text-rose-500">-${commMandado.toFixed(2)}</strong></span>
                                                         <span className="font-black text-emerald-600">Neto: ${netMandado.toFixed(2)} USD</span>
                                                     </div>
                                                 )}
