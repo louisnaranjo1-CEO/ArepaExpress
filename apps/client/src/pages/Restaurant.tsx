@@ -34,6 +34,47 @@ export default function RestaurantPage() {
   const [showDemoAlert, setShowDemoAlert] = useState(false);
   const [showClearCartModal, setShowClearCartModal] = useState(false);
   const [pendingCartItem, setPendingCartItem] = useState<{product: Product, variant?: any, modifiers?: any} | null>(null);
+
+  const [favoriteProductIds, setFavoriteProductIds] = useState<string[]>(() => {
+    try {
+      const raw = localStorage.getItem('un2x3_favorite_products');
+      const list = raw ? JSON.parse(raw) : [];
+      return Array.isArray(list) ? list.map((p: any) => typeof p === 'string' ? p : p.id) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  const toggleFavoriteProduct = (product: any) => {
+    try {
+      const raw = localStorage.getItem('un2x3_favorite_products');
+      const list: any[] = raw ? JSON.parse(raw) : [];
+      const exists = list.some((p: any) => (typeof p === 'string' ? p === product.id : p.id === product.id));
+      let updated: any[];
+      if (exists) {
+        updated = list.filter((p: any) => (typeof p === 'string' ? p !== product.id : p.id !== product.id));
+        setFavoriteProductIds(prev => prev.filter(pid => pid !== product.id));
+        toast.success('Producto eliminado de favoritos');
+      } else {
+        const item = {
+          id: product.id,
+          name: product.name,
+          price: product.price,
+          promoPrice: product.promoPrice,
+          image: product.image,
+          category: product.category,
+          restaurantId: restaurant?.id,
+          restaurantName: restaurant?.name
+        };
+        updated = [...list, item];
+        setFavoriteProductIds(prev => [...prev, product.id]);
+        toast.success('¡Producto añadido a favoritos! ❤️');
+      }
+      localStorage.setItem('un2x3_favorite_products', JSON.stringify(updated));
+    } catch (e) {
+      console.error("Error saving favorite product:", e);
+    }
+  };
   const getSocialIcon = (url: string) => {
     if (url.includes('instagram.com')) return <Instagram className="w-4 h-4" />;
     if (url.includes('tiktok.com')) return <Music2 className="w-4 h-4" />;
@@ -1484,6 +1525,15 @@ export default function RestaurantPage() {
             >
               {/* Image Section */}
               <div className="relative h-72 md:h-96 shrink-0 bg-slate-100">
+                {/* Heart Favorite Button */}
+                <button
+                  onClick={() => toggleFavoriteProduct(selectedProduct)}
+                  className="absolute top-5 left-5 w-10 h-10 bg-white/90 backdrop-blur-md rounded-full flex items-center justify-center shadow-xl z-20 hover:scale-110 active:scale-95 transition-all"
+                  title="Guardar como favorito"
+                >
+                  <Heart className={`w-5 h-5 transition-colors ${favoriteProductIds.includes(selectedProduct?.id) ? 'text-red-500 fill-red-500' : 'text-slate-700'}`} />
+                </button>
+
                 <button
                   onClick={() => setSelectedProduct(null)}
                   className="absolute top-5 right-5 w-10 h-10 bg-white/90 backdrop-blur-md rounded-full flex items-center justify-center text-slate-900 shadow-xl z-20 hover:scale-110 active:scale-95 transition-all"

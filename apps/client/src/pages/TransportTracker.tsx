@@ -271,10 +271,8 @@ export default function TransportTracker() {
             const currency = method === 'cash_ves' ? 'BS' : 'USD';
             const { error } = await supabase.from('transport_requests').update({
                 payment_method: method,
-                paymentMethod: method,
                 cash_currency: currency,
-                cashCurrency: currency,
-                payment_method_selected: true
+                updated_at: new Date().toISOString()
             }).eq('id', requestId);
 
             if (error) throw error;
@@ -282,23 +280,20 @@ export default function TransportTracker() {
             setRequest((prev: any) => ({
                 ...prev,
                 payment_method: method,
-                paymentMethod: method,
-                cash_currency: currency,
-                cashCurrency: currency,
-                payment_method_selected: true
+                cash_currency: currency
             }));
 
             toast.success(
                 method === 'pago_movil' 
-                    ? 'Método de pago: Pago Móvil seleccionado' 
+                    ? 'Método de pago: Pago Móvil Conductor confirmado' 
                     : method === 'cash_ves' 
-                    ? 'Método de pago: Bs. Efectivo seleccionado' 
-                    : 'Método de pago: Divisa (USD) seleccionado'
+                    ? 'Método de pago: Bs. Efectivo confirmado' 
+                    : 'Método de pago: Divisa ($ USD) confirmado'
             );
             setShowPaymentPickerModal(false);
         } catch (err: any) {
             console.error('Error al actualizar método de pago:', err);
-            toast.error('No se pudo guardar el método de pago.');
+            toast.error('No se pudo guardar el método de pago: ' + (err?.message || 'Error de conexión'));
         } finally {
             setUpdatingPaymentMethod(false);
         }
@@ -691,6 +686,7 @@ export default function TransportTracker() {
                 await supabase.from('transport_bids').delete().eq('transport_request_id', requestId);
             }
 
+            localStorage.removeItem('active_transport_req_id');
             setShowCancelModal(false);
             navigate('/');
         } catch (err) {

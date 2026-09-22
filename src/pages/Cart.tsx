@@ -1,4 +1,4 @@
-import { ArrowLeft, ShoppingCart, MapPin, CreditCard, Trash2, Minus, Plus, ArrowRight, CheckCircle2, Gift, AlertCircle, Award } from 'lucide-react';
+import { ArrowLeft, ShoppingCart, MapPin, CreditCard, Trash2, Minus, Plus, ArrowRight, CheckCircle2, Gift, AlertCircle, Award, X } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useCart } from '../context/CartContext';
 import { useAuth } from '../context/AuthContext';
@@ -36,6 +36,7 @@ export default function Cart({ hideHeader = false }: CartProps) {
   const [showGuestModal, setShowGuestModal] = useState(false);
   const [guestName, setGuestName] = useState('');
   const [guestPhone, setGuestPhone] = useState('');
+  const [guestCedulaType, setGuestCedulaType] = useState<'V' | 'E' | 'J'>('V');
   const [guestCedula, setGuestCedula] = useState('');
   const [deliveryMethod, setDeliveryMethod] = useState<'app_delivery' | 'own_delivery' | 'pickup'>('app_delivery');
 
@@ -300,10 +301,10 @@ export default function Cart({ hideHeader = false }: CartProps) {
         userId: isWaiter ? (waiterData.id || 'waiter') : (user?.uid || 'guest_' + Date.now()),
         user_name: isWaiter ? (customerName || `Cliente Mesa ${tableNumber || 'N/A'}`) : (user?.displayName || guestName || 'Cliente Invitado'),
         userName: isWaiter ? (customerName || `Cliente Mesa ${tableNumber || 'N/A'}`) : (user?.displayName || guestName || 'Cliente Invitado'),
-        user_phone: isWaiter ? '' : (userData?.phone || guestPhone || ''),
-        userPhone: isWaiter ? '' : (userData?.phone || guestPhone || ''),
-        user_cedula: isWaiter ? '' : (userData?.cedula || guestCedula || ''),
-        userCedula: isWaiter ? '' : (userData?.cedula || guestCedula || ''),
+        user_phone: isWaiter ? '' : (userData?.phone || (guestPhone ? `+58${guestPhone}` : '')),
+        userPhone: isWaiter ? '' : (userData?.phone || (guestPhone ? `+58${guestPhone}` : '')),
+        user_cedula: isWaiter ? '' : (userData?.cedula || (guestCedula ? `${guestCedulaType}-${guestCedula}` : '')),
+        userCedula: isWaiter ? '' : (userData?.cedula || (guestCedula ? `${guestCedulaType}-${guestCedula}` : '')),
         user_email: isWaiter ? (waiterData.email || 'N/A') : (user?.email || 'N/A'),
         userEmail: isWaiter ? (waiterData.email || 'N/A') : (user?.email || 'N/A'),
         restaurant_id: restaurantId,
@@ -988,14 +989,102 @@ export default function Cart({ hideHeader = false }: CartProps) {
       />
 
       {showGuestModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-black/50" onClick={() => setShowGuestModal(false)}></div>
-          <div className="relative bg-white w-full max-w-sm rounded-3xl p-6">
-            <h3 className="text-lg font-bold mb-4">Datos del Cliente</h3>
-            <input placeholder="Nombre" value={guestName} onChange={e=>setGuestName(e.target.value)} className="w-full p-3 bg-slate-100 rounded-xl mb-3" />
-            <input placeholder="Cédula" value={guestCedula} onChange={e=>setGuestCedula(e.target.value)} className="w-full p-3 bg-slate-100 rounded-xl mb-3" />
-            <input placeholder="Teléfono" value={guestPhone} onChange={e=>setGuestPhone(e.target.value)} className="w-full p-3 bg-slate-100 rounded-xl mb-4" />
-            <button onClick={() => { setShowGuestModal(false); handleCheckout(); }} className="w-full bg-primary text-slate-900 py-3 rounded-xl font-bold">Continuar</button>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+          <div className="relative bg-white w-full max-w-sm rounded-3xl p-6 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+              <div>
+                <h3 className="text-base font-black text-slate-900">Datos del Cliente</h3>
+                <p className="text-[11px] text-slate-500 font-medium">Requeridos para entregar tu pedido</p>
+              </div>
+              <button
+                onClick={() => setShowGuestModal(false)}
+                className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 flex items-center justify-center"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="space-y-3">
+              <div>
+                <label className="text-[10px] font-black uppercase text-slate-400 block mb-1">Nombre completo</label>
+                <input
+                  placeholder="Ej: María González"
+                  value={guestName}
+                  onChange={e => setGuestName(e.target.value)}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-xs font-bold outline-none focus:border-primary"
+                />
+              </div>
+
+              <div>
+                <label className="text-[10px] font-black uppercase text-slate-400 block mb-1">Cédula de Identidad</label>
+                <div className="space-y-1.5">
+                  <div className="flex gap-1.5">
+                    {(['V', 'E', 'J'] as const).map(type => (
+                      <button
+                        key={type}
+                        type="button"
+                        onClick={() => setGuestCedulaType(type)}
+                        className={`flex-1 py-1.5 rounded-lg text-xs font-black transition-all ${
+                          guestCedulaType === type
+                            ? 'bg-slate-900 text-white shadow-xs'
+                            : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                        }`}
+                      >
+                        {type}-
+                      </button>
+                    ))}
+                  </div>
+                  <input
+                    placeholder="12345678"
+                    value={guestCedula}
+                    onChange={e => setGuestCedula(e.target.value.replace(/\D/g, ''))}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-xs font-bold outline-none focus:border-primary"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="text-[10px] font-black uppercase text-slate-400 block mb-1">Teléfono (WhatsApp)</label>
+                <div className="flex items-center bg-slate-50 border border-slate-200 rounded-xl overflow-hidden focus-within:border-primary">
+                  <span className="px-3 py-2.5 bg-slate-100 border-r border-slate-200 text-xs font-black text-slate-700 select-none">
+                    🇻🇪 +58
+                  </span>
+                  <input
+                    type="tel"
+                    placeholder="4121234567"
+                    value={guestPhone}
+                    onChange={e => setGuestPhone(e.target.value.replace(/\D/g, ''))}
+                    className="w-full bg-transparent px-3 py-2.5 text-xs font-bold outline-none"
+                  />
+                </div>
+              </div>
+
+              <button
+                onClick={() => {
+                  if (!guestName || !guestCedula || !guestPhone) {
+                    alert("Por favor completa todos los campos.");
+                    return;
+                  }
+                  setShowGuestModal(false);
+                  handleCheckout();
+                }}
+                className="w-full bg-primary text-slate-900 py-3 rounded-2xl font-black text-xs uppercase tracking-wider active:scale-95 shadow-lg shadow-primary/20"
+              >
+                Continuar con el pedido
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setShowGuestModal(false);
+                  navigate('/profile');
+                }}
+                className="w-full py-2.5 border border-primary/30 bg-primary/10 hover:bg-primary/20 text-slate-800 text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-1.5"
+              >
+                <span>¿Deseas registrarte o guardar tus datos?</span>
+                <span className="text-primary font-black underline">Ir al Perfil</span>
+              </button>
+            </div>
           </div>
         </div>
       )}

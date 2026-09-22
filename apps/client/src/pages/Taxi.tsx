@@ -115,6 +115,19 @@ const getInitialMapCoordinates = (userAddresses?: any[]): google.maps.LatLngLite
     return { lat: 8.9326, lng: -67.4264 };
 };
 
+const safeUUID = (): string => {
+    if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+        try {
+            return crypto.randomUUID();
+        } catch (e) {}
+    }
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+        const r = Math.random() * 16 | 0;
+        const v = c === 'x' ? r : (r & 0x3 | 0x8);
+        return v.toString(16);
+    });
+};
+
 export default function Taxi() {
     const { user, userData } = useAuth();
     const { bcvRate } = useCurrency();
@@ -191,6 +204,7 @@ export default function Taxi() {
     const [showGuestModal, setShowGuestModal] = useState(false);
     const [guestName, setGuestName] = useState('');
     const [guestPhone, setGuestPhone] = useState('');
+    const [guestCedulaType, setGuestCedulaType] = useState<'V' | 'E' | 'J'>('V');
     const [guestCedula, setGuestCedula] = useState('');
 
     // Places Search
@@ -216,7 +230,8 @@ export default function Taxi() {
         mandao: 0.25,
         confort: 1.00,
         delivery: 0.25,
-        mototaxi: 0.25
+        mototaxi: 0.25,
+        extra_km_commission_pct: 30
     });
 
     useEffect(() => {
@@ -234,7 +249,8 @@ export default function Taxi() {
                         mandao: Number(cVal.commissions.mandao ?? 0.25),
                         confort: Number(cVal.commissions.confort ?? 1.00),
                         delivery: Number(cVal.commissions.delivery ?? 0.25),
-                        mototaxi: Number(cVal.commissions.mototaxi ?? 0.25)
+                        mototaxi: Number(cVal.commissions.mototaxi ?? 0.25),
+                        extra_km_commission_pct: Number(cVal.extra_km_commission_pct ?? 30)
                     });
                 }
             } catch (err) {
@@ -255,14 +271,46 @@ export default function Taxi() {
         const fetchReviews = async () => {
             setLoadingDriverReviews(true);
             try {
-                const { data } = await supabase
-                    .from('transport_requests')
-                    .select('id, rating, rating_comment, rating_tags, created_at, user_name')
-                    .eq('driver_id', viewingDriverReviews.id)
-                    .not('rating', 'is', null)
-                    .order('created_at', { ascending: false })
-                    .limit(20);
-                setDriverReviewsList(data || []);
+                const [transRes, orderRes] = await Promise.all([
+                    supabase
+                        .from('transport_requests')
+                        .select('id, rating, rating_comment, rating_tags, created_at, user_name')
+                        .eq('driver_id', viewingDriverReviews.id)
+                        .not('rating', 'is', null)
+                        .order('created_at', { ascending: false })
+                        .limit(20),
+                    supabase
+                        .from('orders')
+                        .select('id, rating, review_comment, review_tags, created_at, user_name')
+                        .eq('delivery_driver_id', viewingDriverReviews.id)
+                        .not('rating', 'is', null)
+                        .order('created_at', { ascending: false })
+                        .limit(20)
+                ]);
+
+                const transReviews = (transRes.data || []).map((t: any) => ({
+                    id: t.id,
+                    rating: Number(t.rating) || 5,
+                    rating_comment: t.rating_comment,
+                    rating_tags: t.rating_tags,
+                    created_at: t.created_at,
+                    user_name: t.user_name || 'Cliente Verificado'
+                }));
+
+                const orderReviews = (orderRes.data || []).map((o: any) => ({
+                    id: o.id,
+                    rating: Number(o.rating) || 5,
+                    rating_comment: o.review_comment,
+                    rating_tags: o.review_tags,
+                    created_at: o.created_at,
+                    user_name: o.user_name || 'Cliente Delivery'
+                }));
+
+                const merged = [...transReviews, ...orderReviews].sort(
+                    (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+                );
+
+                setDriverReviewsList(merged);
             } catch (err) {
                 console.error("Error fetching driver reviews:", err);
             } finally {
@@ -1046,28 +1094,42 @@ export default function Taxi() {
         const dist = tripDistanceKm !== undefined ? tripDistanceKm : (routeInfo ? routeInfo.distance : 1);
         const fares = driver.driverFares;
         const isComfort = isComfortCategory || Boolean(driver.isComfortEligible) || (driver.hasAc && Number(driver.vehicleYear) >= 2009);
+        const isNight = isNightTime();
 
-        // Check if calculating for Comfort and driver has comfort fares
-        if (isComfort && fares && Number(fares.comfort_base_fare) >= 0.50) {
-            const base = Number(fares.comfort_base_fare);
-            const perKm = Number(fares.comfort_per_km_fare || 0);
-            const baseKm = Number(fares.base_km || 2);
-            const extraKm = Math.max(0, dist - baseKm);
-            const total = base + (extraKm * perKm);
-            return Math.max(0.50, Number(total.toFixed(2)));
-        }
+        if (fares) {
+            let base: number;
+            let baseKm: number;
+            let perKm: number;
 
-        if (fares && Number(fares.base_fare) >= 0.50) {
-            const base = Number(fares.base_fare);
-            if (fares.pricing_type === 'flat') {
-                return Math.max(0.50, base);
+            if (isComfort && (Number(fares.comfort_base_fare_day) >= 0.50 || Number(fares.comfort_base_fare) >= 0.50)) {
+                if (isNight) {
+                    base = Number(fares.comfort_base_fare_night ?? fares.comfort_base_fare ?? 3.0);
+                    baseKm = Math.min(6, Math.max(1, Number(fares.comfort_base_distance_night ?? fares.base_distance_night ?? fares.base_km ?? 2)));
+                    perKm = Number(fares.comfort_extra_km_price_night ?? fares.comfort_per_km_fare ?? 1.2);
+                } else {
+                    base = Number(fares.comfort_base_fare_day ?? fares.comfort_base_fare ?? 2.5);
+                    baseKm = Math.min(6, Math.max(1, Number(fares.comfort_base_distance_day ?? fares.base_distance_day ?? fares.base_km ?? 2)));
+                    perKm = Number(fares.comfort_extra_km_price_day ?? fares.comfort_per_km_fare ?? 1.0);
+                }
+            } else {
+                if (isNight) {
+                    base = Number(fares.base_fare_night ?? (Number(fares.base_fare_day ?? fares.base_fare ?? 1.5) * 1.25));
+                    baseKm = Math.min(6, Math.max(1, Number(fares.base_distance_night ?? fares.base_distance_day ?? fares.base_km ?? 2)));
+                    perKm = Number(fares.extra_km_price_night ?? (Number(fares.extra_km_price_day ?? fares.per_km_fare ?? 0.20) * 1.35));
+                } else {
+                    base = Number(fares.base_fare_day ?? fares.base_fare ?? 1.5);
+                    baseKm = Math.min(6, Math.max(1, Number(fares.base_distance_day ?? fares.base_km ?? 2)));
+                    perKm = Number(fares.extra_km_price_day ?? fares.per_km_fare ?? 0.20);
+                }
             }
-            const perKm = Number(fares.per_km_fare || 0);
-            const baseKm = Number(fares.base_km || 2);
-            const extraKm = Math.max(0, dist - baseKm);
-            const total = base + (extraKm * perKm);
-            return Math.max(0.50, Number(total.toFixed(2)));
+
+            if (base >= 0.50) {
+                const extraKm = Math.max(0, dist - baseKm);
+                const total = base + (extraKm * perKm);
+                return Math.max(0.50, Number(total.toFixed(2)));
+            }
         }
+
         return parseFloat(calculatePrice(isComfort ? 'ejecutivo' : driver.vehicleType));
     }, [routeInfo, adminRates, activeDriversCount, weather, testRain]);
 
@@ -1178,30 +1240,42 @@ export default function Taxi() {
             let audioUrl = '';
             let referenceUrl = '';
 
-            // 1. Subir audio si existe a Supabase Storage
+            // 1. Subir audio si existe a Supabase Storage (con timeout preventivo de 3s)
             if (data.audioBlob) {
-                const audioPath = `mandados/audios/${validUserId || 'guest'}_${Date.now()}.webm`;
-                const { error: upErr } = await supabase.storage.from('store_assets').upload(audioPath, data.audioBlob, {
-                    contentType: 'audio/webm',
-                    upsert: true
-                });
-                if (!upErr) {
-                    const { data: { publicUrl } } = supabase.storage.from('store_assets').getPublicUrl(audioPath);
-                    audioUrl = publicUrl;
+                try {
+                    const audioPath = `mandados/audios/${validUserId || 'guest'}_${Date.now()}.webm`;
+                    const uploadPromise = supabase.storage.from('store_assets').upload(audioPath, data.audioBlob, {
+                        contentType: 'audio/webm',
+                        upsert: true
+                    });
+                    const timeoutPromise = new Promise<any>((res) => setTimeout(() => res({ error: 'timeout' }), 3000));
+                    const res = await Promise.race([uploadPromise, timeoutPromise]);
+                    if (!res?.error) {
+                        const { data: { publicUrl } } = supabase.storage.from('store_assets').getPublicUrl(audioPath);
+                        audioUrl = publicUrl;
+                    }
+                } catch (e) {
+                    console.warn("Storage audio upload skipped on error/timeout:", e);
                 }
             }
 
-            // 2. Subir imagen de referencia si existe
+            // 2. Subir imagen de referencia si existe (con timeout preventivo de 3s)
             if (data.referenceFile) {
-                const ext = data.referenceFile.name.split('.').pop() || 'jpg';
-                const refPath = `mandados/references/${validUserId || 'guest'}_${Date.now()}.${ext}`;
-                const { error: refErr } = await supabase.storage.from('store_assets').upload(refPath, data.referenceFile, {
-                    contentType: data.referenceFile.type || 'image/jpeg',
-                    upsert: true
-                });
-                if (!refErr) {
-                    const { data: { publicUrl } } = supabase.storage.from('store_assets').getPublicUrl(refPath);
-                    referenceUrl = publicUrl;
+                try {
+                    const ext = data.referenceFile.name.split('.').pop() || 'jpg';
+                    const refPath = `mandados/references/${validUserId || 'guest'}_${Date.now()}.${ext}`;
+                    const uploadPromise = supabase.storage.from('store_assets').upload(refPath, data.referenceFile, {
+                        contentType: data.referenceFile.type || 'image/jpeg',
+                        upsert: true
+                    });
+                    const timeoutPromise = new Promise<any>((res) => setTimeout(() => res({ error: 'timeout' }), 3000));
+                    const res = await Promise.race([uploadPromise, timeoutPromise]);
+                    if (!res?.error) {
+                        const { data: { publicUrl } } = supabase.storage.from('store_assets').getPublicUrl(refPath);
+                        referenceUrl = publicUrl;
+                    }
+                } catch (e) {
+                    console.warn("Storage reference upload skipped on error/timeout:", e);
                 }
             }
 
@@ -1211,24 +1285,25 @@ export default function Taxi() {
                 return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(str);
             };
 
-            const newReqId = crypto.randomUUID();
+            const effectiveCoords = userLocation || getInitialMapCoordinates(userData?.addresses);
+            const newReqId = safeUUID();
             const orderData: any = {
                 id: newReqId,
                 user_id: isValidUUID(validUserId) ? validUserId : null,
-                user_name: userData?.displayName || user?.displayName || user?.email || 'Usuario',
-                user_phone: userData?.phone || 'Sin número',
-                user_cedula: userData?.cedula || 'N/A',
-                origin: userLocation ? { 
-                    lat: userLocation.lat, 
-                    lng: userLocation.lng, 
+                user_name: userData?.displayName || user?.displayName || user?.email || guestName || 'Usuario Invitado',
+                user_phone: userData?.phone || guestPhone || 'Sin número',
+                user_cedula: userData?.cedula || (guestCedula ? `${guestCedulaType}-${guestCedula}` : 'N/A'),
+                origin: { 
+                    lat: effectiveCoords.lat, 
+                    lng: effectiveCoords.lng, 
                     address: data.storeName 
                         ? `Comercio: ${data.storeName}${data.storeAddresses ? ` (${data.storeAddresses})` : ''}` 
                         : (data.hasExactStores ? 'Lugares de compra definidos' : 'Sugerencia de lugares por piloto')
-                } : null,
+                },
                 destination: {
-                    lat: data.destinationCoords?.lat || userLocation?.lat || 0,
-                    lng: data.destinationCoords?.lng || userLocation?.lng || 0,
-                    address: data.destinationAddress
+                    lat: data.destinationCoords?.lat || effectiveCoords.lat,
+                    lng: data.destinationCoords?.lng || effectiveCoords.lng,
+                    address: data.destinationAddress || 'Mi ubicación actual (GPS)'
                 },
                 service_category: 'muchacho_mandado',
                 type: 'muchacho_mandado',
@@ -1323,7 +1398,34 @@ export default function Taxi() {
 
         const numTotal = parseFloat(clientTotal);
         const finalTripPrice = selectedDriver ? calculateDriverTripPrice(selectedDriver) : numTotal;
-        const driverPayoutVal = Math.max(0, finalTripPrice - commAmount);
+
+        // Calculate commission accurately: Base + (Extra km amount * % Extra Commission)
+        let finalCommAmount = commAmount;
+        if (selectedDriver) {
+            const df = selectedDriver.driverFares;
+            const dist = routeInfo ? routeInfo.distance : 1;
+            const isNight = isNightTime();
+            const isComfort = selectedCategory === 'carro_confort' || Boolean(selectedDriver.isComfortEligible);
+
+            let baseKm = 2;
+            let perKm = 0.20;
+            if (df) {
+                if (isComfort && (df.comfort_base_fare_day || df.comfort_base_fare)) {
+                    baseKm = Math.min(6, Math.max(1, Number((isNight ? df.comfort_base_distance_night : df.comfort_base_distance_day) ?? df.base_km ?? 2)));
+                    perKm = Number((isNight ? df.comfort_extra_km_price_night : df.comfort_extra_km_price_day) ?? df.comfort_per_km_fare ?? 1.0);
+                } else {
+                    baseKm = Math.min(6, Math.max(1, Number((isNight ? df.base_distance_night : df.base_distance_day) ?? df.base_km ?? 2)));
+                    perKm = Number((isNight ? df.extra_km_price_night : df.extra_km_price_day) ?? df.per_km_fare ?? 0.20);
+                }
+            }
+            const extraKm = Math.max(0, dist - baseKm);
+            const extraAmount = extraKm * perKm;
+            const extraPct = liveCommissions.extra_km_commission_pct ?? 30;
+            const extraComm = extraAmount * (extraPct / 100);
+            finalCommAmount = parseFloat((commAmount + extraComm).toFixed(2));
+        }
+
+        const driverPayoutVal = Math.max(0, parseFloat((finalTripPrice - finalCommAmount).toFixed(2)));
 
         try {
             setIsUploading(true);
@@ -1331,7 +1433,7 @@ export default function Taxi() {
 
             // Valid user_id: MUST be null if guest, because Postgres user_id is a UUID!
             const validUserId = user?.id || user?.uid || null;
-            const newReqId = crypto.randomUUID();
+            const newReqId = safeUUID();
 
             let proofUrl = '';
             if (paymentProof && selectedPaymentMethod === 'pago_movil') {
@@ -1348,8 +1450,8 @@ export default function Taxi() {
                 id: newReqId,
                 user_id: validUserId,
                 user_name: userData?.displayName || user?.displayName || user?.email || guestName || 'Usuario Invitado',
-                user_phone: userData?.phone || guestPhone || 'Sin número',
-                user_cedula: userData?.cedula || guestCedula || 'N/A',
+                user_phone: userData?.phone || (guestPhone ? `+58${guestPhone}` : 'Sin número'),
+                user_cedula: userData?.cedula || (guestCedula ? `${guestCedulaType}-${guestCedula}` : 'N/A'),
                 origin,
                 destination,
                 route: routeInfo,
@@ -1360,7 +1462,7 @@ export default function Taxi() {
                 service_category: selectedCategory,
                 vehicle_type: vType,
                 driver_payout: driverPayoutVal,
-                commission_amount: commAmount,
+                commission_amount: finalCommAmount,
                 commission_debited: false,
                 status: 'searching',
                 payment_method: selectedPaymentMethod,
@@ -1414,8 +1516,8 @@ export default function Taxi() {
         }
     };
 
-    // Función: Transporte Rápido (Solicitud en un toque)
-    const handleQuickTransport = async (vehicle: 'moto' | 'carro') => {
+    // Función: Transporte Rápido (Solicitud en un toque) - 3 Categorías
+    const handleQuickTransport = async (vehicle: 'moto' | 'carro' | 'confort') => {
         if (isRequestingQuickTransport) return;
         setIsRequestingQuickTransport(true);
         vibrate(40);
@@ -1461,10 +1563,28 @@ export default function Taxi() {
 
             const rawUserId = user?.id || user?.uid || null;
             const validUserId = isValidUUID(rawUserId) ? rawUserId : null;
-            const newReqId = crypto.randomUUID();
-            const isCar = vehicle === 'carro';
-            const basePrice = isCar ? 1.50 : 0.50;
-            const commAmount = isCar ? (liveCommissions.taxi || 0.80) : (liveCommissions.mototaxi || 0.25);
+            const newReqId = safeUUID();
+
+            let basePrice = 0.50;
+            let commAmount = liveCommissions.mototaxi || 0.25;
+            let vType: 'moto' | 'carro' | 'ejecutivo' = 'moto';
+            let serviceCat = 'mototaxi';
+            let categoryLabel = 'Mototaxi';
+
+            if (vehicle === 'carro') {
+                basePrice = 1.50;
+                commAmount = liveCommissions.taxi || 0.80;
+                vType = 'carro';
+                serviceCat = 'taxi_driver';
+                categoryLabel = 'Carro Económico';
+            } else if (vehicle === 'confort') {
+                basePrice = 2.50;
+                commAmount = liveCommissions.confort || 1.00;
+                vType = 'ejecutivo';
+                serviceCat = 'carro_confort';
+                categoryLabel = 'Carro Confort';
+            }
+
             const driverPayoutVal = Math.max(0, basePrice - commAmount);
 
             // 2. Alerta abierta (Radar masivo inmediato a todas las unidades de la zona)
@@ -1472,8 +1592,8 @@ export default function Taxi() {
                 id: newReqId,
                 user_id: validUserId,
                 user_name: userData?.displayName || user?.displayName || user?.email || guestName || 'Cliente Express',
-                user_phone: userData?.phone || (user as any)?.phoneNumber || guestPhone || 'Sin número',
-                user_cedula: userData?.cedula || guestCedula || 'N/A',
+                user_phone: userData?.phone || (user as any)?.phoneNumber || (guestPhone ? `+58${guestPhone}` : 'Sin número'),
+                user_cedula: userData?.cedula || (guestCedula ? `${guestCedulaType}-${guestCedula}` : 'N/A'),
                 origin: {
                     lat: coords.lat,
                     lng: coords.lng,
@@ -1492,21 +1612,21 @@ export default function Taxi() {
                 price: basePrice,
                 driver_id: null,
                 assigned_driver_id: null, // Radar abierto para todas las unidades cercanas
-                service_category: isCar ? 'taxi_driver' : 'mototaxi',
-                vehicle_type: isCar ? 'carro' : 'moto',
+                service_category: serviceCat,
+                vehicle_type: vType,
                 type: 'transport',
                 driver_payout: driverPayoutVal,
                 commission_amount: commAmount,
                 commission_debited: false,
                 status: 'searching',
-                payment_method: 'cash_usd',
+                payment_method: 'pago_movil',
                 payment_status: 'pending',
-                cash_currency: 'USD',
+                cash_currency: 'VES',
                 payment_ref: '',
                 payment_proof_url: null,
                 scheduled: false,
                 scheduled_at: null,
-                notes: isCar ? '⚡ Transporte Rápido: Carro (A partir de $1.50)' : '⚡ Transporte Rápido: Moto (A partir de $0.50)',
+                notes: `⚡ Transporte Rápido: ${categoryLabel} (A partir de $${basePrice.toFixed(2)})`,
                 created_at: new Date().toISOString()
             };
 
@@ -1519,7 +1639,7 @@ export default function Taxi() {
             localStorage.setItem('active_transport_req_id', newReqId);
             setIsQuickTransportModalOpen(false);
             toast.success(
-                isCar ? '¡Buscando Carro en el radar cercano!' : '¡Buscando Mototaxi en el radar cercano!',
+                `¡Buscando ${categoryLabel} en el radar cercano!`,
                 { icon: '⚡', duration: 4000 }
             );
 
@@ -1791,7 +1911,14 @@ export default function Taxi() {
                 {/* Bottom Cancel Option */}
                 <div className="relative z-10 w-full max-w-xs pb-4">
                     <button
-                        onClick={() => setStep('vehicle')}
+                        onClick={async () => {
+                            const activeId = localStorage.getItem('active_transport_req_id');
+                            if (activeId) {
+                                await supabase.from('transport_requests').update({ status: 'cancelled' }).eq('id', activeId);
+                                localStorage.removeItem('active_transport_req_id');
+                            }
+                            setStep('vehicle');
+                        }}
                         className="w-full py-3.5 bg-white/10 hover:bg-white/15 text-slate-300 font-bold rounded-2xl text-xs uppercase tracking-wider active:scale-95 transition-all"
                     >
                         Cancelar búsqueda
@@ -2888,23 +3015,37 @@ export default function Taxi() {
                             </div>
 
                             {/* Big Prominent Yango CTA Button */}
-                            <button
-                                onClick={handleRequestTaxi}
-                                className="w-full py-3.5 bg-[#FFB800] text-slate-950 font-black text-xs sm:text-sm uppercase tracking-wider rounded-2xl shadow-xl shadow-amber-500/20 active:scale-95 transition-all flex items-center justify-center gap-2"
-                            >
-                                <span>
-                                    {mainMode === 'mandado'
-                                        ? 'Solicitar Mandado • Iniciar Subasta'
-                                        : mainMode === 'package'
-                                        ? `Pedir Envío • $${calculatePrice(vehicleType)}`
-                                        : selectedCategory === 'mototaxi'
-                                        ? `Pedir Mototaxi • $${calculatePrice('moto')}`
-                                        : selectedCategory === 'carro_confort'
-                                        ? `Pedir Confort • $${calculatePrice('ejecutivo')}`
-                                        : `Pedir Taxi • $${calculatePrice('carro')}`}
-                                </span>
-                                <ArrowRight className="w-4 h-4" />
-                            </button>
+                            {mainMode === 'package' ? (
+                                <div className="space-y-1.5">
+                                    <button
+                                        onClick={handleRequestTaxi}
+                                        className="w-full py-4 bg-emerald-600 hover:bg-emerald-500 text-white font-black text-sm uppercase tracking-wider rounded-2xl shadow-xl shadow-emerald-600/30 active:scale-95 transition-all flex items-center justify-center gap-2"
+                                    >
+                                        <Package className="w-4 h-4" />
+                                        <span>Enviar encomienda</span>
+                                        <ArrowRight className="w-4 h-4" />
+                                    </button>
+                                    <p className="text-[10px] text-center text-slate-500 font-medium">
+                                        📦 Ideal para emprendedores, paquetes, documentos, regalos y más
+                                    </p>
+                                </div>
+                            ) : (
+                                <button
+                                    onClick={handleRequestTaxi}
+                                    className="w-full py-3.5 bg-[#FFB800] text-slate-950 font-black text-xs sm:text-sm uppercase tracking-wider rounded-2xl shadow-xl shadow-amber-500/20 active:scale-95 transition-all flex items-center justify-center gap-2"
+                                >
+                                    <span>
+                                        {mainMode === 'mandado'
+                                            ? 'Solicitar Mandado • Iniciar Subasta'
+                                            : selectedCategory === 'mototaxi'
+                                            ? `Pedir Mototaxi • $${calculatePrice('moto')}`
+                                            : selectedCategory === 'carro_confort'
+                                            ? `Pedir Confort • $${calculatePrice('ejecutivo')}`
+                                            : `Pedir Taxi • $${calculatePrice('carro')}`}
+                                    </span>
+                                    <ArrowRight className="w-4 h-4" />
+                                </button>
+                            )}
                         </div>
                     )}
 
@@ -3061,10 +3202,19 @@ export default function Taxi() {
             {showGuestModal && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
                     <div className="bg-white rounded-3xl p-6 max-w-sm w-full shadow-2xl space-y-4">
-                        <h3 className="text-lg font-black text-slate-900 text-center">Datos del Pasajero</h3>
-                        <p className="text-xs text-slate-500 text-center">
-                            Requerimos tus datos para que el conductor pueda identificarte y contactarte.
-                        </p>
+                        <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+                            <div>
+                                <h3 className="text-base font-black text-slate-900">Datos del Pasajero</h3>
+                                <p className="text-[11px] text-slate-500 font-medium">Requeridos para tu viaje seguro</p>
+                            </div>
+                            <button
+                                onClick={() => setShowGuestModal(false)}
+                                className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 flex items-center justify-center"
+                            >
+                                <X className="w-4 h-4" />
+                            </button>
+                        </div>
+
                         <div className="space-y-3">
                             <div>
                                 <label className="text-[10px] font-black uppercase text-slate-400 block mb-1">Nombre completo</label>
@@ -3073,29 +3223,53 @@ export default function Taxi() {
                                     value={guestName}
                                     onChange={(e) => setGuestName(e.target.value)}
                                     placeholder="Ej: Juan Pérez"
-                                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-xs font-bold"
+                                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-xs font-bold outline-none focus:border-primary"
                                 />
                             </div>
                             <div>
-                                <label className="text-[10px] font-black uppercase text-slate-400 block mb-1">Cédula</label>
-                                <input
-                                    type="text"
-                                    value={guestCedula}
-                                    onChange={(e) => setGuestCedula(e.target.value.replace(/\D/g, ''))}
-                                    placeholder="Ej: 12345678"
-                                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-xs font-bold"
-                                />
+                                <label className="text-[10px] font-black uppercase text-slate-400 block mb-1">Cédula de Identidad</label>
+                                <div className="space-y-1.5">
+                                    <div className="flex gap-1.5">
+                                        {(['V', 'E', 'J'] as const).map(type => (
+                                            <button
+                                                key={type}
+                                                type="button"
+                                                onClick={() => setGuestCedulaType(type)}
+                                                className={`flex-1 py-1.5 rounded-lg text-xs font-black transition-all ${
+                                                    guestCedulaType === type
+                                                        ? 'bg-slate-900 text-white shadow-xs'
+                                                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                                                }`}
+                                            >
+                                                {type}-
+                                            </button>
+                                        ))}
+                                    </div>
+                                    <input
+                                        type="text"
+                                        value={guestCedula}
+                                        onChange={(e) => setGuestCedula(e.target.value.replace(/\D/g, ''))}
+                                        placeholder="12345678"
+                                        className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-xs font-bold outline-none focus:border-primary"
+                                    />
+                                </div>
                             </div>
                             <div>
                                 <label className="text-[10px] font-black uppercase text-slate-400 block mb-1">Teléfono (WhatsApp)</label>
-                                <input
-                                    type="tel"
-                                    value={guestPhone}
-                                    onChange={(e) => setGuestPhone(e.target.value.replace(/\D/g, ''))}
-                                    placeholder="Ej: 04141234567"
-                                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-xs font-bold"
-                                />
+                                <div className="flex items-center bg-slate-50 border border-slate-200 rounded-xl overflow-hidden focus-within:border-primary">
+                                    <span className="px-3 py-2.5 bg-slate-100 border-r border-slate-200 text-xs font-black text-slate-700 select-none">
+                                        🇻🇪 +58
+                                    </span>
+                                    <input
+                                        type="tel"
+                                        value={guestPhone}
+                                        onChange={(e) => setGuestPhone(e.target.value.replace(/\D/g, ''))}
+                                        placeholder="4121234567"
+                                        className="w-full bg-transparent px-3 py-2.5 text-xs font-bold outline-none"
+                                    />
+                                </div>
                             </div>
+
                             <button
                                 onClick={() => {
                                     if (!guestName || !guestCedula || !guestPhone) {
@@ -3108,6 +3282,18 @@ export default function Taxi() {
                                 className="w-full py-3.5 bg-primary text-slate-950 font-black text-xs uppercase tracking-wider rounded-2xl active:scale-95 shadow-lg shadow-primary/20"
                             >
                                 Continuar con el viaje
+                            </button>
+
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    setShowGuestModal(false);
+                                    navigate('/profile');
+                                }}
+                                className="w-full py-2.5 border border-primary/30 bg-primary/10 hover:bg-primary/20 text-slate-800 text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-1.5"
+                            >
+                                <span>¿Deseas registrarte o guardar tus datos?</span>
+                                <span className="text-primary font-black underline">Ir al Perfil</span>
                             </button>
                         </div>
                     </div>
@@ -3176,59 +3362,86 @@ export default function Taxi() {
                                     </div>
                                 </div>
                             ) : (
-                                /* Two Big Vehicle Cards */
-                                <div className="grid grid-cols-2 gap-3.5 mb-2">
+                                /* Three Vehicle Cards */
+                                <div className="grid grid-cols-3 gap-2 sm:gap-3 mb-2">
                                     {/* Opción 1: Moto */}
                                     <button
                                         type="button"
                                         onClick={() => handleQuickTransport('moto')}
-                                        className="flex flex-col items-center justify-between p-4 bg-gradient-to-b from-amber-50/50 to-white hover:to-amber-50 border-2 border-slate-200 hover:border-amber-400 rounded-3xl active:scale-95 transition-all text-center group shadow-sm hover:shadow-md cursor-pointer"
+                                        className="flex flex-col items-center justify-between p-3 bg-gradient-to-b from-amber-50/50 to-white hover:to-amber-50 border-2 border-slate-200 hover:border-amber-400 rounded-3xl active:scale-95 transition-all text-center group shadow-sm hover:shadow-md cursor-pointer"
                                     >
-                                        <div className="w-16 h-16 rounded-2xl bg-amber-400/20 text-slate-950 flex items-center justify-center group-hover:scale-110 group-hover:bg-amber-400 transition-all mb-3 shadow-inner">
-                                            <Bike className="w-9 h-9 text-slate-950" />
+                                        <div className="w-12 h-12 rounded-2xl bg-amber-400/20 text-slate-950 flex items-center justify-center group-hover:scale-110 group-hover:bg-amber-400 transition-all mb-2 shadow-inner">
+                                            <Bike className="w-6 h-6 text-slate-950" />
                                         </div>
-                                        <span className="text-base font-black text-slate-950 tracking-tight">
+                                        <span className="text-xs sm:text-sm font-black text-slate-950 tracking-tight">
                                             Moto
                                         </span>
-                                        <div className="mt-1 px-2.5 py-1 rounded-full bg-amber-100/80 border border-amber-200">
-                                            <p className="text-xs font-black text-amber-950">
-                                                A partir de $0.50
+                                        <div className="mt-1 px-1.5 py-0.5 rounded-full bg-amber-100/80 border border-amber-200">
+                                            <p className="text-[10px] sm:text-xs font-black text-amber-950">
+                                                $0.50+
                                             </p>
                                         </div>
                                         {bcvRate ? (
-                                            <span className="text-[10px] text-slate-500 font-bold mt-1">
-                                                ~Bs. {(0.50 * bcvRate).toFixed(2)}
+                                            <span className="text-[9px] text-slate-500 font-bold mt-0.5">
+                                                ~Bs. {(0.50 * bcvRate).toFixed(0)}
                                             </span>
                                         ) : null}
-                                        <span className="mt-3 text-[10px] font-black uppercase text-amber-700 bg-amber-50 px-2 py-0.5 rounded-md">
-                                            ⚡ Ultra Rápido
+                                        <span className="mt-2 text-[9px] font-black uppercase text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded-md">
+                                            ⚡ Ágil
                                         </span>
                                     </button>
 
-                                    {/* Opción 2: Carro */}
+                                    {/* Opción 2: Carro Económico */}
                                     <button
                                         type="button"
                                         onClick={() => handleQuickTransport('carro')}
-                                        className="flex flex-col items-center justify-between p-4 bg-gradient-to-b from-blue-50/40 to-white hover:to-blue-50 border-2 border-slate-200 hover:border-blue-500 rounded-3xl active:scale-95 transition-all text-center group shadow-sm hover:shadow-md cursor-pointer"
+                                        className="flex flex-col items-center justify-between p-3 bg-gradient-to-b from-blue-50/40 to-white hover:to-blue-50 border-2 border-slate-200 hover:border-blue-500 rounded-3xl active:scale-95 transition-all text-center group shadow-sm hover:shadow-md cursor-pointer"
                                     >
-                                        <div className="w-16 h-16 rounded-2xl bg-blue-500/15 text-slate-950 flex items-center justify-center group-hover:scale-110 group-hover:bg-blue-500 group-hover:text-white transition-all mb-3 shadow-inner">
-                                            <Car className="w-9 h-9 text-slate-950 group-hover:text-white transition-colors" />
+                                        <div className="w-12 h-12 rounded-2xl bg-blue-500/15 text-slate-950 flex items-center justify-center group-hover:scale-110 group-hover:bg-blue-500 group-hover:text-white transition-all mb-2 shadow-inner">
+                                            <Car className="w-6 h-6 text-slate-950 group-hover:text-white transition-colors" />
                                         </div>
-                                        <span className="text-base font-black text-slate-950 tracking-tight">
-                                            Carro
+                                        <span className="text-xs sm:text-sm font-black text-slate-950 tracking-tight leading-tight">
+                                            Carro Económico
                                         </span>
-                                        <div className="mt-1 px-2.5 py-1 rounded-full bg-blue-100/80 border border-blue-200">
-                                            <p className="text-xs font-black text-blue-950">
-                                                A partir de $1.50
+                                        <div className="mt-1 px-1.5 py-0.5 rounded-full bg-blue-100/80 border border-blue-200">
+                                            <p className="text-[10px] sm:text-xs font-black text-blue-950">
+                                                $1.50+
                                             </p>
                                         </div>
                                         {bcvRate ? (
-                                            <span className="text-[10px] text-slate-500 font-bold mt-1">
-                                                ~Bs. {(1.50 * bcvRate).toFixed(2)}
+                                            <span className="text-[9px] text-slate-500 font-bold mt-0.5">
+                                                ~Bs. {(1.50 * bcvRate).toFixed(0)}
                                             </span>
                                         ) : null}
-                                        <span className="mt-3 text-[10px] font-black uppercase text-blue-700 bg-blue-50 px-2 py-0.5 rounded-md">
-                                            🛡️ Taxi / Confort
+                                        <span className="mt-2 text-[9px] font-black uppercase text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded-md">
+                                            🚗 Diario
+                                        </span>
+                                    </button>
+
+                                    {/* Opción 3: Carro Confort */}
+                                    <button
+                                        type="button"
+                                        onClick={() => handleQuickTransport('confort')}
+                                        className="flex flex-col items-center justify-between p-3 bg-gradient-to-b from-purple-50/40 to-white hover:to-purple-50 border-2 border-slate-200 hover:border-purple-500 rounded-3xl active:scale-95 transition-all text-center group shadow-sm hover:shadow-md cursor-pointer"
+                                    >
+                                        <div className="w-12 h-12 rounded-2xl bg-purple-500/15 text-slate-950 flex items-center justify-center group-hover:scale-110 group-hover:bg-purple-600 group-hover:text-white transition-all mb-2 shadow-inner">
+                                            <Sparkles className="w-6 h-6 text-purple-700 group-hover:text-white transition-colors" />
+                                        </div>
+                                        <span className="text-xs sm:text-sm font-black text-slate-950 tracking-tight leading-tight">
+                                            Carro Confort
+                                        </span>
+                                        <div className="mt-1 px-1.5 py-0.5 rounded-full bg-purple-100/80 border border-purple-200">
+                                            <p className="text-[10px] sm:text-xs font-black text-purple-950">
+                                                $2.50+
+                                            </p>
+                                        </div>
+                                        {bcvRate ? (
+                                            <span className="text-[9px] text-slate-500 font-bold mt-0.5">
+                                                ~Bs. {(2.50 * bcvRate).toFixed(0)}
+                                            </span>
+                                        ) : null}
+                                        <span className="mt-2 text-[9px] font-black uppercase text-purple-700 bg-purple-50 px-1.5 py-0.5 rounded-md">
+                                            ⭐ VIP / A/C
                                         </span>
                                     </button>
                                 </div>
@@ -3508,10 +3721,18 @@ export default function Taxi() {
                                             <p className="text-xs text-slate-400 font-medium">Cargando reseñas...</p>
                                         </div>
                                     ) : driverReviewsList.length === 0 ? (
-                                        <div className="p-6 text-center bg-slate-50 rounded-2xl border border-slate-100">
-                                            <Star className="w-8 h-8 text-amber-400 mx-auto mb-2 opacity-50" />
-                                            <p className="text-xs font-black text-slate-700">Sin reseñas escritas aún</p>
-                                            <p className="text-[11px] text-slate-400 mt-0.5">El conductor tiene calificación positiva de 5★</p>
+                                        <div className="p-6 text-center bg-slate-50 rounded-2xl border border-slate-100 space-y-2">
+                                            <div className="flex justify-center gap-1 text-amber-400">
+                                                <Star className="w-5 h-5 fill-amber-400" />
+                                                <Star className="w-5 h-5 fill-amber-400" />
+                                                <Star className="w-5 h-5 fill-amber-400" />
+                                                <Star className="w-5 h-5 fill-amber-400" />
+                                                <Star className="w-5 h-5 fill-amber-400" />
+                                            </div>
+                                            <p className="text-xs font-black text-slate-800">Conductor 5★ Verificado</p>
+                                            <p className="text-[11px] text-slate-500 font-medium">
+                                                Perfil activo y verificado por Deliexpress sin reportes negativos.
+                                            </p>
                                         </div>
                                     ) : (
                                         driverReviewsList.map((rev) => (
@@ -3524,9 +3745,13 @@ export default function Taxi() {
                                                         ))}
                                                     </div>
                                                 </div>
-                                                {rev.rating_comment && (
+                                                {rev.rating_comment ? (
                                                     <p className="text-xs text-slate-600 font-medium leading-relaxed italic">
                                                         "{rev.rating_comment}"
+                                                    </p>
+                                                ) : (
+                                                    <p className="text-[11px] text-slate-500 font-medium">
+                                                        Viaje completado exitosamente • Calificación {rev.rating || 5}★
                                                     </p>
                                                 )}
                                                 {rev.rating_tags && Array.isArray(rev.rating_tags) && rev.rating_tags.length > 0 && (

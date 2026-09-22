@@ -11,6 +11,7 @@ import Earnings from './pages/Earnings';
 import DriverProfile from './pages/DriverProfile';
 import PendingApproval from './pages/PendingApproval';
 import Achievements from './pages/Achievements';
+import GlobalCallReceiver from '../components/GlobalCallReceiver';
 
 function DeliveryRoutes() {
     const { user, userData, loading: authLoading } = useAuth();
@@ -140,6 +141,7 @@ export default function DeliveryApp() {
     return (
         <Router basename={basename}>
             <DeliveryRoutes />
+            <GlobalCallReceiver />
         </Router>
     );
 }

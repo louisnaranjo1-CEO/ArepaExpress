@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { User, Mail, MapPin, CreditCard, LogOut, ShoppingBag, Settings, ChevronRight, Clock, FileText, Bell, Navigation, X, Shield, UploadCloud, Star, Wallet, Gift, Award, MessageSquareWarning, Plus, Send, AlertCircle, CheckCircle, Store, Handshake, Fingerprint, Calendar, Trash2, AlertTriangle } from 'lucide-react';
+import { User, Mail, MapPin, CreditCard, LogOut, ShoppingBag, Settings, ChevronRight, ChevronDown, Clock, FileText, Bell, Navigation, X, Shield, UploadCloud, Star, Wallet, Gift, Award, MessageSquareWarning, Plus, Send, AlertCircle, CheckCircle, Store, Handshake, Fingerprint, Calendar, Trash2, AlertTriangle } from 'lucide-react';
 import { Geolocation } from '@capacitor/geolocation';
 import { Capacitor } from '@capacitor/core';
 import { isDemoMode, UN2X3_LOGO } from '../lib/env';
@@ -100,6 +100,7 @@ export default function Profile() {
     const [historyFilter, setHistoryFilter] = useState<'all' | 'transport' | 'mandado' | 'order'>('all');
     const [selectedDetailActivity, setSelectedDetailActivity] = useState<any | null>(null);
     const [activeChatRequestId, setActiveChatRequestId] = useState<string | null>(null);
+    const [showAllActivities, setShowAllActivities] = useState(false);
 
     const getActivityCategoryMeta = (activity: any) => {
         if (activity.type === 'transport') {
@@ -649,6 +650,7 @@ export default function Profile() {
             );
             if (isEnabled) {
                 await disableNotifications(uid);
+                localStorage.setItem('notifications_enabled', 'false');
                 setUserData((prev: any) => ({
                     ...prev,
                     notificationsEnabled: false,
@@ -661,6 +663,7 @@ export default function Profile() {
             } else {
                 const result = await requestNotificationPermission(uid);
                 if (result.success) {
+                    localStorage.setItem('notifications_enabled', 'true');
                     setUserData((prev: any) => ({
                         ...prev,
                         notificationsEnabled: true,
@@ -1735,9 +1738,11 @@ export default function Profile() {
                                         );
                                     }
 
+                                    const itemsToRender = showAllActivities ? filtered : filtered.slice(0, 2);
+
                                     return (
                                         <div className="space-y-3">
-                                            {filtered.map(activity => {
+                                            {itemsToRender.map(activity => {
                                                 const meta = getActivityCategoryMeta(activity);
                                                 const actDate = activity.created_at ? new Date(activity.created_at) : (activity.createdAt?.toDate ? activity.createdAt.toDate() : (activity.createdAt ? new Date(activity.createdAt) : null));
                                                 const isTransport = activity.type === 'transport';
@@ -1809,6 +1814,17 @@ export default function Profile() {
                                                     </div>
                                                 );
                                             })}
+
+                                            {filtered.length > 2 && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setShowAllActivities(!showAllActivities)}
+                                                    className="w-full py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-black text-xs rounded-xl flex items-center justify-center gap-1.5 transition-colors active:scale-98"
+                                                >
+                                                    <span>{showAllActivities ? 'Mostrar menos' : `Ver todos (${filtered.length})`}</span>
+                                                    <ChevronDown className={`w-4 h-4 transition-transform duration-200 ${showAllActivities ? 'rotate-180' : ''}`} />
+                                                </button>
+                                            )}
                                         </div>
                                     );
                                 })()
@@ -1838,14 +1854,14 @@ export default function Profile() {
                                         </div>
                                     </div>
                                     <div
-                                        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${userData?.notificationsEnabled || userData?.notifications_enabled || (userData?.fcmTokens && userData.fcmTokens.length > 0) || (userData?.fcm_tokens && userData.fcm_tokens.length > 0) ? 'bg-green-500' : 'bg-slate-300'
+                                        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${userData?.notificationsEnabled || userData?.notifications_enabled || (userData?.fcmTokens && userData.fcmTokens.length > 0) || (userData?.fcm_tokens && userData.fcm_tokens.length > 0) || localStorage.getItem('notifications_enabled') === 'true' ? 'bg-green-500' : 'bg-slate-300'
                                             }`}
                                     >
                                         {updatingNotifications ? (
                                             <div className="ml-1 w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
                                         ) : (
                                             <span
-                                                className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${userData?.notificationsEnabled || userData?.notifications_enabled || (userData?.fcmTokens && userData.fcmTokens.length > 0) || (userData?.fcm_tokens && userData.fcm_tokens.length > 0) ? 'translate-x-6' : 'translate-x-1'
+                                                className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${userData?.notificationsEnabled || userData?.notifications_enabled || (userData?.fcmTokens && userData.fcmTokens.length > 0) || (userData?.fcm_tokens && userData.fcm_tokens.length > 0) || localStorage.getItem('notifications_enabled') === 'true' ? 'translate-x-6' : 'translate-x-1'
                                                     }`}
                                             />
                                         )}
@@ -1858,9 +1874,10 @@ export default function Profile() {
                                         if (!uid) return;
                                         setUpdatingBiometrics(true);
                                         try {
-                                            const isCurrentlyActive = Boolean(userData?.biometricLockEnabled || userData?.biometric_lock_enabled);
+                                            const isCurrentlyActive = Boolean(userData?.biometricLockEnabled || userData?.biometric_lock_enabled || localStorage.getItem('biometric_lock_enabled') === 'true');
                                             if (isCurrentlyActive) {
                                                 // Disable
+                                                localStorage.setItem('biometric_lock_enabled', 'false');
                                                 await supabase.from('profiles').update({
                                                     biometricLockEnabled: false,
                                                     biometric_lock_enabled: false,
@@ -1879,6 +1896,7 @@ export default function Profile() {
                                                 const email = user?.email || userData?.email || '';
                                                 const biometricData = await registerBiometric(uid, email);
                                                 if (biometricData) {
+                                                    localStorage.setItem('biometric_lock_enabled', 'true');
                                                     await supabase.from('profiles').update({
                                                         biometricLockEnabled: true,
                                                         biometric_lock_enabled: true,
@@ -1911,7 +1929,7 @@ export default function Profile() {
                                 >
                                     <div className="flex items-center gap-3">
                                         <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center shadow-sm">
-                                            <Fingerprint className={`w-5 h-5 transition-colors duration-300 ${Boolean(userData?.biometricLockEnabled || userData?.biometric_lock_enabled) ? 'text-green-600' : 'text-slate-500'}`} />
+                                            <Fingerprint className={`w-5 h-5 transition-colors duration-300 ${Boolean(userData?.biometricLockEnabled || userData?.biometric_lock_enabled || localStorage.getItem('biometric_lock_enabled') === 'true') ? 'text-green-600' : 'text-slate-500'}`} />
                                         </div>
                                         <div className="flex flex-col">
                                             <span className="font-bold text-slate-700">Bloqueo Biométrico</span>
@@ -1919,14 +1937,14 @@ export default function Profile() {
                                         </div>
                                     </div>
                                     <div
-                                        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors duration-300 focus:outline-none ${Boolean(userData?.biometricLockEnabled || userData?.biometric_lock_enabled) ? 'bg-green-500' : 'bg-slate-300'
+                                        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors duration-300 focus:outline-none ${Boolean(userData?.biometricLockEnabled || userData?.biometric_lock_enabled || localStorage.getItem('biometric_lock_enabled') === 'true') ? 'bg-green-500' : 'bg-slate-300'
                                             }`}
                                     >
                                         {updatingBiometrics ? (
                                             <div className="ml-1 w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
                                         ) : (
                                             <span
-                                                className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform duration-300 shadow-sm ${Boolean(userData?.biometricLockEnabled || userData?.biometric_lock_enabled) ? 'translate-x-6' : 'translate-x-1'
+                                                className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform duration-300 shadow-sm ${Boolean(userData?.biometricLockEnabled || userData?.biometric_lock_enabled || localStorage.getItem('biometric_lock_enabled') === 'true') ? 'translate-x-6' : 'translate-x-1'
                                                     }`}
                                             />
                                         )}

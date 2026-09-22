@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { DeliveryDriver } from '../../lib/delivery-service';
 import { driversApi } from '../../lib/api';
 import { supabase } from '../../lib/supabase';
-import { Truck, CheckCircle2, XCircle, FileText, User, DollarSign, ExternalLink, Plus, Trash2, Clock, Sun, Moon, Activity, MapPin, Map as MapIcon, Navigation, Search, CloudRain, Zap, Sparkles, Sliders, Bike, Car, ShieldCheck, Check, RefreshCw, Shield, CreditCard, Building2, Phone, Package } from 'lucide-react';
+import { Truck, CheckCircle2, XCircle, FileText, User, DollarSign, ExternalLink, Plus, Trash2, Clock, Sun, Moon, Activity, MapPin, Map as MapIcon, Navigation, Search, CloudRain, Zap, Sparkles, Sliders, Bike, Car, ShieldCheck, Check, RefreshCw, Shield, CreditCard, Building2, Phone, Package, Percent } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { GoogleMap, useJsApiLoader, Marker, InfoWindow } from '@react-google-maps/api';
 import DualPrice from '../../components/DualPrice';
@@ -157,6 +157,17 @@ _Enviado desde Deliexpress App_`,
         name: 'Un 2x3 Inversiones C.A.'
     });
 
+    // Porcentaje de Comisión sobre Km Excedentes
+    const [extraKmCommissionPct, setExtraKmCommissionPct] = useState<number>(30);
+
+    // Recomendaciones de Precios de Referencia para Choferes (Día y Noche)
+    const [driverRateRecommendations, setDriverRateRecommendations] = useState({
+        day_km_min: 0.13,
+        day_km_max: 0.22,
+        night_km_min: 0.23,
+        night_km_max: 0.45
+    });
+
     const [showFleetMap, setShowFleetMap] = useState(false);
     const [mapCenter, setMapCenter] = useState({ lat: 10.4806, lng: -66.9036 }); // Caracas
     const [activeMarker, setActiveMarker] = useState<string | null>(null);
@@ -271,6 +282,17 @@ _Enviado desde Deliexpress App_`,
                         under10: sct.under10 !== undefined ? Number(sct.under10) : 0.30,
                         from10to20: sct.from10to20 !== undefined ? Number(sct.from10to20) : 0.55,
                         over20: sct.over20 !== undefined ? Number(sct.over20) : 0.75
+                    });
+                }
+                if (cVal.extra_km_commission_pct !== undefined) {
+                    setExtraKmCommissionPct(Number(cVal.extra_km_commission_pct));
+                }
+                if (cVal.driver_rate_recommendations) {
+                    setDriverRateRecommendations({
+                        day_km_min: Number(cVal.driver_rate_recommendations.day_km_min ?? 0.13),
+                        day_km_max: Number(cVal.driver_rate_recommendations.day_km_max ?? 0.22),
+                        night_km_min: Number(cVal.driver_rate_recommendations.night_km_min ?? 0.23),
+                        night_km_max: Number(cVal.driver_rate_recommendations.night_km_max ?? 0.45)
                     });
                 }
             }
@@ -534,6 +556,8 @@ _Enviado desde Deliexpress App_`,
                     id: 'commission_settings',
                     data: {
                         commissions: categoryCommissions,
+                        extra_km_commission_pct: Number(extraKmCommissionPct || 0),
+                        driver_rate_recommendations: driverRateRecommendations,
                         store_commission_tiers: storeCommissionTiers,
                         storeCommissionTiers: storeCommissionTiers,
                         pagoMovil: {
@@ -1185,6 +1209,124 @@ _Enviado desde Deliexpress App_`,
                                             ≈ {(categoryCommissions.mandao * bcvRate).toFixed(2)} Bs
                                         </p>
                                     )}
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Nueva Regulación: Comisión sobre Kilómetros Excedentes y Tarifas de Referencia */}
+                        <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 pt-3 border-t border-slate-100">
+                            {/* Card: % Comisión sobre Km Excedentes */}
+                            <div className="lg:col-span-5 bg-gradient-to-br from-amber-500/10 via-amber-500/5 to-transparent p-5 rounded-2xl border-2 border-amber-300/80 space-y-3">
+                                <div className="flex items-center gap-3">
+                                    <div className="w-10 h-10 rounded-xl bg-amber-500 text-white flex items-center justify-center font-black shadow-md shadow-amber-500/20">
+                                        <Percent className="w-5 h-5" />
+                                    </div>
+                                    <div>
+                                        <h4 className="font-black text-slate-900 text-sm">Comisión sobre Km Excedentes</h4>
+                                        <p className="text-[10px] text-amber-800 font-bold">Aplica a todas las modalidades de transporte</p>
+                                    </div>
+                                </div>
+                                <p className="text-xs text-slate-600 leading-relaxed font-medium">
+                                    Porcentaje que retiene la plataforma sobre el monto generado por kilómetros que sobrepasan la distancia base inicial elegida por el conductor (1 a 6 km).
+                                </p>
+                                <div className="pt-1">
+                                    <label className="text-[10px] font-black uppercase text-slate-700 block mb-1">
+                                        % Retención sobre Km Adicionales
+                                    </label>
+                                    <div className="relative">
+                                        <input
+                                            type="number"
+                                            step="1"
+                                            min="0"
+                                            max="100"
+                                            value={extraKmCommissionPct}
+                                            onChange={(e) => setExtraKmCommissionPct(parseFloat(e.target.value) || 0)}
+                                            className="w-full bg-white border border-amber-300 pl-4 pr-10 py-2.5 rounded-xl text-base font-black text-slate-900 outline-none focus:ring-2 focus:ring-amber-500"
+                                            placeholder="30"
+                                        />
+                                        <span className="absolute right-4 top-2.5 text-amber-600 font-black text-base">%</span>
+                                    </div>
+                                    <p className="text-[10px] text-slate-400 mt-1">
+                                        Fórmula: Comisión Total = Base Fija + (Monto Excedente × {extraKmCommissionPct}%)
+                                    </p>
+                                </div>
+                            </div>
+
+                            {/* Card: Recomendaciones de Precios de Referencia para Choferes */}
+                            <div className="lg:col-span-7 bg-slate-50 p-5 rounded-2xl border border-slate-200/80 space-y-3">
+                                <div className="flex items-center gap-3">
+                                    <div className="w-10 h-10 rounded-xl bg-indigo-500/10 text-indigo-600 flex items-center justify-center font-black">
+                                        <Sparkles className="w-5 h-5" />
+                                    </div>
+                                    <div>
+                                        <h4 className="font-black text-slate-900 text-sm">Tarifas de Referencia para Choferes</h4>
+                                        <p className="text-[10px] text-slate-400 font-bold">Rango sugerido visible en el panel del conductor</p>
+                                    </div>
+                                </div>
+                                <p className="text-xs text-slate-600 leading-relaxed font-medium">
+                                    Precios de referencia orientativos que se muestran en la pantalla de tarifas del conductor para guiarlos al fijar su precio por kilómetro excedente.
+                                </p>
+
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-1">
+                                    {/* Turno Diurno */}
+                                    <div className="p-3.5 bg-white rounded-xl border border-slate-200 space-y-2">
+                                        <div className="flex items-center gap-1.5 text-amber-600 text-xs font-black">
+                                            <Sun className="w-4 h-4" />
+                                            <span>Horario Diurno</span>
+                                        </div>
+                                        <div className="grid grid-cols-2 gap-2">
+                                            <div>
+                                                <label className="text-[9px] font-black uppercase text-slate-400 block mb-0.5">Mínimo ($/km)</label>
+                                                <input
+                                                    type="number"
+                                                    step="0.01"
+                                                    value={driverRateRecommendations.day_km_min}
+                                                    onChange={e => setDriverRateRecommendations(prev => ({ ...prev, day_km_min: parseFloat(e.target.value) || 0 }))}
+                                                    className="w-full bg-slate-50 border border-slate-200 px-2.5 py-1.5 rounded-lg text-xs font-bold text-slate-800 outline-none focus:ring-1 focus:ring-indigo-500"
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="text-[9px] font-black uppercase text-slate-400 block mb-0.5">Máximo ($/km)</label>
+                                                <input
+                                                    type="number"
+                                                    step="0.01"
+                                                    value={driverRateRecommendations.day_km_max}
+                                                    onChange={e => setDriverRateRecommendations(prev => ({ ...prev, day_km_max: parseFloat(e.target.value) || 0 }))}
+                                                    className="w-full bg-slate-50 border border-slate-200 px-2.5 py-1.5 rounded-lg text-xs font-bold text-slate-800 outline-none focus:ring-1 focus:ring-indigo-500"
+                                                />
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* Turno Nocturno */}
+                                    <div className="p-3.5 bg-white rounded-xl border border-slate-200 space-y-2">
+                                        <div className="flex items-center gap-1.5 text-indigo-600 text-xs font-black">
+                                            <Moon className="w-4 h-4" />
+                                            <span>Horario Nocturno</span>
+                                        </div>
+                                        <div className="grid grid-cols-2 gap-2">
+                                            <div>
+                                                <label className="text-[9px] font-black uppercase text-slate-400 block mb-0.5">Mínimo ($/km)</label>
+                                                <input
+                                                    type="number"
+                                                    step="0.01"
+                                                    value={driverRateRecommendations.night_km_min}
+                                                    onChange={e => setDriverRateRecommendations(prev => ({ ...prev, night_km_min: parseFloat(e.target.value) || 0 }))}
+                                                    className="w-full bg-slate-50 border border-slate-200 px-2.5 py-1.5 rounded-lg text-xs font-bold text-slate-800 outline-none focus:ring-1 focus:ring-indigo-500"
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="text-[9px] font-black uppercase text-slate-400 block mb-0.5">Máximo ($/km)</label>
+                                                <input
+                                                    type="number"
+                                                    step="0.01"
+                                                    value={driverRateRecommendations.night_km_max}
+                                                    onChange={e => setDriverRateRecommendations(prev => ({ ...prev, night_km_max: parseFloat(e.target.value) || 0 }))}
+                                                    className="w-full bg-slate-50 border border-slate-200 px-2.5 py-1.5 rounded-lg text-xs font-bold text-slate-800 outline-none focus:ring-1 focus:ring-indigo-500"
+                                                />
+                                            </div>
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -1947,42 +2089,77 @@ _Enviado desde Deliexpress App_`,
                                 )}
 
                                 {/* Tarifas Configuradas por el Piloto */}
-                                {(selectedDriver as any).driver_fares && (
-                                    <div className="bg-amber-50/60 border border-amber-200 rounded-2xl p-4 space-y-2">
-                                        <h4 className="text-xs font-black text-amber-900 uppercase tracking-wider flex items-center gap-1.5">
-                                            <DollarSign className="w-4 h-4 text-amber-600" />
-                                            <span>Tarifas Configuradas por el Piloto</span>
-                                        </h4>
-                                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
-                                            <div className="bg-white p-2.5 rounded-xl border border-amber-100">
-                                                <span className="text-slate-400 text-[10px] font-bold block">Modalidad</span>
-                                                <span className="font-bold text-slate-800 capitalize">
-                                                    {(selectedDriver as any).driver_fares.pricing_type || 'distance'}
+                                {(selectedDriver as any).driver_fares && (() => {
+                                    const df = (selectedDriver as any).driver_fares;
+                                    const dayBase = df.base_fare_day !== undefined ? df.base_fare_day : df.base_fare;
+                                    const dayDist = df.base_distance_day !== undefined ? df.base_distance_day : (df.base_km || 2);
+                                    const dayExtra = df.extra_km_price_day !== undefined ? df.extra_km_price_day : (df.per_km_fare || 0);
+
+                                    const nightBase = df.base_fare_night !== undefined ? df.base_fare_night : (Number(dayBase || 0) * 1.25);
+                                    const nightDist = df.base_distance_night !== undefined ? df.base_distance_night : (df.base_km || 2);
+                                    const nightExtra = df.extra_km_price_night !== undefined ? df.extra_km_price_night : (Number(dayExtra || 0) * 1.3);
+
+                                    return (
+                                        <div className="bg-amber-50/60 border border-amber-200 rounded-2xl p-4 space-y-3">
+                                            <div className="flex items-center justify-between">
+                                                <h4 className="text-xs font-black text-amber-900 uppercase tracking-wider flex items-center gap-1.5">
+                                                    <DollarSign className="w-4 h-4 text-amber-600" />
+                                                    <span>Tarifas Configuradas por el Piloto</span>
+                                                </h4>
+                                                <span className="text-[10px] font-black bg-amber-200/60 text-amber-900 px-2 py-0.5 rounded-full">
+                                                    Base + Km Excedente
                                                 </span>
                                             </div>
-                                            <div className="bg-white p-2.5 rounded-xl border border-amber-100">
-                                                <span className="text-slate-400 text-[10px] font-bold block">Tarifa Base</span>
-                                                <span className="font-black text-amber-700 font-mono">
-                                                    ${Number((selectedDriver as any).driver_fares.base_fare || 0).toFixed(2)}
-                                                </span>
+
+                                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                                                {/* Turno Diurno */}
+                                                <div className="bg-white p-3 rounded-xl border border-amber-100 space-y-1.5">
+                                                    <div className="flex items-center gap-1 text-amber-600 font-black text-[11px]">
+                                                        <Sun className="w-3.5 h-3.5" />
+                                                        <span>Horario Diurno</span>
+                                                    </div>
+                                                    <div className="flex justify-between items-center text-[11px]">
+                                                        <span className="text-slate-500">Tarifa Base ({dayDist} km incl.):</span>
+                                                        <span className="font-black text-slate-800">${Number(dayBase || 0).toFixed(2)}</span>
+                                                    </div>
+                                                    <div className="flex justify-between items-center text-[11px]">
+                                                        <span className="text-slate-500">Km Excedente:</span>
+                                                        <span className="font-black text-amber-700">${Number(dayExtra || 0).toFixed(2)} / km</span>
+                                                    </div>
+                                                </div>
+
+                                                {/* Turno Nocturno */}
+                                                <div className="bg-white p-3 rounded-xl border border-amber-100 space-y-1.5">
+                                                    <div className="flex items-center gap-1 text-indigo-600 font-black text-[11px]">
+                                                        <Moon className="w-3.5 h-3.5" />
+                                                        <span>Horario Nocturno</span>
+                                                    </div>
+                                                    <div className="flex justify-between items-center text-[11px]">
+                                                        <span className="text-slate-500">Tarifa Base ({nightDist} km incl.):</span>
+                                                        <span className="font-black text-slate-800">${Number(nightBase || 0).toFixed(2)}</span>
+                                                    </div>
+                                                    <div className="flex justify-between items-center text-[11px]">
+                                                        <span className="text-slate-500">Km Excedente:</span>
+                                                        <span className="font-black text-indigo-700">${Number(nightExtra || 0).toFixed(2)} / km</span>
+                                                    </div>
+                                                </div>
                                             </div>
-                                            <div className="bg-white p-2.5 rounded-xl border border-amber-100">
-                                                <span className="text-slate-400 text-[10px] font-bold block">Precio / Km</span>
-                                                <span className="font-black text-amber-700 font-mono">
-                                                    ${Number((selectedDriver as any).driver_fares.per_km_fare || 0).toFixed(2)}
-                                                </span>
-                                            </div>
-                                            {(selectedDriver as any).driver_fares.comfort_base_fare && (
-                                                <div className="bg-white p-2.5 rounded-xl border border-amber-100">
-                                                    <span className="text-slate-400 text-[10px] font-bold block">Base Confort</span>
+
+                                            {/* Confort si existe */}
+                                            {df.comfort_base_fare && (
+                                                <div className="bg-white/80 p-2.5 rounded-xl border border-amber-100 flex items-center justify-between text-xs">
+                                                    <span className="text-slate-500 font-bold flex items-center gap-1">
+                                                        <Sparkles className="w-3.5 h-3.5 text-amber-600" />
+                                                        Base Confort:
+                                                    </span>
                                                     <span className="font-black text-amber-700 font-mono">
-                                                        ${Number((selectedDriver as any).driver_fares.comfort_base_fare).toFixed(2)}
+                                                        ${Number(df.comfort_base_fare).toFixed(2)} (${Number(df.comfort_per_km_fare || df.per_km_fare || 0).toFixed(2)}/km)
                                                     </span>
                                                 </div>
                                             )}
                                         </div>
-                                    </div>
-                                )}
+                                    );
+                                })()}
 
                                 <div>
                                     <h4 className="text-sm font-bold text-slate-900 mb-3 flex items-center gap-2"><User className="w-4 h-4 text-slate-400" /> Selfie y Rostro</h4>

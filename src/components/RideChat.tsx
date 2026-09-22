@@ -162,12 +162,12 @@ export default function RideChat({
 
     const chatPath = `transport_requests/${requestId}`;
 
-    // 48-Hour Retention Logic
+    // 48-Hour Retention Logic: Chat stays COMPLETELY OPEN for messages/media/voice notes for 48 hours post-completion
     const isCompleted = requestStatus === 'completed';
     const completedTimestamp = completedAt ? new Date(completedAt).getTime() : Date.now();
     const hoursSinceCompletion = isCompleted ? (Date.now() - completedTimestamp) / (1000 * 60 * 60) : 0;
     const isExpired = isCompleted && hoursSinceCompletion > 48;
-    const isChatLocked = readOnly || isCompleted || isExpired;
+    const isChatLocked = readOnly || isExpired;
     const hoursRemaining = Math.max(0, Math.ceil(48 - hoursSinceCompletion));
 
     // Vehicle Category Meta
@@ -251,6 +251,38 @@ export default function RideChat({
     useEffect(() => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     }, [messages]);
+
+    // Cleanup expired media from Supabase storage after 48h active window
+    useEffect(() => {
+        if (!isExpired || !requestId || messages.length === 0) return;
+        const cleanupKey = `cleanup_done_${requestId}`;
+        if (sessionStorage.getItem(cleanupKey)) return;
+
+        const cleanupExpiredMedia = async () => {
+            try {
+                const mediaUrls = messages
+                    .flatMap((m) => [m.imageUrl, m.videoUrl, m.audioUrl])
+                    .filter(Boolean) as string[];
+
+                const pathsToDelete: string[] = [];
+                mediaUrls.forEach((url) => {
+                    const match = url.match(/\/store_assets\/(.+)$/);
+                    if (match && match[1]) {
+                        pathsToDelete.push(decodeURIComponent(match[1]));
+                    }
+                });
+
+                if (pathsToDelete.length > 0) {
+                    await supabase.storage.from('store_assets').remove(pathsToDelete);
+                }
+                sessionStorage.setItem(cleanupKey, 'true');
+            } catch (err) {
+                console.warn('Silent storage cleanup on expired chat:', err);
+            }
+        };
+
+        cleanupExpiredMedia();
+    }, [isExpired, requestId, messages]);
 
     const handleSendMessage = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -630,15 +662,15 @@ export default function RideChat({
                 <div className={`p-2.5 px-3 border-b text-xs flex items-center gap-2 ${
                     isExpired 
                         ? 'bg-rose-50 border-rose-200 text-rose-800' 
-                        : 'bg-amber-50 border-amber-200 text-amber-900'
+                        : 'bg-emerald-50 border-emerald-200 text-emerald-900'
                 }`}>
-                    <Clock className="w-4 h-4 shrink-0" />
+                    <Clock className={`w-4 h-4 shrink-0 ${isExpired ? 'text-rose-600' : 'text-emerald-600'}`} />
                     <p className="text-[11px] font-medium leading-tight">
                         {isExpired ? (
-                            <span>El periodo de respaldo de 48 horas ha expirado.</span>
+                            <span>El periodo de soporte activo de 48 horas ha concluido. (Modo solo lectura de respaldo)</span>
                         ) : (
                             <span>
-                                <strong>Respaldo de 48 horas:</strong> Chat disponible para consulta de comprobantes por <strong>{hoursRemaining} horas más</strong>.
+                                <strong>Soporte Activo Post-Viaje:</strong> Chat abierto para mensajes, fotos y notas de voz por <strong>{hoursRemaining} horas más</strong> ante cualquier duda u objeto olvidado.
                             </span>
                         )}
                     </p>
@@ -733,7 +765,7 @@ export default function RideChat({
             {isChatLocked ? (
                 <div className="p-3 bg-slate-200/80 border-t border-slate-300 text-center flex items-center justify-center gap-2 text-slate-600 text-xs font-bold">
                     <Lock className="w-3.5 h-3.5 text-slate-500" />
-                    <span>Chat cerrado por servicio completado (Modo lectura de respaldo por 48h)</span>
+                    <span>Chat cerrado: El periodo de soporte y comunicación de 48 horas ha concluido.</span>
                 </div>
             ) : (
                 <div className="p-2 sm:p-3 bg-white border-t border-slate-200 sticky bottom-0 z-20">
@@ -829,7 +861,7 @@ export default function RideChat({
                                 "Producto no disponible o sin stock",
                                 "Precio diferente al esperado",
                                 "Cola larga / Tiempo de espera mayor",
-                                "Falta nÃºmero de referencia de Pago MÃ³vil"
+                                "Falta número de referencia de Pago Móvil"
                             ].map((issue) => (
                                 <button
                                     key={issue}

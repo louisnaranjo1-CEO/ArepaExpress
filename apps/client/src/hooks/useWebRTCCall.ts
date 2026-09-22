@@ -352,11 +352,30 @@ export function useWebRTCCall({ requestId, myId, remoteId, role, initialOffer, o
                 payload: {
                     type: 'offer',
                     offer: { type: offer.type, sdp: offer.sdp },
-                    from: myId
+                    from: myId,
+                    requestId: requestId
                 }
             });
         }
-    }, [createPC, myId]);
+
+        if (remoteId) {
+            const directChannel = supabase.channel(`user_call_${remoteId}`);
+            directChannel.subscribe((subStatus) => {
+                if (subStatus === 'SUBSCRIBED') {
+                    directChannel.send({
+                        type: 'broadcast',
+                        event: 'signal',
+                        payload: {
+                            type: 'offer',
+                            offer: { type: offer.type, sdp: offer.sdp },
+                            from: myId,
+                            requestId: requestId
+                        }
+                    });
+                }
+            });
+        }
+    }, [createPC, myId, requestId, remoteId]);
 
     /** RECEIVER: answer the call */
     const answerCall = useCallback(async () => {
@@ -375,16 +394,12 @@ export function useWebRTCCall({ requestId, myId, remoteId, role, initialOffer, o
             }
         };
 
-        const offer = pendingOfferRef.current;
-        if (offer) {
-            try {
-                await pc.setRemoteDescription(new RTCSessionDescription(offer));
-            } catch (err) {
-                console.error("Error setting remote offer in answerCall:", err);
-            }
+        // If we already have the offer from caller, set remote description
+        if (pendingOfferRef.current) {
+            await pc.setRemoteDescription(new RTCSessionDescription(pendingOfferRef.current));
         }
 
-        // Create & send answer
+        // Create SDP answer
         const answer = await pc.createAnswer();
         await pc.setLocalDescription(answer);
 
@@ -413,8 +428,20 @@ export function useWebRTCCall({ requestId, myId, remoteId, role, initialOffer, o
                 payload: { type: 'status', status: 'ended', from: myId }
             });
         }
+        if (remoteId) {
+            const directChannel = supabase.channel(`user_call_${remoteId}`);
+            directChannel.subscribe((subStatus) => {
+                if (subStatus === 'SUBSCRIBED') {
+                    directChannel.send({
+                        type: 'broadcast',
+                        event: 'signal',
+                        payload: { type: 'status', status: 'ended', from: myId }
+                    });
+                }
+            });
+        }
         await cleanup();
-    }, [cleanup, myId]);
+    }, [cleanup, myId, remoteId]);
 
     const rejectCall = useCallback(async () => {
         audioEngineRef.current.stop();
@@ -425,8 +452,20 @@ export function useWebRTCCall({ requestId, myId, remoteId, role, initialOffer, o
                 payload: { type: 'status', status: 'rejected', from: myId }
             });
         }
+        if (remoteId) {
+            const directChannel = supabase.channel(`user_call_${remoteId}`);
+            directChannel.subscribe((subStatus) => {
+                if (subStatus === 'SUBSCRIBED') {
+                    directChannel.send({
+                        type: 'broadcast',
+                        event: 'signal',
+                        payload: { type: 'status', status: 'rejected', from: myId }
+                    });
+                }
+            });
+        }
         await cleanup();
-    }, [cleanup, myId]);
+    }, [cleanup, myId, remoteId]);
 
     return { callStatus, duration, startCall, answerCall, hangUp, rejectCall };
 }

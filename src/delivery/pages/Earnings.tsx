@@ -1,10 +1,11 @@
 import React, { useEffect, useState } from 'react';
-import { DollarSign, Activity, Calendar, ArrowUpRight, Star, ExternalLink, PackageCheck, AlertCircle, Ticket, Gift, Sparkles, Clock, Copy, Check, UploadCloud, X, ShieldAlert, CheckCircle2, Sliders, Info, Shield, CreditCard } from 'lucide-react';
+import { DollarSign, Activity, Calendar, ArrowUpRight, Star, ExternalLink, PackageCheck, AlertCircle, Ticket, Gift, Sparkles, Clock, Copy, Check, UploadCloud, X, ShieldAlert, CheckCircle2, Sliders, Info, Shield, CreditCard, Sun, Moon, Navigation, Percent, MapPin } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { supabase } from '../../lib/supabase';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useCurrency } from '../../context/CurrencyContext';
 import { toast } from 'react-hot-toast';
+import DriverFareSimulatorModal from '../components/DriverFareSimulatorModal';
 
 interface EarningsItem {
     id: string;
@@ -44,12 +45,31 @@ interface DriverRaffle {
 }
 
 interface DriverFares {
-    pricing_type: 'flat' | 'distance' | 'mixed';
-    base_fare: number;
-    per_km_fare: number;
-    base_km: number;
+    // Horario Diurno (Día)
+    base_fare_day: number;
+    base_distance_day: number; // 1 to 6 km
+    extra_km_price_day: number;
+
+    // Horario Nocturno (Noche)
+    base_fare_night: number;
+    base_distance_night: number; // 1 to 6 km
+    extra_km_price_night: number;
+
+    // Opcional: Confort
+    comfort_base_fare_day?: number;
+    comfort_base_distance_day?: number;
+    comfort_extra_km_price_day?: number;
+    comfort_base_fare_night?: number;
+    comfort_base_distance_night?: number;
+    comfort_extra_km_price_night?: number;
+
+    // Retrocompatibilidad
+    base_fare?: number;
+    per_km_fare?: number;
+    base_km?: number;
     comfort_base_fare?: number;
     comfort_per_km_fare?: number;
+    pricing_type?: 'flat' | 'distance' | 'mixed';
 }
 
 export default function Earnings() {
@@ -89,14 +109,26 @@ export default function Earnings() {
 
     // Driver Fares State
     const [fares, setFares] = useState<DriverFares>({
-        pricing_type: 'distance',
+        base_fare_day: 1.5,
+        base_distance_day: 2,
+        extra_km_price_day: 0.20,
+        base_fare_night: 2.0,
+        base_distance_night: 2,
+        extra_km_price_night: 0.30,
+        comfort_base_fare_day: 2.5,
+        comfort_base_distance_day: 2,
+        comfort_extra_km_price_day: 1.0,
+        comfort_base_fare_night: 3.2,
+        comfort_base_distance_night: 2,
+        comfort_extra_km_price_night: 1.3,
+        pricing_type: 'mixed',
         base_fare: 1.5,
-        per_km_fare: 0.8,
-        base_km: 2.0,
-        comfort_base_fare: 2.5,
-        comfort_per_km_fare: 1.2
+        per_km_fare: 0.20,
+        base_km: 2.0
     });
     const [savingFares, setSavingFares] = useState(false);
+    const [activeFareShiftTab, setActiveFareShiftTab] = useState<'day' | 'night'>('day');
+    const [showSimulatorModal, setShowSimulatorModal] = useState(false);
 
     const [stats, setStats] = useState({
         today: 0,
@@ -121,13 +153,34 @@ export default function Earnings() {
                 setNextDeadline(dData.next_commission_deadline || null);
                 setPayoutFrequency(dData.payout_frequency || 'weekly_friday');
                 if (dData.driver_fares) {
+                    const df = dData.driver_fares;
+                    const dayBase = Number(df.base_fare_day !== undefined ? df.base_fare_day : (df.base_fare || 1.50));
+                    const dayDist = Math.min(6, Math.max(1, Number(df.base_distance_day !== undefined ? df.base_distance_day : (df.base_km || 2))));
+                    const dayExtra = Number(df.extra_km_price_day !== undefined ? df.extra_km_price_day : (df.per_km_fare || 0.20));
+
+                    const nightBase = Number(df.base_fare_night !== undefined ? df.base_fare_night : parseFloat((dayBase * 1.25).toFixed(2)));
+                    const nightDist = Math.min(6, Math.max(1, Number(df.base_distance_night !== undefined ? df.base_distance_night : dayDist)));
+                    const nightExtra = Number(df.extra_km_price_night !== undefined ? df.extra_km_price_night : parseFloat((dayExtra * 1.35).toFixed(2)));
+
                     setFares({
-                        pricing_type: dData.driver_fares.pricing_type || 'distance',
-                        base_fare: Number(dData.driver_fares.base_fare || 1.5),
-                        per_km_fare: Number(dData.driver_fares.per_km_fare || 0.8),
-                        base_km: Number(dData.driver_fares.base_km || 2.0),
-                        comfort_base_fare: Number(dData.driver_fares.comfort_base_fare || 2.5),
-                        comfort_per_km_fare: Number(dData.driver_fares.comfort_per_km_fare || 1.2)
+                        base_fare_day: dayBase,
+                        base_distance_day: dayDist,
+                        extra_km_price_day: dayExtra,
+                        base_fare_night: nightBase,
+                        base_distance_night: nightDist,
+                        extra_km_price_night: nightExtra,
+                        comfort_base_fare_day: Number(df.comfort_base_fare_day !== undefined ? df.comfort_base_fare_day : (df.comfort_base_fare || 2.50)),
+                        comfort_base_distance_day: Math.min(6, Math.max(1, Number(df.comfort_base_distance_day !== undefined ? df.comfort_base_distance_day : dayDist))),
+                        comfort_extra_km_price_day: Number(df.comfort_extra_km_price_day !== undefined ? df.comfort_extra_km_price_day : (df.comfort_per_km_fare || 1.00)),
+                        comfort_base_fare_night: Number(df.comfort_base_fare_night !== undefined ? df.comfort_base_fare_night : parseFloat((Number(df.comfort_base_fare || 2.50) * 1.25).toFixed(2))),
+                        comfort_base_distance_night: Math.min(6, Math.max(1, Number(df.comfort_base_distance_night !== undefined ? df.comfort_base_distance_night : dayDist))),
+                        comfort_extra_km_price_night: Number(df.comfort_extra_km_price_night !== undefined ? df.comfort_extra_km_price_night : parseFloat((Number(df.comfort_per_km_fare || 1.00) * 1.3).toFixed(2))),
+                        pricing_type: 'mixed',
+                        base_fare: dayBase,
+                        per_km_fare: dayExtra,
+                        base_km: dayDist,
+                        comfort_base_fare: Number(df.comfort_base_fare || 2.50),
+                        comfort_per_km_fare: Number(df.comfort_per_km_fare || 1.00)
                     });
                 }
             }
@@ -484,25 +537,37 @@ export default function Earnings() {
         e.preventDefault();
         if (!user) return;
 
-        if (fares.base_fare < 0.50) {
-            toast.error('La tarifa base mínima permitida es de $0.50 USD.');
+        if (fares.base_fare_day < 0.50 || fares.base_fare_night < 0.50) {
+            toast.error('La tarifa base mínima permitida es de $0.50 USD para ambos horarios (diurno y nocturno).');
             return;
         }
 
         setSavingFares(true);
         const tId = toast.loading('Guardando tarifas...');
         try {
+            const payloadToSave: DriverFares = {
+                ...fares,
+                base_distance_day: Math.min(6, Math.max(1, Math.round(fares.base_distance_day))),
+                base_distance_night: Math.min(6, Math.max(1, Math.round(fares.base_distance_night))),
+                base_fare: fares.base_fare_day,
+                base_km: fares.base_distance_day,
+                per_km_fare: fares.extra_km_price_day,
+                pricing_type: 'mixed',
+                comfort_base_fare: fares.comfort_base_fare_day,
+                comfort_per_km_fare: fares.comfort_extra_km_price_day
+            };
+
             const { error } = await supabase
                 .from('drivers')
                 .update({
-                    driver_fares: fares,
+                    driver_fares: payloadToSave,
                     updated_at: new Date().toISOString()
                 })
                 .eq('id', user.uid);
 
             if (error) throw error;
 
-            toast.success('¡Tus tarifas han sido actualizadas!', { id: tId });
+            toast.success('¡Tus tarifas han sido actualizadas exitosamente!', { id: tId });
             fetchDriverData();
         } catch (err: any) {
             console.error('Error saving fares:', err);
@@ -840,130 +905,301 @@ export default function Earnings() {
                         </div>
                     )}
 
-                    <form onSubmit={handleSaveFares} className="bg-white rounded-3xl p-5 border border-slate-100 shadow-sm space-y-4">
-                        <div>
-                            <div className="flex items-center gap-2">
-                                <Sliders className="w-4 h-4 text-amber-500" />
-                                <h3 className="font-black text-slate-800 text-sm uppercase tracking-wider">
-                                    Configuración de Tarifas del Piloto
-                                </h3>
-                            </div>
-                            <p className="text-xs text-slate-400 mt-1">
-                                Elige con total libertad cómo deseas cobrar tus viajes. Un 2x3 nunca impondrá un precio por km. Solo retendrá la comisión fija por categoría.
-                            </p>
-                        </div>
-
-                        {/* Scheme selector */}
-                        <div className="space-y-1.5">
-                            <label className="text-xs font-bold text-slate-700">Modalidad de Cobro</label>
-                            <div className="grid grid-cols-3 gap-2">
-                                <button
-                                    type="button"
-                                    onClick={() => setFares(prev => ({ ...prev, pricing_type: 'flat' }))}
-                                    className={`p-3 rounded-2xl border text-center transition-all ${
-                                        fares.pricing_type === 'flat'
-                                            ? 'bg-amber-500 text-white border-amber-500 shadow-md shadow-amber-500/20 font-black'
-                                            : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100 font-bold'
-                                    }`}
-                                >
-                                    <span className="text-xs block">Tarifa Fija</span>
-                                    <span className="text-[9px] opacity-80 block mt-0.5">Precio fijo</span>
-                                </button>
-
-                                <button
-                                    type="button"
-                                    onClick={() => setFares(prev => ({ ...prev, pricing_type: 'distance' }))}
-                                    className={`p-3 rounded-2xl border text-center transition-all ${
-                                        fares.pricing_type === 'distance'
-                                            ? 'bg-amber-500 text-white border-amber-500 shadow-md shadow-amber-500/20 font-black'
-                                            : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100 font-bold'
-                                    }`}
-                                >
-                                    <span className="text-xs block">Por Kilómetro</span>
-                                    <span className="text-[9px] opacity-80 block mt-0.5">Base + $/km</span>
-                                </button>
-
-                                <button
-                                    type="button"
-                                    onClick={() => setFares(prev => ({ ...prev, pricing_type: 'mixed' }))}
-                                    className={`p-3 rounded-2xl border text-center transition-all ${
-                                        fares.pricing_type === 'mixed'
-                                            ? 'bg-amber-500 text-white border-amber-500 shadow-md shadow-amber-500/20 font-black'
-                                            : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100 font-bold'
-                                    }`}
-                                >
-                                    <span className="text-xs block">Mixta</span>
-                                    <span className="text-[9px] opacity-80 block mt-0.5">Base X km + extra</span>
-                                </button>
-                            </div>
-                        </div>
-
-                        {/* Fields depending on scheme */}
-                        <div className="space-y-3 pt-1">
-                            <div>
-                                <label className="text-xs font-bold text-slate-700 block mb-1">
-                                    {fares.pricing_type === 'flat' ? 'Tarifa Fija del Servicio ($ USD)' : 'Tarifa Base / Mínima ($ USD)'}
-                                </label>
-                                <div className="relative">
-                                    <span className="absolute left-3.5 top-3 text-slate-400 font-bold text-sm">$</span>
-                                    <input
-                                        type="number"
-                                        step="0.05"
-                                        min="0.50"
-                                        value={fares.base_fare}
-                                        onChange={(e) => setFares(prev => ({ ...prev, base_fare: parseFloat(e.target.value) || 0 }))}
-                                        className="w-full pl-8 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-2xl text-slate-800 text-sm font-bold focus:outline-none focus:border-amber-500"
-                                        placeholder="0.50"
-                                        required
-                                    />
+                    <form onSubmit={handleSaveFares} className="bg-white rounded-3xl p-5 border border-slate-100 shadow-sm space-y-5">
+                        {/* Header & Simulator CTA */}
+                        <div className="space-y-3">
+                            <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-2">
+                                    <Sliders className="w-5 h-5 text-amber-500" />
+                                    <h3 className="font-black text-slate-800 text-sm uppercase tracking-wider">
+                                        Tarifa Base + Km Excedente
+                                    </h3>
                                 </div>
-                                <span className="text-[10px] text-slate-400 mt-1 block">
-                                    * Tarifa mínima obligatoria por normativa de la plataforma: $0.50 USD.
+                                <span className="text-[10px] font-black bg-emerald-50 text-emerald-700 px-2.5 py-0.5 rounded-full border border-emerald-200">
+                                    Cobertura 1 a 6 km
                                 </span>
                             </div>
+                            <p className="text-xs text-slate-500 leading-relaxed font-medium">
+                                Define cuántos kilómetros incluye tu tarifa base de arranque (entre 1 y 6 km) y cuánto cobrarás por cada kilómetro adicional que sobrepase esa distancia.
+                            </p>
 
-                            {fares.pricing_type !== 'flat' && (
+                            {/* Botón Destacado: Simulador de Rutas y Ganancias */}
+                            <button
+                                type="button"
+                                onClick={() => setShowSimulatorModal(true)}
+                                className="w-full py-3.5 px-4 bg-gradient-to-r from-emerald-600 via-emerald-500 to-green-600 hover:from-emerald-500 hover:to-green-500 text-white rounded-2xl font-black text-xs uppercase tracking-wider flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/25 active:scale-98 transition-all"
+                            >
+                                <Navigation className="w-4 h-4" />
+                                <span>🗺️ Simulador / Probar Tarifas en Mapa Real</span>
+                            </button>
+                        </div>
+
+                        {/* Shift Switcher (Diurno vs Nocturno) */}
+                        <div className="space-y-1.5 pt-1">
+                            <label className="text-[10px] font-black uppercase text-slate-400 block">Horario de Configuración</label>
+                            <div className="grid grid-cols-2 gap-2 p-1 bg-slate-100 rounded-2xl">
+                                <button
+                                    type="button"
+                                    onClick={() => setActiveFareShiftTab('day')}
+                                    className={`py-2.5 px-3 rounded-xl text-xs font-black flex items-center justify-center gap-2 transition-all ${
+                                        activeFareShiftTab === 'day'
+                                            ? 'bg-amber-500 text-white shadow-md shadow-amber-500/20'
+                                            : 'text-slate-600 hover:text-slate-900 font-bold'
+                                    }`}
+                                >
+                                    <Sun className="w-4 h-4" />
+                                    <span>☀️ Turno Diurno</span>
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setActiveFareShiftTab('night')}
+                                    className={`py-2.5 px-3 rounded-xl text-xs font-black flex items-center justify-center gap-2 transition-all ${
+                                        activeFareShiftTab === 'night'
+                                            ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/20'
+                                            : 'text-slate-600 hover:text-slate-900 font-bold'
+                                    }`}
+                                >
+                                    <Moon className="w-4 h-4" />
+                                    <span>🌙 Turno Nocturno</span>
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* ========================================================= */}
+                        {/* CONFIGURACIÓN HORARIO DIURNO */}
+                        {/* ========================================================= */}
+                        {activeFareShiftTab === 'day' && (
+                            <div className="space-y-4 animate-fade-in">
+                                <div className="p-3 bg-amber-500/10 border border-amber-300 rounded-2xl flex items-center justify-between text-xs">
+                                    <span className="font-black text-amber-900 flex items-center gap-1.5">
+                                        <Sun className="w-4 h-4 text-amber-600" />
+                                        Configurando Tarifas Diurnas (06:00 – 20:00)
+                                    </span>
+                                    <span className="text-[10px] font-bold text-amber-700 bg-white/70 px-2 py-0.5 rounded-full">
+                                        Día
+                                    </span>
+                                </div>
+
+                                {/* Tarifa Base Diurna */}
                                 <div>
                                     <label className="text-xs font-bold text-slate-700 block mb-1">
-                                        Precio por Kilómetro ($ USD / km)
+                                        Tarifa Base Diurna ($ USD)
                                     </label>
                                     <div className="relative">
                                         <span className="absolute left-3.5 top-3 text-slate-400 font-bold text-sm">$</span>
                                         <input
                                             type="number"
                                             step="0.05"
-                                            min="0.10"
-                                            value={fares.per_km_fare}
-                                            onChange={(e) => setFares(prev => ({ ...prev, per_km_fare: parseFloat(e.target.value) || 0 }))}
+                                            min="0.50"
+                                            value={fares.base_fare_day}
+                                            onChange={(e) => setFares(prev => ({ ...prev, base_fare_day: parseFloat(e.target.value) || 0 }))}
                                             className="w-full pl-8 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-2xl text-slate-800 text-sm font-bold focus:outline-none focus:border-amber-500"
-                                            placeholder="0.80"
+                                            placeholder="1.50"
                                             required
                                         />
                                     </div>
-                                </div>
-                            )}
-
-                            {fares.pricing_type === 'mixed' && (
-                                <div>
-                                    <label className="text-xs font-bold text-slate-700 block mb-1">
-                                        Distancia base incluida (km)
-                                    </label>
-                                    <input
-                                        type="number"
-                                        step="0.5"
-                                        min="1.0"
-                                        value={fares.base_km}
-                                        onChange={(e) => setFares(prev => ({ ...prev, base_km: parseFloat(e.target.value) || 0 }))}
-                                        className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-2xl text-slate-800 text-sm font-bold focus:outline-none focus:border-amber-500"
-                                        placeholder="2.0"
-                                        required
-                                    />
                                     <span className="text-[10px] text-slate-400 mt-1 block">
-                                        La tarifa base cubrirá los primeros {fares.base_km || 0} km. Cada km adicional se cobrará a ${fares.per_km_fare}/km.
+                                        * Tarifa mínima obligatoria por normativa de la plataforma: $0.50 USD.
                                     </span>
                                 </div>
-                            )}
-                        </div>
+
+                                {/* Distancia Base Incluida Diurna (1 a 6 km) */}
+                                <div className="space-y-2 p-3.5 bg-slate-50 border border-slate-200 rounded-2xl">
+                                    <div className="flex items-center justify-between">
+                                        <label className="text-xs font-bold text-slate-700">
+                                            Distancia Base Incluida Diurna
+                                        </label>
+                                        <span className="text-xs font-black text-amber-600 bg-amber-100/60 px-2.5 py-0.5 rounded-full">
+                                            {fares.base_distance_day} km
+                                        </span>
+                                    </div>
+
+                                    {/* Selector de Píldoras Táctiles 1 a 6 km */}
+                                    <div className="grid grid-cols-6 gap-1.5">
+                                        {[1, 2, 3, 4, 5, 6].map((km) => (
+                                            <button
+                                                key={km}
+                                                type="button"
+                                                onClick={() => setFares(prev => ({ ...prev, base_distance_day: km }))}
+                                                className={`py-2 rounded-xl text-xs font-black transition-all ${
+                                                    fares.base_distance_day === km
+                                                        ? 'bg-amber-500 text-white shadow-sm scale-102'
+                                                        : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-100'
+                                                }`}
+                                            >
+                                                {km} km
+                                            </button>
+                                        ))}
+                                    </div>
+
+                                    {/* Slider de 1 a 6 */}
+                                    <input
+                                        type="range"
+                                        min="1"
+                                        max="6"
+                                        step="1"
+                                        value={fares.base_distance_day}
+                                        onChange={(e) => setFares(prev => ({ ...prev, base_distance_day: parseInt(e.target.value) || 1 }))}
+                                        className="w-full accent-amber-500 cursor-pointer"
+                                    />
+
+                                    <p className="text-[11px] text-slate-500 font-medium">
+                                        Tu tarifa base cubrirá hasta <strong>{fares.base_distance_day} km</strong>. En viajes de {fares.base_distance_day} km o menos, el cliente solo paga la tarifa base (${Number(fares.base_fare_day || 0).toFixed(2)}).
+                                    </p>
+                                </div>
+
+                                {/* Precio por Km Excedente Diurno */}
+                                <div>
+                                    <div className="flex items-center justify-between mb-1">
+                                        <label className="text-xs font-bold text-slate-700">
+                                            Precio por Km Excedente Diurno ($ USD / km)
+                                        </label>
+                                    </div>
+                                    <div className="relative">
+                                        <span className="absolute left-3.5 top-3 text-slate-400 font-bold text-sm">$</span>
+                                        <input
+                                            type="number"
+                                            step="0.01"
+                                            min="0.05"
+                                            value={fares.extra_km_price_day}
+                                            onChange={(e) => setFares(prev => ({ ...prev, extra_km_price_day: parseFloat(e.target.value) || 0 }))}
+                                            className="w-full pl-8 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-2xl text-slate-800 text-sm font-bold focus:outline-none focus:border-amber-500"
+                                            placeholder="0.20"
+                                            required
+                                        />
+                                    </div>
+
+                                    {/* Píldora de Recomendación Dinámica Diurna */}
+                                    <div className="mt-2 p-2.5 bg-amber-50/70 border border-amber-200 rounded-xl flex items-center justify-between text-xs text-amber-900 font-medium">
+                                        <span className="flex items-center gap-1.5">
+                                            <Sparkles className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                                            <span>Rango sugerido por la plataforma:</span>
+                                        </span>
+                                        <span className="font-black text-amber-800 bg-amber-200/60 px-2 py-0.5 rounded-lg font-mono">
+                                            ${Number((adminSettings?.driver_rate_recommendations?.day_km_min ?? 0.13)).toFixed(2)} – ${Number((adminSettings?.driver_rate_recommendations?.day_km_max ?? 0.22)).toFixed(2)} / km
+                                        </span>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* ========================================================= */}
+                        {/* CONFIGURACIÓN HORARIO NOCTURNO */}
+                        {/* ========================================================= */}
+                        {activeFareShiftTab === 'night' && (
+                            <div className="space-y-4 animate-fade-in">
+                                <div className="p-3 bg-indigo-50 border border-indigo-200 rounded-2xl flex items-center justify-between text-xs">
+                                    <span className="font-black text-indigo-900 flex items-center gap-1.5">
+                                        <Moon className="w-4 h-4 text-indigo-600" />
+                                        Configurando Tarifas Nocturnas (20:00 – 06:00)
+                                    </span>
+                                    <span className="text-[10px] font-bold text-indigo-700 bg-white/70 px-2 py-0.5 rounded-full">
+                                        Noche
+                                    </span>
+                                </div>
+
+                                {/* Tarifa Base Nocturna */}
+                                <div>
+                                    <label className="text-xs font-bold text-slate-700 block mb-1">
+                                        Tarifa Base Nocturna ($ USD)
+                                    </label>
+                                    <div className="relative">
+                                        <span className="absolute left-3.5 top-3 text-slate-400 font-bold text-sm">$</span>
+                                        <input
+                                            type="number"
+                                            step="0.05"
+                                            min="0.50"
+                                            value={fares.base_fare_night}
+                                            onChange={(e) => setFares(prev => ({ ...prev, base_fare_night: parseFloat(e.target.value) || 0 }))}
+                                            className="w-full pl-8 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-2xl text-slate-800 text-sm font-bold focus:outline-none focus:border-indigo-500"
+                                            placeholder="2.00"
+                                            required
+                                        />
+                                    </div>
+                                    <span className="text-[10px] text-slate-400 mt-1 block">
+                                        * Tarifa de arranque nocturna para compensar traslados en horas de la noche.
+                                    </span>
+                                </div>
+
+                                {/* Distancia Base Incluida Nocturna (1 a 6 km) */}
+                                <div className="space-y-2 p-3.5 bg-slate-50 border border-slate-200 rounded-2xl">
+                                    <div className="flex items-center justify-between">
+                                        <label className="text-xs font-bold text-slate-700">
+                                            Distancia Base Incluida Nocturna
+                                        </label>
+                                        <span className="text-xs font-black text-indigo-600 bg-indigo-100/60 px-2.5 py-0.5 rounded-full">
+                                            {fares.base_distance_night} km
+                                        </span>
+                                    </div>
+
+                                    {/* Selector de Píldoras Táctiles 1 a 6 km */}
+                                    <div className="grid grid-cols-6 gap-1.5">
+                                        {[1, 2, 3, 4, 5, 6].map((km) => (
+                                            <button
+                                                key={km}
+                                                type="button"
+                                                onClick={() => setFares(prev => ({ ...prev, base_distance_night: km }))}
+                                                className={`py-2 rounded-xl text-xs font-black transition-all ${
+                                                    fares.base_distance_night === km
+                                                        ? 'bg-indigo-600 text-white shadow-sm scale-102'
+                                                        : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-100'
+                                                }`}
+                                            >
+                                                {km} km
+                                            </button>
+                                        ))}
+                                    </div>
+
+                                    {/* Slider de 1 a 6 */}
+                                    <input
+                                        type="range"
+                                        min="1"
+                                        max="6"
+                                        step="1"
+                                        value={fares.base_distance_night}
+                                        onChange={(e) => setFares(prev => ({ ...prev, base_distance_night: parseInt(e.target.value) || 1 }))}
+                                        className="w-full accent-indigo-600 cursor-pointer"
+                                    />
+
+                                    <p className="text-[11px] text-slate-500 font-medium">
+                                        Tu tarifa nocturna cubrirá hasta <strong>{fares.base_distance_night} km</strong>. En viajes de {fares.base_distance_night} km o menos, el cliente paga la tarifa base (${Number(fares.base_fare_night || 0).toFixed(2)}).
+                                    </p>
+                                </div>
+
+                                {/* Precio por Km Excedente Nocturno */}
+                                <div>
+                                    <div className="flex items-center justify-between mb-1">
+                                        <label className="text-xs font-bold text-slate-700">
+                                            Precio por Km Excedente Nocturno ($ USD / km)
+                                        </label>
+                                    </div>
+                                    <div className="relative">
+                                        <span className="absolute left-3.5 top-3 text-slate-400 font-bold text-sm">$</span>
+                                        <input
+                                            type="number"
+                                            step="0.01"
+                                            min="0.05"
+                                            value={fares.extra_km_price_night}
+                                            onChange={(e) => setFares(prev => ({ ...prev, extra_km_price_night: parseFloat(e.target.value) || 0 }))}
+                                            className="w-full pl-8 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-2xl text-slate-800 text-sm font-bold focus:outline-none focus:border-indigo-500"
+                                            placeholder="0.30"
+                                            required
+                                        />
+                                    </div>
+
+                                    {/* Píldora de Recomendación Dinámica Nocturna */}
+                                    <div className="mt-2 p-2.5 bg-indigo-50/70 border border-indigo-200 rounded-xl flex items-center justify-between text-xs text-indigo-900 font-medium">
+                                        <span className="flex items-center gap-1.5">
+                                            <Sparkles className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
+                                            <span>Rango sugerido por la plataforma:</span>
+                                        </span>
+                                        <span className="font-black text-indigo-800 bg-indigo-200/60 px-2 py-0.5 rounded-lg font-mono">
+                                            ${Number((adminSettings?.driver_rate_recommendations?.night_km_min ?? 0.23)).toFixed(2)} – ${Number((adminSettings?.driver_rate_recommendations?.night_km_max ?? 0.45)).toFixed(2)} / km
+                                        </span>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
 
                         {/* Dual Fare Setup for Confort */}
                         {(driverRow?.is_comfort_eligible || (driverRow?.vehicle_type !== 'moto' && driverRow?.has_ac && Number(driverRow?.vehicle_year) >= 2009)) && (
@@ -980,7 +1216,7 @@ export default function Earnings() {
                                     </span>
                                 </div>
                                 <p className="text-[11px] text-slate-600">
-                                    Define tu tarifa preferencial para clientes que solicitan la categoría Confort.
+                                    Tarifa preferencial para clientes que solicitan categoría Confort.
                                 </p>
                                 <div className="grid grid-cols-2 gap-3">
                                     <div>
@@ -991,40 +1227,61 @@ export default function Earnings() {
                                             type="number"
                                             step="0.10"
                                             min="0.50"
-                                            value={fares.comfort_base_fare || fares.base_fare}
-                                            onChange={e => setFares(prev => ({ ...prev, comfort_base_fare: parseFloat(e.target.value) || 0 }))}
+                                            value={fares.comfort_base_fare_day || fares.comfort_base_fare || 2.50}
+                                            onChange={e => setFares(prev => ({ ...prev, comfort_base_fare_day: parseFloat(e.target.value) || 0, comfort_base_fare: parseFloat(e.target.value) || 0 }))}
                                             className="w-full px-3 py-2 bg-white border border-amber-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:border-amber-500"
                                             placeholder="2.50"
                                         />
                                     </div>
                                     <div>
                                         <label className="text-[10px] font-black uppercase text-slate-600 block mb-1">
-                                            Precio / Km Confort ($)
+                                            Km Excedente Confort ($/km)
                                         </label>
                                         <input
                                             type="number"
                                             step="0.05"
                                             min="0.10"
-                                            value={fares.comfort_per_km_fare || fares.per_km_fare}
-                                            onChange={e => setFares(prev => ({ ...prev, comfort_per_km_fare: parseFloat(e.target.value) || 0 }))}
+                                            value={fares.comfort_extra_km_price_day || fares.comfort_per_km_fare || 1.00}
+                                            onChange={e => setFares(prev => ({ ...prev, comfort_extra_km_price_day: parseFloat(e.target.value) || 0, comfort_per_km_fare: parseFloat(e.target.value) || 0 }))}
                                             className="w-full px-3 py-2 bg-white border border-amber-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:border-amber-500"
-                                            placeholder="1.20"
+                                            placeholder="1.00"
                                         />
                                     </div>
                                 </div>
                             </div>
                         )}
 
+                        {/* Transparency Banner on Commission */}
+                        <div className="p-3 bg-slate-50 border border-slate-200 rounded-2xl flex items-start gap-2.5 text-xs text-slate-600">
+                            <Info className="w-4 h-4 text-slate-400 shrink-0 mt-0.5" />
+                            <p className="text-[11px] leading-relaxed">
+                                <strong>Comisión de Plataforma:</strong> Retiene la comisión base fija de tu categoría más el <strong>{adminSettings?.extra_km_commission_pct ?? 30}%</strong> sobre los kilómetros excedentes cobrados. El resto es 100% ganancia neta en tu bolsillo.
+                            </p>
+                        </div>
+
                         {/* Save Button */}
                         <button
                             type="submit"
-                            disabled={savingFares || fares.base_fare < 0.50}
+                            disabled={savingFares || fares.base_fare_day < 0.50 || fares.base_fare_night < 0.50}
                             className="w-full py-3.5 bg-slate-900 hover:bg-slate-800 disabled:opacity-40 active:scale-98 text-white text-xs font-black uppercase tracking-wider rounded-2xl transition-all shadow-md flex items-center justify-center gap-2"
                         >
                             {savingFares ? 'Guardando...' : 'Guardar Mis Tarifas'}
                         </button>
                     </form>
                 </div>
+            )}
+
+            {/* Modal Simulador Interactivo de Tarifas */}
+            {showSimulatorModal && (
+                <DriverFareSimulatorModal
+                    isOpen={showSimulatorModal}
+                    onClose={() => setShowSimulatorModal(false)}
+                    driverFares={fares}
+                    vehicleType={driverRow?.vehicle_type || 'moto'}
+                    isComfortEligible={Boolean(driverRow?.is_comfort_eligible || (driverRow?.vehicle_type !== 'moto' && driverRow?.has_ac && Number(driverRow?.vehicle_year) >= 2009))}
+                    adminSettings={adminSettings}
+                    bcvRate={bcvRate}
+                />
             )}
 
             {/* Sorteos / Premios para Pilotos */}

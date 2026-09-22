@@ -171,7 +171,7 @@ export default function OrdersRadar() {
     // Driver fares check: Driver must configure rates (>= $0.50) before being enabled/visible to receive trips
     const hasFaresConfigured = Boolean(
         driverProfile?.driver_fares && 
-        Number(driverProfile?.driver_fares?.base_fare) >= 0.50
+        (Number(driverProfile?.driver_fares?.base_fare_day) >= 0.50 || Number(driverProfile?.driver_fares?.base_fare) >= 0.50)
     );
 
     // Comisiones sincronizadas en tiempo real desde app_settings (Superadmin)
@@ -181,12 +181,14 @@ export default function OrdersRadar() {
         confort: number;
         delivery: number;
         mototaxi: number;
+        extra_km_commission_pct: number;
     }>({
         taxi: 0.80,
         mandao: 0.25,
         confort: 1.00,
         delivery: 0.25,
-        mototaxi: 0.25
+        mototaxi: 0.25,
+        extra_km_commission_pct: 30
     });
 
     useEffect(() => {
@@ -204,7 +206,8 @@ export default function OrdersRadar() {
                         mandao: Number(cVal.commissions.mandao ?? 0.25),
                         confort: Number(cVal.commissions.confort ?? 1.00),
                         delivery: Number(cVal.commissions.delivery ?? 0.25),
-                        mototaxi: Number(cVal.commissions.mototaxi ?? 0.25)
+                        mototaxi: Number(cVal.commissions.mototaxi ?? 0.25),
+                        extra_km_commission_pct: Number(cVal.extra_km_commission_pct ?? 30)
                     });
                 }
             } catch (err) {

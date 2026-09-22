@@ -25,6 +25,7 @@ import { supabase } from './lib/supabase';
 import toast from 'react-hot-toast';
 import WhatsAppPurchaseConfirmationModal from './components/WhatsAppPurchaseConfirmationModal';
 import LockScreen from './components/LockScreen';
+import GlobalCallReceiver from './components/GlobalCallReceiver';
 
 function RedirectHandler({ children }: { children: React.ReactNode }) {
     const { user, userData, setIsUnlocked } = useAuth();
@@ -171,6 +172,7 @@ function AppContent() {
                 </div>
                 {!isTrackRoute && <BottomNav />}
                 <WhatsAppPurchaseConfirmationModal />
+                <GlobalCallReceiver />
             </div>
         </div>
     );

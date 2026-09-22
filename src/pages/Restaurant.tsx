@@ -1,9 +1,8 @@
 import { ArrowLeft, Search, Heart, Star, Clock, Plus, AlertCircle, MessageSquare, MapPin, ChevronRight, Phone, Instagram, UserPlus, UserCheck, Store, Truck, CheckCircle, User as UserIcon, Briefcase, X, Tag, Share2, Zap, Youtube, Music2, ExternalLink, Gift, Sparkles, ShoppingCart } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Link, useParams, useNavigate } from 'react-router-dom';
+import { Link, useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useState, useEffect } from 'react';
-import { doc, getDoc, collection, getDocs, updateDoc, arrayUnion, arrayRemove, setDoc, deleteDoc, increment, query, where, orderBy } from 'firebase/firestore';
-import { db } from '../lib/firebase';
+import { supabase } from '../lib/supabase';
 import { Restaurant, Product } from '../lib/seed';
 import { useCart } from '../context/CartContext';
 import { useAuth } from '../context/AuthContext';
@@ -17,6 +16,7 @@ import DualPrice from '../components/DualPrice';
 export default function RestaurantPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [restaurant, setRestaurant] = useState<any | null>(null);
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
@@ -34,6 +34,47 @@ export default function RestaurantPage() {
   const [showDemoAlert, setShowDemoAlert] = useState(false);
   const [showClearCartModal, setShowClearCartModal] = useState(false);
   const [pendingCartItem, setPendingCartItem] = useState<{product: Product, variant?: any, modifiers?: any} | null>(null);
+
+  const [favoriteProductIds, setFavoriteProductIds] = useState<string[]>(() => {
+    try {
+      const raw = localStorage.getItem('un2x3_favorite_products');
+      const list = raw ? JSON.parse(raw) : [];
+      return Array.isArray(list) ? list.map((p: any) => typeof p === 'string' ? p : p.id) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  const toggleFavoriteProduct = (product: any) => {
+    try {
+      const raw = localStorage.getItem('un2x3_favorite_products');
+      const list: any[] = raw ? JSON.parse(raw) : [];
+      const exists = list.some((p: any) => (typeof p === 'string' ? p === product.id : p.id === product.id));
+      let updated: any[];
+      if (exists) {
+        updated = list.filter((p: any) => (typeof p === 'string' ? p !== product.id : p.id !== product.id));
+        setFavoriteProductIds(prev => prev.filter(pid => pid !== product.id));
+        toast.success('Producto eliminado de favoritos');
+      } else {
+        const item = {
+          id: product.id,
+          name: product.name,
+          price: product.price,
+          promoPrice: product.promoPrice,
+          image: product.image,
+          category: product.category,
+          restaurantId: restaurant?.id,
+          restaurantName: restaurant?.name
+        };
+        updated = [...list, item];
+        setFavoriteProductIds(prev => [...prev, product.id]);
+        toast.success('¡Producto añadido a favoritos! ❤️');
+      }
+      localStorage.setItem('un2x3_favorite_products', JSON.stringify(updated));
+    } catch (e) {
+      console.error("Error saving favorite product:", e);
+    }
+  };
   const getSocialIcon = (url: string) => {
     if (url.includes('instagram.com')) return <Instagram className="w-4 h-4" />;
     if (url.includes('tiktok.com')) return <Music2 className="w-4 h-4" />;
@@ -50,7 +91,7 @@ export default function RestaurantPage() {
   const [showJobsModal, setShowJobsModal] = useState(false);
   const [showHoursModal, setShowHoursModal] = useState(false);
   const [casheaIcon, setCasheaIcon] = useState<string | null>(null);
-  const { user } = useAuth();
+  const { user, userData } = useAuth();
 
   const handleShare = () => {
     const referralCode = localStorage.getItem('referralCode') || user?.uid?.slice(0, 6).toUpperCase() || 'INVITE';
@@ -90,43 +131,113 @@ export default function RestaurantPage() {
         }
 
         // Fetch restaurant details
-        const docRef = doc(db, 'restaurants', id);
-        const docSnap = await getDoc(docRef);
+        const { data: docSnap } = await supabase
+          .from('comercios')
+          .select('*')
+          .eq('id', id)
+          .maybeSingle();
 
-        if (docSnap.exists()) {
-          const data = docSnap.data();
-          if (data.isActive === false) {
-            setError("Este restaurante no se encuentra disponible actualmente.");
+        if (docSnap) {
+          const isVisible = (docSnap.is_visible === true || docSnap.isVisible === true);
+          const isActive = (docSnap.is_active !== false && docSnap.isActive !== false);
+
+          const data = {
+            ...docSnap,
+            id: docSnap.id,
+            name: docSnap.name,
+            category: docSnap.category,
+            whatsapp: docSnap.whatsapp,
+            image: docSnap.image_url || docSnap.image,
+            logoUrl: docSnap.logo_url || docSnap.logoUrl || docSnap.logo,
+            isActive,
+            is_active: isActive,
+            isVisible,
+            is_visible: isVisible,
+            followerCount: docSnap.follower_count ?? docSnap.followerCount ?? 0,
+            hasCashea: docSnap.has_cashea ?? docSnap.hasCashea,
+            hasTwoByThree: docSnap.has_two_by_three ?? docSnap.hasTwoByThree,
+            location: docSnap.location,
+          };
+
+          if (!isActive || !isVisible) {
+            setError("Este comercio no se encuentra disponible actualmente.");
             setLoading(false);
             return;
           }
-          setRestaurant({ id: docSnap.id, ...data });
-          setFollowerCount(data.followerCount || 0);
+
+          // Fetch exact follower count from restaurant_followers
+          let totalFollowers = docSnap.follower_count ?? docSnap.followerCount ?? 0;
+          try {
+            const { count: realFollowers } = await supabase
+              .from('restaurant_followers')
+              .select('*', { count: 'exact', head: true })
+              .eq('restaurant_id', id);
+            if (realFollowers !== null && realFollowers !== undefined) {
+              totalFollowers = realFollowers;
+            }
+          } catch (cntErr) {
+            console.warn("Could not fetch exact follower count:", cntErr);
+          }
+
+          data.followerCount = totalFollowers;
+          setRestaurant(data);
+          setFollowerCount(totalFollowers);
+
+          const uid = user?.id || user?.uid;
 
           // Check if it's in user following
-          if (user) {
+          if (uid) {
             try {
-              const followRef = doc(db, 'restaurants', id, 'followers', user.uid);
-              const followSnap = await getDoc(followRef);
-              setIsFollowing(followSnap.exists());
+              const { data: followSnap } = await supabase
+                .from('restaurant_followers')
+                .select('id')
+                .eq('restaurant_id', id)
+                .eq('user_id', uid)
+                .maybeSingle();
+              setIsFollowing(!!followSnap);
             } catch (followErr) {
               console.warn("Could not check follow status:", followErr);
             }
           }
 
-          // Fetch products subcollection
-          const productsRef = collection(db, 'restaurants', id, 'products');
-          const productsSnap = await getDocs(productsRef);
-          const fetchedProducts = productsSnap.docs.map(p => ({ id: p.id, ...p.data() })) as Product[];
+          // Fetch products
+          const { data: productsData } = await supabase
+            .from('products')
+            .select('*')
+            .eq('restaurant_id', id);
+
+          const fetchedProducts = (productsData || []).map((p: any) => ({
+            id: p.id,
+            name: p.name,
+            price: Number(p.price) || 0,
+            promoPrice: p.promo_price !== undefined && p.promo_price !== null ? Number(p.promo_price) : (p.promoPrice ? Number(p.promoPrice) : undefined),
+            image: p.image_url || p.image,
+            images: p.images || (p.image_url ? [p.image_url] : (p.image ? [p.image] : [])),
+            category: p.category_name || p.category,
+            description: p.description,
+            consultPrice: p.consult_price ?? p.consultPrice ?? (p.price === 0 && (!p.variants || p.variants.length === 0)),
+            variants: p.variants || [],
+            modifiers: p.modifiers || [],
+            pointsPrice: p.points_price || p.pointsPrice,
+            socialMediaLink: p.social_media_link || p.socialMediaLink,
+            tiktokLink: p.tiktok_link || p.tiktokLink,
+            youtubeLink: p.youtube_link || p.youtubeLink,
+            isAvailable: p.is_available ?? p.isAvailable ?? true,
+            isActive: p.is_active ?? p.isActive ?? true,
+            ...p
+          })) as Product[];
           setProducts(fetchedProducts);
 
           // Check if it's in user favorites
-          if (user) {
+          if (uid) {
             try {
-              const userRef = doc(db, 'users', user.uid);
-              const userSnap = await getDoc(userRef);
-              if (userSnap.exists()) {
-                const favs = userSnap.data().favorites || [];
+              const { data: userSnap } = await supabase
+                .from('profiles')
+                .select('favorites')
+                .eq('id', uid)
+                .maybeSingle();
+              if (userSnap) {
+                const favs = userSnap.favorites || [];
                 setIsFavorite(favs.includes(id));
               }
             } catch (favErr) {
@@ -146,15 +257,15 @@ export default function RestaurantPage() {
 
     const fetchIcons = async () => {
       try {
-        const iconsSnap = await getDocs(collection(db, 'global_icons'));
-        const icons = iconsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })) as any[];
-        const cashea = icons.find(icon => icon.name?.toLowerCase() === 'cashea');
+        const { data: icons } = await supabase
+          .from('global_icons')
+          .select('*');
+        const cashea = (icons || []).find((icon: any) => icon.name?.toLowerCase() === 'cashea');
 
         if (cashea) {
-          setCasheaIcon(cashea.imageUrl || cashea.url);
+          setCasheaIcon(cashea.image_url || cashea.imageUrl || cashea.url);
         } else {
-          // Fallback to official Cashea icon if not found in global_icons
-          setCasheaIcon("https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/logo%20cashea.png?alt=media&token=5b266100-3323-41bb-a5a4-23957ce678a1");
+          setCasheaIcon("https://xfialzrbbsdzzcjtefqo.supabase.co/storage/v1/object/public/branding/logos/OIP%20(4).webp");
         }
       } catch (err) {
         console.error("Error fetching icons:", err);
@@ -163,17 +274,49 @@ export default function RestaurantPage() {
 
     fetchRestaurantAndMenu();
     fetchIcons();
-  }, [id]);
+
+    if (!id) return;
+
+    // Realtime channel: if the merchant hides or deletes their store while customer is viewing, handle immediately
+    const restChannel = supabase
+      .channel(`restaurant-${id}-sync`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'comercios', filter: `id=eq.${id}` },
+        (payload) => {
+          if (payload.eventType === 'DELETE') {
+            setError("Este comercio ya no se encuentra disponible.");
+            setRestaurant(null);
+          } else if (payload.eventType === 'UPDATE') {
+            const updated = payload.new as any;
+            const isVis = (updated.is_visible === true || updated.isVisible === true);
+            const isAct = (updated.is_active !== false && updated.isActive !== false);
+            if (!isVis || !isAct) {
+              setError("Este comercio no se encuentra disponible actualmente.");
+              setRestaurant(null);
+            }
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(restChannel);
+    };
+  }, [id, user]);
 
   useEffect(() => {
     const fetchReviews = async () => {
       if (!id || activeTab !== 'Reseñas' || reviews.length > 0) return;
       setLoadingReviews(true);
       try {
-        const reviewsRef = collection(db, 'restaurants', id, 'reviews');
-        const q = query(reviewsRef, where('isHidden', '==', false), orderBy('createdAt', 'desc'));
-        const snap = await getDocs(q);
-        setReviews(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+        const { data: revs } = await supabase
+          .from('reviews')
+          .select('*')
+          .eq('restaurant_id', id)
+          .eq('is_hidden', false)
+          .order('created_at', { ascending: false });
+        setReviews(revs || []);
       } catch (err) {
         console.error("Error fetching reviews:", err);
       } finally {
@@ -182,6 +325,19 @@ export default function RestaurantPage() {
     };
     fetchReviews();
   }, [id, activeTab]);
+
+  useEffect(() => {
+    const productIdParam = searchParams.get('productId');
+    if (productIdParam && products.length > 0) {
+      const found = products.find(p => p.id === productIdParam);
+      if (found) {
+        setSelectedProduct(found);
+        setSelectedVariant(null);
+        setSelectedModifiers({});
+        recommendationsService.recordProductView(found.id!, found.category, found.restaurantId || id!);
+      }
+    }
+  }, [searchParams, products, id]);
 
   if (loading) {
     return (
@@ -206,11 +362,11 @@ export default function RestaurantPage() {
   // Extract unique product categories for tabs
   const categories = ['Todos', ...Array.from(new Set(products.map(p => p.category)))];
 
-  // Filter products by active category and availability
+  // Filter products by active category and active status
   const filteredProducts = products.filter(p => {
     const matchesCategory = activeCategory === 'Todos' || p.category === activeCategory;
-    const isAvailable = p.isAvailable !== false; // Default to true if undefined
-    return matchesCategory && isAvailable;
+    const isActive = p.isActive !== false; // Hide only if explicitly inactive/archived
+    return matchesCategory && isActive;
   });
 
   const handleAddToCart = (product: Product, variant?: any, modifiers?: any) => {
@@ -269,7 +425,7 @@ export default function RestaurantPage() {
       image: product.image,
       category: product.category,
       printerId: (product as any).printerId,
-      consultPrice: product.consultPrice,
+      consultPrice: product.consultPrice || (finalPrice === 0 && (!product.variants || product.variants.length === 0)),
       modifiersConfig: modifiers
     });
     toast.success('Añadido al carrito');
@@ -318,52 +474,107 @@ export default function RestaurantPage() {
   };
 
   const toggleFavorite = async () => {
-    if (!user) {
+    const uid = user?.id || user?.uid;
+    if (!uid) {
       alert("Inicia sesión para guardar tus restaurantes favoritos.");
       return;
     }
     try {
-      const userRef = doc(db, 'users', user.uid);
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('favorites')
+        .eq('id', uid)
+        .maybeSingle();
+
+      let favs: string[] = profile?.favorites || [];
       if (isFavorite) {
-        setIsFavorite(false); // Optimistic DB update
-        await updateDoc(userRef, { favorites: arrayRemove(id) });
+        setIsFavorite(false); // Optimistic UI update
+        favs = favs.filter(f => f !== id);
       } else {
         setIsFavorite(true);
-        await updateDoc(userRef, { favorites: arrayUnion(id) });
+        if (id && !favs.includes(id)) favs.push(id);
       }
+      await supabase
+        .from('profiles')
+        .update({ favorites: favs, updated_at: new Date().toISOString() })
+        .eq('id', uid);
     } catch (e) {
       console.error("Error toggling favorite:", e);
-      // Revert on error
       setIsFavorite(!isFavorite);
     }
   };
 
   const toggleFollow = async () => {
-    if (!user) {
+    const uid = user?.id || user?.uid;
+    if (!uid) {
       alert("Inicia sesión para seguir a tus locales favoritos.");
       return;
     }
     if (!id) return;
 
-    try {
-      const resRef = doc(db, 'restaurants', id);
-      const followerRef = doc(db, 'restaurants', id, 'followers', user.uid);
+    const followerName = userData?.displayName || userData?.fullName || user.user_metadata?.full_name || user.displayName || user.email?.split('@')[0] || 'Un cliente';
 
+    try {
       if (isFollowing) {
         setIsFollowing(false);
-        setFollowerCount(prev => Math.max(0, prev - 1));
-        await deleteDoc(followerRef);
-        await updateDoc(resRef, { followerCount: increment(-1) });
+        const newCount = Math.max(0, followerCount - 1);
+        setFollowerCount(newCount);
+        await supabase
+          .from('restaurant_followers')
+          .delete()
+          .eq('restaurant_id', id)
+          .eq('user_id', uid);
+        await supabase
+          .from('comercios')
+          .update({
+            follower_count: newCount
+          })
+          .eq('id', id);
+        toast('Dejaste de seguir este negocio', { icon: '👋' });
       } else {
         setIsFollowing(true);
-        setFollowerCount(prev => prev + 1);
-        await setDoc(followerRef, {
-          uid: user.uid,
-          displayName: user.displayName || 'Usuario',
-          photoURL: user.photoURL || '',
-          followedAt: new Date()
-        });
-        await updateDoc(resRef, { followerCount: increment(1) });
+        const newCount = followerCount + 1;
+        setFollowerCount(newCount);
+        const { error: insErr } = await supabase
+          .from('restaurant_followers')
+          .upsert({
+            restaurant_id: id,
+            user_id: uid,
+            user_name: followerName,
+            created_at: new Date().toISOString()
+          }, { onConflict: 'restaurant_id,user_id' });
+
+        if (insErr) {
+          console.error("Error inserting follower:", insErr);
+          throw insErr;
+        }
+
+        await supabase
+          .from('comercios')
+          .update({
+            follower_count: newCount
+          })
+          .eq('id', id);
+
+        // Send real-time notification to the business profile
+        try {
+          await supabase
+            .from('notifications')
+            .insert({
+              restaurant_id: id,
+              user_id: uid,
+              type: 'new_follower',
+              title: '¡Nuevo seguidor!',
+              message: `${followerName} ha comenzado a seguir tu negocio.`,
+              body: `${followerName} ha comenzado a seguir tu negocio.`,
+              read: false,
+              created_at: new Date().toISOString()
+            });
+        } catch (notifErr) {
+          console.warn("Could not insert notification for new follower:", notifErr);
+        }
+
+        toast.success(`¡Ahora sigues a ${restaurant?.name || 'este negocio'}!`);
       }
     } catch (e) {
       console.error("Error toggling follow:", e);
@@ -387,15 +598,16 @@ export default function RestaurantPage() {
       restaurantId: id,
       restaurantName: restaurant.name || 'Comercio',
       restaurantLogo: restaurant.logoUrl || restaurant.image || '',
+      whatsapp: restaurant.whatsapp,
+      items: productDetails ? [{ ...productDetails, quantity: 1 }] : items,
+      totalPrice: productDetails?.price || totalPrice,
       timestamp,
-      productName: productDetails?.name || null,
-      estimatedPrice: productDetails?.price || null
+      confirmed: false
     };
 
-    localStorage.setItem('deliexpress_pending_whatsapp_order', JSON.stringify(pendingOrderData));
-    window.dispatchEvent(new Event('deliexpress_whatsapp_order_created'));
+    localStorage.setItem('pendingWhatsAppOrder', JSON.stringify(pendingOrderData));
+    localStorage.setItem('lastWhatsAppOrderRestaurantId', id!);
 
-    // Registrar pedido inicial en estado whatsapp_contacted
     try {
       await supabase.from('orders').insert({
         id: orderId,
@@ -418,7 +630,23 @@ export default function RestaurantPage() {
     const number = restaurant.whatsapp.replace(/\D/g, '');
     let text = 'Hola, vengo de Deli Express y me gustaría hacer un pedido.';
     if (productDetails?.name) {
-      text = `Hola, vengo de Deli Express y me gustaría consultar / pedir: *${productDetails.name}*${productDetails.price ? ` ($${productDetails.price.toFixed(2)})` : ''}. ¿Está disponible?`;
+      const isConsult = !productDetails.price;
+      text = `Hola, vengo de Deli Express y me gustaría consultar / pedir: *${productDetails.name}*${!isConsult ? ` ($${productDetails.price!.toFixed(2)})` : ' (Consultar precio)'}. ¿Está disponible?`;
+    } else if (items.length > 0) {
+      const hasConsultItems = items.some(i => i.consultPrice || !i.price);
+      const itemsList = items.map(item => {
+        const isConsult = item.consultPrice || !item.price;
+        const priceStr = isConsult ? 'Consultar precio' : `$${((item.price || 0) * item.quantity).toFixed(2)}`;
+        return `• ${item.quantity}x ${item.name} (${priceStr})`;
+      }).join('\n');
+
+      text = `Hola, vengo de Deli Express y me gustaría consultar / pedir los siguientes productos de *${restaurant.name || 'su negocio'}*:\n\n${itemsList}`;
+      if (hasConsultItems) {
+        text += `\n\n💬 *Consulta:* Quisiera consultar el precio y disponibilidad de los productos indicados.`;
+      }
+      if (totalPrice > 0) {
+        text += `\n\n💵 *Total estimado:* $${totalPrice.toFixed(2)}${hasConsultItems ? ' (+ productos por cotizar)' : ''}`;
+      }
     }
     window.open(`https://wa.me/${number}?text=${encodeURIComponent(text)}`, '_blank');
   };
@@ -444,7 +672,7 @@ export default function RestaurantPage() {
   const statusObj = getRestaurantStatus();
 
   return (
-    <div className="relative w-full min-h-screen bg-white group/design-root overflow-x-hidden flex flex-col">
+    <div className="relative w-full h-full overflow-y-auto overflow-x-hidden bg-white group/design-root flex flex-col">
       {isWaiter && (
         <div className="bg-amber-500 text-white text-center py-1.5 text-[10px] font-black uppercase tracking-[0.2em] shadow-sm z-50 relative flex justify-center items-center gap-2">
           <UserCheck className="w-3.5 h-3.5" />
@@ -456,12 +684,12 @@ export default function RestaurantPage() {
         <div
           className="absolute inset-0 bg-cover bg-center"
           style={{
-            backgroundImage: `linear-gradient(180deg, rgba(0,0,0,0.5) 0%, rgba(0,0,0,0.2) 50%, rgba(0,0,0,0.7) 100%)${restaurant.coverUrl || restaurant.image ? `, url("${restaurant.coverUrl || restaurant.image}")` : ''}`
+            backgroundImage: `linear-gradient(180deg, rgba(0,0,0,0.5) 0%, rgba(0,0,0,0.2) 50%, rgba(0,0,0,0.7) 100%)${restaurant.coverUrl || (restaurant as any).cover_url ? `, url("${restaurant.coverUrl || (restaurant as any).cover_url}")` : ''}`
           }}
         >
-          {!(restaurant.coverUrl || restaurant.image) && (
-            <div className="w-full h-full flex flex-col items-center justify-center text-white/20">
-              <Store className="w-16 h-16 mb-2" />
+          {!(restaurant.coverUrl || (restaurant as any).cover_url) && (
+            <div className="w-full h-full bg-gradient-to-br from-slate-900 via-slate-800 to-indigo-950 flex flex-col items-center justify-center text-white/20">
+              <Store className="w-16 h-16 mb-2 text-white/30" />
             </div>
           )}
         </div>
@@ -509,7 +737,7 @@ export default function RestaurantPage() {
             {restaurant.hasCashea && (
               <div className="absolute -top-1 -right-1 w-8 h-8 bg-white/95 backdrop-blur rounded-xl p-1 shadow-lg border border-white/50 flex items-center justify-center animate-in zoom-in duration-500">
                 <img
-                  src={casheaIcon || "https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/logo%20cashea.png?alt=media&token=5b266100-3323-41bb-a5a4-23957ce678a1"}
+                  src={casheaIcon || "https://xfialzrbbsdzzcjtefqo.supabase.co/storage/v1/object/public/branding/logos/OIP%20(4).webp"}
                   alt="Cashea"
                   className="w-full h-full object-contain"
                 />
@@ -577,21 +805,18 @@ export default function RestaurantPage() {
             >
               <div className="absolute top-0 right-0 w-24 h-24 bg-yellow-400/5 rounded-full -mr-8 -mt-8 blur-2xl" />
               <div className="w-12 h-12 rounded-[1.25rem] bg-yellow-400 flex items-center justify-center shrink-0 shadow-lg shadow-yellow-400/30 group-hover:scale-110 transition-transform">
-                <img src={casheaIcon || "https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/logo%20cashea.png?alt=media&token=5b266100-3323-41bb-a5a4-23957ce678a1"} className="w-7 h-7 object-contain" alt="Cashea" />
+                <img src={casheaIcon || "https://xfialzrbbsdzzcjtefqo.supabase.co/storage/v1/object/public/branding/logos/OIP%20(4).webp"} className="w-7 h-7 object-contain" alt="Cashea" />
               </div>
               <div className="flex-1">
                 <div className="flex items-center gap-2">
-                  <p className="text-[10px] font-black uppercase tracking-[0.25em] leading-none mb-1 text-amber-700">Servicio Activo</p>
-                  <span className="flex items-center gap-1 bg-yellow-400 text-[8px] font-black text-white px-2 py-0.5 rounded-full uppercase tracking-widest leading-none mb-1 shadow-sm">
-                    Oficial
-                  </span>
+                  <span className="text-[10px] font-black tracking-wider uppercase text-yellow-600">Servicio Activo</span>
+                  <span className="bg-yellow-400 text-slate-900 text-[9px] font-black px-2 py-0.5 rounded-full uppercase">Oficial</span>
                 </div>
-                <h4 className="font-black text-slate-800 flex items-center gap-1.5 text-base leading-none">
-                  Compra con Cashea <Zap className="w-4 h-4 text-slate-900 fill-primary" />
-                </h4>
-                <p className="text-[11px] text-slate-500 font-bold mt-1 leading-none">Paga en cuotas sin interés</p>
+                <h3 className="font-black text-base text-slate-900">Compra con Cashea</h3>
+                <p className="text-xs text-slate-500 font-medium">Paga en cuotas sin interés</p>
               </div>
-              <div className="w-8 h-8 rounded-full bg-yellow-50 flex items-center justify-center text-amber-700 opacity-50 group-hover:opacity-100 group-hover:bg-yellow-400 group-hover:text-white transition-all">
+              <div className="flex items-center gap-1 text-slate-400">
+                <Zap className="w-4 h-4 text-yellow-500 fill-yellow-500" />
                 <ChevronRight className="w-5 h-5" />
               </div>
             </motion.div>
@@ -616,41 +841,87 @@ export default function RestaurantPage() {
             </button>
           )}
 
-          <div className="flex items-center justify-between mt-2">
-            <p className="text-slate-600 text-sm leading-relaxed">
-              {restaurant.category} • {restaurant.distance || "Cerca de ti"}
-            </p>
-            <div className="flex items-center gap-2">
+          {/* Action Carousel / Ruleta de Botones */}
+          <div className="flex flex-col gap-2 mt-2">
+            <div className="flex items-center justify-between">
+              <p className="text-slate-600 text-xs font-semibold leading-relaxed truncate">
+                {restaurant.category} {restaurant.location?.city ? `• ${restaurant.location.city}` : ''}
+              </p>
+            </div>
+
+            {/* Ruleta Horizontal Deslizable con Efecto Ruleta */}
+            <div className="flex items-center gap-2 overflow-x-auto pb-2 pt-0.5 no-scrollbar scroll-smooth snap-x">
+              {/* 1. Botón Seguir */}
               <button
                 onClick={toggleFollow}
-                className={`flex items-center gap-2 px-4 py-2 rounded-full text-xs font-black transition-all ${isFollowing
-                  ? 'bg-slate-100 text-slate-500 border border-slate-200'
-                  : 'bg-primary text-slate-900 shadow-lg shadow-primary/20 scale-105 hover:scale-110'
+                className={`snap-start flex items-center gap-1.5 px-3.5 py-2 rounded-full text-xs font-black whitespace-nowrap transition-all active:scale-95 shrink-0 ${isFollowing
+                  ? 'bg-slate-100 text-slate-600 border border-slate-200'
+                  : 'bg-primary text-slate-950 shadow-md shadow-primary/20'
                   }`}
               >
-                {isFollowing ? <UserCheck className="w-4 h-4" /> : <UserPlus className="w-4 h-4" />}
-                {isFollowing ? 'Siguiendo' : 'Seguir'}
+                {isFollowing ? <UserCheck className="w-3.5 h-3.5 text-slate-600" /> : <UserPlus className="w-3.5 h-3.5 text-slate-950" />}
+                <span>{isFollowing ? 'Siguiendo' : 'Seguir'}</span>
+                <span className="text-[10px] font-bold opacity-80 ml-0.5">({followerCount})</span>
               </button>
+
+              {/* 2. Botón WhatsApp */}
               {restaurant.whatsapp && (
                 <button
-                  onClick={openWhatsApp}
-                  className="flex items-center gap-1 bg-green-50 text-green-600 px-3 py-1.5 rounded-full text-xs font-bold border border-green-100 hover:bg-green-100 transition-colors"
+                  onClick={() => {
+                    if (items.length === 0) {
+                      toast('Haz tu pedido primero seleccionando aquí abajo 👇', {
+                        icon: '🛒',
+                        style: {
+                          borderRadius: '16px',
+                          background: '#0f172a',
+                          color: '#fff',
+                          fontWeight: 'bold',
+                          fontSize: '13px'
+                        }
+                      });
+                      return;
+                    }
+                    openWhatsApp();
+                  }}
+                  className="snap-start flex items-center gap-1.5 bg-emerald-50 text-emerald-700 px-3.5 py-2 rounded-full text-xs font-bold border border-emerald-200 hover:bg-emerald-100 whitespace-nowrap transition-all active:scale-95 shrink-0"
                 >
-                  <MessageSquare className="w-3.5 h-3.5" />
-                  WhatsApp
+                  <MessageSquare className="w-3.5 h-3.5 text-emerald-600" />
+                  <span>WhatsApp</span>
                 </button>
               )}
+
+              {/* 3. Botón Mapa */}
               {restaurant.location?.coords && (
                 <a
                   href={`https://www.google.com/maps/search/?api=1&query=${restaurant.location.coords.lat},${restaurant.location.coords.lng}`}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="flex items-center gap-1 bg-blue-50 text-blue-600 px-3 py-1.5 rounded-full text-xs font-bold border border-blue-100 hover:bg-blue-100 transition-colors"
+                  className="snap-start flex items-center gap-1.5 bg-blue-50 text-blue-700 px-3.5 py-2 rounded-full text-xs font-bold border border-blue-200 hover:bg-blue-100 whitespace-nowrap transition-all active:scale-95 shrink-0"
                 >
-                  <MapPin className="w-3.5 h-3.5" />
-                  Mapa
+                  <MapPin className="w-3.5 h-3.5 text-blue-600" />
+                  <span>Ver en Mapa</span>
                 </a>
               )}
+
+              {/* 4. Botón Llamar */}
+              {restaurant.whatsapp && (
+                <a
+                  href={`tel:${restaurant.whatsapp.replace(/\D/g, '')}`}
+                  className="snap-start flex items-center gap-1.5 bg-amber-50 text-amber-800 px-3.5 py-2 rounded-full text-xs font-bold border border-amber-200 hover:bg-amber-100 whitespace-nowrap transition-all active:scale-95 shrink-0"
+                >
+                  <Phone className="w-3.5 h-3.5 text-amber-600" />
+                  <span>Llamar</span>
+                </a>
+              )}
+
+              {/* 5. Botón Compartir */}
+              <button
+                onClick={handleShare}
+                className="snap-start flex items-center gap-1.5 bg-slate-50 text-slate-700 px-3.5 py-2 rounded-full text-xs font-bold border border-slate-200 hover:bg-slate-100 whitespace-nowrap transition-all active:scale-95 shrink-0"
+              >
+                <Share2 className="w-3.5 h-3.5 text-slate-600" />
+                <span>Compartir</span>
+              </button>
             </div>
           </div>
 
@@ -964,23 +1235,29 @@ export default function RestaurantPage() {
                         </div>
                       )}
 
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          if ((product.variants && product.variants.length > 0) || (product.modifiers && product.modifiers.length > 0)) {
-                            setSelectedProduct(product);
-                            setSelectedVariant(null);
-                            setSelectedModifiers({});
-                          } else {
-                            handleAddToCart(product);
-                          }
-                          // Adding to cart also counts as a strong view
-                          recommendationsService.recordProductView(product.id!, product.category, restaurant.id!);
-                        }}
-                        className="absolute -bottom-2 -right-2 w-10 h-10 bg-white border border-slate-100 rounded-full flex items-center justify-center text-slate-900 shadow-lg hover:scale-110 active:scale-95 transition-all z-10"
-                      >
-                        <Plus className="w-5 h-5 font-bold" />
-                      </button>
+                      {product.isAvailable === false ? (
+                        <div className="absolute -bottom-2 -right-2 px-2.5 py-1 bg-slate-100 border border-slate-200 rounded-full text-[9px] font-black uppercase text-slate-500 shadow-sm z-10">
+                          Agotado
+                        </div>
+                      ) : (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if ((product.variants && product.variants.length > 0) || (product.modifiers && product.modifiers.length > 0)) {
+                              setSelectedProduct(product);
+                              setSelectedVariant(null);
+                              setSelectedModifiers({});
+                            } else {
+                              handleAddToCart(product);
+                            }
+                            // Adding to cart also counts as a strong view
+                            recommendationsService.recordProductView(product.id!, product.category, restaurant.id!);
+                          }}
+                          className="absolute -bottom-2 -right-2 w-10 h-10 bg-white border border-slate-100 rounded-full flex items-center justify-center text-slate-900 shadow-lg hover:scale-110 active:scale-95 transition-all z-10"
+                        >
+                          <Plus className="w-5 h-5 font-bold" />
+                        </button>
+                      )}
 
                       {productImages.length > 1 && (
                         <div className="absolute top-2 left-2 bg-black/40 backdrop-blur-md px-2 py-0.5 rounded-full text-[8px] font-black text-white uppercase tracking-tighter">
@@ -1025,7 +1302,7 @@ export default function RestaurantPage() {
                       </div>
                     </div>
                     <span className="ml-auto text-xs text-slate-400">
-                      {review.createdAt ? new Date(review.createdAt.toDate()).toLocaleDateString() : ''}
+                      {review.createdAt ? new Date(review.createdAt.toDate ? review.createdAt.toDate() : review.createdAt).toLocaleDateString() : ''}
                     </span>
                   </div>
                   <p className="text-sm text-slate-600 mb-4">{review.comment}</p>
@@ -1248,6 +1525,15 @@ export default function RestaurantPage() {
             >
               {/* Image Section */}
               <div className="relative h-72 md:h-96 shrink-0 bg-slate-100">
+                {/* Heart Favorite Button */}
+                <button
+                  onClick={() => toggleFavoriteProduct(selectedProduct)}
+                  className="absolute top-5 left-5 w-10 h-10 bg-white/90 backdrop-blur-md rounded-full flex items-center justify-center shadow-xl z-20 hover:scale-110 active:scale-95 transition-all"
+                  title="Guardar como favorito"
+                >
+                  <Heart className={`w-5 h-5 transition-colors ${favoriteProductIds.includes(selectedProduct?.id) ? 'text-red-500 fill-red-500' : 'text-slate-700'}`} />
+                </button>
+
                 <button
                   onClick={() => setSelectedProduct(null)}
                   className="absolute top-5 right-5 w-10 h-10 bg-white/90 backdrop-blur-md rounded-full flex items-center justify-center text-slate-900 shadow-xl z-20 hover:scale-110 active:scale-95 transition-all"
@@ -1285,28 +1571,33 @@ export default function RestaurantPage() {
               </div>
 
               {/* Content Section */}
-              <div className="p-8 pb-32 flex-1 overflow-y-auto">
-                <div className="flex justify-between items-start gap-4 mb-4">
-                  <div>
-                    <span className="px-3 py-1 bg-slate-100 text-slate-500 text-[10px] font-black uppercase tracking-widest rounded-full">
-                      {selectedProduct.category}
-                    </span>
-                    <h2 className="text-3xl font-black text-slate-900 mt-2">{selectedProduct.name}</h2>
-                  </div>
-                  <div className="text-right">
-                    {selectedProduct.consultPrice ? (
-                      <span className="text-sm font-black text-orange-600 bg-orange-50 px-4 py-2 rounded-2xl border border-orange-100">
-                        A Cotizar
+              <div className="p-6 md:p-8 pb-32 flex-1 overflow-y-auto">
+                <div className="mb-3">
+                  <span className="px-3 py-1 bg-slate-100 text-slate-500 text-[10px] font-black uppercase tracking-widest rounded-full">
+                    {selectedProduct.category}
+                  </span>
+                </div>
+
+                {/* Title & Price row (perfectly aligned horizontally with same baseline) */}
+                <div className="flex items-baseline justify-between gap-4 mb-4">
+                  <h2 className="text-2xl md:text-3xl font-black text-slate-900 leading-tight">
+                    {selectedProduct.name}
+                  </h2>
+
+                  <div className="text-right flex-shrink-0">
+                    {selectedProduct.consultPrice || (!selectedProduct.price && (!selectedProduct.variants || selectedProduct.variants.length === 0)) ? (
+                      <span className="inline-flex items-center text-xs md:text-sm font-black text-amber-700 bg-amber-50 px-3.5 py-1.5 rounded-xl border border-amber-200 shadow-xs">
+                        Consultar precio
                       </span>
                     ) : (
                       <div className="flex flex-col items-end">
                         {selectedProduct.promoPrice && selectedProduct.promoPrice > 0 ? (
                           <>
-                            <DualPrice usdAmount={selectedProduct.promoPrice} usdClassName="text-3xl font-black text-slate-900" />
-                            <span className="text-sm text-slate-400 line-through font-bold">${selectedProduct.price.toFixed(2)}</span>
+                            <DualPrice usdAmount={selectedProduct.promoPrice} usdClassName="text-2xl md:text-3xl font-black text-slate-900" />
+                            <span className="text-xs md:text-sm text-slate-400 line-through font-bold">${selectedProduct.price.toFixed(2)}</span>
                           </>
                         ) : (
-                          <DualPrice usdAmount={selectedProduct.price} usdClassName="text-3xl font-black text-slate-900" />
+                          <DualPrice usdAmount={selectedProduct.price} usdClassName="text-2xl md:text-3xl font-black text-slate-900" />
                         )}
                       </div>
                     )}
@@ -1433,7 +1724,7 @@ export default function RestaurantPage() {
               </div>
 
               {/* Footer / Add to Cart / Reserve */}
-              <div className="absolute bottom-0 left-0 w-full p-8 bg-white/80 backdrop-blur-md border-t border-slate-100">
+              <div className="absolute bottom-0 left-0 w-full p-6 md:p-8 bg-white/95 backdrop-blur-md border-t border-slate-100">
                 <button
                   disabled={!isFormValid()}
                   onClick={() => {

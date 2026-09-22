@@ -24,9 +24,11 @@ import { Capacitor } from '@capacitor/core';
 import { supabase } from './lib/supabase';
 import toast from 'react-hot-toast';
 import WhatsAppPurchaseConfirmationModal from './components/WhatsAppPurchaseConfirmationModal';
+import LockScreen from './components/LockScreen';
+import GlobalCallReceiver from './components/GlobalCallReceiver';
 
 function RedirectHandler({ children }: { children: React.ReactNode }) {
-    const { user, userData } = useAuth();
+    const { user, userData, setIsUnlocked } = useAuth();
     const navigate = useNavigate();
     
     useGlobalAudioAlerts('user', user?.uid);
@@ -85,16 +87,72 @@ function RedirectHandler({ children }: { children: React.ReactNode }) {
         };
     }, [navigate]);
 
+    // Auto-lock when app is backgrounded or minimized
+    useEffect(() => {
+        let lastBackgroundTime: number | null = null;
+
+        const handleBackground = () => {
+            lastBackgroundTime = Date.now();
+        };
+
+        const handleForeground = () => {
+            if (lastBackgroundTime) {
+                const elapsed = Date.now() - lastBackgroundTime;
+                // If backgrounded for more than 20 seconds, lock the app
+                if (elapsed > 20000) {
+                    const hasBio = Boolean(userData?.biometricLockEnabled || userData?.biometric_lock_enabled);
+                    if (hasBio && user) {
+                        sessionStorage.removeItem('deliexpress_is_unlocked');
+                        setIsUnlocked(false);
+                    }
+                }
+            }
+            lastBackgroundTime = null;
+        };
+
+        const onVisibility = () => {
+            if (document.visibilityState === 'hidden') {
+                handleBackground();
+            } else if (document.visibilityState === 'visible') {
+                handleForeground();
+            }
+        };
+
+        document.addEventListener('visibilitychange', onVisibility);
+
+        let capAppState: any = null;
+        if (Capacitor.isNativePlatform()) {
+            capAppState = CapApp.addListener('appStateChange', (state) => {
+                if (!state.isActive) {
+                    handleBackground();
+                } else {
+                    handleForeground();
+                }
+            });
+        }
+
+        return () => {
+            document.removeEventListener('visibilitychange', onVisibility);
+            if (capAppState) {
+                capAppState.then((l: any) => l.remove());
+            }
+        };
+    }, [user, userData?.biometricLockEnabled, userData?.biometric_lock_enabled, setIsUnlocked]);
+
     return <>{children}</>;
 }
 
 function AppContent() {
+    const { user, userData, isUnlocked } = useAuth();
     const location = useLocation();
     const isTrackRoute = location.pathname.startsWith('/taxi/track') || location.pathname.startsWith('/track');
+
+    const isLocked = Boolean(user && (userData?.biometricLockEnabled || userData?.biometric_lock_enabled) && !isUnlocked);
 
     return (
         <div className="h-[100dvh] w-full bg-slate-100 flex justify-center overflow-hidden">
             <div className="bg-white w-full max-w-md flex flex-col shadow-2xl h-full relative overflow-hidden">
+                {isLocked && <LockScreen />}
                 <div className="flex-1 h-full overflow-hidden relative">
                     <Routes>
                         <Route path="/" element={<Home />} />
@@ -114,6 +172,7 @@ function AppContent() {
                 </div>
                 {!isTrackRoute && <BottomNav />}
                 <WhatsAppPurchaseConfirmationModal />
+                <GlobalCallReceiver />
             </div>
         </div>
     );

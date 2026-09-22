@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { vibrate } from '../utils/haptics';
+import { playMotoHorn, playCarHorn, playTruckHorn } from '../utils/audioChimes';
 
 type VehicleKey = 'truck' | 'suv' | 'taxi' | 'moto' | 'delivery';
 
@@ -78,6 +79,15 @@ export default function SpeedFleetAnimation() {
     try {
       vibrate([30, 20, 40]);
     } catch (e) {}
+
+    // Play characteristic vehicle horn sound
+    if (vehicleKey === 'moto' || vehicleKey === 'delivery') {
+      playMotoHorn();
+    } else if (vehicleKey === 'truck') {
+      playTruckHorn();
+    } else {
+      playCarHorn();
+    }
 
     // Trigger dynamic vehicle hop/jump animation
     setJumpingVehicle(vehicleKey);
