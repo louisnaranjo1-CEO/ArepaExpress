@@ -49,8 +49,10 @@ export default function LiveTripMap({
     const originMarkerRef = useRef<L.Marker | null>(null);
     const destMarkerRef = useRef<L.Marker | null>(null);
     const routeLineRef = useRef<L.Polyline | null>(null);
+    const tileLayerRef = useRef<L.TileLayer | null>(null);
     const prevDriverLocRef = useRef<Coords | null>(null);
     const [bearing, setBearing] = useState<number>(0);
+    const [mapStyle, setMapStyle] = useState<'osm' | 'esri'>('osm');
 
     const isMoto = vehicleType === 'moto' || vehicleType === 'mototaxi' || vehicleType === 'mandado' || vehicleType === 'muchacho_mandado';
 
@@ -217,12 +219,14 @@ export default function LiveTripMap({
             attributionControl: false,
         });
 
-        // 100% Free CartoDB Voyager Tile Layer (Modern, fast, clean vector style)
-        L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+        // 100% Free OpenStreetMap Tile Layer (Totalmente gratuito, sin costo de API, sin marcas de agua)
+        const initialLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
             maxZoom: 19,
-            subdomains: 'abcd',
+            subdomains: ['a', 'b', 'c'],
+            attribution: '&copy; OpenStreetMap contributors',
         }).addTo(map);
 
+        tileLayerRef.current = initialLayer;
         mapRef.current = map;
 
         // Smooth resize handler
@@ -344,6 +348,27 @@ export default function LiveTripMap({
         }
     };
 
+    const handleToggleMapStyle = () => {
+        if (!mapRef.current) return;
+        const nextStyle = mapStyle === 'osm' ? 'esri' : 'osm';
+        if (tileLayerRef.current) {
+            mapRef.current.removeLayer(tileLayerRef.current);
+        }
+        const newLayer = nextStyle === 'esri'
+            ? L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}', {
+                maxZoom: 19,
+                attribution: '&copy; Esri'
+            })
+            : L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                maxZoom: 19,
+                subdomains: ['a', 'b', 'c'],
+                attribution: '&copy; OpenStreetMap'
+            });
+        newLayer.addTo(mapRef.current);
+        tileLayerRef.current = newLayer;
+        setMapStyle(nextStyle);
+    };
+
     return (
         <div className="relative w-full h-full overflow-hidden bg-slate-900 select-none">
             {/* Leaflet Map Div */}
@@ -374,6 +399,16 @@ export default function LiveTripMap({
                             {isExpanded ? <Minimize2 className="w-5 h-5" /> : <Maximize2 className="w-5 h-5" />}
                         </button>
                     )}
+
+                    {/* Toggle Map Style (OpenStreetMap / Esri - 100% Free) */}
+                    <button
+                        type="button"
+                        onClick={handleToggleMapStyle}
+                        className="w-10 h-10 rounded-2xl bg-white/95 backdrop-blur-md shadow-xl text-slate-800 hover:text-blue-500 border border-slate-200/80 flex items-center justify-center active:scale-90 transition-all"
+                        title={mapStyle === 'osm' ? 'Cambiar a estilo Esri' : 'Cambiar a estilo OpenStreetMap'}
+                    >
+                        <Layers className="w-5 h-5 text-blue-600" />
+                    </button>
 
                     {/* Re-center Driver button */}
                     <button

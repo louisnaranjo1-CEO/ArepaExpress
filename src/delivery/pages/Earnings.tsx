@@ -535,106 +535,103 @@ export default function Earnings() {
                 <p className="text-slate-500 font-medium text-xs mt-0.5">Control de ingresos, comisiones Un 2x3 y precios de tus servicios</p>
             </div>
 
-            {/* Top Cards Stats */}
-            <div className="grid grid-cols-2 gap-3 px-4">
-                <div className="bg-white p-4 rounded-3xl border border-slate-100 shadow-sm flex flex-col justify-between">
-                    <div className="flex items-center justify-between text-slate-400 mb-1">
-                        <span className="text-[11px] font-bold uppercase tracking-wider">Hoy</span>
-                        <div className="w-7 h-7 rounded-full bg-emerald-50 text-emerald-500 flex items-center justify-center">
-                            <Activity className="w-3.5 h-3.5" />
+            {/* Tarjeta Destacada de Ganancias de HOY (Grande en Verde con Monto en USD y Bs) */}
+            <div className="px-4">
+                <div className="bg-gradient-to-br from-emerald-600 via-emerald-500 to-green-600 text-white p-5 rounded-[28px] shadow-xl shadow-emerald-600/25 relative overflow-hidden">
+                    <div className="absolute top-0 right-0 w-44 h-44 bg-white/10 rounded-full blur-2xl -mr-16 -mt-16 pointer-events-none"></div>
+                    <div className="relative z-10 flex flex-col justify-between space-y-3">
+                        <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                                <div className="w-8 h-8 rounded-full bg-white/20 backdrop-blur-sm flex items-center justify-center text-white">
+                                    <Activity className="w-4 h-4" />
+                                </div>
+                                <span className="text-xs font-black uppercase tracking-wider text-emerald-100">
+                                    Ganancias de Hoy
+                                </span>
+                            </div>
+                            <span className="text-[10px] font-black uppercase tracking-wider bg-white/20 backdrop-blur-sm px-2.5 py-1 rounded-full text-white">
+                                {stats.todayCount} {stats.todayCount === 1 ? 'servicio' : 'servicios'}
+                            </span>
                         </div>
-                    </div>
-                    <div>
-                        <span className="text-2xl font-black text-slate-800">${stats.today.toFixed(2)}</span>
-                        <p className="text-[10px] text-slate-400 font-bold mt-0.5">{stats.todayCount} carreras/servicios</p>
-                    </div>
-                </div>
 
-                <div className="bg-white p-4 rounded-3xl border border-slate-100 shadow-sm flex flex-col justify-between">
-                    <div className="flex items-center justify-between text-slate-400 mb-1">
-                        <span className="text-[11px] font-bold uppercase tracking-wider">Semana</span>
-                        <div className="w-7 h-7 rounded-full bg-amber-50 text-amber-600 flex items-center justify-center">
-                            <Calendar className="w-3.5 h-3.5" />
+                        <div>
+                            <div className="flex items-baseline gap-2">
+                                <span className="text-4xl font-black tracking-tight text-white">
+                                    ${stats.today.toFixed(2)}
+                                </span>
+                                <span className="text-xs font-black uppercase text-emerald-100">USD</span>
+                            </div>
+                            {bcvRate > 0 && (
+                                <p className="text-sm font-black text-emerald-100 mt-1 flex items-center gap-1.5">
+                                    <span>≈ {((stats.today) * bcvRate).toFixed(2)} Bs</span>
+                                    <span className="text-[10px] font-semibold text-white/80">(Tasa oficial BCV)</span>
+                                </p>
+                            )}
                         </div>
-                    </div>
-                    <div>
-                        <span className="text-2xl font-black text-slate-800">${stats.week.toFixed(2)}</span>
-                        <p className="text-[10px] text-slate-400 font-bold mt-0.5">Últimos 7 días</p>
                     </div>
                 </div>
             </div>
 
-            {/* COMISIÓN ADEUDADA CARD (Replaces Saldo Pendiente por Liquidar & Cobrar Ganancias) */}
+            {/* Tarjeta de la Semana (Se mantiene tal cual) */}
             <div className="px-4">
-                <div className={`rounded-[28px] p-5 text-white shadow-xl relative overflow-hidden ${
-                    commissionStatus === 'suspended'
-                        ? 'bg-gradient-to-br from-red-950 via-red-900 to-slate-900 shadow-red-950/20'
-                        : commissionDebt > 10
-                        ? 'bg-gradient-to-br from-amber-950 via-slate-900 to-slate-900 shadow-amber-950/20'
-                        : 'bg-gradient-to-br from-slate-900 via-slate-800 to-indigo-950 shadow-slate-950/20'
-                }`}>
-                    <div className="absolute top-0 right-0 w-36 h-36 bg-amber-500/10 rounded-full blur-2xl -mr-10 -mt-10"></div>
-                    
-                    <div className="relative z-10 space-y-4">
-                        <div className="flex items-start justify-between">
-                            <div>
-                                <div className="flex items-center gap-2">
-                                    <Shield className="w-4 h-4 text-amber-400" />
-                                    <span className="text-[11px] font-black uppercase tracking-widest text-slate-300">
-                                        Comisión Adeudada a Un 2x3
-                                    </span>
-                                </div>
-                                <div className="flex items-baseline gap-2 mt-1.5">
-                                    <span className="text-3xl sm:text-4xl font-black tracking-tight text-white">
-                                        ${commissionDebt.toFixed(2)}
-                                    </span>
-                                    <span className="text-xs font-bold text-slate-400">USD</span>
-                                    {bcvRate && (
-                                        <span className="text-xs font-semibold text-amber-400 ml-1">
-                                            ≈ {((commissionDebt) * bcvRate).toFixed(2)} Bs
-                                        </span>
-                                    )}
-                                </div>
-                            </div>
+                <div className="bg-white p-4 rounded-3xl border border-slate-100 shadow-sm flex items-center justify-between">
+                    <div>
+                        <div className="flex items-center gap-2 text-slate-400 mb-1">
+                            <span className="text-[11px] font-bold uppercase tracking-wider">Semana</span>
+                            <span className="text-[10px] text-slate-400 font-medium">• Últimos 7 días</span>
+                        </div>
+                        <span className="text-2xl font-black text-slate-800">${stats.week.toFixed(2)}</span>
+                    </div>
+                    <div className="w-10 h-10 rounded-2xl bg-amber-50 text-amber-600 flex items-center justify-center">
+                        <Calendar className="w-5 h-5" />
+                    </div>
+                </div>
+            </div>
 
-                            <span className={`px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider ${
-                                commissionStatus === 'suspended'
-                                    ? 'bg-red-500/20 text-red-300 border border-red-500/40'
-                                    : commissionDebt > 0
-                                    ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
-                                    : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
-                            }`}>
-                                {commissionStatus === 'suspended' ? 'Suspendido por Deuda' : commissionDebt > 0 ? 'Liquidación Pendiente' : 'Al Día'}
+            {/* COMISIÓN ADEUDADA CARD (Más pequeña y compacta con el botón "Pagar comisiones para mantenerte activo") */}
+            <div className="px-4">
+                <div className="bg-white border border-slate-200/90 rounded-[24px] p-4 shadow-sm relative overflow-hidden">
+                    <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center gap-2">
+                            <Shield className="w-4 h-4 text-amber-600" />
+                            <span className="text-[11px] font-black uppercase tracking-wider text-slate-700">
+                                Comisión Adeudada
                             </span>
                         </div>
+                        <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider ${
+                            commissionStatus === 'suspended'
+                                ? 'bg-red-100 text-red-700'
+                                : commissionDebt > 0
+                                ? 'bg-amber-100 text-amber-800'
+                                : 'bg-emerald-100 text-emerald-800'
+                        }`}>
+                            {commissionStatus === 'suspended' ? 'Suspendido' : commissionDebt > 0 ? 'Pendiente' : 'Al Día'}
+                        </span>
+                    </div>
 
-                        {/* Deadline & Warning */}
-                        <div className="bg-white/10 backdrop-blur-sm rounded-2xl p-3 border border-white/10 flex items-start gap-2.5">
-                            <Clock className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
-                            <div className="text-[11px] text-slate-200 leading-snug">
-                                <span className="font-bold block text-white">
-                                    Corte: {payoutFrequency === 'biweekly' ? 'Quincenal' : payoutFrequency === 'weekly_monday' ? 'Lunes Semanal' : 'Viernes Semanal'}
+                    <div className="flex items-baseline justify-between mb-3">
+                        <div className="flex items-baseline gap-1.5">
+                            <span className="text-2xl font-black text-slate-900">${commissionDebt.toFixed(2)}</span>
+                            <span className="text-[11px] font-bold text-slate-400">USD</span>
+                            {bcvRate > 0 && (
+                                <span className="text-[11px] font-bold text-amber-700 ml-1">
+                                    ≈ {((commissionDebt) * bcvRate).toFixed(2)} Bs
                                 </span>
-                                {nextDeadline ? (
-                                    <span>Límite de pago: <strong className="text-amber-300">{new Date(nextDeadline).toLocaleDateString()}</strong> (máx. 15 días continuos de tolerancia).</span>
-                                ) : (
-                                    <span>Liquida tus comisiones acumuladas oportunamente para mantener tu cuenta activa y disponible en el radar.</span>
-                                )}
-                            </div>
-                        </div>
-
-                        {/* Action Button */}
-                        <div className="flex items-center gap-2 pt-1">
-                            <button
-                                onClick={handleOpenPayModal}
-                                disabled={commissionDebt <= 0}
-                                className="w-full py-3.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 disabled:opacity-40 disabled:pointer-events-none active:scale-98 text-white text-xs font-black uppercase tracking-wider rounded-2xl transition-all shadow-lg shadow-amber-500/25 flex items-center justify-center gap-2"
-                            >
-                                <CreditCard className="w-4 h-4" />
-                                Pagar Comisiones (Pago Móvil)
-                            </button>
+                            )}
                         </div>
                     </div>
+
+                    <button
+                        onClick={handleOpenPayModal}
+                        disabled={commissionDebt <= 0}
+                        className="w-full py-3 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 disabled:opacity-40 disabled:pointer-events-none active:scale-98 text-white text-xs font-black uppercase tracking-wider rounded-xl transition-all shadow-md shadow-amber-500/20 flex items-center justify-center gap-2"
+                    >
+                        <CreditCard className="w-4 h-4" />
+                        Pagar comisiones para mantenerte activo
+                    </button>
+                    <p className="text-[10px] text-slate-400 text-center font-medium mt-1.5">
+                        Pago diario al finalizar jornada o los viernes. Evita suspensión por mora.
+                    </p>
                 </div>
             </div>
 
@@ -1094,6 +1091,23 @@ export default function Earnings() {
                             <p className="text-xs text-slate-500 mt-0.5">
                                 Realiza tu Pago Móvil a los datos oficiales y adjunta el comprobante para su aprobación.
                             </p>
+                        </div>
+
+                        {/* Indicación de Opciones de Pago y Advertencia de Suspensión */}
+                        <div className="p-4 bg-amber-50 border-2 border-amber-300 rounded-2xl space-y-2">
+                            <div className="flex items-center gap-2 text-amber-950 font-black text-xs uppercase tracking-wider">
+                                <Calendar className="w-4 h-4 text-amber-600 shrink-0" />
+                                <span>Opciones de Pago de Comisiones</span>
+                            </div>
+                            <p className="text-xs text-slate-800 font-medium leading-relaxed">
+                                Puedes pagar a diario tus comisiones al finalizar tu jornada laboral, o pagarlas únicamente los días <b>viernes</b>.
+                            </p>
+                            <div className="flex items-start gap-1.5 pt-2 border-t border-amber-200 text-red-600">
+                                <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                                <p className="text-xs font-black leading-tight">
+                                    De no pagar las comisiones tu cuenta quedará suspendida por mora.
+                                </p>
+                            </div>
                         </div>
 
                         {/* Datos Oficiales de Pago Móvil con 1-tap copy */}

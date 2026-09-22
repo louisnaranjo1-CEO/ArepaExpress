@@ -10,6 +10,7 @@ import AddressPicker from '../../components/AddressPicker';
 import { registerBiometric } from '../../utils/security';
 import { driversApi } from '../../lib/api';
 import { supabase } from '../../lib/supabase';
+import { sendAppNotification, playDriverAlertSound } from '../../services/nativeNotificationService';
 
 export default function DriverProfile() {
     const { user, userData } = useAuth();
@@ -796,6 +797,11 @@ export default function DriverProfile() {
             } else {
                 const result = await requestNotificationPermission(user.uid);
                 if (result.success) {
+                    sendAppNotification({
+                        title: '🚨 ¡Alertas de Conductor Activadas!',
+                        body: 'Recibirás sonido de alta prioridad, vibración y avisos en tu barra de notificaciones para nuevas solicitudes y viajes.',
+                        soundType: 'driver'
+                    });
                     alert("Notificaciones activadas con éxito! 🎉");
                 } else if (result.error) {
                     alert(result.error);
@@ -1548,6 +1554,9 @@ export default function DriverProfile() {
                                     }).eq('id', user.uid);
                                     if (error) throw error;
                                     setDriverProfile((prev: any) => ({ ...prev, audioAlertsEnabled: newValue, audio_alerts_enabled: newValue }));
+                                    if (newValue) {
+                                        playDriverAlertSound();
+                                    }
                                 } catch (err) {
                                     console.error("Error toggling audio alerts", err);
                                 } finally {

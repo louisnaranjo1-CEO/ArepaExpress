@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { supabase } from '../lib/supabase';
 import { toast } from 'react-hot-toast';
+import { sendAppNotification } from '../services/nativeNotificationService';
 
 export const NOTIFICATION_SOUND_URL = "https://xfialzrbbsdzzcjtefqo.supabase.co/storage/v1/object/public/store_assets/Digital_Cascade_01.mp3";
 export const CPANEL_SOUND_URL = "https://xfialzrbbsdzzcjtefqo.supabase.co/storage/v1/object/public/store_assets/telefono_off.mp3";
@@ -141,6 +142,11 @@ export function useGlobalAudioAlerts(role?: 'cpanel' | 'restaurant' | 'delivery'
         }, (payload: any) => {
           if (payload.new?.status === 'searching') {
             playAlert();
+            sendAppNotification({
+              title: '🚨 ¡Nueva Solicitud Disponible!',
+              body: 'Hay una nueva solicitud de viaje cerca de tu ubicación.',
+              soundType: 'driver'
+            });
           }
         })
         .on('postgres_changes', {
@@ -151,6 +157,11 @@ export function useGlobalAudioAlerts(role?: 'cpanel' | 'restaurant' | 'delivery'
           // Si el cliente aceptó mi oferta o me asignó un viaje
           if (payload.new?.status === 'accepted' && (payload.new?.driver_id === userId || payload.new?.driverId === userId)) {
             playAlert();
+            sendAppNotification({
+              title: '⭐ ¡Viaje Asignado a Ti!',
+              body: 'El pasajero ha confirmado el servicio contigo. Pulsa para ver la ruta.',
+              soundType: 'driver'
+            });
           }
         })
         .on('postgres_changes', {
@@ -161,6 +172,11 @@ export function useGlobalAudioAlerts(role?: 'cpanel' | 'restaurant' | 'delivery'
         }, (payload: any) => {
           if (payload.new?.status === 'accepted') {
             playAlert();
+            sendAppNotification({
+              title: '🎉 ¡Oferta Aceptada!',
+              body: 'Tu cotización para Muchacho e\' Mandao fue aceptada por el cliente.',
+              soundType: 'driver'
+            });
           }
         })
         .on('postgres_changes', {
@@ -170,6 +186,11 @@ export function useGlobalAudioAlerts(role?: 'cpanel' | 'restaurant' | 'delivery'
         }, (payload: any) => {
           if (payload.new?.status === 'buscando_piloto') {
             playAlert();
+            sendAppNotification({
+              title: '🛍️ ¡Nuevo Delivery Disponible!',
+              body: 'Un comercio tiene un pedido listo para recoger y entregar.',
+              soundType: 'driver'
+            });
           }
         })
         .subscribe();

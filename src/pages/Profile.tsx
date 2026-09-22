@@ -5,6 +5,7 @@ import { Capacitor } from '@capacitor/core';
 import { isDemoMode, UN2X3_LOGO } from '../lib/env';
 import DemoAlertModal from '../components/DemoAlertModal';
 import { requestNotificationPermission, disableNotifications } from '../lib/notifications';
+import { sendAppNotification } from '../services/nativeNotificationService';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
 import { useNavigate, useSearchParams } from 'react-router-dom';
@@ -666,6 +667,11 @@ export default function Profile() {
                         notifications_enabled: true
                     }));
                     await refreshUserData();
+                    sendAppNotification({
+                        title: '🔔 ¡Notificaciones Activadas!',
+                        body: 'Te avisaremos cuando tu conductor vaya en camino, llegue o haya avances en tus compras.',
+                        soundType: 'client'
+                    });
                     toast.success("Notificaciones activadas con éxito 🎉");
                 } else if (result.error) {
                     toast.error(result.error);

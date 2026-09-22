@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { supabase } from '../lib/supabase';
-import { toast } from 'react-hot-toast';
+import { sendAppNotification } from '../services/nativeNotificationService';
 
 export const NOTIFICATION_SOUND_URL = "https://xfialzrbbsdzzcjtefqo.supabase.co/storage/v1/object/public/store_assets/Digital_Cascade_01.mp3";
 export const CPANEL_SOUND_URL = "https://xfialzrbbsdzzcjtefqo.supabase.co/storage/v1/object/public/store_assets/telefono_off.mp3";
@@ -166,17 +166,29 @@ export function useGlobalAudioAlerts(role?: 'cpanel' | 'restaurant' | 'delivery'
         }, (payload: any) => {
           const status = payload.new?.status;
           if (status === 'accepted') {
-            toast.success('¡Un conductor ha aceptado tu viaje!');
-            playAlert();
-          } else if (status === 'arrived') {
-            toast.success('¡Tu conductor ha llegado!');
-            playAlert();
-          } else if (status === 'started') {
-            toast.success('¡Viaje iniciado!');
-            playAlert();
+            sendAppNotification({
+              title: '¡Conductor Asignado!',
+              body: 'Un conductor ha aceptado tu viaje y va en camino.',
+              soundType: 'client'
+            });
+          } else if (status === 'arrived' || status === 'arriving') {
+            sendAppNotification({
+              title: '¡Tu Conductor Ha Llegado!',
+              body: 'Tu conductor ya está en el punto de encuentro esperándote.',
+              soundType: 'client'
+            });
+          } else if (status === 'started' || status === 'in_progress') {
+            sendAppNotification({
+              title: '¡Viaje en Curso!',
+              body: 'Tu viaje ha iniciado. ¡Que tengas un excelente recorrido!',
+              soundType: 'client'
+            });
           } else if (status === 'completed') {
-            toast.success('¡Viaje finalizado exitosamente!');
-            playAlert();
+            sendAppNotification({
+              title: '¡Has Llegado a tu Destino!',
+              body: 'Viaje finalizado exitosamente. ¡Gracias por viajar con nosotros!',
+              soundType: 'client'
+            });
           }
         })
         .on('postgres_changes', {
@@ -187,17 +199,29 @@ export function useGlobalAudioAlerts(role?: 'cpanel' | 'restaurant' | 'delivery'
         }, (payload: any) => {
           const status = payload.new?.status;
           if (status === 'preparing') {
-            toast.success('El restaurante está preparando tu pedido.');
-            playAlert();
-          } else if (status === 'ready') {
-            toast.success('Tu pedido está listo y buscando repartidor.');
-            playAlert();
+            sendAppNotification({
+              title: 'Pedido en Preparación 👨‍🍳',
+              body: 'El comercio ha recibido tu orden y la está preparando.',
+              soundType: 'client'
+            });
+          } else if (status === 'ready' || status === 'buscando_piloto') {
+            sendAppNotification({
+              title: 'Pedido Listo 📦',
+              body: 'Tu orden está lista y buscando repartidor para la entrega.',
+              soundType: 'client'
+            });
           } else if (status === 'delivering') {
-            toast.success('¡Tu pedido va en camino!');
-            playAlert();
+            sendAppNotification({
+              title: '¡Tu Pedido va en Camino! 🛵',
+              body: 'El repartidor lleva tu pedido directamente hacia tu dirección.',
+              soundType: 'client'
+            });
           } else if (status === 'delivered') {
-            toast.success('¡El repartidor ha llegado con tu pedido!');
-            playAlert();
+            sendAppNotification({
+              title: '¡Pedido Entregado! 🎉',
+              body: 'El repartidor ha llegado con tu pedido. ¡Buen provecho!',
+              soundType: 'client'
+            });
           }
         })
         .subscribe();

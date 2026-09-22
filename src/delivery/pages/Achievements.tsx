@@ -76,21 +76,37 @@ export default function Achievements() {
         // Calculate driver stats & real-time reviews
         const calculateStats = async () => {
             try {
+                // Fetch driver profile data
+                const { data: driverData } = await supabase
+                    .from('drivers')
+                    .select('*')
+                    .eq('id', user.uid)
+                    .maybeSingle();
+
                 // Delivery orders
                 const { data: ordersData } = await supabase
                     .from('orders')
                     .select('*')
-                    .eq('delivery_driver_id', user.uid)
-                    .eq('status', 'completed');
+                    .eq('delivery_driver_id', user.uid);
 
                 // Transport requests
                 const { data: transportData } = await supabase
                     .from('transport_requests')
                     .select('*')
-                    .eq('driver_id', user.uid)
-                    .eq('status', 'completed');
+                    .eq('driver_id', user.uid);
 
-                const totalTripsCount = (ordersData || []).length + (transportData || []).length;
+                const completedOrders = (ordersData || []).filter((o: any) => 
+                    ['delivered', 'completed', 'entregado'].includes(o.status)
+                ).length;
+
+                const completedTransports = (transportData || []).filter((t: any) => 
+                    ['completed', 'delivered', 'finished'].includes(t.status)
+                ).length;
+
+                const totalTripsCount = Math.max(
+                    Number(driverData?.total_trips || 0),
+                    completedOrders + completedTransports
+                );
                 
                 const allReviewsList: DriverReview[] = [];
                 let count5 = 0, count4 = 0, count3 = 0, count2 = 0, count1 = 0;
@@ -100,20 +116,20 @@ export default function Achievements() {
                     const r = Number(o.rating);
                     if (r > 0) {
                         sumRating += r;
-                        if (r === 5) count5++;
-                        else if (r === 4) count4++;
-                        else if (r === 3) count3++;
-                        else if (r === 2) count2++;
-                        else if (r === 1) count1++;
+                        if (r >= 5) count5++;
+                        else if (r >= 4) count4++;
+                        else if (r >= 3) count3++;
+                        else if (r >= 2) count2++;
+                        else if (r >= 1) count1++;
 
                         allReviewsList.push({
                             id: o.id,
                             rating: r,
-                            comment: o.review_comment || o.reviewComment || o.notes,
-                            tags: o.review_tags || o.ratingTags || [],
+                            comment: o.review_comment || o.reviewComment || o.rating_comment || o.notes,
+                            tags: o.review_tags || o.ratingTags || o.rating_tags || [],
                             serviceCategory: 'delivery',
                             clientName: o.user_name || o.userName || o.customer_name || 'Cliente Tienda/Comida',
-                            createdAt: new Date(o.rated_at || o.completed_at || o.created_at || Date.now())
+                            createdAt: new Date(o.rated_at || o.delivered_at || o.completed_at || o.created_at || Date.now())
                         });
                     }
                 });
@@ -122,11 +138,11 @@ export default function Achievements() {
                     const r = Number(t.rating);
                     if (r > 0) {
                         sumRating += r;
-                        if (r === 5) count5++;
-                        else if (r === 4) count4++;
-                        else if (r === 3) count3++;
-                        else if (r === 2) count2++;
-                        else if (r === 1) count1++;
+                        if (r >= 5) count5++;
+                        else if (r >= 4) count4++;
+                        else if (r >= 3) count3++;
+                        else if (r >= 2) count2++;
+                        else if (r >= 1) count1++;
 
                         allReviewsList.push({
                             id: t.id,
@@ -143,7 +159,12 @@ export default function Achievements() {
                 allReviewsList.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
 
                 const totalReviewsCount = allReviewsList.length;
-                const avg = totalReviewsCount > 0 ? Number((sumRating / totalReviewsCount).toFixed(1)) : 5.0;
+                let avg = 5.0;
+                if (totalReviewsCount > 0) {
+                    avg = Number((sumRating / totalReviewsCount).toFixed(1));
+                } else if (driverData?.rating) {
+                    avg = Number(driverData.rating);
+                }
 
                 setStats({
                     totalTrips: totalTripsCount,
@@ -224,19 +245,19 @@ export default function Achievements() {
         switch (category) {
             case 'mototaxi':
             case 'moto':
-                return { label: 'Mototaxi', emoji: 'ðŸ›µ', color: 'bg-amber-100 text-amber-800' };
+                return { label: 'Mototaxi', emoji: '🛵', color: 'bg-amber-100 text-amber-800' };
             case 'mandado':
             case 'muchacho_mandado':
-                return { label: 'Muchacho e\' Mandao', emoji: 'ðŸ“¦', color: 'bg-orange-100 text-orange-800' };
+                return { label: "Muchacho e' Mandao", emoji: '📦', color: 'bg-orange-100 text-orange-800' };
             case 'encomienda':
-                return { label: 'Encomienda', emoji: 'ðŸ“¬', color: 'bg-purple-100 text-purple-800' };
+                return { label: 'Encomienda', emoji: '✉️', color: 'bg-purple-100 text-purple-800' };
             case 'confort':
-                return { label: 'Confort VIP', emoji: 'ðŸš˜', color: 'bg-indigo-100 text-indigo-800' };
+                return { label: 'Confort VIP', emoji: '🚙', color: 'bg-indigo-100 text-indigo-800' };
             case 'delivery':
-                return { label: 'Delivery', emoji: 'ðŸ›ï¸', color: 'bg-emerald-100 text-emerald-800' };
+                return { label: 'Delivery', emoji: '🛍️', color: 'bg-emerald-100 text-emerald-800' };
             case 'taxi':
             default:
-                return { label: 'Taxi', emoji: 'ðŸš•', color: 'bg-yellow-100 text-yellow-800' };
+                return { label: 'Taxi', emoji: '🚕', color: 'bg-yellow-100 text-yellow-800' };
         }
     };
 
@@ -262,10 +283,10 @@ export default function Achievements() {
                 <div className="relative z-10">
                     <div className="flex items-center gap-3 mb-2">
                         <Trophy className="w-8 h-8 text-amber-400" />
-                        <h2 className="text-3xl font-black text-white tracking-tight">Tus Logros y ReputaciÃ³n</h2>
+                        <h2 className="text-3xl font-black text-white tracking-tight">Tus Logros y Reputación</h2>
                     </div>
                     <p className="text-amber-200/80 font-medium text-xs sm:text-sm">
-                        Monitorea tu calificaciÃ³n oficial, las opiniones de tus clientes y desbloquea bonos.
+                        Monitorea tu calificación oficial, las opiniones de tus clientes y desbloquea bonos.
                     </p>
 
                     {/* Stats Summary Cards */}
@@ -291,7 +312,7 @@ export default function Achievements() {
                                     : 'bg-white/5 border-white/10 hover:bg-white/10'
                             }`}
                         >
-                            <p className="text-[10px] font-black text-amber-200 uppercase tracking-widest mb-1">ReputaciÃ³n Cliente</p>
+                            <p className="text-[10px] font-black text-amber-200 uppercase tracking-widest mb-1">Reputación Conductor</p>
                             <p className="text-2xl font-black text-white flex items-center gap-1.5">
                                 <Star className="w-5 h-5 text-amber-400 fill-amber-400" /> 
                                 <span>{ratingStats.average.toFixed(1)}</span>
@@ -327,7 +348,7 @@ export default function Achievements() {
                         }`}
                     >
                         <Star className="w-4 h-4" />
-                        <span>ReseÃ±as de Clientes ({ratingStats.totalReviews})</span>
+                        <span>Reseñas de Clientes ({ratingStats.totalReviews})</span>
                     </button>
                 </div>
             </div>
@@ -338,8 +359,8 @@ export default function Achievements() {
                     {achievements.length === 0 ? (
                         <div className="bg-slate-900 rounded-3xl p-8 text-center border border-slate-800">
                             <Target className="w-12 h-12 text-slate-600 mx-auto mb-3" />
-                            <h3 className="font-bold text-white text-base">Pronto habrÃ¡ nuevos retos</h3>
-                            <p className="text-slate-400 text-xs mt-1">Sigue brindando una gran atenciÃ³n, pronto publicaremos nuevas metas.</p>
+                            <h3 className="font-bold text-white text-base">Pronto habrá nuevos retos</h3>
+                            <p className="text-slate-400 text-xs mt-1">Sigue brindando una gran atención, pronto publicaremos nuevas metas.</p>
                         </div>
                     ) : (
                         achievements.map((achievement) => {
@@ -364,7 +385,7 @@ export default function Achievements() {
                                             <div className="space-y-1.5">
                                                 <div className="flex justify-between items-center text-[10px] font-black tracking-widest uppercase">
                                                     <span className={progress.isCompleted ? 'text-emerald-400' : 'text-slate-400'}>
-                                                        {progress.isCompleted ? 'Â¡Completado!' : 'Progreso'}
+                                                        {progress.isCompleted ? '¡Completado!' : 'Progreso'}
                                                     </span>
                                                     <span className="text-slate-300">{progress.current} / {achievement.targetValue}</span>
                                                 </div>
@@ -465,9 +486,9 @@ export default function Achievements() {
                         {reviews.length === 0 ? (
                             <div className="bg-slate-900 border border-slate-800 rounded-3xl p-8 text-center space-y-2">
                                 <Sparkles className="w-10 h-10 text-amber-400 mx-auto opacity-70" />
-                                <h4 className="font-bold text-white text-sm">AÃºn no hay reseÃ±as registradas</h4>
+                                <h4 className="font-bold text-white text-sm">Aún no hay reseñas registradas</h4>
                                 <p className="text-xs text-slate-400 leading-relaxed max-w-xs mx-auto">
-                                    Cada vez que completes un viaje o mandado con buena atenciÃ³n, los clientes calificarÃ¡n su experiencia y aparecerÃ¡ aquÃ­.
+                                    Cada vez que completes un viaje o mandado con buena atención, los clientes calificarán su experiencia y aparecerá aquí.
                                 </p>
                             </div>
                         ) : (
@@ -488,7 +509,7 @@ export default function Achievements() {
                                                         {rev.clientName}
                                                     </p>
                                                     <span className="text-[10px] text-slate-500 mt-0.5 block font-medium">
-                                                        {rev.createdAt.toLocaleDateString()} â€¢ {rev.createdAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                                        {rev.createdAt.toLocaleDateString()} • {rev.createdAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                                                     </span>
                                                 </div>
                                             </div>
@@ -539,7 +560,7 @@ export default function Achievements() {
                                             </p>
                                         ) : (
                                             <p className="text-[11px] text-slate-500 italic">
-                                                CalificaciÃ³n sin comentario escrito.
+                                                Calificación sin comentario escrito.
                                             </p>
                                         )}
                                     </div>

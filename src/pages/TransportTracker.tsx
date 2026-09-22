@@ -3,13 +3,14 @@ import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { DeliveryDriver } from '../lib/delivery-service';
 import toast from 'react-hot-toast';
-import { Navigation, Clock, CheckCircle2, Phone, ArrowLeft, Car, ShieldCheck, MessageCircle, Star, XCircle, MapPin, Package, Copy, AlertTriangle, Wind, Music, Wifi, BatteryCharging, AlertCircle, X, ShoppingBag, Shield } from 'lucide-react';
+import { Navigation, Clock, CheckCircle2, Phone, ArrowLeft, Car, ShieldCheck, MessageCircle, Star, XCircle, MapPin, Package, Copy, AlertTriangle, Wind, Music, Wifi, BatteryCharging, AlertCircle, X, ShoppingBag, Shield, CreditCard } from 'lucide-react';
 import { GoogleMap, useJsApiLoader, DirectionsRenderer, Marker } from '@react-google-maps/api';
 import { GOOGLE_MAPS_API_KEY, GOOGLE_MAPS_LIBRARIES } from '../lib/mapsConfig';
 import RideChat from '../components/RideChat';
 import InAppCall from '../components/InAppCall';
 import LiveTripMap from '../components/LiveTripMap';
 import { playChatChime, playCallAlertChime, playTripStatusChime } from '../utils/audioChimes';
+import { sendAppNotification } from '../services/nativeNotificationService';
 import { UN2X3_LOGO } from '../lib/env';
 import { isNightTime, yangoDarkMapStyles, yangoDayMapStyles, googleMapsDarkStyles, getWeatherByCoordinates, WeatherInfo } from '../lib/weather';
 import RainOverlay from '../components/RainOverlay';
@@ -72,6 +73,12 @@ export default function TransportTracker() {
     const [submittingLost, setSubmittingLost] = useState(false);
     const [lostItemSent, setLostItemSent] = useState(false);
     const [showVehicleModal, setShowVehicleModal] = useState(false);
+
+    // Modal de Selección de Método de Pago (Transporte Rápido y viajes activos)
+    const [showPaymentPickerModal, setShowPaymentPickerModal] = useState(false);
+    const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<'pago_movil' | 'cash_ves' | 'cash_usd'>('cash_usd');
+    const [updatingPaymentMethod, setUpdatingPaymentMethod] = useState(false);
+    const hasAutoOpenedPaymentModal = useRef(false);
     
     // Notification sound
     const notificationSoundUrl = useRef<string | null>(null);
@@ -238,6 +245,65 @@ export default function TransportTracker() {
         };
     }, [requestId]);
 
+    // Auto-abrir modal de métodos de pago cuando el conductor acepte solicitud de Transporte Rápido
+    useEffect(() => {
+        if (!request) return;
+        const isQuick = Boolean(request?.notes?.includes('Transporte Rápido'));
+        const isAccepted = ['accepted', 'arriving', 'in_progress'].includes(request?.status);
+
+        if (isQuick && isAccepted && !hasAutoOpenedPaymentModal.current && !request.payment_method_selected) {
+            hasAutoOpenedPaymentModal.current = true;
+            setSelectedPaymentMethod(
+                request.payment_method === 'cash_ves' 
+                    ? 'cash_ves' 
+                    : request.payment_method === 'pago_movil' 
+                    ? 'pago_movil' 
+                    : 'cash_usd'
+            );
+            setShowPaymentPickerModal(true);
+        }
+    }, [request?.status, request?.notes, request?.payment_method_selected]);
+
+    const handleSavePaymentMethod = async (method: 'pago_movil' | 'cash_ves' | 'cash_usd') => {
+        if (!requestId) return;
+        setUpdatingPaymentMethod(true);
+        try {
+            const currency = method === 'cash_ves' ? 'BS' : 'USD';
+            const { error } = await supabase.from('transport_requests').update({
+                payment_method: method,
+                paymentMethod: method,
+                cash_currency: currency,
+                cashCurrency: currency,
+                payment_method_selected: true
+            }).eq('id', requestId);
+
+            if (error) throw error;
+
+            setRequest((prev: any) => ({
+                ...prev,
+                payment_method: method,
+                paymentMethod: method,
+                cash_currency: currency,
+                cashCurrency: currency,
+                payment_method_selected: true
+            }));
+
+            toast.success(
+                method === 'pago_movil' 
+                    ? 'Método de pago: Pago Móvil seleccionado' 
+                    : method === 'cash_ves' 
+                    ? 'Método de pago: Bs. Efectivo seleccionado' 
+                    : 'Método de pago: Divisa (USD) seleccionado'
+            );
+            setShowPaymentPickerModal(false);
+        } catch (err: any) {
+            console.error('Error al actualizar método de pago:', err);
+            toast.error('No se pudo guardar el método de pago.');
+        } finally {
+            setUpdatingPaymentMethod(false);
+        }
+    };
+
     // Escuchar los cambios del conductor en tiempo real (usando la tabla física 'drivers' y 'driver_locations')
     useEffect(() => {
         const driverId = request?.driverId || request?.driver_id;
@@ -356,27 +422,11 @@ export default function TransportTracker() {
             // Obtener info del estado para la alerta
             const info = getStatusInfo();
             
-            // Sonar tono de cambio de estado
-            playTripStatusChime();
-
-            // Mostrar Alerta Visual (Pantalla)
-            toast((t) => (
-                <div className="flex flex-col gap-1 p-1">
-                    <p className="font-black text-slate-900 text-sm flex items-center gap-2">
-                        <info.icon className="w-4 h-4 text-orange-500" />
-                        {info.title}
-                    </p>
-                    <p className="text-slate-500 text-xs font-bold leading-tight">{info.subtitle}</p>
-                </div>
-            ), {
-                position: 'top-center',
-                duration: 5000,
-                style: {
-                    borderRadius: '1.25rem',
-                    padding: '12px 16px',
-                    border: '1px solid rgba(0,0,0,0.05)',
-                    boxShadow: '0 10px 25px rgba(0,0,0,0.1)'
-                }
+            // Disparar Notificación Nativa completa: Sonido de cliente, vibración háptica, barra de notificaciones del dispositivo y modal emergente
+            sendAppNotification({
+                title: info.title || 'Actualización de Viaje',
+                body: info.subtitle || 'El estado de tu viaje ha cambiado.',
+                soundType: 'client'
             });
         }
         
@@ -1480,8 +1530,63 @@ export default function TransportTracker() {
                     />
                 )}
 
+                {/* Botón en Pantalla para Seleccionar / Cambiar Método de Pago */}
+                {['accepted', 'arriving', 'in_progress'].includes(request.status) && (
+                    <div className="mb-3.5">
+                        <button
+                            type="button"
+                            onClick={() => {
+                                setSelectedPaymentMethod(
+                                    request.payment_method === 'cash_ves' 
+                                        ? 'cash_ves' 
+                                        : request.payment_method === 'pago_movil' 
+                                        ? 'pago_movil' 
+                                        : 'cash_usd'
+                                );
+                                setShowPaymentPickerModal(true);
+                            }}
+                            className="w-full flex items-center justify-between p-3.5 bg-gradient-to-r from-amber-500/10 via-amber-400/15 to-yellow-500/10 border-2 border-amber-400/70 hover:border-amber-400 rounded-2xl shadow-sm transition-all active:scale-98"
+                        >
+                            <div className="flex items-center gap-3 min-w-0">
+                                <div className="w-10 h-10 rounded-xl bg-amber-400 text-slate-950 flex items-center justify-center font-black text-lg shadow-sm shrink-0">
+                                    💳
+                                </div>
+                                <div className="text-left truncate">
+                                    <span className="text-[10px] font-black uppercase tracking-wider text-amber-900 block leading-tight">
+                                        Método de Pago
+                                    </span>
+                                    <span className="text-xs font-black text-slate-900 truncate block">
+                                        {request.payment_method === 'pago_movil' 
+                                            ? '📱 Pago Móvil' 
+                                            : request.payment_method === 'cash_ves' 
+                                            ? '🇻🇪 Bs. Efectivo' 
+                                            : '💵 Divisa (USD Efectivo)'}
+                                    </span>
+                                </div>
+                            </div>
+                            <span className="text-xs font-black text-slate-950 bg-amber-400 hover:bg-amber-300 px-3.5 py-1.5 rounded-xl shadow-sm shrink-0 ml-2">
+                                Elegir / Cambiar
+                            </span>
+                        </button>
+                    </div>
+                )}
+
                 {/* Payment Summary */}
-                <div className="bg-slate-50 rounded-2xl p-3 flex justify-between items-center border border-slate-100">
+                <div 
+                    onClick={() => {
+                        if (['accepted', 'arriving', 'in_progress'].includes(request.status)) {
+                            setSelectedPaymentMethod(
+                                request.payment_method === 'cash_ves' 
+                                    ? 'cash_ves' 
+                                    : request.payment_method === 'pago_movil' 
+                                    ? 'pago_movil' 
+                                    : 'cash_usd'
+                            );
+                            setShowPaymentPickerModal(true);
+                        }
+                    }}
+                    className={`bg-slate-50 rounded-2xl p-3 flex justify-between items-center border border-slate-100 ${['accepted', 'arriving', 'in_progress'].includes(request.status) ? 'cursor-pointer hover:bg-slate-100/80 transition-colors' : ''}`}
+                >
                     <div>
                         <p className="text-[10px] font-bold text-slate-500">Total del Viaje</p>
                         <p className="font-black text-base text-slate-900 leading-tight">${parseFloat(request.price || request.total || 0).toFixed(2)}</p>
@@ -1613,6 +1718,160 @@ export default function TransportTracker() {
                         </div>
                     );
                 })()}
+
+                {/* Modal: Selección de Método de Pago (Pago Móvil, Bs. Efectivo, Divisa) */}
+                {showPaymentPickerModal && (
+                    <div className="fixed inset-0 z-[120] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-950/70 backdrop-blur-sm animate-in fade-in">
+                        <div className="bg-white rounded-t-[32px] sm:rounded-3xl max-w-md w-full p-5 sm:p-6 space-y-4 shadow-2xl relative animate-in slide-in-from-bottom duration-200">
+                            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                                <div className="flex items-center gap-2">
+                                    <div className="w-8 h-8 rounded-xl bg-amber-400 text-slate-950 flex items-center justify-center font-black">
+                                        💳
+                                    </div>
+                                    <div>
+                                        <h3 className="text-base font-black text-slate-900 leading-tight">Método de Pago</h3>
+                                        <p className="text-[10px] text-slate-500 font-bold">Selecciona cómo deseas pagar tu viaje</p>
+                                    </div>
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={() => setShowPaymentPickerModal(false)}
+                                    className="w-8 h-8 rounded-full bg-slate-100 text-slate-500 hover:bg-slate-200 flex items-center justify-center transition-colors"
+                                >
+                                    <X className="w-4 h-4" />
+                                </button>
+                            </div>
+
+                            {/* Total Banner */}
+                            <div className="p-3 bg-slate-50 rounded-2xl border border-slate-200/80 flex items-center justify-between">
+                                <span className="text-xs font-bold text-slate-600">Total a pagar:</span>
+                                <div className="text-right">
+                                    <span className="text-base font-black text-slate-900 leading-none">
+                                        ${parseFloat(request.price || request.total || 0).toFixed(2)} USD
+                                    </span>
+                                    {bcvRate > 0 && (
+                                        <span className="text-xs font-bold text-slate-500 block">
+                                            ≈ {(parseFloat(request.price || request.total || 0) * bcvRate).toFixed(2)} Bs (BCV)
+                                        </span>
+                                    )}
+                                </div>
+                            </div>
+
+                            {/* 3 Payment Options */}
+                            <div className="space-y-2.5">
+                                {/* 1. Pago Móvil */}
+                                <button
+                                    type="button"
+                                    onClick={() => setSelectedPaymentMethod('pago_movil')}
+                                    className={`w-full p-3.5 rounded-2xl border-2 text-left transition-all flex items-center justify-between ${
+                                        selectedPaymentMethod === 'pago_movil'
+                                            ? 'border-purple-500 bg-purple-50/70 shadow-sm'
+                                            : 'border-slate-200 bg-white hover:border-slate-300'
+                                    }`}
+                                >
+                                    <div className="flex items-center gap-3">
+                                        <div className="w-10 h-10 rounded-xl bg-purple-100 text-purple-700 flex items-center justify-center font-bold text-xl shrink-0">
+                                            📱
+                                        </div>
+                                        <div>
+                                            <p className="font-black text-xs text-slate-900">Pago Móvil</p>
+                                            <p className="text-[10px] text-slate-500 font-medium">Transferencia bancaria móvil en Bs</p>
+                                        </div>
+                                    </div>
+                                    <div className="text-right">
+                                        {bcvRate > 0 && (
+                                            <span className="text-xs font-black text-purple-700 block">
+                                                {(parseFloat(request.price || request.total || 0) * bcvRate).toFixed(2)} Bs
+                                            </span>
+                                        )}
+                                        <span className={`w-4 h-4 rounded-full border-2 inline-flex items-center justify-center mt-0.5 ${
+                                            selectedPaymentMethod === 'pago_movil' ? 'border-purple-600 bg-purple-600' : 'border-slate-300'
+                                        }`}>
+                                            {selectedPaymentMethod === 'pago_movil' && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
+                                        </span>
+                                    </div>
+                                </button>
+
+                                {/* 2. Bs. Efectivo */}
+                                <button
+                                    type="button"
+                                    onClick={() => setSelectedPaymentMethod('cash_ves')}
+                                    className={`w-full p-3.5 rounded-2xl border-2 text-left transition-all flex items-center justify-between ${
+                                        selectedPaymentMethod === 'cash_ves'
+                                            ? 'border-emerald-500 bg-emerald-50/70 shadow-sm'
+                                            : 'border-slate-200 bg-white hover:border-slate-300'
+                                    }`}
+                                >
+                                    <div className="flex items-center gap-3">
+                                        <div className="w-10 h-10 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center font-bold text-xl shrink-0">
+                                            🇻🇪
+                                        </div>
+                                        <div>
+                                            <p className="font-black text-xs text-slate-900">Bs. Efectivo</p>
+                                            <p className="text-[10px] text-slate-500 font-medium">Billetes en bolívares en mano</p>
+                                        </div>
+                                    </div>
+                                    <div className="text-right">
+                                        {bcvRate > 0 && (
+                                            <span className="text-xs font-black text-emerald-700 block">
+                                                {(parseFloat(request.price || request.total || 0) * bcvRate).toFixed(2)} Bs
+                                            </span>
+                                        )}
+                                        <span className={`w-4 h-4 rounded-full border-2 inline-flex items-center justify-center mt-0.5 ${
+                                            selectedPaymentMethod === 'cash_ves' ? 'border-emerald-600 bg-emerald-600' : 'border-slate-300'
+                                        }`}>
+                                            {selectedPaymentMethod === 'cash_ves' && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
+                                        </span>
+                                    </div>
+                                </button>
+
+                                {/* 3. Divisa Efectivo (USD) */}
+                                <button
+                                    type="button"
+                                    onClick={() => setSelectedPaymentMethod('cash_usd')}
+                                    className={`w-full p-3.5 rounded-2xl border-2 text-left transition-all flex items-center justify-between ${
+                                        selectedPaymentMethod === 'cash_usd'
+                                            ? 'border-amber-500 bg-amber-50/70 shadow-sm'
+                                            : 'border-slate-200 bg-white hover:border-slate-300'
+                                    }`}
+                                >
+                                    <div className="flex items-center gap-3">
+                                        <div className="w-10 h-10 rounded-xl bg-amber-100 text-amber-700 flex items-center justify-center font-bold text-xl shrink-0">
+                                            💵
+                                        </div>
+                                        <div>
+                                            <p className="font-black text-xs text-slate-900">Divisa ($ USD)</p>
+                                            <p className="text-[10px] text-slate-500 font-medium">Dólares en efectivo en mano</p>
+                                        </div>
+                                    </div>
+                                    <div className="text-right">
+                                        <span className="text-xs font-black text-amber-700 block">
+                                            ${parseFloat(request.price || request.total || 0).toFixed(2)} USD
+                                        </span>
+                                        <span className={`w-4 h-4 rounded-full border-2 inline-flex items-center justify-center mt-0.5 ${
+                                            selectedPaymentMethod === 'cash_usd' ? 'border-amber-500 bg-amber-500' : 'border-slate-300'
+                                        }`}>
+                                            {selectedPaymentMethod === 'cash_usd' && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
+                                        </span>
+                                    </div>
+                                </button>
+                            </div>
+
+                            {/* Confirm button */}
+                            <div className="pt-2">
+                                <button
+                                    type="button"
+                                    disabled={updatingPaymentMethod}
+                                    onClick={() => handleSavePaymentMethod(selectedPaymentMethod)}
+                                    className="w-full py-3.5 bg-slate-950 hover:bg-slate-900 active:scale-98 text-amber-400 font-black text-xs uppercase tracking-wider rounded-2xl shadow-lg transition-all flex items-center justify-center gap-2"
+                                >
+                                    <CheckCircle2 className="w-4 h-4" />
+                                    {updatingPaymentMethod ? 'Guardando...' : 'Confirmar Método de Pago'}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                )}
 
             </div>
         </div>

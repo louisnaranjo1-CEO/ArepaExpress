@@ -249,12 +249,12 @@ export default function DeliveryLayout({ children }: DeliveryLayoutProps) {
             )}
 
             {/* Contenido Principal (Scrollable) */}
-            <main className="flex-1 overflow-y-auto pb-24 pt-3 px-3.5 sm:px-4">
+            <main className="flex-1 overflow-y-auto min-h-0 pt-3 px-3.5 sm:px-4 pb-4">
                 {children}
             </main>
 
             {/* Bottom Navigation Bar con Safe Area */}
-            <nav className="fixed bottom-0 w-full max-w-md bg-white border-t border-slate-200 px-6 pt-2 pb-[calc(env(safe-area-inset-bottom,0px)+8px)] flex justify-between items-center z-20 shadow-lg">
+            <nav className="shrink-0 w-full bg-white border-t border-slate-200 px-6 pt-2 pb-[max(0.75rem,env(safe-area-inset-bottom,0px))] flex justify-between items-center z-20 shadow-lg">
                 {navItems.map((item) => (
                     <NavLink
                         key={item.path}
