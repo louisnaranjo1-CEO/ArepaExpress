@@ -900,8 +900,14 @@ _Enviado desde Deliexpress App_`,
                                                         <div className="absolute bottom-0 right-0 w-3 h-3 bg-emerald-500 border-2 border-white rounded-full"></div>
                                                     )}
                                                 </div>
-                                                <div>
-                                                    <p className="font-bold text-slate-900">{driver.fullName}</p>
+                                                <div 
+                                                    onClick={() => setSelectedDriver(driver)}
+                                                    className="cursor-pointer hover:opacity-80 transition-opacity"
+                                                >
+                                                    <p className="font-bold text-slate-900 hover:text-amber-600 transition-colors flex items-center gap-1.5">
+                                                        <span>{driver.fullName}</span>
+                                                        <span className="text-[10px] text-amber-500 font-black">★ {((driver as any).rating || 5.0).toFixed(1)}</span>
+                                                    </p>
                                                     <p className="text-xs text-slate-500">ID: {driver.id.slice(0, 5)}</p>
                                                 </div>
                                             </div>
@@ -960,6 +966,12 @@ _Enviado desde Deliexpress App_`,
                                                     Ver Mapa
                                                 </button>
                                             )}
+                                            <button
+                                                onClick={() => setSelectedDriver(driver)}
+                                                className="px-2.5 py-1 bg-amber-400 hover:bg-amber-300 text-slate-950 font-black text-xs rounded-xl shadow-sm transition-all"
+                                            >
+                                                Ficha Completa
+                                            </button>
                                             <button
                                                 onClick={() => handleOpenFinanceModal(driver)}
                                                 className="text-slate-700 hover:text-slate-900 text-xs font-bold hover:underline opacity-0 group-hover:opacity-100 transition-opacity"
@@ -1807,6 +1819,111 @@ _Enviado desde Deliexpress App_`,
                                         </div>
                                     )}
                                 </div>
+
+                                {/* Flota de Vehículos Registrados */}
+                                <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 space-y-3">
+                                    <div className="flex items-center justify-between">
+                                        <h4 className="text-xs font-black text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+                                            <Car className="w-4 h-4 text-amber-500" />
+                                            <span>Flota de Vehículos Registrados ({((selectedDriver as any).registered_vehicles || []).length || 1})</span>
+                                        </h4>
+                                        <span className="text-[10px] text-slate-400 font-bold">1 unidad activa</span>
+                                    </div>
+
+                                    {(((selectedDriver as any).registered_vehicles || []).length > 0) ? (
+                                        <div className="space-y-2">
+                                            {((selectedDriver as any).registered_vehicles || []).map((veh: any, idx: number) => {
+                                                const isActive = veh.id === (selectedDriver as any).active_vehicle_id || veh.is_active;
+                                                return (
+                                                    <div 
+                                                        key={veh.id || idx}
+                                                        className={`p-3 rounded-xl border flex items-center justify-between gap-3 text-xs ${
+                                                            isActive ? 'bg-amber-50 border-amber-300 font-bold' : 'bg-white border-slate-200'
+                                                        }`}
+                                                    >
+                                                        <div className="flex items-center gap-2.5 min-w-0">
+                                                            <div className="w-9 h-9 rounded-lg bg-slate-100 flex items-center justify-center text-slate-700 shrink-0">
+                                                                {veh.type === 'moto' ? <Bike className="w-5 h-5" /> : <Car className="w-5 h-5" />}
+                                                            </div>
+                                                            <div className="min-w-0">
+                                                                <p className="font-black text-slate-800 truncate">
+                                                                    {veh.brand} {veh.model} {veh.year ? `(${veh.year})` : ''}
+                                                                </p>
+                                                                <p className="text-[11px] text-slate-500">
+                                                                    Color {veh.color || 'N/A'} • <span className="font-mono font-bold text-slate-700">{veh.plate || 'Sin Placa'}</span>
+                                                                </p>
+                                                            </div>
+                                                        </div>
+                                                        <div className="flex items-center gap-1.5 shrink-0 flex-wrap justify-end">
+                                                            {isActive && (
+                                                                <span className="px-2 py-0.5 bg-emerald-500 text-white font-black text-[9px] rounded-full uppercase">
+                                                                    Unidad Activa
+                                                                </span>
+                                                            )}
+                                                            {veh.has_ac && (
+                                                                <span className="px-1.5 py-0.5 bg-cyan-100 text-cyan-800 font-bold text-[9px] rounded">
+                                                                    ❄️ A/A
+                                                                </span>
+                                                            )}
+                                                            {veh.is_comfort && (
+                                                                <span className="px-1.5 py-0.5 bg-amber-200 text-amber-900 font-bold text-[9px] rounded">
+                                                                    ✨ Confort
+                                                                </span>
+                                                            )}
+                                                            {veh.has_thermal_bag && (
+                                                                <span className="px-1.5 py-0.5 bg-emerald-100 text-emerald-800 font-bold text-[9px] rounded">
+                                                                    🎒 Bolso Térmico
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    ) : (
+                                        <div className="bg-white p-3 rounded-xl border border-slate-200 text-xs text-slate-500">
+                                            Vehículo principal: <strong className="text-slate-800 capitalize">{selectedDriver.vehicleType} {selectedDriver.vehicleBrand} {selectedDriver.vehicleModel}</strong> ({selectedDriver.vehiclePlate || 'Sin placa'})
+                                        </div>
+                                    )}
+                                </div>
+
+                                {/* Tarifas Configuradas por el Piloto */}
+                                {(selectedDriver as any).driver_fares && (
+                                    <div className="bg-amber-50/60 border border-amber-200 rounded-2xl p-4 space-y-2">
+                                        <h4 className="text-xs font-black text-amber-900 uppercase tracking-wider flex items-center gap-1.5">
+                                            <DollarSign className="w-4 h-4 text-amber-600" />
+                                            <span>Tarifas Configuradas por el Piloto</span>
+                                        </h4>
+                                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+                                            <div className="bg-white p-2.5 rounded-xl border border-amber-100">
+                                                <span className="text-slate-400 text-[10px] font-bold block">Modalidad</span>
+                                                <span className="font-bold text-slate-800 capitalize">
+                                                    {(selectedDriver as any).driver_fares.pricing_type || 'distance'}
+                                                </span>
+                                            </div>
+                                            <div className="bg-white p-2.5 rounded-xl border border-amber-100">
+                                                <span className="text-slate-400 text-[10px] font-bold block">Tarifa Base</span>
+                                                <span className="font-black text-amber-700 font-mono">
+                                                    ${Number((selectedDriver as any).driver_fares.base_fare || 0).toFixed(2)}
+                                                </span>
+                                            </div>
+                                            <div className="bg-white p-2.5 rounded-xl border border-amber-100">
+                                                <span className="text-slate-400 text-[10px] font-bold block">Precio / Km</span>
+                                                <span className="font-black text-amber-700 font-mono">
+                                                    ${Number((selectedDriver as any).driver_fares.per_km_fare || 0).toFixed(2)}
+                                                </span>
+                                            </div>
+                                            {(selectedDriver as any).driver_fares.comfort_base_fare && (
+                                                <div className="bg-white p-2.5 rounded-xl border border-amber-100">
+                                                    <span className="text-slate-400 text-[10px] font-bold block">Base Confort</span>
+                                                    <span className="font-black text-amber-700 font-mono">
+                                                        ${Number((selectedDriver as any).driver_fares.comfort_base_fare).toFixed(2)}
+                                                    </span>
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                )}
 
                                 <div>
                                     <h4 className="text-sm font-bold text-slate-900 mb-3 flex items-center gap-2"><User className="w-4 h-4 text-slate-400" /> Selfie y Rostro</h4>

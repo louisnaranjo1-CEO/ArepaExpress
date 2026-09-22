@@ -248,7 +248,15 @@ export const driversApi = {
                 createdAt: d.created_at,
                 updatedAt: d.updated_at,
                 audioAlertsEnabled: d.audio_alerts_enabled ?? true,
-                paymentMobile: d.payment_mobile || null
+                paymentMobile: d.payment_mobile || null,
+                registered_vehicles: d.registered_vehicles || [],
+                active_vehicle_id: d.active_vehicle_id || null,
+                driver_fares: d.driver_fares || null,
+                has_thermal_bag: Boolean(d.has_thermal_bag),
+                is_comfort_eligible: Boolean(d.is_comfort_eligible),
+                rating: d.rating ? Number(d.rating) : 5.0,
+                acceptance_rate: d.acceptance_rate ? Number(d.acceptance_rate) : 100,
+                total_trips: d.total_trips ? Number(d.total_trips) : 0
             };
         });
     },

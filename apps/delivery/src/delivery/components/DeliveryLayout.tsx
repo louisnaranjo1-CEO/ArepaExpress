@@ -33,7 +33,7 @@ export default function DeliveryLayout({ children }: DeliveryLayoutProps) {
                 const { data: transports } = await supabase
                     .from('transport_requests')
                     .select('id')
-                    .or(`driver_id.eq.${user.uid},driverId.eq.${user.uid}`)
+                    .eq('driver_id', user.uid)
                     .in('status', ['accepted', 'arriving', 'in_progress'])
                     .limit(1);
 
@@ -45,7 +45,7 @@ export default function DeliveryLayout({ children }: DeliveryLayoutProps) {
                 const { data: orders } = await supabase
                     .from('orders')
                     .select('id')
-                    .or(`delivery_driver_id.eq.${user.uid},deliveryDriverId.eq.${user.uid}`)
+                    .eq('delivery_driver_id', user.uid)
                     .in('status', ['en_camino', 'in_transit'])
                     .limit(1);
 

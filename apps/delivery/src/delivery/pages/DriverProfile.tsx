@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
-import { User, Mail, MapPin, CreditCard, LogOut, ShoppingBag, Settings, ChevronRight, Clock, FileText, Bell, Navigation, X, Shield, UploadCloud, CheckCircle2, Save, Image as ImageIcon, Key, Trash2, ArrowLeft, Camera, Truck, ShieldCheck, Smartphone, Fingerprint, Car, Bike, Star, Calendar, Sparkles, AlertTriangle, Wifi, Music, Wind, Check, Lock } from 'lucide-react';
+import { User, Mail, MapPin, CreditCard, LogOut, ShoppingBag, Settings, ChevronRight, Clock, FileText, Bell, Navigation, X, Shield, UploadCloud, CheckCircle2, Save, Image as ImageIcon, Key, Trash2, ArrowLeft, Camera, Truck, ShieldCheck, Smartphone, Fingerprint, Car, Bike, Star, Calendar, Sparkles, AlertTriangle, Wifi, Music, Wind, Check, Lock, Plus, Radio } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { Geolocation } from '@capacitor/geolocation';
 import { Capacitor } from '@capacitor/core';
@@ -14,11 +14,28 @@ import { supabase } from '../../lib/supabase';
 export default function DriverProfile() {
     const { user, userData } = useAuth();
     const navigate = useNavigate();
-    const [activeView, setActiveView] = useState<'profile' | 'settings' | 'update_data' | 'location' | 'payment_method' | 'guidelines' | 'payout_frequency' | 'comfort_features'>('profile');
+    const [activeView, setActiveView] = useState<'profile' | 'settings' | 'update_data' | 'location' | 'payment_method' | 'guidelines' | 'payout_frequency' | 'comfort_features' | 'my_vehicles'>('profile');
     const [driverProfile, setDriverProfile] = useState<any>(null);
     const [updatingNotifications, setUpdatingNotifications] = useState(false);
     const [updatingBiometrics, setUpdatingBiometrics] = useState(false);
     const [updatingLocation, setUpdatingLocation] = useState(false);
+
+    // Multi-vehicle Fleet & Thermal Bag states
+    const [registeredVehicles, setRegisteredVehicles] = useState<any[]>([]);
+    const [activeVehicleId, setActiveVehicleId] = useState<string | null>(null);
+    const [showAddVehicleModal, setShowAddVehicleModal] = useState(false);
+    const [uploadingNewVehPhoto, setUploadingNewVehPhoto] = useState(false);
+    const [newVehicleForm, setNewVehicleForm] = useState({
+        type: 'moto' as 'moto' | 'carro' | 'camioneta',
+        brand: '',
+        model: '',
+        year: '',
+        color: '',
+        plate: '',
+        hasAc: false,
+        hasThermalBag: false,
+        photoUrl: ''
+    });
 
     // Fetch driver-specific profile
     React.useEffect(() => {
@@ -113,6 +130,10 @@ export default function DriverProfile() {
                 } else if (data.has_ac !== undefined) {
                     setComfortForm(prev => ({ ...prev, hasAc: Boolean(data.has_ac) }));
                 }
+
+                const vList = data.registered_vehicles || [];
+                setRegisteredVehicles(vList);
+                setActiveVehicleId(data.active_vehicle_id || (vList[0]?.id) || null);
 
                 setUpdateForm(prev => ({
                     ...prev,
@@ -354,6 +375,179 @@ export default function DriverProfile() {
         }
     };
 
+    // Switch Active Vehicle unit with 1-click
+    const handleSwitchActiveVehicle = async (veh: any) => {
+        if (!user) return;
+        setLoading(true);
+        try {
+            const isComfort = veh.type !== 'moto' && Boolean(veh.has_ac) && Number(veh.year) >= 2009;
+            const currentList = registeredVehicles.length > 0 ? registeredVehicles : (driverProfile?.registered_vehicles || []);
+            const updatedList = currentList.map((v: any) => ({
+                ...v,
+                is_active: v.id === veh.id
+            }));
+
+            const updatePayload = {
+                active_vehicle_id: veh.id,
+                registered_vehicles: updatedList,
+                vehicle_type: veh.type,
+                vehicle_brand: veh.brand,
+                vehicle_model: veh.model,
+                vehicle_year: veh.year,
+                vehicle_color: veh.color,
+                vehicle_plate: veh.plate,
+                has_ac: Boolean(veh.has_ac),
+                has_thermal_bag: Boolean(veh.has_thermal_bag),
+                vehicle_image_url: veh.photo_url || driverProfile?.vehicle_image_url,
+                is_comfort_eligible: isComfort,
+                updated_at: new Date().toISOString()
+            };
+
+            const { error } = await supabase.from('drivers').update(updatePayload).eq('id', user.uid);
+            if (error) throw error;
+
+            setActiveVehicleId(veh.id);
+            setRegisteredVehicles(updatedList);
+            setDriverProfile((prev: any) => ({
+                ...prev,
+                ...updatePayload,
+                vehicleType: veh.type,
+                vehicleBrand: veh.brand,
+                vehicleModel: veh.model,
+                vehicleYear: veh.year,
+                vehicleColor: veh.color,
+                vehiclePlate: veh.plate,
+                hasAc: Boolean(veh.has_ac)
+            }));
+
+            alert(`¡Unidad activada con éxito! Ahora estás operando con: ${veh.brand} ${veh.model} (${veh.plate || 'Sin placa'}). Tus categorías y tarifas se actualizaron automáticamente.`);
+        } catch (err: any) {
+            console.error("Error switching vehicle:", err);
+            alert("No se pudo cambiar de vehículo: " + (err.message || 'Error'));
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    // Toggle Thermal Delivery Bag for Motorcyclists
+    const handleToggleThermalBag = async () => {
+        if (!user) return;
+        setLoading(true);
+        try {
+            const newValue = !(driverProfile?.has_thermal_bag ?? false);
+            const currentList = registeredVehicles.length > 0 ? registeredVehicles : (driverProfile?.registered_vehicles || []);
+            const updatedList = currentList.map((v: any) => {
+                if (v.id === activeVehicleId || v.is_active) {
+                    return { ...v, has_thermal_bag: newValue };
+                }
+                return v;
+            });
+
+            const { error } = await supabase.from('drivers').update({
+                has_thermal_bag: newValue,
+                registered_vehicles: updatedList,
+                updated_at: new Date().toISOString()
+            }).eq('id', user.uid);
+
+            if (error) throw error;
+
+            setDriverProfile((prev: any) => ({ ...prev, has_thermal_bag: newValue }));
+            setRegisteredVehicles(updatedList);
+            alert(newValue
+                ? '¡Bolso Térmico activado! Ahora recibirás el distintivo especial 🎒 Bolso Térmico en las solicitudes de restaurantes y mandados.'
+                : 'Bolso Térmico desactivado.');
+        } catch (err: any) {
+            console.error("Error toggling thermal bag:", err);
+            alert("Error al actualizar bolso térmico: " + err.message);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    // Upload Photo for new vehicle registration
+    const handleNewVehPhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file || !user) return;
+        setUploadingNewVehPhoto(true);
+        try {
+            const ext = file.name.split('.').pop() || 'jpg';
+            const filePath = `delivery_docs/${user.uid}/new_vehicle_${Date.now()}.${ext}`;
+            const { error: upErr } = await supabase.storage.from('store_assets').upload(filePath, file, { upsert: true });
+            if (upErr) throw upErr;
+
+            const { data: pubData } = supabase.storage.from('store_assets').getPublicUrl(filePath);
+            setNewVehicleForm(prev => ({ ...prev, photoUrl: pubData.publicUrl }));
+            alert('Foto cargada correctamente.');
+        } catch (err: any) {
+            console.error("Error uploading new vehicle photo:", err);
+            alert("Error subiendo foto: " + (err.message || 'Error'));
+        } finally {
+            setUploadingNewVehPhoto(false);
+        }
+    };
+
+    // Register a new vehicle to the fleet
+    const handleRegisterNewVehicle = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!user) return;
+        if (!newVehicleForm.brand.trim() || !newVehicleForm.model.trim() || !newVehicleForm.plate.trim()) {
+            alert('Por favor indica Marca, Modelo y Placa del vehículo.');
+            return;
+        }
+
+        setLoading(true);
+        try {
+            const newId = `veh_${Date.now().toString(36)}`;
+            const isComfort = newVehicleForm.type !== 'moto' && Boolean(newVehicleForm.hasAc) && Number(newVehicleForm.year) >= 2009;
+            const newEntry = {
+                id: newId,
+                type: newVehicleForm.type,
+                brand: newVehicleForm.brand.trim(),
+                model: newVehicleForm.model.trim(),
+                year: newVehicleForm.year.trim(),
+                color: newVehicleForm.color.trim(),
+                plate: newVehicleForm.plate.trim().toUpperCase(),
+                has_ac: Boolean(newVehicleForm.hasAc),
+                has_thermal_bag: Boolean(newVehicleForm.hasThermalBag),
+                photo_url: newVehicleForm.photoUrl || '',
+                is_comfort: isComfort,
+                is_active: false,
+                created_at: new Date().toISOString()
+            };
+
+            const existingList = registeredVehicles.length > 0 ? registeredVehicles : (driverProfile?.registered_vehicles || []);
+            const updatedList = [...existingList, newEntry];
+
+            const { error } = await supabase.from('drivers').update({
+                registered_vehicles: updatedList,
+                updated_at: new Date().toISOString()
+            }).eq('id', user.uid);
+
+            if (error) throw error;
+
+            setRegisteredVehicles(updatedList);
+            setDriverProfile((prev: any) => ({ ...prev, registered_vehicles: updatedList }));
+            setShowAddVehicleModal(false);
+            setNewVehicleForm({
+                type: 'moto',
+                brand: '',
+                model: '',
+                year: '',
+                color: '',
+                plate: '',
+                hasAc: false,
+                hasThermalBag: false,
+                photoUrl: ''
+            });
+            alert('¡Vehículo registrado exitosamente! Puedes activarlo en tu lista cuando desees usarlo.');
+        } catch (err: any) {
+            console.error("Error registering new vehicle:", err);
+            alert("Error al registrar vehículo: " + (err.message || 'Error'));
+        } finally {
+            setLoading(false);
+        }
+    };
+
     const handleLogout = async () => {
         try {
             await supabase.auth.signOut();
@@ -559,6 +753,389 @@ export default function DriverProfile() {
             setLoading(false);
         }
     };
+
+    if (activeView === 'my_vehicles') {
+        const vehiclesList = registeredVehicles.length > 0 ? registeredVehicles : (driverProfile?.registered_vehicles || []);
+        const activeVeh = vehiclesList.find((v: any) => v.id === activeVehicleId || v.is_active) || vehiclesList[0] || null;
+
+        return (
+            <div className="space-y-6 animate-fade-in pb-24 px-4 max-w-lg mx-auto">
+                <button onClick={() => setActiveView('profile')} className="flex items-center gap-2 text-slate-500 font-bold mb-4">
+                    <ArrowLeft className="w-5 h-5" /> Volver al Perfil
+                </button>
+                <div className="flex items-center justify-between">
+                    <div>
+                        <h2 className="text-2xl font-black text-slate-800 tracking-tight">Mis Vehículos</h2>
+                        <p className="text-xs text-slate-500 mt-1 font-medium">
+                            Gestiona tu flota y selecciona la unidad con la que estás trabajando hoy.
+                        </p>
+                    </div>
+                    <button
+                        onClick={() => setShowAddVehicleModal(true)}
+                        className="px-3.5 py-2 bg-slate-900 hover:bg-slate-800 text-yellow-400 font-black text-xs uppercase tracking-wider rounded-xl shadow-md flex items-center gap-1.5 transition-all active:scale-95"
+                    >
+                        <Plus className="w-4 h-4" />
+                        <span>Agregar</span>
+                    </button>
+                </div>
+
+                {/* Active Unit Highlight Banner */}
+                {activeVeh && (
+                    <div className="p-4 bg-gradient-to-r from-amber-500 to-yellow-400 rounded-3xl text-slate-950 shadow-lg border border-yellow-200 space-y-2">
+                        <div className="flex items-center justify-between">
+                            <span className="text-[10px] font-black uppercase tracking-wider bg-slate-950 text-amber-400 px-2.5 py-0.5 rounded-full flex items-center gap-1">
+                                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                                Unidad Activa en Ruta
+                            </span>
+                            {activeVeh.plate && (
+                                <span className="font-mono font-black text-xs bg-slate-950 text-white px-2 py-0.5 rounded-lg">
+                                    {activeVeh.plate}
+                                </span>
+                            )}
+                        </div>
+                        <div className="flex items-center gap-3">
+                            <div className="w-12 h-12 bg-slate-950 text-amber-400 rounded-2xl flex items-center justify-center shrink-0">
+                                {activeVeh.type === 'moto' ? <Bike className="w-6 h-6" /> : <Car className="w-6 h-6" />}
+                            </div>
+                            <div className="min-w-0">
+                                <h4 className="font-black text-base text-slate-950 leading-tight">
+                                    {activeVeh.brand} {activeVeh.model} {activeVeh.year ? `(${activeVeh.year})` : ''}
+                                </h4>
+                                <p className="text-xs font-bold text-slate-800">
+                                    Color: {activeVeh.color || 'No especificado'} • {activeVeh.type === 'moto' ? 'Mototaxi' : 'Automóvil'}
+                                </p>
+                            </div>
+                        </div>
+
+                        {/* Badges */}
+                        <div className="flex items-center gap-2 pt-1 flex-wrap">
+                            {activeVeh.has_ac && (
+                                <span className="text-[10px] font-bold bg-slate-950/80 text-cyan-300 px-2 py-0.5 rounded-md">
+                                    ❄️ Aire Acondicionado (A/A)
+                                </span>
+                            )}
+                            {activeVeh.is_comfort && (
+                                <span className="text-[10px] font-black bg-slate-950 text-yellow-300 px-2 py-0.5 rounded-md">
+                                    ✨ Taxi Confort
+                                </span>
+                            )}
+                            {activeVeh.has_thermal_bag && (
+                                <span className="text-[10px] font-bold bg-slate-950/80 text-emerald-300 px-2 py-0.5 rounded-md">
+                                    🎒 Bolso Térmico
+                                </span>
+                            )}
+                        </div>
+                    </div>
+                )}
+
+                {/* If active vehicle is a moto: Equipamiento de Reparto (Bolso Térmico Switch) */}
+                {activeVeh?.type === 'moto' && (
+                    <div className="bg-white rounded-3xl p-4 border border-slate-100 shadow-sm flex items-center justify-between gap-3">
+                        <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0 text-lg">
+                                🎒
+                            </div>
+                            <div>
+                                <h4 className="text-xs font-black text-slate-800">Bolso Térmico para Envíos / Comida</h4>
+                                <p className="text-[10px] text-slate-500">
+                                    {driverProfile?.has_thermal_bag
+                                        ? '✓ Activo: Los restaurantes y clientes ven tu distintivo térmico'
+                                        : 'Inactivo: Actívalo si llevas bolso térmico para repartos'}
+                                </p>
+                            </div>
+                        </div>
+                        <button
+                            type="button"
+                            onClick={handleToggleThermalBag}
+                            className={`px-3 py-1.5 rounded-xl font-black text-xs transition-all ${
+                                driverProfile?.has_thermal_bag
+                                    ? 'bg-emerald-500 text-white shadow-sm'
+                                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                            }`}
+                        >
+                            {driverProfile?.has_thermal_bag ? 'Activado' : 'Activar'}
+                        </button>
+                    </div>
+                )}
+
+                {/* List of Registered Vehicles */}
+                <div className="space-y-3">
+                    <h3 className="text-xs font-black uppercase tracking-wider text-slate-400 ml-1">
+                        Todos tus vehículos ({vehiclesList.length})
+                    </h3>
+
+                    {vehiclesList.length === 0 ? (
+                        <div className="bg-white rounded-3xl p-8 text-center border border-slate-100 shadow-sm">
+                            <Car className="w-10 h-10 text-slate-300 mx-auto mb-2" />
+                            <p className="text-xs font-bold text-slate-600">No tienes vehículos registrados</p>
+                            <button
+                                onClick={() => setShowAddVehicleModal(true)}
+                                className="mt-3 px-4 py-2 bg-primary text-slate-950 font-black text-xs rounded-xl shadow"
+                            >
+                                Registrar Primer Vehículo
+                            </button>
+                        </div>
+                    ) : (
+                        vehiclesList.map((veh: any) => {
+                            const isCurrent = veh.id === (activeVehicleId || activeVeh?.id) || veh.is_active;
+                            const isComfortEligible = veh.type !== 'moto' && Boolean(veh.has_ac) && Number(veh.year) >= 2009;
+
+                            return (
+                                <div
+                                    key={veh.id}
+                                    className={`bg-white rounded-3xl p-4 border-2 transition-all shadow-sm flex items-center justify-between gap-3 ${
+                                        isCurrent ? 'border-primary shadow-md bg-amber-50/20' : 'border-slate-100 hover:border-slate-200'
+                                    }`}
+                                >
+                                    <div className="flex items-center gap-3 min-w-0">
+                                        <div className="relative shrink-0">
+                                            {veh.photo_url ? (
+                                                <img
+                                                    src={veh.photo_url}
+                                                    alt="Vehículo"
+                                                    className="w-14 h-14 rounded-2xl object-cover border border-slate-200"
+                                                />
+                                            ) : (
+                                                <div className="w-14 h-14 rounded-2xl bg-slate-100 flex items-center justify-center text-slate-700">
+                                                    {veh.type === 'moto' ? <Bike className="w-6 h-6" /> : <Car className="w-6 h-6" />}
+                                                </div>
+                                            )}
+                                            {isCurrent && (
+                                                <div className="absolute -bottom-1 -right-1 w-5 h-5 bg-emerald-500 rounded-full border-2 border-white flex items-center justify-center text-white text-[9px] font-black">
+                                                    ✓
+                                                </div>
+                                            )}
+                                        </div>
+
+                                        <div className="min-w-0">
+                                            <div className="flex items-center gap-1.5 flex-wrap">
+                                                <h4 className="text-sm font-black text-slate-900 truncate">
+                                                    {veh.brand} {veh.model}
+                                                </h4>
+                                                {veh.year && (
+                                                    <span className="text-[11px] font-bold text-slate-400">
+                                                        ({veh.year})
+                                                    </span>
+                                                )}
+                                            </div>
+                                            <p className="text-[11px] text-slate-500 font-medium">
+                                                {veh.color ? `Color ${veh.color} • ` : ''}
+                                                <span className="font-mono font-bold text-slate-700">{veh.plate}</span>
+                                            </p>
+
+                                            <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+                                                {veh.has_ac && (
+                                                    <span className="text-[9px] font-bold bg-cyan-50 text-cyan-700 px-1.5 py-0.5 rounded border border-cyan-200">
+                                                        ❄️ A/A
+                                                    </span>
+                                                )}
+                                                {isComfortEligible && (
+                                                    <span className="text-[9px] font-black bg-amber-100 text-amber-900 px-1.5 py-0.5 rounded border border-amber-300">
+                                                        ✨ Confort
+                                                    </span>
+                                                )}
+                                                {veh.has_thermal_bag && (
+                                                    <span className="text-[9px] font-bold bg-emerald-50 text-emerald-700 px-1.5 py-0.5 rounded border border-emerald-200">
+                                                        🎒 Bolso
+                                                    </span>
+                                                )}
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div className="shrink-0">
+                                        {isCurrent ? (
+                                            <span className="px-3 py-1.5 bg-emerald-100 text-emerald-800 font-black text-[11px] rounded-xl border border-emerald-200">
+                                                Activo
+                                            </span>
+                                        ) : (
+                                            <button
+                                                type="button"
+                                                onClick={() => handleSwitchActiveVehicle(veh)}
+                                                className="px-3 py-2 bg-slate-900 hover:bg-slate-800 active:scale-95 text-yellow-400 font-black text-xs uppercase tracking-wider rounded-xl transition-all shadow-sm"
+                                            >
+                                                Activar
+                                            </button>
+                                        )}
+                                    </div>
+                                </div>
+                            );
+                        })
+                    )}
+                </div>
+
+                {/* Modal Agregar Vehículo */}
+                {showAddVehicleModal && (
+                    <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+                        <div className="bg-white rounded-3xl p-5 w-full max-w-md shadow-2xl border border-slate-100 max-h-[90vh] overflow-y-auto space-y-4">
+                            <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+                                <h3 className="text-base font-black text-slate-800">Registrar Nuevo Vehículo</h3>
+                                <button
+                                    onClick={() => setShowAddVehicleModal(false)}
+                                    className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 hover:bg-slate-200"
+                                >
+                                    <X className="w-4 h-4" />
+                                </button>
+                            </div>
+
+                            <form onSubmit={handleRegisterNewVehicle} className="space-y-3.5">
+                                <div>
+                                    <label className="text-[11px] font-black uppercase text-slate-400 ml-1">Tipo de Vehículo</label>
+                                    <div className="grid grid-cols-3 gap-2 mt-1">
+                                        {(['moto', 'carro', 'camioneta'] as const).map(t => (
+                                            <button
+                                                key={t}
+                                                type="button"
+                                                onClick={() => setNewVehicleForm({ ...newVehicleForm, type: t })}
+                                                className={`py-2 px-2 rounded-xl text-xs font-black capitalize border transition-all ${
+                                                    newVehicleForm.type === t
+                                                        ? 'bg-slate-900 text-yellow-400 border-slate-900 shadow-sm'
+                                                        : 'bg-slate-50 text-slate-600 border-slate-200'
+                                                }`}
+                                            >
+                                                {t}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+
+                                <div className="grid grid-cols-2 gap-2.5">
+                                    <div>
+                                        <label className="text-[11px] font-bold text-slate-600 ml-1">Marca</label>
+                                        <input
+                                            required
+                                            type="text"
+                                            value={newVehicleForm.brand}
+                                            onChange={e => setNewVehicleForm({ ...newVehicleForm, brand: e.target.value })}
+                                            placeholder={newVehicleForm.type === 'moto' ? 'Ej: Bera / Empire' : 'Ej: Chevrolet'}
+                                            className="w-full mt-1 px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 outline-none focus:border-amber-400"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="text-[11px] font-bold text-slate-600 ml-1">Modelo</label>
+                                        <input
+                                            required
+                                            type="text"
+                                            value={newVehicleForm.model}
+                                            onChange={e => setNewVehicleForm({ ...newVehicleForm, model: e.target.value })}
+                                            placeholder={newVehicleForm.type === 'moto' ? 'Ej: SBR 150' : 'Ej: Aveo / Spark'}
+                                            className="w-full mt-1 px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 outline-none focus:border-amber-400"
+                                        />
+                                    </div>
+                                </div>
+
+                                <div className="grid grid-cols-3 gap-2">
+                                    <div>
+                                        <label className="text-[11px] font-bold text-slate-600 ml-1">Año</label>
+                                        <input
+                                            required
+                                            type="text"
+                                            value={newVehicleForm.year}
+                                            onChange={e => setNewVehicleForm({ ...newVehicleForm, year: e.target.value })}
+                                            placeholder="2015"
+                                            className="w-full mt-1 px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 outline-none focus:border-amber-400"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="text-[11px] font-bold text-slate-600 ml-1">Color</label>
+                                        <input
+                                            required
+                                            type="text"
+                                            value={newVehicleForm.color}
+                                            onChange={e => setNewVehicleForm({ ...newVehicleForm, color: e.target.value })}
+                                            placeholder="Gris"
+                                            className="w-full mt-1 px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 outline-none focus:border-amber-400"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="text-[11px] font-bold text-slate-600 ml-1">Placa</label>
+                                        <input
+                                            required
+                                            type="text"
+                                            value={newVehicleForm.plate}
+                                            onChange={e => setNewVehicleForm({ ...newVehicleForm, plate: e.target.value.toUpperCase() })}
+                                            placeholder="AB123CD"
+                                            className="w-full mt-1 px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono font-bold text-slate-800 outline-none focus:border-amber-400"
+                                        />
+                                    </div>
+                                </div>
+
+                                {newVehicleForm.type !== 'moto' ? (
+                                    <label className="flex items-center gap-2 p-3 bg-slate-50 rounded-xl border border-slate-200 cursor-pointer">
+                                        <input
+                                            type="checkbox"
+                                            checked={newVehicleForm.hasAc}
+                                            onChange={e => setNewVehicleForm({ ...newVehicleForm, hasAc: e.target.checked })}
+                                            className="w-4 h-4 rounded text-amber-500"
+                                        />
+                                        <div className="text-xs font-bold text-slate-800">
+                                            ❄️ Cuenta con Aire Acondicionado (A/A) operativo
+                                        </div>
+                                    </label>
+                                ) : (
+                                    <label className="flex items-center gap-2 p-3 bg-slate-50 rounded-xl border border-slate-200 cursor-pointer">
+                                        <input
+                                            type="checkbox"
+                                            checked={newVehicleForm.hasThermalBag}
+                                            onChange={e => setNewVehicleForm({ ...newVehicleForm, hasThermalBag: e.target.checked })}
+                                            className="w-4 h-4 rounded text-emerald-500"
+                                        />
+                                        <div className="text-xs font-bold text-slate-800">
+                                            🎒 Cuento con Bolso Térmico de Reparto
+                                        </div>
+                                    </label>
+                                )}
+
+                                {/* Foto del vehículo */}
+                                <div>
+                                    <label className="text-[11px] font-bold text-slate-600 ml-1 block mb-1">
+                                        Foto del Vehículo
+                                    </label>
+                                    <div className="p-3 border-2 border-dashed border-slate-200 rounded-xl text-center">
+                                        {newVehicleForm.photoUrl ? (
+                                            <div className="relative inline-block">
+                                                <img src={newVehicleForm.photoUrl} alt="Vehículo" className="h-24 rounded-lg object-cover" />
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setNewVehicleForm({ ...newVehicleForm, photoUrl: '' })}
+                                                    className="absolute -top-1 -right-1 w-5 h-5 bg-rose-500 text-white rounded-full text-xs"
+                                                >
+                                                    ✕
+                                                </button>
+                                            </div>
+                                        ) : (
+                                            <label className="cursor-pointer flex flex-col items-center">
+                                                <Camera className="w-6 h-6 text-slate-400 mb-1" />
+                                                <span className="text-xs font-bold text-slate-600">Subir Foto</span>
+                                                <input
+                                                    type="file"
+                                                    accept="image/*"
+                                                    disabled={uploadingNewVehPhoto}
+                                                    onChange={handleNewVehPhotoUpload}
+                                                    className="hidden"
+                                                />
+                                            </label>
+                                        )}
+                                        {uploadingNewVehPhoto && (
+                                            <p className="text-[10px] font-bold text-amber-600 mt-1 animate-pulse">Subiendo foto...</p>
+                                        )}
+                                    </div>
+                                </div>
+
+                                <button
+                                    type="submit"
+                                    disabled={loading || uploadingNewVehPhoto}
+                                    className="w-full py-3 bg-slate-900 hover:bg-slate-800 text-yellow-400 font-black text-xs uppercase tracking-wider rounded-xl shadow-md transition-all active:scale-95"
+                                >
+                                    Guardar y Registrar Vehículo
+                                </button>
+                            </form>
+                        </div>
+                    </div>
+                )}
+            </div>
+        );
+    }
 
     if (activeView === 'settings') {
         return (
@@ -1783,15 +2360,77 @@ export default function DriverProfile() {
                     </label>
                 )}
 
-                {driverProfile?.hasAc && (
-                    <div className="pt-2 border-t border-slate-100 flex items-center gap-2 text-xs font-bold text-cyan-600">
-                        <span>❄️ Equipado con Aire Acondicionado (A/C)</span>
+                {/* Vehicle Badges */}
+                <div className="pt-2 border-t border-slate-100 flex items-center gap-2 flex-wrap text-xs">
+                    {driverProfile?.hasAc && (
+                        <span className="bg-cyan-50 text-cyan-700 font-bold px-2 py-1 rounded-lg border border-cyan-200">
+                            ❄️ Aire Acondicionado (A/A)
+                        </span>
+                    )}
+                    {(driverProfile?.is_comfort_eligible || (driverProfile?.vehicleType !== 'moto' && driverProfile?.hasAc && Number(driverProfile?.vehicleYear || driverProfile?.vehicle_year) >= 2009)) && (
+                        <span className="bg-amber-100 text-amber-900 font-black px-2 py-1 rounded-lg border border-amber-300">
+                            ✨ Taxi Confort Elegible
+                        </span>
+                    )}
+                    {driverProfile?.has_thermal_bag && (
+                        <span className="bg-emerald-50 text-emerald-700 font-bold px-2 py-1 rounded-lg border border-emerald-200">
+                            🎒 Bolso Térmico
+                        </span>
+                    )}
+                </div>
+
+                {/* Thermal bag quick toggle for moto */}
+                {driverProfile?.vehicleType === 'moto' && (
+                    <div className="pt-2 border-t border-slate-100 flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                            <span className="text-base">🎒</span>
+                            <div>
+                                <p className="text-xs font-black text-slate-800">Bolso Térmico</p>
+                                <p className="text-[10px] text-slate-400">Prioridad en órdenes de comida</p>
+                            </div>
+                        </div>
+                        <button
+                            type="button"
+                            onClick={handleToggleThermalBag}
+                            className={`px-3 py-1 rounded-xl text-xs font-black transition-all ${
+                                driverProfile?.has_thermal_bag
+                                    ? 'bg-emerald-500 text-white shadow-sm'
+                                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                            }`}
+                        >
+                            {driverProfile?.has_thermal_bag ? 'Activado' : 'Activar'}
+                        </button>
                     </div>
                 )}
+
+                {/* Manage Vehicles Button */}
+                <div className="pt-2 border-t border-slate-100">
+                    <button
+                        type="button"
+                        onClick={() => setActiveView('my_vehicles')}
+                        className="w-full py-2.5 px-3 bg-slate-900 hover:bg-slate-800 text-yellow-400 font-black text-xs uppercase tracking-wider rounded-xl shadow transition-all active:scale-98 flex items-center justify-center gap-2"
+                    >
+                        <Car className="w-4 h-4" />
+                        <span>Gestionar Mis Vehículos ({registeredVehicles.length || 1})</span>
+                    </button>
+                </div>
             </div>
 
             {/* Quick Action Navigation */}
             <div className="space-y-3">
+                <button onClick={() => setActiveView('my_vehicles')} className="w-full bg-white p-4 rounded-2xl flex items-center justify-between border border-slate-100 shadow-sm active:bg-slate-50 transition-colors group">
+                    <div className="flex items-center gap-4">
+                        <div className="w-10 h-10 bg-amber-50 text-amber-600 rounded-xl flex items-center justify-center shrink-0">
+                            <Car className="w-5 h-5" />
+                        </div>
+                        <div className="text-left">
+                            <p className="font-bold text-slate-900 text-sm">Mis Vehículos / Flota ({registeredVehicles.length || 1})</p>
+                            <p className="text-xs font-medium text-slate-500">Cambiar unidad activa o registrar otro vehículo</p>
+                        </div>
+                    </div>
+                    <ChevronRight className="w-5 h-5 text-slate-300 group-hover:text-amber-600 transition-colors" />
+                </button>
+
                 <button onClick={() => setActiveView('update_data')} className="w-full bg-white p-4 rounded-2xl flex items-center justify-between border border-slate-100 shadow-sm active:bg-slate-50 transition-colors group">
                     <div className="flex items-center gap-4">
                         <div className="w-10 h-10 bg-indigo-50 text-indigo-600 rounded-xl flex items-center justify-center shrink-0">

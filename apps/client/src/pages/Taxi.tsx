@@ -30,6 +30,7 @@ import {
     AlertTriangle,
     DollarSign,
     Star,
+    Radio,
     User as UserIcon
 } from 'lucide-react';
 import { useJsApiLoader } from '@react-google-maps/api';
@@ -138,6 +139,7 @@ export default function Taxi() {
     const [activeMandadoReqId, setActiveMandadoReqId] = useState<string | null>(null);
     const [mandadoBids, setMandadoBids] = useState<any[]>([]);
     const [isMandadoModalOpen, setIsMandadoModalOpen] = useState(false);
+    const [activeService, setActiveService] = useState<any>(null);
     const [isSubmittingMandado, setIsSubmittingMandado] = useState(false);
     const [packageDescription, setPackageDescription] = useState('');
     const [driverNotes, setDriverNotes] = useState('');
@@ -231,23 +233,47 @@ export default function Taxi() {
 
     // 0. Active Reservation / Request Check
     useEffect(() => {
-        if (!user) return;
-        const uid = user.id || user.uid;
+        const uid = user?.id || user?.uid;
+        const activeLocalId = localStorage.getItem('active_transport_req_id');
+
+        const isValidUUID = (str: string | null | undefined): boolean => {
+            if (!str) return false;
+            return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(str);
+        };
 
         const checkActive = async () => {
             try {
-                const { data: reqs } = await supabase
+                let query = supabase
                     .from('transport_requests')
                     .select('*')
-                    .or(`user_id.eq.${uid},userId.eq.${uid}`)
                     .in('status', ['searching', 'verifying_payment', 'accepted', 'arriving', 'in_progress'])
-                    .order('created_at', { ascending: false });
+                    .order('created_at', { ascending: false })
+                    .limit(5);
+
+                const validUid = isValidUUID(uid) ? uid : null;
+                const validLocalId = isValidUUID(activeLocalId) ? activeLocalId : null;
+
+                if (validUid && validLocalId && validUid !== validLocalId) {
+                    query = query.or(`user_id.eq.${validUid},id.eq.${validLocalId}`);
+                } else if (validUid) {
+                    query = query.eq('user_id', validUid);
+                } else if (validLocalId) {
+                    query = query.eq('id', validLocalId);
+                } else {
+                    setActiveService(null);
+                    return;
+                }
+
+                const { data: reqs } = await query;
 
                 if (reqs && reqs.length > 0) {
-                    const mainActive = reqs.find((r: any) => !r.scheduled || ['arriving', 'in_progress'].includes(r.status));
-                    if (mainActive) {
-                        navigate(`/taxi/track/${mainActive.id}`);
+                    const activeReq = reqs[0];
+                    setActiveService(activeReq);
+                    if (['accepted', 'arriving', 'in_progress'].includes(activeReq.status)) {
+                        navigate(`/taxi/track/${activeReq.id}`);
                     }
+                } else {
+                    setActiveService(null);
                 }
             } catch (e) {
                 console.error("Active taxi check error:", e);
@@ -255,6 +281,16 @@ export default function Taxi() {
         };
 
         checkActive();
+
+        const channel = supabase.channel('taxi_page_active_sub')
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'transport_requests' }, () => {
+                checkActive();
+            })
+            .subscribe();
+
+        return () => {
+            supabase.removeChannel(channel);
+        };
     }, [user, navigate]);
 
     // 0.3 Realtime Driver Bids for Muchacho e' Mandao
@@ -961,29 +997,56 @@ export default function Taxi() {
             const reqId = bid.transport_request_id || bid.request_id;
             const finalPrice = Number(bid.amount || bid.offered_price || 0);
 
+            // Obtener datos del conductor de la tabla drivers
+            const { data: driverData } = await supabase
+                .from('drivers')
+                .select('*')
+                .eq('id', bid.driver_id)
+                .maybeSingle();
+
+            const realPhoto = bid.driver_photo || driverData?.documents?.selfieUrl || null;
+            const paymentMobile = driverData?.payment_mobile || bid.driver_payment_info || null;
+
             // 1. Aceptar puja seleccionada
             await supabase.from('transport_bids').update({ status: 'accepted' }).eq('id', bid.id);
             // 2. Rechazar otras pujas de esta solicitud
             await supabase.from('transport_bids').update({ status: 'rejected' })
-                .or(`transport_request_id.eq.${reqId},request_id.eq.${reqId}`)
+                .eq('transport_request_id', reqId)
                 .neq('id', bid.id);
             // 3. Asignar conductor al viaje
-            await supabase.from('transport_requests').update({
+            const { error: updErr } = await supabase.from('transport_requests').update({
                 status: 'accepted',
                 driver_id: bid.driver_id,
-                driver_name: bid.driver_name,
-                driver_phone: bid.driver_phone,
+                driver_name: bid.driver_name || driverData?.full_name || 'Conductor',
+                driver_phone: bid.driver_phone || driverData?.phone || '',
+                driver_photo: realPhoto,
                 driver_assigned_at: new Date().toISOString(),
+                driver_payment_info: paymentMobile,
+                driver_vehicle_details: {
+                    type: bid.vehicle_type || driverData?.vehicle_type,
+                    brand: bid.vehicle_brand || driverData?.vehicle_brand,
+                    model: bid.vehicle_model || driverData?.vehicle_model,
+                    year: bid.vehicle_year || driverData?.vehicle_year,
+                    color: bid.vehicle_color || driverData?.vehicle_color,
+                    plate: bid.vehicle_plate || driverData?.vehicle_plate,
+                    has_ac: bid.has_ac ?? driverData?.has_ac ?? false,
+                    has_thermal_bag: bid.has_thermal_bag ?? driverData?.has_thermal_bag ?? false
+                },
                 price: finalPrice,
                 total: finalPrice,
                 commission_amount: 0.70
             }).eq('id', reqId);
 
+            if (updErr) {
+                console.error("Error al actualizar transport_requests:", updErr);
+                throw updErr;
+            }
+
             toast.success(`¡Oferta de ${bid.driver_name} aceptada!`);
             navigate(`/taxi/track/${reqId}`);
-        } catch (err) {
+        } catch (err: any) {
             console.error("Error accepting bid:", err);
-            toast.error("Error al aceptar la oferta.");
+            toast.error(err?.message || "Error al aceptar la oferta.");
         }
     };
 
@@ -1345,19 +1408,43 @@ export default function Taxi() {
                                                     src={bid.driver_photo || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100&auto=format&fit=crop&q=80'}
                                                     alt="Piloto"
                                                     className="w-12 h-12 rounded-2xl object-cover border border-slate-700 bg-slate-800"
+                                                    onError={(e: any) => {
+                                                        e.currentTarget.src = 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100&auto=format&fit=crop&q=80';
+                                                    }}
                                                 />
                                                 <div className="absolute -bottom-1 -right-1 bg-amber-400 text-slate-950 text-[9px] font-black px-1 rounded-md">
                                                     ★ {Number(bid.driver_rating || 5.0).toFixed(1)}
                                                 </div>
                                             </div>
                                             <div className="min-w-0">
-                                                <p className="text-sm font-black text-white truncate">{bid.driver_name}</p>
-                                                <p className="text-[10px] text-slate-400 font-bold capitalize truncate">
-                                                    {bid.vehicle_type} {bid.vehicle_plate ? `• ${bid.vehicle_plate}` : ''}
-                                                </p>
-                                                <p className="text-[10px] font-black text-emerald-400 mt-0.5">
-                                                    Llega en ~{bid.eta_minutes || 15} min
-                                                </p>
+                                                <p className="text-sm font-black text-white truncate">{bid.driver_name || 'Conductor asignado'}</p>
+                                                <div className="text-[11px] text-slate-300 font-bold flex items-center flex-wrap gap-1.5 mt-0.5">
+                                                    <span className="capitalize text-amber-400">
+                                                        {bid.vehicle_brand || bid.vehicle_type || 'Vehículo'} {bid.vehicle_model || ''}
+                                                    </span>
+                                                    {bid.vehicle_year && <span className="text-slate-400 text-[10px]">({bid.vehicle_year})</span>}
+                                                    {bid.vehicle_color && <span className="text-slate-400 text-[10px]">Color {bid.vehicle_color}</span>}
+                                                    {bid.vehicle_plate && (
+                                                        <span className="bg-slate-800 px-1.5 py-0.5 rounded text-[10px] font-mono text-amber-300 border border-slate-700">
+                                                            {bid.vehicle_plate}
+                                                        </span>
+                                                    )}
+                                                </div>
+                                                <div className="flex items-center gap-2 mt-1 flex-wrap">
+                                                    {bid.has_ac && (
+                                                        <span className="bg-cyan-500/20 text-cyan-300 text-[9px] font-bold px-1.5 py-0.5 rounded-md flex items-center gap-1 border border-cyan-500/30">
+                                                            ❄️ A/A
+                                                        </span>
+                                                    )}
+                                                    {bid.has_thermal_bag && (
+                                                        <span className="bg-emerald-500/20 text-emerald-300 text-[9px] font-bold px-1.5 py-0.5 rounded-md flex items-center gap-1 border border-emerald-500/30">
+                                                            🎒 Bolso Térmico
+                                                        </span>
+                                                    )}
+                                                    <span className="text-[10px] font-black text-emerald-400">
+                                                        Llega en ~{bid.eta_minutes || 15} min
+                                                    </span>
+                                                </div>
                                             </div>
                                         </div>
 
@@ -1526,6 +1613,62 @@ export default function Taxi() {
                             onToggleTestRain={() => setTestRain(prev => !prev)}
                         />
                     </div>
+
+                    {/* Active Service Notification / Quick Return Card */}
+                    {activeService && (
+                        <div className="relative z-10 w-full max-w-md mx-auto mt-2 p-3 bg-gradient-to-r from-amber-500 to-yellow-400 rounded-2xl shadow-xl border border-yellow-200 text-slate-950 flex items-center justify-between gap-3 animate-in fade-in slide-in-from-top-2">
+                            <div className="flex items-center gap-2.5 min-w-0">
+                                <div className="w-10 h-10 rounded-xl bg-slate-950 text-amber-400 flex items-center justify-center shrink-0 shadow-sm animate-pulse">
+                                    <Radio className="w-5 h-5" />
+                                </div>
+                                <div className="min-w-0">
+                                    <div className="flex items-center gap-1.5">
+                                        <span className="w-2 h-2 rounded-full bg-slate-950 animate-ping" />
+                                        <p className="text-xs font-black uppercase tracking-wider">
+                                            {activeService.status === 'searching' ? 'Solicitud Activa' : '¡Viaje en Progreso!'}
+                                        </p>
+                                    </div>
+                                    <p className="text-[11px] font-bold text-slate-900 truncate">
+                                        {activeService.destination_name || activeService.package_description || 'Servicio de Movilidad'}
+                                    </p>
+                                </div>
+                            </div>
+                            <div className="flex items-center gap-1.5 shrink-0">
+                                {activeService.status === 'searching' && (
+                                    <button
+                                        type="button"
+                                        onClick={async (e) => {
+                                            e.stopPropagation();
+                                            await supabase.from('transport_requests').update({ status: 'cancelled' }).eq('id', activeService.id);
+                                            await supabase.from('transport_bids').delete().eq('transport_request_id', activeService.id);
+                                            localStorage.removeItem('active_transport_req_id');
+                                            setActiveService(null);
+                                            toast.success('Solicitud cancelada');
+                                        }}
+                                        className="px-2.5 py-1.5 bg-rose-600 hover:bg-rose-700 text-white font-black text-[10px] uppercase rounded-xl shadow-sm transition-all"
+                                    >
+                                        Cancelar
+                                    </button>
+                                )}
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        if (activeService.status === 'searching' && (activeService.service_category === 'muchacho_mandado' || activeService.type === 'muchacho_mandado')) {
+                                            setActiveMandadoReqId(activeService.id);
+                                            setMandadoDescription(activeService.package_description || '');
+                                            setStep('searching');
+                                        } else {
+                                            navigate(`/taxi/track/${activeService.id}`);
+                                        }
+                                    }}
+                                    className="px-3 py-1.5 bg-slate-950 hover:bg-slate-900 text-amber-400 font-black text-[10px] uppercase tracking-wider rounded-xl shadow-md transition-all flex items-center gap-1"
+                                >
+                                    <span>Ver Viaje</span>
+                                    <ArrowRight className="w-3 h-3" />
+                                </button>
+                            </div>
+                        </div>
+                    )}
 
                     {/* Main Options Cards - Minimalist, Compact & Vibrant Yellow with Black Letters */}
                     <div className="relative z-10 w-full max-w-md mx-auto my-auto py-1 space-y-2.5 sm:space-y-3 flex-1 flex flex-col justify-center">

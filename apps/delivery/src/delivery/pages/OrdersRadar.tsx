@@ -32,6 +32,7 @@ export default function OrdersRadar() {
     const [unreadChatCount, setUnreadChatCount] = useState(0);
     const lastChatIdSeen = React.useRef<string | null>(null);
     const notificationSoundUrl = React.useRef<string | null>(null);
+    const prevActiveTransportId = React.useRef<string | null>(null);
     // Incoming in-app call state
     const [showIncomingCall, setShowIncomingCall] = useState(false);
     // Outgoing in-app call state
@@ -246,7 +247,7 @@ export default function OrdersRadar() {
             const { data } = await supabase
                 .from('orders')
                 .select('*')
-                .or(`delivery_driver_id.eq.${user.uid},deliveryDriverId.eq.${user.uid}`)
+                .eq('delivery_driver_id', user.uid)
                 .in('status', ['en_camino', 'in_transit'])
                 .limit(1);
             if (data && data.length > 0) {
@@ -260,16 +261,30 @@ export default function OrdersRadar() {
             const { data } = await supabase
                 .from('transport_requests')
                 .select('*')
-                .or(`driver_id.eq.${user.uid},driverId.eq.${user.uid}`)
+                .eq('driver_id', user.uid)
                 .in('status', ['accepted', 'arriving', 'in_progress']);
             
             if (data && data.length > 0) {
                 const mainActive = data.find((req: any) => !req.scheduled || req.status === 'arriving' || req.status === 'in_progress');
-                setActiveTransport(mainActive || null);
+                if (mainActive) {
+                    if (prevActiveTransportId.current !== mainActive.id) {
+                        prevActiveTransportId.current = mainActive.id;
+                        vibrate([200, 100, 200, 100, 300]);
+                        try {
+                            const snd = new Audio(NOTIFICATION_SOUND_URL);
+                            snd.play().catch(() => {});
+                        } catch(e) {}
+                        toast.success("¡El cliente aceptó tu oferta! Viaje en curso.", { icon: '🎉', duration: 5000 });
+                    }
+                    setActiveTransport(mainActive);
+                } else {
+                    setActiveTransport(null);
+                }
                 
                 const pendingReservations = data.filter((req: any) => req.scheduled && req.status === 'accepted');
                 setMyReservations(pendingReservations);
             } else {
+                prevActiveTransportId.current = null;
                 setActiveTransport(null);
                 setMyReservations([]);
             }
@@ -473,7 +488,7 @@ export default function OrdersRadar() {
             const { data } = await supabase
                 .from('transport_requests')
                 .select('*')
-                .or(`driver_id.eq.${user.uid},driverId.eq.${user.uid}`)
+                .eq('driver_id', user.uid)
                 .eq('status', 'completed')
                 .order('created_at', { ascending: false })
                 .limit(1);
@@ -871,19 +886,27 @@ export default function OrdersRadar() {
         setProcessingAction(`bid_${reqId}`);
         try {
             const bidId = crypto.randomUUID();
-            const driverId = user.uid || (user as any).id;
+            const driverDocs = driverProfile?.documents || {};
+            const realSelfie = driverDocs?.selfieUrl || driverDocs?.selfie_url || driverProfile?.photoURL || driverProfile?.avatar_url || driverProfile?.photo_url || null;
+
             const insertPayload = {
                 id: bidId,
                 transport_request_id: reqId,
                 request_id: reqId,
                 driver_id: driverId,
-                driver_name: driverProfile?.displayName || driverProfile?.name || driverProfile?.full_name || 'Conductor',
-                driver_photo: driverProfile?.photoURL || driverProfile?.avatar_url || driverProfile?.photo_url || null,
+                driver_name: driverProfile?.full_name || driverProfile?.fullName || driverProfile?.displayName || driverProfile?.name || 'Conductor',
+                driver_photo: realSelfie,
                 driver_phone: driverProfile?.phone || null,
                 vehicle_type: driverProfile?.vehicle_type || driverProfile?.vehicleType || 'moto',
-                vehicle_plate: driverProfile?.vehicle_plate || driverProfile?.plate || '',
-                vehicle_model: driverProfile?.vehicle_model || driverProfile?.model || '',
-                driver_rating: driverProfile?.rating || 5.0,
+                vehicle_brand: driverProfile?.vehicle_brand || driverProfile?.vehicleBrand || '',
+                vehicle_model: driverProfile?.vehicle_model || driverProfile?.vehicleModel || driverProfile?.model || '',
+                vehicle_year: driverProfile?.vehicle_year || driverProfile?.vehicleYear || '',
+                vehicle_color: driverProfile?.vehicle_color || driverProfile?.vehicleColor || '',
+                vehicle_plate: (driverProfile?.vehicle_plate || driverProfile?.plate || '').toUpperCase(),
+                has_ac: Boolean(driverProfile?.has_ac ?? driverProfile?.hasAc ?? false),
+                has_thermal_bag: Boolean(driverProfile?.has_thermal_bag ?? driverProfile?.hasThermalBag ?? false),
+                driver_rating: driverProfile?.rating ? Number(driverProfile.rating) : 5.0,
+                driver_payment_info: driverProfile?.payment_mobile || driverProfile?.paymentMobile || null,
                 amount: amount,
                 offered_price: amount,
                 eta_minutes: eta,

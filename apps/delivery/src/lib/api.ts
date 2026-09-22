@@ -309,6 +309,25 @@ export const driversApi = {
         home_coords_lng?: number;
         registered_home_address?: any;
     }) => {
+        const vehYear = data.vehicle_year || data.vehicleYear || '';
+        const isComfort = data.vehicle_type !== 'moto' && Boolean(data.has_ac) && Number(vehYear) >= 2009;
+        const initialVehId = `veh_${Date.now().toString(36)}`;
+        const initialVehicle = {
+            id: initialVehId,
+            type: data.vehicle_type,
+            brand: data.vehicle_brand || '',
+            model: data.vehicle_model || '',
+            year: vehYear,
+            color: data.vehicle_color || '',
+            plate: data.vehicle_plate || '',
+            has_ac: Boolean(data.has_ac),
+            has_thermal_bag: false,
+            photo_url: data.vehicle_url || '',
+            is_comfort: isComfort,
+            is_active: true,
+            created_at: new Date().toISOString()
+        };
+
         const { error } = await supabase
             .from('drivers')
             .upsert({
@@ -322,12 +341,16 @@ export const driversApi = {
                 vehicle_type: data.vehicle_type,
                 vehicle_brand: data.vehicle_brand,
                 vehicle_model: data.vehicle_model,
-                vehicle_year: data.vehicle_year || data.vehicleYear,
+                vehicle_year: vehYear,
                 vehicle_plate: data.vehicle_plate,
                 vehicle_color: data.vehicle_color || '',
                 vehicleColor: data.vehicle_color || '',
                 has_ac: data.has_ac ?? false,
                 hasAc: data.has_ac ?? false,
+                is_comfort_eligible: isComfort,
+                has_thermal_bag: false,
+                registered_vehicles: [initialVehicle],
+                active_vehicle_id: initialVehId,
                 is_vehicle_owner: data.is_vehicle_owner ?? true,
                 status: 'pending',
                 is_online: false,

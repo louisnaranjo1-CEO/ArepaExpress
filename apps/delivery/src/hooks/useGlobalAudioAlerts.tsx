@@ -144,6 +144,26 @@ export function useGlobalAudioAlerts(role?: 'cpanel' | 'restaurant' | 'delivery'
           }
         })
         .on('postgres_changes', {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'transport_requests'
+        }, (payload: any) => {
+          // Si el cliente aceptó mi oferta o me asignó un viaje
+          if (payload.new?.status === 'accepted' && (payload.new?.driver_id === userId || payload.new?.driverId === userId)) {
+            playAlert();
+          }
+        })
+        .on('postgres_changes', {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'transport_bids',
+          filter: `driver_id=eq.${userId}`
+        }, (payload: any) => {
+          if (payload.new?.status === 'accepted') {
+            playAlert();
+          }
+        })
+        .on('postgres_changes', {
           event: '*',
           schema: 'public',
           table: 'orders'

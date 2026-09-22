@@ -138,6 +138,16 @@ export default function TransportTracker() {
         if (!requestId) return;
         setAcceptingBidId(bid.id);
         try {
+            // Obtener datos completos del chofer (Pago Móvil y documentos)
+            const { data: driverData } = await supabase
+                .from('drivers')
+                .select('*')
+                .eq('id', bid.driver_id)
+                .maybeSingle();
+
+            const realPhoto = bid.driver_photo || driverData?.documents?.selfieUrl || null;
+            const paymentMobile = driverData?.payment_mobile || bid.driver_payment_info || null;
+
             // 1. Accept bid
             await supabase.from('transport_bids').update({ status: 'accepted' }).eq('id', bid.id);
             // 2. Reject others
@@ -145,21 +155,51 @@ export default function TransportTracker() {
                 .eq('transport_request_id', requestId)
                 .neq('id', bid.id);
             // 3. Assign driver
-            await supabase.from('transport_requests').update({
+            const { error: updErr } = await supabase.from('transport_requests').update({
                 status: 'accepted',
                 driver_id: bid.driver_id,
-                driver_name: bid.driver_name,
-                driver_phone: bid.driver_phone,
+                driver_name: bid.driver_name || driverData?.full_name || 'Conductor',
+                driver_phone: bid.driver_phone || driverData?.phone || '',
+                driver_photo: realPhoto,
                 driver_assigned_at: new Date().toISOString(),
+                driver_payment_info: paymentMobile,
+                driver_vehicle_details: {
+                    type: bid.vehicle_type || driverData?.vehicle_type,
+                    brand: bid.vehicle_brand || driverData?.vehicle_brand,
+                    model: bid.vehicle_model || driverData?.vehicle_model,
+                    year: bid.vehicle_year || driverData?.vehicle_year,
+                    color: bid.vehicle_color || driverData?.vehicle_color,
+                    plate: bid.vehicle_plate || driverData?.vehicle_plate,
+                    has_ac: bid.has_ac ?? driverData?.has_ac ?? false,
+                    has_thermal_bag: bid.has_thermal_bag ?? driverData?.has_thermal_bag ?? false
+                },
                 price: Number(bid.amount),
                 total: Number(bid.amount),
                 commission_amount: 0.70
             }).eq('id', requestId);
 
+            if (updErr) {
+                console.error("Error al actualizar transport_requests:", updErr);
+                throw updErr;
+            }
+
+            // Sincronizar inmediatamente el estado local del viaje
+            setRequest((prev: any) => ({
+                ...prev,
+                status: 'accepted',
+                driver_id: bid.driver_id,
+                driver_name: bid.driver_name || driverData?.full_name,
+                driver_phone: bid.driver_phone || driverData?.phone,
+                driver_photo: realPhoto,
+                driver_payment_info: paymentMobile,
+                price: Number(bid.amount),
+                total: Number(bid.amount)
+            }));
+
             toast.success(`¡Oferta de ${bid.driver_name} aceptada!`);
-        } catch (err) {
+        } catch (err: any) {
             console.error('Error accepting bid in tracker:', err);
-            toast.error('Error al aceptar la oferta.');
+            toast.error(err?.message || 'Error al aceptar la oferta.');
         } finally {
             setAcceptingBidId(null);
         }
@@ -821,32 +861,54 @@ export default function TransportTracker() {
                                 mandadoBids.map((bid) => (
                                     <div
                                         key={bid.id}
-                                        className="bg-white border-2 border-amber-400/50 hover:border-amber-400 rounded-2xl p-3 shadow-sm flex items-center justify-between gap-3 transition-all"
+                                        className="bg-white border-2 border-amber-400/60 hover:border-amber-400 rounded-2xl p-3.5 shadow-sm flex items-center justify-between gap-3 transition-all"
                                     >
-                                        <div className="flex items-center gap-2.5 min-w-0">
+                                        <div className="flex items-center gap-3 min-w-0">
                                             <div className="relative shrink-0">
                                                 <img
                                                     src={bid.driver_photo || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100&auto=format&fit=crop&q=80'}
                                                     alt={bid.driver_name}
-                                                    className="w-10 h-10 rounded-xl object-cover border border-slate-200 bg-slate-100"
+                                                    className="w-12 h-12 rounded-xl object-cover border border-slate-200 bg-slate-100 shadow-sm"
                                                     onError={(e: any) => { e.currentTarget.src = 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100&auto=format&fit=crop&q=80'; }}
                                                 />
-                                                <div className="absolute -bottom-1 -right-1 bg-amber-400 text-slate-950 text-[8px] font-black px-1 rounded-md">
+                                                <div className="absolute -bottom-1 -right-1 bg-amber-400 text-slate-950 text-[8px] font-black px-1.5 py-0.5 rounded-md shadow-sm">
                                                     ★ {Number(bid.driver_rating || 5.0).toFixed(1)}
                                                 </div>
                                             </div>
                                             <div className="min-w-0">
                                                 <p className="text-xs font-black text-slate-900 truncate">{bid.driver_name}</p>
-                                                <p className="text-[10px] text-slate-500 font-bold capitalize truncate">
-                                                    {bid.vehicle_type} {bid.vehicle_plate ? `• ${bid.vehicle_plate}` : ''}
+                                                <p className="text-[11px] font-bold text-slate-800 truncate">
+                                                    {bid.vehicle_brand ? `${bid.vehicle_brand} ` : ''}{bid.vehicle_model || bid.vehicle_type || 'Vehículo'}
+                                                    {bid.vehicle_year ? ` (${bid.vehicle_year})` : ''}
                                                 </p>
-                                                <p className="text-[10px] font-black text-emerald-600">
-                                                    Llega en ~{bid.eta_minutes || 15} min
+                                                <p className="text-[10px] text-slate-500 font-semibold truncate">
+                                                    {bid.vehicle_color ? `${bid.vehicle_color} • ` : ''}{bid.vehicle_plate ? `Placa: ${bid.vehicle_plate}` : ''}
                                                 </p>
+                                                <div className="flex flex-wrap items-center gap-1 mt-1">
+                                                    {bid.has_ac && (
+                                                        <span className="px-1.5 py-0.5 rounded-md text-[8px] font-black bg-cyan-50 text-cyan-700 border border-cyan-200">
+                                                            ❄️ Con A/A
+                                                        </span>
+                                                    )}
+                                                    {bid.vehicle_type === 'moto' && (
+                                                        bid.has_thermal_bag ? (
+                                                            <span className="px-1.5 py-0.5 rounded-md text-[8px] font-black bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                                                🎒 Bolso Térmico
+                                                            </span>
+                                                        ) : (
+                                                            <span className="px-1.5 py-0.5 rounded-md text-[8px] font-bold bg-slate-100 text-slate-500 border border-slate-200">
+                                                                Sin bolso térmico
+                                                            </span>
+                                                        )
+                                                    )}
+                                                    <span className="text-[9px] font-black text-emerald-600 ml-0.5">
+                                                        ⏱️ Llega en ~{bid.eta_minutes || 15} min
+                                                    </span>
+                                                </div>
                                             </div>
                                         </div>
 
-                                        <div className="flex flex-col items-end shrink-0 gap-1">
+                                        <div className="flex flex-col items-end shrink-0 gap-1.5">
                                             <div className="text-right">
                                                 <div className="text-base font-black text-slate-900 leading-tight">
                                                     ${Number(bid.amount).toFixed(2)}
@@ -861,7 +923,7 @@ export default function TransportTracker() {
                                                 type="button"
                                                 disabled={acceptingBidId === bid.id}
                                                 onClick={() => handleAcceptMandadoBid(bid)}
-                                                className="px-3 py-1.5 bg-gradient-to-r from-amber-400 to-yellow-400 hover:from-amber-300 hover:to-yellow-300 text-slate-950 font-black text-[10px] uppercase tracking-wider rounded-lg shadow-sm active:scale-95 transition-all disabled:opacity-50"
+                                                className="px-3.5 py-2 bg-gradient-to-r from-amber-400 to-yellow-400 hover:from-amber-300 hover:to-yellow-300 text-slate-950 font-black text-[10px] uppercase tracking-wider rounded-xl shadow-sm active:scale-95 transition-all disabled:opacity-50"
                                             >
                                                 {acceptingBidId === bid.id ? 'Aceptando...' : 'Aceptar'}
                                             </button>
@@ -1154,8 +1216,8 @@ export default function TransportTracker() {
                     </div>
                 )}
 
-                {/* Driver Pago Móvil Details (If Payment Method is Pago Móvil) */}
-                {(request.payment_method === 'pago_movil' || request.paymentMethod === 'pagoMovil') && (
+                {/* Driver Pago Móvil Details: ONLY visible after driver is assigned and status is active (never in 'searching' or while evaluating offers) */}
+                {driver && ['accepted', 'arriving', 'in_progress', 'completed'].includes(request.status) && (request.payment_method === 'pago_movil' || request.paymentMethod === 'pagoMovil') && (
                     <div className="bg-purple-50/80 border border-purple-200 rounded-2xl p-3 mb-3.5 space-y-2">
                         <div className="flex items-center justify-between">
                             <span className="text-xs font-black text-purple-900 flex items-center gap-1.5">
@@ -1167,10 +1229,10 @@ export default function TransportTracker() {
                         </div>
 
                         {(() => {
-                            const pm = request.driver_payment_info || (driver as any)?.payment_info || (driver as any)?.paymentInfo || {};
-                            const bank = pm.bank || 'Banesco';
-                            const phone = pm.phone || driver?.phone || '0414-0000000';
-                            const idf = pm.idf || (driver as any)?.cedula || 'V-00000000';
+                            const pm = request.driver_payment_info || (driver as any)?.payment_mobile || (driver as any)?.payment_info || (driver as any)?.paymentInfo || {};
+                            const bank = pm.bank || 'Banco por coordinar';
+                            const phone = pm.phone || driver?.phone || 'Teléfono por coordinar';
+                            const idf = pm.idf || pm.cedula || (driver as any)?.cedula || 'Cédula por coordinar';
                             const amountBs = (parseFloat(request.price || request.total || 0) * (bcvRate || 1)).toFixed(2);
 
                             return (

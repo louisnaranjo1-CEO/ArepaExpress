@@ -38,6 +38,12 @@ export interface BidItem {
     vehicle_type?: string;
     vehicle_plate?: string;
     vehicle_model?: string;
+    vehicle_brand?: string;
+    vehicle_year?: string;
+    vehicle_color?: string;
+    has_ac?: boolean;
+    has_thermal_bag?: boolean;
+    driver_payment_info?: any;
     driver_rating?: number;
     amount: number;
     eta_minutes?: number;
@@ -215,6 +221,12 @@ export default function ActiveTasksWidget() {
                         vehicle_type: b.vehicle_type || 'moto',
                         vehicle_plate: b.vehicle_plate || '',
                         vehicle_model: b.vehicle_model || '',
+                        vehicle_brand: b.vehicle_brand || '',
+                        vehicle_year: b.vehicle_year || '',
+                        vehicle_color: b.vehicle_color || '',
+                        has_ac: Boolean(b.has_ac),
+                        has_thermal_bag: Boolean(b.has_thermal_bag),
+                        driver_payment_info: b.driver_payment_info || null,
                         driver_rating: b.driver_rating ? Number(b.driver_rating) : 5.0,
                         amount: Number(b.amount || 0),
                         eta_minutes: b.eta_minutes || 15,
@@ -478,6 +490,18 @@ export default function ActiveTasksWidget() {
                     driver_id: bid.driver_id,
                     driver_name: bid.driver_name,
                     driver_phone: bid.driver_phone,
+                    driver_photo: bid.driver_photo,
+                    driver_payment_info: bid.driver_payment_info || null,
+                    driver_vehicle_details: {
+                        type: bid.vehicle_type,
+                        plate: bid.vehicle_plate,
+                        model: bid.vehicle_model,
+                        brand: bid.vehicle_brand,
+                        year: bid.vehicle_year,
+                        color: bid.vehicle_color,
+                        has_ac: bid.has_ac,
+                        has_thermal_bag: bid.has_thermal_bag
+                    },
                     driver_assigned_at: new Date().toISOString(),
                     price: Number(bid.amount),
                     total: Number(bid.amount),
@@ -824,12 +848,33 @@ export default function ActiveTasksWidget() {
                                                             <p className="text-xs font-black text-white truncate">
                                                                 {bid.driver_name}
                                                             </p>
-                                                            <p className="text-[10px] text-slate-400 font-bold capitalize truncate">
-                                                                {bid.vehicle_type} {bid.vehicle_plate ? `• ${bid.vehicle_plate}` : ''}
-                                                            </p>
-                                                            <p className="text-[10px] font-black text-emerald-400">
-                                                                Llega en ~{bid.eta_minutes || 15} min
-                                                            </p>
+                                                            <div className="text-[10px] text-slate-300 font-bold flex items-center flex-wrap gap-1 mt-0.5">
+                                                                <span className="capitalize text-amber-400">
+                                                                    {bid.vehicle_brand || bid.vehicle_type || 'Vehículo'} {bid.vehicle_model || ''}
+                                                                </span>
+                                                                {bid.vehicle_year && <span className="text-slate-400 text-[9px]">({bid.vehicle_year})</span>}
+                                                                {bid.vehicle_color && <span className="text-slate-400 text-[9px]">{bid.vehicle_color}</span>}
+                                                                {bid.vehicle_plate && (
+                                                                    <span className="bg-slate-800 px-1 py-0.2 rounded text-[9px] font-mono text-amber-300 border border-slate-700">
+                                                                        {bid.vehicle_plate}
+                                                                    </span>
+                                                                )}
+                                                            </div>
+                                                            <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+                                                                {bid.has_ac && (
+                                                                    <span className="bg-cyan-500/20 text-cyan-300 text-[8px] font-bold px-1.5 py-0.5 rounded flex items-center gap-0.5 border border-cyan-500/30">
+                                                                        ❄️ A/A
+                                                                    </span>
+                                                                )}
+                                                                {bid.has_thermal_bag && (
+                                                                    <span className="bg-emerald-500/20 text-emerald-300 text-[8px] font-bold px-1.5 py-0.5 rounded flex items-center gap-0.5 border border-emerald-500/30">
+                                                                        🎒 Bolso Térmico
+                                                                    </span>
+                                                                )}
+                                                                <span className="text-[9px] font-black text-emerald-400">
+                                                                    Llega en ~{bid.eta_minutes || 15} min
+                                                                </span>
+                                                            </div>
                                                         </div>
                                                     </div>
 

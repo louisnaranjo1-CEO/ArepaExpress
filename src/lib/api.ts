@@ -60,6 +60,11 @@ export interface DriverProfile {
     age: number;
     vehicleType: string;
     vehiclePlate: string;
+    vehicleColor?: string;
+    hasAc?: boolean;
+    vehicleBrand?: string;
+    vehicleModel?: string;
+    vehicleYear?: string;
     isOnline: boolean;
     availability: string;
     currentLocation: { latitude: number; longitude: number } | null;
@@ -77,6 +82,18 @@ export interface DriverProfile {
     updatedAt: string;
     audioAlertsEnabled: boolean;
     paymentMobile: { bank: string; cedula: string; phone: string } | null;
+    rating?: number;
+    acceptanceRate?: number;
+    acceptance_rate?: number;
+    totalTrips?: number;
+    total_trips?: number;
+    vehicleImageUrl?: string;
+    vehicle_image_url?: string;
+    comfortFeatures?: any;
+    comfort_features?: any;
+    payoutFrequency?: string;
+    payout_frequency?: string;
+    [key: string]: any;
 }
 
 export interface LocationPoint {
@@ -164,6 +181,7 @@ export const driversApi = {
         const profile = Array.isArray(data.profiles) ? data.profiles[0] : data.profiles;
         
         return {
+            ...data,
             id: data.id,
             email: profile?.email || '',
             fullName: profile?.full_name || '',
@@ -172,7 +190,14 @@ export const driversApi = {
             rif: data.rif,
             age: data.age,
             vehicleType: data.vehicle_type,
+            vehicleBrand: data.vehicle_brand,
+            vehicleModel: data.vehicle_model,
+            vehicleYear: data.vehicle_year,
             vehiclePlate: data.vehicle_plate,
+            vehicleColor: data.vehicle_color || data.vehicleColor || '',
+            vehicleImageUrl: data.vehicle_image_url || data.vehicleImageUrl || data.documents?.vehicleUrl || '',
+            vehicle_image_url: data.vehicle_image_url || data.vehicleImageUrl || data.documents?.vehicleUrl || '',
+            hasAc: data.has_ac ?? data.hasAc ?? false,
             isOnline: data.is_online,
             availability: data.availability,
             currentLocation: data.current_location,
@@ -185,7 +210,16 @@ export const driversApi = {
             createdAt: data.created_at,
             updatedAt: data.updated_at,
             audioAlertsEnabled: data.audio_alerts_enabled ?? true,
-            paymentMobile: data.payment_mobile || null
+            paymentMobile: data.payment_mobile || null,
+            rating: data.rating !== null && data.rating !== undefined ? Number(data.rating) : 5.0,
+            acceptanceRate: data.acceptance_rate !== null && data.acceptance_rate !== undefined ? Number(data.acceptance_rate) : 100,
+            acceptance_rate: data.acceptance_rate !== null && data.acceptance_rate !== undefined ? Number(data.acceptance_rate) : 100,
+            totalTrips: data.total_trips || 0,
+            total_trips: data.total_trips || 0,
+            comfortFeatures: data.comfort_features || data.comfortFeatures || null,
+            comfort_features: data.comfort_features || data.comfortFeatures || null,
+            payoutFrequency: data.payout_frequency || data.payoutFrequency || 'weekly_friday',
+            payout_frequency: data.payout_frequency || data.payoutFrequency || 'weekly_friday'
         };
     },
 
@@ -214,7 +248,12 @@ export const driversApi = {
                 rif: d.rif,
                 age: d.age,
                 vehicleType: d.vehicle_type,
+                vehicleBrand: d.vehicle_brand,
+                vehicleModel: d.vehicle_model,
+                vehicleYear: d.vehicle_year,
                 vehiclePlate: d.vehicle_plate,
+                vehicleColor: d.vehicle_color || d.vehicleColor || '',
+                hasAc: d.has_ac ?? d.hasAc ?? false,
                 isOnline: d.is_online,
                 availability: d.availability,
                 currentLocation: d.current_location,
@@ -251,8 +290,16 @@ export const driversApi = {
         cedula?: string;
         rif?: string;
         age?: number;
+        birthdate?: string;
         vehicle_type: string;
+        vehicle_brand?: string;
+        vehicle_model?: string;
+        vehicleYear?: string;
+        vehicle_year?: string;
         vehicle_plate?: string;
+        vehicle_color?: string;
+        has_ac?: boolean;
+        is_vehicle_owner?: boolean;
         selfie_url?: string;
         vehicle_url?: string;
         license_url?: string;
@@ -260,16 +307,51 @@ export const driversApi = {
         home_city?: string;
         home_coords_lat?: number;
         home_coords_lng?: number;
+        registered_home_address?: any;
     }) => {
+        const vehYear = data.vehicle_year || data.vehicleYear || '';
+        const isComfort = data.vehicle_type !== 'moto' && Boolean(data.has_ac) && Number(vehYear) >= 2009;
+        const initialVehId = `veh_${Date.now().toString(36)}`;
+        const initialVehicle = {
+            id: initialVehId,
+            type: data.vehicle_type,
+            brand: data.vehicle_brand || '',
+            model: data.vehicle_model || '',
+            year: vehYear,
+            color: data.vehicle_color || '',
+            plate: data.vehicle_plate || '',
+            has_ac: Boolean(data.has_ac),
+            has_thermal_bag: false,
+            photo_url: data.vehicle_url || '',
+            is_comfort: isComfort,
+            is_active: true,
+            created_at: new Date().toISOString()
+        };
+
         const { error } = await supabase
             .from('drivers')
-            .insert({
+            .upsert({
                 id: data.firebase_uid,
+                full_name: data.full_name,
+                phone: data.phone,
                 cedula: data.cedula,
                 rif: data.rif,
                 age: data.age,
+                birthdate: data.birthdate,
                 vehicle_type: data.vehicle_type,
+                vehicle_brand: data.vehicle_brand,
+                vehicle_model: data.vehicle_model,
+                vehicle_year: vehYear,
                 vehicle_plate: data.vehicle_plate,
+                vehicle_color: data.vehicle_color || '',
+                vehicleColor: data.vehicle_color || '',
+                has_ac: data.has_ac ?? false,
+                hasAc: data.has_ac ?? false,
+                is_comfort_eligible: isComfort,
+                has_thermal_bag: false,
+                registered_vehicles: [initialVehicle],
+                active_vehicle_id: initialVehId,
+                is_vehicle_owner: data.is_vehicle_owner ?? true,
                 status: 'pending',
                 is_online: false,
                 availability: 'offline',
@@ -282,19 +364,24 @@ export const driversApi = {
                     state: data.home_state,
                     city: data.home_city,
                     coords: { lat: data.home_coords_lat, lng: data.home_coords_lng }
+                },
+                registered_home_address: data.registered_home_address || {
+                    state: data.home_state,
+                    city: data.home_city,
+                    coords: { lat: data.home_coords_lat, lng: data.home_coords_lng },
+                    registered_at: new Date().toISOString()
                 }
-            });
+            }, { onConflict: 'id' });
         
         if (error) throw error;
-        
-        const role = (data.vehicle_type === 'carro' || data.vehicle_type === 'ejecutivo') ? 'conductor' : 'aliado';
         
         const { error: profileError } = await supabase
             .from('profiles')
             .update({
                 full_name: data.full_name,
                 phone: data.phone,
-                role: role
+                cedula: data.cedula,
+                birthdate: data.birthdate
             })
             .eq('id', data.firebase_uid);
             

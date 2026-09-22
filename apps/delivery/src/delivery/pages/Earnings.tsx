@@ -48,6 +48,8 @@ interface DriverFares {
     base_fare: number;
     per_km_fare: number;
     base_km: number;
+    comfort_base_fare?: number;
+    comfort_per_km_fare?: number;
 }
 
 export default function Earnings() {
@@ -90,7 +92,9 @@ export default function Earnings() {
         pricing_type: 'distance',
         base_fare: 1.5,
         per_km_fare: 0.8,
-        base_km: 2.0
+        base_km: 2.0,
+        comfort_base_fare: 2.5,
+        comfort_per_km_fare: 1.2
     });
     const [savingFares, setSavingFares] = useState(false);
 
@@ -121,7 +125,9 @@ export default function Earnings() {
                         pricing_type: dData.driver_fares.pricing_type || 'distance',
                         base_fare: Number(dData.driver_fares.base_fare || 1.5),
                         per_km_fare: Number(dData.driver_fares.per_km_fare || 0.8),
-                        base_km: Number(dData.driver_fares.base_km || 2.0)
+                        base_km: Number(dData.driver_fares.base_km || 2.0),
+                        comfort_base_fare: Number(dData.driver_fares.comfort_base_fare || 2.5),
+                        comfort_per_km_fare: Number(dData.driver_fares.comfort_per_km_fare || 1.2)
                     });
                 }
             }
@@ -809,7 +815,34 @@ export default function Earnings() {
 
             {/* TAB CONTENT: MIS TARIFAS */}
             {activeTab === 'fares' && (
-                <div className="px-4">
+                <div className="px-4 space-y-4">
+                    {/* Contextual Advice based on vehicle */}
+                    {driverRow?.vehicle_type === 'moto' ? (
+                        <div className="p-4 bg-gradient-to-r from-amber-500/10 to-yellow-500/10 border border-amber-300 rounded-3xl space-y-1.5">
+                            <div className="flex items-center gap-2 text-amber-900 font-black text-xs">
+                                <span className="text-base">💡</span>
+                                <span>Consejos para Piloto Mototaxi & Repartidor</span>
+                            </div>
+                            <ul className="text-[11px] text-slate-600 space-y-1 font-medium list-disc list-inside">
+                                <li><strong>Casco obligatorio</strong>: Lleva siempre un segundo casco limpio para tu pasajero en servicios de movilidad.</li>
+                                <li><strong>Bolso Térmico</strong>: Los restaurantes asignan pedidos preferentemente a pilotos con bolso térmico registrado (🎒 Bolso Térmico). Actívalo en tu Perfil.</li>
+                                <li><strong>Clima y lluvia</strong>: En días lluviosos aumenta la precaución y mantén distancia de frenado.</li>
+                            </ul>
+                        </div>
+                    ) : (
+                        <div className="p-4 bg-gradient-to-r from-sky-500/10 to-blue-500/10 border border-sky-300 rounded-3xl space-y-1.5">
+                            <div className="flex items-center gap-2 text-sky-900 font-black text-xs">
+                                <span className="text-base">💡</span>
+                                <span>Consejos para Conductor de Automóvil / Taxi</span>
+                            </div>
+                            <ul className="text-[11px] text-slate-600 space-y-1 font-medium list-disc list-inside">
+                                <li><strong>Taxi Confort</strong>: Si tu auto es año 2009 o superior y cuenta con Aire Acondicionado activo, calificas automáticamente para cobrar tarifas de categoría Confort.</li>
+                                <li><strong>Climatización</strong>: Mantén encendido el A/A especialmente en horas pico de calor para garantizar calificaciones de 5 estrellas.</li>
+                                <li><strong>Higiene y confort</strong>: Una unidad limpia por dentro y por fuera incrementa las propinas y la preferencia de los usuarios.</li>
+                            </ul>
+                        </div>
+                    )}
+
                     <form onSubmit={handleSaveFares} className="bg-white rounded-3xl p-5 border border-slate-100 shadow-sm space-y-4">
                         <div>
                             <div className="flex items-center gap-2">
@@ -934,6 +967,56 @@ export default function Earnings() {
                                 </div>
                             )}
                         </div>
+
+                        {/* Dual Fare Setup for Confort */}
+                        {(driverRow?.is_comfort_eligible || (driverRow?.vehicle_type !== 'moto' && driverRow?.has_ac && Number(driverRow?.vehicle_year) >= 2009)) && (
+                            <div className="p-4 bg-amber-50 border-2 border-amber-300 rounded-2xl space-y-3">
+                                <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-2">
+                                        <Sparkles className="w-4 h-4 text-amber-600" />
+                                        <h4 className="text-xs font-black text-amber-950 uppercase tracking-wider">
+                                            Tarifas Taxi Confort (Climatizado 2009+)
+                                        </h4>
+                                    </div>
+                                    <span className="text-[9px] font-black bg-amber-400 text-slate-950 px-2 py-0.5 rounded-full">
+                                        Vehículo Calificado
+                                    </span>
+                                </div>
+                                <p className="text-[11px] text-slate-600">
+                                    Define tu tarifa preferencial para clientes que solicitan la categoría Confort.
+                                </p>
+                                <div className="grid grid-cols-2 gap-3">
+                                    <div>
+                                        <label className="text-[10px] font-black uppercase text-slate-600 block mb-1">
+                                            Tarifa Base Confort ($)
+                                        </label>
+                                        <input
+                                            type="number"
+                                            step="0.10"
+                                            min="0.50"
+                                            value={fares.comfort_base_fare || fares.base_fare}
+                                            onChange={e => setFares(prev => ({ ...prev, comfort_base_fare: parseFloat(e.target.value) || 0 }))}
+                                            className="w-full px-3 py-2 bg-white border border-amber-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:border-amber-500"
+                                            placeholder="2.50"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="text-[10px] font-black uppercase text-slate-600 block mb-1">
+                                            Precio / Km Confort ($)
+                                        </label>
+                                        <input
+                                            type="number"
+                                            step="0.05"
+                                            min="0.10"
+                                            value={fares.comfort_per_km_fare || fares.per_km_fare}
+                                            onChange={e => setFares(prev => ({ ...prev, comfort_per_km_fare: parseFloat(e.target.value) || 0 }))}
+                                            className="w-full px-3 py-2 bg-white border border-amber-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:border-amber-500"
+                                            placeholder="1.20"
+                                        />
+                                    </div>
+                                </div>
+                            </div>
+                        )}
 
                         {/* Save Button */}
                         <button
