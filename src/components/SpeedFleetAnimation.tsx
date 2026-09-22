@@ -1,41 +1,100 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { vibrate } from '../utils/haptics';
 
-const DIALOGUE_PHRASES = [
-  "¡Vamos en un 2x3!",
-  "¿Te buscamos?",
-  "Hacemos las diligencias por ti.",
-  "Solo aceptamos pago movil",
-  "¿No llegues tarde nunca?",
-  "Recuerda calificarnos, nos ayuda mucho.",
-  "Esto es divertido, ¿no?",
-  "Y si te ganas un viaje?",
-  "¡Gracias por venir con nosotros!",
-  "Yaaa voooooy!."
-];
+type VehicleKey = 'truck' | 'suv' | 'taxi' | 'moto' | 'delivery';
+
+const VEHICLE_DATA: Record<VehicleKey, { title: string; emoji: string; phrases: string[] }> = {
+  truck: {
+    title: "Camión Flete 2x3",
+    emoji: "🚛",
+    phrases: [
+      "¡Flete pesado en un 2x3!",
+      "¡Mudanzas y cajas van seguras conmigo!",
+      "¡Fuerza y capacidad para tu carga!",
+      "¡Si cabe en tu casa, cabe en mi camión!",
+      "¡Puntualidad de carga garantizada!"
+    ]
+  },
+  suv: {
+    title: "Camioneta Confort",
+    emoji: "🚙",
+    phrases: [
+      "¡Full aire acondicionado y confort!",
+      "¡Viaja como un rey con full espacio!",
+      "¡Cero calor, aquí se viaja congelado!",
+      "¡Suavidad y estilo en cada bache!",
+      "¡Pide Confort y llega descansado!"
+    ]
+  },
+  taxi: {
+    title: "Carro Taxi Express",
+    emoji: "🚕",
+    phrases: [
+      "¡Yaaa voooooy volando por ti!",
+      "¡El taxi más rápido de la ciudad!",
+      "¡Puntualidad en un 2x3, sin vueltas!",
+      "¡Dime a dónde y arrancamos de una!",
+      "¡Tu transporte confiable a cualquier hora!"
+    ]
+  },
+  moto: {
+    title: "Mototaxi Express",
+    emoji: "🏍️",
+    phrases: [
+      "¡Esquivamos todas las colas de la ciudad!",
+      "¡Agárrate duro que vamos en un 2x3!",
+      "¡Casco puesto y directo a tu destino!",
+      "¡El transporte más veloz y económico!",
+      "¡Llegas en 5 minutos garantizado!"
+    ]
+  },
+  delivery: {
+    title: "Repartidor Express",
+    emoji: "🛵",
+    phrases: [
+      "¡Tu comida llega calientita y directa!",
+      "¡Tu encomienda en minutos, sin escalas!",
+      "¡Con el morral puesto listo para volar!",
+      "¡Entrega rápida y sin mordiscos a la arepa!",
+      "¡En un 2x3 en la puerta de tu casa!"
+    ]
+  }
+};
 
 interface BubbleState {
   phrase: string;
-  pctX: number;
+  emoji: string;
+  title: string;
   id: number;
 }
 
 export default function SpeedFleetAnimation() {
+  const [jumpingVehicle, setJumpingVehicle] = useState<VehicleKey | null>(null);
   const [activeBubble, setActiveBubble] = useState<BubbleState | null>(null);
   const bubbleTimerRef = useRef<any>(null);
+  const jumpTimerRef = useRef<any>(null);
 
-  const handleVehicleClick = (pctX: number) => {
+  const handleVehicleClick = (vehicleKey: VehicleKey) => {
     try {
-      vibrate(25);
+      vibrate([30, 20, 40]);
     } catch (e) {}
 
-    // Choose random phrase different from current
-    const available = DIALOGUE_PHRASES.filter(p => p !== activeBubble?.phrase);
-    const randomPhrase = available[Math.floor(Math.random() * available.length)];
+    // Trigger dynamic vehicle hop/jump animation
+    setJumpingVehicle(vehicleKey);
+    if (jumpTimerRef.current) clearTimeout(jumpTimerRef.current);
+    jumpTimerRef.current = setTimeout(() => {
+      setJumpingVehicle(null);
+    }, 550);
+
+    // Pick dynamic phrase for this specific vehicle
+    const vInfo = VEHICLE_DATA[vehicleKey];
+    const available = vInfo.phrases.filter(p => p !== activeBubble?.phrase);
+    const randomPhrase = available[Math.floor(Math.random() * available.length)] || vInfo.phrases[0];
 
     setActiveBubble({
       phrase: randomPhrase,
-      pctX,
+      emoji: vInfo.emoji,
+      title: vInfo.title,
       id: Date.now()
     });
 
@@ -48,11 +107,12 @@ export default function SpeedFleetAnimation() {
   useEffect(() => {
     return () => {
       if (bubbleTimerRef.current) clearTimeout(bubbleTimerRef.current);
+      if (jumpTimerRef.current) clearTimeout(jumpTimerRef.current);
     };
   }, []);
 
   return (
-    <div className="relative w-full max-w-lg mx-auto h-36 sm:h-40 overflow-visible select-none flex flex-col justify-end">
+    <div className="relative w-full max-w-lg mx-auto h-28 sm:h-32 overflow-visible select-none flex flex-col justify-end">
       {/* Dynamic CSS animations embedded */}
       <style>{`
         @keyframes roadDash {
@@ -76,6 +136,17 @@ export default function SpeedFleetAnimation() {
         @keyframes vehicleVibe3 {
           0%, 100% { transform: translateY(0.5px); }
           50% { transform: translateY(-1px); }
+        }
+        @keyframes vehicleJumpUp {
+          0% { transform: translateY(0px) scale(1); }
+          25% { transform: translateY(-24px) scale(1.1) rotate(-3deg); }
+          50% { transform: translateY(-30px) scale(1.06) rotate(2deg); }
+          75% { transform: translateY(3px) scale(0.95) rotate(0deg); }
+          88% { transform: translateY(-4px) scale(1.02); }
+          100% { transform: translateY(0px) scale(1) rotate(0deg); }
+        }
+        .anim-jumping {
+          animation: vehicleJumpUp 0.55s cubic-bezier(0.34, 1.56, 0.64, 1) !important;
         }
         @keyframes wheelSpin {
           0% { transform: rotate(0deg); }
@@ -112,33 +183,34 @@ export default function SpeedFleetAnimation() {
         }
       `}</style>
 
-      {/* Floating Dialogue Speech Bubble */}
+      {/* Floating Dialogue Speech Bubble - Always Centered Within Screen Bounds */}
       {activeBubble && (
         <div
           key={activeBubble.id}
-          className="absolute z-30 pointer-events-none transition-all duration-300 animate-in zoom-in-90 fade-in slide-in-from-bottom-2"
-          style={{
-            left: `${Math.max(16, Math.min(84, activeBubble.pctX))}%`,
-            top: '2px',
-            transform: 'translateX(-50%)'
-          }}
+          className="absolute -top-1 left-1/2 -translate-x-1/2 z-30 pointer-events-none w-full max-w-[92vw] sm:max-w-md px-2 flex justify-center animate-in zoom-in-95 fade-in duration-200"
         >
-          <div className="relative bg-slate-950 text-yellow-300 font-black text-[11px] sm:text-xs px-3.5 py-1.5 rounded-2xl shadow-xl border-2 border-yellow-400 whitespace-nowrap flex items-center gap-1.5 tracking-tight">
-            <span>💬</span>
-            <span className="text-white">{activeBubble.phrase}</span>
-            {/* Bubble arrow / tail */}
-            <div className="absolute -bottom-2 left-1/2 -translate-x-1/2 w-0 h-0 border-x-[5px] border-x-transparent border-t-[7px] border-t-yellow-400"></div>
+          <div className="relative bg-slate-950/95 text-yellow-300 font-black text-xs sm:text-sm px-4 py-2 rounded-2xl shadow-2xl border-2 border-yellow-400 flex items-center gap-2.5 tracking-tight backdrop-blur-md">
+            <span className="text-xl animate-bounce shrink-0">{activeBubble.emoji}</span>
+            <div className="flex flex-col text-left">
+              <span className="text-[9px] uppercase tracking-wider text-amber-400 font-black leading-none">
+                {activeBubble.title}
+              </span>
+              <span className="text-white font-extrabold text-[11px] sm:text-xs leading-snug mt-0.5">
+                "{activeBubble.phrase}"
+              </span>
+            </div>
+            {/* Downward triangle arrow in center */}
+            <div className="absolute -bottom-2 left-1/2 -translate-x-1/2 w-0 h-0 border-x-[6px] border-x-transparent border-t-[8px] border-t-yellow-400"></div>
           </div>
         </div>
       )}
 
       {/* Wind & Speed Lines in Background */}
       <div className="absolute inset-0 z-0 overflow-hidden pointer-events-none">
-        <div className="absolute top-4 w-24 h-[1.5px] bg-gradient-to-l from-white/60 via-amber-300/40 to-transparent rounded-full anim-wind-fast" style={{ animationDelay: '0s' }}></div>
-        <div className="absolute top-10 w-36 h-[1px] bg-gradient-to-l from-white/70 via-cyan-300/30 to-transparent rounded-full anim-wind-mid" style={{ animationDelay: '0.2s' }}></div>
-        <div className="absolute top-16 w-20 h-[1.5px] bg-gradient-to-l from-white/50 to-transparent rounded-full anim-wind-fast" style={{ animationDelay: '0.4s' }}></div>
-        <div className="absolute top-22 w-44 h-[1px] bg-gradient-to-l from-amber-400/60 to-transparent rounded-full anim-wind-mid" style={{ animationDelay: '0.1s' }}></div>
-        <div className="absolute top-28 w-28 h-[2px] bg-gradient-to-l from-yellow-300/50 to-transparent rounded-full anim-wind-fast" style={{ animationDelay: '0.3s' }}></div>
+        <div className="absolute top-2 w-24 h-[1.5px] bg-gradient-to-l from-white/60 via-amber-300/40 to-transparent rounded-full anim-wind-fast" style={{ animationDelay: '0s' }}></div>
+        <div className="absolute top-8 w-36 h-[1px] bg-gradient-to-l from-white/70 via-cyan-300/30 to-transparent rounded-full anim-wind-mid" style={{ animationDelay: '0.2s' }}></div>
+        <div className="absolute top-14 w-20 h-[1.5px] bg-gradient-to-l from-white/50 to-transparent rounded-full anim-wind-fast" style={{ animationDelay: '0.4s' }}></div>
+        <div className="absolute top-20 w-44 h-[1px] bg-gradient-to-l from-amber-400/60 to-transparent rounded-full anim-wind-mid" style={{ animationDelay: '0.1s' }}></div>
       </div>
 
       {/* SVG Canvas with 5 vehicles */}
@@ -185,9 +257,9 @@ export default function SpeedFleetAnimation() {
         {/* VEHICLE 1: CAMIÓN FLETE (Back left, largest, solid) */}
         {/* ---------------------------------------------------- */}
         <g 
-          className="anim-vibe-2 cursor-pointer transition-opacity hover:opacity-90" 
+          className={`${jumpingVehicle === 'truck' ? 'anim-jumping' : 'anim-vibe-2'} cursor-pointer transition-transform active:scale-95`} 
           style={{ transformOrigin: '70px 115px' }}
-          onClick={() => handleVehicleClick(12)}
+          onClick={() => handleVehicleClick('truck')}
         >
           {/* Cargo Box */}
           <rect x="5" y="46" width="92" height="66" rx="4" fill="url(#truckBody)" stroke="#1E293B" strokeWidth="2" />
@@ -214,12 +286,10 @@ export default function SpeedFleetAnimation() {
 
           {/* Truck Wheels */}
           <g>
-            {/* Back wheels */}
             <circle cx="28" cy="116" r="11" fill="#0F172A" />
             <circle cx="28" cy="116" r="6" fill="url(#chromeWheel)" />
             <circle cx="50" cy="116" r="11" fill="#0F172A" />
             <circle cx="50" cy="116" r="6" fill="url(#chromeWheel)" />
-            {/* Front wheel */}
             <circle cx="114" cy="116" r="11" fill="#0F172A" />
             <circle cx="114" cy="116" r="6" fill="url(#chromeWheel)" />
           </g>
@@ -229,9 +299,9 @@ export default function SpeedFleetAnimation() {
         {/* VEHICLE 2: CAMIONETA TAXI (SUV / Pickup Taxi, Mid-lane) */}
         {/* ---------------------------------------------------- */}
         <g 
-          className="anim-vibe-1 cursor-pointer transition-opacity hover:opacity-90" 
+          className={`${jumpingVehicle === 'suv' ? 'anim-jumping' : 'anim-vibe-1'} cursor-pointer transition-transform active:scale-95`} 
           style={{ transformOrigin: '195px 120px' }}
-          onClick={() => handleVehicleClick(32)}
+          onClick={() => handleVehicleClick('suv')}
         >
           {/* Headlight beam */}
           <polygon points="256,102 380,88 380,132 256,112" fill="url(#headlightGlow)" className="anim-headlight" opacity="0.45" />
@@ -249,7 +319,7 @@ export default function SpeedFleetAnimation() {
           
           {/* Taxi Roof Sign on SUV */}
           <rect x="185" y="74" width="22" height="7" rx="2" fill="#FACC15" stroke="#0F172A" strokeWidth="1.5" />
-          <text x="196" y="80" fill="#0F172A" fontSize="5.5" fontWeight="900" textAnchor="middle">TAXI</text>
+          <text x="196" y="80" fill="#0F172A" fontSize="5.5" fontWeight="900" textAnchor="middle">CONFORT</text>
 
           {/* Side Checker Taxi Stripe */}
           <path d="M152 101 L252 101" stroke="#FACC15" strokeWidth="3" strokeDasharray="4 4" />
@@ -268,9 +338,9 @@ export default function SpeedFleetAnimation() {
         {/* VEHICLE 3: CARRO TAXI (Sedan Taxi, Center Stage)     */}
         {/* ---------------------------------------------------- */}
         <g 
-          className="anim-vibe-3 cursor-pointer transition-opacity hover:opacity-90" 
+          className={`${jumpingVehicle === 'taxi' ? 'anim-jumping' : 'anim-vibe-3'} cursor-pointer transition-transform active:scale-95`} 
           style={{ transformOrigin: '320px 122px' }}
-          onClick={() => handleVehicleClick(52)}
+          onClick={() => handleVehicleClick('taxi')}
         >
           {/* Headlight beam */}
           <polygon points="378,106 500,92 500,136 378,116" fill="url(#headlightGlow)" className="anim-headlight" opacity="0.55" />
@@ -305,41 +375,31 @@ export default function SpeedFleetAnimation() {
         </g>
 
         {/* ---------------------------------------------------- */}
-        {/* VEHICLE 4: MOTO CON PASAJERO (Conductor y Pasajero con Cascos) */}
+        {/* VEHICLE 4: MOTO CON PASAJERO (Conductor y Pasajero) */}
         {/* ---------------------------------------------------- */}
         <g 
-          className="anim-vibe-1 cursor-pointer transition-opacity hover:opacity-90" 
+          className={`${jumpingVehicle === 'moto' ? 'anim-jumping' : 'anim-vibe-1'} cursor-pointer transition-transform active:scale-95`} 
           style={{ transformOrigin: '425px 120px' }}
-          onClick={() => handleVehicleClick(70)}
+          onClick={() => handleVehicleClick('moto')}
         >
           {/* Headlight beam */}
           <polygon points="458,110 540,98 540,135 458,118" fill="url(#headlightGlow)" className="anim-headlight" opacity="0.5" />
 
           {/* Passenger Figure (Back Rider with Helmet) */}
           <g>
-            {/* Passenger Helmet */}
             <circle cx="408" cy="85" r="5" fill="#2563EB" stroke="#0F172A" strokeWidth="1.5" />
-            {/* Passenger Helmet Visor */}
             <path d="M410 84 Q413 85 411 87" stroke="#93C5FD" strokeWidth="1.5" strokeLinecap="round" />
-            {/* Passenger Body */}
             <path d="M407 90 L411 100 L418 106" stroke="#1E293B" strokeWidth="3.5" strokeLinecap="round" fill="none" />
-            {/* Passenger Arm holding driver */}
             <path d="M410 93 L421 95" stroke="#2563EB" strokeWidth="2.5" strokeLinecap="round" fill="none" />
-            {/* Passenger Leg */}
             <path d="M412 101 L416 114" stroke="#0F172A" strokeWidth="2" strokeLinecap="round" />
           </g>
 
           {/* Driver Figure (Front Rider with Helmet) */}
           <g>
-            {/* Driver Helmet */}
             <circle cx="427" cy="83" r="5.5" fill="#DC2626" stroke="#0F172A" strokeWidth="1.5" />
-            {/* Driver Helmet Visor */}
             <path d="M429 82 Q433 84 430 86" stroke="#FEF08A" strokeWidth="1.8" strokeLinecap="round" />
-            {/* Driver Body */}
             <path d="M426 88 L430 98 L435 107" stroke="#DC2626" strokeWidth="4" strokeLinecap="round" fill="none" />
-            {/* Driver Arm reaching handlebar */}
             <path d="M428 92 L440 98" stroke="#0F172A" strokeWidth="2.5" strokeLinecap="round" fill="none" />
-            {/* Driver Leg */}
             <path d="M431 101 L436 115" stroke="#0F172A" strokeWidth="2.5" strokeLinecap="round" />
           </g>
 
@@ -364,12 +424,12 @@ export default function SpeedFleetAnimation() {
         </g>
 
         {/* ---------------------------------------------------- */}
-        {/* VEHICLE 5: MOTO DELIVERY (Repartidor con Casco y Morral/Caja Térmica) */}
+        {/* VEHICLE 5: MOTO DELIVERY (Repartidor con Morral)     */}
         {/* ---------------------------------------------------- */}
         <g 
-          className="anim-vibe-2 cursor-pointer transition-opacity hover:opacity-90" 
+          className={`${jumpingVehicle === 'delivery' ? 'anim-jumping' : 'anim-vibe-2'} cursor-pointer transition-transform active:scale-95`} 
           style={{ transformOrigin: '530px 120px' }}
-          onClick={() => handleVehicleClick(88)}
+          onClick={() => handleVehicleClick('delivery')}
         >
           {/* Delivery Headlight beam cutting forward */}
           <polygon points="562,110 630,96 630,138 562,118" fill="url(#headlightGlow)" className="anim-headlight" opacity="0.75" />
@@ -384,15 +444,10 @@ export default function SpeedFleetAnimation() {
 
           {/* Courier Driver with Full Helmet */}
           <g>
-            {/* Helmet */}
             <circle cx="522" cy="82" r="5.5" fill="#0F172A" stroke="#EA580C" strokeWidth="1.5" />
-            {/* Helmet Visor with Cyan reflection */}
             <path d="M524 81 Q528 82 525 85" stroke="#38BDF8" strokeWidth="1.8" strokeLinecap="round" />
-            {/* Rider torso leaning aggressively forward */}
             <path d="M514 88 L526 95 L538 103" stroke="#EA580C" strokeWidth="4" strokeLinecap="round" fill="none" />
-            {/* Rider legs */}
             <path d="M524 99 L530 114 L536 116" stroke="#0F172A" strokeWidth="2.5" strokeLinecap="round" fill="none" />
-            {/* Rider arms to handlebars */}
             <path d="M526 93 L542 99" stroke="#0F172A" strokeWidth="2.5" strokeLinecap="round" fill="none" />
           </g>
 

@@ -1422,32 +1422,49 @@ export default function Taxi() {
 
         try {
             // 1. Detección automática de ubicación GPS instantánea
-            let coords = userLocation;
-            if (!coords && navigator.geolocation) {
+            let coords: { lat: number; lng: number } | null = userLocation || (origin ? { lat: origin.lat, lng: origin.lng } : null);
+
+            if (!coords && Capacitor.isNativePlatform()) {
+                try {
+                    const pos = await Geolocation.getCurrentPosition({
+                        enableHighAccuracy: true,
+                        timeout: 3000,
+                        maximumAge: 15000
+                    });
+                    if (pos?.coords?.latitude && pos?.coords?.longitude) {
+                        coords = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+                    }
+                } catch (e) {
+                    console.warn("Capacitor quick GPS failed, falling back:", e);
+                }
+            }
+
+            if (!coords && typeof navigator !== 'undefined' && navigator.geolocation) {
                 coords = await new Promise<{ lat: number; lng: number } | null>((resolve) => {
                     navigator.geolocation.getCurrentPosition(
                         (pos) => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
-                        () => {
-                            navigator.geolocation.getCurrentPosition(
-                                (p2) => resolve({ lat: p2.coords.latitude, lng: p2.coords.longitude }),
-                                () => resolve(null),
-                                { enableHighAccuracy: false, timeout: 3000 }
-                            );
-                        },
-                        { enableHighAccuracy: true, timeout: 5000, maximumAge: 10000 }
+                        () => resolve(null),
+                        { enableHighAccuracy: false, timeout: 2500, maximumAge: 30000 }
                     );
                 });
             }
 
             if (!coords) {
-                coords = defaultCenter || { lat: 8.9326, lng: -67.4264 };
+                const initialMapCenter = getInitialMapCoordinates(userData?.addresses);
+                coords = initialMapCenter || defaultCenter || { lat: 8.9326, lng: -67.4264 };
             }
 
-            const validUserId = user?.id || user?.uid || null;
+            const isValidUUID = (str: string | null | undefined): boolean => {
+                if (!str) return false;
+                return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(str);
+            };
+
+            const rawUserId = user?.id || user?.uid || null;
+            const validUserId = isValidUUID(rawUserId) ? rawUserId : null;
             const newReqId = crypto.randomUUID();
             const isCar = vehicle === 'carro';
             const basePrice = isCar ? 1.50 : 0.50;
-            const commAmount = isCar ? (liveCommissions.taxi || 0.15) : (liveCommissions.mototaxi || 0.05);
+            const commAmount = isCar ? (liveCommissions.taxi || 0.80) : (liveCommissions.mototaxi || 0.25);
             const driverPayoutVal = Math.max(0, basePrice - commAmount);
 
             // 2. Alerta abierta (Radar masivo inmediato a todas las unidades de la zona)
@@ -1455,9 +1472,7 @@ export default function Taxi() {
                 id: newReqId,
                 user_id: validUserId,
                 user_name: userData?.displayName || user?.displayName || user?.email || guestName || 'Cliente Express',
-                passenger_name: userData?.displayName || user?.displayName || user?.email || guestName || 'Cliente Express',
-                user_phone: userData?.phone || user?.phoneNumber || guestPhone || 'Sin número',
-                passenger_phone: userData?.phone || user?.phoneNumber || guestPhone || 'Sin número',
+                user_phone: userData?.phone || (user as any)?.phoneNumber || guestPhone || 'Sin número',
                 user_cedula: userData?.cedula || guestCedula || 'N/A',
                 origin: {
                     lat: coords.lat,
@@ -1470,14 +1485,14 @@ export default function Taxi() {
                     address: 'Destino a convenir con el conductor'
                 },
                 route: {
-                    distance: 'Recogida GPS directa',
+                    distance: 1,
                     duration: 'Inmediato'
                 },
                 total: basePrice,
                 price: basePrice,
                 driver_id: null,
                 assigned_driver_id: null, // Radar abierto para todas las unidades cercanas
-                service_category: isCar ? 'taxi_driver' : 'moto',
+                service_category: isCar ? 'taxi_driver' : 'mototaxi',
                 vehicle_type: isCar ? 'carro' : 'moto',
                 type: 'transport',
                 driver_payout: driverPayoutVal,
@@ -1511,7 +1526,7 @@ export default function Taxi() {
             navigate(`/taxi/track/${newReqId}`);
         } catch (err: any) {
             console.error("Error en Transporte Rápido:", err);
-            toast.error("No se pudo iniciar el Transporte Rápido. Revisa tu GPS o conexión.");
+            toast.error(err?.message || "No se pudo iniciar el Transporte Rápido. Revisa tu GPS o conexión.");
         } finally {
             setIsRequestingQuickTransport(false);
         }
@@ -1807,7 +1822,7 @@ export default function Taxi() {
             {/* 0. PANTALLA INICIAL DE SELECCIÓN DE SERVICIO (Un 2x3 Movilidad) */}
             {/* 0. PANTALLA INICIAL DE SELECCIÓN DE SERVICIO (Un 2x3 Movilidad) */}
             {step === 'categories' && (
-                <div className="absolute inset-0 z-40 bg-slate-950/65 backdrop-blur-[10px] flex flex-col justify-between p-3.5 sm:p-5 overflow-hidden animate-in fade-in duration-200 select-none">
+                <div className="absolute inset-0 z-40 bg-slate-950/65 backdrop-blur-[10px] flex flex-col justify-between pt-1.5 px-3.5 pb-20 sm:pb-24 overflow-hidden animate-in fade-in duration-200 select-none">
                     {/* GPS Map Blurred Aesthetic Overlay (Grid & Navigation Waypoints) */}
                     <div className="absolute inset-0 pointer-events-none opacity-25 bg-[radial-gradient(#ffffff_1px,transparent_1px)] [background-size:24px_24px]" />
                     <div className="absolute inset-0 pointer-events-none opacity-15 bg-[linear-gradient(to_right,#ffffff15_1px,transparent_1px),linear-gradient(to_bottom,#ffffff15_1px,transparent_1px)] bg-[size:3.5rem_3.5rem]" />
@@ -1896,12 +1911,12 @@ export default function Taxi() {
                     )}
 
                     {/* Main Options Cards - Minimalist, Compact & Vibrant Yellow with Black Letters */}
-                    <div className="relative z-10 w-full max-w-md mx-auto my-auto py-1 space-y-2.5 sm:space-y-3 flex-1 flex flex-col justify-center">
+                    <div className="relative z-10 w-full max-w-md mx-auto my-auto py-0.5 space-y-2 flex-1 flex flex-col justify-center">
                         <div className="text-center mb-0.5">
-                            <h3 className="text-lg sm:text-xl font-black text-white tracking-tight leading-tight">
+                            <h3 className="text-base sm:text-lg font-black text-white tracking-tight leading-tight">
                                 ¿Qué necesitas hoy?
                             </h3>
-                            <p className="text-[11px] text-slate-300 font-medium mt-0.5">
+                            <p className="text-[10.5px] text-slate-300 font-medium">
                                 Selecciona una opción para comenzar tu solicitud personalizada
                             </p>
                         </div>
@@ -1917,39 +1932,39 @@ export default function Taxi() {
                                 setVehicleType('carro');
                                 setStep('destination');
                             }}
-                            className="w-full bg-primary hover:bg-[#f5f500] border-2 border-yellow-300/80 p-3.5 sm:p-4 rounded-[2rem] text-left shadow-xl shadow-yellow-500/20 active:scale-[0.98] transition-all group flex items-center gap-3.5 relative overflow-hidden"
+                            className="w-full bg-primary hover:bg-[#f5f500] border-2 border-yellow-300/80 p-2.5 sm:p-3 rounded-2xl sm:rounded-[1.75rem] text-left shadow-lg shadow-yellow-500/15 active:scale-[0.98] transition-all group flex items-center gap-3 relative overflow-hidden"
                         >
-                            <div className="w-12 h-12 rounded-2xl bg-slate-950 text-primary flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform shadow-md">
-                                <Car className="w-6 h-6" />
+                            <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-xl bg-slate-950 text-primary flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform shadow-md">
+                                <Car className="w-5 h-5 sm:w-5.5 sm:h-5.5" />
                             </div>
                             <div className="flex-1 min-w-0">
                                 <div className="flex items-center justify-between mb-0.5">
-                                    <h4 className="text-sm sm:text-base font-black text-slate-950 tracking-tight leading-none">
+                                    <h4 className="text-xs sm:text-sm font-black text-slate-950 tracking-tight leading-none">
                                         Taxi / Mototaxi
                                     </h4>
-                                    <span className="text-[9px] font-black uppercase px-2.5 py-0.5 rounded-full bg-slate-950 text-primary tracking-wider shrink-0">
+                                    <span className="text-[8.5px] font-black uppercase px-2 py-0.5 rounded-full bg-slate-950 text-primary tracking-wider shrink-0">
                                         Pasajeros
                                     </span>
                                 </div>
-                                <p className="text-[11px] sm:text-xs text-slate-950/90 font-bold line-clamp-1 leading-tight mt-0.5">
+                                <p className="text-[10px] sm:text-[11px] text-slate-950/90 font-bold line-clamp-1 leading-tight">
                                     Mototaxi, Taxi Standard y Carro Confort
                                 </p>
-                                <div className="flex items-center gap-2 mt-1.5 text-[9px] text-slate-950 font-black">
-                                    <span className="flex items-center gap-1">
-                                        <Bike className="w-3 h-3 text-slate-950" /> Moto
+                                <div className="flex items-center gap-1.5 mt-1 text-[8.5px] sm:text-[9px] text-slate-950 font-black">
+                                    <span className="flex items-center gap-0.5">
+                                        <Bike className="w-2.5 h-2.5 text-slate-950" /> Moto
                                     </span>
                                     <span>•</span>
-                                    <span className="flex items-center gap-1">
-                                        <Car className="w-3 h-3 text-slate-950" /> Taxi
+                                    <span className="flex items-center gap-0.5">
+                                        <Car className="w-2.5 h-2.5 text-slate-950" /> Taxi
                                     </span>
                                     <span>•</span>
-                                    <span className="flex items-center gap-1">
-                                        <Sparkles className="w-3 h-3 text-slate-950" /> Confort
+                                    <span className="flex items-center gap-0.5">
+                                        <Sparkles className="w-2.5 h-2.5 text-slate-950" /> Confort
                                     </span>
                                 </div>
                             </div>
-                            <div className="w-8 h-8 rounded-full bg-slate-950/10 text-slate-950 flex items-center justify-center group-hover:bg-slate-950 group-hover:text-primary transition-all shrink-0">
-                                <ArrowRight className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />
+                            <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-slate-950/10 text-slate-950 flex items-center justify-center group-hover:bg-slate-950 group-hover:text-primary transition-all shrink-0">
+                                <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform" />
                             </div>
                         </button>
 
@@ -1964,24 +1979,24 @@ export default function Taxi() {
                                 setVehicleType('moto');
                                 setStep('destination');
                             }}
-                            className="w-full bg-primary hover:bg-[#f5f500] border-2 border-yellow-300/80 p-3.5 sm:p-4 rounded-[2rem] text-left shadow-xl shadow-yellow-500/20 active:scale-[0.98] transition-all group flex items-center gap-3.5 relative overflow-hidden"
+                            className="w-full bg-primary hover:bg-[#f5f500] border-2 border-yellow-300/80 p-2.5 sm:p-3 rounded-2xl sm:rounded-[1.75rem] text-left shadow-lg shadow-yellow-500/15 active:scale-[0.98] transition-all group flex items-center gap-3 relative overflow-hidden"
                         >
-                            <div className="w-12 h-12 rounded-2xl bg-slate-950 text-primary flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform shadow-md">
-                                <Package className="w-6 h-6" />
+                            <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-xl bg-slate-950 text-primary flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform shadow-md">
+                                <Package className="w-5 h-5 sm:w-5.5 sm:h-5.5" />
                             </div>
                             <div className="flex-1 min-w-0">
                                 <div className="flex items-center justify-between mb-0.5">
-                                    <h4 className="text-sm sm:text-base font-black text-slate-950 tracking-tight leading-none">
+                                    <h4 className="text-xs sm:text-sm font-black text-slate-950 tracking-tight leading-none">
                                         Envío de Paquete
                                     </h4>
-                                    <span className="text-[9px] font-black uppercase px-2.5 py-0.5 rounded-full bg-slate-950 text-primary tracking-wider shrink-0">
+                                    <span className="text-[8.5px] font-black uppercase px-2 py-0.5 rounded-full bg-slate-950 text-primary tracking-wider shrink-0">
                                         Delivery Express
                                     </span>
                                 </div>
-                                <p className="text-[11px] sm:text-xs text-slate-950/90 font-bold line-clamp-1 leading-tight mt-0.5">
+                                <p className="text-[10px] sm:text-[11px] text-slate-950/90 font-bold line-clamp-1 leading-tight">
                                     Encomiendas, documentos, llaves o paquetes
                                 </p>
-                                <div className="flex items-center gap-2 mt-1.5 text-[9px] text-slate-950 font-black">
+                                <div className="flex items-center gap-1.5 mt-1 text-[8.5px] sm:text-[9px] text-slate-950 font-black">
                                     <span>📦 Directo</span>
                                     <span>•</span>
                                     <span>⚡ Sin escalas</span>
@@ -1989,8 +2004,8 @@ export default function Taxi() {
                                     <span>🔒 Conductor verificado</span>
                                 </div>
                             </div>
-                            <div className="w-8 h-8 rounded-full bg-slate-950/10 text-slate-950 flex items-center justify-center group-hover:bg-slate-950 group-hover:text-primary transition-all shrink-0">
-                                <ArrowRight className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />
+                            <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-slate-950/10 text-slate-950 flex items-center justify-center group-hover:bg-slate-950 group-hover:text-primary transition-all shrink-0">
+                                <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform" />
                             </div>
                         </button>
 
@@ -2001,33 +2016,33 @@ export default function Taxi() {
                                 vibrate(30);
                                 setIsMandadoModalOpen(true);
                             }}
-                            className="w-full bg-primary hover:bg-[#f5f500] border-2 border-yellow-300/80 p-3.5 sm:p-4 rounded-[2rem] text-left shadow-xl shadow-yellow-500/20 active:scale-[0.98] transition-all group flex items-center gap-3.5 relative overflow-hidden"
+                            className="w-full bg-primary hover:bg-[#f5f500] border-2 border-yellow-300/80 p-2.5 sm:p-3 rounded-2xl sm:rounded-[1.75rem] text-left shadow-lg shadow-yellow-500/15 active:scale-[0.98] transition-all group flex items-center gap-3 relative overflow-hidden"
                         >
-                            <div className="w-12 h-12 rounded-2xl bg-slate-950 text-primary flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform shadow-md">
-                                <ShoppingBag className="w-6 h-6" />
+                            <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-xl bg-slate-950 text-primary flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform shadow-md">
+                                <ShoppingBag className="w-5 h-5 sm:w-5.5 sm:h-5.5" />
                             </div>
                             <div className="flex-1 min-w-0">
                                 <div className="flex items-center justify-between mb-0.5">
-                                    <h4 className="text-sm sm:text-base font-black text-slate-950 tracking-tight leading-none">
+                                    <h4 className="text-xs sm:text-sm font-black text-slate-950 tracking-tight leading-none">
                                         Muchacho e' Mandao
                                     </h4>
-                                    <span className="text-[9px] font-black uppercase px-2.5 py-0.5 rounded-full bg-slate-950 text-primary tracking-wider shrink-0">
+                                    <span className="text-[8.5px] font-black uppercase px-2 py-0.5 rounded-full bg-slate-950 text-primary tracking-wider shrink-0">
                                         Personal Shopper
                                     </span>
                                 </div>
-                                <p className="text-[11px] sm:text-xs text-slate-950/90 font-bold line-clamp-1 leading-tight mt-0.5">
+                                <p className="text-[10px] sm:text-[11px] text-slate-950/90 font-bold line-clamp-1 leading-tight">
                                     Compras, trámites y diligencias a medida
                                 </p>
-                                <div className="flex items-center gap-2 mt-1.5 text-[9px] text-slate-950 font-black">
+                                <div className="flex items-center gap-1.5 mt-1 text-[8.5px] sm:text-[9px] text-slate-950 font-black">
                                     <span>🏛️ Diligencias</span>
                                     <span>•</span>
                                     <span>🎤 Nota de voz</span>
                                     <span>•</span>
-                                    <span>💰 Subasta de tarifas</span>
+                                    <span>💰 Subasta</span>
                                 </div>
                             </div>
-                            <div className="w-8 h-8 rounded-full bg-slate-950/10 text-slate-950 flex items-center justify-center group-hover:bg-slate-950 group-hover:text-primary transition-all shrink-0">
-                                <ArrowRight className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />
+                            <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-slate-950/10 text-slate-950 flex items-center justify-center group-hover:bg-slate-950 group-hover:text-primary transition-all shrink-0">
+                                <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform" />
                             </div>
                         </button>
 
@@ -2038,24 +2053,24 @@ export default function Taxi() {
                                 vibrate(40);
                                 setIsQuickTransportModalOpen(true);
                             }}
-                            className="w-full bg-gradient-to-r from-amber-400 via-yellow-400 to-amber-500 hover:from-yellow-300 hover:to-amber-400 text-slate-950 border-2 border-white/80 p-3.5 sm:p-4 rounded-[2rem] text-left shadow-xl shadow-amber-500/25 active:scale-[0.98] transition-all group flex items-center gap-3.5 relative overflow-hidden"
+                            className="w-full bg-gradient-to-r from-amber-400 via-yellow-400 to-amber-500 hover:from-yellow-300 hover:to-amber-400 text-slate-950 border-2 border-white/80 p-2.5 sm:p-3 rounded-2xl sm:rounded-[1.75rem] text-left shadow-lg shadow-amber-500/20 active:scale-[0.98] transition-all group flex items-center gap-3 relative overflow-hidden"
                         >
-                            <div className="w-12 h-12 rounded-2xl bg-slate-950 text-yellow-400 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform shadow-md relative">
-                                <Zap className="w-6 h-6 animate-pulse text-yellow-400 fill-yellow-400" />
+                            <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-xl bg-slate-950 text-yellow-400 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform shadow-md relative">
+                                <Zap className="w-5 h-5 sm:w-5.5 sm:h-5.5 animate-pulse text-yellow-400 fill-yellow-400" />
                             </div>
                             <div className="flex-1 min-w-0">
                                 <div className="flex items-center justify-between mb-0.5">
-                                    <h4 className="text-sm sm:text-base font-black text-slate-950 tracking-tight leading-none flex items-center gap-1.5">
+                                    <h4 className="text-xs sm:text-sm font-black text-slate-950 tracking-tight leading-none flex items-center gap-1.5">
                                         Transporte Rápido
                                     </h4>
-                                    <span className="text-[9px] font-black uppercase px-2.5 py-0.5 rounded-full bg-slate-950 text-yellow-400 tracking-wider shrink-0 flex items-center gap-1 shadow-sm">
+                                    <span className="text-[8.5px] font-black uppercase px-2 py-0.5 rounded-full bg-slate-950 text-yellow-400 tracking-wider shrink-0 flex items-center gap-1 shadow-sm">
                                         ⚡ 1 TOQUE
                                     </span>
                                 </div>
-                                <p className="text-[11px] sm:text-xs text-slate-950/90 font-bold line-clamp-1 leading-tight mt-0.5">
+                                <p className="text-[10px] sm:text-[11px] text-slate-950/90 font-bold line-clamp-1 leading-tight">
                                     Pide en segundos sin cotizaciones ni demoras
                                 </p>
-                                <div className="flex items-center gap-2 mt-1.5 text-[9px] text-slate-950 font-black">
+                                <div className="flex items-center gap-1.5 mt-1 text-[8.5px] sm:text-[9px] text-slate-950 font-black">
                                     <span>📍 GPS instantáneo</span>
                                     <span>•</span>
                                     <span>⚡ Radar masivo</span>
@@ -2063,19 +2078,19 @@ export default function Taxi() {
                                     <span>🚀 En 1 toque</span>
                                 </div>
                             </div>
-                            <div className="w-8 h-8 rounded-full bg-slate-950/15 text-slate-950 flex items-center justify-center group-hover:bg-slate-950 group-hover:text-yellow-400 transition-all shrink-0">
-                                <ArrowRight className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />
+                            <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-slate-950/15 text-slate-950 flex items-center justify-center group-hover:bg-slate-950 group-hover:text-yellow-400 transition-all shrink-0">
+                                <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform" />
                             </div>
                         </button>
                     </div>
 
                     {/* Bottom Fleet Speed Animation (Taxi, Camioneta, Camión Flete, Mototaxi, Moto Delivery) */}
-                    <div className="relative z-10 w-full max-w-md mx-auto flex justify-center -mb-2 overflow-hidden">
+                    <div className="relative z-10 w-full max-w-md mx-auto flex justify-center -mt-1 mb-0 overflow-visible shrink-0">
                         <SpeedFleetAnimation />
                     </div>
 
                     {/* Bottom Transparency Guarantee Footer */}
-                    <div className="relative z-10 w-full max-w-md mx-auto pt-2 pb-0.5 text-center border-t border-white/10 shrink-0">
+                    <div className="relative z-10 w-full max-w-md mx-auto pt-1 pb-0.5 text-center border-t border-white/10 shrink-0">
                         <p className="text-[10px] text-slate-300 font-bold flex items-center justify-center gap-1.5">
                             <Shield className="w-3.5 h-3.5 text-emerald-400" />
                             Tarifas transparentes
