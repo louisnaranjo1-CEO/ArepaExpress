@@ -256,7 +256,9 @@ export const driversApi = {
                 is_comfort_eligible: Boolean(d.is_comfort_eligible),
                 rating: d.rating ? Number(d.rating) : 5.0,
                 acceptance_rate: d.acceptance_rate ? Number(d.acceptance_rate) : 100,
-                total_trips: d.total_trips ? Number(d.total_trips) : 0
+                total_trips: d.total_trips ? Number(d.total_trips) : 0,
+                vehicle_history: d.vehicle_history || [],
+                vehicle_image_url: d.vehicle_image_url || null
             };
         });
     },

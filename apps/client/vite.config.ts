@@ -93,6 +93,20 @@ export default defineConfig(({ mode }) => {
                 },
               },
             },
+            {
+              urlPattern: /^https:\/\/(?:maps\.googleapis\.com|maps\.gstatic\.com|khms[0-9]?\.google\.com|mts[0-9]?\.google\.com|cbks[0-9]?\.google\.com|lh[0-9]?\.googleusercontent\.com)\/.*/i,
+              handler: 'CacheFirst',
+              options: {
+                cacheName: 'google-maps-tiles-cache',
+                expiration: {
+                  maxEntries: 2500,
+                  maxAgeSeconds: 30 * 24 * 60 * 60, // 30 days
+                },
+                cacheableResponse: {
+                  statuses: [0, 200],
+                },
+              },
+            },
           ],
         }
       }),

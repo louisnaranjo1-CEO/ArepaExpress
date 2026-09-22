@@ -51,6 +51,22 @@ export default defineConfig(({ mode }) => {
           globPatterns: ['**/*.{js,css,html,ico,png,svg,webp,json}'],
           maximumFileSizeToCacheInBytes: 5242880,
           cleanupOutdatedCaches: true,
+          runtimeCaching: [
+            {
+              urlPattern: /^https:\/\/(?:maps\.googleapis\.com|maps\.gstatic\.com|khms[0-9]?\.google\.com|mts[0-9]?\.google\.com|cbks[0-9]?\.google\.com|lh[0-9]?\.googleusercontent\.com)\/.*/i,
+              handler: 'CacheFirst',
+              options: {
+                cacheName: 'delivery-google-maps-tiles-cache',
+                expiration: {
+                  maxEntries: 2500,
+                  maxAgeSeconds: 30 * 24 * 60 * 60,
+                },
+                cacheableResponse: {
+                  statuses: [0, 200],
+                },
+              },
+            },
+          ],
         }
       })
     ],

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
-import { User, Mail, MapPin, CreditCard, LogOut, ShoppingBag, Settings, ChevronRight, Clock, FileText, Bell, Navigation, X, Shield, UploadCloud, CheckCircle2, Save, Image as ImageIcon, Key, Trash2, ArrowLeft, Camera, Truck, ShieldCheck, Smartphone, Fingerprint, Car, Bike, Star, Calendar, Sparkles, AlertTriangle, Wifi, Music, Wind, Check, Lock, Plus, Radio } from 'lucide-react';
+import { User, Mail, MapPin, CreditCard, LogOut, ShoppingBag, Settings, ChevronRight, Clock, FileText, Bell, Navigation, X, Shield, UploadCloud, CheckCircle2, Save, Image as ImageIcon, Key, Trash2, ArrowLeft, Camera, Truck, ShieldCheck, Smartphone, Fingerprint, Car, Bike, Star, Calendar, Sparkles, AlertTriangle, Wifi, Music, Wind, Check, Lock, Plus, Radio, Edit2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { Geolocation } from '@capacitor/geolocation';
 import { Capacitor } from '@capacitor/core';
@@ -27,6 +27,21 @@ export default function DriverProfile() {
     const [uploadingNewVehPhoto, setUploadingNewVehPhoto] = useState(false);
     const [newVehicleForm, setNewVehicleForm] = useState({
         type: 'moto' as 'moto' | 'carro' | 'camioneta',
+        brand: '',
+        model: '',
+        year: '',
+        color: '',
+        plate: '',
+        hasAc: false,
+        hasThermalBag: false,
+        photoUrl: ''
+    });
+
+    // Vehicle Editing with Audit History
+    const [showEditVehicleModal, setShowEditVehicleModal] = useState(false);
+    const [editingVehicle, setEditingVehicle] = useState<any>(null);
+    const [uploadingEditVehPhoto, setUploadingEditVehPhoto] = useState(false);
+    const [editVehicleForm, setEditVehicleForm] = useState({
         brand: '',
         model: '',
         year: '',
@@ -548,6 +563,163 @@ export default function DriverProfile() {
         }
     };
 
+    // Open Edit Vehicle Modal
+    const handleOpenEditVehicleModal = (veh: any) => {
+        setEditingVehicle(veh);
+        setEditVehicleForm({
+            brand: veh.brand || '',
+            model: veh.model || '',
+            year: veh.year || '',
+            color: veh.color || '',
+            plate: veh.plate || '',
+            hasAc: Boolean(veh.has_ac),
+            hasThermalBag: Boolean(veh.has_thermal_bag),
+            photoUrl: veh.photo_url || ''
+        });
+        setShowEditVehicleModal(true);
+    };
+
+    // Upload Photo for vehicle being edited
+    const handleEditVehPhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file || !user) return;
+        setUploadingEditVehPhoto(true);
+        try {
+            const ext = file.name.split('.').pop() || 'jpg';
+            const filePath = `delivery_docs/${user.uid}/veh_edit_${Date.now()}.${ext}`;
+            const { error: upErr } = await supabase.storage.from('store_assets').upload(filePath, file, { upsert: true });
+            if (upErr) throw upErr;
+            const { data: pubData } = supabase.storage.from('store_assets').getPublicUrl(filePath);
+            setEditVehicleForm(prev => ({ ...prev, photoUrl: pubData.publicUrl }));
+            alert('Foto cargada correctamente.');
+        } catch (err: any) {
+            console.error("Error uploading edited vehicle photo:", err);
+            alert("Error subiendo foto: " + (err.message || 'Error'));
+        } finally {
+            setUploadingEditVehPhoto(false);
+        }
+    };
+
+    // Save Vehicle Edit with Security History
+    const handleSaveVehicleEdit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!user || !editingVehicle) return;
+
+        if (!editVehicleForm.brand.trim() || !editVehicleForm.model.trim() || !editVehicleForm.plate.trim()) {
+            alert('Por favor completa Marca, Modelo y Placa del vehículo.');
+            return;
+        }
+
+        setLoading(true);
+        try {
+            const previousData = {
+                brand: editingVehicle.brand || '',
+                model: editingVehicle.model || '',
+                year: editingVehicle.year || '',
+                color: editingVehicle.color || '',
+                plate: editingVehicle.plate || '',
+                has_ac: Boolean(editingVehicle.has_ac),
+                has_thermal_bag: Boolean(editingVehicle.has_thermal_bag),
+                photo_url: editingVehicle.photo_url || ''
+            };
+
+            const isComfort = editingVehicle.type !== 'moto' && Boolean(editVehicleForm.hasAc) && Number(editVehicleForm.year) >= 2009;
+
+            const newData = {
+                brand: editVehicleForm.brand.trim(),
+                model: editVehicleForm.model.trim(),
+                year: editVehicleForm.year.trim(),
+                color: editVehicleForm.color.trim(),
+                plate: editVehicleForm.plate.trim().toUpperCase(),
+                has_ac: Boolean(editVehicleForm.hasAc),
+                has_thermal_bag: Boolean(editVehicleForm.hasThermalBag),
+                photo_url: editVehicleForm.photoUrl || editingVehicle.photo_url || '',
+                is_comfort: isComfort
+            };
+
+            const auditEntry = {
+                id: crypto.randomUUID(),
+                timestamp: new Date().toISOString(),
+                vehicle_id: editingVehicle.id,
+                action: 'vehicle_edited',
+                previous_data: previousData,
+                new_data: newData
+            };
+
+            const currentHistory = Array.isArray(driverProfile?.vehicle_history) ? driverProfile.vehicle_history : [];
+            const updatedHistory = [auditEntry, ...currentHistory];
+
+            const currentList = registeredVehicles.length > 0 ? registeredVehicles : (driverProfile?.registered_vehicles || []);
+            const updatedList = currentList.map((v: any) => {
+                if (v.id === editingVehicle.id) {
+                    return {
+                        ...v,
+                        ...newData
+                    };
+                }
+                return v;
+            });
+
+            const isActiveUnit = editingVehicle.id === activeVehicleId || editingVehicle.is_active;
+
+            const updatePayload: any = {
+                registered_vehicles: updatedList,
+                vehicle_history: updatedHistory,
+                updated_at: new Date().toISOString()
+            };
+
+            if (isActiveUnit) {
+                updatePayload.vehicle_brand = newData.brand;
+                updatePayload.vehicle_model = newData.model;
+                updatePayload.vehicle_year = newData.year;
+                updatePayload.vehicle_color = newData.color;
+                updatePayload.vehicle_plate = newData.plate;
+                updatePayload.has_ac = newData.has_ac;
+                updatePayload.has_thermal_bag = newData.has_thermal_bag;
+                updatePayload.is_comfort_eligible = isComfort;
+                if (newData.photo_url) {
+                    updatePayload.vehicle_image_url = newData.photo_url;
+                }
+            }
+
+            // Save to drivers table
+            const { error: updErr } = await supabase.from('drivers').update(updatePayload).eq('id', user.uid);
+            if (updErr) throw updErr;
+
+            // Also record in driver_vehicle_history audit table
+            await supabase.from('driver_vehicle_history').insert({
+                driver_id: user.uid,
+                vehicle_id: editingVehicle.id,
+                previous_data: previousData,
+                new_data: newData,
+                changed_at: new Date().toISOString()
+            });
+
+            setRegisteredVehicles(updatedList);
+            setDriverProfile((prev: any) => ({
+                ...prev,
+                ...updatePayload,
+                ...(isActiveUnit ? {
+                    vehicleBrand: newData.brand,
+                    vehicleModel: newData.model,
+                    vehicleYear: newData.year,
+                    vehicleColor: newData.color,
+                    vehiclePlate: newData.plate,
+                    hasAc: newData.has_ac
+                } : {})
+            }));
+
+            setShowEditVehicleModal(false);
+            setEditingVehicle(null);
+            alert('¡Vehículo actualizado con éxito! Se ha registrado el respaldo de seguridad en el sistema de auditoría.');
+        } catch (err: any) {
+            console.error("Error updating vehicle:", err);
+            alert("No se pudo actualizar el vehículo: " + (err.message || 'Error'));
+        } finally {
+            setLoading(false);
+        }
+    };
+
     const handleLogout = async () => {
         try {
             await supabase.auth.signOut();
@@ -943,7 +1115,16 @@ export default function DriverProfile() {
                                         </div>
                                     </div>
 
-                                    <div className="shrink-0">
+                                    <div className="shrink-0 flex items-center gap-1.5">
+                                        <button
+                                            type="button"
+                                            onClick={() => handleOpenEditVehicleModal(veh)}
+                                            className="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl transition-all active:scale-95 flex items-center gap-1 text-[11px] font-bold"
+                                            title="Editar datos del vehículo"
+                                        >
+                                            <Edit2 className="w-3.5 h-3.5" />
+                                            <span>Editar</span>
+                                        </button>
                                         {isCurrent ? (
                                             <span className="px-3 py-1.5 bg-emerald-100 text-emerald-800 font-black text-[11px] rounded-xl border border-emerald-200">
                                                 Activo
@@ -1129,6 +1310,171 @@ export default function DriverProfile() {
                                 >
                                     Guardar y Registrar Vehículo
                                 </button>
+                            </form>
+                        </div>
+                    </div>
+                )}
+
+                {/* Modal Editar Vehículo con Respaldo de Seguridad */}
+                {showEditVehicleModal && editingVehicle && (
+                    <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+                        <div className="bg-white rounded-3xl p-5 w-full max-w-md shadow-2xl border border-slate-100 max-h-[90vh] overflow-y-auto space-y-4">
+                            <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+                                <div>
+                                    <h3 className="text-base font-black text-slate-800">Modificar Datos del Vehículo</h3>
+                                    <p className="text-[10px] text-slate-400 font-medium">Los cambios quedan respaldados internamente por seguridad.</p>
+                                </div>
+                                <button
+                                    onClick={() => { setShowEditVehicleModal(false); setEditingVehicle(null); }}
+                                    className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 hover:bg-slate-200"
+                                >
+                                    <X className="w-4 h-4" />
+                                </button>
+                            </div>
+
+                            <form onSubmit={handleSaveVehicleEdit} className="space-y-3.5">
+                                <div className="grid grid-cols-2 gap-2.5">
+                                    <div>
+                                        <label className="text-[11px] font-bold text-slate-600 ml-1">Marca</label>
+                                        <input
+                                            required
+                                            type="text"
+                                            value={editVehicleForm.brand}
+                                            onChange={e => setEditVehicleForm({ ...editVehicleForm, brand: e.target.value })}
+                                            placeholder="Ej: Chevrolet / Bera"
+                                            className="w-full mt-1 px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 outline-none focus:border-amber-400"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="text-[11px] font-bold text-slate-600 ml-1">Modelo</label>
+                                        <input
+                                            required
+                                            type="text"
+                                            value={editVehicleForm.model}
+                                            onChange={e => setEditVehicleForm({ ...editVehicleForm, model: e.target.value })}
+                                            placeholder="Ej: Spark / SBR"
+                                            className="w-full mt-1 px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 outline-none focus:border-amber-400"
+                                        />
+                                    </div>
+                                </div>
+
+                                <div className="grid grid-cols-3 gap-2">
+                                    <div>
+                                        <label className="text-[11px] font-bold text-slate-600 ml-1">Año</label>
+                                        <input
+                                            required
+                                            type="number"
+                                            min="1990"
+                                            max="2027"
+                                            value={editVehicleForm.year}
+                                            onChange={e => setEditVehicleForm({ ...editVehicleForm, year: e.target.value })}
+                                            placeholder="2015"
+                                            className="w-full mt-1 px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 outline-none focus:border-amber-400"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="text-[11px] font-bold text-slate-600 ml-1">Color</label>
+                                        <input
+                                            required
+                                            type="text"
+                                            value={editVehicleForm.color}
+                                            onChange={e => setEditVehicleForm({ ...editVehicleForm, color: e.target.value })}
+                                            placeholder="Gris"
+                                            className="w-full mt-1 px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 outline-none focus:border-amber-400"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="text-[11px] font-bold text-slate-600 ml-1">Placa</label>
+                                        <input
+                                            required
+                                            type="text"
+                                            value={editVehicleForm.plate}
+                                            onChange={e => setEditVehicleForm({ ...editVehicleForm, plate: e.target.value.toUpperCase() })}
+                                            placeholder="AB123CD"
+                                            className="w-full mt-1 px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono font-bold text-slate-800 outline-none focus:border-amber-400"
+                                        />
+                                    </div>
+                                </div>
+
+                                {editingVehicle.type !== 'moto' ? (
+                                    <label className="flex items-center gap-2 p-3 bg-slate-50 rounded-xl border border-slate-200 cursor-pointer">
+                                        <input
+                                            type="checkbox"
+                                            checked={editVehicleForm.hasAc}
+                                            onChange={e => setEditVehicleForm({ ...editVehicleForm, hasAc: e.target.checked })}
+                                            className="w-4 h-4 rounded text-amber-500"
+                                        />
+                                        <div className="text-xs font-bold text-slate-800">
+                                            ❄️ Cuenta con Aire Acondicionado (A/A) operativo
+                                        </div>
+                                    </label>
+                                ) : (
+                                    <label className="flex items-center gap-2 p-3 bg-slate-50 rounded-xl border border-slate-200 cursor-pointer">
+                                        <input
+                                            type="checkbox"
+                                            checked={editVehicleForm.hasThermalBag}
+                                            onChange={e => setEditVehicleForm({ ...editVehicleForm, hasThermalBag: e.target.checked })}
+                                            className="w-4 h-4 rounded text-emerald-500"
+                                        />
+                                        <div className="text-xs font-bold text-slate-800">
+                                            🎒 Cuento con Bolso Térmico de Reparto
+                                        </div>
+                                    </label>
+                                )}
+
+                                {/* Foto del vehículo */}
+                                <div>
+                                    <label className="text-[11px] font-bold text-slate-600 ml-1 block mb-1">
+                                        Foto del Vehículo
+                                    </label>
+                                    <div className="p-3 border-2 border-dashed border-slate-200 rounded-xl text-center">
+                                        {editVehicleForm.photoUrl ? (
+                                            <div className="relative inline-block">
+                                                <img src={editVehicleForm.photoUrl} alt="Vehículo" className="h-24 rounded-lg object-cover" />
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setEditVehicleForm({ ...editVehicleForm, photoUrl: '' })}
+                                                    className="absolute -top-1 -right-1 w-5 h-5 bg-rose-500 text-white rounded-full text-xs"
+                                                >
+                                                    ✕
+                                                </button>
+                                            </div>
+                                        ) : (
+                                            <label className="cursor-pointer flex flex-col items-center">
+                                                <Camera className="w-6 h-6 text-slate-400 mb-1" />
+                                                <span className="text-xs font-bold text-slate-600">Subir Foto</span>
+                                                <input
+                                                    type="file"
+                                                    accept="image/*"
+                                                    disabled={uploadingEditVehPhoto}
+                                                    onChange={handleEditVehPhotoUpload}
+                                                    className="hidden"
+                                                />
+                                            </label>
+                                        )}
+                                        {uploadingEditVehPhoto && (
+                                            <p className="text-[10px] font-bold text-amber-600 mt-1 animate-pulse">Subiendo foto...</p>
+                                        )}
+                                    </div>
+                                </div>
+
+                                <div className="pt-2 border-t border-slate-100 flex gap-2">
+                                    <button
+                                        type="button"
+                                        onClick={() => { setShowEditVehicleModal(false); setEditingVehicle(null); }}
+                                        className="flex-1 py-3 bg-slate-100 text-slate-600 font-bold rounded-xl text-xs"
+                                    >
+                                        Cancelar
+                                    </button>
+                                    <button
+                                        type="submit"
+                                        disabled={loading || uploadingEditVehPhoto}
+                                        className="flex-1 py-3 bg-primary text-slate-950 font-black rounded-xl text-xs uppercase tracking-wider shadow-md active:scale-95 transition-all flex items-center justify-center gap-1.5"
+                                    >
+                                        <Save className="w-4 h-4" />
+                                        <span>Guardar Cambios</span>
+                                    </button>
+                                </div>
                             </form>
                         </div>
                     </div>

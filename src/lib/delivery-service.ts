@@ -31,6 +31,20 @@ export interface DeliveryDriver {
         vehicleUrl: string;
         licenseUrl: string;
     };
+    vehicleBrand?: string;
+    vehicleModel?: string;
+    vehicleYear?: string;
+    vehicleColor?: string;
+    hasAc?: boolean;
+    has_thermal_bag?: boolean;
+    is_comfort_eligible?: boolean;
+    vehicle_image_url?: string;
+    vehicle_history?: Array<{
+        vehicle_id?: string;
+        previous_data?: any;
+        new_data?: any;
+        changed_at?: string;
+    }>;
     createdAt: any;
     updatedAt: any;
 }

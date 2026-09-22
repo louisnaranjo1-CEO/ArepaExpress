@@ -1887,6 +1887,65 @@ _Enviado desde Deliexpress App_`,
                                     )}
                                 </div>
 
+                                {/* Historial de Modificaciones del Vehículo (Auditoría de Seguridad) */}
+                                {((selectedDriver as any).vehicle_history && (selectedDriver as any).vehicle_history.length > 0) ? (
+                                    <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 space-y-3 text-white">
+                                        <div className="flex items-center justify-between">
+                                            <h4 className="text-xs font-black text-amber-400 uppercase tracking-wider flex items-center gap-1.5">
+                                                <ShieldCheck className="w-4 h-4 text-amber-400" />
+                                                <span>Auditoría: Historial de Modificaciones de Vehículo</span>
+                                            </h4>
+                                            <span className="text-[10px] bg-slate-800 text-slate-300 px-2 py-0.5 rounded-full font-mono">
+                                                {((selectedDriver as any).vehicle_history.length)} cambio(s)
+                                            </span>
+                                        </div>
+                                        <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
+                                            {((selectedDriver as any).vehicle_history || []).slice().reverse().map((entry: any, hIdx: number) => {
+                                                const prev = entry.previous_data || {};
+                                                const current = entry.new_data || {};
+                                                const dateStr = entry.changed_at 
+                                                    ? new Date(entry.changed_at).toLocaleString('es-VE', { dateStyle: 'short', timeStyle: 'short' })
+                                                    : 'Fecha no registrada';
+                                                return (
+                                                    <div key={hIdx} className="bg-slate-800/80 border border-slate-700/60 rounded-xl p-3 text-xs space-y-1.5">
+                                                        <div className="flex items-center justify-between text-[11px] text-slate-400 border-b border-slate-700/50 pb-1.5">
+                                                            <span className="font-semibold text-slate-300">Modificación #{((selectedDriver as any).vehicle_history.length - hIdx)}</span>
+                                                            <span className="font-mono text-[10px] text-amber-400">{dateStr}</span>
+                                                        </div>
+                                                        <div className="grid grid-cols-2 gap-2 text-[11px] pt-1">
+                                                            <div className="bg-slate-950/60 p-2 rounded-lg border border-red-900/30">
+                                                                <span className="text-red-400 font-bold block text-[10px] uppercase mb-0.5">Antes</span>
+                                                                <p className="font-bold text-slate-200">{prev.brand || 'N/A'} {prev.model || ''} {prev.year ? `(${prev.year})` : ''}</p>
+                                                                <p className="text-slate-400">Color: {prev.color || 'N/A'}</p>
+                                                                <p className="text-slate-400 font-mono">Placa: {prev.plate || 'N/A'}</p>
+                                                                <div className="flex gap-1 mt-1 text-[9px]">
+                                                                    <span className={prev.has_ac ? "text-cyan-400" : "text-slate-500"}>{prev.has_ac ? '❄️ Con A/A' : 'Sin A/A'}</span>
+                                                                    {prev.has_thermal_bag && <span className="text-emerald-400">• Bolso Térmico</span>}
+                                                                </div>
+                                                            </div>
+                                                            <div className="bg-slate-950/60 p-2 rounded-lg border border-emerald-900/30">
+                                                                <span className="text-emerald-400 font-bold block text-[10px] uppercase mb-0.5">Después</span>
+                                                                <p className="font-bold text-slate-200">{current.brand || 'N/A'} {current.model || ''} {current.year ? `(${current.year})` : ''}</p>
+                                                                <p className="text-slate-400">Color: {current.color || 'N/A'}</p>
+                                                                <p className="text-slate-400 font-mono text-emerald-300 font-bold">Placa: {current.plate || 'N/A'}</p>
+                                                                <div className="flex gap-1 mt-1 text-[9px]">
+                                                                    <span className={current.has_ac ? "text-cyan-400 font-bold" : "text-slate-500"}>{current.has_ac ? '❄️ Con A/A' : 'Sin A/A'}</span>
+                                                                    {current.has_thermal_bag && <span className="text-emerald-400 font-bold">• Bolso Térmico</span>}
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 flex items-center gap-2 text-xs text-slate-500">
+                                        <Shield className="w-4 h-4 text-slate-400" />
+                                        <span>Sin modificaciones registradas en el vehículo (Datos originales de registro).</span>
+                                    </div>
+                                )}
+
                                 {/* Tarifas Configuradas por el Piloto */}
                                 {(selectedDriver as any).driver_fares && (
                                     <div className="bg-amber-50/60 border border-amber-200 rounded-2xl p-4 space-y-2">

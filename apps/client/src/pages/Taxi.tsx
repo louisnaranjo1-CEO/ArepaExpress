@@ -75,9 +75,15 @@ interface NearbyDriver {
     distanceKm: number;
     etaMinutes: number;
     photoUrl?: string | null;
+    vehicleBrand?: string;
     vehicleModel?: string;
+    vehicleYear?: string;
     vehiclePlate?: string;
     vehicleColor?: string;
+    hasAc?: boolean;
+    hasThermalBag?: boolean;
+    isComfortEligible?: boolean;
+    vehiclePhotoUrl?: string | null;
     rating?: number;
     totalTrips?: number;
     driverFares?: {
@@ -85,6 +91,8 @@ interface NearbyDriver {
         per_km_fare?: number;
         pricing_type?: 'flat' | 'per_km';
         base_km?: number;
+        comfort_base_fare?: number;
+        comfort_per_km_fare?: number;
     } | null;
     calculatedPrice?: number;
 }
@@ -165,8 +173,8 @@ export default function Taxi() {
     const [paymentMethods, setPaymentMethods] = useState<any>(null);
     const [serviceHours, setServiceHours] = useState<any>(null);
 
-    // Payment Selection (Transparent: only Cash USD, Cash VES or direct Driver Pago Móvil)
-    const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<'cash_usd' | 'cash_ves' | 'pago_movil'>('cash_usd');
+    // Payment Selection (Transparent: Default to Pago Móvil al Conductor)
+    const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<'cash_usd' | 'cash_ves' | 'pago_movil'>('pago_movil');
     const [paymentProof, setPaymentProof] = useState<File | null>(null);
     const [paymentRef, setPaymentRef] = useState('');
     const [isUploading, setIsUploading] = useState(false);
@@ -367,17 +375,13 @@ export default function Taxi() {
     // 2. Fetch Nearby Drivers
     const fetchNearbyDrivers = useCallback(async (pickupCoords: { lat: number; lng: number }) => {
         try {
-            let { data: driversData } = await supabase
+            const { data: driversData, error: dErr } = await supabase
                 .from('drivers')
-                .select('id, full_name, name, vehicle_type, vehicleType, vehicle_model, vehicleModel, vehicle_plate, vehiclePlate, vehicle_color, vehicleColor, current_location, availability, is_online, driver_fares, photo_url, photoURL, avatar_url, rating, total_trips')
+                .select('id, full_name, vehicle_type, vehicle_brand, vehicle_model, vehicle_year, vehicle_color, vehicle_plate, current_location, availability, is_online, driver_fares, rating, total_trips, is_comfort_eligible, has_ac, has_thermal_bag, documents, vehicle_image_url')
                 .eq('is_online', true);
 
-            if (!driversData || driversData.length === 0) {
-                const { data: fallbackDrivers } = await supabase
-                    .from('delivery_drivers')
-                    .select('id, vehicle_type, vehicleType, availability, is_online, current_location')
-                    .eq('is_online', true);
-                driversData = fallbackDrivers;
+            if (dErr) {
+                console.error("fetchNearbyDrivers Supabase error:", dErr);
             }
 
             const validDrivers: NearbyDriver[] = [];
@@ -388,27 +392,43 @@ export default function Taxi() {
                 if (loc && typeof loc.lat === 'number' && typeof loc.lng === 'number' && !isNaN(loc.lat) && !isNaN(loc.lng)) {
                     const distMeters = calculateDistance(pickupCoords.lat, pickupCoords.lng, loc.lat, loc.lng);
                     const distKm = Number((distMeters / 1000).toFixed(1));
-                    if (distKm <= 25) {
-                        const rawType = (d.vehicle_type || d.vehicleType || 'carro').toLowerCase();
-                        const vType = rawType.includes('moto') ? 'moto' : rawType.includes('eje') ? 'ejecutivo' : 'carro';
+                    if (distKm <= 35) {
+                        const rawType = (d.vehicle_type || 'carro').toLowerCase();
+                        const vType = rawType.includes('moto') ? 'moto' : 'carro';
+                        const isComfort = Boolean(d.is_comfort_eligible) || (vType === 'carro' && Boolean(d.has_ac) && Number(d.vehicle_year) >= 2009);
                         const eta = Math.max(2, Math.ceil(distKm * 3));
+                        const photo = d.documents?.selfieUrl || d.photo_url || null;
+                        const vehiclePhoto = d.vehicle_image_url || d.documents?.vehicleUrl || null;
+                        const brand = d.vehicle_brand || '';
+                        const model = d.vehicle_model || (vType === 'moto' ? 'Motocicleta' : 'Automóvil');
+                        const fullVehicleModel = [brand, model].filter(Boolean).join(' ');
+
                         validDrivers.push({
                             id: d.id,
-                            fullName: d.full_name || d.name || 'Conductor',
+                            fullName: d.full_name || 'Conductor',
                             vehicleType: vType,
                             lat: loc.lat,
                             lng: loc.lng,
                             distanceKm: distKm,
                             etaMinutes: eta,
-                            photoUrl: d.photo_url || d.photoURL || d.avatar_url || null,
-                            vehicleModel: d.vehicle_model || d.vehicleModel || (vType === 'moto' ? 'Motocicleta' : 'Automóvil'),
-                            vehiclePlate: d.vehicle_plate || d.vehiclePlate || 'S/P',
-                            vehicleColor: d.vehicle_color || d.vehicleColor || '',
-                            rating: d.rating || 5.0,
+                            photoUrl: photo,
+                            vehicleBrand: brand,
+                            vehicleModel: fullVehicleModel,
+                            vehicleYear: d.vehicle_year || '',
+                            vehiclePlate: d.vehicle_plate || 'S/P',
+                            vehicleColor: d.vehicle_color || '',
+                            hasAc: Boolean(d.has_ac),
+                            hasThermalBag: Boolean(d.has_thermal_bag),
+                            isComfortEligible: isComfort,
+                            vehiclePhotoUrl: vehiclePhoto,
+                            rating: d.rating ? Number(d.rating) : 5.0,
                             totalTrips: d.total_trips || 0,
                             driverFares: d.driver_fares || null
                         });
                         counts[vType]++;
+                        if (isComfort) {
+                            counts.ejecutivo++;
+                        }
                     }
                 }
             });
@@ -432,6 +452,17 @@ export default function Taxi() {
             const map = new window.google.maps.Map(mapDivRef.current, {
                 center: initialMapCenter,
                 zoom: 16,
+                minZoom: 12,
+                maxZoom: 19,
+                restriction: {
+                    latLngBounds: {
+                        north: 9.3500,
+                        south: 8.6000,
+                        east: -67.0500,
+                        west: -67.8500
+                    },
+                    strictBounds: false
+                },
                 disableDefaultUI: true,
                 zoomControl: false,
                 streetViewControl: false,
@@ -939,9 +970,21 @@ export default function Taxi() {
     };
 
     // Helper to calculate specific driver trip price based on their configured driver_fares
-    const calculateDriverTripPrice = useCallback((driver: NearbyDriver, tripDistanceKm?: number): number => {
+    const calculateDriverTripPrice = useCallback((driver: NearbyDriver, tripDistanceKm?: number, isComfortCategory = false): number => {
         const dist = tripDistanceKm !== undefined ? tripDistanceKm : (routeInfo ? routeInfo.distance : 1);
         const fares = driver.driverFares;
+        const isComfort = isComfortCategory || Boolean(driver.isComfortEligible) || (driver.hasAc && Number(driver.vehicleYear) >= 2009);
+
+        // Check if calculating for Comfort and driver has comfort fares
+        if (isComfort && fares && Number(fares.comfort_base_fare) >= 0.50) {
+            const base = Number(fares.comfort_base_fare);
+            const perKm = Number(fares.comfort_per_km_fare || 0);
+            const baseKm = Number(fares.base_km || 2);
+            const extraKm = Math.max(0, dist - baseKm);
+            const total = base + (extraKm * perKm);
+            return Math.max(0.50, Number(total.toFixed(2)));
+        }
+
         if (fares && Number(fares.base_fare) >= 0.50) {
             const base = Number(fares.base_fare);
             if (fares.pricing_type === 'flat') {
@@ -953,13 +996,18 @@ export default function Taxi() {
             const total = base + (extraKm * perKm);
             return Math.max(0.50, Number(total.toFixed(2)));
         }
-        return parseFloat(calculatePrice(driver.vehicleType));
+        return parseFloat(calculatePrice(isComfort ? 'ejecutivo' : driver.vehicleType));
     }, [routeInfo, adminRates, activeDriversCount, weather, testRain]);
 
     // Dynamic price range calculation: "Desde $X.XX hasta $Y.YY"
     const getCategoryPriceRange = useCallback((cat: 'moto' | 'carro' | 'ejecutivo') => {
         const tripDist = routeInfo ? routeInfo.distance : 1;
-        const matchingDrivers = nearbyDrivers.filter(d => d.vehicleType === cat);
+        const matchingDrivers = nearbyDrivers.filter(d => {
+            if (cat === 'moto') return d.vehicleType === 'moto';
+            if (cat === 'ejecutivo') return d.vehicleType === 'carro' && (d.isComfortEligible || (d.hasAc && Number(d.vehicleYear) >= 2009));
+            return d.vehicleType === 'carro';
+        });
+
         if (matchingDrivers.length === 0) {
             const p = calculatePrice(cat);
             return {
@@ -970,7 +1018,7 @@ export default function Taxi() {
                 driversCount: 0
             };
         }
-        const prices = matchingDrivers.map(d => calculateDriverTripPrice(d, tripDist));
+        const prices = matchingDrivers.map(d => calculateDriverTripPrice(d, tripDist, cat === 'ejecutivo'));
         const minPrice = Math.min(...prices);
         const maxPrice = Math.max(...prices);
         if (minPrice === maxPrice) {
@@ -1234,6 +1282,7 @@ export default function Taxi() {
                 route: routeInfo,
                 total: finalTripPrice,
                 price: finalTripPrice,
+                driver_id: selectedDriver ? selectedDriver.id : null,
                 assigned_driver_id: selectedDriver ? selectedDriver.id : null,
                 service_category: selectedCategory,
                 vehicle_type: vType,
@@ -2647,6 +2696,47 @@ export default function Taxi() {
                             </div>
 
                             <div className="space-y-2">
+                                {/* Direct Driver Pago Móvil (Predeterminado) */}
+                                <div
+                                    className={`p-3 rounded-2xl border-2 transition-all ${
+                                        selectedPaymentMethod === 'pago_movil'
+                                            ? 'border-primary bg-primary/10 shadow-xs'
+                                            : 'border-slate-100 bg-slate-50'
+                                    }`}
+                                >
+                                    <button
+                                        type="button"
+                                        onClick={() => setSelectedPaymentMethod('pago_movil')}
+                                        className="w-full text-left flex items-center justify-between"
+                                    >
+                                        <div className="flex items-center gap-3">
+                                            <div className="w-8 h-8 rounded-xl bg-purple-500/20 text-purple-600 font-black text-xs flex items-center justify-center">
+                                                PM
+                                            </div>
+                                            <div>
+                                                <p className="text-xs font-black text-slate-800">Pago Móvil al Conductor</p>
+                                                <p className="text-[10px] text-slate-400">Pagas directo a la cuenta del conductor asignado</p>
+                                            </div>
+                                        </div>
+                                        {selectedPaymentMethod === 'pago_movil' && <Check className="w-4 h-4 text-primary" />}
+                                    </button>
+
+                                    {selectedPaymentMethod === 'pago_movil' && (
+                                        <div className="mt-2.5 pt-2.5 border-t border-slate-200/80 space-y-2 text-xs animate-in fade-in">
+                                            <p className="text-[11px] text-slate-600 bg-white p-2 rounded-xl border border-slate-200/70">
+                                                💡 Al confirmarse tu conductor, verás sus datos completos de Pago Móvil (Banco, Cédula, Teléfono) y el monto exacto en Bs.
+                                            </p>
+                                            <input
+                                                type="text"
+                                                placeholder="Referencia de pago (opcional)"
+                                                value={paymentRef}
+                                                onChange={(e) => setPaymentRef(e.target.value.replace(/\D/g, ''))}
+                                                className="w-full bg-white border border-slate-200 p-2 rounded-xl font-bold text-xs outline-none focus:border-primary"
+                                            />
+                                        </div>
+                                    )}
+                                </div>
+
                                 {/* Cash USD */}
                                 <button
                                     type="button"
@@ -2696,47 +2786,6 @@ export default function Taxi() {
                                     </div>
                                     {selectedPaymentMethod === 'cash_ves' && <Check className="w-4 h-4 text-primary" />}
                                 </button>
-
-                                {/* Direct Driver Pago Móvil */}
-                                <div
-                                    className={`p-3 rounded-2xl border-2 transition-all ${
-                                        selectedPaymentMethod === 'pago_movil'
-                                            ? 'border-primary bg-primary/10 shadow-xs'
-                                            : 'border-slate-100 bg-slate-50'
-                                    }`}
-                                >
-                                    <button
-                                        type="button"
-                                        onClick={() => setSelectedPaymentMethod('pago_movil')}
-                                        className="w-full text-left flex items-center justify-between"
-                                    >
-                                        <div className="flex items-center gap-3">
-                                            <div className="w-8 h-8 rounded-xl bg-purple-500/20 text-purple-600 font-black text-xs flex items-center justify-center">
-                                                PM
-                                            </div>
-                                            <div>
-                                                <p className="text-xs font-black text-slate-800">Pago Móvil al Conductor</p>
-                                                <p className="text-[10px] text-slate-400">Pagas directo a la cuenta del conductor asignado</p>
-                                            </div>
-                                        </div>
-                                        {selectedPaymentMethod === 'pago_movil' && <Check className="w-4 h-4 text-primary" />}
-                                    </button>
-
-                                    {selectedPaymentMethod === 'pago_movil' && (
-                                        <div className="mt-2.5 pt-2.5 border-t border-slate-200/80 space-y-2 text-xs animate-in fade-in">
-                                            <p className="text-[11px] text-slate-600 bg-white p-2 rounded-xl border border-slate-200/70">
-                                                💡 Al confirmarse tu conductor, verás sus datos completos de Pago Móvil (Banco, Cédula, Teléfono) y el monto exacto en Bs.
-                                            </p>
-                                            <input
-                                                type="text"
-                                                placeholder="Referencia de pago (opcional)"
-                                                value={paymentRef}
-                                                onChange={(e) => setPaymentRef(e.target.value.replace(/\D/g, ''))}
-                                                className="w-full bg-white border border-slate-200 p-2 rounded-xl font-bold text-xs outline-none focus:border-primary"
-                                            />
-                                        </div>
-                                    )}
-                                </div>
                             </div>
 
                             <button
@@ -2887,8 +2936,22 @@ export default function Taxi() {
                             {/* Drivers List */}
                             <div className="overflow-y-auto space-y-3 py-1 flex-1 pr-1">
                                 {(() => {
-                                    const targetType = selectedCategory === 'mototaxi' ? 'moto' : selectedCategory === 'carro_confort' ? 'ejecutivo' : (selectedCategory === 'delivery_envios' ? vehicleType : 'carro');
-                                    const catDrivers = nearbyDrivers.filter(d => d.vehicleType === targetType);
+                                    const isComfortCategory = selectedCategory === 'carro_confort';
+                                    const catDrivers = nearbyDrivers.filter(d => {
+                                        if (selectedCategory === 'mototaxi') {
+                                            return d.vehicleType === 'moto';
+                                        }
+                                        if (isComfortCategory) {
+                                            return d.vehicleType === 'carro' && (d.isComfortEligible || (d.hasAc && Number(d.vehicleYear) >= 2009));
+                                        }
+                                        if (selectedCategory === 'taxi_driver') {
+                                            return d.vehicleType === 'carro';
+                                        }
+                                        if (selectedCategory === 'delivery_envios') {
+                                            return vehicleType === 'moto' ? d.vehicleType === 'moto' : d.vehicleType === 'carro';
+                                        }
+                                        return true;
+                                    });
                                     const tripDist = routeInfo ? routeInfo.distance : 1;
 
                                     if (catDrivers.length === 0) {
@@ -2906,7 +2969,7 @@ export default function Taxi() {
                                     }
 
                                     return catDrivers.map(d => {
-                                        const price = calculateDriverTripPrice(d, tripDist);
+                                        const price = calculateDriverTripPrice(d, tripDist, isComfortCategory);
                                         const isChosen = selectedDriver?.id === d.id;
 
                                         return (
@@ -2951,6 +3014,24 @@ export default function Taxi() {
                                                             <p className="text-[10px] text-slate-400 font-semibold truncate mt-0.5">
                                                                 {d.vehicleModel} {d.vehicleColor ? `• ${d.vehicleColor}` : ''} • Placa: {d.vehiclePlate}
                                                             </p>
+                                                            {/* Badges */}
+                                                            <div className="flex items-center gap-1 mt-1 flex-wrap">
+                                                                {d.hasAc && (
+                                                                    <span className="text-[9px] font-bold bg-cyan-50 text-cyan-700 px-1.5 py-0.5 rounded border border-cyan-200">
+                                                                        ❄️ A/A
+                                                                    </span>
+                                                                )}
+                                                                {(d.isComfortEligible || (d.hasAc && Number(d.vehicleYear) >= 2009)) && (
+                                                                    <span className="text-[9px] font-black bg-amber-100 text-amber-900 px-1.5 py-0.5 rounded border border-amber-300">
+                                                                        ✨ Confort
+                                                                    </span>
+                                                                )}
+                                                                {d.hasThermalBag && (
+                                                                    <span className="text-[9px] font-bold bg-emerald-50 text-emerald-700 px-1.5 py-0.5 rounded border border-emerald-200">
+                                                                        🎒 Bolso
+                                                                    </span>
+                                                                )}
+                                                            </div>
                                                         </div>
                                                     </div>
 
