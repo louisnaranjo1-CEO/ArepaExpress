@@ -1080,6 +1080,7 @@ export default function Taxi() {
             setMandadoDescription(data.description);
             setMandadoStoreName(data.storeName || (data.hasExactStores ? 'Comercios definidos' : 'Lugares a sugerir'));
             setActiveMandadoReqId(newReqId);
+            localStorage.setItem('active_transport_req_id', newReqId);
             setSelectedCategory('muchacho_mandado');
             setIsMandadoModalOpen(false);
             setStep('searching');
@@ -1207,6 +1208,7 @@ export default function Taxi() {
                 throw insErr;
             }
 
+            localStorage.setItem('active_transport_req_id', newReqId);
             if (selectedCategory === 'muchacho_mandado') {
                 setActiveMandadoReqId(newReqId);
                 setStep('searching');
@@ -1282,6 +1284,7 @@ export default function Taxi() {
                                 if (activeMandadoReqId) {
                                     await supabase.from('transport_requests').update({ status: 'cancelled' }).eq('id', activeMandadoReqId);
                                 }
+                                localStorage.removeItem('active_transport_req_id');
                                 setStep('vehicle');
                             }}
                             className="w-10 h-10 rounded-full bg-white/10 backdrop-blur-md flex items-center justify-center text-white active:scale-95 transition-transform"
@@ -1389,6 +1392,7 @@ export default function Taxi() {
                                 if (activeMandadoReqId) {
                                     await supabase.from('transport_requests').update({ status: 'cancelled' }).eq('id', activeMandadoReqId);
                                 }
+                                localStorage.removeItem('active_transport_req_id');
                                 setStep('vehicle');
                             }}
                             className="w-full py-3 bg-white/10 hover:bg-white/15 text-slate-300 font-bold rounded-2xl text-xs uppercase tracking-wider active:scale-95 transition-all"

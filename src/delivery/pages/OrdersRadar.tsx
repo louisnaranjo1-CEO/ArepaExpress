@@ -14,6 +14,7 @@ import { calculateDistance } from '../../lib/geo';
 import InAppCall from '../../components/InAppCall';
 import { supabase } from '../../lib/supabase';
 import { driversApi } from '../../lib/api';
+import { vibrate } from '../../utils/haptics';
 
 export default function OrdersRadar() {
     const { user } = useAuth();
@@ -84,6 +85,45 @@ export default function OrdersRadar() {
 
     // Muchacho e' Mandado Bids State
     const [mandadoBids, setMandadoBids] = useState<{ [reqId: string]: { amount: string; eta: string; submitted: boolean } }>({});
+
+    // Solicitudes omitidas por este conductor (sesión local, no afecta base de datos ni a otros conductores)
+    const [dismissedRequestIds, setDismissedRequestIds] = useState<string[]>(() => {
+        try {
+            const stored = sessionStorage.getItem('driver_dismissed_requests');
+            return stored ? JSON.parse(stored) : [];
+        } catch {
+            return [];
+        }
+    });
+
+    const handleDismissRequest = (requestId: string) => {
+        vibrate(30);
+        setDismissedRequestIds(prev => {
+            if (prev.includes(requestId)) return prev;
+            const updated = [...prev, requestId];
+            try {
+                sessionStorage.setItem('driver_dismissed_requests', JSON.stringify(updated));
+            } catch (e) {
+                console.warn('Error saving dismissed requests:', e);
+            }
+            return updated;
+        });
+        if (incomingDispatch?.id === requestId) {
+            setIncomingDispatch(null);
+        }
+        toast('Solicitud omitida de tu radar', { icon: '👁️‍🗨️', duration: 2500 });
+    };
+
+    const handleRestoreDismissed = () => {
+        vibrate(30);
+        setDismissedRequestIds([]);
+        try {
+            sessionStorage.removeItem('driver_dismissed_requests');
+        } catch (e) {
+            console.warn(e);
+        }
+        toast.success('Solicitudes omitidas restauradas', { icon: '🔄' });
+    };
     
     // Helper to get the current active item for calling
     const currentActiveItem = activeTransport || activeOrder;
@@ -325,7 +365,7 @@ export default function OrdersRadar() {
         fetchAvailableTransport();
 
         channel = supabase.channel('available_transport_changes')
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'transport_requests', filter: `status=eq.searching` }, fetchAvailableTransport)
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'transport_requests' }, fetchAvailableTransport)
             .subscribe();
 
         return () => {
@@ -356,17 +396,26 @@ export default function OrdersRadar() {
     }, [activeTransport?.id, user]);
 
 
-    // 3.1 Alerta sonora y modal de despacho cuando llega un nuevo viaje o pedido
+    // 3.1 Alerta sonora y vibración cuando llega un nuevo viaje o pedido
     const lastAvailableCount = React.useRef(0);
     useEffect(() => {
         const currentCount = availableOrders.length + availableTransport.length;
         
         if (currentCount > lastAvailableCount.current) {
-            // Solo sonar si no hay órdenes activas
+            // Sonido audible
             if (notificationSoundUrl.current) {
                 const audio = new Audio(notificationSoundUrl.current);
                 audio.play().catch(e => console.error("Error playing notification sound:", e));
+            } else {
+                const audio = new Audio(NOTIFICATION_SOUND_URL);
+                audio.play().catch(e => console.error("Error playing fallback notification sound:", e));
             }
+
+            // Vibración física en dispositivo
+            if (typeof navigator !== 'undefined' && navigator.vibrate) {
+                navigator.vibrate([250, 100, 250, 100, 250]);
+            }
+            vibrate(100);
             
             toast.success('¡Nueva solicitud disponible en el radar!', {
                 icon: '🚀',
@@ -1319,8 +1368,12 @@ export default function OrdersRadar() {
         );
     }
 
+    // Solicitudes activas visibles para este conductor (filtrando las omitidas localmente)
+    const visibleTransport = availableTransport.filter(r => !dismissedRequestIds.includes(r.id));
+    const visibleOrders = availableOrders.filter(o => !dismissedRequestIds.includes(o.id));
+
     // Listas organizadas por categorías de servicios
-    const taxisList = availableTransport.filter(r => 
+    const taxisList = visibleTransport.filter(r => 
         r.service_category !== 'mandado' && 
         r.service_category !== 'muchacho_mandado' && 
         r.type !== 'muchacho_mandado' && 
@@ -1329,11 +1382,11 @@ export default function OrdersRadar() {
     );
 
     const deliveriesList = [
-        ...availableOrders,
-        ...availableTransport.filter(r => r.type === 'package_delivery' || r.type === 'food_delivery')
+        ...visibleOrders,
+        ...visibleTransport.filter(r => r.type === 'package_delivery' || r.type === 'food_delivery')
     ];
 
-    const mandadosList = availableTransport.filter(r => 
+    const mandadosList = visibleTransport.filter(r => 
         r.service_category === 'mandado' || 
         r.service_category === 'muchacho_mandado' || 
         r.type === 'muchacho_mandado'
@@ -1625,7 +1678,10 @@ export default function OrdersRadar() {
                                     {Boolean(incomingDispatch.restaurantName || incomingDispatch.shippingAddress) ? 'Aceptar Reparto' : 'Aceptar Viaje'}
                                 </button>
                                 <button
-                                    onClick={() => setIncomingDispatch(null)}
+                                    onClick={() => {
+                                        const id = incomingDispatch.id;
+                                        handleDismissRequest(id);
+                                    }}
                                     className="w-full py-2.5 text-slate-400 hover:text-slate-200 font-bold text-xs uppercase tracking-wider text-center active:scale-95 transition-all"
                                 >
                                     Rechazar / Omitir
@@ -1689,6 +1745,22 @@ export default function OrdersRadar() {
                     </span>
                 </button>
             </div>
+
+            {/* Aviso de solicitudes omitidas con opción de restaurar */}
+            {dismissedRequestIds.length > 0 && (
+                <div className="bg-slate-900 border border-slate-800 rounded-2xl px-4 py-2.5 flex items-center justify-between text-xs text-slate-300 shadow-sm animate-in fade-in">
+                    <span className="font-medium text-[11px]">
+                        Has omitido <strong>{dismissedRequestIds.length}</strong> {dismissedRequestIds.length === 1 ? 'solicitud' : 'solicitudes'} en esta sesión.
+                    </span>
+                    <button
+                        type="button"
+                        onClick={handleRestoreDismissed}
+                        className="text-amber-400 hover:text-amber-300 font-black uppercase text-[10px] tracking-wider underline active:scale-95 transition-all"
+                    >
+                        Restaurar
+                    </button>
+                </div>
+            )}
 
             {/* Tarjetas de Mandados Postulados / En Espera de Respuesta */}
             {myPendingBids.length > 0 && (activeTab === 'all' || activeTab === 'mandados') && (
@@ -1938,8 +2010,18 @@ export default function OrdersRadar() {
                                                 <Package className="w-3.5 h-3.5" />
                                                 Muchacho e' Mandado
                                             </div>
-                                            <div className="text-xs font-black uppercase px-2.5 py-1 bg-amber-100 text-amber-900 rounded-full border border-amber-200">
-                                                Puja Abierta
+                                            <div className="flex items-center gap-2">
+                                                <div className="text-xs font-black uppercase px-2.5 py-1 bg-amber-100 text-amber-900 rounded-full border border-amber-200">
+                                                    Puja Abierta
+                                                </div>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleDismissRequest(req.id)}
+                                                    title="Omitir mandado"
+                                                    className="w-7 h-7 rounded-full bg-slate-100 hover:bg-rose-100 text-slate-400 hover:text-rose-600 flex items-center justify-center transition-all active:scale-95"
+                                                >
+                                                    <X className="w-4 h-4" />
+                                                </button>
                                             </div>
                                         </div>
 
@@ -2049,13 +2131,21 @@ export default function OrdersRadar() {
                                                 <p className="text-[11px] text-emerald-600/80 mt-1">
                                                     El cliente está revisando las propuestas en su radar.
                                                 </p>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleDismissRequest(req.id)}
+                                                    className="w-full mt-3 py-2 bg-white hover:bg-rose-50 text-slate-500 hover:text-rose-600 font-bold text-xs uppercase tracking-wider rounded-xl border border-slate-200 active:scale-95 transition-all flex items-center justify-center gap-1.5"
+                                                >
+                                                    <X className="w-3.5 h-3.5" />
+                                                    <span>Omitir mandado de pantalla</span>
+                                                </button>
                                             </div>
                                         ) : (
                                             <div className="bg-slate-50 border border-slate-200 p-4 rounded-2xl space-y-3">
                                                 <div className="grid grid-cols-2 gap-3">
                                                     <div>
                                                         <label className="text-[10px] font-black uppercase text-slate-500 tracking-wider block mb-1">
-                                                            Tu Tarifa ($ USD)
+                                                             Tu Tarifa ($ USD)
                                                         </label>
                                                         <div className="relative">
                                                             <span className="absolute left-3 top-2.5 text-slate-400 font-black text-sm">$</span>
@@ -2119,6 +2209,15 @@ export default function OrdersRadar() {
                                                         </>
                                                     )}
                                                 </button>
+
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleDismissRequest(req.id)}
+                                                    className="w-full mt-2 py-3 bg-white hover:bg-rose-50 text-slate-500 hover:text-rose-600 font-bold text-xs uppercase tracking-wider rounded-xl border border-slate-200 hover:border-rose-300 active:scale-98 transition-all flex items-center justify-center gap-1.5 shadow-sm"
+                                                >
+                                                    <X className="w-3.5 h-3.5" />
+                                                    <span>Omitir / Rechazar mandado</span>
+                                                </button>
                                             </div>
                                         )}
                                     </motion.div>
@@ -2160,7 +2259,17 @@ export default function OrdersRadar() {
                                                 {req.vehicleType === 'moto' ? <Bike className="w-3.5 h-3.5" /> : <Car className="w-3.5 h-3.5" />}
                                                 {req.scheduled ? 'VIAJE PROGRAMADO' : (req.vehicleType === 'moto' ? 'SOLICITUD MOTOTAXI' : 'SOLICITUD TAXI')}
                                             </div>
-                                            <div className="text-2xl font-black text-emerald-600">${(req.price || 0).toFixed(2)}</div>
+                                            <div className="flex items-center gap-2">
+                                                <div className="text-2xl font-black text-emerald-600">${(req.price || 0).toFixed(2)}</div>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleDismissRequest(req.id)}
+                                                    title="Omitir viaje"
+                                                    className="w-7 h-7 rounded-full bg-slate-100 hover:bg-rose-100 text-slate-400 hover:text-rose-600 flex items-center justify-center transition-all active:scale-95 ml-1"
+                                                >
+                                                    <X className="w-4 h-4" />
+                                                </button>
+                                            </div>
                                         </div>
 
                                         {req.scheduled && (
@@ -2230,6 +2339,14 @@ export default function OrdersRadar() {
                                                     'ACEPTAR VIAJE'
                                                 )}
                                             </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => handleDismissRequest(req.id)}
+                                                className="w-full py-3 bg-slate-100 hover:bg-rose-50 text-slate-600 hover:text-rose-700 font-bold text-xs uppercase tracking-wider rounded-2xl border border-slate-200 hover:border-rose-200 active:scale-98 transition-all flex items-center justify-center gap-1.5"
+                                            >
+                                                <X className="w-3.5 h-3.5" />
+                                                <span>Omitir / Rechazar viaje</span>
+                                            </button>
                                         </div>
                                     </motion.div>
                                 );
@@ -2241,7 +2358,7 @@ export default function OrdersRadar() {
                     {(activeTab === 'all' || activeTab === 'deliveries') && (
                         <AnimatePresence mode="popLayout">
                             {/* Envíos de Paquete */}
-                            {availableTransport.filter(r => r.type === 'package_delivery' || r.type === 'food_delivery').map(req => {
+                            {visibleTransport.filter(r => r.type === 'package_delivery' || r.type === 'food_delivery').map(req => {
                                 const isDirectlyAssigned = req.assigned_driver_id === user?.uid;
 
                                 return (
@@ -2268,7 +2385,17 @@ export default function OrdersRadar() {
                                                 <Package className="w-3.5 h-3.5" />
                                                 ENVÍO DE PAQUETE
                                             </div>
-                                            <div className="text-2xl font-black text-emerald-600">${(req.price || 0).toFixed(2)}</div>
+                                            <div className="flex items-center gap-2">
+                                                <div className="text-2xl font-black text-emerald-600">${(req.price || 0).toFixed(2)}</div>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleDismissRequest(req.id)}
+                                                    title="Omitir envío"
+                                                    className="w-7 h-7 rounded-full bg-slate-100 hover:bg-rose-100 text-slate-400 hover:text-rose-600 flex items-center justify-center transition-all active:scale-95 ml-1"
+                                                >
+                                                    <X className="w-4 h-4" />
+                                                </button>
+                                            </div>
                                         </div>
 
                                         <div className="space-y-4 mb-8 relative">
@@ -2328,13 +2455,21 @@ export default function OrdersRadar() {
                                                     'ACEPTAR ENVÍO'
                                                 )}
                                             </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => handleDismissRequest(req.id)}
+                                                className="w-full py-3 bg-slate-100 hover:bg-rose-50 text-slate-600 hover:text-rose-700 font-bold text-xs uppercase tracking-wider rounded-2xl border border-slate-200 hover:border-rose-200 active:scale-98 transition-all flex items-center justify-center gap-1.5"
+                                            >
+                                                <X className="w-3.5 h-3.5" />
+                                                <span>Omitir / Rechazar envío</span>
+                                            </button>
                                         </div>
                                     </motion.div>
                                 );
                             })}
 
                             {/* Repartos de Comida de Tiendas */}
-                            {availableOrders.map(order => (
+                            {visibleOrders.map(order => (
                                 <motion.div
                                     key={order.id}
                                     initial={{ opacity: 0, x: 20 }}
@@ -2349,9 +2484,19 @@ export default function OrdersRadar() {
                                             <Bike className="w-3.5 h-3.5" />
                                             REPARTO COMIDA
                                         </div>
-                                        <div className="flex flex-col items-end">
-                                            <div className="text-2xl font-black text-emerald-600">${(order.driverPayout || order.deliveryFee || 0).toFixed(2)}</div>
-                                            <div className="text-[10px] font-black text-primary uppercase mt-0.5 tracking-wider">Ganancia</div>
+                                        <div className="flex items-center gap-2">
+                                            <div className="flex flex-col items-end">
+                                                <div className="text-2xl font-black text-emerald-600">${(order.driverPayout || order.deliveryFee || 0).toFixed(2)}</div>
+                                                <div className="text-[10px] font-black text-primary uppercase mt-0.5 tracking-wider">Ganancia</div>
+                                            </div>
+                                            <button
+                                                type="button"
+                                                onClick={() => handleDismissRequest(order.id)}
+                                                title="Omitir pedido"
+                                                className="w-7 h-7 rounded-full bg-slate-100 hover:bg-rose-100 text-slate-400 hover:text-rose-600 flex items-center justify-center transition-all active:scale-95 ml-1"
+                                            >
+                                                <X className="w-4 h-4" />
+                                            </button>
                                         </div>
                                     </div>
 
@@ -2396,6 +2541,14 @@ export default function OrdersRadar() {
                                             ) : (
                                                 'TOMAR REPARTO'
                                             )}
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => handleDismissRequest(order.id)}
+                                            className="w-full py-3 bg-slate-100 hover:bg-rose-50 text-slate-600 hover:text-rose-700 font-bold text-xs uppercase tracking-wider rounded-2xl border border-slate-200 hover:border-rose-200 active:scale-98 transition-all flex items-center justify-center gap-1.5"
+                                        >
+                                            <X className="w-3.5 h-3.5" />
+                                            <span>Omitir / Rechazar reparto</span>
                                         </button>
                                     </div>
                                 </motion.div>
