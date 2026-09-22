@@ -301,7 +301,7 @@ export default function Search() {
     }, [restaurants, query, selectedCategory, filters, manualCity]);
 
     return (
-        <div className="pb-24 animate-in fade-in duration-500 min-h-screen bg-slate-50">
+        <div className="w-full h-full overflow-y-auto overflow-x-hidden pb-32 overscroll-contain bg-slate-50 animate-in fade-in duration-500">
             <div className="sticky top-0 z-40 bg-primary px-6 pt-12 pb-6 space-y-4 shadow-sm">
                 <h1 className="text-3xl font-black text-slate-900">¿Qué buscamos? 🧐</h1>
                 <div className="flex gap-2">

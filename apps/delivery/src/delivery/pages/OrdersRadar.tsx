@@ -12,6 +12,8 @@ import { getCachedAudioUrl, NOTIFICATION_SOUND_URL } from '../../hooks/useGlobal
 import { updateDriverLocation } from '../../lib/delivery-service';
 import { calculateDistance } from '../../lib/geo';
 import InAppCall from '../../components/InAppCall';
+import LiveTripMap from '../../components/LiveTripMap';
+import { playChatChime, playCallAlertChime } from '../../utils/audioChimes';
 import { supabase } from '../../lib/supabase';
 import { driversApi } from '../../lib/api';
 import { vibrate } from '../../utils/haptics';
@@ -35,8 +37,12 @@ export default function OrdersRadar() {
     const prevActiveTransportId = React.useRef<string | null>(null);
     // Incoming in-app call state
     const [showIncomingCall, setShowIncomingCall] = useState(false);
+    const [incomingOffer, setIncomingOffer] = useState<any>(null);
     // Outgoing in-app call state
     const [showOutgoingCall, setShowOutgoingCall] = useState(false);
+    // Live Map & GPS state
+    const [isDriverMapExpanded, setIsDriverMapExpanded] = useState(false);
+    const [driverGps, setDriverGps] = useState<{ lat: number; lng: number } | null>(null);
     // Yango Dispatch countdown popup
     const [incomingDispatch, setIncomingDispatch] = useState<any>(null);
     const [countdownSeconds, setCountdownSeconds] = useState(20);
@@ -476,9 +482,12 @@ export default function OrdersRadar() {
         channel
             .on('broadcast', { event: 'signal' }, ({ payload }) => {
                 if (payload?.type === 'offer' && payload.from !== user.uid) {
+                    setIncomingOffer(payload.offer);
                     setShowIncomingCall(true);
+                    playCallAlertChime();
                 } else if (payload?.type === 'status' && payload.status === 'ended') {
                     setShowIncomingCall(false);
+                    setIncomingOffer(null);
                 }
             })
             .subscribe();
@@ -600,6 +609,7 @@ export default function OrdersRadar() {
                 navigator.geolocation.getCurrentPosition(
                     (position) => {
                         const { latitude, longitude, heading, speed } = position.coords;
+                        setDriverGps({ lat: latitude, lng: longitude });
                         updateDriverLocation(user.uid, latitude, longitude, heading || undefined, speed || undefined);
                     },
                     (err) => console.warn("Aviso obteniendo ubicación GPS del piloto:", err.message),
@@ -660,11 +670,8 @@ export default function OrdersRadar() {
                     const now = Date.now();
                     const msgTime = new Date(latestMsg.created_at).getTime();
                     if (now - msgTime < 45000) {
-                        // Play sound
-                        if (notificationSoundUrl.current) {
-                            const audio = new Audio(notificationSoundUrl.current);
-                            audio.play().catch(e => console.error("Error playing audio:", e));
-                        }
+                        // Play crisp native web audio chime
+                        playChatChime();
 
                         // Alerta Visual (Toast)
                         toast((t) => (
@@ -1047,10 +1054,14 @@ export default function OrdersRadar() {
                 <InAppCall
                     requestId={activeTransport.id}
                     myId={user!.uid}
-                    remoteId={activeTransport.userId}
-                    remoteDisplayName={activeTransport.userName || 'Pasajero'}
+                    remoteId={activeTransport.userId || activeTransport.user_id}
+                    remoteDisplayName={activeTransport.userName || activeTransport.passenger_name || 'Pasajero'}
                     role="receiver"
-                    onClose={() => setShowIncomingCall(false)}
+                    initialOffer={incomingOffer}
+                    onClose={() => {
+                        setShowIncomingCall(false);
+                        setIncomingOffer(null);
+                    }}
                 />
             )}
             {/* Outgoing in-app call from driver */}
@@ -1058,8 +1069,8 @@ export default function OrdersRadar() {
                 <InAppCall
                     requestId={currentActiveItem.id}
                     myId={user!.uid}
-                    remoteId={currentActiveItem.userId}
-                    remoteDisplayName={currentActiveItem.userName || 'Pasajero'}
+                    remoteId={currentActiveItem.userId || currentActiveItem.user_id}
+                    remoteDisplayName={currentActiveItem.userName || currentActiveItem.passenger_name || 'Pasajero'}
                     role="caller"
                     onClose={() => setShowOutgoingCall(false)}
                 />
@@ -1100,6 +1111,31 @@ export default function OrdersRadar() {
                             />
                         </div>
                     )}
+
+                    {/* Live Trip Map with 3D animated vehicle and full/half screen slider */}
+                    <div className="space-y-2 pt-2">
+                        <div className={`w-full rounded-2xl overflow-hidden border border-slate-200 shadow-inner transition-all duration-300 ${
+                            isDriverMapExpanded ? 'h-[70vh]' : 'h-64'
+                        }`}>
+                            <LiveTripMap
+                                origin={activeTransport.origin}
+                                destination={activeTransport.destination}
+                                driverLocation={driverGps}
+                                vehicleType={driverProfile?.vehicleType || activeTransport.service_category || 'moto'}
+                                driverName={driverProfile?.name || 'Mi Vehículo'}
+                                isExpanded={isDriverMapExpanded}
+                                onToggleExpand={() => setIsDriverMapExpanded(prev => !prev)}
+                                showControls={true}
+                            />
+                        </div>
+                        <button
+                            type="button"
+                            onClick={() => setIsDriverMapExpanded(prev => !prev)}
+                            className="w-full py-2 bg-slate-100 hover:bg-amber-100 text-slate-700 hover:text-amber-900 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-2 active:scale-98"
+                        >
+                            {isDriverMapExpanded ? "▼ Reducir mapa a la mitad" : "▲ Desplegar mapa en pantalla completa"}
+                        </button>
+                    </div>
 
                     <div className="space-y-4 relative">
                         {/* Passenger Details */}

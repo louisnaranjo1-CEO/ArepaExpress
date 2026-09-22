@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import { 
@@ -174,17 +174,17 @@ export default function RideChat({
     const getVehicleMeta = () => {
         switch (serviceCategory) {
             case 'mototaxi':
-                return { emoji: 'ðŸ›µ', label: 'Mototaxi' };
+                return { isMoto: true, label: 'Mototaxi' };
             case 'mandado':
             case 'muchacho_mandado':
-                return { emoji: 'ðŸ“¦', label: 'Muchacho e\' Mandao' };
+                return { isMoto: true, label: "Muchacho e' Mandao" };
             case 'encomienda':
-                return { emoji: 'ðŸ“¦', label: 'Encomienda' };
+                return { isMoto: false, label: 'Encomienda' };
             case 'confort':
-                return { emoji: 'ðŸš˜', label: 'Confort VIP' };
+                return { isMoto: false, label: 'Confort VIP' };
             case 'taxi':
             default:
-                return { emoji: 'ðŸš•', label: 'Taxi Express' };
+                return { isMoto: false, label: 'Taxi Express' };
         }
     };
     const vehicleMeta = getVehicleMeta();
@@ -314,7 +314,7 @@ export default function RideChat({
             const insertPayload: any = {
                 chat_path: chatPath,
                 order_id: requestId,
-                text: isVideo ? 'ðŸŽ¥ [Video adjunto]' : 'ðŸ“· [Comprobante de compra o foto adjunta]',
+                text: isVideo ? '🎥 [Video adjunto]' : '📷 [Comprobante de compra o foto adjunta]',
                 sender_id: uid,
                 sender_name: user?.displayName || (isDriver ? 'Piloto' : 'Pasajero'),
                 sender_role: isDriver ? 'delivery' : 'client',
@@ -327,7 +327,8 @@ export default function RideChat({
                 insertPayload.image_url = publicUrl;
             }
 
-            await supabase.from('messages').insert(insertPayload);
+            const { error: insMediaErr } = await supabase.from('messages').insert(insertPayload);
+            if (insMediaErr) throw insMediaErr;
             toast.success(isVideo ? 'Video enviado' : 'Comprobante / foto enviada', { id: tId });
         } catch (err: any) {
             console.error("Error uploading media to chat:", err);
@@ -388,16 +389,18 @@ export default function RideChat({
 
                     const { data: { publicUrl } } = supabase.storage.from('store_assets').getPublicUrl(audioPath);
 
-                    await supabase.from('messages').insert({
+                    const { error: insVoiceErr } = await supabase.from('messages').insert({
                         chat_path: chatPath,
                         order_id: requestId,
-                        text: 'ðŸŽ¤ [Nota de voz]',
+                        text: '🎤 [Nota de voz]',
                         audio_url: publicUrl,
                         sender_id: uid,
                         sender_name: user?.displayName || (isDriver ? 'Piloto' : 'Pasajero'),
                         sender_role: isDriver ? 'delivery' : 'client',
                         created_at: new Date().toISOString()
                     });
+
+                    if (insVoiceErr) throw insVoiceErr;
 
                     toast.success('Nota de voz enviada', { id: tId });
                 } catch (err) {
@@ -414,7 +417,7 @@ export default function RideChat({
                 setVoiceSeconds(prev => prev + 1);
             }, 1000);
         } catch (err) {
-            toast.error('No se pudo acceder al micrÃ³fono');
+            toast.error('No se pudo acceder al micrófono');
         }
     };
 
@@ -435,23 +438,24 @@ export default function RideChat({
         if (phone) {
             window.location.href = `tel:${phone}`;
         } else {
-            toast('NÃºmero de contacto no disponible para llamada directa', { icon: 'ðŸ“ž' });
+            toast('Número de contacto no disponible para llamada directa', { icon: '📞' });
         }
     };
 
     const handleReportIssue = async (reason: string) => {
         try {
             const uid = user?.id || (user as any)?.uid || 'driver';
-            await supabase.from('messages').insert({
+            const { error: insIssueErr } = await supabase.from('messages').insert({
                 chat_path: chatPath,
                 order_id: requestId,
-                text: `ðŸš¨ [NOVEDAD REPORTADA]: ${reason}`,
+                text: `🚨 [NOVEDAD REPORTADA]: ${reason}`,
                 action: 'merchant_issue',
                 sender_id: uid,
                 sender_name: user?.displayName || 'Piloto',
                 sender_role: 'delivery',
                 created_at: new Date().toISOString()
             });
+            if (insIssueErr) throw insIssueErr;
             setShowIssueModal(false);
             toast.success('Novedad reportada en el chat');
         } catch (err) {
@@ -496,7 +500,7 @@ export default function RideChat({
                             )}
                         </h3>
                         <p className="text-[11px] font-medium text-slate-500 truncate">
-                            {isCompleted ? 'Historial de comprobantes y conversaciÃ³n' : 'MensajerÃ­a en tiempo real y comprobantes'}
+                            {isCompleted ? 'Historial de comprobantes y conversación' : 'Mensajería en tiempo real y comprobantes'}
                         </p>
                     </div>
                 </div>
@@ -529,47 +533,94 @@ export default function RideChat({
                 </div>
             </div>
 
-            {/* Top Animated Route Progress Header */}
-            <div className="bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 text-white px-3.5 py-2 border-b border-slate-800 shadow-inner">
-                <div className="flex items-center justify-between text-[11px] font-bold text-slate-300 mb-1">
+            {/* Top 2D Vector Animated Route Track */}
+            <div className="bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 text-white px-3.5 py-2.5 border-b border-slate-800 shadow-inner">
+                <style>{`
+                    @keyframes driveAlong2D {
+                        0% { left: 5%; }
+                        48% { left: 75%; }
+                        52% { left: 75%; }
+                        100% { left: 5%; }
+                    }
+                    @keyframes roadDashPulse {
+                        0% { stroke-dashoffset: 0; }
+                        100% { stroke-dashoffset: -16; }
+                    }
+                `}</style>
+                <div className="flex items-center justify-between text-[11px] font-bold text-slate-300 mb-1.5">
                     <span className="flex items-center gap-1.5">
                         <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-                        <span>{vehicleMeta.label}</span>
+                        <span className="text-white font-extrabold">{vehicleMeta.label}</span>
                     </span>
                     <span className="text-[10px] text-amber-400 font-black uppercase tracking-wider">
                         {isCompleted ? 'Llegada completada' : 'En trayecto'}
                     </span>
                 </div>
 
-                {/* Track visual */}
-                <div className="relative flex items-center justify-between py-1 px-2.5 bg-white/5 rounded-xl border border-white/10 overflow-hidden">
-                    {/* Origin */}
-                    <div className="flex items-center gap-1 z-10 shrink-0">
-                        <div className="w-2.5 h-2.5 rounded-full bg-emerald-400 shadow-sm shadow-emerald-400/50 flex items-center justify-center">
-                            <div className="w-1 h-1 rounded-full bg-white"></div>
+                {/* 2D Vector Road Container */}
+                <div className="relative flex items-center justify-between py-1.5 px-3 bg-slate-950/70 rounded-2xl border border-white/10 overflow-hidden shadow-inner">
+                    {/* Origin Pin (A) */}
+                    <div className="flex items-center gap-1.5 z-10 shrink-0">
+                        <div className="w-3 h-3 rounded-full bg-emerald-400 shadow-md shadow-emerald-400/50 flex items-center justify-center">
+                            <div className="w-1 h-1 rounded-full bg-slate-950"></div>
                         </div>
-                        <span className="text-[9px] font-bold text-slate-300">Punto A</span>
+                        <span className="text-[10px] font-black uppercase tracking-wider text-emerald-400">Punto A</span>
                     </div>
 
-                    {/* Animated Line & Driving Vehicle */}
-                    <div className="flex-1 mx-3 relative h-1.5 bg-slate-700/60 rounded-full">
-                        <div className="absolute inset-0 bg-gradient-to-r from-emerald-500 via-amber-400 to-indigo-400 rounded-full opacity-60"></div>
-                        {!isCompleted && (
-                            <div 
-                                className="absolute top-1/2 flex items-center justify-center pointer-events-none"
-                                style={{ animation: 'driveHorizontal 5s ease-in-out infinite' }}
+                    {/* 2D Road Track & Vehicle */}
+                    <div className="flex-1 mx-3 relative h-6 flex items-center">
+                        <svg className="w-full h-3 overflow-visible" preserveAspectRatio="none" viewBox="0 0 200 12">
+                            <rect x="0" y="2" width="200" height="8" rx="4" fill="#1e293b" stroke="#334155" strokeWidth="1" />
+                            <line
+                                x1="4" y1="6" x2="196" y2="6"
+                                stroke="#f59e0b"
+                                strokeWidth="1.5"
+                                strokeDasharray="4 4"
+                                style={{ animation: 'roadDashPulse 0.9s linear infinite' }}
+                            />
+                        </svg>
+
+                        {/* Animated 2D Vehicle Graphic */}
+                        {!isCompleted ? (
+                            <div
+                                className="absolute top-1/2 -translate-y-1/2 pointer-events-none transition-all"
+                                style={{ animation: 'driveAlong2D 5s ease-in-out infinite' }}
                             >
-                                <span className="text-base select-none filter drop-shadow-md">
-                                    {vehicleMeta.emoji}
-                                </span>
+                                {vehicleMeta.isMoto ? (
+                                    /* Clean 2D Vector Motorcycle */
+                                    <svg width="24" height="18" viewBox="0 0 32 24" fill="none" className="filter drop-shadow-[0_2px_4px_rgba(0,0,0,0.5)]">
+                                        <circle cx="7" cy="18" r="4.5" fill="#0f172a" stroke="#f59e0b" strokeWidth="2" />
+                                        <circle cx="25" cy="18" r="4.5" fill="#0f172a" stroke="#f59e0b" strokeWidth="2" />
+                                        <path d="M7 18 L13 12 L19 12 L25 18" stroke="#ffffff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+                                        <path d="M13 12 L11 6 L15 6" stroke="#f59e0b" strokeWidth="2" strokeLinecap="round" />
+                                        <circle cx="15" cy="4" r="2.5" fill="#38bdf8" />
+                                        <path d="M25 18 L20 10 L16 10" stroke="#f59e0b" strokeWidth="2" strokeLinecap="round" />
+                                    </svg>
+                                ) : (
+                                    /* Clean 2D Vector Car */
+                                    <svg width="28" height="18" viewBox="0 0 36 22" fill="none" className="filter drop-shadow-[0_2px_4px_rgba(0,0,0,0.5)]">
+                                        <path d="M3 13 L6 7 C7 5 9 4 12 4 L22 4 C25 4 27 5 28 7 L32 13 L34 14 C35 15 35 16 34 17 L3 17 Z" fill="#facc15" stroke="#ca8a04" strokeWidth="1" />
+                                        <rect x="9" y="6" width="6" height="5" rx="1" fill="#38bdf8" opacity="0.9" />
+                                        <rect x="17" y="6" width="8" height="5" rx="1" fill="#38bdf8" opacity="0.9" />
+                                        <circle cx="9" cy="17" r="3.5" fill="#0f172a" stroke="#ffffff" strokeWidth="1.5" />
+                                        <circle cx="26" cy="17" r="3.5" fill="#0f172a" stroke="#ffffff" strokeWidth="1.5" />
+                                        <circle cx="33" cy="14" r="1.5" fill="#ffffff" />
+                                    </svg>
+                                )}
+                            </div>
+                        ) : (
+                            <div className="absolute right-2 top-1/2 -translate-y-1/2 text-[9px] font-black text-emerald-400 uppercase tracking-wider">
+                                Llegada completada ✓
                             </div>
                         )}
                     </div>
 
-                    {/* Destination */}
-                    <div className="flex items-center gap-1 z-10 shrink-0">
-                        <span className="text-sm select-none">ðŸ </span>
-                        <span className="text-[9px] font-bold text-slate-300">Destino</span>
+                    {/* Destination Pin (B) */}
+                    <div className="flex items-center gap-1.5 z-10 shrink-0">
+                        <div className="w-3 h-3 rounded-full bg-amber-400 shadow-md shadow-amber-400/50 flex items-center justify-center">
+                            <div className="w-1 h-1 rounded-full bg-slate-950"></div>
+                        </div>
+                        <span className="text-[10px] font-black uppercase tracking-wider text-amber-400">Destino</span>
                     </div>
                 </div>
             </div>
@@ -587,7 +638,7 @@ export default function RideChat({
                             <span>El periodo de respaldo de 48 horas ha expirado.</span>
                         ) : (
                             <span>
-                                <strong>Respaldo de 48 horas:</strong> Chat disponible para consulta de comprobantes por <strong>{hoursRemaining} horas mÃ¡s</strong>.
+                                <strong>Respaldo de 48 horas:</strong> Chat disponible para consulta de comprobantes por <strong>{hoursRemaining} horas más</strong>.
                             </span>
                         )}
                     </p>
@@ -599,7 +650,7 @@ export default function RideChat({
                 <div className="bg-amber-50 p-2.5 px-3 border-b border-amber-200/80 flex items-start gap-2 text-[11px] text-amber-950 leading-tight">
                     <ShieldCheck className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
                     <div>
-                        <strong>Norma de Seguridad Un 2x3:</strong> Transfiere el costo de compras directo al negocio por Pago MÃ³vil y comparte el comprobante aquÃ­. Al llegar el piloto, pagas su tarifa convenida.
+                        <strong>Norma de Seguridad Un 2x3:</strong> Transfiere el costo de compras directo al negocio por Pago Móvil y comparte el comprobante aquí. Al llegar el piloto, pagas su tarifa convenida.
                     </div>
                 </div>
             )}
@@ -615,15 +666,15 @@ export default function RideChat({
                 {messages.length === 0 ? (
                     <div className="text-center text-slate-400 font-medium text-xs mt-10 space-y-1">
                         <FileText className="w-8 h-8 text-slate-300 mx-auto mb-2" />
-                        <p>No hay mensajes aÃºn.</p>
-                        <p className="text-[11px]">Â¡Escribe o envÃ­a el capture del Pago MÃ³vil aquÃ­!</p>
+                        <p>No hay mensajes aún.</p>
+                        <p className="text-[11px]">¡Escribe o envía el capture del Pago Móvil aquí!</p>
                     </div>
                 ) : (
                     messages.map((msg) => {
                         const isMine = isDriver
                             ? (msg.senderRole === 'delivery' || msg.senderRole === 'driver' || (!msg.senderRole && (msg.senderId === user?.uid || msg.senderId === (user as any)?.id)))
                             : (msg.senderRole === 'client' || (!msg.senderRole && (msg.senderId === (user as any)?.id || msg.senderId === user?.uid || msg.senderId === 'passenger')));
-                        const isAlert = msg.action === 'merchant_issue' || msg.text?.startsWith('ðŸš¨');
+                        const isAlert = msg.action === 'merchant_issue' || msg.text?.startsWith('🚨') || msg.text?.startsWith('ðŸš¨');
 
                         return (
                             <div key={msg.id} className={`flex ${isMine ? 'justify-end' : 'justify-start'}`}>
@@ -639,7 +690,7 @@ export default function RideChat({
                                         <span className={`text-[10px] font-black uppercase tracking-wider ${
                                             isAlert ? 'text-rose-300' : isMine ? 'text-slate-900/70' : 'text-amber-400'
                                         }`}>
-                                            {isMine ? 'TÃº' : (msg.senderName || (msg.senderRole === 'delivery' ? 'Piloto' : 'Cliente'))}
+                                            {isMine ? 'Tú' : (msg.senderName || (msg.senderRole === 'delivery' ? 'Piloto' : 'Cliente'))}
                                         </span>
                                     </div>
 

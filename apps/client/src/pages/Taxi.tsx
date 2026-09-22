@@ -31,6 +31,7 @@ import {
     DollarSign,
     Star,
     Radio,
+    Zap,
     User as UserIcon
 } from 'lucide-react';
 import { useJsApiLoader } from '@react-google-maps/api';
@@ -152,6 +153,9 @@ export default function Taxi() {
     const [packageDescription, setPackageDescription] = useState('');
     const [driverNotes, setDriverNotes] = useState('');
     const [showNotesModal, setShowNotesModal] = useState(false);
+    // Transporte Rápido (1 Toque)
+    const [isQuickTransportModalOpen, setIsQuickTransportModalOpen] = useState(false);
+    const [isRequestingQuickTransport, setIsRequestingQuickTransport] = useState(false);
 
     // Locations (Strictly real exact addresses, never artificial default points)
     const [origin, setOrigin] = useState<Location | null>(null);
@@ -1410,6 +1414,109 @@ export default function Taxi() {
         }
     };
 
+    // Función: Transporte Rápido (Solicitud en un toque)
+    const handleQuickTransport = async (vehicle: 'moto' | 'carro') => {
+        if (isRequestingQuickTransport) return;
+        setIsRequestingQuickTransport(true);
+        vibrate(40);
+
+        try {
+            // 1. Detección automática de ubicación GPS instantánea
+            let coords = userLocation;
+            if (!coords && navigator.geolocation) {
+                coords = await new Promise<{ lat: number; lng: number } | null>((resolve) => {
+                    navigator.geolocation.getCurrentPosition(
+                        (pos) => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+                        () => {
+                            navigator.geolocation.getCurrentPosition(
+                                (p2) => resolve({ lat: p2.coords.latitude, lng: p2.coords.longitude }),
+                                () => resolve(null),
+                                { enableHighAccuracy: false, timeout: 3000 }
+                            );
+                        },
+                        { enableHighAccuracy: true, timeout: 5000, maximumAge: 10000 }
+                    );
+                });
+            }
+
+            if (!coords) {
+                coords = defaultCenter || { lat: 8.9326, lng: -67.4264 };
+            }
+
+            const validUserId = user?.id || user?.uid || null;
+            const newReqId = crypto.randomUUID();
+            const isCar = vehicle === 'carro';
+            const basePrice = isCar ? 1.50 : 0.50;
+            const commAmount = isCar ? (liveCommissions.taxi || 0.15) : (liveCommissions.mototaxi || 0.05);
+            const driverPayoutVal = Math.max(0, basePrice - commAmount);
+
+            // 2. Alerta abierta (Radar masivo inmediato a todas las unidades de la zona)
+            const orderData: any = {
+                id: newReqId,
+                user_id: validUserId,
+                user_name: userData?.displayName || user?.displayName || user?.email || guestName || 'Cliente Express',
+                passenger_name: userData?.displayName || user?.displayName || user?.email || guestName || 'Cliente Express',
+                user_phone: userData?.phone || user?.phoneNumber || guestPhone || 'Sin número',
+                passenger_phone: userData?.phone || user?.phoneNumber || guestPhone || 'Sin número',
+                user_cedula: userData?.cedula || guestCedula || 'N/A',
+                origin: {
+                    lat: coords.lat,
+                    lng: coords.lng,
+                    address: origin?.address || 'Ubicación actual GPS (1 toque)'
+                },
+                destination: {
+                    lat: coords.lat,
+                    lng: coords.lng,
+                    address: 'Destino a convenir con el conductor'
+                },
+                route: {
+                    distance: 'Recogida GPS directa',
+                    duration: 'Inmediato'
+                },
+                total: basePrice,
+                price: basePrice,
+                driver_id: null,
+                assigned_driver_id: null, // Radar abierto para todas las unidades cercanas
+                service_category: isCar ? 'taxi_driver' : 'moto',
+                vehicle_type: isCar ? 'carro' : 'moto',
+                type: 'transport',
+                driver_payout: driverPayoutVal,
+                commission_amount: commAmount,
+                commission_debited: false,
+                status: 'searching',
+                payment_method: 'cash_usd',
+                payment_status: 'pending',
+                cash_currency: 'USD',
+                payment_ref: '',
+                payment_proof_url: null,
+                scheduled: false,
+                scheduled_at: null,
+                notes: isCar ? '⚡ Transporte Rápido: Carro (A partir de $1.50)' : '⚡ Transporte Rápido: Moto (A partir de $0.50)',
+                created_at: new Date().toISOString()
+            };
+
+            const { error: insErr } = await supabase.from('transport_requests').insert(orderData);
+            if (insErr) {
+                console.error("Error creating quick transport request:", insErr);
+                throw insErr;
+            }
+
+            localStorage.setItem('active_transport_req_id', newReqId);
+            setIsQuickTransportModalOpen(false);
+            toast.success(
+                isCar ? '¡Buscando Carro en el radar cercano!' : '¡Buscando Mototaxi en el radar cercano!',
+                { icon: '⚡', duration: 4000 }
+            );
+
+            navigate(`/taxi/track/${newReqId}`);
+        } catch (err: any) {
+            console.error("Error en Transporte Rápido:", err);
+            toast.error("No se pudo iniciar el Transporte Rápido. Revisa tu GPS o conexión.");
+        } finally {
+            setIsRequestingQuickTransport(false);
+        }
+    };
+
     const handleCopy = (text: string, fieldId: string) => {
         navigator.clipboard.writeText(text);
         setCopiedField(fieldId);
@@ -1920,6 +2027,43 @@ export default function Taxi() {
                                 </div>
                             </div>
                             <div className="w-8 h-8 rounded-full bg-slate-950/10 text-slate-950 flex items-center justify-center group-hover:bg-slate-950 group-hover:text-primary transition-all shrink-0">
+                                <ArrowRight className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />
+                            </div>
+                        </button>
+
+                        {/* Opción Destacada: Transporte Rápido (Solicitud en un toque) */}
+                        <button
+                            type="button"
+                            onClick={() => {
+                                vibrate(40);
+                                setIsQuickTransportModalOpen(true);
+                            }}
+                            className="w-full bg-gradient-to-r from-amber-400 via-yellow-400 to-amber-500 hover:from-yellow-300 hover:to-amber-400 text-slate-950 border-2 border-white/80 p-3.5 sm:p-4 rounded-[2rem] text-left shadow-xl shadow-amber-500/25 active:scale-[0.98] transition-all group flex items-center gap-3.5 relative overflow-hidden"
+                        >
+                            <div className="w-12 h-12 rounded-2xl bg-slate-950 text-yellow-400 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform shadow-md relative">
+                                <Zap className="w-6 h-6 animate-pulse text-yellow-400 fill-yellow-400" />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                                <div className="flex items-center justify-between mb-0.5">
+                                    <h4 className="text-sm sm:text-base font-black text-slate-950 tracking-tight leading-none flex items-center gap-1.5">
+                                        Transporte Rápido
+                                    </h4>
+                                    <span className="text-[9px] font-black uppercase px-2.5 py-0.5 rounded-full bg-slate-950 text-yellow-400 tracking-wider shrink-0 flex items-center gap-1 shadow-sm">
+                                        ⚡ 1 TOQUE
+                                    </span>
+                                </div>
+                                <p className="text-[11px] sm:text-xs text-slate-950/90 font-bold line-clamp-1 leading-tight mt-0.5">
+                                    Pide en segundos sin cotizaciones ni demoras
+                                </p>
+                                <div className="flex items-center gap-2 mt-1.5 text-[9px] text-slate-950 font-black">
+                                    <span>📍 GPS instantáneo</span>
+                                    <span>•</span>
+                                    <span>⚡ Radar masivo</span>
+                                    <span>•</span>
+                                    <span>🚀 En 1 toque</span>
+                                </div>
+                            </div>
+                            <div className="w-8 h-8 rounded-full bg-slate-950/15 text-slate-950 flex items-center justify-center group-hover:bg-slate-950 group-hover:text-yellow-400 transition-all shrink-0">
                                 <ArrowRight className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />
                             </div>
                         </button>
@@ -2963,6 +3107,129 @@ export default function Taxi() {
                 onSubmit={handleSubmitMandadoRequest}
                 isSubmitting={isSubmittingMandado}
             />
+
+            {/* Modal: Transporte Rápido (Solicitud en un toque) */}
+            <AnimatePresence>
+                {isQuickTransportModalOpen && (
+                    <div className="fixed inset-0 z-[125] bg-black/75 backdrop-blur-md flex items-end sm:items-center justify-center p-0 sm:p-4">
+                        <div className="bg-white w-full sm:max-w-md rounded-t-[2.5rem] sm:rounded-[2.5rem] p-6 shadow-2xl relative animate-in slide-in-from-bottom-5 flex flex-col">
+                            {/* Header */}
+                            <div className="flex items-center justify-between pb-4 border-b border-slate-100">
+                                <div className="flex items-center gap-3">
+                                    <div className="w-11 h-11 rounded-2xl bg-amber-400 text-slate-950 flex items-center justify-center font-black shadow-md">
+                                        <Zap className="w-6 h-6 fill-slate-950" />
+                                    </div>
+                                    <div>
+                                        <h3 className="text-lg font-black text-slate-950 tracking-tight leading-tight">
+                                            Transporte Rápido
+                                        </h3>
+                                        <p className="text-xs text-slate-500 font-bold">
+                                            Solicitud en 1 toque directo al radar
+                                        </p>
+                                    </div>
+                                </div>
+                                <button
+                                    onClick={() => !isRequestingQuickTransport && setIsQuickTransportModalOpen(false)}
+                                    disabled={isRequestingQuickTransport}
+                                    className="w-9 h-9 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-600 flex items-center justify-center transition-colors disabled:opacity-50"
+                                >
+                                    <X className="w-4 h-4" />
+                                </button>
+                            </div>
+
+                            {/* Info Banner */}
+                            <div className="mt-4 mb-5 bg-amber-50/80 border border-amber-200/80 rounded-2xl p-3.5 text-xs text-amber-950 flex items-start gap-2.5">
+                                <Sparkles className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                                <p className="text-[11px] font-medium leading-relaxed">
+                                    Toma tu ubicación GPS actual de forma instantánea y hace sonar el radar de los conductores más cercanos. <strong>Sin escribir direcciones ni esperar cotizaciones.</strong>
+                                </p>
+                            </div>
+
+                            {/* Loading state overlay if processing */}
+                            {isRequestingQuickTransport ? (
+                                <div className="py-12 flex flex-col items-center justify-center text-center space-y-4">
+                                    <div className="w-16 h-16 rounded-full bg-amber-400/20 border-4 border-amber-400 border-t-transparent animate-spin flex items-center justify-center">
+                                        <Zap className="w-7 h-7 text-amber-500 fill-amber-500 animate-pulse" />
+                                    </div>
+                                    <div>
+                                        <h4 className="text-base font-black text-slate-900">
+                                            Activando radar en tiempo real...
+                                        </h4>
+                                        <p className="text-xs text-slate-500 font-medium mt-1">
+                                            Detectando GPS y conectando con unidades cercanas
+                                        </p>
+                                    </div>
+                                </div>
+                            ) : (
+                                /* Two Big Vehicle Cards */
+                                <div className="grid grid-cols-2 gap-3.5 mb-2">
+                                    {/* Opción 1: Moto */}
+                                    <button
+                                        type="button"
+                                        onClick={() => handleQuickTransport('moto')}
+                                        className="flex flex-col items-center justify-between p-4 bg-gradient-to-b from-amber-50/50 to-white hover:to-amber-50 border-2 border-slate-200 hover:border-amber-400 rounded-3xl active:scale-95 transition-all text-center group shadow-sm hover:shadow-md cursor-pointer"
+                                    >
+                                        <div className="w-16 h-16 rounded-2xl bg-amber-400/20 text-slate-950 flex items-center justify-center group-hover:scale-110 group-hover:bg-amber-400 transition-all mb-3 shadow-inner">
+                                            <Bike className="w-9 h-9 text-slate-950" />
+                                        </div>
+                                        <span className="text-base font-black text-slate-950 tracking-tight">
+                                            Moto
+                                        </span>
+                                        <div className="mt-1 px-2.5 py-1 rounded-full bg-amber-100/80 border border-amber-200">
+                                            <p className="text-xs font-black text-amber-950">
+                                                A partir de $0.50
+                                            </p>
+                                        </div>
+                                        {bcvRate ? (
+                                            <span className="text-[10px] text-slate-500 font-bold mt-1">
+                                                ~Bs. {(0.50 * bcvRate).toFixed(2)}
+                                            </span>
+                                        ) : null}
+                                        <span className="mt-3 text-[10px] font-black uppercase text-amber-700 bg-amber-50 px-2 py-0.5 rounded-md">
+                                            ⚡ Ultra Rápido
+                                        </span>
+                                    </button>
+
+                                    {/* Opción 2: Carro */}
+                                    <button
+                                        type="button"
+                                        onClick={() => handleQuickTransport('carro')}
+                                        className="flex flex-col items-center justify-between p-4 bg-gradient-to-b from-blue-50/40 to-white hover:to-blue-50 border-2 border-slate-200 hover:border-blue-500 rounded-3xl active:scale-95 transition-all text-center group shadow-sm hover:shadow-md cursor-pointer"
+                                    >
+                                        <div className="w-16 h-16 rounded-2xl bg-blue-500/15 text-slate-950 flex items-center justify-center group-hover:scale-110 group-hover:bg-blue-500 group-hover:text-white transition-all mb-3 shadow-inner">
+                                            <Car className="w-9 h-9 text-slate-950 group-hover:text-white transition-colors" />
+                                        </div>
+                                        <span className="text-base font-black text-slate-950 tracking-tight">
+                                            Carro
+                                        </span>
+                                        <div className="mt-1 px-2.5 py-1 rounded-full bg-blue-100/80 border border-blue-200">
+                                            <p className="text-xs font-black text-blue-950">
+                                                A partir de $1.50
+                                            </p>
+                                        </div>
+                                        {bcvRate ? (
+                                            <span className="text-[10px] text-slate-500 font-bold mt-1">
+                                                ~Bs. {(1.50 * bcvRate).toFixed(2)}
+                                            </span>
+                                        ) : null}
+                                        <span className="mt-3 text-[10px] font-black uppercase text-blue-700 bg-blue-50 px-2 py-0.5 rounded-md">
+                                            🛡️ Taxi / Confort
+                                        </span>
+                                    </button>
+                                </div>
+                            )}
+
+                            {/* Footer helper note */}
+                            <div className="mt-3 text-center">
+                                <p className="text-[10px] text-slate-400 font-bold flex items-center justify-center gap-1">
+                                    <MapPin className="w-3 h-3 text-slate-400" />
+                                    El chofer acude directamente a tus coordenadas GPS
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                )}
+            </AnimatePresence>
 
             <DemoAlertModal isOpen={showDemoAlert} onClose={() => setShowDemoAlert(false)} />
 

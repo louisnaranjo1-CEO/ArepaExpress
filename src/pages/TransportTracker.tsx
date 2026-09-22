@@ -8,6 +8,8 @@ import { GoogleMap, useJsApiLoader, DirectionsRenderer, Marker } from '@react-go
 import { GOOGLE_MAPS_API_KEY, GOOGLE_MAPS_LIBRARIES } from '../lib/mapsConfig';
 import RideChat from '../components/RideChat';
 import InAppCall from '../components/InAppCall';
+import LiveTripMap from '../components/LiveTripMap';
+import { playChatChime, playCallAlertChime, playTripStatusChime } from '../utils/audioChimes';
 import { UN2X3_LOGO } from '../lib/env';
 import { isNightTime, yangoDarkMapStyles, yangoDayMapStyles, googleMapsDarkStyles, getWeatherByCoordinates, WeatherInfo } from '../lib/weather';
 import RainOverlay from '../components/RainOverlay';
@@ -53,14 +55,20 @@ export default function TransportTracker() {
     const [submittingRating, setSubmittingRating] = useState(false);
     const [hasRated, setHasRated] = useState(false);
     const [unreadCount, setUnreadCount] = useState(0);
+    // Map expansion
+    const [isMapExpanded, setIsMapExpanded] = useState(false);
     // In-app call
     const [showCall, setShowCall] = useState(false);
+    const [showIncomingCall, setShowIncomingCall] = useState(false);
+    const [incomingOffer, setIncomingOffer] = useState<any>(null);
     // Cancellation modal
     const [showCancelModal, setShowCancelModal] = useState(false);
     const [cancellingTrip, setCancellingTrip] = useState(false);
     // Lost items
     const [showLostItem, setShowLostItem] = useState(false);
     const [lostItemDesc, setLostItemDesc] = useState('');
+    const [lostItemPhoto, setLostItemPhoto] = useState<File | null>(null);
+    const [lostItemPhotoPreview, setLostItemPhotoPreview] = useState<string | null>(null);
     const [submittingLost, setSubmittingLost] = useState(false);
     const [lostItemSent, setLostItemSent] = useState(false);
     const [showVehicleModal, setShowVehicleModal] = useState(false);
@@ -348,11 +356,8 @@ export default function TransportTracker() {
             // Obtener info del estado para la alerta
             const info = getStatusInfo();
             
-            // Sonar
-            if (notificationSoundUrl.current) {
-                const audio = new Audio(notificationSoundUrl.current);
-                audio.play().catch(e => console.error("Error playing status audio:", e));
-            }
+            // Sonar tono de cambio de estado
+            playTripStatusChime();
 
             // Mostrar Alerta Visual (Pantalla)
             toast((t) => (
@@ -399,10 +404,7 @@ export default function TransportTracker() {
                     const senderId = data.sender_id || data.senderId;
 
                     if (isForThisChat && senderId && senderId !== reqUserId) {
-                        if (notificationSoundUrl.current) {
-                            const audio = new Audio(notificationSoundUrl.current);
-                            audio.play().catch(e => console.error("Error playing chat audio:", e));
-                        }
+                        playChatChime();
 
                         toast((t) => (
                             <div className="flex flex-col gap-1 p-1">
@@ -435,6 +437,32 @@ export default function TransportTracker() {
             supabase.removeChannel(channel);
         };
     }, [requestId, showChat, request?.userId, request?.user_id]);
+
+    // Escuchar llamadas entrantes del conductor en la app
+    useEffect(() => {
+        if (!requestId) return;
+        const myId = request?.userId || request?.user_id;
+        const channel = supabase.channel(`call_${requestId}`, {
+            config: { broadcast: { self: false } }
+        });
+
+        channel
+            .on('broadcast', { event: 'signal' }, ({ payload }) => {
+                if (payload?.type === 'offer' && (!myId || payload.from !== myId)) {
+                    setIncomingOffer(payload.offer);
+                    setShowIncomingCall(true);
+                    playCallAlertChime();
+                } else if (payload?.type === 'status' && payload.status === 'ended') {
+                    setShowIncomingCall(false);
+                    setIncomingOffer(null);
+                }
+            })
+            .subscribe();
+
+        return () => {
+            supabase.removeChannel(channel);
+        };
+    }, [requestId, request?.userId, request?.user_id]);
 
     useEffect(() => {
         if (request && ['cancelled'].includes(request.status)) {
@@ -515,6 +543,20 @@ export default function TransportTracker() {
         if (!requestId || !request || !lostItemDesc.trim()) return;
         setSubmittingLost(true);
         try {
+            let uploadedPhotoUrl: string | null = null;
+            if (lostItemPhoto) {
+                const ext = lostItemPhoto.name.split('.').pop() || 'jpg';
+                const filePath = `lost_items/${requestId}_${Date.now()}.${ext}`;
+                const { error: uploadErr } = await supabase.storage
+                    .from('store_assets')
+                    .upload(filePath, lostItemPhoto, { cacheControl: '3600', upsert: true });
+
+                if (!uploadErr) {
+                    const { data } = supabase.storage.from('store_assets').getPublicUrl(filePath);
+                    uploadedPhotoUrl = data?.publicUrl || null;
+                }
+            }
+
             await supabase.from('lost_items').insert({
                 id: crypto.randomUUID(),
                 request_id: requestId,
@@ -524,13 +566,31 @@ export default function TransportTracker() {
                 driver_id: request.driverId || request.driver_id,
                 driverId: request.driverId || request.driver_id,
                 description: lostItemDesc.trim(),
+                image_url: uploadedPhotoUrl,
+                contact_phone: request.user_phone || request.userPhone || null,
                 status: 'pending',
                 created_at: new Date().toISOString(),
                 createdAt: new Date().toISOString()
             });
+
+            // Notificar al conductor y soporte en el canal de chat tripartito
+            await supabase.from('messages').insert({
+                chat_path: `transport_requests/${requestId}`,
+                order_id: requestId,
+                text: `🎒 [OBJETO EXTRAVIADO]: ${lostItemDesc.trim()}`,
+                image_url: uploadedPhotoUrl,
+                action: 'lost_item',
+                sender_id: request.userId || request.user_id,
+                sender_name: request.passenger_name || 'Pasajero',
+                sender_role: 'client',
+                created_at: new Date().toISOString()
+            });
+
             setLostItemSent(true);
             setShowLostItem(false);
-            toast.success('Tu reporte fue enviado al conductor.');
+            setLostItemPhoto(null);
+            setLostItemPhotoPreview(null);
+            toast.success('Reporte enviado al conductor y soporte central.');
         } catch (err) {
             console.error(err);
             toast.error('Error al enviar reporte.');
@@ -683,7 +743,7 @@ export default function TransportTracker() {
                         icon: ShoppingBag
                     };
                 }
-                return { title: "Buscando Conductor", subtitle: "Conectando con vehículos cercanos...", color: "text-orange-600", bg: "bg-orange-50", icon: Clock };
+                return { title: "Buscando tu transporte...", subtitle: "Conectando con conductores cercanos en el radar...", color: "text-orange-600", bg: "bg-orange-50", icon: Clock };
             case 'accepted':
                 return { title: "Conductor en Camino", subtitle: "Tu transporte va hacia tu ubicación", color: "text-blue-500", bg: "bg-blue-50", icon: Car };
             case 'arriving':
@@ -744,48 +804,19 @@ export default function TransportTracker() {
                         {/* Rain Animation Canvas Overlay */}
                         <RainOverlay isActive={Boolean(weather?.isRaining)} />
 
-                        <GoogleMap
-                            mapContainerStyle={mapContainerStyle}
-                            center={request.origin || { lat: 8.9326, lng: -67.4264 }}
-                            zoom={14}
-                            onLoad={onLoad}
-                            onUnmount={onUnmount}
-                            options={{
-                                ...mapOptions,
-                                styles: googleMapsDarkStyles
-                            }}
-                        >
-                            {/* Real-time User Location (Blue Dot) */}
-                            {userLocation && (
-                                <Marker
-                                    position={userLocation}
-                                    icon={{
-                                        path: google.maps.SymbolPath.CIRCLE,
-                                        fillColor: '#4285F4',
-                                        fillOpacity: 1,
-                                        strokeColor: 'white',
-                                        strokeWeight: 2,
-                                        scale: 7
-                                    }}
-                                    zIndex={1}
-                                />
-                            )}
-
-                            {/* Driver Real-time Location (Vehicle Icon) */}
-                            {driver?.currentLocation && ['accepted', 'arriving', 'in_progress'].includes(request.status) && (
-                                <Marker
-                                    position={{ lat: driver.currentLocation.latitude, lng: driver.currentLocation.longitude }}
-                                    icon={{
-                                        url: driver.vehicleType === 'moto' 
-                                            ? 'https://cdn-icons-png.flaticon.com/512/3721/3721619.png' 
-                                            : 'https://cdn-icons-png.flaticon.com/512/1048/1048314.png',
-                                        scaledSize: new google.maps.Size(40, 40),
-                                        anchor: new google.maps.Point(20, 20)
-                                    }}
-                                    zIndex={2}
-                                />
-                            )}
-                        </GoogleMap>
+                        <LiveTripMap
+                            origin={request.origin}
+                            destination={request.destination}
+                            driverLocation={driver?.currentLocation ? {
+                                lat: driver.currentLocation.latitude ?? (driver.currentLocation as any).lat,
+                                lng: driver.currentLocation.longitude ?? (driver.currentLocation as any).lng
+                            } : null}
+                            vehicleType={driver?.vehicleType || request.service_category || 'carro'}
+                            driverName={(driver?.fullName || (driver as any)?.full_name || 'Conductor').split(' ')[0]}
+                            isExpanded={isMapExpanded}
+                            onToggleExpand={() => setIsMapExpanded(prev => !prev)}
+                            showControls={true}
+                        />
                     </div>
                 ) : null}
             </div>
@@ -807,9 +838,22 @@ export default function TransportTracker() {
                 </div>
             )}
 
-            {/* Bottom Sheet */}
-            <div className="relative z-30 bg-white rounded-t-[24px] shadow-[0_-10px_40px_rgba(0,0,0,0.1)] pt-2 pb-4 px-4 sm:px-6">
-                <div className="w-10 h-1.5 bg-slate-200 rounded-full mx-auto my-2"></div>
+            {/* Bottom Sheet con Manija de Arrastre / Despliegue */}
+            <div className={`relative z-30 bg-white rounded-t-[28px] shadow-[0_-10px_40px_rgba(0,0,0,0.15)] transition-all duration-300 ease-in-out ${
+                isMapExpanded ? 'max-h-[140px] overflow-hidden pb-2' : 'max-h-[70vh] overflow-y-auto pb-6'
+            } pt-2 px-4 sm:px-6`}>
+                {/* Manija Interactiva: Tocar alterna entre pantalla completa y vista normal */}
+                <button
+                    type="button"
+                    onClick={() => setIsMapExpanded(prev => !prev)}
+                    className="w-full flex flex-col items-center justify-center py-1 cursor-pointer group focus:outline-none"
+                    title={isMapExpanded ? "Deslizar para ver detalles del viaje" : "Deslizar para mapa en pantalla completa"}
+                >
+                    <div className="w-12 h-1.5 bg-slate-300 group-hover:bg-amber-500 rounded-full transition-colors mb-1"></div>
+                    <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 group-hover:text-amber-600 transition-colors">
+                        {isMapExpanded ? "▲ Mostrar información del viaje" : "▼ Ampliar mapa en pantalla completa"}
+                    </span>
+                </button>
 
                 {/* Status Header */}
                 <div className="flex items-center gap-3 mb-4">
@@ -1096,29 +1140,103 @@ export default function TransportTracker() {
                     </button>
                 )}
                 {lostItemSent && (
-                    <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 mb-3 flex items-center gap-2">
-                        <CheckCircle2 className="w-4 h-4 text-amber-600" />
-                        <span className="text-xs font-bold text-amber-800">Reporte enviado. El conductor fue notificado.</span>
+                    <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 mb-3 space-y-3">
+                        <div className="flex items-center gap-2">
+                            <CheckCircle2 className="w-5 h-5 text-amber-600 shrink-0" />
+                            <span className="text-xs font-bold text-amber-900 leading-tight">
+                                Reporte registrado con éxito. El conductor y soporte central han sido notificados.
+                            </span>
+                        </div>
+                        <div className="flex gap-2">
+                            <button
+                                type="button"
+                                onClick={() => setShowChat(true)}
+                                className="flex-1 py-2.5 bg-amber-400 hover:bg-amber-500 text-slate-950 font-black text-xs rounded-xl flex items-center justify-center gap-1.5 shadow-sm active:scale-95 transition-all"
+                            >
+                                <MessageCircle className="w-4 h-4" />
+                                Abrir Chat de Soporte
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setShowCall(true)}
+                                className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs rounded-xl flex items-center justify-center gap-1.5 shadow-sm active:scale-95 transition-all"
+                                title="Llamar al Conductor"
+                            >
+                                <Phone className="w-4 h-4" />
+                                Llamar
+                            </button>
+                        </div>
                     </div>
                 )}
                 {showLostItem && !lostItemSent && (
-                    <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 mb-3 animate-fade-in">
-                        <h4 className="font-black text-slate-800 text-sm mb-1">📦 Reportar objeto olvidado</h4>
-                        <p className="text-[10px] text-slate-500 font-medium mb-3">Describe el objeto. Tu conductor recibirá una notificación inmediata.</p>
+                    <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 mb-3 animate-fade-in space-y-3">
+                        <div className="flex items-center justify-between">
+                            <h4 className="font-black text-slate-800 text-sm flex items-center gap-1.5">
+                                📦 Reportar objeto olvidado
+                            </h4>
+                            <button
+                                type="button"
+                                onClick={() => setShowLostItem(false)}
+                                className="text-slate-400 hover:text-slate-600 text-xs font-bold"
+                            >
+                                Cancelar
+                            </button>
+                        </div>
+                        <p className="text-[10px] text-slate-500 font-medium leading-relaxed">
+                            Describe el objeto olvidado y adjunta una foto si la tienes. Notificaremos al conductor y al equipo de soporte de inmediato.
+                        </p>
                         <textarea
                             value={lostItemDesc}
                             onChange={e => setLostItemDesc(e.target.value)}
-                            placeholder="Ej: Mochila negra con mi laptop..."
-                            className="w-full bg-white border border-amber-200 rounded-xl p-3 text-xs outline-none min-h-[60px] resize-none mb-3 focus:ring-2 focus:ring-amber-200 placeholder:text-slate-400"
+                            placeholder="Ej: Mochila negra con documentos, teléfono, llaves..."
+                            className="w-full bg-white border border-amber-200 rounded-xl p-3 text-xs outline-none min-h-[60px] resize-none focus:ring-2 focus:ring-amber-200 placeholder:text-slate-400"
                         />
+                        {/* Adjuntar Foto */}
+                        <div>
+                            <input
+                                type="file"
+                                id="lost-photo-input"
+                                accept="image/*"
+                                className="hidden"
+                                onChange={e => {
+                                    const file = e.target.files?.[0];
+                                    if (file) {
+                                        setLostItemPhoto(file);
+                                        setLostItemPhotoPreview(URL.createObjectURL(file));
+                                    }
+                                }}
+                            />
+                            {lostItemPhotoPreview ? (
+                                <div className="relative w-24 h-24 rounded-xl overflow-hidden border border-amber-300">
+                                    <img src={lostItemPhotoPreview} alt="Foto del objeto" className="w-full h-full object-cover" />
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setLostItemPhoto(null);
+                                            setLostItemPhotoPreview(null);
+                                        }}
+                                        className="absolute top-1 right-1 bg-black/60 text-white rounded-full p-1"
+                                    >
+                                        <X className="w-3 h-3" />
+                                    </button>
+                                </div>
+                            ) : (
+                                <label
+                                    htmlFor="lost-photo-input"
+                                    className="cursor-pointer inline-flex items-center gap-2 px-3 py-2 bg-white border border-dashed border-amber-300 rounded-xl text-xs font-bold text-amber-800 hover:bg-amber-100/50 transition-colors"
+                                >
+                                    📷 Adjuntar foto del objeto (Opcional)
+                                </label>
+                            )}
+                        </div>
                         <button
                             onClick={handleLostItem}
                             disabled={!lostItemDesc.trim() || submittingLost}
-                            className="w-full bg-amber-400 text-slate-900 font-black py-2.5 rounded-xl text-sm flex justify-center items-center gap-2 active:scale-95 transition-all disabled:opacity-50"
+                            className="w-full bg-amber-400 hover:bg-amber-500 text-slate-900 font-black py-2.5 rounded-xl text-sm flex justify-center items-center gap-2 active:scale-95 transition-all disabled:opacity-50 shadow-sm"
                         >
                             {submittingLost
                                 ? <div className="w-4 h-4 border-2 border-slate-900 border-t-transparent rounded-full animate-spin" />
-                                : 'Enviar Reporte'}
+                                : 'Enviar Reporte Inmediato'}
                         </button>
                     </div>
                 )}
@@ -1332,7 +1450,24 @@ export default function TransportTracker() {
                     </div>
                 )}
 
-                {/* In-App Call Modal */}
+                {/* Incoming In-App Call Modal */}
+                {showIncomingCall && driver && request && (
+                    <InAppCall
+                        requestId={requestId!}
+                        myId={request.userId || request.user_id}
+                        remoteId={request.driverId || request.driver_id}
+                        remoteDisplayName={(driver.fullName || (driver as any).full_name || 'Conductor').split(' ')[0]}
+                        remotePhotoUrl={driver.documents?.selfieUrl || (driver.documents as any)?.selfie_url}
+                        role="receiver"
+                        initialOffer={incomingOffer}
+                        onClose={() => {
+                            setShowIncomingCall(false);
+                            setIncomingOffer(null);
+                        }}
+                    />
+                )}
+
+                {/* Outgoing In-App Call Modal */}
                 {showCall && driver && request && (
                     <InAppCall
                         requestId={requestId!}

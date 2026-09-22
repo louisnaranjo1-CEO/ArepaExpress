@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { supabase } from '../../lib/supabase';
 import { Trophy, Star, Target, CheckCircle2, Navigation, ArrowLeft, MessageSquare, ThumbsUp, Sparkles, User } from 'lucide-react';
@@ -181,6 +181,22 @@ export default function Achievements() {
                 schema: 'public', 
                 table: 'transport_requests',
                 filter: `driver_id=eq.${user.uid}` 
+            }, () => {
+                calculateStats();
+            })
+            .on('postgres_changes', { 
+                event: '*', 
+                schema: 'public', 
+                table: 'orders',
+                filter: `delivery_driver_id=eq.${user.uid}` 
+            }, () => {
+                calculateStats();
+            })
+            .on('postgres_changes', { 
+                event: '*', 
+                schema: 'public', 
+                table: 'drivers',
+                filter: `id=eq.${user.uid}` 
             }, () => {
                 calculateStats();
             })
