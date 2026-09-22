@@ -71,7 +71,7 @@ export default function GlobalCallReceiver() {
             }
         };
 
-        const userChannel = supabase.channel(user_call_, {
+        const userChannel = supabase.channel(`user_call_${userId}`, {
             config: { broadcast: { self: false } }
         });
 
@@ -84,7 +84,7 @@ export default function GlobalCallReceiver() {
         const activeReqId = localStorage.getItem('active_transport_req_id');
         let requestChannel: any = null;
         if (activeReqId) {
-            requestChannel = supabase.channel(call_, {
+            requestChannel = supabase.channel(`call_${activeReqId}`, {
                 config: { broadcast: { self: false } }
             });
             requestChannel

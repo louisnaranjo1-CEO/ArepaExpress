@@ -64,7 +64,7 @@ export default function GlobalCallReceiver() {
             }
         };
 
-        const userChannel = supabase.channel(user_call_, {
+        const userChannel = supabase.channel(`user_call_${driverId}`, {
             config: { broadcast: { self: false } }
         });
 
