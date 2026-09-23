@@ -137,13 +137,13 @@ export default function ActiveTasksWidget() {
         }
 
         try {
-            // 1. Fetch active transports (rides, deliveries, mandados)
+            // 1. Fetch active transports (rides, deliveries, mandados, including unconfirmed payments)
             let transportsQuery = supabase
                 .from('transport_requests')
                 .select('*')
-                .in('status', ['searching', 'verifying_payment', 'accepted', 'arriving', 'in_progress'])
+                .in('status', ['searching', 'verifying_payment', 'accepted', 'arriving', 'in_progress', 'completed'])
                 .order('created_at', { ascending: false })
-                .limit(3);
+                .limit(6);
 
             if (authUUID && validLocalTransportUUID && authUUID !== validLocalTransportUUID) {
                 transportsQuery = transportsQuery.or(`user_id.eq.${authUUID},id.eq.${validLocalTransportUUID}`);
@@ -153,19 +153,27 @@ export default function ActiveTasksWidget() {
                 transportsQuery = transportsQuery.eq('id', validLocalTransportUUID);
             }
 
-            const { data: transports, error: trErr } = await transportsQuery;
+            const { data: rawTransports, error: trErr } = await transportsQuery;
             if (trErr) console.warn('Error fetching transports for widget:', trErr);
 
-            // Sync localStorage: if the local request is completed or cancelled, clean it up
+            // Filter out completed transports whose payment is already fully confirmed
+            const transports = (rawTransports || []).filter((t: any) => {
+                if (t.status === 'completed') {
+                    return t.payment_status !== 'confirmed';
+                }
+                return true;
+            }).slice(0, 3);
+
+            // Sync localStorage: if the local request is fully completed (with confirmed payment) or cancelled, clean it up
             if (validLocalTransportUUID && transports) {
                 const found = transports.find((t: any) => t.id === validLocalTransportUUID);
                 if (!found) {
                     supabase.from('transport_requests')
-                        .select('status')
+                        .select('status, payment_status')
                         .eq('id', validLocalTransportUUID)
                         .maybeSingle()
                         .then(({ data }) => {
-                            if (data && ['completed', 'cancelled'].includes(data.status)) {
+                            if (data && (data.status === 'cancelled' || (data.status === 'completed' && data.payment_status === 'confirmed'))) {
                                 localStorage.removeItem('active_transport_req_id');
                             }
                         });
@@ -335,6 +343,22 @@ export default function ActiveTasksWidget() {
                         subtitle = 'Viaje en curso rumbo a tu destino';
                         badgeStatus = 'En viaje';
                         badgeColor = 'bg-indigo-500 text-white font-black';
+                    }
+                }
+
+                if (t.status === 'completed') {
+                    if (t.payment_status === 'disputed') {
+                        subtitle = '⚠️ Pago en disputa con conductor. Abre el viaje para solventarlo.';
+                        badgeStatus = 'En Disputa';
+                        badgeColor = 'bg-rose-600 text-white font-black animate-pulse';
+                    } else if (t.payment_status === 'payment_reported') {
+                        subtitle = '⏳ En espera de confirmación de pago por el chofer...';
+                        badgeStatus = 'Validando';
+                        badgeColor = 'bg-amber-400 text-slate-950 font-black';
+                    } else {
+                        subtitle = '💳 Viaje completado. Reporta tu comprobante al chofer.';
+                        badgeStatus = 'Reportar Pago';
+                        badgeColor = 'bg-[#FFB800] text-slate-950 font-black animate-bounce';
                     }
                 }
 

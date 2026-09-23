@@ -227,7 +227,11 @@ export default function Cart({ hideHeader = false }: CartProps) {
   };
 
   const feeInfo = calculateDeliveryFeeInfo();
-  const deliveryFee = (isWaiter || deliveryMethod === 'pickup') ? 0 : feeInfo.clientFee;
+  const freeDeliveryMin = Number(restaurantData?.free_delivery_min_amount ?? restaurantData?.freeDeliveryMinAmount ?? 0);
+  const isFreeDeliveryEnabled = Boolean(restaurantData?.free_delivery_enabled ?? restaurantData?.freeDeliveryEnabled);
+  const isFreeDeliveryQualified = isFreeDeliveryEnabled && freeDeliveryMin > 0 && cartSubtotalUSD >= freeDeliveryMin;
+  
+  const deliveryFee = (isWaiter || deliveryMethod === 'pickup' || isFreeDeliveryQualified) ? 0 : feeInfo.clientFee;
   const driverPayout = (isWaiter || deliveryMethod === 'pickup') ? 0 : feeInfo.driverPayout;
   const currentShift = feeInfo.shift;
   const finalTotal = (deliveryMethod === 'app_delivery') ? deliveryFee : (cartSubtotalUSD + deliveryFee);
@@ -925,12 +929,37 @@ export default function Cart({ hideHeader = false }: CartProps) {
                       </div>
 
                       {!isWaiter && (deliveryMethod === 'app_delivery' || deliveryMethod === 'own_delivery') && restaurantData?.businessType !== 'hotel' && (
-                        <div className="flex justify-between items-center bg-primary p-4 rounded-2xl shadow-lg border border-primary/20">
-                          <span className="text-xs uppercase tracking-widest text-black font-black">Transporte Un 2x3</span>
-                          <div className="text-right">
-                            <DualPrice usdAmount={deliveryFee} usdClassName="text-2xl font-black text-black" bsClassName="text-[10px] text-black" showDivider={false} />
-                            <span className="text-[9px] block mt-1 text-black font-black uppercase tracking-widest">Pago al Delivery</span>
+                        <div className="space-y-2">
+                          <div className={`flex justify-between items-center p-4 rounded-2xl shadow-lg border transition-all ${
+                            isFreeDeliveryQualified 
+                              ? 'bg-emerald-500 text-white border-emerald-400' 
+                              : 'bg-primary text-black border-primary/20'
+                          }`}>
+                            <div>
+                              <span className="text-xs uppercase tracking-widest font-black block">Transporte Un 2x3</span>
+                              {isFreeDeliveryQualified && (
+                                <span className="text-[10px] font-bold text-emerald-100 flex items-center gap-1">
+                                  🎉 ¡Promoción Delivery Gratis aplicada!
+                                </span>
+                              )}
+                            </div>
+                            <div className="text-right">
+                              {isFreeDeliveryQualified ? (
+                                <span className="text-2xl font-black text-white">$0.00</span>
+                              ) : (
+                                <DualPrice usdAmount={deliveryFee} usdClassName="text-2xl font-black text-black" bsClassName="text-[10px] text-black" showDivider={false} />
+                              )}
+                              <span className="text-[9px] block mt-0.5 font-black uppercase tracking-widest opacity-80">Pago al Delivery</span>
+                            </div>
                           </div>
+
+                          {isFreeDeliveryEnabled && freeDeliveryMin > 0 && !isFreeDeliveryQualified && (
+                            <div className="bg-amber-500/15 border border-amber-400/40 p-2.5 rounded-xl text-center">
+                              <span className="text-[11px] font-bold text-amber-300">
+                                🛵 Agrega ${(freeDeliveryMin - cartSubtotalUSD).toFixed(2)} USD más a tu orden para Delivery Gratis
+                              </span>
+                            </div>
+                          )}
                         </div>
                       )}
                     </div>

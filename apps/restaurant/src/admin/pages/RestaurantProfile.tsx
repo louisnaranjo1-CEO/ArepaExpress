@@ -138,6 +138,8 @@ export default function RestaurantProfile() {
     const [businessTypeSearch, setBusinessTypeSearch] = useState('');
     const [ownDelivery, setOwnDelivery] = useState(false);
     const [appDelivery, setAppDelivery] = useState(false);
+    const [freeDeliveryEnabled, setFreeDeliveryEnabled] = useState(false);
+    const [freeDeliveryMinAmount, setFreeDeliveryMinAmount] = useState<number | ''>(20);
     const [pickupOnly, setPickupOnly] = useState(false);
     const [deliveryTime, setDeliveryTime] = useState('20-40 min');
     const [logoUrl, setLogoUrl] = useState('');
@@ -248,6 +250,8 @@ export default function RestaurantProfile() {
 
                     setOwnDelivery(data.own_delivery ?? data.ownDelivery ?? false);
                     setAppDelivery(data.app_delivery ?? data.appDelivery ?? false);
+                    setFreeDeliveryEnabled(data.free_delivery_enabled ?? data.freeDeliveryEnabled ?? false);
+                    setFreeDeliveryMinAmount(data.free_delivery_min_amount ?? data.freeDeliveryMinAmount ?? 20);
                     setPickupOnly(data.pickup_only ?? data.pickupOnly ?? false);
                     setDeliveryTime(data.delivery_time || data.deliveryTime || '30-45 min');
                     setLogoUrl(data.logo_url || data.logoUrl || data.image || '');
@@ -503,6 +507,8 @@ export default function RestaurantProfile() {
                 business_type: finalBusinessType,
                 own_delivery: ownDelivery || false,
                 app_delivery: appDelivery || false,
+                free_delivery_enabled: freeDeliveryEnabled || false,
+                free_delivery_min_amount: freeDeliveryMinAmount === '' ? 0 : Number(freeDeliveryMinAmount),
                 pickup_only: pickupOnly || false,
                 delivery_time: deliveryTime || '30-45 min',
                 logo_url: currentLogoUrl || '',
@@ -1332,6 +1338,50 @@ export default function RestaurantProfile() {
                         </div>
 
                         <div className="space-y-4">
+                            {/* Delivery Gratis por Consumo Mínimo */}
+                            <div className="p-4 rounded-2xl border-2 border-slate-100 bg-slate-50 space-y-3">
+                                <div
+                                    className="flex items-center justify-between cursor-pointer"
+                                    onClick={() => setFreeDeliveryEnabled(!freeDeliveryEnabled)}
+                                >
+                                    <div className="flex items-center gap-3">
+                                        <div className={`w-12 h-12 rounded-xl flex items-center justify-center transition-all ${freeDeliveryEnabled ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-500/30' : 'bg-white text-slate-400 border border-slate-200'}`}>
+                                            <Truck className="w-6 h-6" />
+                                        </div>
+                                        <div>
+                                            <p className="font-black text-slate-900 text-sm">Delivery Gratis por Consumo Mínimo</p>
+                                            <p className="text-[10px] text-slate-500 font-medium">
+                                                {freeDeliveryEnabled ? '✓ Activo: Tu negocio asume el costo al superar el monto' : 'Inactivo: El cliente siempre paga el delivery'}
+                                            </p>
+                                        </div>
+                                    </div>
+                                    <div className={`w-12 h-6 rounded-full relative transition-colors ${freeDeliveryEnabled ? 'bg-emerald-500' : 'bg-slate-300'}`}>
+                                        <div className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow-sm transition-all ${freeDeliveryEnabled ? 'left-7' : 'left-1'}`} />
+                                    </div>
+                                </div>
+
+                                {freeDeliveryEnabled && (
+                                    <div className="pt-3 border-t border-slate-200/80 animate-fade-in space-y-1.5">
+                                        <label className="text-xs font-black text-slate-700">Monto Mínimo de Compra ($ USD)</label>
+                                        <div className="relative">
+                                            <span className="absolute left-4 top-1/2 -translate-y-1/2 font-black text-slate-400">$</span>
+                                            <input
+                                                type="number"
+                                                min="1"
+                                                step="0.5"
+                                                value={freeDeliveryMinAmount}
+                                                onChange={(e) => setFreeDeliveryMinAmount(e.target.value === '' ? '' : Number(e.target.value))}
+                                                placeholder="20.00"
+                                                className="w-full bg-white border border-slate-200 focus:border-emerald-500 p-3 pl-8 rounded-xl font-mono font-bold text-slate-900 text-sm outline-none"
+                                            />
+                                        </div>
+                                        <p className="text-[10px] text-slate-400">
+                                            Si el subtotal del carrito del cliente alcanza o supera este monto, el costo del delivery será <strong>$0.00</strong>.
+                                        </p>
+                                    </div>
+                                )}
+                            </div>
+
                             <div
                                 className={`flex items-center justify-between p-4 rounded-2xl cursor-pointer group transition-all border-2 ${hasCashea ? 'bg-yellow-50 border-yellow-200 shadow-lg shadow-yellow-100/50' : 'bg-slate-50 border-transparent hover:border-slate-100'}`}
                                 onClick={() => setHasCashea(!hasCashea)}

@@ -768,7 +768,7 @@ export default function RideChat({
                     <span>Chat cerrado: El periodo de soporte y comunicación de 48 horas ha concluido.</span>
                 </div>
             ) : (
-                <div className="p-2 sm:p-3 bg-white border-t border-slate-200 sticky bottom-0 z-20">
+                <div className="p-2 sm:p-3 bg-white border-t border-slate-200 sticky bottom-0 z-20 shrink-0 w-full">
                     {/* Voice Recording Active Bar */}
                     {isRecordingVoice ? (
                         <div className="flex items-center justify-between bg-rose-50 border-2 border-rose-300 rounded-2xl px-3 py-2">

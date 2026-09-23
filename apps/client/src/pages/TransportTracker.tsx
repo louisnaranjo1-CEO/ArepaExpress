@@ -79,6 +79,14 @@ export default function TransportTracker() {
     const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<'pago_movil' | 'cash_ves' | 'cash_usd'>('cash_usd');
     const [updatingPaymentMethod, setUpdatingPaymentMethod] = useState(false);
     const hasAutoOpenedPaymentModal = useRef(false);
+
+    // Modal de Reporte de Pago Obligatorio al Conductor
+    const [showReportPaymentModal, setShowReportPaymentModal] = useState(false);
+    const [paymentProofFile, setPaymentProofFile] = useState<File | null>(null);
+    const [paymentProofPreview, setPaymentProofPreview] = useState<string | null>(null);
+    const [paymentRefNumber, setPaymentRefNumber] = useState('');
+    const [reportingPayment, setReportingPayment] = useState(false);
+    const [reportMethod, setReportMethod] = useState<'pago_movil' | 'cash_usd' | 'cash_ves' | 'transfer' | 'zelle'>('pago_movil');
     
     // Notification sound
     const notificationSoundUrl = useRef<string | null>(null);
@@ -541,37 +549,30 @@ export default function TransportTracker() {
         if (!requestId || rating === 0) return;
         setSubmittingRating(true);
         try {
-            await supabase.from('transport_requests').update({
-                rating,
-                ratingTags: selectedTags,
-                rating_tags: selectedTags,
-                ratingComment: comment,
-                rating_comment: comment,
-                ratedAt: new Date().toISOString(),
-                rated_at: new Date().toISOString(),
-                updated_at: new Date().toISOString()
-            }).eq('id', requestId);
-
-            // Dynamically recalculate driver's overall rating
             const driverId = request?.driverId || (request as any)?.driver_id;
-            if (driverId) {
-                const [ordersRes, trRes] = await Promise.all([
-                    supabase.from('orders').select('rating').eq('delivery_driver_id', driverId).not('rating', 'is', null),
-                    supabase.from('transport_requests').select('rating').eq('driver_id', driverId).not('rating', 'is', null)
-                ]);
-                const allRatings = [
-                    ...(ordersRes.data || []).map((o: any) => Number(o.rating)),
-                    ...(trRes.data || []).map((t: any) => Number(t.rating)),
-                    rating
-                ].filter(r => !isNaN(r) && r > 0);
+            const userId = request?.userId || (request as any)?.user_id;
+            const userName = request?.userName || (request as any)?.user_name || 'Cliente';
 
-                if (allRatings.length > 0) {
-                    const avg = Number((allRatings.reduce((a, b) => a + b, 0) / allRatings.length).toFixed(1));
-                    await supabase.from('drivers').update({
-                        rating: avg,
-                        updated_at: new Date().toISOString()
-                    }).eq('id', driverId);
-                }
+            const { error: rpcErr } = await supabase.rpc('submit_driver_review', {
+                p_transport_request_id: requestId,
+                p_order_id: null,
+                p_driver_id: driverId,
+                p_user_id: userId,
+                p_user_name: userName,
+                p_rating: rating,
+                p_comment: comment.trim() || null,
+                p_tags: selectedTags.length > 0 ? selectedTags : null
+            });
+
+            if (rpcErr) {
+                console.warn("RPC submit_driver_review fallback:", rpcErr);
+                await supabase.from('transport_requests').update({
+                    rating,
+                    rating_tags: selectedTags,
+                    rating_comment: comment,
+                    rated_at: new Date().toISOString(),
+                    updated_at: new Date().toISOString()
+                }).eq('id', requestId);
             }
 
             setHasRated(true);
@@ -581,6 +582,80 @@ export default function TransportTracker() {
             toast.error("Error al enviar calificación");
         } finally {
             setSubmittingRating(false);
+        }
+    };
+
+    const handleReportPayment = async () => {
+        if (!requestId || !request) return;
+
+        if (['pago_movil', 'transfer', 'zelle'].includes(reportMethod) && !paymentProofFile && !request.payment_proof_url) {
+            toast.error("Por favor adjunta el comprobante o captura del pago");
+            return;
+        }
+
+        setReportingPayment(true);
+        try {
+            let uploadedProofUrl: string | null = request.payment_proof_url || null;
+            if (paymentProofFile) {
+                const ext = paymentProofFile.name.split('.').pop() || 'jpg';
+                const filePath = `payment_proofs/${requestId}_${Date.now()}.${ext}`;
+                const { error: upErr } = await supabase.storage
+                    .from('store_assets')
+                    .upload(filePath, paymentProofFile, { upsert: true });
+
+                if (!upErr) {
+                    const { data: urlData } = supabase.storage.from('store_assets').getPublicUrl(filePath);
+                    uploadedProofUrl = urlData.publicUrl;
+                } else {
+                    console.warn("Error uploading proof:", upErr);
+                }
+            }
+
+            const nowIso = new Date().toISOString();
+            const { error: updErr } = await supabase.from('transport_requests').update({
+                payment_status: 'payment_reported',
+                payment_proof_url: uploadedProofUrl,
+                payment_ref: paymentRefNumber.trim() || null,
+                payment_method: reportMethod,
+                payment_reported_at: nowIso,
+                updated_at: nowIso
+            }).eq('id', requestId);
+
+            if (updErr) throw updErr;
+
+            setRequest((prev: any) => ({
+                ...prev,
+                payment_status: 'payment_reported',
+                payment_proof_url: uploadedProofUrl,
+                payment_ref: paymentRefNumber.trim() || null,
+                payment_method: reportMethod,
+                payment_reported_at: nowIso
+            }));
+
+            // Message in ride chat so the driver has the proof directly in conversation
+            try {
+                const uid = request.user_id || request.userId;
+                await supabase.from('messages').insert({
+                    chat_path: `transport_requests/${requestId}`,
+                    order_id: requestId,
+                    text: `💳 [PAGO REPORTADO]: ${reportMethod === 'pago_movil' ? 'Pago Móvil' : reportMethod === 'cash_usd' ? 'Divisa Efectivo ($)' : reportMethod === 'cash_ves' ? 'Bs Efectivo' : 'Transferencia'}${paymentRefNumber ? ` • Ref: ${paymentRefNumber}` : ''}`,
+                    image_url: uploadedProofUrl,
+                    sender_id: uid,
+                    sender_name: request.user_name || 'Cliente',
+                    sender_role: 'client',
+                    created_at: nowIso
+                });
+            } catch (chatErr) {
+                console.warn("Could not insert payment report chat message:", chatErr);
+            }
+
+            setShowReportPaymentModal(false);
+            toast.success("¡Comprobante enviado al chofer! Esperando confirmación.", { icon: '⏳', duration: 4000 });
+        } catch (error: any) {
+            console.error("Error reporting payment:", error);
+            toast.error(error.message || "Error al enviar reporte de pago");
+        } finally {
+            setReportingPayment(false);
         }
     };
 
@@ -797,7 +872,40 @@ export default function TransportTracker() {
             case 'in_progress':
                 return { title: "Viaje en Curso", subtitle: "Te diriges a tu destino", color: "text-emerald-500", bg: "bg-emerald-50", icon: Navigation };
             case 'completed':
-                return { title: "Viaje Completado", subtitle: "Has llegado a tu destino", color: "text-slate-900", bg: "bg-slate-100", icon: CheckCircle2 };
+                if (request.payment_status === 'disputed') {
+                    return {
+                        title: "Pago en Disputa",
+                        subtitle: "El conductor reportó una discrepancia con el pago. Comunícate para solventarlo.",
+                        color: "text-rose-600",
+                        bg: "bg-rose-50",
+                        icon: AlertTriangle
+                    };
+                }
+                if (request.payment_status === 'payment_reported') {
+                    return {
+                        title: "Validando Pago",
+                        subtitle: "En espera de confirmación de pago por el chofer...",
+                        color: "text-amber-600",
+                        bg: "bg-amber-50",
+                        icon: ShieldCheck
+                    };
+                }
+                if (request.payment_status === 'confirmed') {
+                    return {
+                        title: "¡Viaje y Pago Completados!",
+                        subtitle: "¡Gracias por viajar con nosotros! Puntos acreditados.",
+                        color: "text-emerald-600",
+                        bg: "bg-emerald-50",
+                        icon: CheckCircle2
+                    };
+                }
+                return {
+                    title: "¡Llegamos a tu destino!",
+                    subtitle: "Por favor califica y reporta tu pago al conductor",
+                    color: "text-slate-900",
+                    bg: "bg-slate-100",
+                    icon: CheckCircle2
+                };
             case 'cancelled':
                 return { title: "Viaje Cancelado", subtitle: "El pago fue rechazado o el viaje cancelado", color: "text-red-500", bg: "bg-red-50", icon: XCircle };
             default:
@@ -1175,6 +1283,187 @@ export default function TransportTracker() {
                     </div>
                 )}
 
+                {/* ── SECCIÓN DE CONFIRMACIÓN Y REPORTE DE PAGO OBLIGATORIO ── */}
+                {request.status === 'completed' && (
+                    <div className="mb-4">
+                        {/* 1. DISPUTADO */}
+                        {request.payment_status === 'disputed' && (
+                            <div className="bg-rose-50 border-2 border-rose-300 rounded-2xl p-4 shadow-md space-y-3">
+                                <div className="flex items-start gap-3">
+                                    <div className="w-10 h-10 rounded-xl bg-rose-500 text-white flex items-center justify-center shrink-0 shadow-sm">
+                                        <AlertTriangle className="w-5 h-5" />
+                                    </div>
+                                    <div className="flex-1">
+                                        <h4 className="text-sm font-black text-rose-900 leading-tight">
+                                            Pago en Disputa / Cuenta Restringida
+                                        </h4>
+                                        <p className="text-[11px] font-bold text-rose-700 mt-1 leading-relaxed">
+                                            El conductor reportó que no ha recibido el pago de este servicio (${parseFloat(request.price || request.total || 0).toFixed(2)} USD). Tu cuenta tiene restricciones activas para nuevos viajes hasta resolver este pago.
+                                        </p>
+                                    </div>
+                                </div>
+                                <div className="flex gap-2 pt-1">
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowChat(true)}
+                                        className="flex-1 py-2.5 bg-rose-600 hover:bg-rose-700 text-white font-black text-xs rounded-xl flex items-center justify-center gap-1.5 shadow-sm active:scale-95 transition-all"
+                                    >
+                                        <MessageCircle className="w-4 h-4" />
+                                        Chat con Chofer
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowCall(true)}
+                                        className="px-4 py-2.5 bg-white border border-rose-300 text-rose-700 font-black text-xs rounded-xl flex items-center justify-center gap-1.5 active:scale-95 transition-all"
+                                    >
+                                        <Phone className="w-4 h-4" />
+                                        Llamar
+                                    </button>
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={() => setShowReportPaymentModal(true)}
+                                    className="w-full py-2.5 bg-rose-100 hover:bg-rose-200 text-rose-900 font-black text-xs rounded-xl transition-all flex items-center justify-center gap-1.5"
+                                >
+                                    <span>Reenviar o Corregir Comprobante</span>
+                                </button>
+                            </div>
+                        )}
+
+                        {/* 2. REPORTADO Y EN ESPERA DE CONFIRMACIÓN */}
+                        {request.payment_status === 'payment_reported' && (
+                            <div className="bg-amber-50 border-2 border-amber-300 rounded-2xl p-4 shadow-sm space-y-3">
+                                <div className="flex items-start gap-3">
+                                    <div className="w-10 h-10 rounded-xl bg-amber-400 text-slate-950 flex items-center justify-center shrink-0 shadow-sm animate-pulse">
+                                        <Clock className="w-5 h-5" />
+                                    </div>
+                                    <div className="flex-1 min-w-0">
+                                        <h4 className="text-sm font-black text-amber-950 leading-tight">
+                                            En espera de confirmación de pago por el chofer
+                                        </h4>
+                                        <p className="text-[11px] font-bold text-amber-800 mt-1 leading-relaxed">
+                                            Has reportado tu pago. El conductor está validando el depósito o transferencia. Mantén la aplicación abierta o disponible.
+                                        </p>
+                                        {request.payment_ref && (
+                                            <p className="text-[10px] font-mono font-bold text-amber-900 bg-white/70 px-2 py-1 rounded-lg mt-2 inline-block border border-amber-200">
+                                                Referencia: {request.payment_ref}
+                                            </p>
+                                        )}
+                                    </div>
+                                </div>
+
+                                {request.payment_proof_url && (
+                                    <div className="bg-white p-2 rounded-xl border border-amber-200 flex items-center justify-between">
+                                        <span className="text-[11px] font-bold text-slate-600 flex items-center gap-1.5">
+                                            📸 Comprobante adjuntado
+                                        </span>
+                                        <a
+                                            href={request.payment_proof_url}
+                                            target="_blank"
+                                            rel="noreferrer"
+                                            className="text-[11px] font-black text-amber-600 hover:underline"
+                                        >
+                                            Ver foto
+                                        </a>
+                                    </div>
+                                )}
+
+                                <div className="flex gap-2">
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowChat(true)}
+                                        className="flex-1 py-2.5 bg-amber-400 hover:bg-amber-500 text-slate-950 font-black text-xs rounded-xl flex items-center justify-center gap-1.5 shadow-sm active:scale-95 transition-all"
+                                    >
+                                        <MessageCircle className="w-4 h-4" />
+                                        Chat
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowCall(true)}
+                                        className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs rounded-xl flex items-center justify-center gap-1.5 shadow-sm active:scale-95 transition-all"
+                                    >
+                                        <Phone className="w-4 h-4 fill-white" />
+                                        Llamar
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowReportPaymentModal(true)}
+                                        className="px-3 py-2.5 bg-white border border-amber-300 text-amber-800 font-black text-xs rounded-xl hover:bg-amber-100/50 active:scale-95 transition-all"
+                                    >
+                                        Editar
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* 3. CONFIRMADO */}
+                        {request.payment_status === 'confirmed' && (
+                            <div className="bg-emerald-50 border-2 border-emerald-300 rounded-2xl p-4 shadow-sm space-y-3">
+                                <div className="flex items-center gap-3">
+                                    <div className="w-10 h-10 rounded-xl bg-emerald-500 text-white flex items-center justify-center shrink-0 shadow-sm">
+                                        <CheckCircle2 className="w-6 h-6" />
+                                    </div>
+                                    <div>
+                                        <h4 className="text-sm font-black text-emerald-950 leading-tight">
+                                            ¡Pago Verificado y Conciliado!
+                                        </h4>
+                                        <p className="text-[11px] font-bold text-emerald-700 mt-0.5">
+                                            El conductor confirmó la recepción de tu pago. Has sumado puntos para sorteos.
+                                        </p>
+                                    </div>
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        localStorage.removeItem('active_transport_req_id');
+                                        navigate('/');
+                                    }}
+                                    className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs uppercase tracking-wider rounded-xl shadow-md shadow-emerald-600/20 active:scale-95 transition-all flex items-center justify-center gap-2"
+                                >
+                                    <CheckCircle2 className="w-4 h-4" />
+                                    <span>Volver al Inicio</span>
+                                </button>
+                            </div>
+                        )}
+
+                        {/* 4. PENDIENTE DE REPORTE */}
+                        {(!request.payment_status || request.payment_status === 'pending') && (
+                            <div className="bg-gradient-to-br from-amber-50 via-yellow-50 to-orange-50 border-2 border-amber-400 rounded-2xl p-4 shadow-md space-y-3">
+                                <div className="flex items-start justify-between">
+                                    <div>
+                                        <span className="text-[10px] font-black uppercase tracking-wider text-amber-900 bg-amber-200/60 px-2 py-0.5 rounded-md">
+                                            Acción Requerida
+                                        </span>
+                                        <h4 className="text-base font-black text-slate-900 mt-1">
+                                            Reportar Pago al Conductor
+                                        </h4>
+                                        <p className="text-xs font-bold text-slate-600">
+                                            Total a pagar: <b className="text-slate-950 font-black">${parseFloat(request.price || request.total || 0).toFixed(2)} USD</b>
+                                            {bcvRate > 0 && <span> (≈ {(parseFloat(request.price || request.total || 0) * bcvRate).toFixed(2)} Bs)</span>}
+                                        </p>
+                                    </div>
+                                    <div className="w-10 h-10 rounded-2xl bg-[#FFB800] text-slate-950 flex items-center justify-center font-black text-lg shadow-sm">
+                                        💳
+                                    </div>
+                                </div>
+
+                                <p className="text-[11px] font-medium text-slate-600 leading-snug">
+                                    Para cerrar el viaje y acumular tus boletos de sorteo, reporta tu pago (Pago Móvil, Transferencia o Efectivo) para que el chofer lo confirme.
+                                </p>
+
+                                <button
+                                    type="button"
+                                    onClick={() => setShowReportPaymentModal(true)}
+                                    className="w-full py-3.5 bg-[#FFB800] hover:bg-amber-400 active:scale-95 text-slate-950 font-black text-sm uppercase tracking-wider rounded-xl shadow-md shadow-amber-500/20 transition-all flex items-center justify-center gap-2"
+                                >
+                                    <ShieldCheck className="w-5 h-5" />
+                                    <span>Reportar Pago al Conductor</span>
+                                </button>
+                            </div>
+                        )}
+                    </div>
+                )}
+
                 {/* ── OBJETOS PERDIDOS ── */}
                 {request.status === 'completed' && !lostItemSent && (
                     <button
@@ -1347,7 +1636,7 @@ export default function TransportTracker() {
                                         )}
                                     </button>
                                 )}
-                                {['accepted', 'arriving', 'in_progress'].includes(request.status) && (
+                                {(['accepted', 'arriving', 'in_progress'].includes(request.status) || (request.status === 'completed' && request.payment_status !== 'confirmed')) && (
                                     <button
                                         onClick={() => setShowCall(true)}
                                         className="w-10 h-10 bg-emerald-50 text-emerald-600 rounded-full flex items-center justify-center active:scale-95 transition-transform shadow-sm"
@@ -1865,6 +2154,168 @@ export default function TransportTracker() {
                                     {updatingPaymentMethod ? 'Guardando...' : 'Confirmar Método de Pago'}
                                 </button>
                             </div>
+                        </div>
+                    </div>
+                )}
+
+                {/* Modal: Reportar Pago al Conductor */}
+                {showReportPaymentModal && (
+                    <div className="fixed inset-0 z-[130] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-950/70 backdrop-blur-sm animate-in fade-in">
+                        <div className="bg-white rounded-t-[32px] sm:rounded-3xl max-w-md w-full p-5 sm:p-6 space-y-4 shadow-2xl relative animate-in slide-in-from-bottom duration-200 max-h-[90vh] overflow-y-auto">
+                            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                                <div className="flex items-center gap-2">
+                                    <div className="w-8 h-8 rounded-xl bg-[#FFB800] text-slate-950 flex items-center justify-center font-black">
+                                        📸
+                                    </div>
+                                    <div>
+                                        <h3 className="text-base font-black text-slate-900 leading-tight">Reportar Pago al Chofer</h3>
+                                        <p className="text-[10px] text-slate-500 font-bold">Adjunta tu comprobante para validación</p>
+                                    </div>
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={() => setShowReportPaymentModal(false)}
+                                    className="w-8 h-8 rounded-full bg-slate-100 text-slate-500 hover:bg-slate-200 flex items-center justify-center transition-colors"
+                                >
+                                    <X className="w-4 h-4" />
+                                </button>
+                            </div>
+
+                            {/* Driver and Amount Summary */}
+                            <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-200/80 flex items-center justify-between">
+                                <div>
+                                    <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Conductor</span>
+                                    <p className="text-xs font-black text-slate-900">
+                                        {driver?.fullName || (driver as any)?.full_name || 'Conductor Asignado'}
+                                    </p>
+                                </div>
+                                <div className="text-right">
+                                    <span className="text-base font-black text-slate-900 block leading-none">
+                                        ${parseFloat(request.price || request.total || 0).toFixed(2)} USD
+                                    </span>
+                                    {bcvRate > 0 && (
+                                        <span className="text-xs font-bold text-slate-500">
+                                            ≈ {(parseFloat(request.price || request.total || 0) * bcvRate).toFixed(2)} Bs
+                                        </span>
+                                    )}
+                                </div>
+                            </div>
+
+                            {/* Driver Pago Móvil shortcut details if available */}
+                            {(() => {
+                                const pm = request.driver_payment_info || (driver as any)?.payment_mobile || (driver as any)?.payment_info || {};
+                                if (!pm.phone && !pm.bank) return null;
+                                return (
+                                    <div className="p-3 bg-purple-50 rounded-2xl border border-purple-200 text-xs space-y-1">
+                                        <span className="text-[10px] font-black uppercase text-purple-900 tracking-wider block">
+                                            Datos del Conductor:
+                                        </span>
+                                        <p className="font-bold text-slate-800">
+                                            {pm.bank} • {pm.phone} • C.I: {pm.idf || pm.cedula}
+                                        </p>
+                                    </div>
+                                );
+                            })()}
+
+                            {/* Method Selector */}
+                            <div className="space-y-1.5">
+                                <label className="text-xs font-bold text-slate-700">Forma de Pago Utilizada</label>
+                                <div className="grid grid-cols-3 gap-2">
+                                    {[
+                                        { id: 'pago_movil', label: 'Pago Móvil' },
+                                        { id: 'cash_usd', label: 'Divisa ($)' },
+                                        { id: 'cash_ves', label: 'Bs Efectivo' }
+                                    ].map(m => (
+                                        <button
+                                            key={m.id}
+                                            type="button"
+                                            onClick={() => setReportMethod(m.id as any)}
+                                            className={`py-2 px-2 rounded-xl text-xs font-bold border transition-all text-center ${
+                                                reportMethod === m.id
+                                                    ? 'bg-[#FFB800] border-amber-500 text-slate-950 font-black shadow-sm'
+                                                    : 'bg-white border-slate-200 text-slate-600'
+                                            }`}
+                                        >
+                                            {m.label}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+
+                            {/* Proof Capture Upload (Mandatory for Pago Móvil) */}
+                            <div className="space-y-2">
+                                <label className="text-xs font-bold text-slate-700 flex items-center justify-between">
+                                    <span>Captura de Comprobante {reportMethod === 'pago_movil' ? '(Obligatorio)' : '(Opcional)'}</span>
+                                    {paymentProofFile && <span className="text-emerald-600 text-[10px] font-bold">✓ Seleccionado</span>}
+                                </label>
+
+                                <input
+                                    type="file"
+                                    id="payment-proof-input"
+                                    accept="image/*"
+                                    className="hidden"
+                                    onChange={(e) => {
+                                        const file = e.target.files?.[0];
+                                        if (file) {
+                                            setPaymentProofFile(file);
+                                            setPaymentProofPreview(URL.createObjectURL(file));
+                                        }
+                                    }}
+                                />
+
+                                {paymentProofPreview ? (
+                                    <div className="relative w-full h-36 rounded-2xl overflow-hidden border-2 border-amber-400 bg-slate-900 flex items-center justify-center">
+                                        <img src={paymentProofPreview} alt="Comprobante" className="w-full h-full object-contain" />
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                setPaymentProofFile(null);
+                                                setPaymentProofPreview(null);
+                                            }}
+                                            className="absolute top-2 right-2 bg-black/70 text-white rounded-full p-1.5 hover:bg-black"
+                                        >
+                                            <X className="w-4 h-4" />
+                                        </button>
+                                    </div>
+                                ) : (
+                                    <label
+                                        htmlFor="payment-proof-input"
+                                        className="w-full h-24 border-2 border-dashed border-amber-300 rounded-2xl flex flex-col items-center justify-center gap-1.5 cursor-pointer hover:bg-amber-50/50 bg-amber-50/20 transition-colors"
+                                    >
+                                        <div className="w-8 h-8 rounded-full bg-amber-100 text-amber-800 flex items-center justify-center">
+                                            📷
+                                        </div>
+                                        <span className="text-xs font-bold text-amber-900">
+                                            Toca para subir captura de pantalla
+                                        </span>
+                                    </label>
+                                )}
+                            </div>
+
+                            {/* Reference Input */}
+                            <div className="space-y-1.5">
+                                <label className="text-xs font-bold text-slate-700">
+                                    Número de Referencia (Opcional)
+                                </label>
+                                <input
+                                    type="text"
+                                    value={paymentRefNumber}
+                                    onChange={(e) => setPaymentRefNumber(e.target.value)}
+                                    placeholder="Ej: 123456 (últimos 4 o 6 dígitos)"
+                                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-amber-400"
+                                />
+                            </div>
+
+                            {/* Submit button */}
+                            <button
+                                type="button"
+                                disabled={reportingPayment}
+                                onClick={handleReportPayment}
+                                className="w-full py-3.5 bg-[#FFB800] hover:bg-amber-400 active:scale-95 text-slate-950 font-black text-xs uppercase tracking-wider rounded-2xl shadow-lg transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+                            >
+                                <CheckCircle2 className="w-4 h-4" />
+                                {reportingPayment ? 'Enviando comprobante...' : 'Enviar Reporte al Conductor'}
+                            </button>
                         </div>
                     </div>
                 )}

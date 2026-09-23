@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { supabase } from '../../lib/supabase';
-import { Trophy, Star, Target, CheckCircle2, Navigation, ArrowLeft, MessageSquare, ThumbsUp, Sparkles, User } from 'lucide-react';
+import { Trophy, Star, Target, CheckCircle2, Navigation, ArrowLeft, MessageSquare, ThumbsUp, Sparkles, User, Ticket, Gift, Loader2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
 interface Achievement {
@@ -30,7 +30,11 @@ export default function Achievements() {
     const navigate = useNavigate();
     const [achievements, setAchievements] = useState<Achievement[]>([]);
     const [loading, setLoading] = useState(true);
-    const [activeTab, setActiveTab] = useState<'achievements' | 'reviews'>('achievements');
+    const [activeTab, setActiveTab] = useState<'achievements' | 'reviews' | 'raffle'>('achievements');
+    const [points, setPoints] = useState(0);
+    const [activeRaffle, setActiveRaffle] = useState<any>(null);
+    const [raffleTickets, setRaffleTickets] = useState<any[]>([]);
+    const [exchangingTicket, setExchangingTicket] = useState(false);
     const [stats, setStats] = useState({
         totalTrips: 0,
         totalStars: 0
@@ -73,33 +77,45 @@ export default function Achievements() {
             }
         };
 
+        const fetchRaffleData = async () => {
+            try {
+                const [raffleRes, ticketsRes] = await Promise.all([
+                    supabase.from('raffles').select('*').eq('status', 'active').order('created_at', { ascending: false }).limit(1).maybeSingle(),
+                    supabase.from('raffle_tickets').select('*, raffles(title, draw_date)').or(`user_id.eq.${user.uid},driver_id.eq.${user.uid}`).order('created_at', { ascending: false })
+                ]);
+                if (raffleRes.data) setActiveRaffle(raffleRes.data);
+                if (ticketsRes.data) setRaffleTickets(ticketsRes.data);
+            } catch (err) {
+                console.error("Error fetching raffle data:", err);
+            }
+        };
+
         // Calculate driver stats & real-time reviews
         const calculateStats = async () => {
             try {
-                // Fetch driver profile data
-                const { data: driverData } = await supabase
-                    .from('drivers')
-                    .select('*')
-                    .eq('id', user.uid)
-                    .maybeSingle();
+                // Fetch driver profile data, reviews and profile points
+                const [driverRes, ordersRes, transportRes, reviewsRes, profileRes] = await Promise.all([
+                    supabase.from('drivers').select('*').eq('id', user.uid).maybeSingle(),
+                    supabase.from('orders').select('*').eq('delivery_driver_id', user.uid),
+                    supabase.from('transport_requests').select('*').eq('driver_id', user.uid),
+                    supabase.from('reviews').select('*').eq('driver_id', user.uid),
+                    supabase.from('profiles').select('points').eq('id', user.uid).maybeSingle()
+                ]);
 
-                // Delivery orders
-                const { data: ordersData } = await supabase
-                    .from('orders')
-                    .select('*')
-                    .eq('delivery_driver_id', user.uid);
+                if (profileRes?.data && typeof profileRes.data.points === 'number') {
+                    setPoints(profileRes.data.points);
+                }
 
-                // Transport requests
-                const { data: transportData } = await supabase
-                    .from('transport_requests')
-                    .select('*')
-                    .eq('driver_id', user.uid);
+                const driverData = driverRes?.data;
+                const ordersData = ordersRes?.data || [];
+                const transportData = transportRes?.data || [];
+                const directReviews = reviewsRes?.data || [];
 
-                const completedOrders = (ordersData || []).filter((o: any) => 
+                const completedOrders = ordersData.filter((o: any) => 
                     ['delivered', 'completed', 'entregado'].includes(o.status)
                 ).length;
 
-                const completedTransports = (transportData || []).filter((t: any) => 
+                const completedTransports = transportData.filter((t: any) => 
                     ['completed', 'delivered', 'finished'].includes(t.status)
                 ).length;
 
@@ -112,7 +128,7 @@ export default function Achievements() {
                 let count5 = 0, count4 = 0, count3 = 0, count2 = 0, count1 = 0;
                 let sumRating = 0;
 
-                (ordersData || []).forEach((o: any) => {
+                ordersData.forEach((o: any) => {
                     const r = Number(o.rating);
                     if (r > 0) {
                         sumRating += r;
@@ -134,7 +150,7 @@ export default function Achievements() {
                     }
                 });
 
-                (transportData || []).forEach((t: any) => {
+                transportData.forEach((t: any) => {
                     const r = Number(t.rating);
                     if (r > 0) {
                         sumRating += r;
@@ -153,6 +169,31 @@ export default function Achievements() {
                             clientName: t.passenger_name || t.passengerName || t.user_name || 'Pasajero',
                             createdAt: new Date(t.rated_at || t.completed_at || t.created_at || Date.now())
                         });
+                    }
+                });
+
+                directReviews.forEach((rev: any) => {
+                    const exists = allReviewsList.some(item => item.id === rev.id || (rev.ride_id && item.id === rev.ride_id));
+                    if (!exists) {
+                        const r = Number(rev.rating);
+                        if (r > 0) {
+                            sumRating += r;
+                            if (r >= 5) count5++;
+                            else if (r >= 4) count4++;
+                            else if (r >= 3) count3++;
+                            else if (r >= 2) count2++;
+                            else if (r >= 1) count1++;
+
+                            allReviewsList.push({
+                                id: rev.id,
+                                rating: r,
+                                comment: rev.comment,
+                                tags: rev.tags || [],
+                                serviceCategory: rev.service_type || 'taxi',
+                                clientName: rev.user_name || rev.client_name || 'Pasajero / Cliente',
+                                createdAt: new Date(rev.created_at || Date.now())
+                            });
+                        }
                     }
                 });
 
@@ -190,6 +231,7 @@ export default function Achievements() {
         };
 
         fetchAchievements();
+        fetchRaffleData();
         calculateStats();
 
         const channel = supabase
@@ -197,10 +239,34 @@ export default function Achievements() {
             .on('postgres_changes', { event: '*', schema: 'public', table: 'achievements' }, () => {
                 fetchAchievements();
             })
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'raffles' }, () => {
+                fetchRaffleData();
+            })
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'raffle_tickets' }, () => {
+                fetchRaffleData();
+            })
+            .on('postgres_changes', { 
+                event: '*', 
+                schema: 'public', 
+                table: 'profiles',
+                filter: `id=eq.${user.uid}` 
+            }, (payload: any) => {
+                if (payload.new && typeof payload.new.points === 'number') {
+                    setPoints(payload.new.points);
+                }
+            })
             .on('postgres_changes', { 
                 event: '*', 
                 schema: 'public', 
                 table: 'transport_requests',
+                filter: `driver_id=eq.${user.uid}` 
+            }, () => {
+                calculateStats();
+            })
+            .on('postgres_changes', { 
+                event: '*', 
+                schema: 'public', 
+                table: 'reviews',
                 filter: `driver_id=eq.${user.uid}` 
             }, () => {
                 calculateStats();
@@ -227,6 +293,50 @@ export default function Achievements() {
             supabase.removeChannel(channel);
         };
     }, [user]);
+
+    const handleExchangeTicket = async () => {
+        if (!user) return;
+        if (!activeRaffle) {
+            alert("No hay ningún sorteo activo en este momento.");
+            return;
+        }
+        if (points < 10) {
+            alert("Necesitas al menos 10 puntos para canjear un boleto. Completa más viajes para ganar puntos (1 pt por cada $1).");
+            return;
+        }
+
+        setExchangingTicket(true);
+        try {
+            const { data, error } = await supabase.rpc('issue_raffle_ticket', {
+                p_user_id: user.uid,
+                p_raffle_id: activeRaffle.id
+            });
+
+            if (error) throw error;
+
+            if (data && data.success) {
+                alert(`🎉 ¡Felicidades! Has canjeado tu boleto: ${data.ticket_number}`);
+                if (typeof data.remaining_points === 'number') {
+                    setPoints(data.remaining_points);
+                } else {
+                    setPoints(prev => Math.max(0, prev - 10));
+                }
+                const { data: ticketsData } = await supabase
+                    .from('raffle_tickets')
+                    .select('*, raffles(title, draw_date)')
+                    .or(`user_id.eq.${user.uid},driver_id.eq.${user.uid}`)
+                    .order('created_at', { ascending: false });
+                if (ticketsData) setRaffleTickets(ticketsData);
+            } else {
+                alert(data?.error || "No se pudo canjear el boleto");
+            }
+        } catch (err: any) {
+            console.error("Error exchanging ticket:", err);
+            alert("Error al canjear boleto: " + (err.message || 'Error inesperado'));
+        } finally {
+            setExchangingTicket(false);
+        }
+    };
 
     const getProgress = (achievement: Achievement) => {
         let current = 0;
@@ -290,33 +400,46 @@ export default function Achievements() {
                     </p>
 
                     {/* Stats Summary Cards */}
-                    <div className="grid grid-cols-2 gap-3 mt-6">
+                    <div className="grid grid-cols-3 gap-2 mt-6">
                         <div 
                             onClick={() => setActiveTab('achievements')}
-                            className={`rounded-2xl p-4 border transition-all cursor-pointer ${
+                            className={`rounded-2xl p-3 border transition-all cursor-pointer ${
                                 activeTab === 'achievements' 
                                     ? 'bg-white/15 border-amber-400/50 shadow-lg' 
                                     : 'bg-white/5 border-white/10 hover:bg-white/10'
                             }`}
                         >
-                            <p className="text-[10px] font-black text-amber-200 uppercase tracking-widest mb-1">Viajes Totales</p>
-                            <p className="text-2xl font-black text-white flex items-center gap-2">
-                                <Navigation className="w-5 h-5 text-amber-400" /> {stats.totalTrips}
+                            <p className="text-[10px] font-black text-amber-200 uppercase tracking-widest mb-1">Viajes</p>
+                            <p className="text-xl font-black text-white flex items-center gap-1.5">
+                                <Navigation className="w-4 h-4 text-amber-400" /> {stats.totalTrips}
                             </p>
                         </div>
                         <div 
                             onClick={() => setActiveTab('reviews')}
-                            className={`rounded-2xl p-4 border transition-all cursor-pointer ${
+                            className={`rounded-2xl p-3 border transition-all cursor-pointer ${
                                 activeTab === 'reviews' 
                                     ? 'bg-white/15 border-amber-400/50 shadow-lg' 
                                     : 'bg-white/5 border-white/10 hover:bg-white/10'
                             }`}
                         >
-                            <p className="text-[10px] font-black text-amber-200 uppercase tracking-widest mb-1">Reputación Conductor</p>
-                            <p className="text-2xl font-black text-white flex items-center gap-1.5">
-                                <Star className="w-5 h-5 text-amber-400 fill-amber-400" /> 
+                            <p className="text-[10px] font-black text-amber-200 uppercase tracking-widest mb-1">Reputación</p>
+                            <p className="text-xl font-black text-white flex items-center gap-1">
+                                <Star className="w-4 h-4 text-amber-400 fill-amber-400" /> 
                                 <span>{ratingStats.average.toFixed(1)}</span>
-                                <span className="text-xs text-white/60 font-bold">({ratingStats.totalReviews})</span>
+                            </p>
+                        </div>
+                        <div 
+                            onClick={() => setActiveTab('raffle')}
+                            className={`rounded-2xl p-3 border transition-all cursor-pointer ${
+                                activeTab === 'raffle' 
+                                    ? 'bg-amber-400/20 border-amber-400/60 shadow-lg' 
+                                    : 'bg-white/5 border-white/10 hover:bg-white/10'
+                            }`}
+                        >
+                            <p className="text-[10px] font-black text-amber-200 uppercase tracking-widest mb-1">Puntos</p>
+                            <p className="text-xl font-black text-yellow-300 flex items-center gap-1">
+                                <Sparkles className="w-4 h-4 text-yellow-400 fill-yellow-400" /> 
+                                <span>{points}</span>
                             </p>
                         </div>
                     </div>
@@ -336,7 +459,7 @@ export default function Achievements() {
                         }`}
                     >
                         <Trophy className="w-4 h-4" />
-                        <span>Misiones y Retos ({achievements.length})</span>
+                        <span>Misiones ({achievements.length})</span>
                     </button>
                     <button
                         type="button"
@@ -348,7 +471,19 @@ export default function Achievements() {
                         }`}
                     >
                         <Star className="w-4 h-4" />
-                        <span>Reseñas de Clientes ({ratingStats.totalReviews})</span>
+                        <span>Reseñas ({ratingStats.totalReviews})</span>
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => setActiveTab('raffle')}
+                        className={`flex-1 py-2.5 rounded-xl font-black text-xs transition-all flex items-center justify-center gap-1.5 ${
+                            activeTab === 'raffle'
+                                ? 'bg-amber-400 text-slate-950 shadow-md shadow-amber-400/20'
+                                : 'text-slate-400 hover:text-white'
+                        }`}
+                    >
+                        <Ticket className="w-4 h-4" />
+                        <span>Sorteos ({raffleTickets.length})</span>
                     </button>
                 </div>
             </div>
@@ -566,6 +701,169 @@ export default function Achievements() {
                                     </div>
                                 );
                             })
+                        )}
+                    </div>
+                </div>
+            )}
+
+            {/* Tab 3: Raffle Tickets Wallet & Points Exchange */}
+            {activeTab === 'raffle' && (
+                <div className="px-4 space-y-4 relative z-20">
+                    {/* Active Raffle Showcase */}
+                    {activeRaffle ? (
+                        <div className="bg-gradient-to-br from-amber-500 via-amber-600 to-yellow-500 rounded-[28px] p-6 text-slate-950 shadow-xl relative overflow-hidden">
+                            <div className="relative z-10 space-y-3">
+                                <div className="flex items-center justify-between gap-2 flex-wrap">
+                                    <span className="px-3 py-1 bg-slate-950/20 rounded-full text-[10px] font-black uppercase tracking-wider">
+                                        🎁 Gran Sorteo Oficial Activo
+                                    </span>
+                                    {activeRaffle.sundde_permit && (
+                                        <span className="px-2.5 py-0.5 bg-slate-950 text-yellow-400 rounded-lg text-[9px] font-mono font-black uppercase">
+                                            SUNDDE: {activeRaffle.sundde_permit}
+                                        </span>
+                                    )}
+                                </div>
+
+                                <div>
+                                    <h3 className="text-xl font-black tracking-tight">{activeRaffle.title}</h3>
+                                    {activeRaffle.description && (
+                                        <p className="text-xs font-semibold opacity-90 mt-1 leading-relaxed">
+                                            {activeRaffle.description}
+                                        </p>
+                                    )}
+                                </div>
+
+                                <div className="flex items-center gap-4 text-xs font-bold pt-2 border-t border-slate-950/15 flex-wrap">
+                                    {activeRaffle.draw_date && (
+                                        <div>
+                                            <span className="opacity-75 block text-[10px] uppercase">Fecha</span>
+                                            <span>{new Date(activeRaffle.draw_date).toLocaleDateString()}</span>
+                                        </div>
+                                    )}
+                                    {activeRaffle.event_time && (
+                                        <div>
+                                            <span className="opacity-75 block text-[10px] uppercase">Hora</span>
+                                            <span>{activeRaffle.event_time}</span>
+                                        </div>
+                                    )}
+                                    {activeRaffle.event_location && (
+                                        <div>
+                                            <span className="opacity-75 block text-[10px] uppercase">Lugar</span>
+                                            <span>{activeRaffle.event_location}</span>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                    ) : (
+                        <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 text-center">
+                            <Gift className="w-10 h-10 text-amber-400/60 mx-auto mb-2" />
+                            <h4 className="font-bold text-white text-sm">Próximamente nuevo Gran Sorteo</h4>
+                            <p className="text-xs text-slate-400 mt-1">Sigue acumulando puntos con cada servicio completado.</p>
+                        </div>
+                    )}
+
+                    {/* Points Exchange Action Box */}
+                    <div className="bg-slate-900 rounded-[28px] p-5 border border-slate-800 shadow-xl space-y-4">
+                        <div className="flex items-center justify-between">
+                            <div>
+                                <span className="text-[10px] font-black uppercase tracking-wider text-amber-400">
+                                    Billetera de Puntos
+                                </span>
+                                <div className="flex items-baseline gap-1.5 mt-0.5">
+                                    <span className="text-3xl font-black text-white">{points}</span>
+                                    <span className="text-slate-400 text-xs font-bold">puntos disponibles</span>
+                                </div>
+                            </div>
+
+                            <div className="text-right">
+                                <span className="px-2.5 py-1 bg-yellow-400/10 border border-yellow-400/30 text-yellow-300 rounded-xl text-[10px] font-black uppercase">
+                                    10 Pts = 1 Boleto
+                                </span>
+                            </div>
+                        </div>
+
+                        {/* Progress to next ticket */}
+                        <div className="space-y-1.5">
+                            <div className="flex justify-between items-center text-[10px] font-bold text-slate-400">
+                                <span>Progreso hacia tu próximo boleto</span>
+                                <span>{points % 10} / 10 pts</span>
+                            </div>
+                            <div className="h-2 bg-slate-800 rounded-full overflow-hidden">
+                                <div
+                                    className="h-full bg-gradient-to-r from-amber-400 to-yellow-400 rounded-full transition-all duration-500"
+                                    style={{ width: `${Math.min(100, ((points % 10) / 10) * 100)}%` }}
+                                />
+                            </div>
+                        </div>
+
+                        <button
+                            type="button"
+                            onClick={handleExchangeTicket}
+                            disabled={points < 10 || exchangingTicket || !activeRaffle}
+                            className="w-full py-4 bg-gradient-to-r from-amber-400 to-yellow-400 hover:from-amber-300 hover:to-yellow-300 active:scale-98 disabled:opacity-50 disabled:cursor-not-allowed text-slate-950 font-black rounded-2xl shadow-lg shadow-amber-400/20 text-xs uppercase tracking-wider flex items-center justify-center gap-2 transition-all"
+                        >
+                            {exchangingTicket ? (
+                                <>
+                                    <Loader2 className="w-4 h-4 animate-spin" />
+                                    <span>Canjeando Boleto...</span>
+                                </>
+                            ) : (
+                                <>
+                                    <Ticket className="w-4 h-4" />
+                                    <span>Canjear por Boleto de Sorteo (10 pts = 1 boleto)</span>
+                                </>
+                            )}
+                        </button>
+                        {points < 10 && (
+                            <p className="text-[11px] text-center text-slate-400 font-medium">
+                                Te faltan {10 - (points % 10)} puntos para canjear tu próximo número de la suerte. Acumulas 1 punto por cada $1.00 USD cobrado.
+                            </p>
+                        )}
+                    </div>
+
+                    {/* User Tickets Wallet */}
+                    <div className="space-y-3">
+                        <h3 className="text-sm font-black text-slate-300 px-1 flex items-center gap-2">
+                            <Ticket className="w-4 h-4 text-amber-400" />
+                            Tus Boletos Registrados ({raffleTickets.length})
+                        </h3>
+
+                        {raffleTickets.length === 0 ? (
+                            <div className="bg-slate-900 border border-slate-800 rounded-3xl p-8 text-center space-y-2">
+                                <Ticket className="w-10 h-10 text-amber-400/40 mx-auto" />
+                                <h4 className="font-bold text-white text-sm">No tienes boletos canjeados todavía</h4>
+                                <p className="text-xs text-slate-400 leading-relaxed max-w-xs mx-auto">
+                                    Cada viaje o mandado completado suma puntos. Cuando alcances 10 puntos, pulsa el botón superior para canjear tu boleto numerado.
+                                </p>
+                            </div>
+                        ) : (
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                {raffleTickets.map((t: any) => (
+                                    <div
+                                        key={t.id}
+                                        className="bg-slate-900 border-2 border-amber-400/40 rounded-2xl p-4 relative overflow-hidden shadow-lg flex items-center justify-between gap-3 group hover:border-amber-400 transition-all"
+                                    >
+                                        <div className="relative z-10">
+                                            <span className="text-[9px] font-black uppercase text-amber-400/80 tracking-wider">
+                                                Boleto Oficial de Sorteo
+                                            </span>
+                                            <p className="font-mono text-2xl font-black text-amber-300 tracking-wider mt-0.5">
+                                                {t.ticket_number}
+                                            </p>
+                                            <p className="text-[10px] text-slate-400 font-medium mt-1">
+                                                {t.raffles?.title || 'Gran Sorteo Un 2x3'} • {new Date(t.created_at).toLocaleDateString()}
+                                            </p>
+                                        </div>
+                                        <div className="shrink-0 relative z-10">
+                                            <span className="px-2.5 py-1 bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 rounded-xl text-[10px] font-black uppercase">
+                                                Activo
+                                            </span>
+                                        </div>
+                                        <div className="absolute -right-4 -bottom-4 w-16 h-16 bg-amber-400/10 rounded-full blur-lg pointer-events-none" />
+                                    </div>
+                                ))}
+                            </div>
                         )}
                     </div>
                 </div>

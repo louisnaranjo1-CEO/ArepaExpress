@@ -35,6 +35,8 @@ interface Order {
     waiterId?: string;
     waiterName?: string;
     tableNumber?: string;
+    preferred_driver_id?: string | null;
+    preferred_driver_expires_at?: string | null;
 }
 
 export default function Orders() {
@@ -62,6 +64,7 @@ export default function Orders() {
     
     // Radar UI State
     const [radarOrderId, setRadarOrderId] = useState<string | null>(null);
+    const [preferredCountdown, setPreferredCountdown] = useState<number>(0);
 
     // Payment Proofs State
     const [referenceInputs, setReferenceInputs] = useState<Record<string, string>>({});
@@ -271,7 +274,9 @@ export default function Orders() {
                 tableNumber: o.table_number || '',
                 orderType: o.order_type || '',
                 notes: o.notes || '',
-                clientDNI: o.client_dni || o.user_cedula || ''
+                clientDNI: o.client_dni || o.user_cedula || '',
+                preferred_driver_id: o.preferred_driver_id,
+                preferred_driver_expires_at: o.preferred_driver_expires_at
             }));
 
             // Sound on new pending order
@@ -288,6 +293,29 @@ export default function Orders() {
             setLoading(false);
         }
     };
+
+    // Preferred driver 60s countdown timer
+    useEffect(() => {
+        if (!radarOrderId) {
+            setPreferredCountdown(0);
+            return;
+        }
+        const radarOrder = orders.find(o => o.id === radarOrderId);
+        if (!radarOrder || !radarOrder.preferred_driver_expires_at) {
+            setPreferredCountdown(0);
+            return;
+        }
+
+        const updateTimer = () => {
+            const exp = new Date(radarOrder.preferred_driver_expires_at!).getTime();
+            const diff = Math.max(0, Math.ceil((exp - Date.now()) / 1000));
+            setPreferredCountdown(diff);
+        };
+
+        updateTimer();
+        const interval = setInterval(updateTimer, 1000);
+        return () => clearInterval(interval);
+    }, [radarOrderId, orders]);
 
     useEffect(() => {
         if (!user || !rid) return;
@@ -473,6 +501,16 @@ export default function Orders() {
                 status: dispatchType === 'platform' ? 'buscando_piloto' : 'delivering',
                 updated_at: new Date().toISOString()
             };
+
+            if (dispatchType === 'platform') {
+                if (selectedDriver) {
+                    updates.preferred_driver_id = selectedDriver;
+                    updates.preferred_driver_expires_at = new Date(Date.now() + 60000).toISOString();
+                } else {
+                    updates.preferred_driver_id = null;
+                    updates.preferred_driver_expires_at = null;
+                }
+            }
 
             await supabase.from('orders').update(updates).eq('id', selectedOrderForDispatch.id);
             
@@ -1768,15 +1806,47 @@ export default function Orders() {
                         </div>
 
                         {dispatchType === 'platform' ? (
-                            <div className="mb-6 flex flex-col items-center justify-center p-6 bg-slate-50 rounded-2xl border border-slate-200">
-                                <div className="w-16 h-16 bg-blue-100 text-blue-500 rounded-full flex items-center justify-center mb-4 relative">
-                                    <div className="absolute inset-0 bg-blue-400 rounded-full animate-ping opacity-20"></div>
-                                    <Truck className="w-8 h-8 relative z-10" />
+                            <div className="mb-6 space-y-3">
+                                <div className="p-3.5 bg-slate-50 rounded-2xl border border-slate-200">
+                                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-1.5">
+                                        Asignación de Motorizado
+                                    </label>
+                                    <select
+                                        value={selectedDriver}
+                                        onChange={(e) => setSelectedDriver(e.target.value)}
+                                        className="w-full bg-white border border-slate-200 p-2.5 rounded-xl font-bold text-xs text-slate-800 outline-none focus:border-blue-500 transition-all cursor-pointer"
+                                    >
+                                        <option value="">Radar Abierto (Todos los conductores)</option>
+                                        {drivers.map((drv) => (
+                                            <option key={drv.id} value={drv.id}>
+                                                ⭐ Conductor Preferido: {drv.full_name || drv.name || drv.email} {drv.phone ? `(${drv.phone})` : ''}
+                                            </option>
+                                        ))}
+                                    </select>
                                 </div>
-                                <h4 className="font-black text-slate-800 text-center mb-2">Asignación por Radar</h4>
-                                <p className="text-xs text-slate-500 text-center leading-relaxed">
-                                    Se buscará automáticamente al motorizado más cercano en un radio de 15km usando el sistema de Radar.
-                                </p>
+
+                                {selectedDriver ? (
+                                    <div className="flex flex-col items-center justify-center p-4 bg-amber-50 rounded-2xl border border-amber-200">
+                                        <div className="w-10 h-10 bg-amber-100 text-amber-600 rounded-full flex items-center justify-center mb-2">
+                                            <Clock className="w-5 h-5 animate-spin" />
+                                        </div>
+                                        <h4 className="font-black text-amber-900 text-xs text-center mb-1">60s de Exclusividad</h4>
+                                        <p className="text-[10px] text-amber-700 text-center leading-relaxed">
+                                            El conductor preferido tendrá 60 segundos exclusivos para aceptar. Si no responde a tiempo, la orden se abrirá automáticamente al radar general.
+                                        </p>
+                                    </div>
+                                ) : (
+                                    <div className="flex flex-col items-center justify-center p-4 bg-blue-50 rounded-2xl border border-blue-200">
+                                        <div className="w-10 h-10 bg-blue-100 text-blue-500 rounded-full flex items-center justify-center mb-2 relative">
+                                            <div className="absolute inset-0 bg-blue-400 rounded-full animate-ping opacity-20"></div>
+                                            <Truck className="w-5 h-5 relative z-10" />
+                                        </div>
+                                        <h4 className="font-black text-blue-900 text-xs text-center mb-1">Radar Abierto General</h4>
+                                        <p className="text-[10px] text-blue-700 text-center leading-relaxed">
+                                            Se notificará simultáneamente a todos los motorizados disponibles en un radio de 15km.
+                                        </p>
+                                    </div>
+                                )}
                             </div>
                         ) : null}
 
@@ -2323,6 +2393,10 @@ export default function Orders() {
                         {(() => {
                             const radarOrder = orders.find(o => o.id === radarOrderId);
                             const isFound = radarOrder && (radarOrder.status === 'delivering' || radarOrder.status as any === 'asignado');
+                            const hasPreferred = !!radarOrder?.preferred_driver_id && preferredCountdown > 0;
+                            const preferredDriverName = hasPreferred 
+                                ? (drivers.find(d => d.id === radarOrder?.preferred_driver_id)?.full_name || 'Conductor asignado')
+                                : null;
                             
                             return (
                                 <>
@@ -2331,6 +2405,13 @@ export default function Orders() {
                                             <div className="w-24 h-24 bg-green-100 text-green-500 rounded-full flex items-center justify-center animate-in zoom-in duration-300">
                                                 <CheckCircle className="w-12 h-12" />
                                             </div>
+                                        ) : hasPreferred ? (
+                                            <>
+                                                <div className="absolute inset-0 bg-amber-400/20 rounded-full animate-ping" style={{ animationDuration: '1.5s' }}></div>
+                                                <div className="w-20 h-20 bg-amber-500 text-white rounded-full flex items-center justify-center relative z-10 shadow-lg shadow-amber-500/30">
+                                                    <Clock className="w-10 h-10 animate-pulse" />
+                                                </div>
+                                            </>
                                         ) : (
                                             <>
                                                 <div className="absolute inset-0 bg-emerald-500/20 rounded-full animate-ping" style={{ animationDuration: '2s' }}></div>
@@ -2344,12 +2425,31 @@ export default function Orders() {
                                     </div>
                                     
                                     <h3 className="text-2xl font-black text-slate-800 mb-2">
-                                        {isFound ? '¡Piloto Encontrado!' : 'Buscando Delivery...'}
+                                        {isFound 
+                                            ? '¡Piloto Encontrado!' 
+                                            : hasPreferred 
+                                            ? 'Conductor Preferido' 
+                                            : 'Buscando Delivery...'}
                                     </h3>
+
+                                    {hasPreferred && !isFound && (
+                                        <div className="bg-amber-50 border border-amber-200 rounded-2xl p-3 mb-4 w-full">
+                                            <p className="text-xs font-bold text-amber-800 flex items-center justify-center gap-1.5 mb-1">
+                                                <Clock className="w-3.5 h-3.5 text-amber-600 animate-spin" />
+                                                Esperando respuesta del conductor asignado:
+                                            </p>
+                                            <p className="text-2xl font-black text-amber-900">
+                                                {preferredCountdown}s
+                                            </p>
+                                            <p className="text-[10px] text-amber-600 mt-1">antes de abrir a radar general</p>
+                                        </div>
+                                    )}
                                     
                                     <p className="text-sm text-slate-500 mb-8 max-w-[250px] mx-auto leading-relaxed">
                                         {isFound 
                                             ? `El motorizado ${radarOrder?.waiterName || ''} ha aceptado el pedido y está en camino.` 
+                                            : hasPreferred
+                                            ? `Esperando confirmación exclusiva de ${preferredDriverName} (${preferredCountdown}s restantes).`
                                             : 'Notificando a todos los motorizados disponibles en un radio de 15km.'}
                                     </p>
 
