@@ -2056,42 +2056,18 @@ export default function DriverProfile() {
                         </select>
                     </div>
 
-                    <div className="pt-2">
-                        <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Ubicación Exacta (Opcional)</label>
-                        {!showMap ? (
-                            <button
-                                type="button"
-                                onClick={() => setShowMap(true)}
-                                className="w-full py-4 border-2 border-dashed border-indigo-200 rounded-2xl flex flex-col items-center justify-center gap-2 text-primary hover:bg-indigo-50 transition-colors"
-                            >
-                                {locationForm.coords ? (
-                                    <>
-                                        <div className="w-10 h-10 bg-indigo-100 rounded-full flex items-center justify-center">
-                                            <CheckCircle2 className="w-5 h-5 text-primary" />
-                                        </div>
-                                        <span className="font-bold text-sm">Ubicación guardada - Toca para cambiar</span>
-                                    </>
-                                ) : (
-                                    <>
-                                        <div className="w-10 h-10 bg-indigo-50 rounded-full flex items-center justify-center group-hover:bg-indigo-100 transition-colors">
-                                            <MapPin className="w-5 h-5 text-primary" />
-                                        </div>
-                                        <span className="font-bold text-sm">Fijar ubicación en el mapa</span>
-                                    </>
-                                )}
-                            </button>
-                        ) : (
-                            <div className="rounded-2xl overflow-hidden border-2 border-indigo-100 h-[300px]">
-                                <AddressPicker
-                                    onClose={() => setShowMap(false)}
-                                    onSave={(data) => {
-                                        setLocationForm({ ...locationForm, coords: { lat: data.lat, lng: data.lng } });
-                                        setShowMap(false);
-                                    }}
-                                    initialData={locationForm.coords ? { lat: locationForm.coords.lat, lng: locationForm.coords.lng, name: 'Mi Ubicación', reference: '' } : undefined}
-                                />
-                            </div>
-                        )}
+                    <div className="bg-emerald-50 border border-emerald-200/80 rounded-2xl p-4 flex items-start gap-3 mt-2">
+                        <div className="w-9 h-9 rounded-xl bg-emerald-100 text-emerald-600 flex items-center justify-center shrink-0">
+                            <Navigation className="w-5 h-5" />
+                        </div>
+                        <div className="space-y-1">
+                            <span className="text-xs font-black text-emerald-950 uppercase tracking-wider block">
+                                Geolocalización en Tiempo Real
+                            </span>
+                            <p className="text-xs text-emerald-800/90 font-medium leading-relaxed">
+                                Ya no necesitas fijar un punto manual en el mapa. El sistema detecta tu ubicación automáticamente mediante el GPS satelital cada vez que te conectas al Centro de Comandas.
+                            </p>
+                        </div>
                     </div>
 
                     <button disabled={loading} type="submit" className="w-full bg-primary hover:bg-primary text-slate-900 font-black py-4 rounded-2xl shadow-lg shadow-primary/30 active:scale-95 transition-all mt-4">

@@ -16,12 +16,12 @@ import {
     User, 
     FileText, 
     Check,
-    Truck
+    Truck,
+    Navigation
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { UN2X3_LOGO } from '../../lib/env';
 import { VENEZUELA_DATA, VENEZUELA_STATES } from '../../lib/venezuelaData';
-import AddressPicker from '../../components/AddressPicker';
 
 // Helper para calcular la edad exacta en base a la fecha de nacimiento
 const calculateAge = (birthdateString: string): number => {
@@ -42,7 +42,6 @@ export default function Onboarding() {
     const [loading, setLoading] = useState(false);
     const [step, setStep] = useState(1);
     const [error, setError] = useState('');
-    const [showMap, setShowMap] = useState(false);
 
     // Fecha máxima permitida (al menos 18 años cumplidos hoy)
     const today = new Date();
@@ -177,9 +176,6 @@ export default function Onboarding() {
         } else if (step === 3) {
             if (!formData.homeState || !formData.homeCity) {
                 return setError('Por favor selecciona tu estado y ciudad de residencia.');
-            }
-            if (!formData.homeCoords) {
-                return setError('Por favor abre el mapa y fija tu ubicación base exacta.');
             }
 
         } else if (step === 4) {
@@ -598,7 +594,7 @@ export default function Onboarding() {
                         <div>
                             <h2 className="text-2xl font-black text-slate-800">Ubicación Base</h2>
                             <p className="text-sm font-medium text-slate-500">
-                                Tu dirección de residencia quedará registrada permanentemente para auditoría y asignación de despachos cercanos en tu ciudad.
+                                Selecciona el estado y ciudad donde prestarás tus servicios. Tu posición en tiempo real se detecta automáticamente por GPS al conectarte.
                             </p>
                         </div>
 
@@ -638,73 +634,18 @@ export default function Onboarding() {
                                 </div>
                             </div>
 
-                            <div className="pt-2">
-                                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">
-                                    Punto Exacto de Partida (Mapa Satelital / GPS)
-                                </label>
-                                {!showMap ? (
-                                    <div className="space-y-3">
-                                        <button
-                                            type="button"
-                                            onClick={() => setShowMap(true)}
-                                            className="w-full py-4 border-2 border-dashed border-indigo-200 hover:border-primary rounded-2xl flex flex-col items-center justify-center gap-2 text-slate-900 bg-white hover:bg-slate-50 transition-colors"
-                                        >
-                                            {formData.homeCoords ? (
-                                                <>
-                                                    <div className="w-10 h-10 bg-emerald-100 rounded-full flex items-center justify-center">
-                                                        <CheckCircle2 className="w-5 h-5 text-emerald-600" />
-                                                    </div>
-                                                    <span className="font-bold text-sm text-slate-800">Ubicación fijada con éxito ✓</span>
-                                                    <span className="text-xs text-indigo-600 font-semibold">Toca para reubicar en el mapa</span>
-                                                </>
-                                            ) : (
-                                                <>
-                                                    <div className="w-10 h-10 bg-indigo-50 rounded-full flex items-center justify-center">
-                                                        <MapPin className="w-5 h-5 text-indigo-600" />
-                                                    </div>
-                                                    <span className="font-bold text-sm">Abrir mapa para fijar ubicación exacta</span>
-                                                    <span className="text-xs text-slate-400">Permite detectar tu GPS o mover el pin</span>
-                                                </>
-                                            )}
-                                        </button>
-
-                                        {formData.homeCoords && (
-                                            <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-xs space-y-1">
-                                                <div className="font-bold text-emerald-800 flex items-center gap-1.5">
-                                                    <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                                                    <span>Coordenadas GPS fijadas: {formData.homeCoords.lat.toFixed(5)}, {formData.homeCoords.lng.toFixed(5)}</span>
-                                                </div>
-                                                {formData.homeAddressName && (
-                                                    <p className="text-slate-600"><strong className="text-slate-700">Lugar:</strong> {formData.homeAddressName}</p>
-                                                )}
-                                                {formData.homeAddressReference && (
-                                                    <p className="text-slate-600"><strong className="text-slate-700">Referencia:</strong> {formData.homeAddressReference}</p>
-                                                )}
-                                            </div>
-                                        )}
-                                    </div>
-                                ) : (
-                                    <div className="rounded-2xl overflow-hidden border-2 border-indigo-100 h-[420px] relative shadow-lg">
-                                        <AddressPicker
-                                            onClose={() => setShowMap(false)}
-                                            onSave={(data) => {
-                                                setFormData(prev => ({
-                                                    ...prev,
-                                                    homeCoords: { lat: data.lat, lng: data.lng },
-                                                    homeAddressName: data.name,
-                                                    homeAddressReference: data.reference
-                                                }));
-                                                setShowMap(false);
-                                            }}
-                                            initialData={formData.homeCoords ? {
-                                                lat: formData.homeCoords.lat,
-                                                lng: formData.homeCoords.lng,
-                                                name: formData.homeAddressName || 'Mi Casa',
-                                                reference: formData.homeAddressReference || ''
-                                            } : undefined}
-                                        />
-                                    </div>
-                                )}
+                            <div className="bg-emerald-50 border border-emerald-200/80 rounded-2xl p-4 flex items-start gap-3 mt-3">
+                                <div className="w-9 h-9 rounded-xl bg-emerald-100 text-emerald-600 flex items-center justify-center shrink-0">
+                                    <Navigation className="w-5 h-5" />
+                                </div>
+                                <div className="space-y-1">
+                                    <span className="text-xs font-black text-emerald-950 uppercase tracking-wider block">
+                                        Detección Automática por GPS
+                                    </span>
+                                    <p className="text-xs text-emerald-800/90 font-medium leading-relaxed">
+                                        Ya no requieres fijar una ubicación exacta en el mapa. Al activar tu disponibilidad, el radar detectará satelitalmente tu posición exacta en tiempo real para asignarte pedidos y carreras cercanas.
+                                    </p>
+                                </div>
                             </div>
                         </div>
                     </div>
