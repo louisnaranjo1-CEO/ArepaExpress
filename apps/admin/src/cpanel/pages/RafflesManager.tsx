@@ -2,9 +2,10 @@ import React, { useState, useEffect, useRef } from 'react';
 import { 
     Ticket, Plus, Trash2, MapPin, Calendar, Save, X, Globe, Map as MapIcon, Home, 
     Gift, Play, Trophy, Sparkles, Volume2, VolumeX, FastForward, CheckCircle, 
-    Award, Star, RefreshCw, Eye, ShieldCheck, Clock, Check
+    Award, Star, RefreshCw, Eye, ShieldCheck, Clock, Check, Upload, Image as ImageIcon
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
+import { VENEZUELA_DATA, VENEZUELA_STATES } from '../../lib/venezuelaData';
 import toast from 'react-hot-toast';
 
 export interface PrizeItem {
@@ -12,6 +13,7 @@ export interface PrizeItem {
     place: number;
     title: string;
     description?: string;
+    imageUrl?: string;
 }
 
 export interface WinnerInfo {
@@ -32,6 +34,8 @@ interface Raffle {
     description: string;
     prize: string;
     scope: 'national' | 'regional' | 'local';
+    targetState?: string;
+    targetCity?: string;
     locationName?: string;
     drawDate: string;
     isActive: boolean;
@@ -60,15 +64,18 @@ export default function RafflesManager() {
     const [showAddModal, setShowAddModal] = useState(false);
 
     // Form State
+    const [uploadingPrizeIdx, setUploadingPrizeIdx] = useState<number | null>(null);
     const [newRaffle, setNewRaffle] = useState<{
         title: string;
         description: string;
         prize: string;
         scope: 'national' | 'regional' | 'local';
+        targetState: string;
+        targetCity: string;
         locationName: string;
         drawDate: string;
         isActive: boolean;
-        pointsCost?: number;
+        pointsCost: number;
         sunddePermit: string;
         eventTime: string;
         eventLocation: string;
@@ -78,13 +85,16 @@ export default function RafflesManager() {
         description: '',
         prize: '',
         scope: 'national',
-        locationName: '',
+        targetState: '',
+        targetCity: '',
+        locationName: 'Nacional',
         drawDate: '',
         isActive: true,
+        pointsCost: 0,
         sunddePermit: 'SUNDDE/DAJ/2026/0491',
         eventTime: '08:00 PM',
         eventLocation: 'En Vivo por Instagram @un2x3',
-        prizes: [{ id: '1', place: 1, title: '', description: '' }]
+        prizes: [{ id: '1', place: 1, title: '', description: '', imageUrl: '' }]
     });
 
     // Presentation Mode State
@@ -233,6 +243,8 @@ export default function RafflesManager() {
                 description: d.description,
                 prize: d.prize,
                 scope: d.scope || 'national',
+                targetState: d.target_state || d.targetState,
+                targetCity: d.target_city || d.targetCity,
                 locationName: d.location_name || d.locationName,
                 drawDate: d.draw_date || d.drawDate,
                 isActive: d.is_active !== undefined ? d.is_active : (d.status !== 'inactive'),
@@ -257,7 +269,7 @@ export default function RafflesManager() {
         const nextPlace = newRaffle.prizes.length + 1;
         setNewRaffle(prev => ({
             ...prev,
-            prizes: [...prev.prizes, { id: `${nextPlace}_${Date.now()}`, place: nextPlace, title: '', description: '' }]
+            prizes: [...prev.prizes, { id: `${nextPlace}_${Date.now()}`, place: nextPlace, title: '', description: '', imageUrl: '' }]
         }));
     };
 
@@ -269,12 +281,33 @@ export default function RafflesManager() {
         }));
     };
 
-    const handlePrizeChange = (index: number, field: 'title' | 'description', value: string) => {
+    const handlePrizeChange = (index: number, field: 'title' | 'description' | 'imageUrl', value: string) => {
         setNewRaffle(prev => {
             const updated = [...prev.prizes];
             updated[index] = { ...updated[index], [field]: value };
             return { ...prev, prizes: updated };
         });
+    };
+
+    const handlePrizeImageUpload = async (index: number, e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        setUploadingPrizeIdx(index);
+        try {
+            const cleanName = file.name.replace(/[^a-zA-Z0-9.-]/g, '_');
+            const filePath = `raffles/${Date.now()}_${cleanName}`;
+            const { error: upErr } = await supabase.storage.from('store_assets').upload(filePath, file, { upsert: true });
+            if (upErr) throw upErr;
+            const { data: pubData } = supabase.storage.from('store_assets').getPublicUrl(filePath);
+            handlePrizeChange(index, 'imageUrl', pubData.publicUrl);
+            toast.success(`Imagen subida para premio #${index + 1}`);
+        } catch (err: any) {
+            console.error("Error uploading prize image:", err);
+            toast.error("Error al subir imagen");
+        } finally {
+            setUploadingPrizeIdx(null);
+        }
     };
 
     const handleAddRaffle = async () => {
@@ -283,8 +316,14 @@ export default function RafflesManager() {
             toast.error("Completa los campos obligatorios");
             return;
         }
-        if (activeTab === 'drivers' && !newRaffle.pointsCost) {
-            toast.error("Ingresa el costo en puntos");
+
+        if (newRaffle.scope === 'regional' && !newRaffle.targetState) {
+            toast.error("Selecciona el estado para el sorteo");
+            return;
+        }
+
+        if (newRaffle.scope === 'local' && (!newRaffle.targetState || !newRaffle.targetCity)) {
+            toast.error("Selecciona el estado y la ciudad para el sorteo local");
             return;
         }
 
@@ -295,23 +334,29 @@ export default function RafflesManager() {
                 ? prizesList 
                 : [{ id: '1', place: 1, title: firstPrize, description: '' }];
 
+            const computedLocation = newRaffle.scope === 'national' 
+                ? 'Nacional' 
+                : newRaffle.scope === 'regional' 
+                ? newRaffle.targetState 
+                : (newRaffle.targetCity ? `${newRaffle.targetCity}, ${newRaffle.targetState}` : newRaffle.targetState);
+
             const payload: any = {
                 title: newRaffle.title,
                 description: newRaffle.description,
                 prize: finalPrizes[0].title,
                 scope: newRaffle.scope || 'national',
-                location_name: newRaffle.locationName || '',
+                location_name: computedLocation || newRaffle.locationName || 'Nacional',
+                target_state: newRaffle.targetState || null,
+                target_city: newRaffle.targetCity || null,
                 draw_date: newRaffle.drawDate,
                 is_active: newRaffle.isActive !== false,
                 sundde_permit: newRaffle.sunddePermit || '',
                 event_time: newRaffle.eventTime || '',
                 event_location: newRaffle.eventLocation || '',
                 prizes: finalPrizes,
+                points_cost: Number(newRaffle.pointsCost) || 0,
                 created_at: new Date().toISOString()
             };
-            if (activeTab === 'drivers') {
-                payload.points_cost = newRaffle.pointsCost;
-            }
 
             const { error } = await supabase.from(collectionName).insert([payload]);
             if (error) throw error;
@@ -324,13 +369,16 @@ export default function RafflesManager() {
                 description: '',
                 prize: '',
                 scope: 'national',
-                locationName: '',
+                targetState: '',
+                targetCity: '',
+                locationName: 'Nacional',
                 drawDate: '',
                 isActive: true,
+                pointsCost: 0,
                 sunddePermit: 'SUNDDE/DAJ/2026/0491',
                 eventTime: '08:00 PM',
                 eventLocation: 'En Vivo por Instagram @un2x3',
-                prizes: [{ id: '1', place: 1, title: '', description: '' }]
+                prizes: [{ id: '1', place: 1, title: '', description: '', imageUrl: '' }]
             });
         } catch (error) {
             console.error("Error creating raffle:", error);
@@ -750,43 +798,122 @@ export default function RafflesManager() {
                                 </div>
                             </div>
 
-                            <div className="grid grid-cols-2 gap-3">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                                 <div className="space-y-1">
                                     <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Alcance Territorial</label>
                                     <select
                                         value={newRaffle.scope}
-                                        onChange={(e) => setNewRaffle({ ...newRaffle, scope: e.target.value as any })}
+                                        onChange={(e) => {
+                                            const newScope = e.target.value as 'national' | 'regional' | 'local';
+                                            setNewRaffle({
+                                                ...newRaffle,
+                                                scope: newScope,
+                                                targetState: '',
+                                                targetCity: '',
+                                                locationName: newScope === 'national' ? 'Nacional' : ''
+                                            });
+                                        }}
                                         className="w-full bg-slate-50 border-2 border-slate-100 focus:border-primary px-4 py-3 rounded-2xl outline-none font-bold text-sm text-slate-800"
                                     >
-                                        <option value="national">Nacional</option>
-                                        <option value="regional">Regional (Estado)</option>
-                                        <option value="local">Local (Municipio)</option>
+                                        <option value="national">Nacional (Todo el país)</option>
+                                        <option value="regional">Estatal (Un Estado)</option>
+                                        <option value="local">Local (Estado y Ciudad)</option>
                                     </select>
                                 </div>
-                                <div className="space-y-1">
-                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Ubicación (Opcional)</label>
-                                    <input
-                                        type="text"
-                                        value={newRaffle.locationName}
-                                        onChange={(e) => setNewRaffle({ ...newRaffle, locationName: e.target.value })}
-                                        placeholder="Ej: Aragua / Maracay"
-                                        className="w-full bg-slate-50 border-2 border-slate-100 focus:border-primary px-4 py-3 rounded-2xl outline-none font-bold text-sm text-slate-800"
-                                    />
-                                </div>
+
+                                {newRaffle.scope === 'national' && (
+                                    <div className="space-y-1">
+                                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Ubicación</label>
+                                        <div className="w-full bg-slate-100 border-2 border-slate-200/80 px-4 py-3 rounded-2xl font-bold text-sm text-slate-600 flex items-center gap-2">
+                                            <Globe className="w-4 h-4 text-primary shrink-0" />
+                                            <span>Nacional (Toda Venezuela)</span>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {newRaffle.scope === 'regional' && (
+                                    <div className="space-y-1">
+                                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Seleccionar Estado</label>
+                                        <select
+                                            value={newRaffle.targetState}
+                                            onChange={(e) => {
+                                                const st = e.target.value;
+                                                setNewRaffle({ ...newRaffle, targetState: st, targetCity: '', locationName: st });
+                                            }}
+                                            className="w-full bg-slate-50 border-2 border-slate-100 focus:border-primary px-4 py-3 rounded-2xl outline-none font-bold text-sm text-slate-800"
+                                        >
+                                            <option value="">-- Elige un Estado --</option>
+                                            {VENEZUELA_STATES.map((st) => (
+                                                <option key={st} value={st}>{st}</option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                )}
+
+                                {newRaffle.scope === 'local' && (
+                                    <>
+                                        <div className="space-y-1">
+                                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">1. Seleccionar Estado</label>
+                                            <select
+                                                value={newRaffle.targetState}
+                                                onChange={(e) => {
+                                                    const st = e.target.value;
+                                                    setNewRaffle({
+                                                        ...newRaffle,
+                                                        targetState: st,
+                                                        targetCity: '',
+                                                        locationName: st
+                                                    });
+                                                }}
+                                                className="w-full bg-slate-50 border-2 border-slate-100 focus:border-primary px-4 py-3 rounded-2xl outline-none font-bold text-sm text-slate-800"
+                                            >
+                                                <option value="">-- Elige un Estado --</option>
+                                                {VENEZUELA_STATES.map((st) => (
+                                                    <option key={st} value={st}>{st}</option>
+                                                ))}
+                                            </select>
+                                        </div>
+                                        <div className="space-y-1 md:col-span-2">
+                                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">2. Seleccionar Ciudad</label>
+                                            <select
+                                                value={newRaffle.targetCity}
+                                                disabled={!newRaffle.targetState}
+                                                onChange={(e) => {
+                                                    const ct = e.target.value;
+                                                    setNewRaffle({
+                                                        ...newRaffle,
+                                                        targetCity: ct,
+                                                        locationName: ct ? `${ct}, ${newRaffle.targetState}` : newRaffle.targetState
+                                                    });
+                                                }}
+                                                className="w-full bg-slate-50 border-2 border-slate-100 focus:border-primary px-4 py-3 rounded-2xl outline-none font-bold text-sm text-slate-800 disabled:opacity-50"
+                                            >
+                                                <option value="">{newRaffle.targetState ? '-- Elige una Ciudad --' : 'Primero selecciona un estado arriba'}</option>
+                                                {(newRaffle.targetState && VENEZUELA_DATA[newRaffle.targetState] || []).map((ct) => (
+                                                    <option key={ct} value={ct}>{ct}</option>
+                                                ))}
+                                            </select>
+                                        </div>
+                                    </>
+                                )}
                             </div>
 
-                            {activeTab === 'drivers' && (
-                                <div className="space-y-1">
-                                    <label className="text-[10px] font-black text-emerald-600 uppercase tracking-widest ml-1">Costo en Puntos por Ticket</label>
-                                    <input
-                                        type="number"
-                                        value={newRaffle.pointsCost || ''}
-                                        onChange={(e) => setNewRaffle({ ...newRaffle, pointsCost: Number(e.target.value) })}
-                                        placeholder="Ej: 10 (10 puntos = 1 ticket)"
-                                        className="w-full bg-emerald-50 text-emerald-900 border-2 border-emerald-100 focus:border-emerald-500 px-4 py-3 rounded-2xl outline-none font-bold text-sm placeholder:text-emerald-300"
-                                    />
-                                </div>
-                            )}
+                            <div className="space-y-1">
+                                <label className="text-[10px] font-black text-emerald-600 uppercase tracking-widest ml-1 flex items-center gap-1.5">
+                                    <Award className="w-3.5 h-3.5" /> Costo en Puntos por Ticket
+                                </label>
+                                <input
+                                    type="number"
+                                    min="0"
+                                    value={newRaffle.pointsCost || ''}
+                                    onChange={(e) => setNewRaffle({ ...newRaffle, pointsCost: Number(e.target.value) })}
+                                    placeholder="Ej: 10 (10 puntos = 1 ticket)"
+                                    className="w-full bg-emerald-50 text-emerald-900 border-2 border-emerald-100 focus:border-emerald-500 px-4 py-3 rounded-2xl outline-none font-bold text-sm placeholder:text-emerald-300"
+                                />
+                                <p className="text-[10px] text-slate-400 ml-1">
+                                    Define la cantidad de puntos que cuesta canjear 1 ticket para este sorteo. Si es 0, no requiere puntos.
+                                </p>
+                            </div>
 
                             {/* Multi-Prize Management */}
                             <div className="pt-2 border-t border-slate-100 space-y-3">
@@ -806,7 +933,7 @@ export default function RafflesManager() {
 
                                 <div className="space-y-2.5">
                                     {newRaffle.prizes.map((pz, idx) => (
-                                        <div key={pz.id || idx} className="p-3 bg-slate-50 rounded-2xl border border-slate-200/80 space-y-2">
+                                        <div key={pz.id || idx} className="p-3 bg-slate-50 rounded-2xl border border-slate-200/80 space-y-2.5">
                                             <div className="flex items-center gap-2">
                                                 <span className="w-7 h-7 rounded-xl bg-amber-100 text-amber-800 font-black text-xs flex items-center justify-center shrink-0">
                                                     #{pz.place}
@@ -835,6 +962,45 @@ export default function RafflesManager() {
                                                 onChange={(e) => handlePrizeChange(idx, 'description', e.target.value)}
                                                 className="w-full bg-white border border-slate-200 focus:border-primary px-3 py-1.5 rounded-xl outline-none font-medium text-[11px] text-slate-600"
                                             />
+                                            {/* Prize Image Section */}
+                                            <div className="flex items-center gap-2 pt-1">
+                                                {pz.imageUrl ? (
+                                                    <div className="relative w-12 h-12 rounded-xl overflow-hidden border border-slate-300 shrink-0 group">
+                                                        <img src={pz.imageUrl} alt={pz.title} className="w-full h-full object-cover" />
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => handlePrizeChange(idx, 'imageUrl', '')}
+                                                            className="absolute inset-0 bg-red-600/80 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                                                            title="Eliminar imagen"
+                                                        >
+                                                            <X className="w-4 h-4" />
+                                                        </button>
+                                                    </div>
+                                                ) : (
+                                                    <label className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-dashed border-slate-300 hover:border-primary rounded-xl text-slate-600 font-bold text-[11px] cursor-pointer shrink-0 transition-colors">
+                                                        {uploadingPrizeIdx === idx ? (
+                                                            <RefreshCw className="w-3.5 h-3.5 animate-spin text-primary" />
+                                                        ) : (
+                                                            <Upload className="w-3.5 h-3.5 text-primary" />
+                                                        )}
+                                                        <span>{uploadingPrizeIdx === idx ? "Subiendo..." : "Subir Foto"}</span>
+                                                        <input
+                                                            type="file"
+                                                            accept="image/*"
+                                                            className="hidden"
+                                                            disabled={uploadingPrizeIdx === idx}
+                                                            onChange={(e) => handlePrizeImageUpload(idx, e)}
+                                                        />
+                                                    </label>
+                                                )}
+                                                <input
+                                                    type="text"
+                                                    placeholder="O pega URL de la imagen del premio..."
+                                                    value={pz.imageUrl || ''}
+                                                    onChange={(e) => handlePrizeChange(idx, 'imageUrl', e.target.value)}
+                                                    className="flex-1 bg-white border border-slate-200 focus:border-primary px-3 py-1.5 rounded-xl outline-none font-medium text-[10px] text-slate-600"
+                                                />
+                                            </div>
                                         </div>
                                     ))}
                                 </div>

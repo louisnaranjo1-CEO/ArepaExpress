@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { User, Mail, MapPin, CreditCard, LogOut, ShoppingBag, Settings, ChevronRight, ChevronDown, Clock, FileText, Bell, Navigation, X, Shield, UploadCloud, Star, Wallet, Gift, Award, MessageSquareWarning, Plus, Send, AlertCircle, CheckCircle, Store, Handshake, Fingerprint, Calendar, Trash2, AlertTriangle } from 'lucide-react';
+import { User, Mail, MapPin, CreditCard, LogOut, ShoppingBag, Settings, ChevronRight, ChevronDown, Clock, FileText, Bell, Navigation, X, Shield, UploadCloud, Star, Wallet, Gift, Award, MessageSquareWarning, Plus, Send, AlertCircle, CheckCircle, Store, Handshake, Fingerprint, Calendar, Trash2, AlertTriangle, Ticket } from 'lucide-react';
 import { Geolocation } from '@capacitor/geolocation';
 import { Capacitor } from '@capacitor/core';
 import { isDemoMode, UN2X3_LOGO } from '../lib/env';
@@ -2843,98 +2843,26 @@ export default function Profile() {
                                 </div>
 
                                 {/* Transparent Info Banner */}
-                                <div className="bg-amber-50 border border-amber-200/80 p-3.5 rounded-2xl text-xs text-amber-900 leading-relaxed space-y-1">
-                                    <p className="font-black text-[11px] flex items-center gap-1.5">
-                                        <Gift className="w-4 h-4 text-amber-600" />
-                                        ¡Cero intermediación, 100% beneficios!
+                                <div className="bg-amber-50 border border-amber-200/80 p-4 rounded-2xl text-xs text-amber-900 leading-relaxed space-y-2">
+                                    <p className="font-black text-xs flex items-center gap-1.5 text-amber-950">
+                                        <Gift className="w-4 h-4 text-amber-600 shrink-0" />
+                                        ¡Tus puntos valen grandes premios!
                                     </p>
-                                    <p className="text-[10px] text-amber-800">
-                                        Pagas tus viajes y pedidos directo al conductor o comercio en Efectivo o Pago Móvil. Con cada compra sumas puntos para canjear descuentos y premios.
+                                    <p className="text-[11px] text-amber-800 leading-relaxed">
+                                        Pagas directo al conductor o comercio. Con cada compra y viaje acumulas puntos para participar en los Sorteos Oficiales y Concursos de la plataforma.
                                     </p>
                                 </div>
 
-                                {/* Rewards Catalog */}
-                                <div className="space-y-3">
-                                    <h4 className="text-[10px] font-black uppercase text-slate-400 tracking-widest ml-1">
-                                        Catálogo de Premios Canjeables
-                                    </h4>
-
-                                    {/* Reward 1 */}
-                                    <div className="bg-slate-50 border border-slate-100 rounded-2xl p-3.5 flex items-center justify-between gap-3">
-                                        <div className="flex items-center gap-3">
-                                            <div className="w-10 h-10 rounded-xl bg-amber-100 text-amber-700 flex items-center justify-center font-black text-sm shrink-0">
-                                                $1
-                                            </div>
-                                            <div>
-                                                <p className="text-xs font-black text-slate-800">$1 Desc. en Viajes</p>
-                                                <p className="text-[10px] text-slate-400 font-bold">Válido en Taxi o Mototaxi</p>
-                                            </div>
-                                        </div>
-                                        <button
-                                            onClick={() => handleRedeemReward('$1 Desc. en Viajes', 50)}
-                                            className="px-3 py-1.5 bg-primary text-slate-900 font-black text-[11px] rounded-xl active:scale-95 transition-transform shrink-0"
-                                        >
-                                            50 pts
-                                        </button>
-                                    </div>
-
-                                    {/* Reward 2 */}
-                                    <div className="bg-slate-50 border border-slate-100 rounded-2xl p-3.5 flex items-center justify-between gap-3">
-                                        <div className="flex items-center gap-3">
-                                            <div className="w-10 h-10 rounded-xl bg-blue-100 text-blue-700 flex items-center justify-center font-black text-xs shrink-0">
-                                                FREE
-                                            </div>
-                                            <div>
-                                                <p className="text-xs font-black text-slate-800">Envío Gratis</p>
-                                                <p className="text-[10px] text-slate-400 font-bold">En restaurantes aliados</p>
-                                            </div>
-                                        </div>
-                                        <button
-                                            onClick={() => handleRedeemReward('Envío Gratis', 80)}
-                                            className="px-3 py-1.5 bg-primary text-slate-900 font-black text-[11px] rounded-xl active:scale-95 transition-transform shrink-0"
-                                        >
-                                            80 pts
-                                        </button>
-                                    </div>
-
-                                    {/* Reward 3 */}
-                                    <div className="bg-slate-50 border border-slate-100 rounded-2xl p-3.5 flex items-center justify-between gap-3">
-                                        <div className="flex items-center gap-3">
-                                            <div className="w-10 h-10 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center font-black text-sm shrink-0">
-                                                $3
-                                            </div>
-                                            <div>
-                                                <p className="text-xs font-black text-slate-800">$3 Desc. en Comida</p>
-                                                <p className="text-[10px] text-slate-400 font-bold">En pedidos superiores a $10</p>
-                                            </div>
-                                        </div>
-                                        <button
-                                            onClick={() => handleRedeemReward('$3 Desc. en Comida', 120)}
-                                            className="px-3 py-1.5 bg-primary text-slate-900 font-black text-[11px] rounded-xl active:scale-95 transition-transform shrink-0"
-                                        >
-                                            120 pts
-                                        </button>
-                                    </div>
-
-                                    {/* Reward 4 */}
-                                    <div className="bg-slate-50 border border-slate-100 rounded-2xl p-3.5 flex items-center justify-between gap-3">
-                                        <div className="flex items-center gap-3">
-                                            <div className="w-10 h-10 rounded-xl bg-purple-100 text-purple-700 flex items-center justify-center font-black text-sm shrink-0">
-                                                $5
-                                            </div>
-                                            <div>
-                                                <p className="text-xs font-black text-slate-800">$5 Desc. Carro Confort</p>
-                                                <p className="text-[10px] text-slate-400 font-bold">Viajes ejecutivos premium</p>
-                                            </div>
-                                        </div>
-                                        <button
-                                            onClick={() => handleRedeemReward('$5 Desc. Carro Confort', 200)}
-                                            className="px-3 py-1.5 bg-primary text-slate-900 font-black text-[11px] rounded-xl active:scale-95 transition-transform shrink-0"
-                                        >
-                                            200 pts
-                                        </button>
-                                    </div>
-                                </div>
+                                <button
+                                    onClick={() => {
+                                        setShowRewardsModal(false);
+                                        navigate('/rewards');
+                                    }}
+                                    className="w-full py-3.5 bg-primary hover:bg-amber-400 text-slate-900 font-black text-xs rounded-2xl shadow-lg shadow-primary/20 active:scale-95 transition-all flex items-center justify-center gap-2 cursor-pointer"
+                                >
+                                    <Ticket className="w-4 h-4" />
+                                    Ver Sorteos y Activaciones Disponibles
+                                </button>
                             </div>
                         </motion.div>
                     </div>

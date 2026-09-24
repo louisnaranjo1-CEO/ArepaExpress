@@ -18,6 +18,42 @@ export default function Rewards() {
 
     const userPoints = userData?.points || 0;
     const referralCode = (userData as any)?.referralCode || user?.id?.substring(0, 6).toUpperCase() || 'INVITADELI';
+    const userState = localStorage.getItem('userState') || (userData as any)?.state || '';
+    const userCity = localStorage.getItem('userCity') || (userData as any)?.city || '';
+
+    const isItemInUserZone = (item: any) => {
+        const scope = item.scope || 'national';
+        if (scope === 'national') return true;
+        if (!userState && !userCity) return true;
+
+        if (scope === 'regional') {
+            const targetState = (item.target_state || item.targetState || item.location_name || item.locationName || '').toLowerCase().trim();
+            if (!targetState) return true;
+            return userState.toLowerCase().includes(targetState) || targetState.includes(userState.toLowerCase());
+        }
+
+        if (scope === 'local') {
+            const targetCity = (item.target_city || item.targetCity || '').toLowerCase().trim();
+            const targetState = (item.target_state || item.targetState || '').toLowerCase().trim();
+            const locName = (item.location_name || item.locationName || '').toLowerCase().trim();
+
+            if (targetCity && userCity) {
+                if (userCity.toLowerCase().includes(targetCity) || targetCity.includes(userCity.toLowerCase())) {
+                    return true;
+                }
+            }
+            if (locName && userCity && locName.includes(userCity.toLowerCase())) {
+                return true;
+            }
+            if (targetState && userState && !targetCity) {
+                return userState.toLowerCase().includes(targetState) || targetState.includes(userState.toLowerCase());
+            }
+            return false;
+        }
+
+        return true;
+    };
+
     const [shareConfig, setShareConfig] = useState({
         message: '¡Usa Deliexpress y obtén recompensas!',
         url: window.location.origin
@@ -221,46 +257,91 @@ export default function Rewards() {
                             </div>
                         )}
 
-                        {!loading && contests.length === 0 && raffles.length === 0 && (
+                        {!loading && contests.filter(isItemInUserZone).length === 0 && raffles.filter(isItemInUserZone).length === 0 && (
                             <div className="text-center py-8 bg-slate-50 rounded-2xl border border-dashed border-slate-200">
-                                <p className="text-slate-400 font-black text-xs uppercase tracking-widest">No hay sorteos activos en este momento</p>
+                                <p className="text-slate-400 font-black text-xs uppercase tracking-widest">No hay sorteos ni concursos activos en tu zona</p>
                             </div>
                         )}
 
                         {/* Contests */}
-                        {contests.map((contest) => (
+                        {contests.filter(isItemInUserZone).map((contest) => (
                             <div key={contest.id} className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-orange-500 to-primary p-5 text-white shadow-lg cursor-pointer active:scale-[0.98] transition-all">
                                 <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full blur-2xl -mr-16 -mt-16"></div>
-                                <h4 className="font-black text-xl mb-1 relative z-10 drop-shadow-sm">{contest.title}</h4>
-                                <p className="text-sm text-white/90 font-medium mb-4 relative z-10 leading-snug">{contest.prize}</p>
-                                <div className="flex items-center justify-between relative z-10">
-                                    <span className="text-[10px] font-black uppercase tracking-widest bg-black/20 px-3 py-1 rounded-full backdrop-blur-sm">
-                                        Meta: {contest.target_count || contest.targetCount} {contest.type === 'referral_count' ? 'amigos' : 'veces'}
+                                <div className="flex items-center gap-2 mb-2">
+                                    {contest.scope === 'national' ? <Globe className="w-4 h-4 text-white/90" /> :
+                                        contest.scope === 'regional' ? <MapIcon className="w-4 h-4 text-white/90" /> : <Home className="w-4 h-4 text-white/90" />}
+                                    <span className="text-[9px] font-black uppercase tracking-[0.2em] text-white/90">
+                                        {contest.location_name || contest.locationName || (contest.scope === 'national' ? 'Nacional' : contest.scope)}
                                     </span>
+                                </div>
+                                <div className="flex items-start justify-between gap-4">
+                                    <div className="flex-1 relative z-10">
+                                        <h4 className="font-black text-xl mb-1 drop-shadow-sm">{contest.title}</h4>
+                                        <p className="text-sm text-white/90 font-medium mb-3 leading-snug">Premio: {contest.prize}</p>
+                                    </div>
+                                    {(contest.prize_image_url || contest.prizeImageUrl) && (
+                                        <div className="w-16 h-16 rounded-xl overflow-hidden shrink-0 border border-white/30 bg-black/10 relative z-10 shadow-md">
+                                            <img src={contest.prize_image_url || contest.prizeImageUrl} alt={contest.prize} className="w-full h-full object-cover" />
+                                        </div>
+                                    )}
+                                </div>
+                                <div className="flex flex-wrap items-center justify-between gap-2 relative z-10 mt-1">
+                                    <div className="flex items-center gap-2">
+                                        <span className="text-[10px] font-black uppercase tracking-widest bg-black/20 px-3 py-1 rounded-full backdrop-blur-sm">
+                                            Meta: {contest.target_count || contest.targetCount} {contest.type === 'referral_count' ? 'amigos' : 'veces'}
+                                        </span>
+                                        {contest.points_cost || contest.pointsCost ? (
+                                            <span className="text-[10px] font-black uppercase tracking-widest bg-amber-400 text-slate-950 px-2.5 py-1 rounded-full font-bold">
+                                                {contest.points_cost || contest.pointsCost} Pts
+                                            </span>
+                                        ) : null}
+                                    </div>
                                     <ChevronRight className="w-5 h-5 opacity-50" />
                                 </div>
                             </div>
                         ))}
 
                         {/* Raffles */}
-                        {raffles.map((raffle) => (
-                            <div key={raffle.id} className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-blue-600 to-primary p-5 text-white shadow-lg cursor-pointer active:scale-[0.98] transition-all">
-                                <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full blur-2xl -mr-16 -mt-16"></div>
-                                <div className="flex items-center gap-2 mb-2">
-                                    {raffle.scope === 'national' ? <Globe className="w-4 h-4" /> :
-                                        raffle.scope === 'regional' ? <MapIcon className="w-4 h-4" /> : <Home className="w-4 h-4" />}
-                                    <span className="text-[9px] font-black uppercase tracking-[0.2em]">{raffle.scope}</span>
+                        {raffles.filter(isItemInUserZone).map((raffle) => {
+                            const prizeImg = raffle.prizes?.[0]?.imageUrl || raffle.banner_url || raffle.bannerUrl;
+                            const pointsCost = raffle.points_cost !== undefined ? raffle.points_cost : raffle.pointsCost;
+                            return (
+                                <div key={raffle.id} className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-blue-600 to-primary p-5 text-white shadow-lg cursor-pointer active:scale-[0.98] transition-all">
+                                    <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full blur-2xl -mr-16 -mt-16"></div>
+                                    <div className="flex items-center gap-2 mb-2">
+                                        {raffle.scope === 'national' ? <Globe className="w-4 h-4 text-white/90" /> :
+                                            raffle.scope === 'regional' ? <MapIcon className="w-4 h-4 text-white/90" /> : <Home className="w-4 h-4 text-white/90" />}
+                                        <span className="text-[9px] font-black uppercase tracking-[0.2em] text-white/90">
+                                            {raffle.location_name || raffle.locationName || (raffle.scope === 'national' ? 'Nacional' : raffle.scope)}
+                                        </span>
+                                    </div>
+                                    <div className="flex items-start justify-between gap-4">
+                                        <div className="flex-1 relative z-10">
+                                            <h4 className="font-black text-xl mb-1 drop-shadow-sm">{raffle.title}</h4>
+                                            <p className="text-sm text-white/90 font-medium mb-3 leading-snug">Premio: {raffle.prize}</p>
+                                        </div>
+                                        {prizeImg && (
+                                            <div className="w-16 h-16 rounded-xl overflow-hidden shrink-0 border border-white/30 bg-black/10 relative z-10 shadow-md">
+                                                <img src={prizeImg} alt={raffle.prize} className="w-full h-full object-cover" />
+                                            </div>
+                                        )}
+                                    </div>
+                                    <div className="flex flex-wrap items-center justify-between gap-2 relative z-10 mt-1">
+                                        <div className="flex items-center gap-2">
+                                            <span className="text-[10px] font-black uppercase tracking-widest bg-black/20 px-3 py-1 rounded-full backdrop-blur-sm">
+                                                Sorteo: {raffle.draw_date || raffle.drawDate}
+                                            </span>
+                                            {pointsCost ? (
+                                                <span className="text-[10px] font-black uppercase tracking-widest bg-amber-400 text-slate-950 px-2.5 py-1 rounded-full font-bold">
+                                                    {pointsCost} Pts / ticket
+                                                </span>
+                                            ) : null}
+                                        </div>
+                                        <ChevronRight className="w-5 h-5 opacity-50" />
+                                    </div>
                                 </div>
-                                <h4 className="font-black text-xl mb-1 relative z-10 drop-shadow-sm">{raffle.title}</h4>
-                                <p className="text-sm text-white/90 font-medium mb-4 relative z-10 leading-snug">Premio: {raffle.prize}</p>
-                                <div className="flex items-center justify-between relative z-10">
-                                    <span className="text-[10px] font-black uppercase tracking-widest bg-black/20 px-3 py-1 rounded-full backdrop-blur-sm">
-                                        Sorteo: {raffle.draw_date || raffle.drawDate}
-                                    </span>
-                                    <ChevronRight className="w-5 h-5 opacity-50" />
-                                </div>
-                            </div>
-                        ))}
+                            );
+                        })}
                     </div>
                 </div>
 

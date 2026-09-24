@@ -4,15 +4,6 @@ import { X, Star, Gift, Store, Tag, AlertCircle } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 
-interface GlobalPrize {
-    id: string;
-    title: string;
-    description: string;
-    pointsRequired: number;
-    imageUrl: string;
-    isActive: boolean;
-}
-
 interface RestaurantData {
     id: string;
     name: string;
@@ -34,8 +25,6 @@ interface PointsModalProps {
 
 export default function PointsModal({ isOpen, onClose }: PointsModalProps) {
     const { userData } = useAuth();
-    const [globalPrizes, setGlobalPrizes] = useState<GlobalPrize[]>([]);
-    const [loadingPrizes, setLoadingPrizes] = useState(false);
     
     // Using a record to map restaurant ID to its data and redeemable products
     const [restaurantInfo, setRestaurantInfo] = useState<Record<string, { data: RestaurantData, products: RedeemableProduct[] }>>({});
@@ -43,34 +32,6 @@ export default function PointsModal({ isOpen, onClose }: PointsModalProps) {
 
     useEffect(() => {
         if (!isOpen) return;
-
-        const fetchPrizes = async () => {
-            setLoadingPrizes(true);
-            try {
-                const { data, error } = await supabase
-                    .from('global_prizes')
-                    .select('*')
-                    .or('is_active.eq.true,isActive.eq.true');
-
-                if (error) throw error;
-
-                const prizes: GlobalPrize[] = (data || []).map((p: any) => ({
-                    id: p.id,
-                    title: p.title,
-                    description: p.description,
-                    pointsRequired: Number(p.points_required ?? p.pointsRequired ?? 0),
-                    imageUrl: p.image_url || p.imageUrl,
-                    isActive: p.is_active ?? p.isActive ?? true
-                }));
-
-                prizes.sort((a, b) => a.pointsRequired - b.pointsRequired);
-                setGlobalPrizes(prizes);
-            } catch (error) {
-                console.error("Error fetching global prizes:", error);
-            } finally {
-                setLoadingPrizes(false);
-            }
-        };
 
         const fetchRestaurantData = async () => {
             if (!(userData as any)?.restaurantPoints) return;
@@ -128,7 +89,6 @@ export default function PointsModal({ isOpen, onClose }: PointsModalProps) {
             }
         };
 
-        fetchPrizes();
         fetchRestaurantData();
     }, [isOpen, userData]);
 
@@ -177,63 +137,9 @@ export default function PointsModal({ isOpen, onClose }: PointsModalProps) {
                                     <span className="text-5xl font-black">{globalPoints}</span>
                                 </div>
                                 <p className="text-sm font-medium text-white/90 mt-2">
-                                    Acumula puntos con tus compras en cualquier lugar y canjéalos por premios increíbles.
+                                    Acumula puntos con tus compras y viajes en cualquier lugar y canjéalos en Sorteos Oficiales y comercios aliados.
                                 </p>
                             </div>
-                        </div>
-
-                        {/* Global Prizes */}
-                        <div className="space-y-3">
-                            <h4 className="text-sm font-black text-slate-900 flex items-center gap-2 px-2">
-                                <Gift className="w-4 h-4 text-slate-900" />
-                                Premios Disponibles
-                            </h4>
-                            
-                            {loadingPrizes ? (
-                                <div className="flex justify-center py-6">
-                                    <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin"></div>
-                                </div>
-                            ) : globalPrizes.length > 0 ? (
-                                <div className="flex overflow-x-auto gap-4 pb-4 px-2 snap-x -mx-2 hide-scrollbar">
-                                    {globalPrizes.map((prize) => {
-                                        const canRedeem = globalPoints >= prize.pointsRequired;
-                                        return (
-                                            <div key={prize.id} className="min-w-[160px] max-w-[160px] bg-white border border-slate-100 rounded-2xl p-3 shrink-0 snap-center shadow-sm relative overflow-hidden">
-                                                <div className="h-24 bg-slate-100 rounded-xl mb-3 overflow-hidden">
-                                                    {prize.imageUrl ? (
-                                                        <img src={prize.imageUrl} alt={prize.title} className="w-full h-full object-cover" />
-                                                    ) : (
-                                                        <div className="w-full h-full flex items-center justify-center text-slate-300">
-                                                            <Gift className="w-8 h-8" />
-                                                        </div>
-                                                    )}
-                                                </div>
-                                                <h5 className="font-bold text-slate-800 text-sm leading-tight mb-1 line-clamp-2">{prize.title}</h5>
-                                                
-                                                <div className="flex items-center gap-1 mt-2">
-                                                    <Star className={`w-3.5 h-3.5 ${canRedeem ? 'text-slate-900' : 'text-slate-400'}`} />
-                                                    <span className={`text-sm font-black ${canRedeem ? 'text-slate-900' : 'text-slate-500'}`}>
-                                                        {prize.pointsRequired} pts
-                                                    </span>
-                                                </div>
-                                                
-                                                <button 
-                                                    disabled={!canRedeem}
-                                                    className={`w-full mt-3 py-2 rounded-xl text-xs font-bold transition-colors ${
-                                                        canRedeem ? 'bg-primary/10 text-slate-900 hover:bg-primary/20' : 'bg-slate-100 text-slate-400 cursor-not-allowed'
-                                                    }`}
-                                                >
-                                                    {canRedeem ? 'Canjear' : 'Te faltan puntos'}
-                                                </button>
-                                            </div>
-                                        );
-                                    })}
-                                </div>
-                            ) : (
-                                <div className="bg-slate-50 border border-slate-100 p-4 rounded-2xl text-center">
-                                    <p className="text-sm text-slate-500 font-medium">No hay premios globales disponibles en este momento.</p>
-                                </div>
-                            )}
                         </div>
 
                         {/* Restaurant Points */}
