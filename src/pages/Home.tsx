@@ -23,6 +23,7 @@ import { DEMO_RESTAURANTS } from '../lib/demoData';
 import ActiveTasksWidget from '../components/ActiveTasksWidget';
 import AvailableStoresRow from '../components/AvailableStoresRow';
 import HomePromotionCard, { CardBannerItem } from '../components/HomePromotionCard';
+import BannerDetailModal from '../components/BannerDetailModal';
 
 interface RecommendedProduct extends Product {
   restaurantId: string;
@@ -47,6 +48,7 @@ export default function Home() {
   const navigate = useNavigate();
   const [restaurants, setRestaurants] = useState<Restaurant[]>([]);
   const [banners, setBanners] = useState<any[]>([]);
+  const [selectedBannerForModal, setSelectedBannerForModal] = useState<any | null>(null);
   const [cardBanners, setCardBanners] = useState<CardBannerItem[]>([]);
   const [disclaimerText, setDisclaimerText] = useState<string>('');
   const [showDisclaimer, setShowDisclaimer] = useState<boolean>(true);
@@ -287,8 +289,10 @@ export default function Home() {
             .eq('id', 'home_disclaimer')
             .maybeSingle();
           if (discConfig) {
-            if (discConfig.text) setDisclaimerText(discConfig.text);
-            if (discConfig.is_active !== undefined) setShowDisclaimer(discConfig.is_active);
+            const text = discConfig.text || discConfig.data?.text;
+            const active = discConfig.is_active !== undefined ? discConfig.is_active : discConfig.data?.is_active;
+            if (text) setDisclaimerText(text);
+            if (active !== undefined) setShowDisclaimer(active);
           }
         } catch (discErr) {
           console.warn("Could not fetch home disclaimer:", discErr);
@@ -600,6 +604,36 @@ export default function Home() {
     return () => clearTimeout(timer);
   }, [currentBannerIndex, banners]);
 
+  const handleBannerClick = (e: React.MouseEvent, banner: any) => {
+    e.preventDefault();
+    const actType = banner.action_type || banner.actionType;
+    const linkUrl = banner.link_url || banner.linkUrl;
+    const restId = banner.restaurant_id || banner.restaurantId;
+
+    if (banner.type === 'fidelization') {
+      navigate(`/rewards?openBannerId=${banner.id}`);
+      return;
+    }
+
+    if (actType === 'restaurant' || restId) {
+      navigate(`/restaurant/${restId}`);
+      return;
+    }
+
+    if (actType === 'internal_section' || (linkUrl && linkUrl.startsWith('/'))) {
+      navigate(linkUrl);
+      return;
+    }
+
+    if (actType === 'external_url' || (linkUrl && (linkUrl.startsWith('http://') || linkUrl.startsWith('https://')))) {
+      window.open(linkUrl, '_blank', 'noopener,noreferrer');
+      return;
+    }
+
+    // Default to modal if action is info_modal or if it has explanation or title
+    setSelectedBannerForModal(banner);
+  };
+
   const displayCategories = useMemo(() => {
     // We primarily show Sectors on the home page
     const sectors = categories.filter(c => !c.parentId);
@@ -878,18 +912,8 @@ export default function Home() {
                 <div key={banner.id} className="min-w-full h-full">
                   <a
                     href={banner.linkUrl || banner.link_url || '#'}
-                    onClick={(e) => {
-                      if (banner.type === 'fidelization') {
-                        e.preventDefault();
-                        navigate(`/rewards?openBannerId=${banner.id}`);
-                      } else if ((banner.linkUrl || banner.link_url) && (banner.linkUrl || banner.link_url).startsWith('/')) {
-                        e.preventDefault();
-                        navigate(banner.linkUrl || banner.link_url);
-                      }
-                    }}
-                    target={(banner.linkUrl || banner.link_url) && !(banner.linkUrl || banner.link_url).startsWith('/') ? "_blank" : undefined}
-                    rel="noopener noreferrer"
-                    className="w-full h-full block"
+                    onClick={(e) => handleBannerClick(e, banner)}
+                    className="w-full h-full block cursor-pointer"
                   >
                     <img
                       src={banner.imageUrl || banner.image_url}
@@ -1095,6 +1119,11 @@ export default function Home() {
       <PointsModal 
         isOpen={isPointsModalOpen} 
         onClose={() => setIsPointsModalOpen(false)} 
+      />
+
+      <BannerDetailModal
+        banner={selectedBannerForModal}
+        onClose={() => setSelectedBannerForModal(null)}
       />
 
       {/* Mandatory GPS Blocking Screen */}

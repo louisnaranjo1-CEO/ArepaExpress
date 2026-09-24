@@ -99,6 +99,10 @@ interface NearbyDriver {
     } | null;
     calculatedPrice?: number;
     availability?: string;
+    isBusy?: boolean;
+    isOnline?: boolean;
+    isActiveVehicle?: boolean;
+    registeredVehicles?: any[];
 }
 
 // Helper to get initial map render center from the user's known address or cache
@@ -264,7 +268,7 @@ export default function Taxi() {
 
     // Nearby Drivers
     const [nearbyDrivers, setNearbyDrivers] = useState<NearbyDriver[]>([]);
-    const [activeDriversCount, setActiveDriversCount] = useState({ moto: 1, carro: 1, ejecutivo: 1 });
+    const [activeDriversCount, setActiveDriversCount] = useState({ moto: 0, carro: 0, ejecutivo: 0 });
     const [selectedDriver, setSelectedDriver] = useState<NearbyDriver | null>(null);
     const [showDriverSelectionModal, setShowDriverSelectionModal] = useState(false);
 
@@ -688,8 +692,7 @@ export default function Taxi() {
         try {
             const { data: driversData, error: dErr } = await supabase
                 .from('drivers')
-                .select('id, full_name, vehicle_type, vehicle_brand, vehicle_model, vehicle_year, vehicle_color, vehicle_plate, current_location, availability, is_online, driver_fares, rating, total_trips, is_comfort_eligible, has_ac, has_thermal_bag, documents, vehicle_image_url')
-                .eq('is_online', true);
+                .select('id, full_name, vehicle_type, vehicle_brand, vehicle_model, vehicle_year, vehicle_color, vehicle_plate, current_location, availability, is_online, driver_fares, rating, total_trips, is_comfort_eligible, has_ac, has_thermal_bag, documents, vehicle_image_url, registered_vehicles, active_vehicle_id, city, status');
 
             if (dErr) {
                 console.error("fetchNearbyDrivers Supabase error:", dErr);
@@ -700,48 +703,113 @@ export default function Taxi() {
 
             (driversData || []).forEach((d: any) => {
                 const loc = d.current_location;
+                let lat = pickupCoords.lat;
+                let lng = pickupCoords.lng;
+                let distKm = 3.0;
+                let hasValidLoc = false;
+
                 if (loc && typeof loc.lat === 'number' && typeof loc.lng === 'number' && !isNaN(loc.lat) && !isNaN(loc.lng)) {
                     const distMeters = calculateDistance(pickupCoords.lat, pickupCoords.lng, loc.lat, loc.lng);
-                    const distKm = Number((distMeters / 1000).toFixed(1));
-                    if (distKm <= 35) {
-                        const rawType = (d.vehicle_type || 'carro').toLowerCase();
-                        const vType = rawType.includes('moto') ? 'moto' : 'carro';
-                        const isComfort = Boolean(d.is_comfort_eligible) || (vType === 'carro' && Boolean(d.has_ac) && Number(d.vehicle_year) >= 2009);
-                        const eta = Math.max(2, Math.ceil(distKm * 3));
-                        const photo = d.documents?.selfieUrl || d.photo_url || null;
-                        const vehiclePhoto = d.vehicle_image_url || d.documents?.vehicleUrl || null;
-                        const brand = d.vehicle_brand || '';
-                        const model = d.vehicle_model || (vType === 'moto' ? 'Motocicleta' : 'Automóvil');
-                        const fullVehicleModel = [brand, model].filter(Boolean).join(' ');
+                    distKm = Number((distMeters / 1000).toFixed(1));
+                    lat = loc.lat;
+                    lng = loc.lng;
+                    hasValidLoc = true;
+                }
 
-                        validDrivers.push({
-                            id: d.id,
-                            fullName: d.full_name || 'Conductor',
-                            vehicleType: vType,
-                            lat: loc.lat,
-                            lng: loc.lng,
-                            distanceKm: distKm,
-                            etaMinutes: eta,
-                            photoUrl: photo,
-                            vehicleBrand: brand,
-                            vehicleModel: fullVehicleModel,
-                            vehicleYear: d.vehicle_year || '',
-                            vehiclePlate: d.vehicle_plate || 'S/P',
-                            vehicleColor: d.vehicle_color || '',
-                            hasAc: Boolean(d.has_ac),
-                            hasThermalBag: Boolean(d.has_thermal_bag),
-                            isComfortEligible: isComfort,
-                            vehiclePhotoUrl: vehiclePhoto,
-                            rating: d.rating ? Number(d.rating) : 5.0,
-                            totalTrips: d.total_trips || 0,
-                            driverFares: d.driver_fares || null,
-                            availability: d.availability || 'active'
-                        });
-                        counts[vType]++;
-                        if (isComfort) {
+                if (distKm <= 35 || !hasValidLoc) {
+                    const isDriverAvailable = Boolean(d.is_online) && 
+                        (d.availability === 'active' || d.availability === 'available' || !d.availability) &&
+                        d.status !== 'suspended' && d.status !== 'inactive';
+
+                    const rawType = (d.vehicle_type || 'carro').toLowerCase();
+                    const activeVType: 'moto' | 'carro' = rawType.includes('moto') ? 'moto' : 'carro';
+                    const isActiveComfort = Boolean(d.is_comfort_eligible) || (activeVType === 'carro' && Boolean(d.has_ac) && Number(d.vehicle_year) >= 2009);
+                    const eta = Math.max(2, Math.ceil(distKm * 3));
+                    const photo = d.documents?.selfieUrl || d.photo_url || null;
+                    const vehiclePhoto = d.vehicle_image_url || d.documents?.vehicleUrl || null;
+                    const brand = d.vehicle_brand || '';
+                    const model = d.vehicle_model || (activeVType === 'moto' ? 'Motocicleta' : 'Automóvil');
+                    const fullVehicleModel = [brand, model].filter(Boolean).join(' ');
+
+                    // 1. Vehículo Principal / Activo del conductor
+                    validDrivers.push({
+                        id: d.id,
+                        fullName: d.full_name || 'Conductor',
+                        vehicleType: activeVType,
+                        lat: lat,
+                        lng: lng,
+                        distanceKm: distKm,
+                        etaMinutes: eta,
+                        photoUrl: photo,
+                        vehicleBrand: brand,
+                        vehicleModel: fullVehicleModel,
+                        vehicleYear: d.vehicle_year || '',
+                        vehiclePlate: d.vehicle_plate || 'S/P',
+                        vehicleColor: d.vehicle_color || '',
+                        hasAc: Boolean(d.has_ac),
+                        hasThermalBag: Boolean(d.has_thermal_bag),
+                        isComfortEligible: isActiveComfort,
+                        vehiclePhotoUrl: vehiclePhoto,
+                        rating: d.rating ? Number(d.rating) : 5.0,
+                        totalTrips: d.total_trips || 0,
+                        driverFares: d.driver_fares || null,
+                        availability: isDriverAvailable ? 'active' : 'busy',
+                        isBusy: !isDriverAvailable,
+                        isOnline: Boolean(d.is_online),
+                        isActiveVehicle: true,
+                        registeredVehicles: d.registered_vehicles || []
+                    });
+
+                    // Solo los vehículos activos de conductores online y disponibles suman unidades al radar
+                    if (isDriverAvailable) {
+                        counts[activeVType]++;
+                        if (isActiveComfort) {
                             counts.ejecutivo++;
                         }
                     }
+
+                    // 2. Un conductor solo puede tener 1 vehículo activo a la vez:
+                    // Sus otros vehículos registrados aparecen en la plataforma en estatus "Ocupado"
+                    const regVehicles: any[] = Array.isArray(d.registered_vehicles) ? d.registered_vehicles : [];
+                    regVehicles.forEach((veh: any, idx: number) => {
+                        const isThisActive = (d.active_vehicle_id && String(veh.id) === String(d.active_vehicle_id)) ||
+                            (!d.active_vehicle_id && (veh.plate === d.vehicle_plate || veh.is_active));
+                        if (!isThisActive) {
+                            const rawVehType = (veh.type || 'carro').toLowerCase();
+                            const vType: 'moto' | 'carro' = rawVehType.includes('moto') ? 'moto' : 'carro';
+                            const isComfort = (vType === 'carro' && Boolean(veh.has_ac) && Number(veh.year) >= 2009);
+                            const vBrand = veh.brand || '';
+                            const vModel = veh.model || (vType === 'moto' ? 'Motocicleta' : 'Automóvil');
+                            const fullVModel = [vBrand, vModel].filter(Boolean).join(' ');
+
+                            validDrivers.push({
+                                id: `${d.id}_veh_${veh.id || idx}`,
+                                fullName: d.full_name || 'Conductor',
+                                vehicleType: vType,
+                                lat: lat,
+                                lng: lng,
+                                distanceKm: distKm,
+                                etaMinutes: eta,
+                                photoUrl: photo,
+                                vehicleBrand: vBrand,
+                                vehicleModel: fullVModel,
+                                vehicleYear: veh.year || '',
+                                vehiclePlate: veh.plate || 'S/P',
+                                vehicleColor: veh.color || '',
+                                hasAc: Boolean(veh.has_ac),
+                                hasThermalBag: Boolean(veh.has_thermal_bag),
+                                isComfortEligible: isComfort,
+                                vehiclePhotoUrl: veh.photo_url || vehiclePhoto,
+                                rating: d.rating ? Number(d.rating) : 5.0,
+                                totalTrips: d.total_trips || 0,
+                                driverFares: d.driver_fares || null,
+                                availability: 'busy',
+                                isBusy: true,
+                                isOnline: Boolean(d.is_online),
+                                isActiveVehicle: false
+                            });
+                        }
+                    });
                 }
             });
 
@@ -1093,7 +1161,9 @@ export default function Taxi() {
 
         // Nearby Drivers Markers with Stylized 3D Isometric Design
         driverMarkersRef.current.forEach(m => m.setMap(null));
-        driverMarkersRef.current = nearbyDrivers.map(d => {
+        driverMarkersRef.current = nearbyDrivers
+            .filter(d => !d.isBusy)
+            .map(d => {
             const isMoto = d.vehicleType === 'moto';
             return new window.google.maps.Marker({
                 position: { lat: d.lat, lng: d.lng },
@@ -1379,7 +1449,8 @@ export default function Taxi() {
     const getCategoryPriceRange = useCallback((cat: 'moto' | 'carro' | 'ejecutivo') => {
         const tripDist = routeInfo ? routeInfo.distance : 1;
         const matchingDrivers = nearbyDrivers.filter(d => {
-            const isAvailable = (d as any).availability === 'active' || (d as any).availability === undefined;
+            if (d.isBusy) return false;
+            const isAvailable = (d as any).availability === 'active' || (d as any).availability === 'available' || (d as any).availability === undefined;
             if (!isAvailable) return false;
             if (cat === 'moto') return d.vehicleType === 'moto';
             if (cat === 'ejecutivo') return d.vehicleType === 'carro' && (d.isComfortEligible || (d.hasAc && Number(d.vehicleYear) >= 2009));
@@ -1407,6 +1478,19 @@ export default function Taxi() {
             driversCount: matchingDrivers.length
         };
     }, [nearbyDrivers, routeInfo, calculateDriverTripPrice]);
+
+    // Precio más bajo disponible en la plataforma (informativo para barra minimizada)
+    const getLowestPlatformPrice = useCallback(() => {
+        const motoRange = getCategoryPriceRange('moto');
+        if (!motoRange.isBusy && motoRange.min > 0) {
+            return motoRange.min.toFixed(2);
+        }
+        const defaultMotoPrice = Number(calculatePrice('moto'));
+        if (!isNaN(defaultMotoPrice) && defaultMotoPrice > 0) {
+            return defaultMotoPrice.toFixed(2);
+        }
+        return '1.50';
+    }, [getCategoryPriceRange, calculatePrice]);
 
     // Aceptar puja de conductor para Muchacho e' Mandado
     const handleAcceptMandadoBid = async (bid: any) => {
@@ -2704,11 +2788,7 @@ export default function Taxi() {
                                                 ? "Muchacho e' Mandao"
                                                 : mainMode === 'package'
                                                 ? 'Envío de Paquete'
-                                                : vehicleType === 'moto'
-                                                ? 'Moto Express'
-                                                : vehicleType === 'ejecutivo'
-                                                ? 'Ejecutivo Comfort'
-                                                : 'Taxi Deliexpress'}
+                                                : 'Transpórtate en un 2x3'}
                                         </p>
                                         <p className="text-[10px] font-bold text-slate-500 truncate">
                                             {routeInfo ? `${routeInfo.distance} km • ${routeInfo.duration}` : 'Calculando ruta...'}
@@ -2717,7 +2797,7 @@ export default function Taxi() {
                                 </div>
                                 <div className="flex items-center gap-2 flex-shrink-0">
                                     <span className="text-sm font-black text-slate-950">
-                                        {mainMode === 'mandado' ? 'Subasta' : `$${calculatePrice(vehicleType)}`}
+                                        {mainMode === 'mandado' ? 'Subasta' : `$${getLowestPlatformPrice()}`}
                                     </span>
                                     <button
                                         type="button"
@@ -3998,88 +4078,135 @@ export default function Taxi() {
                                 </div>
                             ) : (
                                 /* Three Vehicle Cards */
-                                <div className="grid grid-cols-3 gap-2 sm:gap-3 mb-2">
-                                    {/* Opción 1: Moto */}
-                                    <button
-                                        type="button"
-                                        onClick={() => handleQuickTransport('moto')}
-                                        className="flex flex-col items-center justify-between p-3 bg-gradient-to-b from-amber-50/50 to-white hover:to-amber-50 border-2 border-slate-200 hover:border-amber-400 rounded-3xl active:scale-95 transition-all text-center group shadow-sm hover:shadow-md cursor-pointer"
-                                    >
-                                        <div className="w-12 h-12 rounded-2xl bg-amber-400/20 text-slate-950 flex items-center justify-center group-hover:scale-110 group-hover:bg-amber-400 transition-all mb-2 shadow-inner">
-                                            <Bike className="w-6 h-6 text-slate-950" />
-                                        </div>
-                                        <span className="text-xs sm:text-sm font-black text-slate-950 tracking-tight">
-                                            Moto
-                                        </span>
-                                        <div className="mt-1 px-1.5 py-0.5 rounded-full bg-amber-100/80 border border-amber-200">
-                                            <p className="text-[10px] sm:text-xs font-black text-amber-950">
-                                                Desde $0.50
-                                            </p>
-                                        </div>
-                                        {bcvRate ? (
-                                            <span className="text-[9px] text-slate-500 font-bold mt-0.5">
-                                                ~Bs. {(0.50 * bcvRate).toFixed(0)}
-                                            </span>
-                                        ) : null}
-                                        <span className="mt-2 text-[9px] font-black uppercase text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded-md">
-                                            ⚡ Ágil
-                                        </span>
-                                    </button>
+                                (() => {
+                                    const isMotoAvail = (activeDriversCount?.moto || 0) > 0;
+                                    const isCarroAvail = (activeDriversCount?.carro || 0) > 0;
+                                    const isConfortAvail = (activeDriversCount?.ejecutivo || 0) > 0;
 
-                                    {/* Opción 2: Carro Económico */}
-                                    <button
-                                        type="button"
-                                        onClick={() => handleQuickTransport('carro')}
-                                        className="flex flex-col items-center justify-between p-3 bg-gradient-to-b from-blue-50/40 to-white hover:to-blue-50 border-2 border-slate-200 hover:border-blue-500 rounded-3xl active:scale-95 transition-all text-center group shadow-sm hover:shadow-md cursor-pointer"
-                                    >
-                                        <div className="w-12 h-12 rounded-2xl bg-blue-500/15 text-slate-950 flex items-center justify-center group-hover:scale-110 group-hover:bg-blue-500 group-hover:text-white transition-all mb-2 shadow-inner">
-                                            <Car className="w-6 h-6 text-slate-950 group-hover:text-white transition-colors" />
-                                        </div>
-                                        <span className="text-xs sm:text-sm font-black text-slate-950 tracking-tight leading-tight">
-                                            Carro Económico
-                                        </span>
-                                        <div className="mt-1 px-1.5 py-0.5 rounded-full bg-blue-100/80 border border-blue-200">
-                                            <p className="text-[10px] sm:text-xs font-black text-blue-950">
-                                                Desde $1.50
-                                            </p>
-                                        </div>
-                                        {bcvRate ? (
-                                            <span className="text-[9px] text-slate-500 font-bold mt-0.5">
-                                                ~Bs. {(1.50 * bcvRate).toFixed(0)}
-                                            </span>
-                                        ) : null}
-                                        <span className="mt-2 text-[9px] font-black uppercase text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded-md">
-                                            🚗 Diario
-                                        </span>
-                                    </button>
+                                    return (
+                                        <div className="grid grid-cols-3 gap-2 sm:gap-3 mb-2">
+                                            {/* Opción 1: Moto */}
+                                            <button
+                                                type="button"
+                                                disabled={!isMotoAvail}
+                                                onClick={() => isMotoAvail && handleQuickTransport('moto')}
+                                                className={`flex flex-col items-center justify-between p-3 border-2 rounded-3xl transition-all text-center group shadow-sm ${
+                                                    isMotoAvail
+                                                        ? 'bg-gradient-to-b from-amber-50/50 to-white hover:to-amber-50 border-slate-200 hover:border-amber-400 active:scale-95 hover:shadow-md cursor-pointer'
+                                                        : 'bg-slate-100 border-slate-200 opacity-60 cursor-not-allowed'
+                                                }`}
+                                            >
+                                                <div className={`w-12 h-12 rounded-2xl flex items-center justify-center mb-2 shadow-inner transition-all ${
+                                                    isMotoAvail
+                                                        ? 'bg-amber-400/20 text-slate-950 group-hover:scale-110 group-hover:bg-amber-400'
+                                                        : 'bg-slate-200 text-slate-400'
+                                                }`}>
+                                                    <Bike className="w-6 h-6 text-slate-950" />
+                                                </div>
+                                                <span className="text-xs sm:text-sm font-black text-slate-950 tracking-tight">
+                                                    Moto
+                                                </span>
+                                                <div className={`mt-1 px-1.5 py-0.5 rounded-full border ${
+                                                    isMotoAvail ? 'bg-amber-100/80 border-amber-200' : 'bg-slate-200 border-slate-300'
+                                                }`}>
+                                                    <p className={`text-[10px] sm:text-xs font-black ${isMotoAvail ? 'text-amber-950' : 'text-slate-500'}`}>
+                                                        {isMotoAvail ? 'Desde $0.50' : 'Ocupado'}
+                                                    </p>
+                                                </div>
+                                                {bcvRate && isMotoAvail ? (
+                                                    <span className="text-[9px] text-slate-500 font-bold mt-0.5">
+                                                        ~Bs. {(0.50 * bcvRate).toFixed(0)}
+                                                    </span>
+                                                ) : null}
+                                                <span className={`mt-2 text-[9px] font-black uppercase px-1.5 py-0.5 rounded-md ${
+                                                    isMotoAvail ? 'text-amber-700 bg-amber-50' : 'text-slate-500 bg-slate-200'
+                                                }`}>
+                                                    {isMotoAvail ? '⚡ Ágil' : 'Ocupado'}
+                                                </span>
+                                            </button>
 
-                                    {/* Opción 3: Carro Confort */}
-                                    <button
-                                        type="button"
-                                        onClick={() => handleQuickTransport('confort')}
-                                        className="flex flex-col items-center justify-between p-3 bg-gradient-to-b from-purple-50/40 to-white hover:to-purple-50 border-2 border-slate-200 hover:border-purple-500 rounded-3xl active:scale-95 transition-all text-center group shadow-sm hover:shadow-md cursor-pointer"
-                                    >
-                                        <div className="w-12 h-12 rounded-2xl bg-purple-500/15 text-slate-950 flex items-center justify-center group-hover:scale-110 group-hover:bg-purple-600 group-hover:text-white transition-all mb-2 shadow-inner">
-                                            <Sparkles className="w-6 h-6 text-purple-700 group-hover:text-white transition-colors" />
+                                            {/* Opción 2: Carro Económico */}
+                                            <button
+                                                type="button"
+                                                disabled={!isCarroAvail}
+                                                onClick={() => isCarroAvail && handleQuickTransport('carro')}
+                                                className={`flex flex-col items-center justify-between p-3 border-2 rounded-3xl transition-all text-center group shadow-sm ${
+                                                    isCarroAvail
+                                                        ? 'bg-gradient-to-b from-blue-50/40 to-white hover:to-blue-50 border-slate-200 hover:border-blue-500 active:scale-95 hover:shadow-md cursor-pointer'
+                                                        : 'bg-slate-100 border-slate-200 opacity-60 cursor-not-allowed'
+                                                }`}
+                                            >
+                                                <div className={`w-12 h-12 rounded-2xl flex items-center justify-center mb-2 shadow-inner transition-all ${
+                                                    isCarroAvail
+                                                        ? 'bg-blue-500/15 text-slate-950 group-hover:scale-110 group-hover:bg-blue-500 group-hover:text-white'
+                                                        : 'bg-slate-200 text-slate-400'
+                                                }`}>
+                                                    <Car className="w-6 h-6 text-slate-950" />
+                                                </div>
+                                                <span className="text-xs sm:text-sm font-black text-slate-950 tracking-tight leading-tight">
+                                                    Carro Económico
+                                                </span>
+                                                <div className={`mt-1 px-1.5 py-0.5 rounded-full border ${
+                                                    isCarroAvail ? 'bg-blue-100/80 border-blue-200' : 'bg-slate-200 border-slate-300'
+                                                }`}>
+                                                    <p className={`text-[10px] sm:text-xs font-black ${isCarroAvail ? 'text-blue-950' : 'text-slate-500'}`}>
+                                                        {isCarroAvail ? 'Desde $1.50' : 'Ocupado'}
+                                                    </p>
+                                                </div>
+                                                {bcvRate && isCarroAvail ? (
+                                                    <span className="text-[9px] text-slate-500 font-bold mt-0.5">
+                                                        ~Bs. {(1.50 * bcvRate).toFixed(0)}
+                                                    </span>
+                                                ) : null}
+                                                <span className={`mt-2 text-[9px] font-black uppercase px-1.5 py-0.5 rounded-md ${
+                                                    isCarroAvail ? 'text-blue-700 bg-blue-50' : 'text-slate-500 bg-slate-200'
+                                                }`}>
+                                                    {isCarroAvail ? '🚗 Diario' : 'Ocupado'}
+                                                </span>
+                                            </button>
+
+                                            {/* Opción 3: Carro Confort */}
+                                            <button
+                                                type="button"
+                                                disabled={!isConfortAvail}
+                                                onClick={() => isConfortAvail && handleQuickTransport('confort')}
+                                                className={`flex flex-col items-center justify-between p-3 border-2 rounded-3xl transition-all text-center group shadow-sm ${
+                                                    isConfortAvail
+                                                        ? 'bg-gradient-to-b from-purple-50/40 to-white hover:to-purple-50 border-slate-200 hover:border-purple-500 active:scale-95 hover:shadow-md cursor-pointer'
+                                                        : 'bg-slate-100 border-slate-200 opacity-60 cursor-not-allowed'
+                                                }`}
+                                            >
+                                                <div className={`w-12 h-12 rounded-2xl flex items-center justify-center mb-2 shadow-inner transition-all ${
+                                                    isConfortAvail
+                                                        ? 'bg-purple-500/15 text-slate-950 group-hover:scale-110 group-hover:bg-purple-600 group-hover:text-white'
+                                                        : 'bg-slate-200 text-slate-400'
+                                                }`}>
+                                                    <Sparkles className="w-6 h-6 text-purple-700" />
+                                                </div>
+                                                <span className="text-xs sm:text-sm font-black text-slate-950 tracking-tight leading-tight">
+                                                    Carro Confort
+                                                </span>
+                                                <div className={`mt-1 px-1.5 py-0.5 rounded-full border ${
+                                                    isConfortAvail ? 'bg-purple-100/80 border-purple-200' : 'bg-slate-200 border-slate-300'
+                                                }`}>
+                                                    <p className={`text-[10px] sm:text-xs font-black ${isConfortAvail ? 'text-purple-950' : 'text-slate-500'}`}>
+                                                        {isConfortAvail ? 'Desde $2.50' : 'Ocupado'}
+                                                    </p>
+                                                </div>
+                                                {bcvRate && isConfortAvail ? (
+                                                    <span className="text-[9px] text-slate-500 font-bold mt-0.5">
+                                                        ~Bs. {(2.50 * bcvRate).toFixed(0)}
+                                                    </span>
+                                                ) : null}
+                                                <span className={`mt-2 text-[9px] font-black uppercase px-1.5 py-0.5 rounded-md ${
+                                                    isConfortAvail ? 'text-purple-700 bg-purple-50' : 'text-slate-500 bg-slate-200'
+                                                }`}>
+                                                    {isConfortAvail ? '⭐ VIP / A/C' : 'Ocupado'}
+                                                </span>
+                                            </button>
                                         </div>
-                                        <span className="text-xs sm:text-sm font-black text-slate-950 tracking-tight leading-tight">
-                                            Carro Confort
-                                        </span>
-                                        <div className="mt-1 px-1.5 py-0.5 rounded-full bg-purple-100/80 border border-purple-200">
-                                            <p className="text-[10px] sm:text-xs font-black text-purple-950">
-                                                Desde $2.50
-                                            </p>
-                                        </div>
-                                        {bcvRate ? (
-                                            <span className="text-[9px] text-slate-500 font-bold mt-0.5">
-                                                ~Bs. {(2.50 * bcvRate).toFixed(0)}
-                                            </span>
-                                        ) : null}
-                                        <span className="mt-2 text-[9px] font-black uppercase text-purple-700 bg-purple-50 px-1.5 py-0.5 rounded-md">
-                                            ⭐ VIP / A/C
-                                        </span>
-                                    </button>
-                                </div>
+                                    );
+                                })()
                             )}
 
                             {/* Footer helper note */}
@@ -4139,21 +4266,27 @@ export default function Taxi() {
                             <div className="overflow-y-auto space-y-3 py-1 flex-1 pr-1">
                                 {(() => {
                                     const isComfortCategory = selectedCategory === 'carro_confort';
-                                    const catDrivers = nearbyDrivers.filter(d => {
-                                        if (selectedCategory === 'mototaxi') {
-                                            return d.vehicleType === 'moto';
-                                        }
-                                        if (isComfortCategory) {
-                                            return d.vehicleType === 'carro' && (d.isComfortEligible || (d.hasAc && Number(d.vehicleYear) >= 2009));
-                                        }
-                                        if (selectedCategory === 'taxi_driver') {
-                                            return d.vehicleType === 'carro';
-                                        }
-                                        if (selectedCategory === 'delivery_envios') {
-                                            return vehicleType === 'moto' ? d.vehicleType === 'moto' : d.vehicleType === 'carro';
-                                        }
-                                        return true;
-                                    });
+                                    const catDrivers = nearbyDrivers
+                                        .filter(d => {
+                                            if (selectedCategory === 'mototaxi') {
+                                                return d.vehicleType === 'moto';
+                                            }
+                                            if (isComfortCategory) {
+                                                return d.vehicleType === 'carro' && (d.isComfortEligible || (d.hasAc && Number(d.vehicleYear) >= 2009));
+                                            }
+                                            if (selectedCategory === 'taxi_driver') {
+                                                return d.vehicleType === 'carro';
+                                            }
+                                            if (selectedCategory === 'delivery_envios') {
+                                                return vehicleType === 'moto' ? d.vehicleType === 'moto' : d.vehicleType === 'carro';
+                                            }
+                                            return true;
+                                        })
+                                        .sort((a, b) => {
+                                            if (!a.isBusy && b.isBusy) return -1;
+                                            if (a.isBusy && !b.isBusy) return 1;
+                                            return (a.distanceKm || 0) - (b.distanceKm || 0);
+                                        });
                                     const tripDist = routeInfo ? routeInfo.distance : 1;
 
                                     if (catDrivers.length === 0) {
@@ -4162,9 +4295,9 @@ export default function Taxi() {
                                                 <div className="w-14 h-14 rounded-full bg-slate-100 flex items-center justify-center mx-auto mb-3 text-slate-400">
                                                     <Car className="w-7 h-7" />
                                                 </div>
-                                                <h4 className="font-black text-sm text-slate-800">Sin conductores específicos en línea</h4>
+                                                <h4 className="font-black text-sm text-slate-800">Sin conductores en esta categoría</h4>
                                                 <p className="text-xs text-slate-500 mt-1 max-w-xs mx-auto">
-                                                    No hay conductores con tarifas personalizadas activas en esta categoría en este momento. Tu solicitud se enviará a todos los conductores disponibles por radar.
+                                                    No hay conductores registrados en esta categoría en este momento. Tu solicitud se enviará a todos los conductores disponibles por radar.
                                                 </p>
                                             </div>
                                         );
@@ -4173,6 +4306,7 @@ export default function Taxi() {
                                     return catDrivers.map(d => {
                                         const price = calculateDriverTripPrice(d, tripDist, isComfortCategory);
                                         const isChosen = selectedDriver?.id === d.id;
+                                        const isBusy = Boolean(d.isBusy);
 
                                         return (
                                             <div
@@ -4180,6 +4314,8 @@ export default function Taxi() {
                                                 className={`p-4 rounded-2xl border-2 transition-all flex flex-col gap-3 ${
                                                     isChosen 
                                                         ? 'border-amber-400 bg-amber-50/50 shadow-md ring-2 ring-amber-400/20' 
+                                                        : isBusy
+                                                        ? 'border-slate-200 bg-slate-50/80 opacity-75'
                                                         : 'border-slate-200 bg-white hover:border-slate-300'
                                                 }`}
                                             >
@@ -4197,7 +4333,9 @@ export default function Taxi() {
                                                                     {d.fullName.slice(0, 2).toUpperCase()}
                                                                 </div>
                                                             )}
-                                                            <span className="absolute -bottom-1 -right-1 w-3.5 h-3.5 bg-emerald-500 border-2 border-white rounded-full"></span>
+                                                            <span className={`absolute -bottom-1 -right-1 w-3.5 h-3.5 border-2 border-white rounded-full ${
+                                                                isBusy ? 'bg-slate-400' : 'bg-emerald-500'
+                                                            }`}></span>
                                                         </div>
                                                         <div className="min-w-0">
                                                             <h4 className="font-black text-sm text-slate-900 truncate flex items-center gap-1.5">
@@ -4211,7 +4349,11 @@ export default function Taxi() {
                                                                 <span>•</span>
                                                                 <span>{d.totalTrips || 0} viajes</span>
                                                                 <span>•</span>
-                                                                <span className="text-emerald-600">~{d.etaMinutes} min</span>
+                                                                {isBusy ? (
+                                                                    <span className="text-rose-600 font-black">● Ocupado</span>
+                                                                ) : (
+                                                                    <span className="text-emerald-600 font-bold">~{d.etaMinutes} min</span>
+                                                                )}
                                                             </div>
                                                             <p className="text-[10px] text-slate-400 font-semibold truncate mt-0.5">
                                                                 {d.vehicleModel} {d.vehicleColor ? `• ${d.vehicleColor}` : ''} • Placa: {d.vehiclePlate}
@@ -4276,6 +4418,14 @@ export default function Taxi() {
                                                                     Quitar selección
                                                                 </button>
                                                             </div>
+                                                        ) : isBusy ? (
+                                                            <button
+                                                                disabled={true}
+                                                                className="px-4 py-2 bg-slate-200 text-slate-500 rounded-xl font-black text-xs uppercase tracking-wider cursor-not-allowed opacity-80"
+                                                                title="Este conductor se encuentra ocupado o no está en servicio"
+                                                            >
+                                                                Ocupado
+                                                            </button>
                                                         ) : (
                                                             <button
                                                                 onClick={() => {

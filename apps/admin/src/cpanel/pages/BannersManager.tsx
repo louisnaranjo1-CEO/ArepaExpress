@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Trash2, Plus, Image as ImageIcon, Clock, ExternalLink, Timer, Upload, AlertCircle, Pencil, Save, Shield, FileText, Check, Layout } from 'lucide-react';
+import { Trash2, Plus, Image as ImageIcon, Clock, ExternalLink, Timer, Upload, AlertCircle, Pencil, Save, Shield, FileText, Check, Layout, Info, Store, Navigation } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { motion, AnimatePresence } from 'motion/react';
 import { toast } from 'react-hot-toast';
@@ -28,6 +28,7 @@ const DEFAULT_DISCLAIMER =
 
 export default function BannersManager() {
     const [banners, setBanners] = useState<any[]>([]);
+    const [restaurants, setRestaurants] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     const [isAdding, setIsAdding] = useState(false);
     const [uploading, setUploading] = useState(false);
@@ -43,7 +44,9 @@ export default function BannersManager() {
         bgColor: '#FEF9C3',
         visibilityScope: 'national' as 'national' | 'state' | 'city',
         targetState: '',
-        targetCity: ''
+        targetCity: '',
+        actionType: 'info_modal' as 'info_modal' | 'restaurant' | 'internal_section' | 'external_url',
+        restaurantId: ''
     });
 
     // SUDEBAN Legal Disclaimer State
@@ -73,13 +76,15 @@ export default function BannersManager() {
 
     const fetchBanners = async () => {
         try {
-            const { data, error } = await supabase
-                .from('banners')
-                .select('*')
-                .order('created_at', { ascending: false });
+            const [bannersRes, restRes] = await Promise.all([
+                supabase.from('banners').select('*').order('created_at', { ascending: false }),
+                supabase.from('comercios').select('id, name').order('name')
+            ]);
 
-            if (error) throw error;
-            const mapped = (data || []).map(b => ({
+            if (bannersRes.error) throw bannersRes.error;
+            if (restRes.data) setRestaurants(restRes.data);
+
+            const mapped = (bannersRes.data || []).map(b => ({
                 ...b,
                 imageUrl: b.image_url || b.imageUrl,
                 linkUrl: b.link_url || b.linkUrl,
@@ -87,7 +92,14 @@ export default function BannersManager() {
                 isActive: b.is_active !== undefined ? b.is_active : b.isActive,
                 visibilityScope: b.visibility_scope || b.visibilityScope,
                 targetState: b.target_state || b.targetState,
-                targetCity: b.target_city || b.targetCity
+                targetCity: b.target_city || b.targetCity,
+                actionType: b.action_type || b.actionType || (
+                    b.restaurant_id ? 'restaurant' :
+                    (b.link_url || b.linkUrl)?.startsWith('/') ? 'internal_section' :
+                    (b.link_url || b.linkUrl)?.startsWith('http') ? 'external_url' :
+                    'info_modal'
+                ),
+                restaurantId: b.restaurant_id || b.restaurantId || ''
             }));
             setBanners(mapped);
 
@@ -99,8 +111,10 @@ export default function BannersManager() {
                     .eq('id', 'home_disclaimer')
                     .maybeSingle();
                 if (discData) {
-                    if (discData.text) setDisclaimerText(discData.text);
-                    if (discData.is_active !== undefined) setIsDisclaimerActive(discData.is_active);
+                    const text = discData.text || discData.data?.text;
+                    const active = discData.is_active !== undefined ? discData.is_active : discData.data?.is_active;
+                    if (text) setDisclaimerText(text);
+                    if (active !== undefined) setIsDisclaimerActive(active);
                 }
             } catch (e) {
                 console.warn("Could not fetch home disclaimer:", e);
@@ -121,6 +135,10 @@ export default function BannersManager() {
                     id: 'home_disclaimer',
                     text: disclaimerText,
                     is_active: isDisclaimerActive,
+                    data: {
+                        text: disclaimerText,
+                        is_active: isDisclaimerActive
+                    },
                     updated_at: new Date().toISOString()
                 });
             if (error) throw error;
@@ -271,7 +289,7 @@ export default function BannersManager() {
     const handleSaveBanner = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!selectedFile && !newBanner.imageUrl) {
-            alert("Por favor selecciona una imagen");
+            toast.error("Por favor selecciona una imagen");
             return;
         }
 
@@ -287,14 +305,23 @@ export default function BannersManager() {
                 finalImageUrl = pubData.publicUrl;
             }
 
+            let resolvedLinkUrl = newBanner.linkUrl;
+            if (newBanner.actionType === 'restaurant') {
+                resolvedLinkUrl = newBanner.restaurantId ? `/restaurant/${newBanner.restaurantId}` : '';
+            } else if (newBanner.actionType === 'info_modal') {
+                resolvedLinkUrl = '';
+            }
+
             const bannerData = {
                 title: newBanner.title,
                 explanation: newBanner.subtitle || '',
                 target_screen: newBanner.bgColor || '#FEF9C3',
                 image_url: finalImageUrl,
-                link_url: newBanner.linkUrl,
+                link_url: resolvedLinkUrl,
                 duration: newBanner.duration,
                 type: newBanner.type,
+                action_type: newBanner.actionType,
+                restaurant_id: (newBanner.actionType === 'restaurant' && newBanner.restaurantId) ? newBanner.restaurantId : null,
                 visibility_scope: newBanner.visibilityScope,
                 target_state: newBanner.targetState,
                 target_city: newBanner.targetCity,
@@ -305,12 +332,14 @@ export default function BannersManager() {
             if (editingId) {
                 const { error } = await supabase.from('banners').update(bannerData).eq('id', editingId);
                 if (error) throw error;
+                toast.success("Banner actualizado con éxito");
             } else {
                 const { error } = await supabase.from('banners').insert([{
                     ...bannerData,
                     created_at: new Date().toISOString(),
                 }]);
                 if (error) throw error;
+                toast.success("Banner creado con éxito");
             }
 
             setIsAdding(false);
@@ -325,14 +354,16 @@ export default function BannersManager() {
                 bgColor: '#FEF9C3',
                 visibilityScope: 'national',
                 targetState: '',
-                targetCity: ''
+                targetCity: '',
+                actionType: 'info_modal',
+                restaurantId: ''
             });
             setSelectedFile(null);
             setImagePreview(null);
             fetchBanners();
-        } catch (error) {
+        } catch (error: any) {
             console.error("Error saving banner: ", error);
-            alert("Error al guardar el banner");
+            toast.error("Error al guardar el banner: " + (error.message || ''));
         } finally {
             setUploading(false);
         }
@@ -344,8 +375,10 @@ export default function BannersManager() {
             const { error } = await supabase.from('banners').delete().eq('id', id);
             if (error) throw error;
             setBanners(prev => prev.filter(b => b.id !== id));
+            toast.success("Banner eliminado");
         } catch (error) {
             console.error("Error deleting banner: ", error);
+            toast.error("No se pudo eliminar el banner");
         }
     };
 
@@ -354,6 +387,7 @@ export default function BannersManager() {
             const { error } = await supabase.from('banners').update({ is_active: !currentStatus }).eq('id', id);
             if (error) throw error;
             setBanners(prev => prev.map(b => b.id === id ? { ...b, isActive: !currentStatus } : b));
+            toast.success(!currentStatus ? "Banner activado" : "Banner desactivado");
         } catch (error) {
             console.error("Error updating status: ", error);
         }
@@ -367,29 +401,42 @@ export default function BannersManager() {
                 title: banner.title || '',
                 explanation: banner.explanation || '',
                 prizes: banner.prizes || [],
-                bannerImageUrl: banner.imageUrl || '',
-                visibilityScope: banner.visibilityScope || 'national',
-                targetState: banner.targetState || '',
-                targetCity: banner.targetCity || ''
+                bannerImageUrl: banner.imageUrl || banner.image_url || '',
+                visibilityScope: banner.visibilityScope || banner.visibility_scope || 'national',
+                targetState: banner.targetState || banner.target_state || '',
+                targetCity: banner.targetCity || banner.target_city || ''
             });
             window.scrollTo({ top: 0, behavior: 'smooth' });
+            toast.success("Editando banner en sección superior");
         } else {
             setEditingId(banner.id);
+            const actType = banner.actionType || banner.action_type || (
+                (banner.restaurantId || banner.restaurant_id) ? 'restaurant' :
+                (banner.linkUrl || banner.link_url)?.startsWith('/') ? 'internal_section' :
+                (banner.linkUrl || banner.link_url)?.startsWith('http') ? 'external_url' :
+                'info_modal'
+            );
             setNewBanner({
-                imageUrl: banner.imageUrl || '',
+                imageUrl: banner.imageUrl || banner.image_url || '',
                 title: banner.title || '',
-                subtitle: banner.explanation || '',
-                linkUrl: banner.linkUrl || '',
+                subtitle: banner.explanation || banner.subtitle || '',
+                linkUrl: banner.linkUrl || banner.link_url || '',
                 duration: banner.duration || 5,
                 type: banner.type || 'top_banner',
                 bgColor: banner.target_screen || banner.targetScreen || '#FEF9C3',
-                visibilityScope: banner.visibilityScope || 'national',
-                targetState: banner.targetState || '',
-                targetCity: banner.targetCity || ''
+                visibilityScope: banner.visibilityScope || banner.visibility_scope || 'national',
+                targetState: banner.targetState || banner.target_state || '',
+                targetCity: banner.targetCity || banner.target_city || '',
+                actionType: actType,
+                restaurantId: banner.restaurantId || banner.restaurant_id || ''
             });
-            setImagePreview(banner.imageUrl || null);
+            setImagePreview(banner.imageUrl || banner.image_url || null);
             setIsAdding(true);
-            window.scrollTo({ top: 0, behavior: 'smooth' });
+            setTimeout(() => {
+                const el = document.getElementById('banner-form-container');
+                if (el) el.scrollIntoView({ behavior: 'smooth' });
+            }, 100);
+            toast.success("Editando banner seleccionado");
         }
     };
 
@@ -735,6 +782,7 @@ export default function BannersManager() {
             <AnimatePresence>
                 {isAdding && (
                     <motion.form
+                        id="banner-form-container"
                         initial={{ opacity: 0, y: -20 }}
                         animate={{ opacity: 1, y: 0 }}
                         exit={{ opacity: 0, y: -20 }}
@@ -881,15 +929,171 @@ export default function BannersManager() {
                                     className="w-full bg-slate-50 border-2 border-slate-100 rounded-[1.25rem] px-5 py-3.5 focus:border-primary focus:bg-white focus:ring-4 focus:ring-indigo-100 outline-none transition-all font-bold text-slate-700"
                                 />
                             </div>
-                            <div className="md:col-span-2 lg:col-span-3 space-y-2">
-                                <label className="block text-xs font-black text-slate-400 uppercase tracking-widest pl-1">Enlace de destino (opcional)</label>
-                                <input
-                                    type="url"
-                                    value={newBanner.linkUrl}
-                                    onChange={e => setNewBanner({ ...newBanner, linkUrl: e.target.value })}
-                                    className="w-full bg-slate-50 border-2 border-slate-100 rounded-[1.25rem] px-5 py-3.5 focus:border-primary focus:bg-white focus:ring-4 focus:ring-indigo-100 outline-none transition-all font-bold text-slate-700"
-                                    placeholder="https://instagram.com/..."
-                                />
+
+                            {/* Configuración de Acción al Presionar */}
+                            <div className="md:col-span-2 lg:col-span-3 space-y-4 bg-slate-50/80 p-6 rounded-3xl border border-slate-200">
+                                <div>
+                                    <label className="block text-xs font-black text-slate-800 uppercase tracking-widest mb-1">
+                                        Acción al presionar este banner en la App
+                                    </label>
+                                    <p className="text-xs text-slate-500 font-medium">
+                                        Elige qué ocurre cuando el usuario hace clic o toca el anuncio en su dispositivo:
+                                    </p>
+                                </div>
+
+                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                                    <button
+                                        type="button"
+                                        onClick={() => setNewBanner({ ...newBanner, actionType: 'info_modal' })}
+                                        className={`p-4 rounded-2xl border-2 text-left transition-all flex flex-col justify-between ${
+                                            newBanner.actionType === 'info_modal'
+                                                ? 'border-primary bg-amber-50/80 shadow-md ring-2 ring-primary/20'
+                                                : 'border-slate-200 bg-white hover:border-slate-300'
+                                        }`}
+                                    >
+                                        <div>
+                                            <div className="flex items-center gap-1.5 text-amber-600 mb-1">
+                                                <Info className="w-4 h-4" />
+                                                <span className="font-black text-xs uppercase tracking-wider">1. Informativo</span>
+                                            </div>
+                                            <p className="font-black text-slate-900 text-sm">Abrir Ventana</p>
+                                        </div>
+                                        <p className="text-[11px] text-slate-500 mt-2 font-medium leading-tight">
+                                            Muestra ventana modal con imagen, título y la explicación completa.
+                                        </p>
+                                    </button>
+
+                                    <button
+                                        type="button"
+                                        onClick={() => setNewBanner({ ...newBanner, actionType: 'restaurant' })}
+                                        className={`p-4 rounded-2xl border-2 text-left transition-all flex flex-col justify-between ${
+                                            newBanner.actionType === 'restaurant'
+                                                ? 'border-primary bg-amber-50/80 shadow-md ring-2 ring-primary/20'
+                                                : 'border-slate-200 bg-white hover:border-slate-300'
+                                        }`}
+                                    >
+                                        <div>
+                                            <div className="flex items-center gap-1.5 text-indigo-600 mb-1">
+                                                <Store className="w-4 h-4" />
+                                                <span className="font-black text-xs uppercase tracking-wider">2. Comercio</span>
+                                            </div>
+                                            <p className="font-black text-slate-900 text-sm">Ir a Negocio Aliado</p>
+                                        </div>
+                                        <p className="text-[11px] text-slate-500 mt-2 font-medium leading-tight">
+                                            Redirige directo al perfil, catálogo y menú de un restaurante o tienda.
+                                        </p>
+                                    </button>
+
+                                    <button
+                                        type="button"
+                                        onClick={() => setNewBanner({ ...newBanner, actionType: 'internal_section' })}
+                                        className={`p-4 rounded-2xl border-2 text-left transition-all flex flex-col justify-between ${
+                                            newBanner.actionType === 'internal_section'
+                                                ? 'border-primary bg-amber-50/80 shadow-md ring-2 ring-primary/20'
+                                                : 'border-slate-200 bg-white hover:border-slate-300'
+                                        }`}
+                                    >
+                                        <div>
+                                            <div className="flex items-center gap-1.5 text-emerald-600 mb-1">
+                                                <Navigation className="w-4 h-4" />
+                                                <span className="font-black text-xs uppercase tracking-wider">3. Sección</span>
+                                            </div>
+                                            <p className="font-black text-slate-900 text-sm">Sección de la App</p>
+                                        </div>
+                                        <p className="text-[11px] text-slate-500 mt-2 font-medium leading-tight">
+                                            Abre Taxi, Muchacho e' Mandado, Recompensas, Mis Pedidos o Perfil.
+                                        </p>
+                                    </button>
+
+                                    <button
+                                        type="button"
+                                        onClick={() => setNewBanner({ ...newBanner, actionType: 'external_url' })}
+                                        className={`p-4 rounded-2xl border-2 text-left transition-all flex flex-col justify-between ${
+                                            newBanner.actionType === 'external_url'
+                                                ? 'border-primary bg-amber-50/80 shadow-md ring-2 ring-primary/20'
+                                                : 'border-slate-200 bg-white hover:border-slate-300'
+                                        }`}
+                                    >
+                                        <div>
+                                            <div className="flex items-center gap-1.5 text-blue-600 mb-1">
+                                                <ExternalLink className="w-4 h-4" />
+                                                <span className="font-black text-xs uppercase tracking-wider">4. Externo</span>
+                                            </div>
+                                            <p className="font-black text-slate-900 text-sm">Enlace Web</p>
+                                        </div>
+                                        <p className="text-[11px] text-slate-500 mt-2 font-medium leading-tight">
+                                            Abre una dirección web o red social externa en el navegador del usuario.
+                                        </p>
+                                    </button>
+                                </div>
+
+                                {newBanner.actionType === 'info_modal' && (
+                                    <div className="space-y-2 pt-2 bg-white p-4 rounded-2xl border border-slate-200">
+                                        <label className="block text-xs font-black text-slate-700 uppercase tracking-widest">
+                                            Explicación Completa del Banner (Texto que verá el cliente al abrir la ventana)
+                                        </label>
+                                        <textarea
+                                            rows={4}
+                                            value={newBanner.subtitle}
+                                            onChange={e => setNewBanner({ ...newBanner, subtitle: e.target.value })}
+                                            className="w-full bg-slate-50 border-2 border-slate-100 rounded-xl p-4 font-medium text-xs sm:text-sm text-slate-700 outline-none focus:border-amber-400 focus:bg-white transition-all resize-none"
+                                            placeholder="Detalla aquí la promoción, bases del concurso, horarios o instrucciones completas..."
+                                        />
+                                    </div>
+                                )}
+
+                                {newBanner.actionType === 'restaurant' && (
+                                    <div className="space-y-2 pt-2 bg-white p-4 rounded-2xl border border-slate-200">
+                                        <label className="block text-xs font-black text-slate-700 uppercase tracking-widest">
+                                            Seleccionar Negocio o Comercio Aliado
+                                        </label>
+                                        <select
+                                            value={newBanner.restaurantId}
+                                            onChange={e => setNewBanner({ ...newBanner, restaurantId: e.target.value })}
+                                            className="w-full bg-slate-50 border-2 border-slate-100 rounded-xl px-4 py-3 font-bold text-slate-800 outline-none focus:border-amber-400 focus:bg-white transition-all text-sm"
+                                        >
+                                            <option value="">-- Elige un Comercio Registrado --</option>
+                                            {restaurants.map(r => (
+                                                <option key={r.id} value={r.id}>{r.name}</option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                )}
+
+                                {newBanner.actionType === 'internal_section' && (
+                                    <div className="space-y-2 pt-2 bg-white p-4 rounded-2xl border border-slate-200">
+                                        <label className="block text-xs font-black text-slate-700 uppercase tracking-widest">
+                                            Sección Interna de Un 2x3
+                                        </label>
+                                        <select
+                                            value={newBanner.linkUrl}
+                                            onChange={e => setNewBanner({ ...newBanner, linkUrl: e.target.value })}
+                                            className="w-full bg-slate-50 border-2 border-slate-100 rounded-xl px-4 py-3 font-bold text-slate-800 outline-none focus:border-amber-400 focus:bg-white transition-all text-sm"
+                                        >
+                                            <option value="">-- Selecciona a dónde dirigir al cliente --</option>
+                                            <option value="/taxi">🚕 Pedir Taxi / Mototaxi</option>
+                                            <option value="/mandao">📦 Muchacho e' Mandado y Encomiendas</option>
+                                            <option value="/rewards">🎁 Centro de Fidelización y DeliPuntos</option>
+                                            <option value="/orders">📋 Mis Pedidos</option>
+                                            <option value="/profile">👤 Mi Perfil y Cuenta</option>
+                                        </select>
+                                    </div>
+                                )}
+
+                                {newBanner.actionType === 'external_url' && (
+                                    <div className="space-y-2 pt-2 bg-white p-4 rounded-2xl border border-slate-200">
+                                        <label className="block text-xs font-black text-slate-700 uppercase tracking-widest">
+                                            URL o Enlace Web Externo
+                                        </label>
+                                        <input
+                                            type="url"
+                                            value={newBanner.linkUrl}
+                                            onChange={e => setNewBanner({ ...newBanner, linkUrl: e.target.value })}
+                                            className="w-full bg-slate-50 border-2 border-slate-100 rounded-xl px-5 py-3.5 focus:border-amber-400 focus:bg-white outline-none transition-all font-bold text-slate-700 text-sm"
+                                            placeholder="https://instagram.com/..."
+                                        />
+                                    </div>
+                                )}
                             </div>
                         </div>
 
@@ -1057,15 +1261,17 @@ export default function BannersManager() {
                             <div className="absolute top-4 right-4 flex gap-2">
                                 <button
                                     onClick={() => handleEdit(banner)}
-                                    className="bg-white/90 backdrop-blur-md text-primary p-2.5 rounded-xl shadow-sm hover:bg-primary hover:text-slate-900 transition-all opacity-0 group-hover:opacity-100"
+                                    className="bg-white/95 backdrop-blur-md text-slate-900 p-2.5 rounded-xl shadow-md hover:bg-primary transition-all"
+                                    title="Modificar Banner"
                                 >
-                                    <Pencil className="w-5 h-5" />
+                                    <Pencil className="w-4 h-4" />
                                 </button>
                                 <button
                                     onClick={() => handleDelete(banner.id)}
-                                    className="bg-white/90 backdrop-blur-md text-red-600 p-2.5 rounded-xl shadow-sm hover:bg-red-600 hover:text-white transition-all opacity-0 group-hover:opacity-100"
+                                    className="bg-white/95 backdrop-blur-md text-red-600 p-2.5 rounded-xl shadow-md hover:bg-red-600 hover:text-white transition-all"
+                                    title="Eliminar Banner"
                                 >
-                                    <Trash2 className="w-5 h-5" />
+                                    <Trash2 className="w-4 h-4" />
                                 </button>
                             </div>
                         </div>
@@ -1074,37 +1280,76 @@ export default function BannersManager() {
                         <div className="p-6 space-y-4">
                             <div>
                                 <h3 className="font-black text-slate-900 text-xl leading-tight mb-1">{banner.title}</h3>
-                                <div className="flex items-center gap-2">
-                                    {banner.linkUrl ? (
+                                
+                                {/* Action badge */}
+                                <div className="mt-2 flex flex-wrap items-center gap-2">
+                                    {banner.actionType === 'info_modal' ? (
+                                        <span className="bg-amber-50 text-amber-700 border border-amber-200 px-2.5 py-1 rounded-lg text-xs font-bold flex items-center gap-1.5">
+                                            <Info className="w-3.5 h-3.5 text-amber-500" />
+                                            Abre Ventana Informativa
+                                        </span>
+                                    ) : banner.actionType === 'restaurant' ? (
+                                        <span className="bg-indigo-50 text-indigo-700 border border-indigo-200 px-2.5 py-1 rounded-lg text-xs font-bold flex items-center gap-1.5">
+                                            <Store className="w-3.5 h-3.5 text-indigo-500" />
+                                            Redirige a Comercio Aliado
+                                        </span>
+                                    ) : banner.actionType === 'internal_section' ? (
+                                        <span className="bg-emerald-50 text-emerald-700 border border-emerald-200 px-2.5 py-1 rounded-lg text-xs font-bold flex items-center gap-1.5">
+                                            <Navigation className="w-3.5 h-3.5 text-emerald-500" />
+                                            Sección: {banner.linkUrl}
+                                        </span>
+                                    ) : banner.linkUrl ? (
                                         <a
                                             href={banner.linkUrl}
                                             target="_blank"
                                             rel="noopener noreferrer"
-                                            className="text-primary font-bold text-xs hover:underline flex items-center gap-1 truncate"
+                                            className="bg-blue-50 text-blue-700 border border-blue-200 px-2.5 py-1 rounded-lg text-xs font-bold flex items-center gap-1.5 truncate max-w-full hover:underline"
                                         >
-                                            <ExternalLink className="w-3 h-3" />
-                                            {banner.linkUrl}
+                                            <ExternalLink className="w-3.5 h-3.5 text-blue-500 shrink-0" />
+                                            <span className="truncate">{banner.linkUrl}</span>
                                         </a>
                                     ) : (
-                                        <p className="text-slate-400 font-bold text-xs">Sin enlace externo</p>
+                                        <span className="bg-slate-50 text-slate-500 border border-slate-200 px-2.5 py-1 rounded-lg text-xs font-bold">
+                                            Sin enlace externo
+                                        </span>
                                     )}
                                 </div>
+
+                                {banner.explanation && (
+                                    <p className="text-xs text-slate-500 mt-2 line-clamp-2 font-medium">
+                                        {banner.explanation}
+                                    </p>
+                                )}
                             </div>
 
-                            <div className="flex items-center justify-between pt-2">
+                            {/* Action Bar */}
+                            <div className="flex items-center justify-between pt-3 border-t border-slate-100 gap-2">
+                                <div className="flex items-center gap-2">
+                                    <button
+                                        type="button"
+                                        onClick={() => handleEdit(banner)}
+                                        className="bg-primary hover:bg-amber-400 text-slate-900 px-4 py-2 rounded-xl text-xs font-black shadow-sm flex items-center gap-1.5 transition-all active:scale-95"
+                                    >
+                                        <Pencil className="w-3.5 h-3.5" /> Modificar
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => handleDelete(banner.id)}
+                                        className="bg-rose-50 hover:bg-rose-100 text-rose-600 px-3 py-2 rounded-xl text-xs font-bold border border-rose-200 flex items-center gap-1 transition-all"
+                                        title="Eliminar banner"
+                                    >
+                                        <Trash2 className="w-3.5 h-3.5" />
+                                    </button>
+                                </div>
                                 <button
                                     onClick={() => toggleActive(banner.id, banner.isActive)}
-                                    className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${banner.isActive
+                                    className={`px-3 py-1.5 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${banner.isActive
                                         ? 'bg-emerald-50 text-emerald-600 border border-emerald-100'
                                         : 'bg-slate-100 text-slate-500 border border-slate-200'
                                         }`}
                                 >
                                     {banner.isActive ? 'Activo' : 'Inactivo'}
                                 </button>
-                                <div className="flex items-center gap-2 text-slate-400">
-                                    <Clock className="w-4 h-4" />
-                                    <span className="text-[10px] font-bold">Auto-rotativo</span>
-                                </div>
                             </div>
                         </div>
                     </motion.div>

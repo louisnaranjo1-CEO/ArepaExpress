@@ -34,6 +34,8 @@ export default function FidelizationManager() {
     const [showAddPrizeModal, setShowAddPrizeModal] = useState(false);
     const [uploadingImage, setUploadingImage] = useState(false);
     const [pointsPerReferral, setPointsPerReferral] = useState<number>(200);
+    const [pointsPerDollar, setPointsPerDollar] = useState<number>(2.5);
+    const [pointsEnabled, setPointsEnabled] = useState<boolean>(true);
     const [savingPoints, setSavingPoints] = useState(false);
 
     const [newContest, setNewContest] = useState<Partial<ReferralContest>>({
@@ -66,8 +68,11 @@ export default function FidelizationManager() {
                 getDoc(doc(db, 'system_configs', 'fidelization'))
             ]);
             
-            if (configSnap.exists() && configSnap.data().pointsPerReferral !== undefined) {
-                setPointsPerReferral(configSnap.data().pointsPerReferral);
+            if (configSnap.exists()) {
+                const data = configSnap.data();
+                if (data.pointsPerReferral !== undefined) setPointsPerReferral(data.pointsPerReferral);
+                if (data.pointsPerDollar !== undefined) setPointsPerDollar(data.pointsPerDollar);
+                if (data.pointsEnabled !== undefined) setPointsEnabled(data.pointsEnabled);
             }
             
             setContests(contestsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as ReferralContest)));
@@ -84,9 +89,11 @@ export default function FidelizationManager() {
         setSavingPoints(true);
         try {
             await setDoc(doc(db, 'system_configs', 'fidelization'), {
-                pointsPerReferral
+                pointsPerReferral: Number(pointsPerReferral),
+                pointsPerDollar: Number(pointsPerDollar),
+                pointsEnabled: Boolean(pointsEnabled)
             }, { merge: true });
-            toast.success("Puntos de referido actualizados");
+            toast.success("Configuración de fidelización guardada con éxito");
         } catch (error) {
             console.error(error);
             toast.error("Error al actualizar puntos");
@@ -218,24 +225,51 @@ export default function FidelizationManager() {
             </div>
 
             {/* Quick Stats/Info */}
-            <div className="bg-white rounded-[2.5rem] p-6 shadow-xl shadow-slate-200/50 border border-slate-100 mb-8 flex flex-col md:flex-row items-center justify-between gap-4">
-                <div>
-                    <h3 className="text-slate-900 font-black text-lg">Puntos por Nuevo Referido</h3>
-                    <p className="text-sm text-slate-500">¿Cuántos puntos recibe el usuario que comparte su código?</p>
+            <div className="bg-white rounded-[2.5rem] p-6 shadow-xl shadow-slate-200/50 border border-slate-100 mb-8 flex flex-col lg:flex-row items-center justify-between gap-6">
+                <div className="flex-1 space-y-2">
+                    <div className="flex items-center gap-3">
+                        <h3 className="text-slate-900 font-black text-lg">Sistema de Fidelización y DeliPuntos</h3>
+                        <button
+                            type="button"
+                            onClick={() => setPointsEnabled(!pointsEnabled)}
+                            className={`px-3 py-1 rounded-full text-xs font-black uppercase tracking-wider transition-all ${
+                                pointsEnabled ? 'bg-emerald-100 text-emerald-700 border border-emerald-300' : 'bg-rose-100 text-rose-700 border border-rose-300'
+                            }`}
+                        >
+                            {pointsEnabled ? '● ACTIVADO' : '○ INACTIVO'}
+                        </button>
+                    </div>
+                    <p className="text-sm text-slate-500 font-medium">
+                        Los usuarios ganan puntos automáticamente al usar cualquier servicio de transporte (Taxi, Mototaxi, Mandados) y por comprar dentro de la aplicación.
+                    </p>
                 </div>
-                <div className="flex items-center gap-3 w-full md:w-auto">
-                    <input 
-                        type="number" 
-                        value={pointsPerReferral}
-                        onChange={(e) => setPointsPerReferral(parseInt(e.target.value) || 0)}
-                        className="bg-slate-50 border-2 border-slate-100 rounded-2xl px-4 py-3 font-black text-slate-900 w-32 outline-none focus:border-primary transition-all text-center"
-                    />
+                <div className="flex flex-wrap items-center gap-4 w-full lg:w-auto">
+                    <div className="flex flex-col">
+                        <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">Puntos por Dólar ($1 USD)</span>
+                        <input 
+                            type="number"
+                            step="0.1"
+                            min="0"
+                            value={pointsPerDollar}
+                            onChange={(e) => setPointsPerDollar(parseFloat(e.target.value) || 0)}
+                            className="bg-slate-50 border-2 border-slate-200 rounded-2xl px-4 py-2.5 font-black text-slate-900 w-32 outline-none focus:border-amber-400 focus:bg-white transition-all text-center mt-1"
+                        />
+                    </div>
+                    <div className="flex flex-col">
+                        <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">Puntos por Referido</span>
+                        <input 
+                            type="number" 
+                            value={pointsPerReferral}
+                            onChange={(e) => setPointsPerReferral(parseInt(e.target.value) || 0)}
+                            className="bg-slate-50 border-2 border-slate-200 rounded-2xl px-4 py-2.5 font-black text-slate-900 w-32 outline-none focus:border-amber-400 focus:bg-white transition-all text-center mt-1"
+                        />
+                    </div>
                     <button 
                         onClick={handleSavePoints}
                         disabled={savingPoints}
-                        className="bg-primary text-slate-900 px-6 py-3 rounded-2xl font-black shadow-lg shadow-primary/20 hover:scale-105 active:scale-95 transition-all disabled:opacity-50"
+                        className="self-end bg-primary hover:bg-amber-400 text-slate-900 px-6 py-3 rounded-2xl font-black shadow-lg shadow-primary/20 hover:scale-105 active:scale-95 transition-all disabled:opacity-50"
                     >
-                        {savingPoints ? "Guardando..." : "Guardar"}
+                        {savingPoints ? "Guardando..." : "Guardar Cambios"}
                     </button>
                 </div>
             </div>
@@ -245,9 +279,14 @@ export default function FidelizationManager() {
                     <div className="w-12 h-12 bg-amber-50 text-amber-500 rounded-2xl flex items-center justify-center mb-4">
                         <Target className="w-6 h-6" />
                     </div>
-                    <h3 className="text-slate-400 text-xs font-black uppercase tracking-widest">Ratio de Puntos</h3>
-                    <p className="text-2xl font-black text-slate-800">2.5 pts / $1.00</p>
-                    <p className="text-[10px] text-slate-400 mt-1">Configuración Estándar</p>
+                    <div className="flex items-center justify-between">
+                        <h3 className="text-slate-400 text-xs font-black uppercase tracking-widest">Ratio de Puntos</h3>
+                        <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${pointsEnabled ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
+                            {pointsEnabled ? 'Activo' : 'Inactivo'}
+                        </span>
+                    </div>
+                    <p className="text-2xl font-black text-slate-800 mt-1">{pointsPerDollar} pts / $1.00</p>
+                    <p className="text-[10px] text-slate-400 mt-1">Ganas {pointsPerDollar} puntos por cada dólar en compras y carreras</p>
                 </div>
                 <div className="bg-white p-6 rounded-[2.5rem] shadow-xl shadow-slate-200/50 border border-slate-100">
                     <div className="w-12 h-12 bg-emerald-50 text-emerald-500 rounded-2xl flex items-center justify-center mb-4">
