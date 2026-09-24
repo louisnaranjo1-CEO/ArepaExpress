@@ -79,8 +79,8 @@ export default function PendingApproval({ status = 'pending' }: PendingApprovalP
                                 <span className="w-5 h-5 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center font-bold shrink-0">1</span>
                                 Completaste tu perfil
                             </li>
-                            <li className="flex gap-3 text-primary text-sm font-bold">
-                                <span className="w-5 h-5 bg-indigo-100 rounded-full flex items-center justify-center shrink-0">2</span>
+                            <li className="flex gap-3 text-slate-900 text-sm font-bold">
+                                <span className="w-5 h-5 bg-slate-900 text-white font-black rounded-full flex items-center justify-center shrink-0 text-xs">2</span>
                                 Revisión de seguridad activa
                             </li>
                             <li className="flex gap-3 text-slate-400 text-sm font-medium">
@@ -94,7 +94,7 @@ export default function PendingApproval({ status = 'pending' }: PendingApprovalP
                 {!isRejected && (
                     <button
                         onClick={() => window.location.reload()}
-                        className="mt-8 text-primary font-bold hover:underline"
+                        className="mt-8 text-slate-900 font-black hover:underline cursor-pointer"
                     >
                         Actualizar Estado
                     </button>

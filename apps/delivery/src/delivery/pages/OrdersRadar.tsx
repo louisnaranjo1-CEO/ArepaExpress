@@ -1899,7 +1899,7 @@ export default function OrdersRadar() {
                         </div>
                     </div>
                     <button
-                        onClick={() => navigate('/delivery/earnings?tab=fares')}
+                        onClick={() => navigate('/earnings?tab=fares')}
                         className="w-full sm:w-auto px-5 py-3 bg-white hover:bg-red-50 text-red-700 font-black rounded-xl text-xs uppercase tracking-wider shadow-lg active:scale-95 transition-all shrink-0 flex items-center justify-center gap-2"
                     >
                         <span>Configurar Tarifas</span>
@@ -1928,7 +1928,7 @@ export default function OrdersRadar() {
                         </div>
                     </div>
                     <button
-                        onClick={() => navigate('/delivery/earnings')}
+                        onClick={() => navigate('/earnings')}
                         className="w-full sm:w-auto px-5 py-3 bg-white text-red-700 font-black rounded-xl text-xs uppercase tracking-wider shadow-md hover:bg-red-50 active:scale-95 transition-all shrink-0"
                     >
                         Pagar Comisiones Ahora

@@ -81,6 +81,13 @@ export default function Earnings() {
     const [activeTab, setActiveTab] = useState<'rides' | 'commissions' | 'fares'>(initialTab);
     const navigate = useNavigate();
 
+    useEffect(() => {
+        const tabParam = searchParams.get('tab') as 'rides' | 'commissions' | 'fares';
+        if (tabParam && ['rides', 'commissions', 'fares'].includes(tabParam)) {
+            setActiveTab(tabParam);
+        }
+    }, [searchParams]);
+
     const [activeRaffles, setActiveRaffles] = useState<DriverRaffle[]>([]);
     const [driverPoints, setDriverPoints] = useState<number>(0);
     const [processingRaffle, setProcessingRaffle] = useState<string | null>(null);
