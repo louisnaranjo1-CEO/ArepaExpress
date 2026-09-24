@@ -1010,7 +1010,7 @@ export default function Earnings() {
                                 <div className="p-3 bg-amber-500/10 border border-amber-300 rounded-2xl flex items-center justify-between text-xs">
                                     <span className="font-black text-amber-900 flex items-center gap-1.5">
                                         <Sun className="w-4 h-4 text-amber-600" />
-                                        Configurando Tarifas Diurnas (06:00 – 20:00)
+                                        Configurando Tarifas Diurnas (6:00 AM – 8:00 PM)
                                     </span>
                                     <span className="text-[10px] font-bold text-amber-700 bg-white/70 px-2 py-0.5 rounded-full">
                                         Día
@@ -1026,7 +1026,7 @@ export default function Earnings() {
                                         <span className="absolute left-3.5 top-3 text-slate-400 font-bold text-sm">$</span>
                                         <input
                                             type="number"
-                                            step="0.05"
+                                            step="any"
                                             min="0.50"
                                             value={fares.base_fare_day}
                                             onChange={(e) => setFares(prev => ({ ...prev, base_fare_day: parseFloat(e.target.value) || 0 }))}
@@ -1096,7 +1096,7 @@ export default function Earnings() {
                                         <span className="absolute left-3.5 top-3 text-slate-400 font-bold text-sm">$</span>
                                         <input
                                             type="number"
-                                            step="0.01"
+                                            step="any"
                                             min="0.05"
                                             value={fares.extra_km_price_day}
                                             onChange={(e) => setFares(prev => ({ ...prev, extra_km_price_day: parseFloat(e.target.value) || 0 }))}
@@ -1128,7 +1128,7 @@ export default function Earnings() {
                                 <div className="p-3 bg-indigo-50 border border-indigo-200 rounded-2xl flex items-center justify-between text-xs">
                                     <span className="font-black text-indigo-900 flex items-center gap-1.5">
                                         <Moon className="w-4 h-4 text-indigo-600" />
-                                        Configurando Tarifas Nocturnas (20:00 – 06:00)
+                                        Configurando Tarifas Nocturnas (8:00 PM – 6:00 AM)
                                     </span>
                                     <span className="text-[10px] font-bold text-indigo-700 bg-white/70 px-2 py-0.5 rounded-full">
                                         Noche
@@ -1144,7 +1144,7 @@ export default function Earnings() {
                                         <span className="absolute left-3.5 top-3 text-slate-400 font-bold text-sm">$</span>
                                         <input
                                             type="number"
-                                            step="0.05"
+                                            step="any"
                                             min="0.50"
                                             value={fares.base_fare_night}
                                             onChange={(e) => setFares(prev => ({ ...prev, base_fare_night: parseFloat(e.target.value) || 0 }))}
@@ -1214,7 +1214,7 @@ export default function Earnings() {
                                         <span className="absolute left-3.5 top-3 text-slate-400 font-bold text-sm">$</span>
                                         <input
                                             type="number"
-                                            step="0.01"
+                                            step="any"
                                             min="0.05"
                                             value={fares.extra_km_price_night}
                                             onChange={(e) => setFares(prev => ({ ...prev, extra_km_price_night: parseFloat(e.target.value) || 0 }))}
@@ -1262,7 +1262,7 @@ export default function Earnings() {
                                         </label>
                                         <input
                                             type="number"
-                                            step="0.10"
+                                            step="any"
                                             min="0.50"
                                             value={fares.comfort_base_fare_day || fares.comfort_base_fare || 2.50}
                                             onChange={e => setFares(prev => ({ ...prev, comfort_base_fare_day: parseFloat(e.target.value) || 0, comfort_base_fare: parseFloat(e.target.value) || 0 }))}
@@ -1276,7 +1276,7 @@ export default function Earnings() {
                                         </label>
                                         <input
                                             type="number"
-                                            step="0.05"
+                                            step="any"
                                             min="0.10"
                                             value={fares.comfort_extra_km_price_day || fares.comfort_per_km_fare || 1.00}
                                             onChange={e => setFares(prev => ({ ...prev, comfort_extra_km_price_day: parseFloat(e.target.value) || 0, comfort_per_km_fare: parseFloat(e.target.value) || 0 }))}
