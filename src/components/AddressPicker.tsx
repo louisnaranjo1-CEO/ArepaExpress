@@ -31,9 +31,11 @@ interface AddressPickerProps {
     onClose: () => void;
     onSave: (data: { name: string; lat: number; lng: number; reference: string }) => void;
     initialData?: { name: string; lat: number; lng: number; reference: string };
+    title?: string;
+    subtitle?: string;
 }
 
-export default function AddressPicker({ onClose, onSave, initialData }: AddressPickerProps) {
+export default function AddressPicker({ onClose, onSave, initialData, title, subtitle }: AddressPickerProps) {
     const { isLoaded } = useJsApiLoader({
         id: 'google-map-script',
         googleMapsApiKey: GOOGLE_MAPS_API_KEY,
@@ -142,9 +144,9 @@ export default function AddressPicker({ onClose, onSave, initialData }: AddressP
                     <div>
                         <h2 className="text-xl font-black text-slate-900 flex items-center gap-2">
                             <MapPin className="w-5 h-5 text-slate-900" />
-                            Tu Ubicación
+                            {title || 'Tu Ubicación'}
                         </h2>
-                        <p className="text-xs text-slate-500 font-bold mt-1 uppercase tracking-widest">Toca el mapa para marcar</p>
+                        <p className="text-xs text-slate-500 font-bold mt-1 uppercase tracking-widest">{subtitle || 'Toca el mapa para marcar'}</p>
                     </div>
                     <button
                         onClick={onClose}

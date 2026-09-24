@@ -2,12 +2,13 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useCurrency } from '../../context/CurrencyContext';
-import { Car, Bike, MapPin, Navigation, Phone, CheckCircle2, MessageSquare, Send, User as UserIcon, Star, MessageCircle, Clock, AlertTriangle, ArrowLeft, Package, Sparkles, DollarSign, ShieldAlert, ExternalLink, Volume2, X } from 'lucide-react';
+import { Car, Bike, MapPin, Navigation, Phone, CheckCircle2, MessageSquare, Send, User as UserIcon, Star, MessageCircle, Clock, AlertTriangle, ArrowLeft, Package, Sparkles, DollarSign, ShieldAlert, ExternalLink, Volume2, X, Check, Calculator } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import toast from 'react-hot-toast';
 import RideChat from '../../components/RideChat';
 import OrderChatWindow from '../../components/chat/OrderChatWindow';
 import ServiceTimer from '../components/ServiceTimer';
+import AddressPicker from '../../components/AddressPicker';
 import { getCachedAudioUrl, NOTIFICATION_SOUND_URL } from '../../hooks/useGlobalAudioAlerts';
 import { updateDriverLocation } from '../../lib/delivery-service';
 import { calculateDistance } from '../../lib/geo';
@@ -46,6 +47,17 @@ export default function OrdersRadar() {
     // Yango Dispatch countdown popup
     const [incomingDispatch, setIncomingDispatch] = useState<any>(null);
     const [countdownSeconds, setCountdownSeconds] = useState(20);
+
+    // Quick Transport Fare Setting State
+    const [showQuickDestinationPicker, setShowQuickDestinationPicker] = useState(false);
+    const [quickFareInput, setQuickFareInput] = useState<string>('');
+    const [quickSelectedDestination, setQuickSelectedDestination] = useState<{
+        name: string;
+        lat: number;
+        lng: number;
+        reference: string;
+        distanceKm?: number;
+    } | null>(null);
     
     // Consejos y Anuncios Dinámicos del Radar
     const [radarTips, setRadarTips] = useState<string[]>([
@@ -884,7 +896,162 @@ export default function OrdersRadar() {
         if (!activeTransport || processingAction) return;
         setProcessingAction('start');
         try {
-            await supabase.from('transport_requests').update({ status: 'in_progress' }).eq('id', activeTransport.id);
+            const updatePayload: any = { status: 'in_progress' };
+            const isQuick = Boolean(activeTransport.notes?.includes('Transporte Rápido') || activeTransport.is_quick_transport);
+            if (isQuick && quickFareInput && Number(quickFareInput) > 0) {
+                const fareNum = parseFloat(quickFareInput);
+                const cat = activeTransport.service_category || activeTransport.vehicle_type || 'mototaxi';
+                let comm = Number(activeTransport.commission_amount || 0);
+                if (!comm) comm = getCommissionForCategory(cat);
+                updatePayload.price = fareNum;
+                updatePayload.total = fareNum;
+                updatePayload.fare = fareNum;
+                updatePayload.driver_payout = Math.max(0, fareNum - comm);
+            }
+            await supabase.from('transport_requests').update(updatePayload).eq('id', activeTransport.id);
+        } finally {
+            setProcessingAction(null);
+        }
+    };
+
+    // Sincronizar campo de tarifa rápida cuando cambia el viaje activo
+    useEffect(() => {
+        if (activeTransport) {
+            const isQuick = Boolean(activeTransport.notes?.includes('Transporte Rápido') || activeTransport.is_quick_transport);
+            if (isQuick) {
+                const currentPrice = Number(activeTransport.price || activeTransport.total || 0);
+                if (currentPrice > 0 && !quickFareInput) {
+                    setQuickFareInput(currentPrice.toFixed(2));
+                }
+            }
+        } else {
+            setQuickFareInput('');
+            setQuickSelectedDestination(null);
+            setShowQuickDestinationPicker(false);
+        }
+    }, [activeTransport?.id]);
+
+    const handleQuickDestinationSelect = (destData: { name: string; lat: number; lng: number; reference: string }) => {
+        setShowQuickDestinationPicker(false);
+        if (!activeTransport) return;
+
+        // Calcular distancia desde recogida o posición actual hasta el destino marcado
+        const originLat = activeTransport.origin?.lat || driverGps?.lat || 8.9326;
+        const originLng = activeTransport.origin?.lng || driverGps?.lng || -67.4264;
+        const distKm = Math.max(0.5, calculateDistance(originLat, originLng, destData.lat, destData.lng));
+
+        // Calcular tarifa en base a las tarifas configuradas del chofer (driver_fares)
+        const fares = driverProfile?.driver_fares;
+        const currentHour = new Date().getHours();
+        const isNight = currentHour >= 20 || currentHour < 6;
+        const isComfort = (activeTransport.service_category || '').toLowerCase().includes('confort') || 
+                          (activeTransport.service_category || '').toLowerCase().includes('ejecutivo') || 
+                          (activeTransport.vehicle_type || '').toLowerCase().includes('confort');
+
+        let calculatedFare = Number(activeTransport.price || 1.50);
+
+        if (fares) {
+            let base: number;
+            let baseKm: number;
+            let perKm: number;
+
+            if (isComfort && (Number(fares.comfort_base_fare_day) >= 0.50 || Number(fares.comfort_base_fare) >= 0.50)) {
+                if (isNight) {
+                    base = Number(fares.comfort_base_fare_night ?? fares.comfort_base_fare ?? 3.0);
+                    baseKm = Math.min(6, Math.max(1, Number(fares.comfort_base_distance_night ?? fares.base_distance_night ?? fares.base_km ?? 2)));
+                    perKm = Number(fares.comfort_extra_km_price_night ?? fares.comfort_per_km_fare ?? 1.2);
+                } else {
+                    base = Number(fares.comfort_base_fare_day ?? fares.comfort_base_fare ?? 2.5);
+                    baseKm = Math.min(6, Math.max(1, Number(fares.comfort_base_distance_day ?? fares.base_distance_day ?? fares.base_km ?? 2)));
+                    perKm = Number(fares.comfort_extra_km_price_day ?? fares.comfort_per_km_fare ?? 1.0);
+                }
+            } else {
+                if (isNight) {
+                    base = Number(fares.base_fare_night ?? (Number(fares.base_fare_day ?? fares.base_fare ?? 1.5) * 1.25));
+                    baseKm = Math.min(6, Math.max(1, Number(fares.base_distance_night ?? fares.base_distance_day ?? fares.base_km ?? 2)));
+                    perKm = Number(fares.extra_km_price_night ?? (Number(fares.extra_km_price_day ?? fares.per_km_fare ?? 0.20) * 1.35));
+                } else {
+                    base = Number(fares.base_fare_day ?? fares.base_fare ?? 1.5);
+                    baseKm = Math.min(6, Math.max(1, Number(fares.base_distance_day ?? fares.base_km ?? 2)));
+                    perKm = Number(fares.extra_km_price_day ?? fares.per_km_fare ?? 0.20);
+                }
+            }
+
+            if (base >= 0.50) {
+                const extraKm = Math.max(0, distKm - baseKm);
+                calculatedFare = Math.max(0.50, Number((base + (extraKm * perKm)).toFixed(2)));
+            }
+        }
+
+        setQuickFareInput(calculatedFare.toFixed(2));
+        setQuickSelectedDestination({
+            ...destData,
+            distanceKm: Number(distKm.toFixed(1))
+        });
+        toast.success(`Destino marcado (${distKm.toFixed(1)} km). Tarifa sugerida: $${calculatedFare.toFixed(2)} USD`, {
+            icon: '📍',
+            duration: 4000
+        });
+    };
+
+    const handleConfirmQuickFareAndStart = async () => {
+        if (!activeTransport || processingAction) return;
+        const fareNum = parseFloat(quickFareInput);
+        if (isNaN(fareNum) || fareNum <= 0) {
+            toast.error("Por favor ingresa un monto válido para el viaje");
+            return;
+        }
+
+        setProcessingAction('start_quick');
+        try {
+            const cat = activeTransport.service_category || activeTransport.vehicle_type || 'mototaxi';
+            let comm = Number(activeTransport.commission_amount || 0);
+            if (!comm) {
+                comm = getCommissionForCategory(cat);
+            }
+            const payout = Math.max(0, fareNum - comm);
+
+            const updatePayload: any = {
+                price: fareNum,
+                total: fareNum,
+                fare: fareNum,
+                driver_payout: payout,
+                status: 'in_progress',
+                updated_at: new Date().toISOString()
+            };
+
+            if (quickSelectedDestination) {
+                updatePayload.destination = {
+                    lat: quickSelectedDestination.lat,
+                    lng: quickSelectedDestination.lng,
+                    address: quickSelectedDestination.reference
+                        ? `${quickSelectedDestination.name} (${quickSelectedDestination.reference})`
+                        : quickSelectedDestination.name
+                };
+                if (quickSelectedDestination.distanceKm) {
+                    updatePayload.route = {
+                        ...(activeTransport.route || {}),
+                        distance: quickSelectedDestination.distanceKm
+                    };
+                }
+            }
+
+            const { error } = await supabase
+                .from('transport_requests')
+                .update(updatePayload)
+                .eq('id', activeTransport.id);
+
+            if (error) throw error;
+
+            setActiveTransport((prev: any) => ({
+                ...prev,
+                ...updatePayload
+            }));
+
+            toast.success(`¡Tarifa fijada en $${fareNum.toFixed(2)} USD! Viaje iniciado.`, { icon: '🚀' });
+        } catch (err: any) {
+            console.error("Error al fijar tarifa e iniciar viaje:", err);
+            toast.error(err?.message || "No se pudo actualizar la tarifa del viaje.");
         } finally {
             setProcessingAction(null);
         }
@@ -1214,8 +1381,34 @@ export default function OrdersRadar() {
                             </div>
                             <div className="flex-1">
                                 <h3 className="text-xs font-black text-emerald-600 uppercase tracking-widest">Destino final:</h3>
-                                <p className="font-bold text-slate-700 leading-tight mt-0.5">{activeTransport.destination?.address}</p>
+                                <p className="font-bold text-slate-700 leading-tight mt-0.5">
+                                    {quickSelectedDestination 
+                                        ? `${quickSelectedDestination.name} ${quickSelectedDestination.reference ? `(${quickSelectedDestination.reference})` : ''}`
+                                        : (activeTransport.destination?.address || 'Por convenir')}
+                                </p>
                             </div>
+                        </div>
+
+                        {/* Tarifa del Viaje */}
+                        <div className="bg-slate-50 rounded-2xl p-4 border border-slate-100 flex items-center justify-between">
+                            <div>
+                                <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">
+                                    {Boolean(activeTransport.notes?.includes('Transporte Rápido') || activeTransport.is_quick_transport) && (activeTransport.status === 'accepted' || activeTransport.status === 'arriving')
+                                        ? 'Tarifa Inicial (A convenir al llegar)'
+                                        : 'Tarifa del Viaje'}
+                                </span>
+                                <span className="text-xl font-black text-slate-900">
+                                    ${Number(activeTransport.fare || activeTransport.price || activeTransport.total || 0).toFixed(2)} USD
+                                </span>
+                            </div>
+                            {bcvRate > 0 && (
+                                <div className="text-right">
+                                    <span className="text-[10px] font-bold text-slate-400 block">Tasa BCV</span>
+                                    <span className="text-xs font-black text-emerald-600">
+                                        {(Number(activeTransport.fare || activeTransport.price || activeTransport.total || 0) * bcvRate).toFixed(2)} Bs
+                                    </span>
+                                </div>
+                            )}
                         </div>
                     </div>
 
@@ -1229,15 +1422,117 @@ export default function OrdersRadar() {
                                 {processingAction === 'arriving' ? <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div> : 'Llegué al punto'}
                             </button>
                         )}
-                        {activeTransport.status === 'arriving' && (
-                            <button
-                                onClick={handleTransportStart}
-                                disabled={processingAction !== null}
-                                className="w-full bg-primary text-slate-900 font-black py-4 rounded-2xl shadow-lg shadow-primary/30 active:scale-95 transition-all flex items-center justify-center gap-2 h-16 disabled:opacity-70"
-                            >
-                                {processingAction === 'start' ? <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div> : 'Iniciar Viaje'}
-                            </button>
-                        )}
+                        {activeTransport.status === 'arriving' && (() => {
+                            const isQuick = Boolean(activeTransport.notes?.includes('Transporte Rápido') || activeTransport.is_quick_transport);
+                            if (isQuick) {
+                                return (
+                                    <div className="bg-amber-50/95 border-2 border-amber-300 rounded-3xl p-5 space-y-4 shadow-sm animate-in fade-in">
+                                        <div className="flex items-center justify-between">
+                                            <div className="flex items-center gap-2">
+                                                <div className="w-8 h-8 rounded-xl bg-amber-400 text-slate-950 flex items-center justify-center font-black">
+                                                    ⚡
+                                                </div>
+                                                <div>
+                                                    <h4 className="text-xs font-black uppercase tracking-wider text-amber-950">Transporte Rápido</h4>
+                                                    <p className="text-[11px] font-bold text-amber-800">Fijar Tarifa con el Pasajero</p>
+                                                </div>
+                                            </div>
+                                            <span className="px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-amber-200/90 text-amber-950 border border-amber-300">
+                                                En el Punto
+                                            </span>
+                                        </div>
+
+                                        <p className="text-xs text-amber-900 font-medium leading-relaxed bg-white/80 p-3 rounded-2xl border border-amber-200/60">
+                                            Acuerda el precio final en persona con el pasajero o marca el destino en el mapa para calcularlo automáticamente con tus tarifas configuradas.
+                                        </p>
+
+                                        {/* Destino marcado en mapa */}
+                                        {quickSelectedDestination && (
+                                            <div className="p-3 bg-white rounded-2xl border border-amber-200 flex items-start gap-2.5">
+                                                <MapPin className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                                                <div className="flex-1">
+                                                    <span className="text-[10px] font-black text-emerald-800 uppercase tracking-widest block">Destino Marcado</span>
+                                                    <p className="text-xs font-bold text-slate-900 leading-tight mt-0.5">
+                                                        {quickSelectedDestination.name} {quickSelectedDestination.reference ? `(${quickSelectedDestination.reference})` : ''}
+                                                    </p>
+                                                    {quickSelectedDestination.distanceKm && (
+                                                        <span className="text-[11px] font-mono font-bold text-slate-500 block mt-0.5">
+                                                            Distancia calculada: {quickSelectedDestination.distanceKm} km
+                                                        </span>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {/* Input de Monto Acordado */}
+                                        <div className="bg-white rounded-2xl p-4 border border-amber-200 space-y-2">
+                                            <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block">
+                                                Monto Final a Cobrar ($ USD)
+                                            </label>
+                                            <div className="flex items-center gap-3">
+                                                <div className="relative flex-1">
+                                                    <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-lg font-black text-slate-400">$</span>
+                                                    <input
+                                                        type="number"
+                                                        step="0.10"
+                                                        min="0.50"
+                                                        placeholder="0.00"
+                                                        value={quickFareInput}
+                                                        onChange={(e) => setQuickFareInput(e.target.value)}
+                                                        className="w-full pl-8 pr-4 py-3 bg-slate-50 border-2 border-slate-200 focus:border-amber-400 focus:bg-white rounded-xl outline-none font-black text-xl text-slate-900 transition-all"
+                                                    />
+                                                </div>
+                                                {bcvRate > 0 && Number(quickFareInput) > 0 && (
+                                                    <div className="text-right shrink-0">
+                                                        <span className="text-[10px] font-bold text-slate-400 block">En Bolívares (BCV)</span>
+                                                        <span className="text-sm font-black text-emerald-600">
+                                                            {(Number(quickFareInput) * bcvRate).toFixed(2)} Bs
+                                                        </span>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+
+                                        {/* Botón Marcar Destino en el Mapa */}
+                                        <button
+                                            type="button"
+                                            onClick={() => setShowQuickDestinationPicker(true)}
+                                            className="w-full py-3 bg-white hover:bg-slate-50 text-slate-800 font-bold text-xs rounded-xl border border-slate-200 flex items-center justify-center gap-2 active:scale-95 transition-all shadow-xs"
+                                        >
+                                            <MapPin className="w-4 h-4 text-amber-500" />
+                                            <span>{quickSelectedDestination ? 'Cambiar destino en el mapa' : '📍 Marcar destino en mapa (Calcular con mis tarifas)'}</span>
+                                        </button>
+
+                                        {/* Botón Confirmar Tarifa e Iniciar Viaje */}
+                                        <button
+                                            type="button"
+                                            onClick={handleConfirmQuickFareAndStart}
+                                            disabled={processingAction !== null || !quickFareInput || Number(quickFareInput) <= 0}
+                                            className="w-full bg-primary hover:bg-amber-400 text-slate-900 font-black py-4 rounded-2xl shadow-lg shadow-primary/30 active:scale-95 transition-all flex items-center justify-center gap-2 h-16 disabled:opacity-50"
+                                        >
+                                            {processingAction === 'start_quick' ? (
+                                                <div className="w-5 h-5 border-2 border-slate-900 border-t-transparent rounded-full animate-spin"></div>
+                                            ) : (
+                                                <>
+                                                    <Check className="w-5 h-5" />
+                                                    <span>Confirmar Tarifa e Iniciar Viaje (${Number(quickFareInput || 0).toFixed(2)})</span>
+                                                </>
+                                            )}
+                                        </button>
+                                    </div>
+                                );
+                            }
+
+                            return (
+                                <button
+                                    onClick={handleTransportStart}
+                                    disabled={processingAction !== null}
+                                    className="w-full bg-primary text-slate-900 font-black py-4 rounded-2xl shadow-lg shadow-primary/30 active:scale-95 transition-all flex items-center justify-center gap-2 h-16 disabled:opacity-70"
+                                >
+                                    {processingAction === 'start' ? <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div> : 'Iniciar Viaje'}
+                                </button>
+                            );
+                        })()}
                         {activeTransport.status === 'in_progress' && (
                             <button
                                 onClick={handleTransportComplete}
@@ -1302,6 +1597,22 @@ export default function OrdersRadar() {
                     </motion.div>
                 )}
             </AnimatePresence>
+
+            {/* Modal de Selección de Destino para Transporte Rápido */}
+            {showQuickDestinationPicker && (
+                <AddressPicker
+                    title="Destino del Pasajero"
+                    subtitle="Selecciona dónde dejarás al cliente para calcular la tarifa"
+                    initialData={activeTransport?.origin ? {
+                        name: 'Destino',
+                        lat: activeTransport.origin.lat,
+                        lng: activeTransport.origin.lng,
+                        reference: ''
+                    } : undefined}
+                    onClose={() => setShowQuickDestinationPicker(false)}
+                    onSave={handleQuickDestinationSelect}
+                />
+            )}
         </>);
     }
 

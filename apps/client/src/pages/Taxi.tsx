@@ -3971,9 +3971,14 @@ export default function Taxi() {
                             {/* Info Banner */}
                             <div className="mt-4 mb-5 bg-amber-50/80 border border-amber-200/80 rounded-2xl p-3.5 text-xs text-amber-950 flex items-start gap-2.5">
                                 <Sparkles className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
-                                <p className="text-[11px] font-medium leading-relaxed">
-                                    Toma tu ubicación GPS actual de forma instantánea y hace sonar el radar de los conductores más cercanos. <strong>Sin escribir direcciones ni esperar cotizaciones.</strong>
-                                </p>
+                                <div className="space-y-1">
+                                    <p className="text-[11px] font-medium leading-relaxed">
+                                        Toma tu ubicación GPS actual de forma instantánea y hace sonar el radar de los conductores más cercanos. <strong>Sin escribir direcciones previas.</strong>
+                                    </p>
+                                    <p className="text-[10px] font-bold text-amber-800 leading-tight">
+                                        * Las tarifas mostradas son <strong>referenciales de arranque</strong>. El monto final del servicio se define directamente con el conductor al llegar al punto de recogida.
+                                    </p>
+                                </div>
                             </div>
 
                             {/* Loading state overlay if processing */}
@@ -4008,7 +4013,7 @@ export default function Taxi() {
                                         </span>
                                         <div className="mt-1 px-1.5 py-0.5 rounded-full bg-amber-100/80 border border-amber-200">
                                             <p className="text-[10px] sm:text-xs font-black text-amber-950">
-                                                $0.50+
+                                                Desde $0.50
                                             </p>
                                         </div>
                                         {bcvRate ? (
@@ -4035,7 +4040,7 @@ export default function Taxi() {
                                         </span>
                                         <div className="mt-1 px-1.5 py-0.5 rounded-full bg-blue-100/80 border border-blue-200">
                                             <p className="text-[10px] sm:text-xs font-black text-blue-950">
-                                                $1.50+
+                                                Desde $1.50
                                             </p>
                                         </div>
                                         {bcvRate ? (
@@ -4062,7 +4067,7 @@ export default function Taxi() {
                                         </span>
                                         <div className="mt-1 px-1.5 py-0.5 rounded-full bg-purple-100/80 border border-purple-200">
                                             <p className="text-[10px] sm:text-xs font-black text-purple-950">
-                                                $2.50+
+                                                Desde $2.50
                                             </p>
                                         </div>
                                         {bcvRate ? (
@@ -4078,10 +4083,13 @@ export default function Taxi() {
                             )}
 
                             {/* Footer helper note */}
-                            <div className="mt-3 text-center">
-                                <p className="text-[10px] text-slate-400 font-bold flex items-center justify-center gap-1">
+                            <div className="mt-3 text-center space-y-1">
+                                <p className="text-[10px] text-slate-500 font-bold flex items-center justify-center gap-1">
                                     <MapPin className="w-3 h-3 text-slate-400" />
                                     El chofer acude directamente a tus coordenadas GPS
+                                </p>
+                                <p className="text-[9px] text-slate-400 font-medium">
+                                    Al llegar la unidad, se fija el monto acordado en persona o calculado por mapa.
                                 </p>
                             </div>
                         </div>

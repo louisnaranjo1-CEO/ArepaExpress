@@ -7,6 +7,8 @@ interface AddressPickerProps {
     onClose: () => void;
     onSave: (data: { name: string; lat: number; lng: number; reference: string }) => void;
     initialData?: { name: string; lat: number; lng: number; reference: string };
+    title?: string;
+    subtitle?: string;
 }
 
 const defaultCenter = {
@@ -35,10 +37,10 @@ const createCustomPin = () => {
     });
 };
 
-export default function AddressPicker({ onClose, onSave, initialData }: AddressPickerProps) {
+export default function AddressPicker({ onClose, onSave, initialData, title, subtitle }: AddressPickerProps) {
     const [position, setPosition] = useState(initialData ? { lat: initialData.lat, lng: initialData.lng } : defaultCenter);
     const [reference, setReference] = useState(initialData?.reference || '');
-    const [name, setName] = useState(initialData?.name || 'Casa');
+    const [name, setName] = useState(initialData?.name || 'Destino');
     const [locating, setLocating] = useState(false);
 
     const mapContainerRef = useRef<HTMLDivElement>(null);
@@ -160,10 +162,10 @@ export default function AddressPicker({ onClose, onSave, initialData }: AddressP
                     <div>
                         <h2 className="text-xl font-black text-slate-900 flex items-center gap-2">
                             <MapPin className="w-5 h-5 text-primary" />
-                            Tu Ubicación
+                            {title || 'Tu Ubicación'}
                         </h2>
                         <p className="text-[11px] text-slate-500 font-bold uppercase tracking-wider">
-                            Toca el mapa o arrastra el pin para marcar
+                            {subtitle || 'Toca el mapa o arrastra el pin para marcar'}
                         </p>
                     </div>
                     <button

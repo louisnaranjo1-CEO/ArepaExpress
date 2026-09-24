@@ -70,7 +70,7 @@ export default function AdminAuth() {
                             className="h-full object-contain"
                         />
                     </div>
-                    <h1 className="text-3xl font-black text-slate-900 tracking-tight">Administra tu cuenta <span className="text-primary">en un 2x3</span></h1>
+                    <h1 className="text-3xl font-black text-slate-900 tracking-tight">Administra tu negocio <span className="text-slate-900">en un 2x3</span></h1>
                     <p className="text-slate-500 mt-2 font-medium">
                         {isLogin ? 'Ingresa para gestionar tu negocio' : 'Registra tu negocio y empieza a vender'}
                     </p>

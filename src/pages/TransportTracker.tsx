@@ -3,7 +3,7 @@ import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { DeliveryDriver } from '../lib/delivery-service';
 import toast from 'react-hot-toast';
-import { Navigation, Clock, CheckCircle2, Phone, ArrowLeft, Car, ShieldCheck, MessageCircle, Star, XCircle, MapPin, Package, Copy, AlertTriangle, Wind, Music, Wifi, BatteryCharging, AlertCircle, X, ShoppingBag, Shield, CreditCard } from 'lucide-react';
+import { Navigation, Clock, CheckCircle2, Phone, ArrowLeft, Car, ShieldCheck, MessageCircle, Star, XCircle, MapPin, Package, Copy, AlertTriangle, Wind, Music, Wifi, BatteryCharging, AlertCircle, X, ShoppingBag, Shield, CreditCard, Sparkles } from 'lucide-react';
 import { GoogleMap, useJsApiLoader, DirectionsRenderer, Marker } from '@react-google-maps/api';
 import { GOOGLE_MAPS_API_KEY, GOOGLE_MAPS_LIBRARIES } from '../lib/mapsConfig';
 import RideChat from '../components/RideChat';
@@ -1584,7 +1584,20 @@ export default function TransportTracker() {
                     className={`bg-slate-50 rounded-2xl p-3 flex justify-between items-center border border-slate-100 ${['accepted', 'arriving', 'in_progress'].includes(request.status) ? 'cursor-pointer hover:bg-slate-100/80 transition-colors' : ''}`}
                 >
                     <div>
-                        <p className="text-[10px] font-bold text-slate-500">Total del Viaje</p>
+                        <div className="flex items-center gap-1.5">
+                            <p className="text-[10px] font-bold text-slate-500">Total del Viaje</p>
+                            {Boolean(request?.notes?.includes('Transporte Rápido') || (request as any)?.is_quick_transport) && (
+                                ['searching', 'accepted', 'arriving'].includes(request.status) ? (
+                                    <span className="text-[8px] font-black uppercase tracking-wider bg-amber-100 text-amber-900 border border-amber-300 px-1.5 py-0.5 rounded-md">
+                                        Base Inicial
+                                    </span>
+                                ) : (
+                                    <span className="text-[8px] font-black uppercase tracking-wider bg-emerald-100 text-emerald-800 border border-emerald-300 px-1.5 py-0.5 rounded-md">
+                                        Tarifa Acordada
+                                    </span>
+                                )
+                            )}
+                        </div>
                         <p className="font-black text-base text-slate-900 leading-tight">${parseFloat(request.price || request.total || 0).toFixed(2)}</p>
                         {bcvRate > 0 && (
                             <p className="text-[10px] font-bold text-slate-500">
@@ -1603,6 +1616,19 @@ export default function TransportTracker() {
                         </p>
                     </div>
                 </div>
+
+                {/* Banner Informativo de Transporte Rápido mientras el conductor llega */}
+                {Boolean(request?.notes?.includes('Transporte Rápido') || (request as any)?.is_quick_transport) && ['searching', 'accepted', 'arriving'].includes(request.status) && (
+                    <div className="mt-2.5 p-3 bg-amber-50/90 border border-amber-200/80 rounded-2xl flex items-start gap-2.5 text-xs text-amber-950 leading-relaxed shadow-xs">
+                        <Sparkles className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                        <div>
+                            <span className="block text-[10px] uppercase tracking-wide text-amber-900 font-black">Transporte Rápido</span>
+                            <p className="text-[11px] font-medium text-amber-950 mt-0.5">
+                                La tarifa mostrada es una <strong>base de salida</strong>. Al llegar tu conductor a recogerte, acordarán el monto final en persona o se calculará en el mapa según tu destino.
+                            </p>
+                        </div>
+                    </div>
+                )}
 
                 {/* Cancel Trip Button */}
                 {['searching', 'accepted', 'arriving'].includes(request.status) && (
