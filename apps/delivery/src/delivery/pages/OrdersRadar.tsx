@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useCurrency } from '../../context/CurrencyContext';
-import { Car, Bike, MapPin, Navigation, Phone, CheckCircle2, MessageSquare, Send, User as UserIcon, Star, MessageCircle, Clock, AlertTriangle, ArrowLeft, Package, Sparkles, DollarSign, ShieldAlert, ExternalLink, Volume2, X } from 'lucide-react';
+import { Car, Bike, MapPin, Navigation, Phone, CheckCircle2, MessageSquare, Send, User as UserIcon, Star, MessageCircle, Clock, AlertTriangle, ArrowLeft, Package, Sparkles, DollarSign, ShieldAlert, ExternalLink, Volume2, X, Receipt, ShieldCheck } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import toast from 'react-hot-toast';
 import RideChat from '../../components/RideChat';
@@ -86,8 +86,35 @@ export default function OrdersRadar() {
         return () => clearInterval(interval);
     }, [radarTips.length]);
     
-    // Tabs de navegación del centro de mando
-    const [activeTab, setActiveTab] = useState<'all' | 'taxis' | 'deliveries' | 'mandados'>('all');
+    // Tabs de navegación del centro de mando con persistencia en localStorage y Supabase
+    const [activeTab, setActiveTab] = useState<'all' | 'taxis' | 'deliveries' | 'mandados' | 'pending_payments'>(() => {
+        try {
+            const saved = localStorage.getItem('driver_active_radar_tab');
+            if (saved && ['all', 'taxis', 'deliveries', 'mandados', 'pending_payments'].includes(saved)) {
+                return saved as any;
+            }
+        } catch (_) {}
+        return 'all';
+    });
+
+    const [pendingPayments, setPendingPayments] = useState<any[]>([]);
+
+    const handleSelectTab = (newTab: 'all' | 'taxis' | 'deliveries' | 'mandados' | 'pending_payments') => {
+        vibrate(20);
+        setActiveTab(newTab);
+        try {
+            localStorage.setItem('driver_active_radar_tab', newTab);
+            const driverId = user?.id || (user as any)?.uid;
+            if (driverId) {
+                supabase.from('drivers').update({
+                    comfort_features: {
+                        ...(driverProfile?.comfort_features || {}),
+                        last_active_tab: newTab
+                    }
+                }).eq('id', driverId).then(() => {});
+            }
+        } catch (_) {}
+    };
 
     // Estado en espera de Muchacho e' Mandao postulados
     const [myPendingBids, setMyPendingBids] = useState<any[]>([]);
@@ -324,6 +351,54 @@ export default function OrdersRadar() {
         };
     }, [user]);
 
+    const fetchActiveTransport = React.useCallback(async () => {
+        if (!user) return;
+        const driverId = user.id || (user as any).uid;
+        const { data } = await supabase
+            .from('transport_requests')
+            .select('*')
+            .eq('driver_id', driverId)
+            .in('status', ['accepted', 'arriving', 'in_progress', 'completed'])
+            .order('created_at', { ascending: false });
+        
+        if (data && data.length > 0) {
+            // Ongoing trips: accepted, arriving or in_progress (actively driving/waiting)
+            const mainActive = data.find((req: any) => 
+                !req.scheduled && (req.status === 'accepted' || req.status === 'arriving' || req.status === 'in_progress')
+            );
+
+            if (mainActive) {
+                if (prevActiveTransportId.current !== mainActive.id) {
+                    prevActiveTransportId.current = mainActive.id;
+                    vibrate([200, 100, 200, 100, 300]);
+                    try {
+                        const snd = new Audio(NOTIFICATION_SOUND_URL);
+                        snd.play().catch(() => {});
+                    } catch(e) {}
+                    toast.success("¡El cliente aceptó tu oferta! Viaje en curso.", { icon: '🎉', duration: 5000 });
+                }
+                setActiveTransport(mainActive);
+            } else {
+                prevActiveTransportId.current = null;
+                setActiveTransport(null);
+            }
+
+            // Completed trips awaiting payment conciliation
+            const pendingPay = data.filter((req: any) => 
+                req.status === 'completed' && req.payment_status !== 'confirmed' && req.payment_status !== 'paid'
+            );
+            setPendingPayments(pendingPay);
+            
+            const pendingReservations = data.filter((req: any) => req.scheduled && req.status === 'accepted');
+            setMyReservations(pendingReservations);
+        } else {
+            prevActiveTransportId.current = null;
+            setActiveTransport(null);
+            setPendingPayments([]);
+            setMyReservations([]);
+        }
+    }, [user]);
+
     // 2. Escuchar órdenes de delivery y transporte activo (Supabase)
     useEffect(() => {
         if (!user) return;
@@ -343,40 +418,6 @@ export default function OrdersRadar() {
                 setActiveOrder(data[0]);
             } else {
                 setActiveOrder(null);
-            }
-        };
-
-        const fetchActiveTransport = async () => {
-            const { data } = await supabase
-                .from('transport_requests')
-                .select('*')
-                .eq('driver_id', user.uid)
-                .in('status', ['accepted', 'arriving', 'in_progress', 'completed']);
-            
-            if (data && data.length > 0) {
-                const activeList = data.filter((req: any) => req.status !== 'completed' || req.payment_status !== 'confirmed');
-                const mainActive = activeList.find((req: any) => !req.scheduled || req.status === 'arriving' || req.status === 'in_progress' || (req.status === 'completed' && req.payment_status !== 'confirmed'));
-                if (mainActive) {
-                    if (prevActiveTransportId.current !== mainActive.id && mainActive.status !== 'completed') {
-                        prevActiveTransportId.current = mainActive.id;
-                        vibrate([200, 100, 200, 100, 300]);
-                        try {
-                            const snd = new Audio(NOTIFICATION_SOUND_URL);
-                            snd.play().catch(() => {});
-                        } catch(e) {}
-                        toast.success("¡El cliente aceptó tu oferta! Viaje en curso.", { icon: '🎉', duration: 5000 });
-                    }
-                    setActiveTransport(mainActive);
-                } else {
-                    setActiveTransport(null);
-                }
-                
-                const pendingReservations = activeList.filter((req: any) => req.scheduled && req.status === 'accepted');
-                setMyReservations(pendingReservations);
-            } else {
-                prevActiveTransportId.current = null;
-                setActiveTransport(null);
-                setMyReservations([]);
             }
         };
 
@@ -935,25 +976,31 @@ export default function OrdersRadar() {
                 }
             }
 
-            // Update local state to transition to payment conciliation
-            setActiveTransport((prev: any) => prev ? {
-                ...prev,
-                status: 'completed',
-                completed_at: new Date().toISOString(),
-                payment_status: prev.payment_status || 'pending'
-            } : null);
-            toast.success(`Viaje finalizado. En espera de confirmación de pago.`);
+            // Liberar disponibilidad del chofer de inmediato para nuevas carreras
+            try {
+                await supabase.from('drivers').update({
+                    availability: 'available'
+                }).eq('id', user!.uid);
+            } catch (availErr) {
+                console.warn("Error updating driver availability:", availErr);
+            }
+
+            // Inmediatamente limpiar el transporte activo para liberar la pantalla de navegación
+            setActiveTransport(null);
+            fetchActiveTransport();
+            toast.success(`¡Viaje finalizado con éxito! Quedas disponible para nuevas carreras.`, { icon: '🚀', duration: 4000 });
         } finally {
             setProcessingAction(null);
         }
     };
 
-    const handleConfirmPayment = async () => {
-        if (!activeTransport || processingAction) return;
-        setProcessingAction('confirm_payment');
+    const handleConfirmPayment = async (targetReq?: any) => {
+        const item = targetReq || activeTransport;
+        if (!item || processingAction) return;
+        setProcessingAction(`confirm_${item.id}`);
         try {
             const { error } = await supabase.rpc('confirm_service_payment_and_award_points', {
-                p_transport_id: activeTransport.id,
+                p_transport_id: item.id,
                 p_confirmed_by: user!.uid
             });
             if (error) {
@@ -961,10 +1008,13 @@ export default function OrdersRadar() {
                 await supabase.from('transport_requests').update({
                     payment_status: 'confirmed',
                     payment_confirmed_at: new Date().toISOString()
-                }).eq('id', activeTransport.id);
+                }).eq('id', item.id);
             }
             toast.success("¡Pago confirmado y conciliado con éxito! Puntos acreditados. 🎉", { duration: 5000 });
-            setActiveTransport(null);
+            if (activeTransport?.id === item.id) {
+                setActiveTransport(null);
+            }
+            fetchActiveTransport();
         } catch (err: any) {
             console.error("Error confirmando pago:", err);
             toast.error("Error al conciliar el pago: " + (err.message || 'Intente nuevamente'));
@@ -973,10 +1023,11 @@ export default function OrdersRadar() {
         }
     };
 
-    const handleDisputePayment = async () => {
-        if (!activeTransport || processingAction) return;
+    const handleDisputePayment = async (targetReq?: any) => {
+        const item = targetReq || activeTransport;
+        if (!item || processingAction) return;
         if (!confirm("¿Deseas reportar un problema con este pago a soporte? La cuenta del cliente será notificada.")) return;
-        setProcessingAction('dispute_payment');
+        setProcessingAction(`dispute_${item.id}`);
         try {
             const { error } = await supabase
                 .from('transport_requests')
@@ -984,10 +1035,13 @@ export default function OrdersRadar() {
                     payment_status: 'disputed',
                     disputed_at: new Date().toISOString()
                 })
-                .eq('id', activeTransport.id);
+                .eq('id', item.id);
             if (error) throw error;
-            setActiveTransport((prev: any) => prev ? { ...prev, payment_status: 'disputed' } : null);
             toast.error("Servicio marcado en disputa. Nuestro equipo de soporte intervendrá.");
+            if (activeTransport?.id === item.id) {
+                setActiveTransport((prev: any) => prev ? { ...prev, payment_status: 'disputed' } : null);
+            }
+            fetchActiveTransport();
         } catch (err: any) {
             console.error("Error marcando en disputa:", err);
             toast.error("No se pudo registrar la disputa");
@@ -1222,50 +1276,93 @@ export default function OrdersRadar() {
 
                         <div className="w-px h-8 bg-dashed bg-slate-200 ml-6"></div>
 
-                        {activeTransport.type === 'package_delivery' && (
-                            <div className="bg-yellow-50/70 border border-yellow-200 rounded-2xl p-4 space-y-3">
-                                <div className="flex items-center gap-2 text-xs font-black uppercase tracking-wider text-yellow-800">
-                                    <Package className="w-4 h-4 text-yellow-600" />
-                                    <span>Comanda de Encomienda</span>
-                                </div>
-                                <div className="grid grid-cols-2 gap-2 text-xs">
-                                    <div className="p-2.5 bg-white rounded-xl border border-yellow-100">
-                                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">Remite / Entrega:</span>
-                                        <span className="font-bold text-slate-800">{activeTransport.sender_name || activeTransport.user_name || activeTransport.userName || 'Remitente'}</span>
-                                    </div>
-                                    <div className="p-2.5 bg-white rounded-xl border border-yellow-100">
-                                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">Receptor:</span>
-                                        <span className="font-bold text-slate-800">{activeTransport.receiver_name || (activeTransport as any).recipient_name || 'Destinatario'}</span>
-                                    </div>
-                                </div>
-                                {(activeTransport.receiver_phone || (activeTransport as any).recipient_phone) && (
-                                    <div className="flex items-center justify-between p-2.5 bg-white rounded-xl border border-yellow-100">
-                                        <div>
-                                            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">Teléfono Receptor:</span>
-                                            <span className="font-bold text-slate-800 text-xs">{activeTransport.receiver_phone || (activeTransport as any).recipient_phone}</span>
+                        {activeTransport.type === 'package_delivery' && (() => {
+                            const sName = activeTransport.mandado_details?.sender_name || activeTransport.sender_name || activeTransport.user_name || activeTransport.userName || 'Remitente';
+                            const sPhone = activeTransport.mandado_details?.sender_phone || activeTransport.sender_phone || activeTransport.user_phone || activeTransport.userPhone;
+                            const rName = activeTransport.mandado_details?.receiver_name || activeTransport.receiver_name || (activeTransport as any).recipient_name || 'Destinatario';
+                            const rPhone = activeTransport.mandado_details?.receiver_phone || activeTransport.receiver_phone || (activeTransport as any).recipient_phone;
+                            const pkgDesc = activeTransport.mandado_details?.package_notes || activeTransport.package_description || activeTransport.packageDescription;
+
+                            return (
+                                <div className="bg-amber-50/80 border border-amber-200 rounded-3xl p-4 space-y-3 shadow-xs">
+                                    <div className="flex items-center justify-between text-xs font-black uppercase tracking-wider text-amber-900 border-b border-amber-200/60 pb-2">
+                                        <div className="flex items-center gap-2">
+                                            <Package className="w-4 h-4 text-amber-600" />
+                                            <span>Ficha de Encomienda / Paquete</span>
                                         </div>
-                                        <a
-                                            href={`tel:${activeTransport.receiver_phone || (activeTransport as any).recipient_phone}`}
-                                            className="px-3 py-1.5 bg-emerald-500 hover:bg-emerald-600 text-white font-bold text-xs rounded-xl flex items-center gap-1.5 shadow-sm active:scale-95 transition-all"
-                                        >
-                                            <Phone className="w-3.5 h-3.5" /> Llamar
-                                        </a>
                                     </div>
-                                )}
-                                {(activeTransport.package_description || activeTransport.packageDescription) && (
-                                    <div className="p-2.5 bg-white rounded-xl border border-yellow-100 text-xs">
-                                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">Descripción del Paquete:</span>
-                                        <p className="font-semibold text-slate-700 mt-0.5">{activeTransport.package_description || activeTransport.packageDescription}</p>
+
+                                    {/* Destinatario Info (Quién Recibe - Obligatorio para Entrega) */}
+                                    <div className="p-3 bg-emerald-50 rounded-2xl border-2 border-emerald-300 space-y-2">
+                                        <div className="flex items-center justify-between">
+                                            <div>
+                                                <span className="text-[10px] font-black text-emerald-800 uppercase tracking-widest block">Destinatario (Quién Recibe):</span>
+                                                <span className="font-black text-slate-900 text-sm block mt-0.5">{rName}</span>
+                                                {rPhone ? (
+                                                    <span className="text-xs text-emerald-700 font-mono font-black block mt-0.5">{rPhone}</span>
+                                                ) : (
+                                                    <span className="text-[11px] text-slate-400 italic block mt-0.5">Sin teléfono registrado</span>
+                                                )}
+                                            </div>
+                                            <div className="w-10 h-10 rounded-2xl bg-emerald-100 text-emerald-700 flex items-center justify-center font-bold">
+                                                <UserIcon className="w-5 h-5" />
+                                            </div>
+                                        </div>
+
+                                        {rPhone && (
+                                            <div className="flex gap-2 pt-1">
+                                                <a
+                                                    href={`tel:${rPhone}`}
+                                                    className="flex-1 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs rounded-xl flex items-center justify-center gap-1.5 shadow-sm active:scale-95 transition-all"
+                                                >
+                                                    <Phone className="w-3.5 h-3.5" /> Llamar al Destinatario
+                                                </a>
+                                                <a
+                                                    href={`https://wa.me/${rPhone.replace(/\D/g, '')}?text=${encodeURIComponent(`Hola ${rName}, soy tu conductor de Un 2x3 con tu entrega de encomienda.`)}`}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    className="px-3 py-2.5 bg-emerald-100 text-emerald-800 hover:bg-emerald-200 font-black text-xs rounded-xl flex items-center justify-center gap-1 active:scale-95 transition-all"
+                                                >
+                                                    <MessageCircle className="w-3.5 h-3.5" /> WhatsApp
+                                                </a>
+                                            </div>
+                                        )}
                                     </div>
-                                )}
-                                {activeTransport.b2b_merchant && (
-                                    <div className="p-2.5 bg-blue-50/70 border border-blue-200 rounded-xl text-xs text-blue-900">
-                                        <span className="text-[10px] font-black text-blue-600 uppercase tracking-widest block">Nota Comercial / B2B:</span>
-                                        <p className="font-medium mt-0.5">{activeTransport.b2b_merchant}</p>
+
+                                    {/* Remitente Info */}
+                                    <div className="p-3 bg-white rounded-2xl border border-amber-100 flex items-center justify-between">
+                                        <div>
+                                            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">Remite (Entrega el paquete):</span>
+                                            <span className="font-bold text-slate-800 text-xs">{sName}</span>
+                                            {sPhone && <span className="text-[11px] text-slate-500 font-mono block mt-0.5">{sPhone}</span>}
+                                        </div>
+                                        {sPhone && (
+                                            <a
+                                                href={`tel:${sPhone}`}
+                                                className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl flex items-center gap-1 active:scale-95 transition-all"
+                                            >
+                                                <Phone className="w-3.5 h-3.5" /> Llamar Remitente
+                                            </a>
+                                        )}
                                     </div>
-                                )}
-                            </div>
-                        )}
+
+                                    {/* Contenido / Descripción del Paquete */}
+                                    {pkgDesc && (
+                                        <div className="p-3 bg-white rounded-2xl border border-amber-100 text-xs">
+                                            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">Contenido del Paquete:</span>
+                                            <p className="font-bold text-slate-800 mt-1 leading-relaxed">{pkgDesc}</p>
+                                        </div>
+                                    )}
+
+                                    {activeTransport.b2b_merchant && (
+                                        <div className="p-2.5 bg-blue-50/70 border border-blue-200 rounded-xl text-xs text-blue-900">
+                                            <span className="text-[10px] font-black text-blue-600 uppercase tracking-widest block">Nota Comercial / B2B:</span>
+                                            <p className="font-medium mt-0.5">{activeTransport.b2b_merchant}</p>
+                                        </div>
+                                    )}
+                                </div>
+                            );
+                        })()}
 
                         <div className="flex gap-4">
                             <div className="w-12 h-12 bg-slate-50 text-slate-400 rounded-2xl flex items-center justify-center shrink-0 border border-slate-100 shadow-inner">
@@ -2026,7 +2123,7 @@ export default function OrdersRadar() {
             {/* Pestañas de Servicios Organizados (Rediseño del Centro de Mando) */}
             <div className="flex gap-2 p-1.5 bg-slate-100 rounded-2xl overflow-x-auto scrollbar-none border border-slate-200">
                 <button
-                    onClick={() => setActiveTab('all')}
+                    onClick={() => handleSelectTab('all')}
                     className={`flex-1 min-w-[85px] py-2 px-3 rounded-xl font-black text-xs uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 ${
                         activeTab === 'all' ? 'bg-slate-950 text-white shadow-md' : 'text-slate-600 hover:text-slate-900'
                     }`}
@@ -2038,7 +2135,7 @@ export default function OrdersRadar() {
                 </button>
 
                 <button
-                    onClick={() => setActiveTab('taxis')}
+                    onClick={() => handleSelectTab('taxis')}
                     className={`flex-1 min-w-[85px] py-2 px-3 rounded-xl font-black text-xs uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 ${
                         activeTab === 'taxis' ? 'bg-slate-950 text-white shadow-md' : 'text-slate-600 hover:text-slate-900'
                     }`}
@@ -2051,7 +2148,7 @@ export default function OrdersRadar() {
                 </button>
 
                 <button
-                    onClick={() => setActiveTab('deliveries')}
+                    onClick={() => handleSelectTab('deliveries')}
                     className={`flex-1 min-w-[95px] py-2 px-3 rounded-xl font-black text-xs uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 ${
                         activeTab === 'deliveries' ? 'bg-slate-950 text-white shadow-md' : 'text-slate-600 hover:text-slate-900'
                     }`}
@@ -2064,7 +2161,7 @@ export default function OrdersRadar() {
                 </button>
 
                 <button
-                    onClick={() => setActiveTab('mandados')}
+                    onClick={() => handleSelectTab('mandados')}
                     className={`flex-1 min-w-[105px] py-2 px-3 rounded-xl font-black text-xs uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 ${
                         activeTab === 'mandados' ? 'bg-slate-950 text-white shadow-md' : 'text-slate-600 hover:text-slate-900'
                     }`}
@@ -2073,6 +2170,23 @@ export default function OrdersRadar() {
                     <span>Mandao</span>
                     <span className={`text-[10px] px-1.5 py-0.2 rounded-full ${activeTab === 'mandados' ? 'bg-amber-400 text-slate-950 font-black' : 'bg-slate-200 text-slate-700'}`}>
                         {mandadosList.length}
+                    </span>
+                </button>
+
+                <button
+                    onClick={() => handleSelectTab('pending_payments')}
+                    className={`flex-1 min-w-[140px] py-2 px-3 rounded-xl font-black text-xs uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 ${
+                        activeTab === 'pending_payments' ? 'bg-slate-950 text-white shadow-md' : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                >
+                    <Receipt className="w-3.5 h-3.5 text-emerald-400" />
+                    <span>Reporte de Pago</span>
+                    <span className={`text-[10px] px-1.5 py-0.2 rounded-full ${
+                        activeTab === 'pending_payments' 
+                            ? 'bg-emerald-500 text-white font-black' 
+                            : pendingPayments.length > 0 ? 'bg-amber-400 text-slate-950 font-black animate-pulse' : 'bg-slate-200 text-slate-700'
+                    }`}>
+                        {pendingPayments.length}
                     </span>
                 </button>
             </div>
@@ -2171,7 +2285,259 @@ export default function OrdersRadar() {
                 )}
             </AnimatePresence>
 
-            {isFilteredListEmpty ? (
+            {activeTab === 'pending_payments' ? (
+                <div className="space-y-4">
+                    {/* Header Banner de Garantía Arepa Express */}
+                    <div className="bg-gradient-to-br from-emerald-950 via-slate-900 to-slate-950 rounded-3xl p-4 sm:p-5 border border-emerald-500/30 text-white shadow-xl relative overflow-hidden">
+                        <div className="absolute top-0 right-0 p-4 opacity-10">
+                            <ShieldCheck className="w-24 h-24 text-emerald-400" />
+                        </div>
+                        <div className="flex items-start gap-3.5 z-10 relative">
+                            <div className="w-10 h-10 rounded-2xl bg-emerald-500/20 border border-emerald-500/40 text-emerald-400 flex items-center justify-center shrink-0">
+                                <ShieldCheck className="w-5 h-5" />
+                            </div>
+                            <div className="space-y-1">
+                                <div className="flex items-center gap-2">
+                                    <span className="text-xs font-black uppercase tracking-wider text-emerald-400">
+                                        Garantía Arepa Express
+                                    </span>
+                                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                                        Protección 48h
+                                    </span>
+                                </div>
+                                <p className="text-xs text-slate-300 font-medium leading-relaxed">
+                                    Tus ganancias están respaldadas. Cuentas con un plazo de protección de <strong>48 horas</strong> para cualquier reclamo, comprobante dudoso o pago no acreditado.
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+
+                    {pendingPayments.length === 0 ? (
+                        /* Estado vacío elegante */
+                        <motion.div
+                            initial={{ opacity: 0, scale: 0.98 }}
+                            animate={{ opacity: 1, scale: 1 }}
+                            className="bg-slate-950 rounded-[2.5rem] p-8 sm:p-10 text-center shadow-2xl border border-slate-800 relative overflow-hidden flex flex-col items-center"
+                        >
+                            <div className="w-20 h-20 rounded-3xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center mb-4">
+                                <CheckCircle2 className="w-10 h-10 text-emerald-400" />
+                            </div>
+                            <h3 className="text-lg font-black text-white tracking-tight">
+                                ¡Al día! No tienes pagos pendientes por conciliar
+                            </h3>
+                            <p className="text-slate-400 font-medium text-xs max-w-sm mt-1.5 leading-relaxed">
+                                Todas tus carreras anteriores han sido verificadas y cobradas satisfactoriamente. Estás listo para seguir rodando.
+                            </p>
+                            <button
+                                onClick={() => handleSelectTab('all')}
+                                className="mt-6 px-6 py-3 bg-gradient-to-r from-amber-400 to-yellow-400 text-slate-950 font-black text-xs uppercase tracking-wider rounded-2xl shadow-lg shadow-amber-400/20 active:scale-95 transition-all flex items-center gap-2"
+                            >
+                                <Navigation className="w-4 h-4" />
+                                Ver solicitudes activas
+                            </button>
+                        </motion.div>
+                    ) : (
+                        <div className="space-y-4">
+                            <div className="flex items-center justify-between px-1">
+                                <span className="text-[11px] font-black uppercase text-slate-500 tracking-wider">
+                                    Pagos por conciliar ({pendingPayments.length})
+                                </span>
+                                <span className="text-[11px] text-amber-700 font-bold">
+                                    Revisa el capture antes de confirmar
+                                </span>
+                            </div>
+
+                            {pendingPayments.map((item) => {
+                                const hasProof = Boolean(item.payment_proof_url);
+                                const isDisputed = item.payment_status === 'disputed';
+                                const priceNum = Number(item.price || 0);
+                                const priceBs = (priceNum * (bcvRate || 1)).toFixed(2);
+                                const refNumber = item.payment_reference || item.reference_number || item.payment_ref;
+                                const isProcessingThis = processingAction === `confirm_${item.id}` || processingAction === `dispute_${item.id}`;
+
+                                return (
+                                    <motion.div
+                                        key={item.id}
+                                        initial={{ opacity: 0, y: 10 }}
+                                        animate={{ opacity: 1, y: 0 }}
+                                        className={`rounded-3xl border-2 p-5 shadow-lg space-y-4 transition-all ${
+                                            isDisputed 
+                                                ? 'bg-rose-50/70 border-rose-300' 
+                                                : hasProof 
+                                                    ? 'bg-gradient-to-br from-emerald-50/70 via-white to-white border-emerald-300' 
+                                                    : 'bg-gradient-to-br from-amber-50/70 via-white to-white border-amber-300'
+                                        }`}
+                                    >
+                                        {/* Header de la tarjeta */}
+                                        <div className="flex items-start justify-between gap-3">
+                                            <div className="flex items-center gap-2.5">
+                                                <div className={`w-10 h-10 rounded-2xl flex items-center justify-center font-black ${
+                                                    item.service_type === 'mandao' 
+                                                        ? 'bg-amber-400 text-slate-950' 
+                                                        : item.service_type === 'delivery' 
+                                                            ? 'bg-emerald-500 text-white' 
+                                                            : 'bg-slate-950 text-white'
+                                                }`}>
+                                                    {item.service_type === 'mandao' ? <Package className="w-5 h-5" /> : item.service_type === 'delivery' ? <Bike className="w-5 h-5" /> : <Car className="w-5 h-5" />}
+                                                </div>
+                                                <div>
+                                                    <span className="text-[10px] font-black uppercase tracking-wider text-slate-500 block">
+                                                        {item.service_type === 'mandao' ? "Muchacho e' Mandao" : item.service_type === 'delivery' ? 'Delivery' : 'Carrera de Taxi'}
+                                                    </span>
+                                                    <span className="text-sm font-black text-slate-900">
+                                                        {item.user_name || item.userName || 'Cliente'}
+                                                    </span>
+                                                </div>
+                                            </div>
+                                            <div className="text-right">
+                                                <span className="text-lg font-black text-emerald-700 block leading-tight">
+                                                    ${priceNum.toFixed(2)} USD
+                                                </span>
+                                                <span className="text-xs font-bold text-slate-500 block">
+                                                    Bs {priceBs}
+                                                </span>
+                                            </div>
+                                        </div>
+
+                                        {/* Origen y Destino */}
+                                        <div className="bg-slate-50/80 border border-slate-100 p-3 rounded-2xl space-y-1.5 text-xs">
+                                            <div className="flex items-start gap-2">
+                                                <span className="w-2 h-2 rounded-full bg-emerald-500 mt-1 shrink-0" />
+                                                <span className="text-slate-600 line-clamp-1">
+                                                    <strong>Desde:</strong> {item.pickup_address || item.origin?.address || 'Origen'}
+                                                </span>
+                                            </div>
+                                            <div className="flex items-start gap-2">
+                                                <span className="w-2 h-2 rounded-full bg-rose-500 mt-1 shrink-0" />
+                                                <span className="text-slate-600 line-clamp-1">
+                                                    <strong>Hasta:</strong> {item.dropoff_address || item.destination?.address || 'Destino'}
+                                                </span>
+                                            </div>
+                                        </div>
+
+                                        {/* Estado del comprobante / pago */}
+                                        <div className="p-3.5 rounded-2xl bg-white border border-slate-200 space-y-2.5">
+                                            <div className="flex items-center justify-between">
+                                                <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">
+                                                    Estado de Pago Móvil
+                                                </span>
+                                                {isDisputed ? (
+                                                    <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-rose-100 text-rose-700 border border-rose-200 flex items-center gap-1">
+                                                        <AlertTriangle className="w-3 h-3" /> En Disputa
+                                                    </span>
+                                                ) : hasProof ? (
+                                                    <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-emerald-100 text-emerald-800 border border-emerald-200 flex items-center gap-1">
+                                                        <CheckCircle2 className="w-3 h-3 text-emerald-600" /> Comprobante enviado
+                                                    </span>
+                                                ) : (
+                                                    <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-amber-100 text-amber-800 border border-amber-200 flex items-center gap-1">
+                                                        <Clock className="w-3 h-3 text-amber-600 animate-spin" /> Pendiente por transferir
+                                                    </span>
+                                                )}
+                                            </div>
+
+                                            {refNumber && (
+                                                <div className="flex items-center justify-between text-xs bg-slate-50 px-3 py-2 rounded-xl border border-slate-100">
+                                                    <span className="text-slate-500 font-bold">Referencia:</span>
+                                                    <span className="font-mono font-black text-slate-900 tracking-wider">
+                                                        {refNumber}
+                                                    </span>
+                                                </div>
+                                            )}
+
+                                            {hasProof ? (
+                                                <div className="flex items-center gap-3 pt-1">
+                                                    <div 
+                                                        onClick={() => setPreviewProofUrl(item.payment_proof_url)}
+                                                        className="w-16 h-16 rounded-xl overflow-hidden border-2 border-emerald-400 shadow-sm cursor-pointer hover:opacity-90 relative shrink-0 group"
+                                                    >
+                                                        <img 
+                                                            src={item.payment_proof_url} 
+                                                            alt="Capture de Pago" 
+                                                            className="w-full h-full object-cover group-hover:scale-110 transition-all duration-300"
+                                                        />
+                                                        <div className="absolute inset-0 bg-black/20 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                                                            <ExternalLink className="w-4 h-4 text-white" />
+                                                        </div>
+                                                    </div>
+                                                    <div className="space-y-1">
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => setPreviewProofUrl(item.payment_proof_url)}
+                                                            className="text-xs font-black text-emerald-700 hover:text-emerald-800 underline flex items-center gap-1"
+                                                        >
+                                                            <span>Toca para ampliar capture</span>
+                                                            <ExternalLink className="w-3 h-3" />
+                                                        </button>
+                                                        <p className="text-[11px] text-slate-500 font-medium">
+                                                            Verifica los últimos dígitos de la referencia en tu banco.
+                                                        </p>
+                                                    </div>
+                                                </div>
+                                            ) : (
+                                                <p className="text-xs text-amber-800/90 font-medium italic">
+                                                    El cliente aún no ha subido el capture. Puedes contactarlo vía llamada o WhatsApp.
+                                                </p>
+                                            )}
+                                        </div>
+
+                                        {/* Acciones del Conductor */}
+                                        <div className="space-y-2 pt-1">
+                                            <button
+                                                type="button"
+                                                onClick={() => handleConfirmPayment(item)}
+                                                disabled={isProcessingThis}
+                                                className="w-full py-3.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl font-black text-xs uppercase tracking-wider shadow-lg shadow-emerald-600/30 flex items-center justify-center gap-2 active:scale-98 transition-all disabled:opacity-50"
+                                            >
+                                                {processingAction === `confirm_${item.id}` ? (
+                                                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                                                ) : (
+                                                    <>
+                                                        <CheckCircle2 className="w-4 h-4" />
+                                                        <span>Confirmar y Conciliar Pago Recibido</span>
+                                                    </>
+                                                )}
+                                            </button>
+
+                                            <div className="flex items-center gap-2">
+                                                {(item.user_phone || item.userPhone) && (
+                                                    <a
+                                                        href={`https://wa.me/${(item.user_phone || item.userPhone).replace(/\D/g, '')}?text=${encodeURIComponent(`Hola ${item.user_name || ''}, te saluda tu chofer de Arepa Express sobre el viaje realizado por $${priceNum.toFixed(2)} USD.`)}`}
+                                                        target="_blank"
+                                                        rel="noopener noreferrer"
+                                                        className="flex-1 py-2.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 active:scale-95 transition-all"
+                                                    >
+                                                        <MessageCircle className="w-3.5 h-3.5" />
+                                                        <span>WhatsApp</span>
+                                                    </a>
+                                                )}
+                                                {(item.user_phone || item.userPhone) && (
+                                                    <a
+                                                        href={`tel:${item.user_phone || item.userPhone}`}
+                                                        className="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 active:scale-95 transition-all"
+                                                    >
+                                                        <Phone className="w-3.5 h-3.5" />
+                                                        <span>Llamar</span>
+                                                    </a>
+                                                )}
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleDisputePayment(item)}
+                                                    disabled={isProcessingThis || isDisputed}
+                                                    className="py-2.5 px-3 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-xl font-bold text-xs flex items-center justify-center gap-1 active:scale-95 transition-all disabled:opacity-50"
+                                                >
+                                                    <AlertTriangle className="w-3.5 h-3.5 text-rose-600" />
+                                                    <span>Reportar Problema</span>
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </motion.div>
+                                );
+                            })}
+                        </div>
+                    )}
+                </div>
+            ) : isFilteredListEmpty ? (
                 <div className="space-y-4">
                     {/* Tarjeta de Control Limpia y Minimalista */}
                     <motion.div
@@ -2648,6 +3014,36 @@ export default function OrdersRadar() {
                                                     <p className="font-bold text-slate-700 leading-tight mt-0.5 line-clamp-2">{req.destination?.address}</p>
                                                 </div>
                                             </div>
+
+                                            {/* Datos del Destinatario (Para Envíos / Paquetería) */}
+                                            {((req.serviceType === 'package' || req.packageType) || req.receiver_name || req.mandado_details?.receiver_name) && (
+                                                <div className="bg-amber-50/90 border border-amber-200 rounded-2xl p-3.5 space-y-2 mt-3">
+                                                    <div className="flex items-center justify-between">
+                                                        <span className="text-[10px] font-black uppercase tracking-wider text-amber-900 flex items-center gap-1.5">
+                                                            <Package className="w-3.5 h-3.5 text-amber-600" />
+                                                            Datos del Destinatario (Entrega)
+                                                        </span>
+                                                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-200 text-amber-900">
+                                                            Paquetería
+                                                        </span>
+                                                    </div>
+                                                    <div>
+                                                        <p className="text-xs font-black text-slate-900">
+                                                            {req.mandado_details?.receiver_name || req.receiver_name || req.recipient_name || 'Nombre no especificado'}
+                                                        </p>
+                                                        {(req.mandado_details?.receiver_phone || req.receiver_phone || req.recipient_phone) && (
+                                                            <p className="text-xs text-slate-600 font-bold mt-0.5">
+                                                                Tel: {req.mandado_details?.receiver_phone || req.receiver_phone || req.recipient_phone}
+                                                            </p>
+                                                        )}
+                                                    </div>
+                                                    {req.mandado_details?.package_description && (
+                                                        <p className="text-[11px] text-amber-950 font-medium italic bg-white/80 p-2 rounded-xl border border-amber-100">
+                                                            "{req.mandado_details?.package_description}"
+                                                        </p>
+                                                    )}
+                                                </div>
+                                            )}
                                         </div>
 
                                         <div className="pt-2 grid gap-3">

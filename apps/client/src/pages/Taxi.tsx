@@ -131,6 +131,41 @@ const safeUUID = (): string => {
     });
 };
 
+// 3D Stylized Vehicle Markers (Isometric Perspective with shadows and lighting)
+const svg3DMotoIcon = `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(`
+<svg width="48" height="48" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <ellipse cx="50" cy="55" rx="36" ry="18" fill="rgba(16,185,129,0.3)"/>
+    <ellipse cx="50" cy="55" rx="26" ry="12" fill="rgba(0,0,0,0.35)"/>
+    <ellipse cx="50" cy="80" rx="9" ry="15" fill="#0f172a" stroke="#f59e0b" stroke-width="4"/>
+    <ellipse cx="50" cy="22" rx="9" ry="15" fill="#0f172a" stroke="#f59e0b" stroke-width="4"/>
+    <path d="M43 32 L57 32 L54 68 L46 68 Z" fill="#059669" stroke="#10b981" stroke-width="2"/>
+    <rect x="44" y="44" width="12" height="18" rx="4" fill="#047857"/>
+    <ellipse cx="50" cy="46" rx="7" ry="10" fill="#f59e0b"/>
+    <ellipse cx="50" cy="60" rx="6" ry="8" fill="#1e293b"/>
+    <line x1="30" y1="28" x2="70" y2="28" stroke="#f1f5f9" stroke-width="6" stroke-linecap="round"/>
+    <circle cx="30" cy="28" r="4" fill="#0f172a"/>
+    <circle cx="70" cy="28" r="4" fill="#0f172a"/>
+    <circle cx="50" cy="42" r="9" fill="#ffffff" stroke="#0f172a" stroke-width="2.5"/>
+    <path d="M44 38 Q50 34 56 38" stroke="#0ea5e9" stroke-width="3" stroke-linecap="round"/>
+</svg>
+`)}`;
+
+const svg3DTaxiIcon = `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(`
+<svg width="48" height="48" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <ellipse cx="50" cy="60" rx="40" ry="20" fill="rgba(0,0,0,0.35)"/>
+    <rect x="28" y="20" width="44" height="60" rx="14" fill="#facc15" stroke="#ca8a04" stroke-width="2"/>
+    <path d="M34 32 L66 32 L62 44 L38 44 Z" fill="#0284c7" fill-opacity="0.85" stroke="#38bdf8" stroke-width="1.5"/>
+    <path d="M38 60 L62 60 L65 70 L35 70 Z" fill="#0284c7" fill-opacity="0.85" stroke="#38bdf8" stroke-width="1.5"/>
+    <rect x="36" y="44" width="28" height="16" rx="3" fill="#eab308"/>
+    <rect x="42" y="49" width="16" height="6" rx="2" fill="#ffffff" stroke="#0f172a" stroke-width="1.5"/>
+    <text x="50" y="54" font-size="5" font-weight="900" text-anchor="middle" fill="#0f172a" font-family="sans-serif">TAXI</text>
+    <circle cx="33" cy="22" r="3" fill="#fef08a"/>
+    <circle cx="67" cy="22" r="3" fill="#fef08a"/>
+    <rect x="30" y="78" width="8" height="3" rx="1" fill="#ef4444"/>
+    <rect x="62" y="78" width="8" height="3" rx="1" fill="#ef4444"/>
+</svg>
+`)}`;
+
 export default function Taxi() {
     const { user, userData } = useAuth();
     const { bcvRate } = useCurrency();
@@ -401,15 +436,57 @@ export default function Taxi() {
                 }
             }
 
+            // Pattern 4: Google Maps Protobuf !3d / !4d
+            if (!parsedCoords) {
+                const protoMatch = clean.match(/!3d(-?\d+\.\d+)!4d(-?\d+\.\d+)/);
+                if (protoMatch) {
+                    parsedCoords = { lat: parseFloat(protoMatch[1]), lng: parseFloat(protoMatch[2]) };
+                }
+            }
+
+            // Pattern 5: Short URL resolver (maps.app.goo.gl, goo.gl/maps, etc.)
+            if (!parsedCoords && (clean.includes('goo.gl') || clean.includes('maps') || clean.startsWith('http'))) {
+                try {
+                    // Try Supabase Edge Function resolver first (works across all browsers and apps without CORS)
+                    const { data: edgeData, error: edgeErr } = await supabase.functions.invoke('resolve-map-url', {
+                        body: { url: clean }
+                    });
+                    if (!edgeErr && edgeData?.lat && edgeData?.lng) {
+                        parsedCoords = { lat: Number(edgeData.lat), lng: Number(edgeData.lng) };
+                    }
+                } catch (edgeErr) {
+                    console.warn("Edge function url resolution warning:", edgeErr);
+                }
+
+                // If still not parsed, try Capacitor native HTTP if on device
+                if (!parsedCoords && (window as any).Capacitor?.Plugins?.CapacitorHttp) {
+                    try {
+                        const capRes = await (window as any).Capacitor.Plugins.CapacitorHttp.get({ url: clean });
+                        const finalUrl = capRes?.url || '';
+                        const mAt = finalUrl.match(/@(-?\d+\.\d+),\s*(-?\d+\.\d+)/) ||
+                                    finalUrl.match(/[?&](?:q|ll|destination)=(-?\d+\.\d+),(-?\d+\.\d+)/);
+                        if (mAt) {
+                            parsedCoords = { lat: parseFloat(mAt[1]), lng: parseFloat(mAt[2]) };
+                        }
+                    } catch (capErr) {
+                        console.warn("CapacitorHttp fallback error:", capErr);
+                    }
+                }
+            }
+
             // Geocode using Google Maps Geocoder if coords found to get real address name, OR geocode address directly
             if (window.google?.maps?.Geocoder) {
                 const geocoder = new window.google.maps.Geocoder();
                 if (parsedCoords) {
-                    const rev = await geocoder.geocode({ location: parsedCoords });
-                    if (rev.results && rev.results[0]) {
-                        addressLabel = rev.results[0].formatted_address;
+                    try {
+                        const rev = await geocoder.geocode({ location: parsedCoords });
+                        if (rev.results && rev.results[0]) {
+                            addressLabel = rev.results[0].formatted_address;
+                        }
+                    } catch (geoErr) {
+                        console.warn("Reverse geocode warning:", geoErr);
                     }
-                } else {
+                } else if (!clean.startsWith('http')) {
                     const fwd = await geocoder.geocode({ address: clean });
                     if (fwd.results && fwd.results[0]) {
                         const loc = fwd.results[0].geometry.location;
@@ -440,7 +517,7 @@ export default function Taxi() {
             setGmapsInputUrl('');
         } catch (err: any) {
             console.error("Error resolving Google Maps URL:", err);
-            toast.error("Error al procesar el enlace");
+            toast.error("Error al procesar el enlace. Intenta escribiendo el nombre del sitio.");
         } finally {
             setIsParsingGmaps(false);
         }
@@ -1014,17 +1091,18 @@ export default function Taxi() {
             }
         }
 
-        // Nearby Drivers Markers
+        // Nearby Drivers Markers with Stylized 3D Isometric Design
         driverMarkersRef.current.forEach(m => m.setMap(null));
         driverMarkersRef.current = nearbyDrivers.map(d => {
+            const isMoto = d.vehicleType === 'moto';
             return new window.google.maps.Marker({
                 position: { lat: d.lat, lng: d.lng },
                 map,
-                title: `${d.fullName} (${d.vehicleType}) - ${d.etaMinutes} min`,
+                title: `${d.fullName} (${d.vehicleType === 'moto' ? 'Moto' : 'Taxi'}) - ${d.etaMinutes} min`,
                 icon: {
-                    url: d.vehicleType === 'moto'
-                        ? 'https://maps.google.com/mapfiles/ms/icons/motorcycling.png'
-                        : 'https://maps.google.com/mapfiles/ms/icons/cabs.png'
+                    url: isMoto ? svg3DMotoIcon : svg3DTaxiIcon,
+                    scaledSize: new window.google.maps.Size(46, 46),
+                    anchor: new window.google.maps.Point(23, 23)
                 }
             });
         });
@@ -1117,8 +1195,8 @@ export default function Taxi() {
         );
     }, [origin, destination]);
 
-    // 7. Autocomplete Search Handler
-    const handleSearchChange = (val: string) => {
+    // 7. Autocomplete Search Handler strictly restricted to the active city (Calabozo)
+    const handleSearchChange = async (val: string) => {
         setSearchQuery(val);
         if (!val.trim() || val.length < 2) {
             setPredictions([]);
@@ -1134,28 +1212,77 @@ export default function Taxi() {
         setIsSearchingPlaces(true);
         const center = origin || userLocation || defaultCenter;
 
+        // Strict boundary: ~15km radius box around user location in Calabozo / active city
+        const latDelta = 0.14;
+        const lngDelta = 0.14;
+        const cityBounds = new window.google.maps.LatLngBounds(
+            new window.google.maps.LatLng(center.lat - latDelta, center.lng - lngDelta),
+            new window.google.maps.LatLng(center.lat + latDelta, center.lng + lngDelta)
+        );
+
+        // Fetch local businesses matching the query from Supabase to prioritize them
+        let localComerciosPredictions: any[] = [];
+        try {
+            const { data: stores } = await supabase
+                .from('comercios')
+                .select('id, name, address, lat, lng')
+                .ilike('name', `%${val.trim()}%`)
+                .limit(4);
+            if (stores && stores.length > 0) {
+                localComerciosPredictions = stores.map((store: any) => ({
+                    description: `${store.name} - ${store.address || 'Calabozo'}`,
+                    place_id: `comercio_${store.id}`,
+                    structured_formatting: {
+                        main_text: `🏪 ${store.name}`,
+                        secondary_text: store.address || 'Comercio Local Registrado'
+                    },
+                    is_local_store: true,
+                    store_coords: store.lat && store.lng ? { lat: Number(store.lat), lng: Number(store.lng) } : null
+                }));
+            }
+        } catch (_) {}
+
         autocompleteServiceRef.current.getPlacePredictions(
             {
                 input: val,
                 componentRestrictions: { country: 've' },
-                locationBias: new window.google.maps.LatLng(center.lat, center.lng)
+                locationRestriction: cityBounds, // STRICT: No results outside the city allowed!
+                origin: new window.google.maps.LatLng(center.lat, center.lng)
             },
             (results, status) => {
                 setIsSearchingPlaces(false);
-                if (status === window.google.maps.places.PlacesServiceStatus.OK && results) {
-                    setPredictions(results);
-                } else {
-                    setPredictions([]);
-                }
+                const googleResults = (status === window.google.maps.places.PlacesServiceStatus.OK && results) ? results : [];
+                setPredictions([...localComerciosPredictions, ...googleResults]);
             }
         );
     };
 
     // 8. Select Autocomplete Prediction
-    const handleSelectPrediction = (p: google.maps.places.AutocompletePrediction) => {
+    const handleSelectPrediction = (p: any) => {
         vibrate(30);
         setSearchQuery(p.structured_formatting?.main_text || p.description);
         setPredictions([]);
+
+        // Direct select for verified local businesses
+        if (p.is_local_store && p.store_coords) {
+            const destLoc = {
+                lat: p.store_coords.lat,
+                lng: p.store_coords.lng,
+                address: p.description
+            };
+            setDestination(destLoc);
+
+            if (!origin && userLocation) {
+                setOrigin({
+                    lat: userLocation.lat,
+                    lng: userLocation.lng,
+                    address: 'Mi ubicación actual'
+                });
+            }
+
+            setStep('vehicle');
+            return;
+        }
 
         if (!geocoderRef.current && window.google?.maps?.Geocoder) {
             geocoderRef.current = new window.google.maps.Geocoder();
@@ -1614,11 +1741,21 @@ export default function Taxi() {
             } else if (selectedCategory === 'delivery_envios') {
                 orderData.type = 'package_delivery';
                 orderData.package_description = packageNotes || packageDescription || 'Envío de encomienda';
+                const sName = senderName || orderData.user_name;
+                const sPhone = senderPhone ? (senderPhone.startsWith('+58') ? senderPhone : `+58${senderPhone}`) : orderData.user_phone;
+                const rName = receiverName || 'Destinatario por coordinar';
+                const rPhone = receiverPhone ? (receiverPhone.startsWith('+58') ? receiverPhone : `+58${receiverPhone}`) : '';
+
+                orderData.sender_name = sName;
+                orderData.sender_phone = sPhone;
+                orderData.receiver_name = rName;
+                orderData.receiver_phone = rPhone;
+
                 orderData.mandado_details = {
-                    sender_name: senderName || orderData.user_name,
-                    sender_phone: senderPhone ? (senderPhone.startsWith('+58') ? senderPhone : `+58${senderPhone}`) : orderData.user_phone,
-                    receiver_name: receiverName || 'Destinatario por coordinar',
-                    receiver_phone: receiverPhone ? (receiverPhone.startsWith('+58') ? receiverPhone : `+58${receiverPhone}`) : '',
+                    sender_name: sName,
+                    sender_phone: sPhone,
+                    receiver_name: rName,
+                    receiver_phone: rPhone,
                     is_business: isBusinessSender,
                     package_notes: packageNotes || packageDescription || '',
                     google_maps_link: gmapsInputUrl || null,

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
-import { User, Mail, MapPin, CreditCard, LogOut, ShoppingBag, Settings, ChevronRight, Clock, FileText, Bell, Navigation, X, Shield, UploadCloud, CheckCircle2, Save, Image as ImageIcon, Key, Trash2, ArrowLeft, Camera, Truck, ShieldCheck, Smartphone, Fingerprint, Car, Bike, Star, Calendar, Sparkles, AlertTriangle, Wifi, Music, Wind, Check, Lock, Plus, Radio, Edit2 } from 'lucide-react';
+import { User, Mail, MapPin, CreditCard, LogOut, ShoppingBag, Settings, ChevronRight, Clock, FileText, Bell, Navigation, X, Shield, UploadCloud, CheckCircle2, Save, Image as ImageIcon, Key, Trash2, ArrowLeft, Camera, Truck, ShieldCheck, Smartphone, Fingerprint, ScanFace, Car, Bike, Star, Calendar, Sparkles, AlertTriangle, Wifi, Music, Wind, Check, Lock, Plus, Radio, Edit2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { Geolocation } from '@capacitor/geolocation';
 import { Capacitor } from '@capacitor/core';
@@ -15,6 +15,7 @@ import { sendAppNotification, playDriverAlertSound } from '../../services/native
 export default function DriverProfile() {
     const { user, userData } = useAuth();
     const navigate = useNavigate();
+    const isIOS = Capacitor.getPlatform() === 'ios' || (typeof navigator !== 'undefined' && /iPhone|iPad|iPod/i.test(navigator.userAgent));
     const [activeView, setActiveView] = useState<'profile' | 'settings' | 'update_data' | 'location' | 'payment_method' | 'guidelines' | 'payout_frequency' | 'comfort_features' | 'my_vehicles'>('profile');
     const [driverProfile, setDriverProfile] = useState<any>(null);
     const [updatingNotifications, setUpdatingNotifications] = useState(false);
@@ -1653,14 +1654,16 @@ export default function DriverProfile() {
 
                     {/* Biometric Toggle */}
                     <div className="space-y-3 pb-6 border-b border-slate-100">
-                        <label className="block text-xs font-black text-slate-400 uppercase tracking-widest ml-1">Seguridad Biométrica</label>
+                        <label className="block text-xs font-black text-slate-400 uppercase tracking-widest ml-1">
+                            {isIOS ? 'Seguridad Face ID' : 'Seguridad Biométrica'}
+                        </label>
                         <div
                             onClick={() => {
                                 if (!user) return;
                                 const isCurrentlyActive = userData?.biometricLockEnabled !== false;
                                 if (isCurrentlyActive) {
                                     setWarningModalConfig({
-                                        title: '¿Desactivar Bloqueo Biométrico?',
+                                        title: isIOS ? '¿Desactivar Face ID?' : '¿Desactivar Bloqueo Biométrico?',
                                         description: 'Para garantizar el funcionamiento de los pedidos, la seguridad de tu cuenta y el rastreo de rutas, es necesario que mantengas estas opciones activadas.',
                                         onConfirm: async () => {
                                             setUpdatingBiometrics(true);
@@ -1668,7 +1671,7 @@ export default function DriverProfile() {
                                                 await supabase.from('profiles').update({
                                                     biometric_lock_enabled: false
                                                 }).eq('id', user.uid);
-                                                alert('Bloqueo biométrico desactivado');
+                                                alert(isIOS ? 'Face ID desactivado' : 'Bloqueo biométrico desactivado');
                                             } catch (err: any) {
                                                 console.error(err);
                                             } finally {
@@ -1688,9 +1691,9 @@ export default function DriverProfile() {
                                                 biometric_lock_enabled: true,
                                                 biometric_credential_id: biometricData.id
                                             }).eq('id', user.uid);
-                                            alert('Bloqueo biométrico activado');
+                                            alert(isIOS ? 'Bloqueo con Face ID activado con éxito' : 'Bloqueo biométrico activado');
                                         } else {
-                                            alert('No se pudo activar la biometría');
+                                            alert(isIOS ? 'No se pudo activar Face ID' : 'No se pudo activar la biometría');
                                         }
                                     } catch (err: any) {
                                         console.error(err);
@@ -1708,11 +1711,15 @@ export default function DriverProfile() {
                                         ? 'bg-emerald-100 text-emerald-600'
                                         : 'bg-white text-slate-400'
                                 }`}>
-                                    <Fingerprint className="w-5 h-5" />
+                                    {isIOS ? <ScanFace className="w-5 h-5" /> : <Fingerprint className="w-5 h-5" />}
                                 </div>
                                 <div className="flex flex-col">
-                                    <span className="font-bold text-slate-700">Bloqueo de App</span>
-                                    <span className="text-[10px] text-slate-400 font-medium">Usar huella para ingresar</span>
+                                    <span className="font-bold text-slate-700">
+                                        {isIOS ? 'Face ID' : 'Bloqueo de App'}
+                                    </span>
+                                    <span className="text-[10px] text-slate-400 font-medium">
+                                        {isIOS ? 'Usar Face ID para ingresar' : 'Usar huella para ingresar'}
+                                    </span>
                                 </div>
                             </div>
                             <div

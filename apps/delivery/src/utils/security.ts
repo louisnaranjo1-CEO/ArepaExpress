@@ -5,10 +5,19 @@ import { NativeBiometric } from '@capgo/capacitor-native-biometric';
  * Estas funciones permiten registrar y verificar credenciales nativas (huella, cara, etc.)
  */
 
-export const isBiometricSupported = async (): Promise<{ isAvailable: boolean; error?: string }> => {
+export const isIosDevice = (): boolean => {
+  if (typeof window === 'undefined') return false;
+  return (
+    (window as any).Capacitor?.getPlatform() === 'ios' ||
+    /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+    ((navigator as any).platform === 'MacIntel' && navigator.maxTouchPoints > 1)
+  );
+};
+
+export const isBiometricSupported = async (): Promise<{ isAvailable: boolean; biometryType?: any; error?: string }> => {
   try {
     const result = await NativeBiometric.isAvailable();
-    return { isAvailable: result.isAvailable };
+    return { isAvailable: result.isAvailable, biometryType: result.biometryType };
   } catch (error: any) {
     console.error("Error checking biometric support:", error);
     return { isAvailable: false, error: error.message || "Error desconocido" };
@@ -24,12 +33,13 @@ export const registerBiometric = async (userId: string, userEmail: string): Prom
     }
 
     console.log("Requesting identity verification...");
+    const isIos = isIosDevice();
     try {
       await NativeBiometric.verifyIdentity({
-        reason: "Registrar acceso biométrico",
-        title: "Seguridad",
-        subtitle: "Usa tu huella o rostro para proteger tu cuenta",
-        description: "Confirma tu identidad para activar el acceso rápido"
+        reason: isIos ? "Registrar Face ID para acceso seguro" : "Registrar acceso biométrico",
+        title: isIos ? "Face ID" : "Seguridad",
+        subtitle: isIos ? "Confirma tu rostro para proteger tu cuenta" : "Usa tu huella o rostro para proteger tu cuenta",
+        description: isIos ? "Mira fijamente a la cámara para verificar tu Face ID" : "Confirma tu identidad para activar el acceso rápido"
       });
     } catch (e: any) {
       console.error("verifyIdentity failed:", e);
@@ -54,11 +64,12 @@ export const verifyBiometric = async (): Promise<boolean> => {
       throw new Error(support.error || "Biometría no disponible");
     }
 
+    const isIos = isIosDevice();
     await NativeBiometric.verifyIdentity({
-      reason: "Ingresar a Arepa Express",
-      title: "Autenticación Biométrica",
-      subtitle: "Usa tu huella o rostro para ingresar",
-      description: "Por favor, verifica tu identidad",
+      reason: isIos ? "Ingresar con Face ID a Arepa Express" : "Ingresar a Arepa Express",
+      title: isIos ? "Face ID" : "Autenticación Biométrica",
+      subtitle: isIos ? "Confirma tu rostro con Face ID para ingresar" : "Usa tu huella o rostro para ingresar",
+      description: isIos ? "Mira a la cámara para acceder" : "Por favor, verifica tu identidad",
     });
 
     return true;
