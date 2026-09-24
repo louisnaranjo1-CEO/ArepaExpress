@@ -487,17 +487,21 @@ export default function Earnings() {
             return;
         }
         if (!refNumber.trim()) {
-            toast.error('Ingresa el número de referencia del Pago Móvil.');
+            toast.error('Por favor escribe el número de referencia de tu Pago Móvil.');
             return;
         }
 
         setSubmittingPay(true);
         const tId = toast.loading('Subiendo comprobante y registrando pago...');
         try {
+            const driverId = user.id || (user as any).uid;
+            const driverName = driverRow?.full_name || (user as any)?.displayName || 'Conductor';
+            const driverPhone = driverRow?.phone || '';
+
             let receiptUrl = '';
             if (proofFile) {
                 const ext = proofFile.name.split('.').pop() || 'jpg';
-                const filePath = `commission_receipts/${user.uid}_${Date.now()}.${ext}`;
+                const filePath = `commission_receipts/${driverId}_${Date.now()}.${ext}`;
                 const { error: upErr } = await supabase.storage.from('store_assets').upload(filePath, proofFile, { upsert: true });
                 if (!upErr) {
                     const { data: urlData } = supabase.storage.from('store_assets').getPublicUrl(filePath);
@@ -507,22 +511,48 @@ export default function Earnings() {
 
             const currentRate = bcvRate || 1;
             const amountBs = parseFloat((effectiveUsd * currentRate).toFixed(2));
+            const cleanRef = refNumber.trim();
 
             const { error: insErr } = await supabase.from('driver_commission_payments').insert({
-                driver_id: user.uid,
+                driver_id: driverId,
+                driver_name: driverName,
+                driver_phone: driverPhone,
                 amount_usd: effectiveUsd,
                 amount_bs: amountBs,
                 bcv_rate: currentRate,
                 payment_method: 'pago_movil',
-                reference_number: refNumber.trim(),
+                payment_ref: cleanRef,
+                reference_number: cleanRef,
+                proof_url: receiptUrl,
                 receipt_url: receiptUrl,
                 status: 'pending'
             });
 
             if (insErr) throw insErr;
 
-            toast.success('¡Comprobante enviado! La administración revisará tu pago.', { id: tId });
+            // Notify Superadmin
+            try {
+                await supabase.from('notifications').insert({
+                    title: '💰 Reporte de Liquidación de Conductor',
+                    body: `${driverName} reportó un pago de comisiones de $${effectiveUsd.toFixed(2)} USD (${amountBs.toFixed(2)} Bs - Ref: ${cleanRef}).`,
+                    read: false,
+                    data: {
+                        type: 'driver_commission_payment',
+                        driver_id: driverId,
+                        amount_usd: effectiveUsd,
+                        reference: cleanRef,
+                        proof_url: receiptUrl
+                    }
+                });
+            } catch (notifErr) {
+                console.warn('Notification log skipped:', notifErr);
+            }
+
+            toast.success('¡Comprobante enviado! El administrador auditará tu pago.', { id: tId });
             setShowPayModal(false);
+            setRefNumber('');
+            setProofFile(null);
+            setProofPreview(null);
             fetchDriverData();
         } catch (err: any) {
             console.error('Error submitting commission payment:', err);
@@ -1524,11 +1554,20 @@ export default function Earnings() {
                             {/* Submit Button */}
                             <button
                                 type="submit"
-                                disabled={submittingPay || !refNumber.trim()}
-                                className="w-full py-4 bg-emerald-500 hover:bg-emerald-600 disabled:opacity-40 active:scale-98 text-white text-xs font-black uppercase tracking-wider rounded-2xl transition-all shadow-lg shadow-emerald-500/25 flex items-center justify-center gap-2"
+                                disabled={submittingPay}
+                                className="w-full py-4 bg-emerald-500 hover:bg-emerald-600 disabled:opacity-50 active:scale-98 text-white text-xs font-black uppercase tracking-wider rounded-2xl transition-all shadow-lg shadow-emerald-500/25 flex items-center justify-center gap-2 cursor-pointer"
                             >
-                                <CheckCircle2 className="w-4 h-4" />
-                                {submittingPay ? 'Enviando Comprobante...' : 'Enviar Reporte de Pago'}
+                                {submittingPay ? (
+                                    <>
+                                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                                        <span>Enviando Comprobante...</span>
+                                    </>
+                                ) : (
+                                    <>
+                                        <CheckCircle2 className="w-4 h-4" />
+                                        <span>Enviar Reporte de Pago</span>
+                                    </>
+                                )}
                             </button>
                         </form>
                     </div>

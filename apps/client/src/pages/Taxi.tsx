@@ -3595,13 +3595,6 @@ export default function Taxi() {
                                             <p className="text-[11px] text-slate-600 bg-white p-2 rounded-xl border border-slate-200/70">
                                                 💡 Al confirmarse tu conductor, verás sus datos completos de Pago Móvil (Banco, Cédula, Teléfono) y el monto exacto en Bs.
                                             </p>
-                                            <input
-                                                type="text"
-                                                placeholder="Referencia de pago (opcional)"
-                                                value={paymentRef}
-                                                onChange={(e) => setPaymentRef(e.target.value.replace(/\D/g, ''))}
-                                                className="w-full bg-white border border-slate-200 p-2 rounded-xl font-bold text-xs outline-none focus:border-primary"
-                                            />
                                         </div>
                                     )}
                                 </div>
