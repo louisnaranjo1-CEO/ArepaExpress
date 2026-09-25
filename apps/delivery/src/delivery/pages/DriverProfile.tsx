@@ -22,6 +22,7 @@ export default function DriverProfile() {
     const [updatingBiometrics, setUpdatingBiometrics] = useState(false);
     const [updatingLocation, setUpdatingLocation] = useState(false);
     const [activeRaffle, setActiveRaffle] = useState<any>(null);
+    const [footerText, setFooterText] = useState('Deliexpress Driver v2.0 · Estilo Yango');
     const [warningModalConfig, setWarningModalConfig] = useState<{
         title: string;
         description: string;
@@ -71,13 +72,18 @@ export default function DriverProfile() {
                 const data = await driversApi.getDriver(user.uid);
                 if (!isMounted) return;
 
-                // Query real orders, transport requests, points & active raffle
-                const [ordersRes, transportRes, profRes, raffleRes] = await Promise.all([
+                // Query real orders, transport requests, points, active raffle & branding
+                const [ordersRes, transportRes, profRes, raffleRes, brandingRes] = await Promise.all([
                     supabase.from('orders').select('id, rating, status').eq('delivery_driver_id', user.uid),
                     supabase.from('transport_requests').select('id, rating, status').eq('driver_id', user.uid),
                     supabase.from('profiles').select('points').eq('id', user.uid).maybeSingle(),
-                    supabase.from('raffles').select('*').eq('status', 'active').order('created_at', { ascending: false }).limit(1).maybeSingle()
+                    supabase.from('raffles').select('*').eq('status', 'active').order('created_at', { ascending: false }).limit(1).maybeSingle(),
+                    supabase.from('app_branding').select('driver_footer_text').eq('id', 'current').maybeSingle()
                 ]);
+
+                if (brandingRes?.data?.driver_footer_text && isMounted) {
+                    setFooterText(brandingRes.data.driver_footer_text);
+                }
 
                 if (raffleRes?.data && isMounted) {
                     setActiveRaffle(raffleRes.data);
@@ -3022,7 +3028,7 @@ export default function DriverProfile() {
             >
                 <LogOut className="w-5 h-5 text-slate-500" /> Cerrar Sesión
             </button>
-            <p className="text-center text-xs font-medium text-slate-400 mt-4">Deliexpress Driver v2.0 · Estilo Yango</p>
+            <p className="text-center text-xs font-medium text-slate-400 mt-4">{footerText}</p>
         </div>
     );
 }

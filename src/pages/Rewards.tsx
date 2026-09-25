@@ -98,7 +98,7 @@ export default function Rewards() {
     };
 
     return (
-        <div className="min-h-screen bg-slate-50 pb-24">
+        <div className="h-full overflow-y-auto overflow-x-hidden bg-slate-50 pb-36">
             {/* Header */}
             <div className="bg-gradient-to-br from-indigo-900 via-indigo-800 to-indigo-900 px-6 pt-12 pb-8 rounded-b-[2.5rem] relative overflow-hidden shadow-2xl flex-shrink-0">
                 <div className="absolute top-0 right-0 w-64 h-64 bg-white/5 rounded-full blur-3xl -mr-20 -mt-20"></div>

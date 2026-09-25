@@ -102,6 +102,7 @@ export default function Profile() {
     const [activeChatRequestId, setActiveChatRequestId] = useState<string | null>(null);
     const [showAllActivities, setShowAllActivities] = useState(false);
     const [activeRaffle, setActiveRaffle] = useState<any>(null);
+    const [clientFooterText, setClientFooterText] = useState('Hecho con ❤️ en Venezuela');
     const [warningModalConfig, setWarningModalConfig] = useState<{
         title: string;
         description: string;
@@ -118,6 +119,15 @@ export default function Profile() {
             .maybeSingle()
             .then(({ data }) => {
                 if (data) setActiveRaffle(data);
+            });
+
+        supabase
+            .from('app_branding')
+            .select('client_footer_text')
+            .eq('id', 'current')
+            .maybeSingle()
+            .then(({ data }) => {
+                if (data?.client_footer_text) setClientFooterText(data.client_footer_text);
             });
     }, []);
 
@@ -1829,8 +1839,8 @@ export default function Profile() {
 
                                     const itemsToRender = showAllActivities ? filtered : filtered.slice(0, 2);
 
-                                    return (
-                                        <div className="space-y-3">
+                                     return (
+                                        <div className="space-y-2">
                                             {itemsToRender.map(activity => {
                                                 const meta = getActivityCategoryMeta(activity);
                                                 const actDate = activity.created_at ? new Date(activity.created_at) : (activity.createdAt?.toDate ? activity.createdAt.toDate() : (activity.createdAt ? new Date(activity.createdAt) : null));
@@ -1844,29 +1854,29 @@ export default function Profile() {
                                                     <div 
                                                         key={activity.id} 
                                                         onClick={() => setSelectedDetailActivity(activity)}
-                                                        className="bg-white hover:bg-slate-50 border border-slate-200/80 hover:border-amber-400 p-4 rounded-2xl flex flex-col gap-2.5 transition-all cursor-pointer shadow-sm active:scale-[0.99]"
+                                                        className="bg-white hover:bg-slate-50 border border-slate-200/80 hover:border-amber-400 px-3.5 py-2.5 rounded-xl flex flex-col gap-1.5 transition-all cursor-pointer shadow-sm active:scale-[0.99]"
                                                     >
                                                         <div className="flex justify-between items-start gap-2">
-                                                            <div className="flex items-start gap-2.5 min-w-0">
-                                                                <span className="text-2xl select-none shrink-0 p-1.5 bg-slate-100 rounded-xl">{meta.emoji}</span>
+                                                            <div className="flex items-center gap-2 min-w-0">
+                                                                <span className="text-lg select-none shrink-0 p-1 bg-slate-100 rounded-lg">{meta.emoji}</span>
                                                                 <div className="min-w-0">
                                                                     <div className="flex items-center gap-1.5 flex-wrap">
-                                                                        <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-full border ${meta.color}`}>
+                                                                        <span className={`text-[9px] font-black uppercase px-1.5 py-0.2 rounded-md border ${meta.color}`}>
                                                                             {meta.label}
                                                                         </span>
-                                                                        <span className="text-slate-400 text-xs font-mono font-bold">
+                                                                        <span className="text-slate-400 text-[10px] font-mono font-bold">
                                                                             #{activity.id.slice(-5).toUpperCase()}
                                                                         </span>
                                                                     </div>
-                                                                    <p className="font-bold text-slate-800 text-sm truncate mt-1">
+                                                                    <p className="font-bold text-slate-800 text-xs truncate mt-0.5 max-w-[180px] sm:max-w-xs">
                                                                         {isTransport 
                                                                             ? ((activity as any).destination_address || activity.destination?.address || 'Viaje en ruta')
                                                                             : isOrder 
                                                                             ? (activity.restaurantName || (activity as any).restaurant_name || 'Pedido en Tienda')
                                                                             : 'Recarga de Saldo'}
                                                                     </p>
-                                                                    <div className="flex items-center gap-1 text-[11px] text-slate-400 mt-0.5">
-                                                                        <Clock className="w-3 h-3 shrink-0" />
+                                                                    <div className="flex items-center gap-1 text-[10px] text-slate-400 mt-0.5">
+                                                                        <Clock className="w-2.5 h-2.5 shrink-0" />
                                                                         <span>
                                                                             {actDate ? `${actDate.toLocaleDateString()} • ${actDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : 'Reciente'}
                                                                         </span>
@@ -1875,14 +1885,14 @@ export default function Profile() {
                                                             </div>
 
                                                             <div className="text-right shrink-0">
-                                                                <span className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider block mb-1 ${getStatusBadgeClass(activity.status)}`}>
+                                                                <span className={`px-1.5 py-0.5 rounded-md text-[9px] font-black uppercase tracking-wider block mb-0.5 ${getStatusBadgeClass(activity.status)}`}>
                                                                     {getStatusLabel(activity.status, activity.type)}
                                                                 </span>
-                                                                <p className="font-black text-slate-900 text-base">
+                                                                <p className="font-black text-slate-900 text-sm">
                                                                     ${amountUsd.toFixed(2)}
                                                                 </p>
                                                                 {amountBs && (
-                                                                    <p className="text-[10px] font-bold text-slate-500">
+                                                                    <p className="text-[9px] font-bold text-slate-400">
                                                                         {amountBs} Bs
                                                                     </p>
                                                                 )}
@@ -1890,12 +1900,12 @@ export default function Profile() {
                                                         </div>
 
                                                         {/* Quick footer details */}
-                                                        <div className="border-t border-slate-100 pt-2 flex items-center justify-between text-xs text-slate-500">
-                                                            <span className="text-[11px] font-medium text-amber-700">
+                                                        <div className="border-t border-slate-100 pt-1.5 flex items-center justify-between text-[10px] text-slate-500">
+                                                            <span className="text-[10px] font-medium text-amber-700">
                                                                 Toca para ver desglose y soporte →
                                                             </span>
                                                             {isTransport && (activity.status === 'in_progress' || activity.status === 'accepted' || activity.status === 'arriving') && (
-                                                                <span className="text-[10px] font-black uppercase text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full animate-pulse">
+                                                                <span className="text-[9px] font-black uppercase text-blue-600 bg-blue-50 px-1.5 py-0.2 rounded-md animate-pulse">
                                                                     En Vivo
                                                                 </span>
                                                             )}
@@ -2272,7 +2282,7 @@ export default function Profile() {
                     onClick={() => window.location.href = 'https://deliexpress.app'}
                 >
                     <img src={UN2X3_LOGO} alt="Deliexpress" className="h-12 mx-auto mb-2" />
-                    <p className="text-[10px] uppercase tracking-widest font-bold text-slate-400">Hecho con ❤️ en Venezuela</p>
+                    <p className="text-[10px] uppercase tracking-widest font-bold text-slate-400">{clientFooterText}</p>
                 </div>
             </div>
 

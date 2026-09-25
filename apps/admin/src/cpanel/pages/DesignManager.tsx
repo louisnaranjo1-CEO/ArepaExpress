@@ -11,6 +11,8 @@ interface BrandingData {
     app_admin_logo: string;
     app_favicon?: string;
     splash_screen_logo?: string;
+    driver_footer_text?: string;
+    client_footer_text?: string;
 }
 
 const DEFAULT_BRANDING: BrandingData = {
@@ -19,6 +21,8 @@ const DEFAULT_BRANDING: BrandingData = {
     app_driver_logo: 'https://xfialzrbbsdzzcjtefqo.supabase.co/storage/v1/object/public/branding/logos/app_driver_logo_1788875821044.jpg',
     app_restaurant_logo: 'https://xfialzrbbsdzzcjtefqo.supabase.co/storage/v1/object/public/branding/logos/app_restaurant_logo_1788875678044.jpg',
     app_admin_logo: 'https://xfialzrbbsdzzcjtefqo.supabase.co/storage/v1/object/public/branding/logos/app_admin_logo_1788875678335.jpg',
+    driver_footer_text: 'Deliexpress Driver v2.0 · Estilo Yango',
+    client_footer_text: 'Hecho con ❤️ en Venezuela'
 };
 
 export default function DesignManager() {
@@ -53,7 +57,9 @@ export default function DesignManager() {
                     app_restaurant_logo: data.app_restaurant_logo || DEFAULT_BRANDING.app_restaurant_logo,
                     app_admin_logo: data.app_admin_logo || DEFAULT_BRANDING.app_admin_logo,
                     app_favicon: data.app_favicon,
-                    splash_screen_logo: data.splash_screen_logo
+                    splash_screen_logo: data.splash_screen_logo,
+                    driver_footer_text: data.driver_footer_text || DEFAULT_BRANDING.driver_footer_text,
+                    client_footer_text: data.client_footer_text || DEFAULT_BRANDING.client_footer_text
                 });
             }
         } catch (e) {
@@ -198,22 +204,58 @@ export default function DesignManager() {
                 </button>
             </div>
 
-            {/* Brand Name Input */}
-            <div className="bg-white border border-slate-200/80 p-6 md:p-8 rounded-[32px] shadow-sm">
-                <h3 className="text-sm font-black text-slate-900 uppercase tracking-widest mb-4 flex items-center gap-2">
-                    <Sparkles className="w-4 h-4 text-primary" /> Nombre General de la Marca
-                </h3>
-                <div className="max-w-md">
-                    <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1.5 ml-1">
-                        Nombre de la Plataforma
-                    </label>
-                    <input
-                        type="text"
-                        value={branding.app_client_name}
-                        onChange={(e) => setBranding({ ...branding, app_client_name: e.target.value })}
-                        className="w-full bg-slate-50 border-2 border-slate-100 focus:border-primary px-4 py-3.5 rounded-2xl outline-none font-bold text-slate-800 transition-all"
-                        placeholder="Ej: DeliExpress / Encontrado en un 2x3"
-                    />
+            {/* Brand Name & Footers Input */}
+            <div className="bg-white border border-slate-200/80 p-6 md:p-8 rounded-[32px] shadow-sm space-y-6">
+                <div>
+                    <h3 className="text-sm font-black text-slate-900 uppercase tracking-widest mb-4 flex items-center gap-2">
+                        <Sparkles className="w-4 h-4 text-primary" /> Nombre General de la Marca
+                    </h3>
+                    <div className="max-w-md">
+                        <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1.5 ml-1">
+                            Nombre de la Plataforma
+                        </label>
+                        <input
+                            type="text"
+                            value={branding.app_client_name}
+                            onChange={(e) => setBranding({ ...branding, app_client_name: e.target.value })}
+                            className="w-full bg-slate-50 border-2 border-slate-100 focus:border-primary px-4 py-3.5 rounded-2xl outline-none font-bold text-slate-800 transition-all"
+                            placeholder="Ej: DeliExpress / Encontrado en un 2x3"
+                        />
+                    </div>
+                </div>
+
+                <div className="pt-4 border-t border-slate-100 grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block mb-1.5 ml-1">
+                            Texto Pie de Página Conductor (App Driver)
+                        </label>
+                        <input
+                            type="text"
+                            value={branding.driver_footer_text || ''}
+                            onChange={(e) => setBranding({ ...branding, driver_footer_text: e.target.value })}
+                            className="w-full bg-slate-50 border-2 border-slate-100 focus:border-primary px-4 py-3 rounded-2xl outline-none font-bold text-slate-800 text-sm transition-all"
+                            placeholder="Ej: Deliexpress Driver v2.0 · Estilo Yango"
+                        />
+                        <p className="text-[11px] text-slate-400 mt-1 ml-1">
+                            Aparece debajo del botón de Cerrar Sesión en el perfil del conductor.
+                        </p>
+                    </div>
+
+                    <div>
+                        <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block mb-1.5 ml-1">
+                            Texto Pie de Página Cliente (App Cliente)
+                        </label>
+                        <input
+                            type="text"
+                            value={branding.client_footer_text || ''}
+                            onChange={(e) => setBranding({ ...branding, client_footer_text: e.target.value })}
+                            className="w-full bg-slate-50 border-2 border-slate-100 focus:border-primary px-4 py-3 rounded-2xl outline-none font-bold text-slate-800 text-sm transition-all"
+                            placeholder="Ej: Hecho con ❤️ en Venezuela"
+                        />
+                        <p className="text-[11px] text-slate-400 mt-1 ml-1">
+                            Aparece debajo del logo final en el perfil del cliente.
+                        </p>
+                    </div>
                 </div>
             </div>
 

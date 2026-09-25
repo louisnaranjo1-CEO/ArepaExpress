@@ -275,10 +275,14 @@ export default function Home() {
           id: b.id,
           title: b.title,
           subtitle: b.explanation || b.subtitle || '',
+          explanation: b.explanation || b.subtitle || '',
           imageUrl: b.imageUrl,
           linkUrl: b.linkUrl,
+          actionType: b.action_type || b.actionType || 'info_modal',
+          restaurantId: b.restaurant_id || b.restaurantId || '',
           bgColor: b.target_screen || b.targetScreen || '#FEF9C3',
-          isActive: b.isActive
+          isActive: b.isActive,
+          rawBanner: b
         })));
 
         // SUDEBAN Disclaimer config
@@ -1112,6 +1116,19 @@ export default function Home() {
                 cards={cardBanners}
                 disclaimerText={disclaimerText || undefined}
                 showDisclaimer={showDisclaimer}
+                onCardClick={(card) => {
+                  if (card.rawBanner) {
+                    handleBannerClick({ preventDefault: () => {} } as any, card.rawBanner);
+                  } else if (card.linkUrl) {
+                    if (card.linkUrl.startsWith('http://') || card.linkUrl.startsWith('https://')) {
+                      window.open(card.linkUrl, '_blank', 'noopener,noreferrer');
+                    } else {
+                      navigate(card.linkUrl);
+                    }
+                  } else {
+                    setSelectedBannerForModal(card as any);
+                  }
+                }}
               />
             </div>
         </div>

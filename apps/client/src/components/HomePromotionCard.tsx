@@ -7,17 +7,22 @@ export interface CardBannerItem {
   id?: string;
   title: string;
   subtitle?: string;
+  explanation?: string;
   imageUrl?: string;
   linkUrl?: string;
+  actionType?: string;
+  restaurantId?: string;
   bgColor?: string;
   textColor?: string;
   isActive?: boolean;
+  rawBanner?: any;
 }
 
 interface HomePromotionCardProps {
   cards?: CardBannerItem[];
   disclaimerText?: string;
   showDisclaimer?: boolean;
+  onCardClick?: (card: CardBannerItem) => void;
 }
 
 const DEFAULT_DISCLAIMER =
@@ -27,6 +32,7 @@ export default function HomePromotionCard({
   cards,
   disclaimerText = DEFAULT_DISCLAIMER,
   showDisclaimer = true,
+  onCardClick,
 }: HomePromotionCardProps) {
   const navigate = useNavigate();
 
@@ -43,8 +49,13 @@ export default function HomePromotionCard({
         }
       ];
 
-  const handleCardClick = (linkUrl?: string) => {
+  const handleCardClick = (card: CardBannerItem) => {
     vibrate(20);
+    if (onCardClick) {
+      onCardClick(card);
+      return;
+    }
+    const linkUrl = card.linkUrl;
     if (!linkUrl) return;
     if (linkUrl.startsWith('http://') || linkUrl.startsWith('https://')) {
       window.open(linkUrl, '_blank', 'noopener,noreferrer');
@@ -60,7 +71,7 @@ export default function HomePromotionCard({
         {activeCards.map((card, idx) => (
           <div
             key={card.id || idx}
-            onClick={() => handleCardClick(card.linkUrl)}
+            onClick={() => handleCardClick(card)}
             style={{ backgroundColor: card.bgColor || '#FEF9C3' }}
             className="w-[280px] sm:w-[320px] shrink-0 h-[360px] rounded-[2.25rem] border border-amber-200/80 shadow-[0_4px_20px_-4px_rgba(0,0,0,0.06)] p-6 flex flex-col justify-between relative overflow-hidden group cursor-pointer active:scale-[0.98] transition-all snap-start"
           >

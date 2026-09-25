@@ -10,6 +10,9 @@ export interface BannerDetailModalProps {
     subtitle?: string;
     imageUrl?: string;
     image_url?: string;
+    linkUrl?: string;
+    link_url?: string;
+    restaurantId?: string;
   } | null;
   onClose: () => void;
 }
@@ -86,14 +89,38 @@ export default function BannerDetailModal({ banner, onClose }: BannerDetailModal
               </p>
             )}
 
-            <div className="pt-2">
+            <div className="pt-2 flex flex-col gap-2">
+              {banner.linkUrl || banner.link_url || banner.restaurantId || (banner as any).restaurant_id ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    onClose();
+                    const restId = banner.restaurantId || (banner as any).restaurant_id;
+                    const url = banner.linkUrl || banner.link_url;
+                    if (restId) {
+                      window.location.href = `#/restaurant/${restId}`;
+                    } else if (url) {
+                      if (url.startsWith('http://') || url.startsWith('https://')) {
+                        window.open(url, '_blank', 'noopener,noreferrer');
+                      } else {
+                        window.location.href = `#${url.startsWith('/') ? '' : '/'}${url}`;
+                      }
+                    }
+                  }}
+                  className="w-full py-4 bg-primary hover:bg-amber-400 text-slate-900 font-black rounded-2xl shadow-lg shadow-primary/20 flex items-center justify-center gap-2 transition-all active:scale-98"
+                >
+                  <Sparkles className="w-5 h-5" />
+                  Ir a la promoción
+                </button>
+              ) : null}
+
               <button
                 type="button"
                 onClick={onClose}
-                className="w-full py-4 bg-primary hover:bg-amber-400 text-slate-900 font-black rounded-2xl shadow-lg shadow-primary/20 flex items-center justify-center gap-2 transition-all active:scale-98"
+                className="w-full py-3.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-black rounded-2xl flex items-center justify-center gap-2 transition-all active:scale-98 text-sm"
               >
-                <CheckCircle2 className="w-5 h-5" />
-                Entendido
+                <CheckCircle2 className="w-4 h-4 text-slate-500" />
+                Cerrar
               </button>
             </div>
           </div>
