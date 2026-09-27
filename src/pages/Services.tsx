@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { 
     Phone, 
     ShieldAlert, 
@@ -11,18 +11,21 @@ import {
     MapPin, 
     MessageCircle, 
     Search, 
-    ExternalLink, 
+    ArrowLeft,
     Clock, 
     AlertTriangle, 
     LifeBuoy, 
-    CheckCircle2, 
-    Navigation,
     Sparkles,
-    ChevronRight
+    ChevronRight,
+    Globe,
+    Building2,
+    Home
 } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { supabase } from '../lib/supabase';
 import { vibrate } from '../utils/haptics';
 
-interface ServiceItem {
+export interface ServiceItem {
     id: string;
     name: string;
     category: 'emergencias' | 'salud' | 'prehospitalaria' | 'vial' | 'oficios' | 'apoyo';
@@ -36,228 +39,299 @@ interface ServiceItem {
     badgeText?: string;
     zone?: string;
     priority?: boolean;
+    scope: 'nacional' | 'estado' | 'local';
+    city?: string;
+    state?: string;
 }
 
-const SERVICES_DIRECTORY: ServiceItem[] = [
-    // 🚨 EMERGENCIAS CENTRALES 24/7
+const DEFAULT_SERVICES: ServiceItem[] = [
+    // 🚨 EMERGENCIAS NACIONALES (Visibles para todos los usuarios)
     {
         id: 'ven-911',
-        name: 'VEN 911 - Emergencias Nacionales',
+        name: 'VEN 911 - Central de Emergencias',
         category: 'emergencias',
         categoryLabel: 'Emergencias 24/7',
         description: 'Central integral de atención y despacho inmediato para emergencias médicas, seguridad y rescate.',
         phone: '911',
         is24Hours: true,
-        badgeText: 'Línea Gratuita 24h',
+        badgeText: 'Línea Gratuita',
         priority: true,
-        zone: 'Nivel Nacional y Regional'
+        scope: 'nacional',
+        zone: 'Nivel Nacional'
     },
     {
-        id: 'bomberos-central',
-        name: 'Cuerpo de Bomberos',
+        id: 'cicpc-central',
+        name: 'CICPC - Denuncias y Urgencias',
         category: 'emergencias',
         categoryLabel: 'Emergencias 24/7',
-        description: 'Combate de incendios, rescate urbano, contención de fugas de gas y contingencias.',
-        phone: '0800-2662376',
-        whatsapp: '584120000000',
-        address: 'Estación Central de Bomberos',
+        description: 'Cuerpo de Investigaciones Científicas, Penales y Criminalísticas.',
+        phone: '0800-2427224',
         is24Hours: true,
-        badgeText: 'Rescate Inmediato',
-        priority: true,
-        zone: 'Toda la Zona'
+        badgeText: 'Nacional 24h',
+        scope: 'nacional',
+        zone: 'Nivel Nacional'
     },
     {
-        id: 'pnb-policia',
-        name: 'Policía Nacional / Cuadrantes de Paz',
+        id: 'transito-pnb-nacional',
+        name: 'Tránsito y Auxilio Vial PNB',
         category: 'emergencias',
         categoryLabel: 'Emergencias 24/7',
-        description: 'Seguridad ciudadana, prevención y patrullaje de respuesta rápida en cuadrantes comunitarios.',
-        phone: '0800-7654282',
-        is24Hours: true,
-        badgeText: 'Seguridad 24h',
-        zone: 'Cuadrantes de Paz'
-    },
-    {
-        id: 'transito-terrestre',
-        name: 'Tránsito y Asistencia Vial PNB',
-        category: 'emergencias',
-        categoryLabel: 'Emergencias 24/7',
-        description: 'Atención a colisiones, levantamiento de accidentes y control vehicular en arterias viales.',
+        description: 'Atención a colisiones, accidentes en autopistas y auxilio vial.',
         phone: '0800-8726748',
         is24Hours: true,
         badgeText: 'Vialidad Activa',
-        zone: 'Avenidas y Autopistas'
+        scope: 'nacional',
+        zone: 'Autopistas y Troncales'
     },
 
-    // 🚑 PREHOSPITALARIA Y AMBULANCIAS
+    // 🚨 EMERGENCIAS ESTADALES (Guárico / Regional)
     {
-        id: 'ambulancias-paramedicos',
-        name: 'Servicio de Ambulancias Prehospitalarias',
+        id: 'proteccion-civil-guarico',
+        name: 'Protección Civil Guárico',
         category: 'prehospitalaria',
         categoryLabel: 'Pre-Hospitalaria',
-        description: 'Unidades de soporte vital básico y avanzado, traslado de pacientes críticos con paramédicos certificados.',
+        description: 'Atención y rescate en contingencias, crecidas de ríos y contingencias climáticas.',
+        phone: '0800-7248451',
+        is24Hours: true,
+        badgeText: 'Guardia Regional',
+        scope: 'estado',
+        state: 'Guárico',
+        zone: 'Estado Guárico'
+    },
+    {
+        id: 'policia-estadal-guarico',
+        name: 'Policía del Estado Guárico (PoliGuárico)',
+        category: 'emergencias',
+        categoryLabel: 'Emergencias 24/7',
+        description: 'Comandancia general de policía estadal y coordinación de cuadrantes.',
+        phone: '0246-4311020',
+        is24Hours: true,
+        badgeText: 'PoliGuárico',
+        scope: 'estado',
+        state: 'Guárico',
+        zone: 'Estado Guárico'
+    },
+
+    // 🚨 EMERGENCIAS LOCALES CALABOZO
+    {
+        id: 'bomberos-calabozo',
+        name: 'Cuerpo de Bomberos de Calabozo',
+        category: 'emergencias',
+        categoryLabel: 'Emergencias 24/7',
+        description: 'Combate de incendios, rescate urbano y rescate de emergencia en Calabozo.',
+        phone: '0246-8712345',
+        whatsapp: '584120000000',
+        address: 'Estación de Bomberos, Av. Francisco de Miranda, Calabozo',
+        is24Hours: true,
+        badgeText: 'Bomberos Calabozo',
+        priority: true,
+        scope: 'local',
+        city: 'Calabozo',
+        state: 'Guárico',
+        zone: 'Calabozo'
+    },
+    {
+        id: 'hospital-calabozo',
+        name: 'Hospital Dr. Rafael Urdaneta Delgado (Calabozo)',
+        category: 'salud',
+        categoryLabel: 'Clínicas y Salud',
+        description: 'Emergencia de adultos, sala de partos, pediatría y trauma shock 24h.',
+        phone: '0246-8715566',
+        address: 'Carrera 12 con Calle 5, Casco Central, Calabozo',
+        is24Hours: true,
+        badgeText: 'Hospital Central',
+        priority: true,
+        scope: 'local',
+        city: 'Calabozo',
+        state: 'Guárico',
+        zone: 'Calabozo'
+    },
+    {
+        id: 'ambulancias-calabozo',
+        name: 'Ambulancias y Traslados Calabozo',
+        category: 'prehospitalaria',
+        categoryLabel: 'Pre-Hospitalaria',
+        description: 'Unidad de soporte vital y traslados de pacientes dentro y fuera de Calabozo.',
         phone: '0414-5550199',
         whatsapp: '584145550199',
         is24Hours: true,
-        badgeText: 'Ambulancia Móvil',
+        badgeText: 'Ambulancia Local',
         priority: true,
-        zone: 'Zona Metropolitana'
+        scope: 'local',
+        city: 'Calabozo',
+        state: 'Guárico',
+        zone: 'Calabozo y Caseríos'
     },
     {
-        id: 'proteccion-civil',
-        name: 'Protección Civil y Administración de Desastres',
-        category: 'prehospitalaria',
-        categoryLabel: 'Pre-Hospitalaria',
-        description: 'Atención prehospitalaria en sitio, evaluación de riesgos estructurales y primeros auxilios.',
-        phone: '0800-7248451',
-        is24Hours: true,
-        badgeText: 'Guardia Permanente',
-        zone: 'Regional'
-    },
-
-    // 🏥 CLÍNICAS Y SALUD
-    {
-        id: 'hospital-central',
-        name: 'Hospital Central - Emergencia Adultos y Pediátrica',
+        id: 'clinica-centro-calabozo',
+        name: 'Centro Médico Quirúrgico Calabozo',
         category: 'salud',
         categoryLabel: 'Clínicas y Salud',
-        description: 'Atención médica general de emergencia, trauma shock, pabellón de urgencia y cuidados intensivos.',
-        phone: '0273-5321122',
-        address: 'Av. Principal con Calle Hospital',
-        is24Hours: true,
-        badgeText: 'Emergencia Abierta',
-        zone: 'Centro'
-    },
-    {
-        id: 'clinica-urgencias-privada',
-        name: 'Centro Médico Quirúrgico / Urgencias',
-        category: 'salud',
-        categoryLabel: 'Clínicas y Salud',
-        description: 'Servicio de laboratorio clínico 24h, rayos X, ecografía de emergencia y hospitalización.',
-        phone: '0273-5463321',
+        description: 'Servicio de laboratorio clínico 24h, rayos X, ecografía de emergencia y pabellón.',
+        phone: '0246-8718899',
         whatsapp: '584245551234',
-        address: 'Av. Agustín Codazzi, Edif. Quirúrgico',
+        address: 'Calle 4 entre Carreras 9 y 10, Calabozo',
         is24Hours: true,
-        badgeText: 'Clínica 24h',
-        zone: 'Zona Norte'
+        badgeText: 'Clínica Privada',
+        scope: 'local',
+        city: 'Calabozo',
+        state: 'Guárico',
+        zone: 'Calabozo'
     },
     {
-        id: 'farmacia-turno',
-        name: 'Farmacia de Turno Nocturno',
+        id: 'farmacia-calabozo-24h',
+        name: 'Farmacia de Turno Calabozo',
         category: 'salud',
         categoryLabel: 'Clínicas y Salud',
-        description: 'Despacho de medicamentos de emergencia, insumos médicos descartables y fórmulas infantiles.',
+        description: 'Medicamentos de urgencia, soluciones fisiológicas e insumos médicos descartables.',
         phone: '0412-8889911',
         whatsapp: '584128889911',
-        address: 'Av. 23 de Enero, Local 4',
+        address: 'Av. Octavio Viana, Local 2, Calabozo',
         is24Hours: true,
         badgeText: 'Turno 24 Horas',
-        zone: 'Avenida Principal'
+        scope: 'local',
+        city: 'Calabozo',
+        state: 'Guárico',
+        zone: 'Calabozo'
     },
-
-    // 🚗 AUXILIO VIAL Y GRÚAS
     {
-        id: 'gruas-express-24h',
-        name: 'Grúas y Remolque Rápido 24H',
+        id: 'gruas-calabozo',
+        name: 'Grúas y Auxilio Vial Calabozo 24H',
         category: 'vial',
         categoryLabel: 'Auxilio Vial',
-        description: 'Remolque de vehículos ligeros, camionetas y motos en plataforma. Rescate en carretera.',
+        description: 'Plataforma para remolque de autos, camionetas y camiones en la Carretera Nacional Calabozo.',
         phone: '0424-5112233',
         whatsapp: '584245112233',
         is24Hours: true,
-        badgeText: 'Grúa Inmediata',
-        zone: 'Radio 50 km'
+        badgeText: 'Grúas Calabozo',
+        scope: 'local',
+        city: 'Calabozo',
+        state: 'Guárico',
+        zone: 'Calabozo y Troncal 2'
     },
     {
-        id: 'auxilio-baterias-mecanica',
-        name: 'Mecánico a Domicilio y Baterías',
-        category: 'vial',
-        categoryLabel: 'Auxilio Vial',
-        description: 'Paso de corriente, diagnóstico computarizado móvil, venta e instalación de baterías a domicilio.',
-        phone: '0414-9988776',
-        whatsapp: '584149988776',
-        is24Hours: false,
-        badgeText: '7:00 AM - 10:00 PM',
-        zone: 'Toda la ciudad'
-    },
-    {
-        id: 'cauchos-gomeria',
-        name: 'Cauchería Móvil / Reparación de Neumáticos',
-        category: 'vial',
-        categoryLabel: 'Auxilio Vial',
-        description: 'Parcheo express en sitio, cambio de repuesto y calibración de aire a domicilio.',
-        phone: '0416-7788990',
-        whatsapp: '584167788990',
-        is24Hours: true,
-        badgeText: 'Servicio Móvil',
-        zone: 'Urbano'
-    },
-
-    // 🛠️ SERVICIOS Y OFICIOS DE EMERGENCIA
-    {
-        id: 'cerrajeria-24h',
-        name: 'Cerrajería Residencial y Automotriz 24H',
+        id: 'cerrajero-calabozo',
+        name: 'Cerrajería de Urgencia Calabozo 24H',
         category: 'oficios',
         categoryLabel: 'Servicios del Hogar',
-        description: 'Apertura express de puertas trabadas, cerraduras de seguridad, candados y llaves codificadas.',
+        description: 'Apertura de puertas residenciales y vehículos trabados a cualquier hora.',
         phone: '0412-3344556',
         whatsapp: '584123344556',
         is24Hours: true,
         badgeText: 'Cerrajería 24h',
-        zone: 'A domicilio'
-    },
-    {
-        id: 'electricista-urgencias',
-        name: 'Electricista Certificado - Cortocircuitos',
-        category: 'oficios',
-        categoryLabel: 'Servicios del Hogar',
-        description: 'Reparación de tableros eléctricos, caídas de fase, brequeras quemadas y reconexiones seguras.',
-        phone: '0424-6677889',
-        whatsapp: '584246677889',
-        is24Hours: true,
-        badgeText: 'Guardia Eléctrica',
-        zone: 'Sector Residencial y Comercial'
-    },
-    {
-        id: 'plomeria-destapes',
-        name: 'Plomería y Destape de Tuberías',
-        category: 'oficios',
-        categoryLabel: 'Servicios del Hogar',
-        description: 'Contención de fugas de agua potable, bombas hidroneumáticas, filtraciones y destapes con guaya eléctrica.',
-        phone: '0414-2233445',
-        whatsapp: '584142233445',
-        is24Hours: false,
-        badgeText: '6:00 AM - 9:00 PM',
-        zone: 'Casco urbano'
+        scope: 'local',
+        city: 'Calabozo',
+        state: 'Guárico',
+        zone: 'A domicilio en Calabozo'
     }
 ];
 
 export default function Services() {
+    const navigate = useNavigate();
     const [searchQuery, setSearchQuery] = useState('');
     const [selectedCategory, setSelectedCategory] = useState<string>('todos');
+    const [zoneFilter, setZoneFilter] = useState<'todos' | 'local' | 'nacional'>('todos');
+    const [dbServices, setDbServices] = useState<ServiceItem[]>([]);
+    const [loading, setLoading] = useState(false);
 
+    const userCity = localStorage.getItem('userCity') || 'Calabozo';
+    const userState = localStorage.getItem('userState') || 'Guárico';
+
+    // Fetch emergency services configured by superadmin
+    useEffect(() => {
+        const fetchDbServices = async () => {
+            setLoading(true);
+            try {
+                const { data, error } = await supabase
+                    .from('emergency_services')
+                    .select('*')
+                    .eq('is_active', true);
+
+                if (data && data.length > 0) {
+                    const formatted = data.map((d: any) => ({
+                        id: d.id,
+                        name: d.name,
+                        category: d.category || 'emergencias',
+                        categoryLabel: d.category_label || 'Emergencias 24/7',
+                        description: d.description || '',
+                        phone: d.phone,
+                        whatsapp: d.whatsapp,
+                        address: d.address,
+                        is24Hours: d.is_24_hours ?? true,
+                        badgeText: d.badge_text,
+                        priority: Boolean(d.priority),
+                        scope: d.scope || 'local',
+                        city: d.city,
+                        state: d.state,
+                        zone: d.zone || d.city || 'Local'
+                    }));
+                    setDbServices(formatted);
+                }
+            } catch (err) {
+                console.warn("Using default emergency directory:", err);
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        fetchDbServices();
+    }, []);
+
+    // Combine database entries with defaults (avoiding ID duplicates)
+    const allServices = useMemo(() => {
+        const combined = [...dbServices];
+        const existingIds = new Set(combined.map(s => s.id));
+        DEFAULT_SERVICES.forEach(s => {
+            if (!existingIds.has(s.id)) {
+                combined.push(s);
+            }
+        });
+        return combined;
+    }, [dbServices]);
+
+    // Categories list
     const categories = [
         { id: 'todos', label: 'Todos', icon: Sparkles },
-        { id: 'emergencias', label: '🚨 Emergencias 24/7', icon: ShieldAlert },
+        { id: 'emergencias', label: '🚨 Emergencias', icon: ShieldAlert },
         { id: 'salud', label: '🏥 Clínicas & Salud', icon: HeartPulse },
-        { id: 'prehospitalaria', label: '🚑 Pre-Hospitalaria', icon: Ambulance },
+        { id: 'prehospitalaria', label: '🚑 Ambulancias', icon: Ambulance },
         { id: 'vial', label: '🚗 Auxilio Vial', icon: Car },
-        { id: 'oficios', label: '🛠️ Servicios Técnicos', icon: Wrench },
+        { id: 'oficios', label: '🛠️ Oficios 24h', icon: Wrench },
     ];
 
+    // Filter services according to user zone and active filters
     const filteredServices = useMemo(() => {
-        return SERVICES_DIRECTORY.filter((item) => {
+        return allServices.filter((item) => {
+            // Zone compatibility check:
+            // 1. National numbers always match
+            // 2. State numbers match if user state matches
+            // 3. Local numbers match if user city matches (or if item.city matches userCity)
+            const isNational = item.scope === 'nacional';
+            const isSameState = item.scope === 'estado' && (!item.state || item.state.toLowerCase() === userState.toLowerCase());
+            const isSameCity = item.scope === 'local' && (!item.city || item.city.toLowerCase() === userCity.toLowerCase());
+
+            const isZoneCompatible = isNational || isSameState || isSameCity;
+            if (!isZoneCompatible) return false;
+
+            // Interactive zone filter
+            if (zoneFilter === 'local' && (isNational || item.scope === 'estado')) return false;
+            if (zoneFilter === 'nacional' && !isNational) return false;
+
+            // Category filter
             const matchesCategory = selectedCategory === 'todos' || item.category === selectedCategory;
+
+            // Search query filter
             const q = searchQuery.toLowerCase().trim();
             const matchesQuery = !q || 
                 item.name.toLowerCase().includes(q) || 
                 item.description.toLowerCase().includes(q) || 
                 item.categoryLabel.toLowerCase().includes(q) ||
-                (item.zone && item.zone.toLowerCase().includes(q));
+                (item.zone && item.zone.toLowerCase().includes(q)) ||
+                (item.city && item.city.toLowerCase().includes(q));
 
             return matchesCategory && matchesQuery;
         });
-    }, [selectedCategory, searchQuery]);
+    }, [allServices, userCity, userState, zoneFilter, selectedCategory, searchQuery]);
 
     const handleCall = (phone: string) => {
         vibrate(40);
@@ -273,52 +347,102 @@ export default function Services() {
     return (
         <div className="min-h-full bg-slate-50 flex flex-col pb-24 overflow-y-auto hide-scrollbar">
             {/* Header Hero */}
-            <div className="bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-900 text-white px-5 pt-8 pb-6 shadow-xl relative overflow-hidden">
-                <div className="absolute top-0 right-0 w-64 h-64 bg-primary/10 rounded-full blur-3xl pointer-events-none" />
+            <div className="bg-gradient-to-br from-rose-700 via-red-700 to-slate-900 text-white px-5 pt-6 pb-6 shadow-xl relative overflow-hidden">
+                <div className="absolute top-0 right-0 w-64 h-64 bg-white/10 rounded-full blur-3xl pointer-events-none" />
+                
+                {/* Back button */}
+                <button
+                    onClick={() => navigate('/')}
+                    className="mb-3 inline-flex items-center gap-1.5 text-xs font-black uppercase tracking-wider text-rose-200 hover:text-white bg-white/10 px-3 py-1.5 rounded-full transition-all active:scale-95"
+                >
+                    <ArrowLeft className="w-3.5 h-3.5" />
+                    <span>Volver a Inicio</span>
+                </button>
+
                 <div className="relative z-10">
-                    <div className="flex items-center gap-2 mb-2">
-                        <div className="w-8 h-8 rounded-xl bg-rose-500/20 text-rose-400 flex items-center justify-center ring-1 ring-rose-500/40">
-                            <LifeBuoy className="w-5 h-5 animate-pulse" />
+                    <div className="flex items-center gap-2 mb-1.5">
+                        <div className="w-8 h-8 rounded-xl bg-white/20 text-white flex items-center justify-center ring-1 ring-white/30">
+                            <ShieldAlert className="w-5 h-5 animate-pulse" />
                         </div>
-                        <span className="text-[11px] font-black uppercase tracking-widest text-rose-400">
-                            Asistencia & Servicios de la Zona
+                        <span className="text-[11px] font-black uppercase tracking-widest text-rose-200">
+                            Central de Emergencias & Asistencia
                         </span>
                     </div>
+
                     <h1 className="text-2xl font-black tracking-tight text-white mb-1">
-                        Servicios y Emergencias
+                        Emergencias 24/7
                     </h1>
-                    <p className="text-xs text-slate-300 font-medium leading-relaxed max-w-sm">
-                        Directorio de respuesta inmediata: ambulancias, bomberos, clínicas, auxilio vial y oficios a tu disposición.
-                    </p>
+
+                    <div className="flex items-center gap-2 text-xs text-rose-100 font-bold mb-3">
+                        <MapPin className="w-3.5 h-3.5 text-yellow-300" />
+                        <span>Mostrando números para: <span className="underline decoration-yellow-300 font-black">{userCity}, {userState}</span></span>
+                    </div>
 
                     {/* SOS Fast Call Pill */}
-                    <div className="mt-4 p-3 bg-rose-600/30 border border-rose-500/40 rounded-2xl flex items-center justify-between gap-3 shadow-inner">
+                    <div className="p-3.5 bg-white/15 border border-white/25 rounded-2xl flex items-center justify-between gap-3 shadow-inner">
                         <div className="flex items-center gap-2.5">
-                            <div className="w-9 h-9 rounded-xl bg-rose-600 flex items-center justify-center text-white font-black shrink-0 shadow-md">
-                                <Phone className="w-4 h-4 animate-bounce" />
+                            <div className="w-10 h-10 rounded-2xl bg-white flex items-center justify-center text-rose-600 font-black shrink-0 shadow-md">
+                                <Phone className="w-5 h-5 animate-bounce" />
                             </div>
                             <div>
-                                <div className="text-[10px] font-bold text-rose-300 uppercase tracking-wider">
-                                    Línea de Emergencia 911
+                                <div className="text-[10px] font-black text-rose-200 uppercase tracking-wider">
+                                    Línea Gratuita Nacional
                                 </div>
-                                <div className="text-sm font-black text-white leading-none">
-                                    Llamada Inmediata Gratuita
+                                <div className="text-base font-black text-white leading-none">
+                                    VEN 911 Directo
                                 </div>
                             </div>
                         </div>
                         <button
                             onClick={() => handleCall('911')}
-                            className="bg-rose-500 hover:bg-rose-600 active:scale-95 text-white font-black text-xs px-4 py-2 rounded-xl shadow-lg transition-all flex items-center gap-1.5"
+                            className="bg-white hover:bg-rose-50 active:scale-95 text-rose-700 font-black text-xs px-4 py-2.5 rounded-xl shadow-lg transition-all flex items-center gap-1.5"
                         >
-                            <span>Llamar</span>
+                            <span>Llamar 911</span>
                             <ChevronRight className="w-4 h-4" />
                         </button>
                     </div>
                 </div>
             </div>
 
-            {/* Sticky Search & Category Bar */}
-            <div className="sticky top-0 z-30 bg-slate-50/95 backdrop-blur-md px-5 pt-4 pb-2 space-y-3 border-b border-slate-200/60 shadow-sm">
+            {/* Zone Filter & Search Bar */}
+            <div className="sticky top-0 z-30 bg-slate-50/95 backdrop-blur-md px-5 pt-3 pb-2 space-y-2.5 border-b border-slate-200/60 shadow-sm">
+                {/* Zone Toggle Pill (Local vs Nacional) */}
+                <div className="flex items-center gap-1.5 p-1 bg-slate-200/70 rounded-2xl text-[11px] font-black">
+                    <button
+                        onClick={() => {
+                            vibrate(20);
+                            setZoneFilter('todos');
+                        }}
+                        className={`flex-1 py-1.5 rounded-xl text-center transition-all ${
+                            zoneFilter === 'todos' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-600'
+                        }`}
+                    >
+                        Todos ({allServices.length})
+                    </button>
+                    <button
+                        onClick={() => {
+                            vibrate(20);
+                            setZoneFilter('local');
+                        }}
+                        className={`flex-1 py-1.5 rounded-xl text-center transition-all ${
+                            zoneFilter === 'local' ? 'bg-rose-600 text-white shadow-sm' : 'text-slate-600'
+                        }`}
+                    >
+                        📍 {userCity}
+                    </button>
+                    <button
+                        onClick={() => {
+                            vibrate(20);
+                            setZoneFilter('nacional');
+                        }}
+                        className={`flex-1 py-1.5 rounded-xl text-center transition-all ${
+                            zoneFilter === 'nacional' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-600'
+                        }`}
+                    >
+                        🇻🇪 Nacionales
+                    </button>
+                </div>
+
                 {/* Search Box */}
                 <div className="relative">
                     <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
@@ -326,8 +450,8 @@ export default function Services() {
                         type="text"
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
-                        placeholder="Buscar clínica, grúa, cerrajero, policía..."
-                        className="w-full bg-white border border-slate-200 pl-10 pr-4 py-2.5 rounded-2xl text-xs font-semibold text-slate-900 placeholder:text-slate-400 shadow-sm focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary transition-all"
+                        placeholder={`Buscar en ${userCity} (policía, bomberos, hospital, grúa)...`}
+                        className="w-full bg-white border border-slate-200 pl-10 pr-4 py-2.5 rounded-2xl text-xs font-semibold text-slate-900 placeholder:text-slate-400 shadow-sm focus:outline-none focus:ring-2 focus:ring-rose-500/40 focus:border-rose-500 transition-all"
                     />
                     {searchQuery && (
                         <button
@@ -339,7 +463,7 @@ export default function Services() {
                     )}
                 </div>
 
-                {/* Category Pills Slider */}
+                {/* Category Pills */}
                 <div className="flex gap-2 overflow-x-auto hide-scrollbar pb-1">
                     {categories.map((cat) => {
                         const isSelected = selectedCategory === cat.id;
@@ -364,18 +488,20 @@ export default function Services() {
             </div>
 
             {/* Services List */}
-            <div className="px-5 pt-4 space-y-3.5">
+            <div className="px-5 pt-3 space-y-3">
                 <div className="flex items-center justify-between text-xs font-bold text-slate-500 px-1">
-                    <span>{filteredServices.length} servicios disponibles</span>
-                    {searchQuery && <span>Filtro: "{searchQuery}"</span>}
+                    <span>{filteredServices.length} contactos de emergencia</span>
+                    <span className="text-[10px] text-rose-600 font-black uppercase">
+                        Zona: {zoneFilter === 'local' ? userCity : zoneFilter === 'nacional' ? 'Venezuela' : 'Total'}
+                    </span>
                 </div>
 
                 {filteredServices.length === 0 ? (
                     <div className="bg-white rounded-3xl p-8 border border-slate-200 text-center shadow-sm space-y-2 mt-4">
                         <AlertTriangle className="w-10 h-10 text-amber-500 mx-auto" />
-                        <h3 className="text-sm font-black text-slate-800">No encontramos coincidencias</h3>
+                        <h3 className="text-sm font-black text-slate-800">No encontramos servicios con este filtro</h3>
                         <p className="text-xs text-slate-500 leading-relaxed max-w-xs mx-auto">
-                            Prueba buscando con palabras como "grúa", "médico", "fuego", "policía" o "batería".
+                            Prueba cambiando el filtro de zona o el término de búsqueda.
                         </p>
                     </div>
                 ) : (
@@ -391,12 +517,6 @@ export default function Services() {
                                         : 'border-slate-200/80'
                                 }`}
                             >
-                                {isEmergency && (
-                                    <div className="absolute top-0 right-0 bg-rose-500 text-white text-[9px] font-black uppercase px-3 py-0.5 rounded-bl-xl shadow-sm tracking-wider">
-                                        Prioridad
-                                    </div>
-                                )}
-
                                 <div className="flex items-start gap-3">
                                     <div
                                         className={`w-11 h-11 rounded-2xl flex items-center justify-center shrink-0 shadow-sm ${
@@ -422,19 +542,13 @@ export default function Services() {
                                         )}
                                     </div>
 
-                                    <div className="flex-1 min-w-0 pr-8">
-                                        <div className="flex items-center gap-2 flex-wrap mb-0.5">
-                                            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
-                                                {item.categoryLabel}
+                                    <div className="flex-1 min-w-0 pr-2">
+                                        <div className="flex items-center gap-1.5 flex-wrap mb-0.5">
+                                            <span className="text-[10px] font-black text-rose-600 uppercase tracking-wider">
+                                                {item.scope === 'local' ? `📍 ${item.city || userCity}` : item.scope === 'estado' ? `🏛️ ${item.state || userState}` : '🇻🇪 Nacional'}
                                             </span>
                                             {item.badgeText && (
-                                                <span
-                                                    className={`text-[9px] font-black px-2 py-0.5 rounded-full ${
-                                                        item.is24Hours
-                                                            ? 'bg-emerald-100 text-emerald-800'
-                                                            : 'bg-slate-100 text-slate-700'
-                                                    }`}
-                                                >
+                                                <span className="text-[9px] font-bold bg-slate-100 text-slate-700 px-2 py-0.5 rounded-full">
                                                     {item.badgeText}
                                                 </span>
                                             )}
@@ -449,15 +563,9 @@ export default function Services() {
                                         </p>
 
                                         {item.address && (
-                                            <div className="flex items-center gap-1 text-[11px] text-slate-400 mt-2 font-medium">
+                                            <div className="flex items-center gap-1 text-[11px] text-slate-400 mt-1.5 font-medium">
                                                 <MapPin className="w-3.5 h-3.5 shrink-0 text-slate-400" />
                                                 <span className="truncate">{item.address}</span>
-                                            </div>
-                                        )}
-
-                                        {item.zone && (
-                                            <div className="text-[10px] font-bold text-indigo-600 mt-1">
-                                                📍 Cobertura: {item.zone}
                                             </div>
                                         )}
                                     </div>
@@ -467,9 +575,9 @@ export default function Services() {
                                 <div className="mt-3.5 pt-3 border-t border-slate-100 flex items-center gap-2">
                                     <button
                                         onClick={() => handleCall(item.phone)}
-                                        className="flex-1 py-2.5 px-3 bg-slate-900 hover:bg-slate-800 active:scale-95 text-white font-black text-xs rounded-xl shadow-md transition-all flex items-center justify-center gap-2"
+                                        className="flex-1 py-2.5 px-3 bg-rose-600 hover:bg-rose-700 active:scale-95 text-white font-black text-xs rounded-xl shadow-md transition-all flex items-center justify-center gap-2"
                                     >
-                                        <Phone className="w-3.5 h-3.5 text-primary" />
+                                        <Phone className="w-3.5 h-3.5 text-yellow-300" />
                                         <span>Llamar: {item.phone}</span>
                                     </button>
 

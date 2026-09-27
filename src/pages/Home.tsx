@@ -1,4 +1,4 @@
-import { MapPin, ChevronDown, ChevronRight, Bell, Search, SlidersHorizontal, Utensils, Star, Heart, Clock, Store, Truck, Zap, Tag, X, Layout, Gift, ArrowUp, Map as MapIcon } from 'lucide-react';
+import { MapPin, ChevronDown, ChevronRight, Bell, Search, SlidersHorizontal, Utensils, Star, Heart, Clock, Store, Truck, Zap, Tag, X, Layout, Gift, ArrowUp, Map as MapIcon, ShieldAlert } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useState, useEffect, useMemo } from 'react';
@@ -1106,8 +1106,46 @@ export default function Home() {
             )}
             </div>
 
+            {/* 🚨 BOTÓN DESTACADO DE EMERGENCIAS (Justo arriba de las tarjetas informativas) */}
+            <div className="mt-8 px-1">
+              <button
+                type="button"
+                onClick={() => {
+                  vibrate(40);
+                  navigate('/services');
+                }}
+                className="w-full bg-gradient-to-r from-rose-600 via-red-600 to-rose-700 hover:from-rose-500 hover:to-rose-600 text-white rounded-3xl p-4 shadow-xl shadow-rose-600/30 flex items-center justify-between transition-all active:scale-98 ring-2 ring-rose-300/40 relative overflow-hidden group text-left"
+              >
+                <div className="absolute right-0 top-0 w-32 h-32 bg-white/10 rounded-full blur-2xl pointer-events-none" />
+                <div className="flex items-center gap-3.5 relative z-10 min-w-0">
+                  <div className="w-12 h-12 rounded-2xl bg-white/20 backdrop-blur-sm text-white flex items-center justify-center font-black shrink-0 shadow-md ring-1 ring-white/30">
+                    <ShieldAlert className="w-6 h-6 animate-pulse text-yellow-300" />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] font-black uppercase tracking-widest text-rose-200">
+                        Asistencia 24 Horas
+                      </span>
+                      <span className="w-2 h-2 rounded-full bg-yellow-300 animate-ping" />
+                    </div>
+                    <h3 className="text-base font-black text-white leading-tight">
+                      Emergencias
+                    </h3>
+                    <p className="text-[11px] text-rose-100 font-semibold truncate">
+                      Ambulancias, Bomberos, Policía y Salud en {locationName || 'tu ciudad'}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="bg-white text-rose-700 px-3.5 py-2 rounded-xl text-xs font-black uppercase tracking-wider shrink-0 shadow-md flex items-center gap-1 group-hover:translate-x-0.5 transition-transform relative z-10">
+                  <span>Abrir</span>
+                  <ChevronRight className="w-3.5 h-3.5" />
+                </div>
+              </button>
+            </div>
+
             {/* 6. Card Banner & SUDEBAN Legal Disclaimer at the very end of scroll (Matching Image 2) */}
-            <div className="mt-8">
+            <div className="mt-6">
               <HomePromotionCard
                 cards={cardBanners}
                 disclaimerText={disclaimerText || undefined}
