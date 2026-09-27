@@ -178,7 +178,7 @@ export default function ActiveTasksWidget() {
                 let ordersQuery = supabase
                     .from('orders')
                     .select('*')
-                    .in('status', ['pending', 'payment_review', 'confirmed', 'preparing', 'ready', 'on_way', 'arrived'])
+                    .in('status', ['pending', 'pendiente_pago', 'pending_verification', 'action_required', 'awaiting_payment', 'awaiting_delivery_payment', 'verificando_pago_delivery', 'confirmed', 'preparing', 'buscando_piloto', 'en_camino', 'ready', 'on_way', 'in_transit', 'arrived'])
                     .order('created_at', { ascending: false })
                     .limit(3);
 
@@ -370,30 +370,42 @@ export default function ActiveTasksWidget() {
                 const isPendingPayment = (o.payment_status === 'pending' || !o.payment_proof_url) && o.status === 'pending';
                 const isPaymentReview = o.status === 'payment_review' || (o.payment_proof_url && o.payment_status !== 'paid' && o.status === 'pending');
 
-                if (isPendingPayment) {
-                    subtitle = 'Pago pendiente de validación • Envía tu comprobante para despachar';
-                    badgeStatus = 'Pendiente Pago';
-                    badgeColor = 'bg-rose-500 text-white font-black';
-                } else if (isPaymentReview) {
-                    subtitle = 'Comprobante en revisión por la tienda...';
-                    badgeStatus = 'Revisando Pago';
-                    badgeColor = 'bg-amber-400 text-slate-950 font-black';
-                } else if (o.status === 'confirmed' || o.status === 'preparing') {
-                    subtitle = 'La tienda está preparando tu pedido con esmero';
-                    badgeStatus = 'Preparando';
-                    badgeColor = 'bg-orange-500 text-white font-black';
-                } else if (o.status === 'ready') {
-                    subtitle = '¡Listo en el comercio! Esperando asignación de repartidor';
+                if (['pending', 'pendiente_pago', 'awaiting_payment'].includes(o.status)) {
+                    subtitle = 'Pago pendiente • Toca para revisar datos y reportar tu pago';
+                    badgeStatus = 'Por Pagar';
+                    badgeColor = 'bg-amber-300 text-slate-950 font-black';
+                } else if (['pending_verification', 'verificando_pago_delivery', 'payment_review'].includes(o.status)) {
+                    subtitle = 'El comercio está verificando tu pago...';
+                    badgeStatus = 'Verificando';
+                    badgeColor = 'bg-amber-300 text-slate-950 font-black';
+                } else if (['awaiting_delivery_payment'].includes(o.status)) {
+                    subtitle = 'Comida lista • Paga el flete para activar el radar de pilotos';
+                    badgeStatus = 'Pagar Envío';
+                    badgeColor = 'bg-orange-300 text-slate-950 font-black';
+                } else if (['confirmed', 'preparing'].includes(o.status)) {
+                    subtitle = '🔥 ¡El comercio está preparando tu comida con esmero!';
+                    badgeStatus = 'En Cocina';
+                    badgeColor = 'bg-emerald-300 text-slate-950 font-black animate-pulse';
+                } else if (['buscando_piloto'].includes(o.status)) {
+                    subtitle = '📡 Conectando con pilotos de delivery cercanos...';
+                    badgeStatus = 'Buscando Piloto';
+                    badgeColor = 'bg-amber-300 text-slate-950 font-black animate-pulse';
+                } else if (['en_camino'].includes(o.status)) {
+                    subtitle = '🛵 Piloto va en camino al local a retirar tu pedido';
+                    badgeStatus = 'Piloto Asignado';
+                    badgeColor = 'bg-sky-300 text-slate-950 font-black';
+                } else if (['ready'].includes(o.status)) {
+                    subtitle = '¡Listo en el comercio! Esperando retiro del piloto';
                     badgeStatus = 'Listo';
-                    badgeColor = 'bg-emerald-500 text-white font-black';
-                } else if (o.status === 'on_way') {
-                    subtitle = 'Repartidor en camino a tu dirección de entrega';
-                    badgeStatus = 'En ruta';
-                    badgeColor = 'bg-sky-500 text-white font-black';
-                } else if (o.status === 'arrived') {
-                    subtitle = '¡El repartidor está afuera en tu puerta!';
+                    badgeColor = 'bg-emerald-300 text-slate-950 font-black';
+                } else if (['on_way', 'in_transit'].includes(o.status)) {
+                    subtitle = '🛵 ¡Tu pedido va en camino a tu dirección de entrega!';
+                    badgeStatus = 'En Camino';
+                    badgeColor = 'bg-emerald-300 text-slate-950 font-black animate-pulse';
+                } else if (['arrived'].includes(o.status)) {
+                    subtitle = '🔔 ¡El repartidor está afuera en tu puerta!';
                     badgeStatus = '¡Afuera!';
-                    badgeColor = 'bg-emerald-500 text-white font-black animate-pulse';
+                    badgeColor = 'bg-emerald-300 text-slate-950 font-black animate-pulse';
                 }
 
                 activeList.push({
@@ -625,7 +637,9 @@ export default function ActiveTasksWidget() {
                         <div
                             key={task.id}
                             className={`rounded-3xl border transition-all relative overflow-hidden shadow-lg hover:shadow-xl ${
-                                isArriving
+                                task.type === 'order'
+                                    ? 'bg-gradient-to-r from-orange-600 via-amber-600 to-rose-600 text-white border-orange-400 ring-2 ring-orange-300/40 shadow-orange-500/20'
+                                    : isArriving
                                     ? 'bg-gradient-to-r from-emerald-600 via-teal-700 to-emerald-800 text-white border-emerald-400 ring-2 ring-emerald-400/50'
                                     : isInProgress
                                     ? 'bg-gradient-to-r from-slate-950 via-slate-900 to-indigo-950 text-white border-slate-800'
@@ -649,7 +663,7 @@ export default function ActiveTasksWidget() {
                                     <div className="flex items-center gap-2 min-w-0">
                                         <div
                                             className={`w-9 h-9 rounded-2xl flex items-center justify-center shrink-0 shadow-sm ${
-                                                isArriving || isInProgress
+                                                task.type === 'order' || isArriving || isInProgress
                                                     ? 'bg-white/20 text-white'
                                                     : 'bg-slate-950/15 text-slate-950'
                                             }`}
@@ -697,7 +711,7 @@ export default function ActiveTasksWidget() {
                                         {task.price !== undefined && task.price > 0 && (
                                             <div
                                                 className={`text-right px-2 py-0.5 rounded-xl ${
-                                                    isArriving || isInProgress
+                                                    task.type === 'order' || isArriving || isInProgress
                                                         ? 'bg-white/20 text-white'
                                                         : 'bg-black/10 text-slate-950'
                                                 }`}
@@ -718,7 +732,7 @@ export default function ActiveTasksWidget() {
                                 {/* Subtitle / Realtime Description */}
                                 <p
                                     className={`text-xs font-bold leading-snug mb-2 ${
-                                        isArriving || isInProgress ? 'text-slate-100' : isExpired ? 'text-rose-900 font-black' : 'text-slate-900'
+                                        task.type === 'order' || isArriving || isInProgress ? 'text-slate-100' : isExpired ? 'text-rose-900 font-black' : 'text-slate-900'
                                     }`}
                                 >
                                     {isExpired ? '⚠️ No encontramos conductores disponibles en este momento.' : task.subtitle}
@@ -785,7 +799,7 @@ export default function ActiveTasksWidget() {
                                 {/* Destination row */}
                                 <div
                                     className={`pt-2 border-t flex items-center justify-between text-[11px] font-bold ${
-                                        isArriving || isInProgress
+                                        task.type === 'order' || isArriving || isInProgress
                                             ? 'border-white/15 text-slate-200'
                                             : 'border-black/10 text-slate-800'
                                     }`}

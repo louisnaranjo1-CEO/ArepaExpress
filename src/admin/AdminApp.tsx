@@ -1,6 +1,5 @@
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { auth } from '../lib/firebase';
 import AdminAuth from './AdminAuth';
 import AdminLayout from './components/AdminLayout';
 import Dashboard from './pages/Dashboard';

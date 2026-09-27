@@ -1,6 +1,4 @@
 import React, { useState, useEffect } from 'react';
-import { auth, db } from '../lib/firebase';
-import { doc, getDoc } from 'firebase/firestore';
 import { supabase } from '../lib/supabase';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import CpanelLayout from './components/CpanelLayout';
@@ -50,16 +48,6 @@ export default function CpanelApp() {
                         return;
                     }
                 }
-
-                // Check Firebase session
-                if (auth.currentUser) {
-                    const userDoc = await getDoc(doc(db, 'users', auth.currentUser.uid));
-                    if (userDoc.exists() && userDoc.data()?.role === 'admin') {
-                        setIsAuthenticated(true);
-                        setIsLoading(false);
-                        return;
-                    }
-                }
             } catch (err) {
                 console.error("Error verificando sesión administrativa:", err);
             }
@@ -72,13 +60,16 @@ export default function CpanelApp() {
 
     const handleLogin = async (email: string, pass: string): Promise<boolean> => {
         try {
-            // Intentar con Supabase Auth primero
             const { data, error } = await supabase.auth.signInWithPassword({
                 email,
                 password: pass,
             });
 
-            if (!error && data.user) {
+            if (error) {
+                throw error;
+            }
+
+            if (data.user) {
                 const { data: profile } = await supabase
                     .from('profiles')
                     .select('role')
@@ -88,19 +79,9 @@ export default function CpanelApp() {
                 if (profile?.role === 'admin' || email.includes('admin') || email === 'louisnaranjo1@gmail.com') {
                     setIsAuthenticated(true);
                     return true;
+                } else {
+                    throw new Error("No tienes permisos de administrador global.");
                 }
-            }
-        } catch (e) {
-            console.warn("Fallo login con Supabase, intentando con Firebase:", e);
-        }
-
-        // Fallback a Firebase Auth si existe en Firebase
-        try {
-            const { signInWithEmailAndPassword } = await import('firebase/auth');
-            const userCred = await signInWithEmailAndPassword(auth, email, pass);
-            if (userCred.user) {
-                setIsAuthenticated(true);
-                return true;
             }
         } catch (err: any) {
             throw new Error(err.message || "Credenciales de administrador inválidas");

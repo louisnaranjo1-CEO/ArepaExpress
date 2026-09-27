@@ -313,10 +313,14 @@ export default function CashierPOS() {
                 await setDoc(newOrderRef, {
                     ...commonData,
                     userId: 'local_walk_in',
+                    user_id: 'local_walk_in',
                     restaurantId,
+                    restaurant_id: restaurantId,
                     userName: 'Cliente Local',
+                    user_name: 'Cliente Local',
                     source: 'pos',
                     createdAt: serverTimestamp(),
+                    created_at: new Date().toISOString()
                 });
 
                 // Update Table status to occupied

@@ -13,6 +13,7 @@ import TransportTracker from './pages/TransportTracker';
 import Taxi from './pages/Taxi';
 import Rewards from './pages/Rewards';
 import Orders from './pages/Orders';
+import Services from './pages/Services';
 import { useAuth } from './context/AuthContext';
 import { Toaster } from 'react-hot-toast';
 import { CartProvider } from './context/CartContext';
@@ -58,6 +59,7 @@ export default function ClientApp() {
                                         <Route path="/track/:orderId" element={<TrackOrder />} />
                                         <Route path="/taxi/track/:requestId" element={<TransportTracker />} />
                                         <Route path="/taxi" element={<Taxi />} />
+                                        <Route path="/services" element={<Services />} />
                                     </Routes>
                                 </div>
                                 <BottomNav />

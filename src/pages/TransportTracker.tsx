@@ -272,6 +272,7 @@ export default function TransportTracker() {
             const { error } = await supabase.from('transport_requests').update({
                 payment_method: method,
                 cash_currency: currency,
+                payment_method_selected: true,
                 updated_at: new Date().toISOString()
             }).eq('id', requestId);
 
@@ -280,7 +281,8 @@ export default function TransportTracker() {
             setRequest((prev: any) => ({
                 ...prev,
                 payment_method: method,
-                cash_currency: currency
+                cash_currency: currency,
+                payment_method_selected: true
             }));
 
             toast.success(
@@ -692,6 +694,31 @@ export default function TransportTracker() {
         } catch (err) {
             console.error(err);
             toast.error("Error al cancelar viaje");
+        } finally {
+            setCancellingTrip(false);
+        }
+    };
+
+    const handleCancelReservation = async () => {
+        if (!requestId || !request) return;
+        setCancellingTrip(true);
+        try {
+            await supabase.from('transport_requests').update({
+                status: 'cancelled',
+                cancellation_reason: 'Reserva cancelada por el cliente',
+                cancelled_at: new Date().toISOString(),
+                updated_at: new Date().toISOString()
+            }).eq('id', requestId);
+
+            if (request.service_category === 'muchacho_mandado') {
+                await supabase.from('transport_bids').delete().eq('transport_request_id', requestId);
+            }
+            localStorage.removeItem('active_transport_req_id');
+            toast.success("Reserva cancelada con éxito");
+            navigate('/');
+        } catch (e) {
+            console.error("Error al cancelar reserva:", e);
+            toast.error("Error al cancelar la reserva");
         } finally {
             setCancellingTrip(false);
         }

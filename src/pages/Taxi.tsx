@@ -120,6 +120,8 @@ const getInitialMapCoordinates = (userAddresses?: any[]): google.maps.LatLngLite
     return { lat: 8.9326, lng: -67.4264 };
 };
 
+const defaultCenter: google.maps.LatLngLiteral = { lat: 8.9326, lng: -67.4264 };
+
 const safeUUID = (): string => {
     if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
         try {
@@ -986,37 +988,6 @@ export default function Taxi() {
             });
         });
     }, [userLocation, origin, destination, nearbyDrivers]);
-
-    // 5.1 Real-time listener for Muchacho e' Mandado bids
-    useEffect(() => {
-        if (!activeMandadoReqId) return;
-
-        const fetchBids = async () => {
-            const { data } = await supabase
-                .from('transport_bids')
-                .select('*')
-                .eq('transport_request_id', activeMandadoReqId)
-                .order('created_at', { ascending: false });
-            if (data) setMandadoBids(data);
-        };
-
-        fetchBids();
-
-        const channel = supabase.channel(`mandado_bids_client_${activeMandadoReqId}`)
-            .on('postgres_changes', {
-                event: '*',
-                schema: 'public',
-                table: 'transport_bids',
-                filter: `transport_request_id=eq.${activeMandadoReqId}`
-            }, () => {
-                fetchBids();
-            })
-            .subscribe();
-
-        return () => {
-            supabase.removeChannel(channel);
-        };
-    }, [activeMandadoReqId]);
 
     // 6. Calculate Route & Fit Bounds
     useEffect(() => {

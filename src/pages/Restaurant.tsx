@@ -12,6 +12,7 @@ import { DEMO_RESTAURANTS } from '../lib/demoData';
 import { isDemoMode, UN2X3_LOGO } from '../lib/env';
 import DemoAlertModal from '../components/DemoAlertModal';
 import DualPrice from '../components/DualPrice';
+import StoreCartDrawer from '../components/StoreCartDrawer';
 
 export default function RestaurantPage() {
   const { id } = useParams<{ id: string }>();
@@ -32,8 +33,7 @@ export default function RestaurantPage() {
   const [selectedVariant, setSelectedVariant] = useState<any | null>(null);
   const [selectedModifiers, setSelectedModifiers] = useState<{[key: string]: any[]}>({});
   const [showDemoAlert, setShowDemoAlert] = useState(false);
-  const [showClearCartModal, setShowClearCartModal] = useState(false);
-  const [pendingCartItem, setPendingCartItem] = useState<{product: Product, variant?: any, modifiers?: any} | null>(null);
+  const [isStoreCartOpen, setIsStoreCartOpen] = useState(false);
 
   const [favoriteProductIds, setFavoriteProductIds] = useState<string[]>(() => {
     try {
@@ -112,7 +112,10 @@ export default function RestaurantPage() {
   const isWaiter = localStorage.getItem('isWaiter') === 'true';
   const waiterData = JSON.parse(localStorage.getItem('waiterData') || '{}');
 
-  const { items, addItem, totalItems, totalPrice, clearCart } = useCart();
+  const { storeCarts, addItem, clearStoreCart } = useCart();
+  const storeItems = (restaurant?.id && storeCarts[restaurant.id]) ? storeCarts[restaurant.id] : [];
+  const storeTotalItems = storeItems.reduce((acc: number, it: any) => acc + (it.quantity || 0), 0);
+  const storeTotalPrice = storeItems.reduce((acc: number, it: any) => acc + ((it.price || 0) * (it.quantity || 0)), 0);
 
   useEffect(() => {
     const fetchRestaurantAndMenu = async () => {
@@ -370,13 +373,6 @@ export default function RestaurantPage() {
   });
 
   const handleAddToCart = (product: Product, variant?: any, modifiers?: any) => {
-    // Check if cart has items from another restaurant
-    if (items.length > 0 && items[0].restaurantId !== restaurant.id) {
-      setPendingCartItem({ product, variant, modifiers });
-      setShowClearCartModal(true);
-      return;
-    }
-
     processAddToCart(product, variant, modifiers);
   };
 
@@ -387,11 +383,6 @@ export default function RestaurantPage() {
       case 'tienda': return 'tienda';
       default: return 'restaurante';
     }
-  };
-
-  const confirmClearCart = () => {
-    navigate('/cart');
-    setShowClearCartModal(false);
   };
 
   const processAddToCart = (product: Product, variant?: any, modifiers?: any) => {
@@ -1329,32 +1320,37 @@ export default function RestaurantPage() {
         </div>
       )}
 
-      {/* Floating Cart Button */}
-      {totalItems > 0 && items[0]?.restaurantId === restaurant.id && (
+      {/* Floating Store Cart Button */}
+      {storeTotalItems > 0 && (
         <div className="fixed bottom-24 left-1/2 transform -translate-x-1/2 w-full px-5 max-w-md z-[60] animate-in slide-in-from-bottom-4 fade-in duration-300">
-          <Link 
-            to={isDemoMode() ? '#' : '/cart'} 
-            onClick={(e) => {
-                if (isDemoMode()) {
-                    e.preventDefault();
-                    setShowDemoAlert(true);
-                }
+          <button 
+            type="button"
+            onClick={() => {
+              vibrate(30);
+              setIsStoreCartOpen(true);
             }}
-            className="w-full bg-primary hover:bg-emerald-600 active:bg-emerald-700 text-slate-900 rounded-2xl p-4 shadow-xl shadow-emerald-500/40 flex items-center justify-between transition-colors ring-4 ring-white/10 backdrop-blur-sm"
+            className="w-full bg-primary hover:bg-emerald-600 active:bg-emerald-700 text-slate-900 rounded-2xl p-4 shadow-xl shadow-emerald-500/40 flex items-center justify-between transition-all ring-4 ring-white/10 backdrop-blur-sm active:scale-95"
           >
             <div className="flex items-center gap-3">
-              <div className="bg-white/20 px-3 py-1 rounded-lg text-sm font-black flex items-center justify-center min-w-[36px]">{totalItems}</div>
+              <div className="bg-white/20 px-3 py-1 rounded-lg text-sm font-black flex items-center justify-center min-w-[36px]">{storeTotalItems}</div>
               <span className="font-black text-base uppercase tracking-wider">
                 {isWaiter ? 'Ver Comanda' : (restaurant.businessType === 'hotel' ? 'Ver Reservación' : (restaurant.businessType === 'store' || restaurant.businessType === 'tienda' ? 'Ver mi carrito' : 'Ver mi orden'))}
               </span>
             </div>
             <div className="flex items-center gap-2">
               <span className="text-[10px] font-bold opacity-80 uppercase tracking-widest">Total</span>
-              <DualPrice usdAmount={totalPrice} usdClassName="font-black text-xl leading-none" />
+              <DualPrice usdAmount={storeTotalPrice} usdClassName="font-black text-xl leading-none" />
             </div>
-          </Link>
+          </button>
         </div>
       )}
+
+      {/* Store Cart Drawer */}
+      <StoreCartDrawer
+        isOpen={isStoreCartOpen}
+        onClose={() => setIsStoreCartOpen(false)}
+        restaurant={restaurant}
+      />
 
       {/* Job Opportunities Modal */}
       <AnimatePresence>
@@ -1743,52 +1739,6 @@ export default function RestaurantPage() {
                   {!isFormValid()
                     ? 'Completa los campos' 
                     : (restaurant.businessType === 'hotel' ? 'Reservar' : 'Añadir al Carrito')}
-                </button>
-              </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
-
-      {/* Clear Cart Modal */}
-      <AnimatePresence>
-        {showClearCartModal && (
-          <div className="fixed inset-0 z-[120] flex items-center justify-center p-4">
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm"
-              onClick={() => setShowClearCartModal(false)}
-            />
-            <motion.div
-              initial={{ opacity: 0, scale: 0.9, y: 20 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.9, y: 20 }}
-              className="bg-white rounded-[2.5rem] w-full max-w-sm shadow-2xl overflow-hidden relative z-10 p-8 flex flex-col items-center text-center border-t-8 border-primary"
-            >
-              <div className="w-20 h-20 bg-primary/10 rounded-full flex items-center justify-center mb-6">
-                <ShoppingCart className="w-10 h-10 text-slate-900" />
-              </div>
-              
-              <h3 className="text-2xl font-black text-slate-900 mb-4 uppercase tracking-tight font-black underline decoration-primary decoration-4 underline-offset-4">Carrito Ocupado</h3>
-              
-              <p className="text-slate-500 font-bold leading-relaxed mb-8 px-2">
-                Debes despejar tu carrito de compras en la sección de pedidos para añadir pedidos de esta nueva <span className="text-slate-900 font-black">{getBusinessLabel()}</span>.
-              </p>
-              
-              <div className="flex flex-col gap-3 w-full">
-                <button
-                  onClick={confirmClearCart}
-                  className="w-full py-4 bg-primary text-black font-black rounded-2xl shadow-[0_6px_0_#ca8a04] active:shadow-none active:translate-y-[6px] transition-all uppercase tracking-widest text-sm border-2 border-slate-900/10"
-                >
-                  Ir al Carrito
-                </button>
-                <button
-                  onClick={() => setShowClearCartModal(false)}
-                  className="w-full py-4 bg-slate-50 text-slate-400 font-black rounded-2xl hover:bg-slate-100 transition-colors uppercase tracking-widest text-[10px]"
-                >
-                  Cancelar
                 </button>
               </div>
             </motion.div>

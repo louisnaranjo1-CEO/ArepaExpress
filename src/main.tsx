@@ -5,6 +5,7 @@ import './index.css';
 import { registerSW } from 'virtual:pwa-register';
 import { CurrencyProvider } from './context/CurrencyContext.tsx';
 import { AuthProvider } from './context/AuthContext';
+import { BrandingProvider } from './context/BrandingContext';
 
 // Safe monkey-patch for React 19 / Google Maps DOM unmounting race conditions
 if (typeof Node !== 'undefined' && Node.prototype) {
@@ -33,7 +34,9 @@ createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <AuthProvider>
       <CurrencyProvider>
-        <App />
+        <BrandingProvider>
+          <App />
+        </BrandingProvider>
       </CurrencyProvider>
     </AuthProvider>
   </StrictMode>,
