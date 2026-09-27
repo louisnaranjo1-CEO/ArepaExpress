@@ -754,6 +754,20 @@ export default function TrackOrder() {
                                 }}
                             />
                         )}
+                        {/* Live User Location Blue Dot */}
+                        {userLocation && (
+                            <Marker 
+                                position={userLocation} 
+                                icon={{
+                                    path: window.google?.maps?.SymbolPath?.CIRCLE || 0,
+                                    scale: 7,
+                                    fillColor: '#2563EB',
+                                    fillOpacity: 1,
+                                    strokeColor: '#FFFFFF',
+                                    strokeWeight: 2.5
+                                }}
+                            />
+                        )}
                     </GoogleMap>
                 ) : (
                     <div className="absolute inset-0 flex items-center justify-center">

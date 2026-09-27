@@ -132,6 +132,13 @@ export default defineConfig(({ mode }) => {
       alias: {
         '@': path.resolve(__dirname, './src'),
         '@shared': path.resolve(__dirname, '../../packages/shared/src'),
+        'firebase/firestore': path.resolve(__dirname, 'src/lib/firebase-supabase-adapter.ts'),
+        'firebase/storage': path.resolve(__dirname, 'src/lib/firebase-supabase-adapter.ts'),
+        'firebase/auth': path.resolve(__dirname, 'src/lib/firebase-supabase-adapter.ts'),
+        'firebase/app': path.resolve(__dirname, 'src/lib/firebase-supabase-adapter.ts'),
+        'firebase/database': path.resolve(__dirname, 'src/lib/firebase-supabase-adapter.ts'),
+        'firebase/messaging': path.resolve(__dirname, 'src/lib/firebase-supabase-adapter.ts'),
+        'firebase/app-check': path.resolve(__dirname, 'src/lib/firebase-supabase-adapter.ts'),
       },
     },
     server: {

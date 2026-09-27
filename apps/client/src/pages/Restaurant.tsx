@@ -1,4 +1,4 @@
-import { ArrowLeft, Search, Heart, Star, Clock, Plus, AlertCircle, MessageSquare, MapPin, ChevronRight, Phone, Instagram, UserPlus, UserCheck, Store, Truck, CheckCircle, User as UserIcon, Briefcase, X, Tag, Share2, Zap, Youtube, Music2, ExternalLink, Gift, Sparkles, ShoppingCart } from 'lucide-react';
+import { ArrowLeft, Search, Heart, Star, Clock, Plus, AlertCircle, MessageSquare, MapPin, ChevronRight, Phone, Instagram, UserPlus, UserCheck, Store, Truck, CheckCircle, User as UserIcon, Briefcase, X, Tag, Share2, Zap, Youtube, Music2, ExternalLink, Gift, Sparkles, ShoppingCart, Bell } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Link, useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useState, useEffect } from 'react';
@@ -12,6 +12,7 @@ import { DEMO_RESTAURANTS } from '../lib/demoData';
 import { isDemoMode, UN2X3_LOGO } from '../lib/env';
 import DemoAlertModal from '../components/DemoAlertModal';
 import DualPrice from '../components/DualPrice';
+import StoreCartDrawer from '../components/StoreCartDrawer';
 
 export default function RestaurantPage() {
   const { id } = useParams<{ id: string }>();
@@ -32,6 +33,7 @@ export default function RestaurantPage() {
   const [selectedVariant, setSelectedVariant] = useState<any | null>(null);
   const [selectedModifiers, setSelectedModifiers] = useState<{[key: string]: any[]}>({});
   const [showDemoAlert, setShowDemoAlert] = useState(false);
+  const [isStoreCartOpen, setIsStoreCartOpen] = useState(false);
   const [showClearCartModal, setShowClearCartModal] = useState(false);
   const [pendingCartItem, setPendingCartItem] = useState<{product: Product, variant?: any, modifiers?: any} | null>(null);
 
@@ -112,7 +114,10 @@ export default function RestaurantPage() {
   const isWaiter = localStorage.getItem('isWaiter') === 'true';
   const waiterData = JSON.parse(localStorage.getItem('waiterData') || '{}');
 
-  const { items, addItem, totalItems, totalPrice, clearCart } = useCart();
+  const { items, storeCarts, addItem, clearCart, clearStoreCart } = useCart();
+  const storeItems = (restaurant?.id && storeCarts[restaurant.id]) ? storeCarts[restaurant.id] : [];
+  const storeTotalItems = storeItems.reduce((acc: number, it: any) => acc + (it.quantity || 0), 0);
+  const storeTotalPrice = storeItems.reduce((acc: number, it: any) => acc + ((it.price || 0) * (it.quantity || 0)), 0);
 
   useEffect(() => {
     const fetchRestaurantAndMenu = async () => {
@@ -240,8 +245,20 @@ export default function RestaurantPage() {
                 const favs = userSnap.favorites || [];
                 setIsFavorite(favs.includes(id));
               }
+
+              // Also check following status
+              const { data: followSnap } = await supabase
+                .from('restaurant_followers')
+                .select('id')
+                .eq('restaurant_id', id)
+                .eq('user_id', uid)
+                .maybeSingle();
+
+              if (followSnap) {
+                setIsFollowing(true);
+              }
             } catch (favErr) {
-              console.warn("Could not check favorites status:", favErr);
+              console.warn("Could not check favorites/following status:", favErr);
             }
           }
         } else {
@@ -370,7 +387,7 @@ export default function RestaurantPage() {
   });
 
   const handleAddToCart = (product: Product, variant?: any, modifiers?: any) => {
-    // Check if cart has items from another restaurant
+    // Restricción: solo se puede tener en el carrito productos de 1 negocio a la vez
     if (items.length > 0 && items[0].restaurantId !== restaurant.id) {
       setPendingCartItem({ product, variant, modifiers });
       setShowClearCartModal(true);
@@ -380,6 +397,20 @@ export default function RestaurantPage() {
     processAddToCart(product, variant, modifiers);
   };
 
+  const confirmClearCart = () => {
+    clearCart();
+    if (pendingCartItem) {
+      processAddToCart(pendingCartItem.product, pendingCartItem.variant, pendingCartItem.modifiers);
+      setPendingCartItem(null);
+    }
+    setShowClearCartModal(false);
+  };
+
+  const handleGoToCart = () => {
+    setShowClearCartModal(false);
+    navigate('/orders');
+  };
+
   const getBusinessLabel = () => {
     switch (restaurant?.businessType) {
       case 'hotel': return 'hotel';
@@ -387,11 +418,6 @@ export default function RestaurantPage() {
       case 'tienda': return 'tienda';
       default: return 'restaurante';
     }
-  };
-
-  const confirmClearCart = () => {
-    navigate('/cart');
-    setShowClearCartModal(false);
   };
 
   const processAddToCart = (product: Product, variant?: any, modifiers?: any) => {
@@ -541,6 +567,9 @@ export default function RestaurantPage() {
             restaurant_id: id,
             user_id: uid,
             user_name: followerName,
+            notify_promotions: true,
+            notify_new_products: true,
+            notify_price_drops: true,
             created_at: new Date().toISOString()
           }, { onConflict: 'restaurant_id,user_id' });
 
@@ -746,8 +775,20 @@ export default function RestaurantPage() {
           </div>
           <div className="pb-8 flex-1">
             <h1 className="text-2xl md:text-4xl font-black text-white drop-shadow-[0_2px_4px_rgba(0,0,0,0.5)] leading-tight">{restaurant.name}</h1>
-            <div className="flex items-center gap-2 mt-1">
+            <div className="flex items-center gap-2 mt-1.5">
               <span className="text-[10px] font-black text-white/80 uppercase tracking-widest">{followerCount} seguidores</span>
+              <button
+                type="button"
+                onClick={toggleFollow}
+                className={`ml-1 px-3 py-1 rounded-full text-xs font-black transition-all flex items-center gap-1.5 shadow-sm active:scale-95 ${
+                  isFollowing
+                    ? 'bg-white/25 text-white hover:bg-white/35 border border-white/40 backdrop-blur-md'
+                    : 'bg-primary text-slate-900 hover:bg-primary/90 shadow-md'
+                }`}
+              >
+                <Bell className={`w-3 h-3 ${isFollowing ? 'fill-current' : ''}`} />
+                <span>{isFollowing ? 'Siguiendo' : 'Seguir'}</span>
+              </button>
             </div>
           </div>
         </div>
@@ -1329,32 +1370,37 @@ export default function RestaurantPage() {
         </div>
       )}
 
-      {/* Floating Cart Button */}
-      {totalItems > 0 && items[0]?.restaurantId === restaurant.id && (
+      {/* Floating Store Cart Button */}
+      {storeTotalItems > 0 && (
         <div className="fixed bottom-24 left-1/2 transform -translate-x-1/2 w-full px-5 max-w-md z-[60] animate-in slide-in-from-bottom-4 fade-in duration-300">
-          <Link 
-            to={isDemoMode() ? '#' : '/cart'} 
-            onClick={(e) => {
-                if (isDemoMode()) {
-                    e.preventDefault();
-                    setShowDemoAlert(true);
-                }
+          <button 
+            type="button"
+            onClick={() => {
+              vibrate(30);
+              setIsStoreCartOpen(true);
             }}
-            className="w-full bg-primary hover:bg-emerald-600 active:bg-emerald-700 text-slate-900 rounded-2xl p-4 shadow-xl shadow-emerald-500/40 flex items-center justify-between transition-colors ring-4 ring-white/10 backdrop-blur-sm"
+            className="w-full bg-primary hover:bg-emerald-600 active:bg-emerald-700 text-slate-900 rounded-2xl p-4 shadow-xl shadow-emerald-500/40 flex items-center justify-between transition-all ring-4 ring-white/10 backdrop-blur-sm active:scale-95"
           >
             <div className="flex items-center gap-3">
-              <div className="bg-white/20 px-3 py-1 rounded-lg text-sm font-black flex items-center justify-center min-w-[36px]">{totalItems}</div>
+              <div className="bg-white/20 px-3 py-1 rounded-lg text-sm font-black flex items-center justify-center min-w-[36px]">{storeTotalItems}</div>
               <span className="font-black text-base uppercase tracking-wider">
                 {isWaiter ? 'Ver Comanda' : (restaurant.businessType === 'hotel' ? 'Ver Reservación' : (restaurant.businessType === 'store' || restaurant.businessType === 'tienda' ? 'Ver mi carrito' : 'Ver mi orden'))}
               </span>
             </div>
             <div className="flex items-center gap-2">
               <span className="text-[10px] font-bold opacity-80 uppercase tracking-widest">Total</span>
-              <DualPrice usdAmount={totalPrice} usdClassName="font-black text-xl leading-none" />
+              <DualPrice usdAmount={storeTotalPrice} usdClassName="font-black text-xl leading-none" />
             </div>
-          </Link>
+          </button>
         </div>
       )}
+
+      {/* Store Cart Drawer */}
+      <StoreCartDrawer
+        isOpen={isStoreCartOpen}
+        onClose={() => setIsStoreCartOpen(false)}
+        restaurant={restaurant}
+      />
 
       {/* Job Opportunities Modal */}
       <AnimatePresence>
@@ -1750,10 +1796,10 @@ export default function RestaurantPage() {
         )}
       </AnimatePresence>
 
-      {/* Clear Cart Modal */}
+      {/* Modal Carrito Ocupado - Regla estricta: 1 negocio a la vez */}
       <AnimatePresence>
         {showClearCartModal && (
-          <div className="fixed inset-0 z-[120] flex items-center justify-center p-4">
+          <div className="fixed inset-0 z-[140] flex items-center justify-center p-4">
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
@@ -1765,28 +1811,39 @@ export default function RestaurantPage() {
               initial={{ opacity: 0, scale: 0.9, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.9, y: 20 }}
-              className="bg-white rounded-[2.5rem] w-full max-w-sm shadow-2xl overflow-hidden relative z-10 p-8 flex flex-col items-center text-center border-t-8 border-primary"
+              className="bg-white rounded-[2.5rem] w-full max-w-sm shadow-2xl overflow-hidden relative z-10 p-7 flex flex-col items-center text-center border-t-8 border-primary"
             >
-              <div className="w-20 h-20 bg-primary/10 rounded-full flex items-center justify-center mb-6">
-                <ShoppingCart className="w-10 h-10 text-slate-900" />
+              <div className="w-16 h-16 bg-primary/10 rounded-3xl flex items-center justify-center mb-4 text-slate-900 font-black">
+                <ShoppingCart className="w-8 h-8 text-slate-900" />
               </div>
               
-              <h3 className="text-2xl font-black text-slate-900 mb-4 uppercase tracking-tight font-black underline decoration-primary decoration-4 underline-offset-4">Carrito Ocupado</h3>
+              <h3 className="text-xl font-black text-slate-900 mb-2 uppercase tracking-tight">
+                Carrito Ocupado
+              </h3>
               
-              <p className="text-slate-500 font-bold leading-relaxed mb-8 px-2">
-                Debes despejar tu carrito de compras en la sección de pedidos para añadir pedidos de esta nueva <span className="text-slate-900 font-black">{getBusinessLabel()}</span>.
+              <p className="text-xs text-slate-500 font-bold leading-relaxed mb-6 px-1">
+                Tu carrito ya contiene productos de otro comercio. Solo puedes realizar compras en <span className="text-slate-900 font-black">1 negocio a la vez</span>.
               </p>
               
-              <div className="flex flex-col gap-3 w-full">
+              <div className="flex flex-col gap-2.5 w-full">
                 <button
+                  type="button"
                   onClick={confirmClearCart}
-                  className="w-full py-4 bg-primary text-black font-black rounded-2xl shadow-[0_6px_0_#ca8a04] active:shadow-none active:translate-y-[6px] transition-all uppercase tracking-widest text-sm border-2 border-slate-900/10"
+                  className="w-full py-3.5 bg-primary text-slate-950 font-black rounded-2xl shadow-md active:scale-95 transition-all uppercase tracking-wider text-xs"
                 >
-                  Ir al Carrito
+                  Vaciar y agregar este producto
                 </button>
                 <button
+                  type="button"
+                  onClick={handleGoToCart}
+                  className="w-full py-3 bg-slate-900 text-white font-black rounded-2xl active:scale-95 transition-all uppercase tracking-wider text-xs"
+                >
+                  Ir al Carrito actual
+                </button>
+                <button
+                  type="button"
                   onClick={() => setShowClearCartModal(false)}
-                  className="w-full py-4 bg-slate-50 text-slate-400 font-black rounded-2xl hover:bg-slate-100 transition-colors uppercase tracking-widest text-[10px]"
+                  className="w-full py-2.5 text-slate-400 font-bold hover:text-slate-600 transition-colors uppercase tracking-wider text-[11px]"
                 >
                   Cancelar
                 </button>

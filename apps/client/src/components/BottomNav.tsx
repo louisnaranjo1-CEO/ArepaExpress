@@ -1,7 +1,7 @@
 import { Home, Search, ShoppingBag, User, Car } from 'lucide-react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { useCart } from '../context/CartContext';
 import { useAuth } from '../context/AuthContext';
+import { useCart } from '../context/CartContext';
 import { vibrate } from '../utils/haptics';
 import LocationRequiredModal from './LocationRequiredModal';
 import React, { useState } from 'react';
@@ -9,13 +9,17 @@ import React, { useState } from 'react';
 export default function BottomNav() {
   const location = useLocation();
   const currentPath = location.pathname;
-  const { totalItems } = useCart();
   const { userData } = useAuth();
+  const { totalItems } = useCart();
   const navigate = useNavigate();
   const [showLocationModal, setShowLocationModal] = useState(false);
 
-  const handleTaxiClick = () => {
+  const handleTaxiClick = (e: React.MouseEvent) => {
     vibrate(30);
+    if (!userData?.locationPermissionsAllowed) {
+        e.preventDefault();
+        setShowLocationModal(true);
+    }
   };
 
   return (

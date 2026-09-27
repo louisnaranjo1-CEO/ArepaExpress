@@ -12,6 +12,7 @@ import TransportTracker from './pages/TransportTracker';
 import Taxi from './pages/Taxi';
 import Rewards from './pages/Rewards';
 import Orders from './pages/Orders';
+import Services from './pages/Services';
 import ResetPassword from './pages/ResetPassword';
 import { useAuth } from './context/AuthContext';
 import { Toaster } from 'react-hot-toast';
@@ -167,6 +168,7 @@ function AppContent() {
                         <Route path="/track/:orderId" element={<TrackOrder />} />
                         <Route path="/taxi/track/:requestId" element={<TransportTracker />} />
                         <Route path="/taxi" element={<Taxi />} />
+                        <Route path="/services" element={<Services />} />
                         <Route path="/reset-password" element={<ResetPassword />} />
                     </Routes>
                 </div>

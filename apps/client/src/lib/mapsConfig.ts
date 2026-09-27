@@ -1,4 +1,4 @@
-// Google Maps Configuration for Un 2x3 (Deliexpress)
-export const GOOGLE_MAPS_API_KEY = "AIzaSyAT2_wZfYTBGDR7gEpLXRzG-BUQ9Cbu0aQ";
+import type { Libraries } from '@react-google-maps/api';
 
-export const GOOGLE_MAPS_LIBRARIES: ("places" | "geometry")[] = ["places", "geometry"];
+export const GOOGLE_MAPS_API_KEY: string = (import.meta.env.VITE_GOOGLE_MAPS_API_KEY as string) || '';
+export const GOOGLE_MAPS_LIBRARIES: Libraries = ['places', 'geometry'];

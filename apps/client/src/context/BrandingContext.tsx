@@ -1,74 +1,52 @@
-﻿import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
+import { UN2X3_LOGO } from '../lib/env';
 
-export interface AppBranding {
-    app_client_logo: string;
-    app_client_name: string;
-    app_driver_logo: string;
-    app_restaurant_logo: string;
-    app_admin_logo: string;
-    app_favicon?: string | null;
-    splash_screen_logo?: string | null;
+export interface BrandingConfig {
+    app_client_logo?: string;
+    app_name?: string;
+    primary_color?: string;
+    secondary_color?: string;
 }
 
-export const DEFAULT_BRANDING: AppBranding = {
-    app_client_logo: 'https://xfialzrbbsdzzcjtefqo.supabase.co/storage/v1/object/public/branding/logos/app_client_logo_1788875672174.png',
-    app_client_name: 'Un 2x3 Encuentra lo que quieras',
-    app_driver_logo: 'https://xfialzrbbsdzzcjtefqo.supabase.co/storage/v1/object/public/branding/logos/app_driver_logo_1788875821044.jpg',
-    app_restaurant_logo: 'https://xfialzrbbsdzzcjtefqo.supabase.co/storage/v1/object/public/branding/logos/app_restaurant_logo_1788875678044.jpg',
-    app_admin_logo: 'https://xfialzrbbsdzzcjtefqo.supabase.co/storage/v1/object/public/branding/logos/app_admin_logo_1788875678335.jpg',
-};
-
-const STORAGE_KEY = 'un2x3_app_branding_cache';
-
-const BrandingContext = createContext<{
-    branding: AppBranding;
+interface BrandingContextType {
+    branding: BrandingConfig;
     loading: boolean;
     refreshBranding: () => Promise<void>;
-}>({
-    branding: DEFAULT_BRANDING,
+}
+
+const BrandingContext = createContext<BrandingContextType>({
+    branding: { app_client_logo: UN2X3_LOGO },
     loading: false,
-    refreshBranding: async () => {},
+    refreshBranding: async () => {}
 });
 
 export const BrandingProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-    const [branding, setBranding] = useState<AppBranding>(() => {
-        try {
-            const cached = localStorage.getItem(STORAGE_KEY);
-            if (cached) {
-                const parsed = JSON.parse(cached);
-                return { ...DEFAULT_BRANDING, ...parsed };
-            }
-        } catch (e) {}
-        return DEFAULT_BRANDING;
+    const [branding, setBranding] = useState<BrandingConfig>({
+        app_client_logo: UN2X3_LOGO,
+        app_name: 'Un 2x3'
     });
     const [loading, setLoading] = useState(true);
 
     const fetchBranding = async () => {
         try {
-            const { data, error } = await supabase
-                .from('app_branding')
+            const { data } = await supabase
+                .from('system_configs')
                 .select('*')
-                .eq('id', 'current')
+                .eq('id', 'branding')
                 .maybeSingle();
 
-            if (!error && data) {
-                const merged: AppBranding = {
-                    app_client_logo: data.app_client_logo || DEFAULT_BRANDING.app_client_logo,
-                    app_client_name: data.app_client_name || DEFAULT_BRANDING.app_client_name,
-                    app_driver_logo: data.app_driver_logo || DEFAULT_BRANDING.app_driver_logo,
-                    app_restaurant_logo: data.app_restaurant_logo || DEFAULT_BRANDING.app_restaurant_logo,
-                    app_admin_logo: data.app_admin_logo || DEFAULT_BRANDING.app_admin_logo,
-                    app_favicon: data.app_favicon,
-                    splash_screen_logo: data.splash_screen_logo,
-                };
-                setBranding(merged);
-                try {
-                    localStorage.setItem(STORAGE_KEY, JSON.stringify(merged));
-                } catch (e) {}
+            if (data) {
+                setBranding(prev => ({
+                    ...prev,
+                    app_client_logo: data.app_client_logo || data.logo || UN2X3_LOGO,
+                    app_name: data.app_name || data.name || 'Un 2x3',
+                    primary_color: data.primary_color || data.primaryColor,
+                    secondary_color: data.secondary_color || data.secondaryColor
+                }));
             }
-        } catch (err) {
-            console.error('Error fetching branding:', err);
+        } catch (e) {
+            console.warn("Branding fetch fallback:", e);
         } finally {
             setLoading(false);
         }
@@ -76,41 +54,6 @@ export const BrandingProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
     useEffect(() => {
         fetchBranding();
-
-        const channel = supabase
-            .channel('app_branding_changes_' + Math.random().toString(36).substring(2, 9))
-            .on(
-                'postgres_changes',
-                {
-                    event: '*',
-                    schema: 'public',
-                    table: 'app_branding',
-                    filter: 'id=eq.current',
-                },
-                (payload) => {
-                    if (payload.new) {
-                        const newData = payload.new as any;
-                        const merged: AppBranding = {
-                            app_client_logo: newData.app_client_logo || DEFAULT_BRANDING.app_client_logo,
-                            app_client_name: newData.app_client_name || DEFAULT_BRANDING.app_client_name,
-                            app_driver_logo: newData.app_driver_logo || DEFAULT_BRANDING.app_driver_logo,
-                            app_restaurant_logo: newData.app_restaurant_logo || DEFAULT_BRANDING.app_restaurant_logo,
-                            app_admin_logo: newData.app_admin_logo || DEFAULT_BRANDING.app_admin_logo,
-                            app_favicon: newData.app_favicon,
-                            splash_screen_logo: newData.splash_screen_logo,
-                        };
-                        setBranding(merged);
-                        try {
-                            localStorage.setItem(STORAGE_KEY, JSON.stringify(merged));
-                        } catch (e) {}
-                    }
-                }
-            )
-            .subscribe();
-
-        return () => {
-            supabase.removeChannel(channel);
-        };
     }, []);
 
     return (

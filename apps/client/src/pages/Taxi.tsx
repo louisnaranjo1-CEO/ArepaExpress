@@ -32,9 +32,7 @@ import {
     Star,
     Radio,
     Zap,
-    User as UserIcon,
-    Building2,
-    Link as LinkIcon
+    User as UserIcon
 } from 'lucide-react';
 import { useJsApiLoader } from '@react-google-maps/api';
 import { UN2X3_LOGO } from '../lib/env';
@@ -122,6 +120,8 @@ const getInitialMapCoordinates = (userAddresses?: any[]): google.maps.LatLngLite
     return { lat: 8.9326, lng: -67.4264 };
 };
 
+const defaultCenter: google.maps.LatLngLiteral = { lat: 8.9326, lng: -67.4264 };
+
 const safeUUID = (): string => {
     if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
         try {
@@ -134,41 +134,6 @@ const safeUUID = (): string => {
         return v.toString(16);
     });
 };
-
-// 3D Stylized Vehicle Markers (Isometric Perspective with shadows and lighting)
-const svg3DMotoIcon = `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(`
-<svg width="48" height="48" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
-    <ellipse cx="50" cy="55" rx="36" ry="18" fill="rgba(16,185,129,0.3)"/>
-    <ellipse cx="50" cy="55" rx="26" ry="12" fill="rgba(0,0,0,0.35)"/>
-    <ellipse cx="50" cy="80" rx="9" ry="15" fill="#0f172a" stroke="#f59e0b" stroke-width="4"/>
-    <ellipse cx="50" cy="22" rx="9" ry="15" fill="#0f172a" stroke="#f59e0b" stroke-width="4"/>
-    <path d="M43 32 L57 32 L54 68 L46 68 Z" fill="#059669" stroke="#10b981" stroke-width="2"/>
-    <rect x="44" y="44" width="12" height="18" rx="4" fill="#047857"/>
-    <ellipse cx="50" cy="46" rx="7" ry="10" fill="#f59e0b"/>
-    <ellipse cx="50" cy="60" rx="6" ry="8" fill="#1e293b"/>
-    <line x1="30" y1="28" x2="70" y2="28" stroke="#f1f5f9" stroke-width="6" stroke-linecap="round"/>
-    <circle cx="30" cy="28" r="4" fill="#0f172a"/>
-    <circle cx="70" cy="28" r="4" fill="#0f172a"/>
-    <circle cx="50" cy="42" r="9" fill="#ffffff" stroke="#0f172a" stroke-width="2.5"/>
-    <path d="M44 38 Q50 34 56 38" stroke="#0ea5e9" stroke-width="3" stroke-linecap="round"/>
-</svg>
-`)}`;
-
-const svg3DTaxiIcon = `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(`
-<svg width="48" height="48" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
-    <ellipse cx="50" cy="60" rx="40" ry="20" fill="rgba(0,0,0,0.35)"/>
-    <rect x="28" y="20" width="44" height="60" rx="14" fill="#facc15" stroke="#ca8a04" stroke-width="2"/>
-    <path d="M34 32 L66 32 L62 44 L38 44 Z" fill="#0284c7" fill-opacity="0.85" stroke="#38bdf8" stroke-width="1.5"/>
-    <path d="M38 60 L62 60 L65 70 L35 70 Z" fill="#0284c7" fill-opacity="0.85" stroke="#38bdf8" stroke-width="1.5"/>
-    <rect x="36" y="44" width="28" height="16" rx="3" fill="#eab308"/>
-    <rect x="42" y="49" width="16" height="6" rx="2" fill="#ffffff" stroke="#0f172a" stroke-width="1.5"/>
-    <text x="50" y="54" font-size="5" font-weight="900" text-anchor="middle" fill="#0f172a" font-family="sans-serif">TAXI</text>
-    <circle cx="33" cy="22" r="3" fill="#fef08a"/>
-    <circle cx="67" cy="22" r="3" fill="#fef08a"/>
-    <rect x="30" y="78" width="8" height="3" rx="1" fill="#ef4444"/>
-    <rect x="62" y="78" width="8" height="3" rx="1" fill="#ef4444"/>
-</svg>
-`)}`;
 
 export default function Taxi() {
     const { user, userData } = useAuth();
@@ -237,18 +202,6 @@ export default function Taxi() {
     const [paymentProof, setPaymentProof] = useState<File | null>(null);
     const [paymentRef, setPaymentRef] = useState('');
     const [isUploading, setIsUploading] = useState(false);
-
-    // Package Delivery 3-Step Guided Flow State
-    const [packageStep, setPackageStep] = useState<1 | 2 | 3>(1);
-    const [senderName, setSenderName] = useState('');
-    const [senderPhone, setSenderPhone] = useState('');
-    const [receiverName, setReceiverName] = useState('');
-    const [receiverPhone, setReceiverPhone] = useState('');
-    const [packageNotes, setPackageNotes] = useState('');
-    const [gmapsInputUrl, setGmapsInputUrl] = useState('');
-    const [gmapsTarget, setGmapsTarget] = useState<'origin' | 'destination'>('destination');
-    const [isParsingGmaps, setIsParsingGmaps] = useState(false);
-    const [driverSearchQuery, setDriverSearchQuery] = useState('');
 
     // Reservation Scheduling
     const [isScheduled, setIsScheduled] = useState(false);
@@ -385,147 +338,6 @@ export default function Taxi() {
     const [weather, setWeather] = useState<WeatherInfo | null>(null);
     const [isNight, setIsNight] = useState<boolean>(isNightTime());
     const [testRain, setTestRain] = useState<boolean>(false);
-
-    // Business Sender Recognition
-    const isBusinessSender = Boolean(
-        userData?.role === 'restaurant' ||
-        userData?.role === 'comercio' ||
-        userData?.role === 'admin' ||
-        (userData as any)?.is_business ||
-        (userData as any)?.business_name
-    );
-
-    useEffect(() => {
-        if (userData || user) {
-            if (!senderName) {
-                setSenderName(userData?.displayName || userData?.fullName || userData?.full_name || user?.displayName || '');
-            }
-            if (!senderPhone && userData?.phone) {
-                setSenderPhone(userData.phone.replace(/^\+58/, ''));
-            }
-        }
-    }, [userData, user]);
-
-    // Google Maps Link / Coordinates Auto-Resolver for Package Step 2
-    const handleResolveGoogleMapsUrl = async () => {
-        if (!gmapsInputUrl.trim()) {
-            toast.error("Pega un enlace de Google Maps o coordenadas");
-            return;
-        }
-        setIsParsingGmaps(true);
-        try {
-            const clean = gmapsInputUrl.trim();
-            let parsedCoords: { lat: number; lng: number } | null = null;
-            let addressLabel = '';
-
-            // Pattern 1: @lat,lng
-            const atMatch = clean.match(/@(-?\d+\.\d+),\s*(-?\d+\.\d+)/);
-            if (atMatch) {
-                parsedCoords = { lat: parseFloat(atMatch[1]), lng: parseFloat(atMatch[2]) };
-            }
-
-            // Pattern 2: q=lat,lng or ll=lat,lng or destination=lat,lng
-            if (!parsedCoords) {
-                const qMatch = clean.match(/[?&](?:q|ll|destination)=(-?\d+\.\d+),(-?\d+\.\d+)/);
-                if (qMatch) {
-                    parsedCoords = { lat: parseFloat(qMatch[1]), lng: parseFloat(qMatch[2]) };
-                }
-            }
-
-            // Pattern 3: direct "lat, lng" e.g. "10.4806, -66.9036"
-            if (!parsedCoords) {
-                const directMatch = clean.match(/^(-?\d+\.\d+)\s*,\s*(-?\d+\.\d+)$/);
-                if (directMatch) {
-                    parsedCoords = { lat: parseFloat(directMatch[1]), lng: parseFloat(directMatch[2]) };
-                }
-            }
-
-            // Pattern 4: Google Maps Protobuf !3d / !4d
-            if (!parsedCoords) {
-                const protoMatch = clean.match(/!3d(-?\d+\.\d+)!4d(-?\d+\.\d+)/);
-                if (protoMatch) {
-                    parsedCoords = { lat: parseFloat(protoMatch[1]), lng: parseFloat(protoMatch[2]) };
-                }
-            }
-
-            // Pattern 5: Short URL resolver (maps.app.goo.gl, goo.gl/maps, etc.)
-            if (!parsedCoords && (clean.includes('goo.gl') || clean.includes('maps') || clean.startsWith('http'))) {
-                try {
-                    // Try Supabase Edge Function resolver first (works across all browsers and apps without CORS)
-                    const { data: edgeData, error: edgeErr } = await supabase.functions.invoke('resolve-map-url', {
-                        body: { url: clean }
-                    });
-                    if (!edgeErr && edgeData?.lat && edgeData?.lng) {
-                        parsedCoords = { lat: Number(edgeData.lat), lng: Number(edgeData.lng) };
-                    }
-                } catch (edgeErr) {
-                    console.warn("Edge function url resolution warning:", edgeErr);
-                }
-
-                // If still not parsed, try Capacitor native HTTP if on device
-                if (!parsedCoords && (window as any).Capacitor?.Plugins?.CapacitorHttp) {
-                    try {
-                        const capRes = await (window as any).Capacitor.Plugins.CapacitorHttp.get({ url: clean });
-                        const finalUrl = capRes?.url || '';
-                        const mAt = finalUrl.match(/@(-?\d+\.\d+),\s*(-?\d+\.\d+)/) ||
-                                    finalUrl.match(/[?&](?:q|ll|destination)=(-?\d+\.\d+),(-?\d+\.\d+)/);
-                        if (mAt) {
-                            parsedCoords = { lat: parseFloat(mAt[1]), lng: parseFloat(mAt[2]) };
-                        }
-                    } catch (capErr) {
-                        console.warn("CapacitorHttp fallback error:", capErr);
-                    }
-                }
-            }
-
-            // Geocode using Google Maps Geocoder if coords found to get real address name, OR geocode address directly
-            if (window.google?.maps?.Geocoder) {
-                const geocoder = new window.google.maps.Geocoder();
-                if (parsedCoords) {
-                    try {
-                        const rev = await geocoder.geocode({ location: parsedCoords });
-                        if (rev.results && rev.results[0]) {
-                            addressLabel = rev.results[0].formatted_address;
-                        }
-                    } catch (geoErr) {
-                        console.warn("Reverse geocode warning:", geoErr);
-                    }
-                } else if (!clean.startsWith('http')) {
-                    const fwd = await geocoder.geocode({ address: clean });
-                    if (fwd.results && fwd.results[0]) {
-                        const loc = fwd.results[0].geometry.location;
-                        parsedCoords = { lat: loc.lat(), lng: loc.lng() };
-                        addressLabel = fwd.results[0].formatted_address;
-                    }
-                }
-            }
-
-            if (!parsedCoords) {
-                toast.error("No se pudieron extraer las coordenadas del enlace. Verifica el link o escribe la dirección.");
-                return;
-            }
-
-            const targetLoc: Location = {
-                lat: parsedCoords.lat,
-                lng: parsedCoords.lng,
-                address: addressLabel || `${parsedCoords.lat.toFixed(5)}, ${parsedCoords.lng.toFixed(5)}`
-            };
-
-            if (gmapsTarget === 'origin') {
-                setOrigin(targetLoc);
-                toast.success("Punto de retiro (Origen) actualizado con éxito", { icon: '📍' });
-            } else {
-                setDestination(targetLoc);
-                toast.success("Punto de entrega (Destino) actualizado con éxito", { icon: '🎯' });
-            }
-            setGmapsInputUrl('');
-        } catch (err: any) {
-            console.error("Error resolving Google Maps URL:", err);
-            toast.error("Error al procesar el enlace. Intenta escribiendo el nombre del sitio.");
-        } finally {
-            setIsParsingGmaps(false);
-        }
-    };
 
     // 0.1 Dynamic Theme (Google Maps Dark Mode)
     useEffect(() => {
@@ -1159,55 +971,23 @@ export default function Taxi() {
             }
         }
 
-        // Nearby Drivers Markers with Stylized 3D Isometric Design
+        // Nearby Drivers Markers
         driverMarkersRef.current.forEach(m => m.setMap(null));
         driverMarkersRef.current = nearbyDrivers
             .filter(d => !d.isBusy)
             .map(d => {
-            const isMoto = d.vehicleType === 'moto';
             return new window.google.maps.Marker({
                 position: { lat: d.lat, lng: d.lng },
                 map,
-                title: `${d.fullName} (${d.vehicleType === 'moto' ? 'Moto' : 'Taxi'}) - ${d.etaMinutes} min`,
+                title: `${d.fullName} (${d.vehicleType}) - ${d.etaMinutes} min`,
                 icon: {
-                    url: isMoto ? svg3DMotoIcon : svg3DTaxiIcon,
-                    scaledSize: new window.google.maps.Size(46, 46),
-                    anchor: new window.google.maps.Point(23, 23)
+                    url: d.vehicleType === 'moto'
+                        ? 'https://maps.google.com/mapfiles/ms/icons/motorcycling.png'
+                        : 'https://maps.google.com/mapfiles/ms/icons/cabs.png'
                 }
             });
         });
     }, [userLocation, origin, destination, nearbyDrivers]);
-
-    // 5.1 Real-time listener for Muchacho e' Mandado bids
-    useEffect(() => {
-        if (!activeMandadoReqId) return;
-
-        const fetchBids = async () => {
-            const { data } = await supabase
-                .from('transport_bids')
-                .select('*')
-                .eq('transport_request_id', activeMandadoReqId)
-                .order('created_at', { ascending: false });
-            if (data) setMandadoBids(data);
-        };
-
-        fetchBids();
-
-        const channel = supabase.channel(`mandado_bids_client_${activeMandadoReqId}`)
-            .on('postgres_changes', {
-                event: '*',
-                schema: 'public',
-                table: 'transport_bids',
-                filter: `transport_request_id=eq.${activeMandadoReqId}`
-            }, () => {
-                fetchBids();
-            })
-            .subscribe();
-
-        return () => {
-            supabase.removeChannel(channel);
-        };
-    }, [activeMandadoReqId]);
 
     // 6. Calculate Route & Fit Bounds
     useEffect(() => {
@@ -1265,8 +1045,8 @@ export default function Taxi() {
         );
     }, [origin, destination]);
 
-    // 7. Autocomplete Search Handler strictly restricted to the active city (Calabozo)
-    const handleSearchChange = async (val: string) => {
+    // 7. Autocomplete Search Handler
+    const handleSearchChange = (val: string) => {
         setSearchQuery(val);
         if (!val.trim() || val.length < 2) {
             setPredictions([]);
@@ -1282,77 +1062,28 @@ export default function Taxi() {
         setIsSearchingPlaces(true);
         const center = origin || userLocation || defaultCenter;
 
-        // Strict boundary: ~15km radius box around user location in Calabozo / active city
-        const latDelta = 0.14;
-        const lngDelta = 0.14;
-        const cityBounds = new window.google.maps.LatLngBounds(
-            new window.google.maps.LatLng(center.lat - latDelta, center.lng - lngDelta),
-            new window.google.maps.LatLng(center.lat + latDelta, center.lng + lngDelta)
-        );
-
-        // Fetch local businesses matching the query from Supabase to prioritize them
-        let localComerciosPredictions: any[] = [];
-        try {
-            const { data: stores } = await supabase
-                .from('comercios')
-                .select('id, name, address, lat, lng')
-                .ilike('name', `%${val.trim()}%`)
-                .limit(4);
-            if (stores && stores.length > 0) {
-                localComerciosPredictions = stores.map((store: any) => ({
-                    description: `${store.name} - ${store.address || 'Calabozo'}`,
-                    place_id: `comercio_${store.id}`,
-                    structured_formatting: {
-                        main_text: `🏪 ${store.name}`,
-                        secondary_text: store.address || 'Comercio Local Registrado'
-                    },
-                    is_local_store: true,
-                    store_coords: store.lat && store.lng ? { lat: Number(store.lat), lng: Number(store.lng) } : null
-                }));
-            }
-        } catch (_) {}
-
         autocompleteServiceRef.current.getPlacePredictions(
             {
                 input: val,
                 componentRestrictions: { country: 've' },
-                locationRestriction: cityBounds, // STRICT: No results outside the city allowed!
-                origin: new window.google.maps.LatLng(center.lat, center.lng)
+                locationBias: new window.google.maps.LatLng(center.lat, center.lng)
             },
             (results, status) => {
                 setIsSearchingPlaces(false);
-                const googleResults = (status === window.google.maps.places.PlacesServiceStatus.OK && results) ? results : [];
-                setPredictions([...localComerciosPredictions, ...googleResults]);
+                if (status === window.google.maps.places.PlacesServiceStatus.OK && results) {
+                    setPredictions(results);
+                } else {
+                    setPredictions([]);
+                }
             }
         );
     };
 
     // 8. Select Autocomplete Prediction
-    const handleSelectPrediction = (p: any) => {
+    const handleSelectPrediction = (p: google.maps.places.AutocompletePrediction) => {
         vibrate(30);
         setSearchQuery(p.structured_formatting?.main_text || p.description);
         setPredictions([]);
-
-        // Direct select for verified local businesses
-        if (p.is_local_store && p.store_coords) {
-            const destLoc = {
-                lat: p.store_coords.lat,
-                lng: p.store_coords.lng,
-                address: p.description
-            };
-            setDestination(destLoc);
-
-            if (!origin && userLocation) {
-                setOrigin({
-                    lat: userLocation.lat,
-                    lng: userLocation.lng,
-                    address: 'Mi ubicación actual'
-                });
-            }
-
-            setStep('vehicle');
-            return;
-        }
 
         if (!geocoderRef.current && window.google?.maps?.Geocoder) {
             geocoderRef.current = new window.google.maps.Geocoder();
@@ -1673,27 +1404,6 @@ export default function Taxi() {
 
     // 10. Request Ride Handler (Strict snake_case, UUID safety & 5-category logic)
     const handleRequestTaxi = async () => {
-        // Prevent request if user has an active disputed payment
-        const rawUid = user?.id || (user as any)?.uid;
-        if (rawUid) {
-            try {
-                const { data: disputedRides } = await supabase
-                    .from('transport_requests')
-                    .select('id, payment_status, price')
-                    .eq('user_id', rawUid)
-                    .eq('payment_status', 'disputed')
-                    .limit(1);
-
-                if (disputedRides && disputedRides.length > 0) {
-                    toast.error("⚠️ Tu cuenta tiene un viaje anterior con pago en disputa. Resuelve el pago pendiente antes de solicitar otro servicio.", { duration: 6000 });
-                    navigate(`/taxi/track/${disputedRides[0].id}`);
-                    return;
-                }
-            } catch (err) {
-                console.warn("Dispute check warning:", err);
-            }
-        }
-
         if (!user && (!guestName || !guestPhone || !guestCedula)) {
             setShowGuestModal(true);
             return;
@@ -1727,9 +1437,9 @@ export default function Taxi() {
             commAmount = liveCommissions.confort;
             clientTotal = calculatePrice('ejecutivo');
         } else if (selectedCategory === 'delivery_envios') {
-            vType = vehicleType;
-            commAmount = vehicleType === 'moto' ? liveCommissions.delivery : (vehicleType === 'ejecutivo' ? liveCommissions.confort : liveCommissions.taxi);
-            clientTotal = calculatePrice(vehicleType);
+            vType = 'moto';
+            commAmount = liveCommissions.delivery;
+            clientTotal = calculatePrice('moto');
         } else if (selectedCategory === 'muchacho_mandado') {
             vType = 'moto';
             commAmount = liveCommissions.mandao;
@@ -1824,32 +1534,7 @@ export default function Taxi() {
                 };
             } else if (selectedCategory === 'delivery_envios') {
                 orderData.type = 'package_delivery';
-                orderData.package_description = packageNotes || packageDescription || 'Envío de encomienda';
-                const sName = senderName || orderData.user_name;
-                const sPhone = senderPhone ? (senderPhone.startsWith('+58') ? senderPhone : `+58${senderPhone}`) : orderData.user_phone;
-                const rName = receiverName || 'Destinatario por coordinar';
-                const rPhone = receiverPhone ? (receiverPhone.startsWith('+58') ? receiverPhone : `+58${receiverPhone}`) : '';
-
-                orderData.sender_name = sName;
-                orderData.sender_phone = sPhone;
-                orderData.receiver_name = rName;
-                orderData.receiver_phone = rPhone;
-
-                orderData.mandado_details = {
-                    sender_name: sName,
-                    sender_phone: sPhone,
-                    receiver_name: rName,
-                    receiver_phone: rPhone,
-                    is_business: isBusinessSender,
-                    package_notes: packageNotes || packageDescription || '',
-                    google_maps_link: gmapsInputUrl || null,
-                    vehicle_category: vehicleType === 'moto' ? 'Moto Envíos' : vehicleType === 'ejecutivo' ? 'Confort A/A' : 'Auto Económico',
-                    vehicle_type: vType
-                };
-                if (selectedDriver) {
-                    orderData.preferred_driver_id = selectedDriver.id;
-                    orderData.preferred_driver_assigned_at = new Date().toISOString();
-                }
+                orderData.package_description = packageDescription;
             } else {
                 orderData.type = 'transport';
             }
@@ -2598,15 +2283,7 @@ export default function Taxi() {
                     <div className="flex items-center gap-2 bg-white/95 backdrop-blur-md rounded-2xl shadow-xl border border-slate-200/80 p-2">
                         <button
                             onClick={() => {
-                                if (mainMode === 'package') {
-                                    if (packageStep === 3) {
-                                        setPackageStep(2);
-                                    } else if (packageStep === 2) {
-                                        setPackageStep(1);
-                                    } else {
-                                        setStep('categories');
-                                    }
-                                } else if (step === 'destination') {
+                                if (step === 'destination') {
                                     setStep('categories');
                                 } else if (step === 'vehicle') {
                                     setStep('destination');
@@ -2815,175 +2492,6 @@ export default function Taxi() {
                     {/* STEP 1: DESTINATION & SAVED PLACES */}
                     {!isSheetMinimized && step === 'destination' && (
                         <div className="space-y-3.5 animate-in fade-in">
-                            {/* --- ENCOMIENDA: PASO 1 (DATOS DE CONTACTO & NEGOCIO) --- */}
-                            {mainMode === 'package' && packageStep === 1 ? (
-                                <div className="space-y-3 animate-in fade-in">
-                                    <div className="flex items-center justify-between border-b border-slate-100 pb-2">
-                                        <div className="flex items-center gap-1.5">
-                                            <Package className="w-4 h-4 text-emerald-600" />
-                                            <span className="text-xs font-black text-slate-900 uppercase tracking-wide">
-                                                Paso 1 de 3: Datos de Contacto
-                                            </span>
-                                        </div>
-                                        <div className="flex items-center gap-1">
-                                            {[1, 2, 3].map((s) => (
-                                                <div
-                                                    key={s}
-                                                    className={`w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-black ${
-                                                        packageStep === s
-                                                            ? 'bg-emerald-600 text-white shadow-xs'
-                                                            : 'bg-slate-100 text-slate-400'
-                                                    }`}
-                                                >
-                                                    {s}
-                                                </div>
-                                            ))}
-                                        </div>
-                                    </div>
-
-                                    {/* Banner Inteligente B2B para Negocios */}
-                                    {isBusinessSender && (
-                                        <div className="bg-gradient-to-r from-amber-500/15 via-yellow-500/20 to-amber-500/15 border border-amber-500/30 rounded-2xl p-2.5 flex items-center gap-2.5 text-amber-950 shadow-xs">
-                                            <div className="w-8 h-8 rounded-xl bg-amber-400 text-slate-950 flex items-center justify-center font-black shrink-0 shadow-xs">
-                                                <Building2 className="w-4 h-4" />
-                                            </div>
-                                            <div className="min-w-0 flex-1">
-                                                <div className="flex items-center gap-1.5">
-                                                    <span className="text-xs font-black uppercase tracking-wider text-amber-950">
-                                                        Facturación / Comanda para Negocio
-                                                    </span>
-                                                    <span className="text-[8.5px] font-black uppercase px-1.5 py-0.2 rounded-full bg-slate-950 text-amber-400 shrink-0">
-                                                        B2B
-                                                    </span>
-                                                </div>
-                                                <p className="text-[10px] text-amber-900 font-bold leading-tight mt-0.5">
-                                                    Este envío se despacha con formato de comanda comercial para control de entregas.
-                                                </p>
-                                            </div>
-                                        </div>
-                                    )}
-
-                                    {/* Quien Envía */}
-                                    <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-2.5 space-y-1.5">
-                                        <span className="text-[10px] font-black uppercase text-slate-500 tracking-wider flex items-center gap-1">
-                                            📤 Quien Envía (Remitente)
-                                        </span>
-                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                                            <input
-                                                type="text"
-                                                value={senderName}
-                                                onChange={(e) => setSenderName(e.target.value)}
-                                                placeholder="Nombre o Empresa"
-                                                className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 placeholder-slate-400 outline-none focus:border-emerald-500"
-                                            />
-                                            <div className="flex items-center bg-white border border-slate-200 rounded-xl overflow-hidden focus-within:border-emerald-500">
-                                                <span className="px-2.5 py-2 bg-slate-100 text-slate-600 font-black text-xs border-r border-slate-200 shrink-0">
-                                                    +58
-                                                </span>
-                                                <input
-                                                    type="tel"
-                                                    value={senderPhone}
-                                                    onChange={(e) => setSenderPhone(e.target.value.replace(/[^0-9]/g, ''))}
-                                                    placeholder="4121234567"
-                                                    className="w-full px-2.5 py-2 text-xs font-bold text-slate-800 placeholder-slate-400 outline-none bg-transparent"
-                                                />
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    {/* Quien Recibe */}
-                                    <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-2.5 space-y-1.5">
-                                        <span className="text-[10px] font-black uppercase text-slate-500 tracking-wider flex items-center gap-1">
-                                            📥 Quien Recibe (Destinatario)
-                                        </span>
-                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                                            <input
-                                                type="text"
-                                                value={receiverName}
-                                                onChange={(e) => setReceiverName(e.target.value)}
-                                                placeholder="Nombre de la persona que recibe"
-                                                className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 placeholder-slate-400 outline-none focus:border-emerald-500"
-                                            />
-                                            <div className="flex items-center bg-white border border-slate-200 rounded-xl overflow-hidden focus-within:border-emerald-500">
-                                                <span className="px-2.5 py-2 bg-slate-100 text-slate-600 font-black text-xs border-r border-slate-200 shrink-0">
-                                                    +58
-                                                </span>
-                                                <input
-                                                    type="tel"
-                                                    value={receiverPhone}
-                                                    onChange={(e) => setReceiverPhone(e.target.value.replace(/[^0-9]/g, ''))}
-                                                    placeholder="4141234567"
-                                                    className="w-full px-2.5 py-2 text-xs font-bold text-slate-800 placeholder-slate-400 outline-none bg-transparent"
-                                                />
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    {/* Descripción / Notas */}
-                                    <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-2.5 space-y-1">
-                                        <span className="text-[10px] font-black uppercase text-slate-500 tracking-wider">
-                                            📦 ¿Qué encomienda envías?
-                                        </span>
-                                        <textarea
-                                            value={packageNotes}
-                                            onChange={(e) => setPackageNotes(e.target.value)}
-                                            placeholder="Ej: Sobre con documentos, llaves, caja mediana con repuestos..."
-                                            className="w-full bg-white border border-slate-200 rounded-xl p-2 text-xs font-bold text-slate-800 placeholder-slate-400 outline-none focus:border-emerald-500 resize-none min-h-[44px]"
-                                        />
-                                    </div>
-
-                                    <button
-                                        type="button"
-                                        onClick={() => {
-                                            if (!senderName.trim()) {
-                                                toast.error("Indica quién envía la encomienda");
-                                                return;
-                                            }
-                                            if (!receiverName.trim()) {
-                                                toast.error("Indica quién recibe la encomienda");
-                                                return;
-                                            }
-                                            vibrate(30);
-                                            setPackageStep(2);
-                                        }}
-                                        className="w-full py-3.5 bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs sm:text-sm uppercase tracking-wider rounded-2xl shadow-lg shadow-emerald-600/25 active:scale-95 transition-all flex items-center justify-center gap-2"
-                                    >
-                                        <span>Continuar a Ubicaciones</span>
-                                        <ArrowRight className="w-4 h-4" />
-                                    </button>
-                                </div>
-                            ) : (
-                                <>
-                                    {mainMode === 'package' && (
-                                        <div className="flex items-center justify-between border-b border-slate-100 pb-2">
-                                            <div className="flex items-center gap-1.5">
-                                                <Package className="w-4 h-4 text-emerald-600" />
-                                                <span className="text-xs font-black text-slate-900 uppercase tracking-wide">
-                                                    Paso 2 de 3: Ubicaciones (Origen y Destino)
-                                                </span>
-                                            </div>
-                                            <div className="flex items-center gap-1">
-                                                {[1, 2, 3].map((s) => (
-                                                    <div
-                                                        key={s}
-                                                        onClick={() => {
-                                                            if (s === 1) setPackageStep(1);
-                                                            if (s === 3 && origin && destination) { setPackageStep(3); setStep('vehicle'); }
-                                                        }}
-                                                        className={`w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-black cursor-pointer ${
-                                                            packageStep === s
-                                                                ? 'bg-emerald-600 text-white shadow-xs'
-                                                                : packageStep > s
-                                                                ? 'bg-emerald-100 text-emerald-800'
-                                                                : 'bg-slate-100 text-slate-400'
-                                                        }`}
-                                                    >
-                                                        {packageStep > s ? '✓' : s}
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        </div>
-                                    )}
                             {/* Route Indicator Pills */}
                             <div className="bg-slate-50 rounded-2xl p-2.5 sm:p-3 border border-slate-200/70 space-y-2">
                                 <div className="flex items-center gap-2.5">
@@ -3073,55 +2581,20 @@ export default function Taxi() {
                                 </div>
                             )}
 
-                            {/* Google Maps Link / Coordenadas Resolver para Encomienda */}
+                            {/* Package Note If in package mode */}
                             {mainMode === 'package' && (
-                                <div className="bg-blue-50/70 border border-blue-200 rounded-2xl p-2.5 space-y-2">
-                                    <div className="flex items-center justify-between">
-                                        <span className="text-[10px] font-black uppercase text-blue-900 tracking-wider flex items-center gap-1.5">
-                                            <LinkIcon className="w-3.5 h-3.5 text-blue-600" />
-                                            Pegar Enlace de Google Maps / Coordenadas
-                                        </span>
-                                        <div className="flex gap-1 bg-white p-0.5 rounded-lg border border-blue-200">
-                                            <button
-                                                type="button"
-                                                onClick={() => setGmapsTarget('origin')}
-                                                className={`px-2 py-0.5 text-[9px] font-black rounded transition-all ${
-                                                    gmapsTarget === 'origin' ? 'bg-blue-600 text-white' : 'text-slate-600'
-                                                }`}
-                                            >
-                                                Origen
-                                            </button>
-                                            <button
-                                                type="button"
-                                                onClick={() => setGmapsTarget('destination')}
-                                                className={`px-2 py-0.5 text-[9px] font-black rounded transition-all ${
-                                                    gmapsTarget === 'destination' ? 'bg-blue-600 text-white' : 'text-slate-600'
-                                                }`}
-                                            >
-                                                Destino
-                                            </button>
-                                        </div>
+                                <div className="space-y-2 bg-blue-50/90 border border-blue-200 rounded-2xl p-3 animate-in fade-in">
+                                    <div className="flex items-center gap-2 text-xs text-blue-900">
+                                        <Package className="w-4 h-4 text-blue-600 shrink-0" />
+                                        <span className="font-black text-[11px]">¿Qué paquete deseas enviar?</span>
                                     </div>
-                                    <div className="flex gap-1.5">
-                                        <input
-                                            type="text"
-                                            value={gmapsInputUrl}
-                                            onChange={(e) => setGmapsInputUrl(e.target.value)}
-                                            placeholder="https://maps.app.goo.gl/... o 10.48, -66.90"
-                                            className="flex-1 bg-white border border-blue-200 rounded-xl px-2.5 py-1.5 text-xs font-bold text-slate-800 placeholder-slate-400 outline-none focus:border-blue-400"
-                                        />
-                                        <button
-                                            type="button"
-                                            disabled={isParsingGmaps || !gmapsInputUrl.trim()}
-                                            onClick={handleResolveGoogleMapsUrl}
-                                            className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white font-black text-xs rounded-xl active:scale-95 transition-all flex items-center gap-1 shrink-0"
-                                        >
-                                            {isParsingGmaps ? <Loader2 className="w-3 h-3 animate-spin" /> : 'Cargar'}
-                                        </button>
-                                    </div>
-                                    <p className="text-[9px] text-blue-800 font-medium">
-                                        📍 Pega el link compartido de WhatsApp o Google Maps para autocompletar la ruta.
-                                    </p>
+                                    <input
+                                        type="text"
+                                        value={packageDescription}
+                                        onChange={(e) => setPackageDescription(e.target.value)}
+                                        placeholder="Ej: Documentos en sobre cerrado, llaves, caja mediana..."
+                                        className="w-full bg-white border border-blue-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 outline-none focus:border-blue-400 placeholder:text-slate-400"
+                                    />
                                 </div>
                             )}
 
@@ -3153,48 +2626,23 @@ export default function Taxi() {
                             )}
 
                             {/* Continue Button */}
-                            {mainMode === 'package' ? (
-                                <div className="flex gap-2">
-                                    <button
-                                        type="button"
-                                        onClick={() => setPackageStep(1)}
-                                        className="py-3 px-3.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-black text-xs rounded-2xl transition-colors"
-                                    >
-                                        Volver
-                                    </button>
-                                    <button
-                                        type="button"
-                                        disabled={!origin || !destination}
-                                        onClick={() => {
-                                            vibrate(30);
-                                            setPackageStep(3);
-                                            setStep('vehicle');
-                                        }}
-                                        className="flex-1 py-3 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 text-white font-black text-xs uppercase tracking-wider rounded-2xl shadow-lg shadow-emerald-600/25 active:scale-95 transition-all flex items-center justify-center gap-2"
-                                    >
-                                        <span>Continuar a Vehículo y Chofer</span>
-                                        <ArrowRight className="w-4 h-4" />
-                                    </button>
-                                </div>
-                            ) : (
-                                <button
-                                    disabled={!origin || !destination}
-                                    onClick={() => {
-                                        vibrate(30);
-                                        setStep('vehicle');
-                                    }}
-                                    className="w-full py-3.5 bg-primary text-slate-950 rounded-2xl font-black text-xs uppercase tracking-wider flex items-center justify-center gap-2 shadow-xl shadow-primary/20 active:scale-95 disabled:opacity-40 disabled:pointer-events-none transition-all"
-                                >
-                                    <span>
-                                        {mainMode === 'mandado'
-                                            ? 'Continuar a tarifa de mandado'
-                                            : 'Ver tarifas de viaje'}
-                                    </span>
-                                    <ArrowRight className="w-4 h-4" />
-                                </button>
-                            )}
-                                </>
-                            )}
+                            <button
+                                disabled={!origin || !destination}
+                                onClick={() => {
+                                    vibrate(30);
+                                    setStep('vehicle');
+                                }}
+                                className="w-full py-3.5 bg-primary text-slate-950 rounded-2xl font-black text-xs uppercase tracking-wider flex items-center justify-center gap-2 shadow-xl shadow-primary/20 active:scale-95 disabled:opacity-40 disabled:pointer-events-none transition-all"
+                            >
+                                <span>
+                                    {mainMode === 'mandado'
+                                        ? 'Continuar a tarifa de mandado'
+                                        : mainMode === 'package'
+                                        ? 'Continuar a tarifa de envío'
+                                        : 'Ver tarifas de viaje'}
+                                </span>
+                                <ArrowRight className="w-4 h-4" />
+                            </button>
                         </div>
                     )}
 
@@ -3315,19 +2763,13 @@ export default function Taxi() {
                                                     <Bike className="w-4 h-4 text-amber-500" />
                                                 </div>
                                                 <span className="text-[11px] font-black text-slate-900 truncate max-w-full">Mototaxi</span>
-                                                <span className={`text-[9px] font-bold ${motoRange.isBusy ? 'text-rose-600 font-black' : 'text-emerald-600'}`}>
-                                                    {motoRange.isBusy ? 'No disponible' : '2-3 min'}
-                                                </span>
+                                                <span className="text-[9px] text-emerald-600 font-bold">2-3 min</span>
                                                 <span className="text-xs font-black text-slate-900 mt-0.5 leading-tight">
-                                                    {motoRange.isBusy ? (
-                                                        <span className="text-rose-600 font-black">Ocupados</span>
-                                                    ) : selectedDriver && selectedDriver.vehicleType === 'moto' ? (
-                                                        `$${calculateDriverTripPrice(selectedDriver).toFixed(2)}`
-                                                    ) : (
-                                                        motoRange.text
-                                                    )}
+                                                    {selectedDriver && selectedDriver.vehicleType === 'moto'
+                                                        ? `$${calculateDriverTripPrice(selectedDriver).toFixed(2)}`
+                                                        : motoRange.text}
                                                 </span>
-                                                {!motoRange.isBusy && bcvRate > 0 && (
+                                                {bcvRate > 0 && (
                                                     <span className="text-[8px] font-bold text-slate-500 truncate max-w-full px-0.5">
                                                         {((selectedDriver && selectedDriver.vehicleType === 'moto' ? calculateDriverTripPrice(selectedDriver) : motoRange.min) * bcvRate).toFixed(0)} Bs
                                                     </span>
@@ -3346,7 +2788,7 @@ export default function Taxi() {
                                                 </span>
                                             </button>
 
-                                            {/* 2. Taxi Económico */}
+                                            {/* 2. Taxi Driver */}
                                             <button
                                                 type="button"
                                                 onClick={() => {
@@ -3363,20 +2805,14 @@ export default function Taxi() {
                                                 <div className="w-8 h-8 rounded-lg bg-white flex items-center justify-center mb-1 shadow-xs">
                                                     <Car className="w-4 h-4 text-slate-900" />
                                                 </div>
-                                                <span className="text-[11px] font-black truncate max-w-full">Taxi Económico</span>
-                                                <span className={`text-[9px] font-bold ${carroRange.isBusy ? (selectedCategory === 'taxi_driver' ? 'text-slate-950 font-black' : 'text-rose-600 font-black') : (selectedCategory === 'taxi_driver' ? 'text-slate-900' : 'text-emerald-600')}`}>
-                                                    {carroRange.isBusy ? 'No disponible' : '3-5 min'}
-                                                </span>
+                                                <span className="text-[11px] font-black truncate max-w-full">Taxi Driver</span>
+                                                <span className={`text-[9px] font-bold ${selectedCategory === 'taxi_driver' ? 'text-slate-900' : 'text-emerald-600'}`}>3-5 min</span>
                                                 <span className="text-xs font-black mt-0.5 leading-tight">
-                                                    {carroRange.isBusy ? (
-                                                        <span className={selectedCategory === 'taxi_driver' ? 'text-slate-950 font-black' : 'text-rose-600 font-black'}>Ocupados</span>
-                                                    ) : selectedDriver && selectedDriver.vehicleType === 'carro' ? (
-                                                        `$${calculateDriverTripPrice(selectedDriver).toFixed(2)}`
-                                                    ) : (
-                                                        carroRange.text
-                                                    )}
+                                                    {selectedDriver && selectedDriver.vehicleType === 'carro'
+                                                        ? `$${calculateDriverTripPrice(selectedDriver).toFixed(2)}`
+                                                        : carroRange.text}
                                                 </span>
-                                                {!carroRange.isBusy && bcvRate > 0 && (
+                                                {bcvRate > 0 && (
                                                     <span className={`text-[8px] font-bold truncate max-w-full px-0.5 ${selectedCategory === 'taxi_driver' ? 'text-slate-800' : 'text-slate-500'}`}>
                                                         {((selectedDriver && selectedDriver.vehicleType === 'carro' ? calculateDriverTripPrice(selectedDriver) : carroRange.min) * bcvRate).toFixed(0)} Bs
                                                     </span>
@@ -3413,19 +2849,13 @@ export default function Taxi() {
                                                     <Sparkles className="w-4 h-4 text-amber-500" />
                                                 </div>
                                                 <span className={`text-[11px] font-black truncate max-w-full ${selectedCategory === 'carro_confort' ? 'text-white' : 'text-slate-900'}`}>Confort A/A</span>
-                                                <span className={`text-[9px] font-bold ${ejecutivoRange.isBusy ? 'text-rose-400 font-black' : 'text-amber-400'}`}>
-                                                    {ejecutivoRange.isBusy ? 'No disponible' : 'Premium'}
-                                                </span>
+                                                <span className="text-[9px] text-amber-400 font-bold">Premium</span>
                                                 <span className={`text-xs font-black mt-0.5 leading-tight ${selectedCategory === 'carro_confort' ? 'text-white' : 'text-slate-900'}`}>
-                                                    {ejecutivoRange.isBusy ? (
-                                                        <span className={selectedCategory === 'carro_confort' ? 'text-amber-300 font-black' : 'text-rose-600 font-black'}>Ocupados</span>
-                                                    ) : selectedDriver && selectedDriver.vehicleType === 'ejecutivo' ? (
-                                                        `$${calculateDriverTripPrice(selectedDriver).toFixed(2)}`
-                                                    ) : (
-                                                        ejecutivoRange.text
-                                                    )}
+                                                    {selectedDriver && selectedDriver.vehicleType === 'ejecutivo'
+                                                        ? `$${calculateDriverTripPrice(selectedDriver).toFixed(2)}`
+                                                        : ejecutivoRange.text}
                                                 </span>
-                                                {!ejecutivoRange.isBusy && bcvRate > 0 && (
+                                                {bcvRate > 0 && (
                                                     <span className={`text-[8px] font-bold truncate max-w-full px-0.5 ${selectedCategory === 'carro_confort' ? 'text-slate-300' : 'text-slate-500'}`}>
                                                         {((selectedDriver && selectedDriver.vehicleType === 'ejecutivo' ? calculateDriverTripPrice(selectedDriver) : ejecutivoRange.min) * bcvRate).toFixed(0)} Bs
                                                     </span>
@@ -3450,11 +2880,9 @@ export default function Taxi() {
                                 {mainMode === 'package' && (() => {
                                     const motoPackageRange = getCategoryPriceRange('moto');
                                     const carroPackageRange = getCategoryPriceRange('carro');
-                                    const confortPackageRange = getCategoryPriceRange('ejecutivo');
 
                                     return (
                                         <>
-                                            {/* 1. Moto Envíos */}
                                             <button
                                                 type="button"
                                                 onClick={() => {
@@ -3462,31 +2890,38 @@ export default function Taxi() {
                                                     setSelectedCategory('delivery_envios');
                                                     setVehicleType('moto');
                                                 }}
-                                                className={`flex-none w-[115px] snap-start flex flex-col items-center py-2.5 px-2 rounded-2xl border-2 transition-all text-center ${
+                                                className={`flex-1 min-w-[145px] flex items-center gap-3 py-3 px-3.5 rounded-2xl border-2 transition-all text-left ${
                                                     vehicleType === 'moto'
-                                                        ? 'border-emerald-600 bg-emerald-50/80 shadow-md ring-2 ring-emerald-500/20 scale-[1.02]'
-                                                        : 'border-slate-100 bg-slate-50 hover:border-slate-200'
+                                                        ? 'border-blue-500 bg-blue-50/80 shadow-md ring-2 ring-blue-500/20'
+                                                        : 'border-slate-100 bg-slate-50'
                                                 }`}
                                             >
-                                                <div className="w-8 h-8 rounded-lg bg-white flex items-center justify-center mb-1 shadow-xs">
-                                                    <Bike className="w-4 h-4 text-emerald-600" />
+                                                <div className="w-10 h-10 rounded-xl bg-blue-500/20 text-blue-600 flex items-center justify-center shrink-0">
+                                                    <Bike className="w-5 h-5" />
                                                 </div>
-                                                <span className="text-[11px] font-black text-slate-900 truncate max-w-full">Moto Envíos</span>
-                                                <span className={`text-[9px] font-bold ${motoPackageRange.isBusy ? 'text-rose-600 font-black' : 'text-emerald-600'}`}>
-                                                    {motoPackageRange.isBusy ? 'No disponible' : 'Sobres / Docs'}
-                                                </span>
-                                                <span className="text-xs font-black text-slate-900 mt-0.5 leading-tight">
-                                                    {motoPackageRange.isBusy ? (
-                                                        <span className="text-rose-600 font-black">Ocupados</span>
-                                                    ) : selectedDriver && selectedDriver.vehicleType === 'moto' ? (
-                                                        `$${calculateDriverTripPrice(selectedDriver).toFixed(2)}`
-                                                    ) : (
-                                                        motoPackageRange.text
-                                                    )}
-                                                </span>
+                                                <div className="flex-1 min-w-0">
+                                                    <p className="text-xs font-black text-slate-900 truncate">Moto Envíos</p>
+                                                    <p className="text-[10px] text-slate-500 font-medium truncate">Documentos y paquetes</p>
+                                                    <p className="text-xs font-black text-blue-700 mt-0.5 leading-tight">
+                                                        {selectedDriver && selectedDriver.vehicleType === 'moto'
+                                                            ? `$${calculateDriverTripPrice(selectedDriver).toFixed(2)}`
+                                                            : motoPackageRange.text}
+                                                    </p>
+                                                    <span
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            vibrate(30);
+                                                            setSelectedCategory('delivery_envios');
+                                                            setVehicleType('moto');
+                                                            setShowDriverSelectionModal(true);
+                                                        }}
+                                                        className="text-[8.5px] font-black text-blue-700 hover:text-blue-900 underline block mt-0.5 cursor-pointer"
+                                                    >
+                                                        Elegir piloto
+                                                    </span>
+                                                </div>
                                             </button>
 
-                                            {/* 2. Taxi Económico */}
                                             <button
                                                 type="button"
                                                 onClick={() => {
@@ -3494,60 +2929,36 @@ export default function Taxi() {
                                                     setSelectedCategory('delivery_envios');
                                                     setVehicleType('carro');
                                                 }}
-                                                className={`flex-none w-[115px] snap-start flex flex-col items-center py-2.5 px-2 rounded-2xl border-2 transition-all text-center ${
+                                                className={`flex-1 min-w-[145px] flex items-center gap-3 py-3 px-3.5 rounded-2xl border-2 transition-all text-left ${
                                                     vehicleType === 'carro'
-                                                        ? 'border-emerald-600 bg-emerald-50/80 shadow-md ring-2 ring-emerald-500/20 scale-[1.02]'
-                                                        : 'border-slate-100 bg-slate-50 hover:border-slate-200'
+                                                        ? 'border-blue-500 bg-blue-50/80 shadow-md ring-2 ring-blue-500/20'
+                                                        : 'border-slate-100 bg-slate-50'
                                                 }`}
                                             >
-                                                <div className="w-8 h-8 rounded-lg bg-white flex items-center justify-center mb-1 shadow-xs">
-                                                    <Car className="w-4 h-4 text-amber-500" />
+                                                <div className="w-10 h-10 rounded-xl bg-blue-500/20 text-blue-600 flex items-center justify-center shrink-0">
+                                                    <Car className="w-5 h-5" />
                                                 </div>
-                                                <span className="text-[11px] font-black text-slate-900 truncate max-w-full">Taxi Económico</span>
-                                                <span className={`text-[9px] font-bold ${carroPackageRange.isBusy ? 'text-rose-600 font-black' : 'text-slate-500'}`}>
-                                                    {carroPackageRange.isBusy ? 'No disponible' : 'Cajas / Bultos'}
-                                                </span>
-                                                <span className="text-xs font-black text-slate-900 mt-0.5 leading-tight">
-                                                    {carroPackageRange.isBusy ? (
-                                                        <span className="text-rose-600 font-black">Ocupados</span>
-                                                    ) : selectedDriver && selectedDriver.vehicleType === 'carro' ? (
-                                                        `$${calculateDriverTripPrice(selectedDriver).toFixed(2)}`
-                                                    ) : (
-                                                        carroPackageRange.text
-                                                    )}
-                                                </span>
-                                            </button>
-
-                                            {/* 3. Confort A/A */}
-                                            <button
-                                                type="button"
-                                                onClick={() => {
-                                                    vibrate(30);
-                                                    setSelectedCategory('delivery_envios');
-                                                    setVehicleType('ejecutivo');
-                                                }}
-                                                className={`flex-none w-[115px] snap-start flex flex-col items-center py-2.5 px-2 rounded-2xl border-2 transition-all text-center ${
-                                                    vehicleType === 'ejecutivo'
-                                                        ? 'border-slate-900 bg-slate-900 text-white shadow-md ring-2 ring-slate-900/20 scale-[1.02]'
-                                                        : 'border-slate-100 bg-slate-50 hover:border-slate-200'
-                                                }`}
-                                            >
-                                                <div className="w-8 h-8 rounded-lg bg-white flex items-center justify-center mb-1 shadow-xs">
-                                                    <Sparkles className="w-4 h-4 text-amber-500" />
+                                                <div className="flex-1 min-w-0">
+                                                    <p className="text-xs font-black text-slate-900 truncate">Auto Envíos</p>
+                                                    <p className="text-[10px] text-slate-500 font-medium truncate">Cajas o bultos medianos</p>
+                                                    <p className="text-xs font-black text-blue-700 mt-0.5 leading-tight">
+                                                        {selectedDriver && selectedDriver.vehicleType === 'carro'
+                                                            ? `$${calculateDriverTripPrice(selectedDriver).toFixed(2)}`
+                                                            : carroPackageRange.text}
+                                                    </p>
+                                                    <span
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            vibrate(30);
+                                                            setSelectedCategory('delivery_envios');
+                                                            setVehicleType('carro');
+                                                            setShowDriverSelectionModal(true);
+                                                        }}
+                                                        className="text-[8.5px] font-black text-blue-700 hover:text-blue-900 underline block mt-0.5 cursor-pointer"
+                                                    >
+                                                        Elegir conductor
+                                                    </span>
                                                 </div>
-                                                <span className={`text-[11px] font-black truncate max-w-full ${vehicleType === 'ejecutivo' ? 'text-white' : 'text-slate-900'}`}>Confort A/A</span>
-                                                <span className={`text-[9px] font-bold ${confortPackageRange.isBusy ? 'text-rose-400 font-black' : 'text-amber-400'}`}>
-                                                    {confortPackageRange.isBusy ? 'No disponible' : 'Refrigerado / Frágil'}
-                                                </span>
-                                                <span className={`text-xs font-black mt-0.5 leading-tight ${vehicleType === 'ejecutivo' ? 'text-white' : 'text-slate-900'}`}>
-                                                    {confortPackageRange.isBusy ? (
-                                                        <span className={vehicleType === 'ejecutivo' ? 'text-amber-300 font-black' : 'text-rose-600 font-black'}>Ocupados</span>
-                                                    ) : selectedDriver && selectedDriver.vehicleType === 'ejecutivo' ? (
-                                                        `$${calculateDriverTripPrice(selectedDriver).toFixed(2)}`
-                                                    ) : (
-                                                        confortPackageRange.text
-                                                    )}
-                                                </span>
                                             </button>
                                         </>
                                     );
@@ -3605,123 +3016,18 @@ export default function Taxi() {
                             )}
 
                             {mainMode === 'package' && (
-                                <div className="space-y-2.5 animate-in fade-in">
-                                    {/* Barra de búsqueda manual por nombre del conductor/chofer */}
-                                    <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-2.5 space-y-2">
-                                        <div className="flex items-center justify-between">
-                                            <span className="text-[10px] font-black uppercase text-slate-500 tracking-wider flex items-center gap-1">
-                                                🔍 Buscar Chofer de Confianza
-                                            </span>
-                                            {selectedDriver && (
-                                                <button
-                                                    type="button"
-                                                    onClick={() => setSelectedDriver(null)}
-                                                    className="text-[9.5px] font-bold text-rose-600 hover:underline"
-                                                >
-                                                    Quitar selección
-                                                </button>
-                                            )}
-                                        </div>
-                                        <div className="flex items-center gap-1.5 bg-white border border-slate-200 rounded-xl px-2.5 py-1.5">
-                                            <Search className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                                            <input
-                                                type="text"
-                                                value={driverSearchQuery}
-                                                onChange={(e) => setDriverSearchQuery(e.target.value)}
-                                                placeholder="Escribe el nombre del chofer..."
-                                                className="w-full text-xs font-bold text-slate-800 placeholder-slate-400 outline-none bg-transparent"
-                                            />
-                                            {driverSearchQuery && (
-                                                <button
-                                                    type="button"
-                                                    onClick={() => setDriverSearchQuery('')}
-                                                    className="w-4 h-4 rounded-full bg-slate-200 text-slate-500 flex items-center justify-center shrink-0 text-[10px]"
-                                                >
-                                                    ✕
-                                                </button>
-                                            )}
-                                        </div>
-
-                                        {/* Coincidencias de choferes en línea */}
-                                        {driverSearchQuery.trim() && (
-                                            <div className="max-h-36 overflow-y-auto space-y-1.5 pt-1">
-                                                {(() => {
-                                                    const matches = nearbyDrivers.filter(d =>
-                                                        d.fullName?.toLowerCase().includes(driverSearchQuery.toLowerCase())
-                                                    );
-                                                    if (matches.length === 0) {
-                                                        return <p className="text-[10px] text-slate-400 font-bold text-center py-1.5">No hay choferes en línea con ese nombre</p>;
-                                                    }
-                                                    return matches.map(d => (
-                                                        <div
-                                                            key={d.id}
-                                                            onClick={() => {
-                                                                vibrate(30);
-                                                                setSelectedDriver(d);
-                                                                if (d.vehicleType === 'moto') {
-                                                                    setVehicleType('moto');
-                                                                } else if (d.vehicleType === 'ejecutivo') {
-                                                                    setVehicleType('ejecutivo');
-                                                                } else {
-                                                                    setVehicleType('carro');
-                                                                }
-                                                                setDriverSearchQuery('');
-                                                            }}
-                                                            className={`p-2 rounded-xl border flex items-center justify-between cursor-pointer transition-all ${
-                                                                selectedDriver?.id === d.id ? 'border-amber-500 bg-amber-50' : 'border-slate-200 bg-white hover:border-slate-300'
-                                                            }`}
-                                                        >
-                                                            <div className="flex items-center gap-2">
-                                                                <div className="w-7 h-7 rounded-lg bg-slate-900 text-yellow-400 flex items-center justify-center font-black text-xs shrink-0">
-                                                                    {d.fullName?.charAt(0) || 'C'}
-                                                                </div>
-                                                                <div>
-                                                                    <p className="text-xs font-black text-slate-900">{d.fullName}</p>
-                                                                    <p className="text-[9.5px] text-slate-500 font-bold capitalize">
-                                                                        {d.vehicleType === 'moto' ? 'Moto' : d.vehicleType === 'ejecutivo' ? 'Confort A/A' : 'Auto'} • ★ {d.rating || '5.0'}
-                                                                    </p>
-                                                                </div>
-                                                            </div>
-                                                            <span className="text-xs font-black text-slate-950 bg-amber-400 px-2 py-0.5 rounded-lg shadow-xs">
-                                                                ${calculateDriverTripPrice(d).toFixed(2)}
-                                                            </span>
-                                                        </div>
-                                                    ));
-                                                })()}
-                                            </div>
-                                        )}
+                                <div className="space-y-2 bg-blue-50/80 border border-blue-200 rounded-2xl p-3 animate-in fade-in">
+                                    <div className="flex items-center gap-2 text-xs text-blue-900">
+                                        <Package className="w-4 h-4 text-blue-600 shrink-0" />
+                                        <span className="font-black text-[11px]">Descripción del paquete a trasladar:</span>
                                     </div>
-
-                                    {/* Comanda de Entrega Detallada */}
-                                    <div className="bg-emerald-50/80 border border-emerald-200 rounded-2xl p-2.5 space-y-1.5">
-                                        <div className="flex items-center justify-between border-b border-emerald-200/60 pb-1">
-                                            <span className="text-[10px] font-black uppercase text-emerald-950 tracking-wider flex items-center gap-1.5">
-                                                📋 Comanda de Entrega
-                                            </span>
-                                            {isBusinessSender && (
-                                                <span className="text-[8px] font-black uppercase px-1.5 py-0.2 rounded-full bg-slate-950 text-amber-400">
-                                                    B2B Oficial
-                                                </span>
-                                            )}
-                                        </div>
-                                        <div className="text-[10.5px] font-bold text-slate-800 space-y-0.5">
-                                            <p><span className="text-slate-500 font-medium">De:</span> {senderName || 'Remitente'} {senderPhone ? `(+58 ${senderPhone})` : ''}</p>
-                                            <p><span className="text-slate-500 font-medium">Para:</span> {receiverName || 'Destinatario'} {receiverPhone ? `(+58 ${receiverPhone})` : ''}</p>
-                                            {packageNotes && <p><span className="text-slate-500 font-medium">Contenido:</span> {packageNotes}</p>}
-                                            <p><span className="text-slate-500 font-medium">Chofer:</span> {selectedDriver ? `${selectedDriver.fullName} (Asignado)` : 'Radar Masivo Abierto (El más cercano)'}</p>
-                                        </div>
-                                    </div>
-
-                                    <button
-                                        type="button"
-                                        onClick={() => {
-                                            setPackageStep(2);
-                                            setStep('destination');
-                                        }}
-                                        className="w-full py-2 text-center text-xs font-bold text-slate-600 hover:text-slate-900 transition-colors"
-                                    >
-                                        ← Modificar origen o destino
-                                    </button>
+                                    <input
+                                        type="text"
+                                        placeholder="Ej: Documentos en sobre, llaves, paquete mediano..."
+                                        value={packageDescription}
+                                        onChange={(e) => setPackageDescription(e.target.value)}
+                                        className="w-full bg-white border border-blue-200 px-3 py-2 rounded-xl text-xs font-bold text-slate-800 outline-none focus:border-blue-400 placeholder:text-slate-400"
+                                    />
                                 </div>
                             )}
 
@@ -3755,14 +3061,37 @@ export default function Taxi() {
                             </div>
 
                             {/* Big Prominent Yango CTA Button */}
-                            <button
-                                onClick={handleRequestTaxi}
-                                className="w-full py-4 bg-[#FFB800] hover:bg-[#f5b000] text-slate-950 font-black text-sm uppercase tracking-wider rounded-2xl shadow-xl shadow-amber-500/20 active:scale-95 transition-all flex items-center justify-center gap-2"
-                            >
-                                <span>
-                                    {mainMode === 'mandado' ? 'Solicitar Mandado • Iniciar Subasta' : 'EMPECEMOS'}
-                                </span>
-                            </button>
+                            {mainMode === 'package' ? (
+                                <div className="space-y-1.5">
+                                    <button
+                                        onClick={handleRequestTaxi}
+                                        className="w-full py-4 bg-emerald-600 hover:bg-emerald-500 text-white font-black text-sm uppercase tracking-wider rounded-2xl shadow-xl shadow-emerald-600/30 active:scale-95 transition-all flex items-center justify-center gap-2"
+                                    >
+                                        <Package className="w-4 h-4" />
+                                        <span>Enviar encomienda</span>
+                                        <ArrowRight className="w-4 h-4" />
+                                    </button>
+                                    <p className="text-[10px] text-center text-slate-500 font-medium">
+                                        📦 Ideal para emprendedores, paquetes, documentos, regalos y más
+                                    </p>
+                                </div>
+                            ) : (
+                                <button
+                                    onClick={handleRequestTaxi}
+                                    className="w-full py-3.5 bg-[#FFB800] text-slate-950 font-black text-xs sm:text-sm uppercase tracking-wider rounded-2xl shadow-xl shadow-amber-500/20 active:scale-95 transition-all flex items-center justify-center gap-2"
+                                >
+                                    <span>
+                                        {mainMode === 'mandado'
+                                            ? 'Solicitar Mandado • Iniciar Subasta'
+                                            : selectedCategory === 'mototaxi'
+                                            ? `Pedir Mototaxi • $${calculatePrice('moto')}`
+                                            : selectedCategory === 'carro_confort'
+                                            ? `Pedir Confort • $${calculatePrice('ejecutivo')}`
+                                            : `Pedir Taxi • $${calculatePrice('carro')}`}
+                                    </span>
+                                    <ArrowRight className="w-4 h-4" />
+                                </button>
+                            )}
                         </div>
                     )}
 
