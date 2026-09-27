@@ -1,70 +1,83 @@
 import React, { useState, useEffect } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, Store, Users, Image as ImageIcon, LogOut, ChevronRight, Menu, X, Tag, Truck, Wallet, Car, Share2, Gift, Ticket, MessageSquareWarning, Megaphone, ShoppingBag, Trophy } from 'lucide-react';
-import { collection, query, where, onSnapshot } from 'firebase/firestore';
-import { db } from '../../lib/firebase';
+import { LayoutDashboard, Store, Users, Image as ImageIcon, LogOut, ChevronRight, Menu, X, Tag, Truck, Wallet, Car, Share2, Gift, Ticket, MessageSquareWarning, Megaphone, ShoppingBag, Trophy, Shield, ShieldCheck, Palette, ShieldAlert } from 'lucide-react';
+import { supabase } from '../../lib/supabase';
 import { UN2X3_LOGO } from '../../lib/env';
+import { useBranding } from '../../context/BrandingContext';
 import { useGlobalAudioAlerts } from '../../hooks/useGlobalAudioAlerts';
 import { useHaptics } from '../../hooks/useHaptics';
+import AuthorizedDevicesModal from './AuthorizedDevicesModal';
 
 interface CpanelLayoutProps {
     children: React.ReactNode;
     onLogout: () => void;
+    adminUser?: any;
 }
 
-export default function CpanelLayout({ children, onLogout }: CpanelLayoutProps) {
+export default function CpanelLayout({ children, onLogout, adminUser }: CpanelLayoutProps) {
     const navigate = useNavigate();
+    const { branding } = useBranding();
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+    const [showDevicesModal, setShowDevicesModal] = useState(false);
     const [pendingTransports, setPendingTransports] = useState(0);
     const [pendingTickets, setPendingTickets] = useState(0);
     const [pendingPayouts, setPendingPayouts] = useState(0);
+    const [pendingVerifications, setPendingVerifications] = useState(0);
     const { vibrateSelection } = useHaptics();
 
     useGlobalAudioAlerts('cpanel');
 
     useEffect(() => {
-        // Listen to pending transport requests that need admin payment verification
-        const qTransports = query(
-            collection(db, 'transport_requests'),
-            where('status', '==', 'verifying_payment')
-        );
+        const fetchCounts = async () => {
+            try {
+                const { count: transCount } = await supabase
+                    .from('transport_requests')
+                    .select('*', { count: 'exact', head: true })
+                    .eq('status', 'verifying_payment');
+                setPendingTransports(transCount || 0);
 
-        const unsubscribeTransports = onSnapshot(qTransports, (snapshot) => {
-            setPendingTransports(snapshot.size);
-        });
-        
-        // Listen to open support tickets
-        const qTickets = query(
-            collection(db, 'support_tickets'),
-            where('status', '==', 'open')
-        );
+                const { count: tickCount } = await supabase
+                    .from('support_tickets')
+                    .select('*', { count: 'exact', head: true })
+                    .eq('status', 'open');
+                setPendingTickets(tickCount || 0);
 
-        const unsubscribeTickets = onSnapshot(qTickets, (snapshot) => {
-            setPendingTickets(snapshot.size);
-        });
+                const { count: ordPayCount } = await supabase
+                    .from('orders')
+                    .select('*', { count: 'exact', head: true })
+                    .eq('payment_requested', true)
+                    .eq('delivery_paid', false);
 
-        // Listen to pending payout requests
-        const qPayoutOrders = query(collection(db, 'orders'), where('paymentRequested', '==', true), where('deliveryPaid', '==', false));
-        const qPayoutTransports = query(collection(db, 'transport_requests'), where('paymentRequested', '==', true), where('driverPaid', '==', false));
+                const { count: transPayCount } = await supabase
+                    .from('transport_requests')
+                    .select('*', { count: 'exact', head: true })
+                    .eq('payment_requested', true)
+                    .eq('driver_paid', false);
 
-        let ordersCount = 0;
-        let transportsCount = 0;
+                setPendingPayouts((ordPayCount || 0) + (transPayCount || 0));
 
-        const unsubscribePayoutOrders = onSnapshot(qPayoutOrders, (snapshot) => {
-            ordersCount = snapshot.size;
-            setPendingPayouts(ordersCount + transportsCount);
-        });
+                const { count: verifCount } = await supabase
+                    .from('comercios')
+                    .select('*', { count: 'exact', head: true })
+                    .eq('verification_status', 'pending');
+                setPendingVerifications(verifCount || 0);
+            } catch (err) {
+                console.error("Error fetching cpanel counts:", err);
+            }
+        };
 
-        const unsubscribePayoutTransports = onSnapshot(qPayoutTransports, (snapshot) => {
-            transportsCount = snapshot.size;
-            setPendingPayouts(ordersCount + transportsCount);
-        });
+        fetchCounts();
+
+        const channel = supabase
+            .channel('cpanel_layout_badges')
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'transport_requests' }, fetchCounts)
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'support_tickets' }, fetchCounts)
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, fetchCounts)
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'comercios' }, fetchCounts)
+            .subscribe();
 
         return () => {
-            unsubscribeTransports();
-            unsubscribeTickets();
-            unsubscribePayoutOrders();
-            unsubscribePayoutTransports();
+            supabase.removeChannel(channel);
         };
     }, []);
 
@@ -77,11 +90,14 @@ export default function CpanelLayout({ children, onLogout }: CpanelLayoutProps) 
         { path: '/', icon: LayoutDashboard, label: 'Resumen' },
         { path: '/app-orders', icon: ShoppingBag, label: 'Pedidos App en Vivo' },
         { path: '/restaurants', icon: Store, label: 'Restaurantes' },
+        { path: '/verifications', icon: ShieldCheck, label: 'Verificación de Negocios', badge: pendingVerifications },
         { path: '/users', icon: Users, label: 'Usuarios' },
         { path: '/banners', icon: ImageIcon, label: 'Banners' },
+        { path: '/design', icon: Palette, label: 'Diseño' },
         { path: '/categories', icon: Tag, label: 'Categorías' },
         { path: '/delivery', icon: Truck, label: 'Delivery Express' },
         { path: '/transports', icon: Car, label: 'Viajes (Taxis)', badge: pendingTransports },
+        { path: '/emergencies', icon: ShieldAlert, label: 'Emergencias' },
         { path: '/finances', icon: Wallet, label: 'Finanzas' },
         { path: '/liquidations', icon: Wallet, label: 'Liquidaciones', badge: pendingPayouts },
         { path: '/fidelization', icon: Gift, label: 'Fidelización' },
@@ -110,8 +126,8 @@ export default function CpanelLayout({ children, onLogout }: CpanelLayoutProps) 
                         <div className="flex items-center gap-3 cursor-pointer active:scale-95 transition-transform" onClick={() => window.location.href = 'https://deliexpress.app'}>
                             <div className="relative w-14 h-14 flex items-center justify-center p-1 overflow-visible">
                                 <img
-                                    src={UN2X3_LOGO}
-                                    alt="Arepa Express"
+                                    src={branding.app_admin_logo || UN2X3_LOGO}
+                                    alt="Admin Logo"
                                     className="w-full h-full object-contain filter drop-shadow-sm"
                                 />
                             </div>
@@ -172,20 +188,46 @@ export default function CpanelLayout({ children, onLogout }: CpanelLayoutProps) 
             <main className="flex-1 flex flex-col min-w-0 overflow-hidden relative pb-[65px] md:pb-0">
                 {/* Top Header */}
                 <header className="h-14 md:h-20 bg-white border-b border-slate-200 px-4 md:px-6 flex items-center justify-between flex-shrink-0 pt-safe">
-                    <button
-                        className="md:hidden p-2 -ml-2 text-slate-500 active:scale-95 transition-transform"
-                        onClick={() => { vibrateSelection(); setIsSidebarOpen(true); }}
-                    >
-                        <Menu className="w-6 h-6" />
-                    </button>
-                    <div className="flex items-center gap-4">
-                        <h2 className="text-xl font-black text-slate-900">Control Principal</h2>
+                    <div className="flex items-center gap-3">
+                        <button
+                            className="md:hidden p-2 -ml-2 text-slate-500 active:scale-95 transition-transform"
+                            onClick={() => { vibrateSelection(); setIsSidebarOpen(true); }}
+                        >
+                            <Menu className="w-6 h-6" />
+                        </button>
+                        <h2 className="text-lg md:text-xl font-black text-slate-900">Control Principal</h2>
+                    </div>
+
+                    <div className="flex items-center gap-2 md:gap-3">
+                        <button
+                            onClick={() => setShowDevicesModal(true)}
+                            className="flex items-center gap-2 px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-xl text-xs font-black transition-all shadow-sm border border-slate-200/60 active:scale-95"
+                            title="Administrar Dispositivos Autorizados"
+                        >
+                            <Shield className="w-4 h-4 text-emerald-600" />
+                            <span className="hidden sm:inline">Dispositivos</span>
+                        </button>
+
+                        <button
+                            onClick={handleLogout}
+                            className="flex items-center gap-2 px-3.5 py-2 bg-red-50 hover:bg-red-100 text-red-600 rounded-xl text-xs font-black transition-all border border-red-100 active:scale-95"
+                            title="Cerrar Sesión"
+                        >
+                            <LogOut className="w-4 h-4" />
+                            <span className="hidden md:inline">Salir</span>
+                        </button>
                     </div>
                 </header>
 
                 <div className="flex-1 overflow-y-auto p-2 md:p-8 relative custom-scrollbar">
                     {children}
                 </div>
+
+                <AuthorizedDevicesModal
+                    isOpen={showDevicesModal}
+                    onClose={() => setShowDevicesModal(false)}
+                    userId={adminUser?.id || ''}
+                />
 
                 {/* Mobile Bottom Navigation */}
                 <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 flex items-center justify-around pb-safe z-40 h-[65px] px-2 shadow-[0_-4px_20px_rgba(0,0,0,0.05)]">

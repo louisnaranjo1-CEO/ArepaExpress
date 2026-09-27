@@ -213,7 +213,7 @@ const DEFAULT_SERVICES: ServiceItem[] = [
         id: 'cerrajero-calabozo',
         name: 'Cerrajería de Urgencia Calabozo 24H',
         category: 'oficios',
-        categoryLabel: 'Servicios del Hogar',
+        categoryLabel: 'Oficios 24 horas',
         description: 'Apertura de puertas residenciales y vehículos trabados a cualquier hora.',
         phone: '0412-3344556',
         whatsapp: '584123344556',
@@ -223,6 +223,123 @@ const DEFAULT_SERVICES: ServiceItem[] = [
         city: 'Calabozo',
         state: 'Guárico',
         zone: 'A domicilio en Calabozo'
+    },
+
+    // 🚨 EMERGENCIAS CARABOBO (Valencia / Regional)
+    {
+        id: 'proteccion-civil-carabobo',
+        name: 'Protección Civil Carabobo',
+        category: 'prehospitalaria',
+        categoryLabel: 'Ambulancias',
+        description: 'Centro de operaciones y despacho de emergencias prehospitalarias y rescate en Carabobo.',
+        phone: '0800-7222722',
+        whatsapp: '584120000001',
+        address: 'Av. Bolívar Norte, Valencia',
+        is24Hours: true,
+        badgeText: 'PC Carabobo',
+        priority: true,
+        scope: 'estado',
+        city: 'Valencia',
+        state: 'Carabobo',
+        zone: 'Estado Carabobo'
+    },
+    {
+        id: 'policarabobo-central',
+        name: 'Policía del Estado Carabobo (PoliCarabobo)',
+        category: 'emergencias',
+        categoryLabel: 'Emergencias 24/7',
+        description: 'Comandancia general de Policía del Estado Carabobo y atención inmediata a cuadrantes.',
+        phone: '0800-7654227',
+        whatsapp: '584120000002',
+        address: 'Calle Navas Spinola, Valencia',
+        is24Hours: true,
+        badgeText: 'PoliCarabobo',
+        priority: true,
+        scope: 'estado',
+        city: 'Valencia',
+        state: 'Carabobo',
+        zone: 'Estado Carabobo'
+    },
+    {
+        id: 'chet-valencia',
+        name: 'Ciudad Hospitalaria Dr. Enrique Tejera (CHET)',
+        category: 'salud',
+        categoryLabel: 'Clínicas de Salud',
+        description: 'Emergencia de adultos, sala de trauma shock, pediatría y cirugía de emergencia 24h.',
+        phone: '0241-8311111',
+        address: 'Av. Lisandro Alvarado, Valencia',
+        is24Hours: true,
+        badgeText: 'Hospital Central',
+        priority: true,
+        scope: 'local',
+        city: 'Valencia',
+        state: 'Carabobo',
+        zone: 'Valencia'
+    },
+    {
+        id: 'bomberos-valencia',
+        name: 'Cuerpo de Bomberos de Valencia',
+        category: 'emergencias',
+        categoryLabel: 'Emergencias 24/7',
+        description: 'Combate de incendios, rescates y contingencias en el municipio Valencia.',
+        phone: '0241-8323222',
+        whatsapp: '584140000003',
+        address: 'Av. Humberto Celli, Valencia',
+        is24Hours: true,
+        badgeText: 'Bomberos Valencia',
+        priority: true,
+        scope: 'local',
+        city: 'Valencia',
+        state: 'Carabobo',
+        zone: 'Valencia'
+    },
+    {
+        id: 'cruz-roja-carabobo',
+        name: 'Cruz Roja Venezolana - Seccional Carabobo',
+        category: 'prehospitalaria',
+        categoryLabel: 'Ambulancias',
+        description: 'Servicio de ambulancias, banco de sangre y consultas de emergencia.',
+        phone: '0241-8211025',
+        whatsapp: '584144000004',
+        address: 'Calle López Latouche, Valencia',
+        is24Hours: true,
+        badgeText: 'Cruz Roja Carabobo',
+        scope: 'estado',
+        city: 'Valencia',
+        state: 'Carabobo',
+        zone: 'Carabobo'
+    },
+    {
+        id: 'gruas-carabobo',
+        name: 'Auxilio Vial y Grúas Carabobo 24H',
+        category: 'vial',
+        categoryLabel: 'Auxilio Vial',
+        description: 'Remolque liviano y pesado en Autopista del Este y Troncal 1.',
+        phone: '0414-4112233',
+        whatsapp: '584144112233',
+        address: 'Distribuidor San Blas, Valencia',
+        is24Hours: true,
+        badgeText: 'Grúas 24h',
+        scope: 'estado',
+        city: 'Valencia',
+        state: 'Carabobo',
+        zone: 'Valencia y Autopistas'
+    },
+    {
+        id: 'cerrajería-valencia',
+        name: 'Cerrajería y Servicios Valencia 24H',
+        category: 'oficios',
+        categoryLabel: 'Oficios 24 horas',
+        description: 'Apertura de autos y residencias de emergencia las 24 horas en Valencia y Naguanagua.',
+        phone: '0412-4223344',
+        whatsapp: '584124223344',
+        address: 'Av. Bolívar Norte, Valencia',
+        is24Hours: true,
+        badgeText: 'Cerrajería 24h',
+        scope: 'local',
+        city: 'Valencia',
+        state: 'Carabobo',
+        zone: 'Gran Valencia'
     }
 ];
 
@@ -230,12 +347,39 @@ export default function Services() {
     const navigate = useNavigate();
     const [searchQuery, setSearchQuery] = useState('');
     const [selectedCategory, setSelectedCategory] = useState<string>('todos');
-    const [zoneFilter, setZoneFilter] = useState<'todos' | 'local' | 'nacional'>('todos');
     const [dbServices, setDbServices] = useState<ServiceItem[]>([]);
     const [loading, setLoading] = useState(false);
 
-    const userCity = localStorage.getItem('userCity') || 'Calabozo';
-    const userState = localStorage.getItem('userState') || 'Guárico';
+    const [userCity, setUserCity] = useState<string>(() => localStorage.getItem('userCity') || 'Valencia');
+    const [userState, setUserState] = useState<string>(() => localStorage.getItem('userState') || 'Carabobo');
+
+    // Sync detected GPS location from localStorage or Supabase profile
+    useEffect(() => {
+        const c = localStorage.getItem('userCity');
+        const s = localStorage.getItem('userState');
+        if (c) setUserCity(c);
+        if (s) setUserState(s);
+
+        supabase.auth.getUser().then(({ data: { user } }) => {
+            if (user) {
+                supabase.from('profiles').select('last_city, last_state, lastCity, lastState').eq('id', user.id).maybeSingle()
+                    .then(({ data }) => {
+                        if (data) {
+                            const city = data.last_city || data.lastCity;
+                            const state = data.last_state || data.lastState;
+                            if (city) {
+                                setUserCity(city);
+                                localStorage.setItem('userCity', city);
+                            }
+                            if (state) {
+                                setUserState(state);
+                                localStorage.setItem('userState', state);
+                            }
+                        }
+                    });
+            }
+        });
+    }, []);
 
     // Fetch emergency services configured by superadmin
     useEffect(() => {
@@ -275,47 +419,80 @@ export default function Services() {
         };
 
         fetchDbServices();
+
+        // Real-time synchronization with Superadmin changes
+        const channel = supabase
+            .channel('client_emergency_services')
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'emergency_services' }, () => {
+                fetchDbServices();
+            })
+            .subscribe();
+
+        return () => {
+            supabase.removeChannel(channel);
+        };
     }, []);
 
-    // Combine database entries with defaults (avoiding ID duplicates)
+    // Prioritize superadmin database entries; fallback to default if empty
     const allServices = useMemo(() => {
-        const combined = [...dbServices];
-        const existingIds = new Set(combined.map(s => s.id));
-        DEFAULT_SERVICES.forEach(s => {
-            if (!existingIds.has(s.id)) {
-                combined.push(s);
-            }
-        });
-        return combined;
+        if (dbServices.length > 0) {
+            return dbServices;
+        }
+        return DEFAULT_SERVICES;
     }, [dbServices]);
 
-    // Categories list
+    // Categories list: Emergencias, Clínicas de Salud, Ambulancias, Auxilio Vial y Oficios 24 horas
     const categories = [
         { id: 'todos', label: 'Todos', icon: Sparkles },
         { id: 'emergencias', label: '🚨 Emergencias', icon: ShieldAlert },
-        { id: 'salud', label: '🏥 Clínicas & Salud', icon: HeartPulse },
+        { id: 'salud', label: '🏥 Clínicas de Salud', icon: HeartPulse },
         { id: 'prehospitalaria', label: '🚑 Ambulancias', icon: Ambulance },
         { id: 'vial', label: '🚗 Auxilio Vial', icon: Car },
-        { id: 'oficios', label: '🛠️ Oficios 24h', icon: Wrench },
+        { id: 'oficios', label: '🛠️ Oficios 24 horas', icon: Wrench },
     ];
 
-    // Filter services according to user zone and active filters
+    // Filter services according to user zone and active filters (Only national + user's current city/state)
     const filteredServices = useMemo(() => {
+        const normUserState = (userState || '').trim().toLowerCase();
+        const normUserCity = (userCity || '').trim().toLowerCase();
+
         return allServices.filter((item) => {
-            // Zone compatibility check:
-            // 1. National numbers always match
-            // 2. State numbers match if user state matches
-            // 3. Local numbers match if user city matches (or if item.city matches userCity)
+            // 1. National numbers are ALWAYS visible everywhere in Venezuela
             const isNational = item.scope === 'nacional';
-            const isSameState = item.scope === 'estado' && (!item.state || item.state.toLowerCase() === userState.toLowerCase());
-            const isSameCity = item.scope === 'local' && (!item.city || item.city.toLowerCase() === userCity.toLowerCase());
 
-            const isZoneCompatible = isNational || isSameState || isSameCity;
-            if (!isZoneCompatible) return false;
+            const itemState = (item.state || '').trim().toLowerCase();
+            const itemCity = (item.city || '').trim().toLowerCase();
+            const itemZone = (item.zone || '').trim().toLowerCase();
 
-            // Interactive zone filter
-            if (zoneFilter === 'local' && (isNational || item.scope === 'estado')) return false;
-            if (zoneFilter === 'nacional' && !isNational) return false;
+            let isLocationMatch = false;
+            if (isNational) {
+                isLocationMatch = true;
+            } else {
+                // Check state match
+                const matchesState = Boolean(normUserState && (
+                    itemState === normUserState ||
+                    itemState.includes(normUserState) ||
+                    normUserState.includes(itemState) ||
+                    itemZone.includes(normUserState)
+                ));
+
+                // Check city match
+                const matchesCity = Boolean(normUserCity && (
+                    itemCity === normUserCity ||
+                    itemCity.includes(normUserCity) ||
+                    normUserCity.includes(itemCity) ||
+                    itemZone.includes(normUserCity)
+                ));
+
+                isLocationMatch = matchesState || matchesCity;
+
+                // Fallback if neither state nor city is detected
+                if (!normUserState && !normUserCity) {
+                    isLocationMatch = true;
+                }
+            }
+
+            if (!isLocationMatch) return false;
 
             // Category filter
             const matchesCategory = selectedCategory === 'todos' || item.category === selectedCategory;
@@ -331,7 +508,7 @@ export default function Services() {
 
             return matchesCategory && matchesQuery;
         });
-    }, [allServices, userCity, userState, zoneFilter, selectedCategory, searchQuery]);
+    }, [allServices, userCity, userState, selectedCategory, searchQuery]);
 
     const handleCall = (phone: string) => {
         vibrate(40);
@@ -375,7 +552,7 @@ export default function Services() {
 
                     <div className="flex items-center gap-2 text-xs text-rose-100 font-bold mb-3">
                         <MapPin className="w-3.5 h-3.5 text-yellow-300" />
-                        <span>Mostrando números para: <span className="underline decoration-yellow-300 font-black">{userCity}, {userState}</span></span>
+                        <span>Ubicación detectada: <span className="underline decoration-yellow-300 font-black">{userCity ? `${userCity}, ` : ''}{userState || 'Venezuela'}</span></span>
                     </div>
 
                     {/* SOS Fast Call Pill */}
@@ -404,44 +581,8 @@ export default function Services() {
                 </div>
             </div>
 
-            {/* Zone Filter & Search Bar */}
+            {/* Sticky Search & Category Bar (No manual zone buttons) */}
             <div className="sticky top-0 z-30 bg-slate-50/95 backdrop-blur-md px-5 pt-3 pb-2 space-y-2.5 border-b border-slate-200/60 shadow-sm">
-                {/* Zone Toggle Pill (Local vs Nacional) */}
-                <div className="flex items-center gap-1.5 p-1 bg-slate-200/70 rounded-2xl text-[11px] font-black">
-                    <button
-                        onClick={() => {
-                            vibrate(20);
-                            setZoneFilter('todos');
-                        }}
-                        className={`flex-1 py-1.5 rounded-xl text-center transition-all ${
-                            zoneFilter === 'todos' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-600'
-                        }`}
-                    >
-                        Todos ({allServices.length})
-                    </button>
-                    <button
-                        onClick={() => {
-                            vibrate(20);
-                            setZoneFilter('local');
-                        }}
-                        className={`flex-1 py-1.5 rounded-xl text-center transition-all ${
-                            zoneFilter === 'local' ? 'bg-rose-600 text-white shadow-sm' : 'text-slate-600'
-                        }`}
-                    >
-                        📍 {userCity}
-                    </button>
-                    <button
-                        onClick={() => {
-                            vibrate(20);
-                            setZoneFilter('nacional');
-                        }}
-                        className={`flex-1 py-1.5 rounded-xl text-center transition-all ${
-                            zoneFilter === 'nacional' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-600'
-                        }`}
-                    >
-                        🇻🇪 Nacionales
-                    </button>
-                </div>
 
                 {/* Search Box */}
                 <div className="relative">

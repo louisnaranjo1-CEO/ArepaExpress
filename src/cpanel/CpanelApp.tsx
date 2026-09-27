@@ -1,12 +1,15 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from '../lib/supabase';
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { checkDeviceAuthorization, authorizeCurrentDevice } from '../lib/adminSecurity';
+import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import CpanelLayout from './components/CpanelLayout';
 import Login from './pages/Login';
+import DeviceChallengeModal from './components/DeviceChallengeModal';
 
 import Dashboard from './pages/Dashboard';
 import RestaurantsManager from './pages/RestaurantsManager';
 import RestaurantProfile from './pages/RestaurantProfile';
+import BusinessVerifications from './pages/BusinessVerifications';
 import UsersManager from './pages/UsersManager';
 import BannersManager from './pages/BannersManager';
 import CategoriesManager from './pages/CategoriesManager';
@@ -21,6 +24,8 @@ import RafflesManager from './pages/RafflesManager';
 import SupportTicketsManager from './pages/SupportTicketsManager';
 import MarketingManager from './pages/MarketingManager';
 import PilotAchievements from './pages/PilotAchievements';
+import DesignManager from './pages/DesignManager';
+import EmergenciesManager from './pages/EmergenciesManager';
 
 export default function CpanelApp() {
     const isDevAdminPath = window.location.pathname.startsWith('/cpanel');
@@ -28,34 +33,140 @@ export default function CpanelApp() {
     const basename = isDevAdminPath && !isCpanelSubdomain ? '/cpanel' : '/';
 
     const [isAuthenticated, setIsAuthenticated] = useState(false);
+    const [isDeviceAuthorized, setIsDeviceAuthorized] = useState(false);
+    const [currentAdminUser, setCurrentAdminUser] = useState<any>(null);
     const [isLoading, setIsLoading] = useState(true);
+    const verifyingRef = useRef(false);
 
-    useEffect(() => {
-        const verifySession = async () => {
-            try {
-                // Check Supabase session
-                const { data: { session } } = await supabase.auth.getSession();
-                if (session?.user) {
-                    const { data: profile } = await supabase
+    const verifyAdminAccess = async (user: any) => {
+        if (!user) {
+            setIsAuthenticated(false);
+            setIsDeviceAuthorized(false);
+            setCurrentAdminUser(null);
+            setIsLoading(false);
+            return;
+        }
+
+        if (verifyingRef.current) return;
+        verifyingRef.current = true;
+
+        try {
+            const email = (user.email || user.user_metadata?.email || '').toLowerCase().trim();
+
+            // Correos maestros de Super Admin (exclusivamente los 2 autorizados)
+            const isMasterSuperAdmin = email === 'louisnaranjo1@gmail.com' ||
+                                       email === 'soundandart.publicidad@gmail.com';
+
+            let isAdmin = isMasterSuperAdmin;
+            if (!isAdmin) {
+                // Verificar rol de administrador en la tabla profiles
+                try {
+                    const profilePromise = supabase
                         .from('profiles')
                         .select('role')
-                        .eq('id', session.user.id)
+                        .eq('id', user.id)
                         .maybeSingle();
 
-                    if (profile?.role === 'admin' || session.user.email?.includes('admin')) {
-                        setIsAuthenticated(true);
-                        setIsLoading(false);
-                        return;
-                    }
-                }
-            } catch (err) {
-                console.error("Error verificando sesión administrativa:", err);
-            }
-            setIsAuthenticated(false);
-            setIsLoading(false);
-        };
+                    const timeoutPromise = new Promise<{ data: any }>((resolve) => 
+                        setTimeout(() => resolve({ data: null }), 3500)
+                    );
 
-        verifySession();
+                    const { data: profile } = await Promise.race([profilePromise, timeoutPromise]);
+                    isAdmin = profile?.role === 'admin';
+                } catch (e) {
+                    console.warn("Error consultando rol de perfil:", e);
+                }
+            }
+
+            if (!isAdmin) {
+                console.warn("Usuario no tiene rol admin:", email);
+                alert(`La cuenta ${email} no tiene permisos de Super Administrador.`);
+                await supabase.auth.signOut().catch(() => {});
+                setIsAuthenticated(false);
+                setIsDeviceAuthorized(false);
+                setCurrentAdminUser(null);
+                setIsLoading(false);
+                return;
+            }
+
+            // Para el Super Administrador maestro, garantizar que su dispositivo esté autorizado de inmediato
+            let isTrusted = false;
+            if (isMasterSuperAdmin) {
+                isTrusted = true;
+                // Auto-registrar dispositivo en segundo plano para mantener la base de datos sincronizada
+                authorizeCurrentDevice(user.id, 'Super Admin Primary').catch(() => {});
+            } else {
+                isTrusted = await checkDeviceAuthorization(user.id);
+            }
+
+            // Limpiar la URL de fragmentos de OAuth (#access_token=... o ?code=...) de forma segura
+            setTimeout(() => {
+                if (window.location.hash || window.location.search.includes('code=')) {
+                    window.history.replaceState({}, document.title, window.location.pathname);
+                }
+            }, 500);
+
+            setCurrentAdminUser(user);
+            setIsAuthenticated(true);
+            setIsDeviceAuthorized(isTrusted);
+        } catch (err) {
+            console.error("Error verificando acceso administrativo:", err);
+            setIsAuthenticated(false);
+            setIsDeviceAuthorized(false);
+        } finally {
+            setIsLoading(false);
+            verifyingRef.current = false;
+        }
+    };
+
+    useEffect(() => {
+        let isMounted = true;
+        const hasAuthHash = window.location.hash.includes('access_token') || 
+                            window.location.search.includes('code=') ||
+                            window.location.hash.includes('type=recovery');
+
+        // Escuchar cambios de autenticación
+        const { data: authListener } = supabase.auth.onAuthStateChange(
+            async (event, session) => {
+                if (!isMounted) return;
+                console.log("[CpanelAuth] onAuthStateChange event:", event, session?.user?.email);
+                if (session?.user) {
+                    await verifyAdminAccess(session.user);
+                } else if (event === 'SIGNED_OUT') {
+                    setIsAuthenticated(false);
+                    setIsDeviceAuthorized(false);
+                    setCurrentAdminUser(null);
+                    setIsLoading(false);
+                }
+            }
+        );
+
+        // Comprobar sesión actual
+        supabase.auth.getSession().then(({ data }) => {
+            if (!isMounted) return;
+            if (data?.session?.user) {
+                verifyAdminAccess(data.session.user);
+            } else if (!hasAuthHash) {
+                // Si no hay hash de OAuth en camino, desbloquear de inmediato
+                setIsLoading(false);
+            }
+        }).catch((err) => {
+            console.error("[CpanelAuth] Error obteniendo sesión:", err);
+            if (isMounted && !hasAuthHash) setIsLoading(false);
+        });
+
+        // Temporizador de seguridad defensivo en caso de que OAuth tarde
+        const safetyTimeout = setTimeout(() => {
+            if (isMounted) {
+                setIsLoading(false);
+            }
+        }, 5000);
+
+        return () => {
+            isMounted = false;
+            clearTimeout(safetyTimeout);
+            authListener.subscription.unsubscribe();
+        };
     }, []);
 
     const handleLogin = async (email: string, pass: string): Promise<boolean> => {
@@ -66,76 +177,97 @@ export default function CpanelApp() {
             });
 
             if (error) {
+                if (error.message.includes("Invalid login credentials")) {
+                    throw new Error("Credenciales incorrectas. Si tu cuenta se creó con Google, pulsa el botón 'Iniciar Sesión con Google'.");
+                }
                 throw error;
             }
 
             if (data.user) {
-                const { data: profile } = await supabase
-                    .from('profiles')
-                    .select('role')
-                    .eq('id', data.user.id)
-                    .maybeSingle();
-
-                if (profile?.role === 'admin' || email.includes('admin') || email === 'louisnaranjo1@gmail.com') {
-                    setIsAuthenticated(true);
-                    return true;
-                } else {
-                    throw new Error("No tienes permisos de administrador global.");
-                }
+                await verifyAdminAccess(data.user);
+                return true;
             }
+
+            throw new Error("No se pudo iniciar sesión.");
         } catch (err: any) {
             throw new Error(err.message || "Credenciales de administrador inválidas");
         }
+    };
 
-        throw new Error("No tienes permisos de administrador global.");
+    const handleGoogleLogin = async () => {
+        const redirectUrl = window.location.href.split('#')[0].split('?')[0];
+        const { error } = await supabase.auth.signInWithOAuth({
+            provider: 'google',
+            options: {
+                redirectTo: redirectUrl
+            }
+        });
+        if (error) throw error;
     };
 
     const logout = async () => {
-        try { await supabase.auth.signOut(); } catch (e) {}
         try {
-            const { signOut } = await import('firebase/auth');
-            await signOut(auth);
-        } catch (e) {}
+            await supabase.auth.signOut();
+        } catch (e) {
+            console.warn(e);
+        }
         setIsAuthenticated(false);
+        setIsDeviceAuthorized(false);
+        setCurrentAdminUser(null);
     };
 
     if (isLoading) {
         return (
-            <div className="min-h-screen bg-slate-100 flex items-center justify-center">
+            <div className="min-h-screen bg-slate-950 flex items-center justify-center">
                 <div className="flex flex-col items-center gap-4">
                     <div className="w-10 h-10 border-4 border-primary border-t-transparent rounded-full animate-spin"></div>
-                    <p className="text-slate-500 font-bold uppercase tracking-widest text-xs">Cargando Sistema...</p>
+                    <p className="text-slate-400 font-black uppercase tracking-widest text-xs">Cargando Super Panel...</p>
                 </div>
             </div>
         );
     }
 
+    // Paso 1: Si no está autenticado, mostrar login
     if (!isAuthenticated) {
-        return <Login onLogin={handleLogin} />;
+        return <Login onLogin={handleLogin} onGoogleLogin={handleGoogleLogin} />;
     }
 
+    // Paso 2: Si está autenticado pero el dispositivo NO está autorizado, mostrar bloqueo de dispositivo
+    if (isAuthenticated && !isDeviceAuthorized) {
+        return (
+            <DeviceChallengeModal
+                user={currentAdminUser}
+                onAuthorized={() => setIsDeviceAuthorized(true)}
+                onLogout={logout}
+            />
+        );
+    }
+
+    // Paso 3: Dispositivo autorizado -> Permitir acceso al panel completo
     return (
         <Router basename={basename}>
-            <CpanelLayout onLogout={logout}>
+            <CpanelLayout onLogout={logout} adminUser={currentAdminUser}>
                 <Routes>
                     <Route path="/" element={<Dashboard />} />
                     <Route path="/restaurants" element={<RestaurantsManager />} />
                     <Route path="/restaurants/:id" element={<RestaurantProfile />} />
+                    <Route path="/verifications" element={<BusinessVerifications />} />
                     <Route path="/users" element={<UsersManager />} />
                     <Route path="/banners" element={<BannersManager />} />
+                    <Route path="/design" element={<DesignManager />} />
                     <Route path="/categories" element={<CategoriesManager />} />
                     <Route path="/delivery" element={<DeliveryManagement />} />
                     <Route path="/app-orders" element={<AppOrders />} />
                     <Route path="/transports" element={<TransportRequests />} />
+                    <Route path="/emergencies" element={<EmergenciesManager />} />
                     <Route path="/finances" element={<FinancesManager />} />
                     <Route path="/liquidations" element={<LiquidationsManager />} />
-                    <Route path="/icons" element={<IconsManager />} />
                     <Route path="/fidelization" element={<FidelizationManager />} />
                     <Route path="/raffles" element={<RafflesManager />} />
-                    <Route path="/marketing" element={<MarketingManager />} />
                     <Route path="/achievements" element={<PilotAchievements />} />
+                    <Route path="/marketing" element={<MarketingManager />} />
+                    <Route path="/icons" element={<IconsManager />} />
                     <Route path="/support" element={<SupportTicketsManager />} />
-                    <Route path="*" element={<Navigate to="/" replace />} />
                 </Routes>
             </CpanelLayout>
         </Router>

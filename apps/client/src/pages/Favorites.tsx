@@ -33,11 +33,17 @@ export default function Favorites() {
     const [loading, setLoading] = useState(true);
     const [activatingNotifications, setActivatingNotifications] = useState(false);
 
-    const removeFavoriteProduct = (productId: string) => {
+    const removeFavoriteProduct = async (productId: string) => {
         try {
             const updated = favoriteProducts.filter(p => (typeof p === 'string' ? p !== productId : p.id !== productId));
             setFavoriteProducts(updated);
             localStorage.setItem('un2x3_favorite_products', JSON.stringify(updated));
+            if (user) {
+                await supabase.from('profiles').update({
+                    favorite_products: updated,
+                    updated_at: new Date().toISOString()
+                }).eq('id', user.id);
+            }
             toast.success('Producto eliminado de favoritos');
         } catch (e) {
             console.error(e);
@@ -47,13 +53,19 @@ export default function Favorites() {
     const toggleFavoriteRestaurant = async (restId: string, e: React.MouseEvent) => {
         e.preventDefault();
         e.stopPropagation();
-        if (!user) return;
         try {
             const updated = favorites.filter(f => f.id !== restId);
             setFavorites(updated);
-            const { data: prof } = await supabase.from('profiles').select('favorites').eq('id', user.id).maybeSingle();
-            const favs = Array.isArray(prof?.favorites) ? prof.favorites.filter((f: string) => f !== restId) : [];
-            await supabase.from('profiles').update({ favorites: favs, updated_at: new Date().toISOString() }).eq('id', user.id);
+            const raw = localStorage.getItem('un2x3_favorites');
+            let localFavs: string[] = raw ? JSON.parse(raw) : [];
+            localFavs = localFavs.filter(f => f !== restId);
+            localStorage.setItem('un2x3_favorites', JSON.stringify(localFavs));
+
+            if (user) {
+                const { data: prof } = await supabase.from('profiles').select('favorites').eq('id', user.id).maybeSingle();
+                const favs = Array.isArray(prof?.favorites) ? prof.favorites.filter((f: string) => f !== restId) : [];
+                await supabase.from('profiles').update({ favorites: favs, updated_at: new Date().toISOString() }).eq('id', user.id);
+            }
             toast.success('Lugar eliminado de favoritos');
         } catch (err) {
             console.error("Error removing favorite:", err);
@@ -147,21 +159,37 @@ export default function Favorites() {
 
     useEffect(() => {
         const fetchFavorites = async () => {
-            if (!user) {
-                setLoading(false);
-                return;
-            }
-
             try {
-                const { data: prof, error } = await supabase
-                    .from('profiles')
-                    .select('favorites')
-                    .eq('id', user.id)
-                    .maybeSingle();
+                let favoriteIds: string[] = [];
 
-                if (error) throw error;
+                if (user) {
+                    const { data: prof, error } = await supabase
+                        .from('profiles')
+                        .select('favorites, favorite_products')
+                        .eq('id', user.id)
+                        .maybeSingle();
 
-                const favoriteIds: string[] = Array.isArray(prof?.favorites) ? prof.favorites : [];
+                    if (!error && prof) {
+                        if (Array.isArray(prof.favorites)) {
+                            favoriteIds = prof.favorites;
+                            localStorage.setItem('un2x3_favorites', JSON.stringify(favoriteIds));
+                        }
+                        if (Array.isArray(prof.favorite_products)) {
+                            setFavoriteProducts(prof.favorite_products);
+                            localStorage.setItem('un2x3_favorite_products', JSON.stringify(prof.favorite_products));
+                        }
+                    }
+                }
+
+                // Fallback to localStorage if favoriteIds is still empty
+                if (favoriteIds.length === 0) {
+                    try {
+                        const rawLocal = localStorage.getItem('un2x3_favorites');
+                        if (rawLocal) {
+                            favoriteIds = JSON.parse(rawLocal);
+                        }
+                    } catch {}
+                }
 
                 if (favoriteIds.length > 0) {
                     const { data: rests, error: restsErr } = await supabase
@@ -186,7 +214,7 @@ export default function Favorites() {
                             reviews: r.reviews || 0,
                             deliveryTime: r.delivery_time || r.deliveryTime || '30 min',
                             distance: r.distance || '1.0 km',
-                            image: r.image || r.logo_url || r.logoUrl,
+                            image: r.image_url || r.image || r.logo_url || r.logoUrl,
                             logoUrl: r.logo_url || r.logoUrl
                         }));
 
@@ -196,21 +224,23 @@ export default function Favorites() {
                 }
 
                 // Fetch followed stores for this user
-                const { data: follows, error: followErr } = await supabase
-                    .from('restaurant_followers')
-                    .select('restaurant_id, notify_promotions, notify_new_products, notify_price_drops')
-                    .eq('user_id', user.id);
+                if (user) {
+                    const { data: follows, error: followErr } = await supabase
+                        .from('restaurant_followers')
+                        .select('restaurant_id, notify_promotions, notify_new_products, notify_price_drops')
+                        .eq('user_id', user.id);
 
-                if (!followErr && follows) {
-                    const fMap: Record<string, FollowPref> = {};
-                    follows.forEach((f: any) => {
-                        fMap[f.restaurant_id] = {
-                            notify_promotions: f.notify_promotions ?? true,
-                            notify_new_products: f.notify_new_products ?? true,
-                            notify_price_drops: f.notify_price_drops ?? true,
-                        };
-                    });
-                    setFollowedMap(fMap);
+                    if (!followErr && follows) {
+                        const fMap: Record<string, FollowPref> = {};
+                        follows.forEach((f: any) => {
+                            fMap[f.restaurant_id] = {
+                                notify_promotions: f.notify_promotions ?? true,
+                                notify_new_products: f.notify_new_products ?? true,
+                                notify_price_drops: f.notify_price_drops ?? true,
+                            };
+                        });
+                        setFollowedMap(fMap);
+                    }
                 }
             } catch (error) {
                 console.error("Error fetching favorites:", error);

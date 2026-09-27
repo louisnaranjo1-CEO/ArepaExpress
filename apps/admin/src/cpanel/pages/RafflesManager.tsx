@@ -408,47 +408,118 @@ export default function RafflesManager() {
         setSelectedPrizeIndex(0);
         setWinner(null);
 
-        // Fetch registered tickets from Supabase
+        // Fetch registered tickets or REAL users/drivers from Supabase
         try {
             const ticketTable = activeTab === 'clients' ? 'client_raffle_tickets' : 'driver_raffle_tickets';
-            const { data } = await supabase
+            const { data: ticketsData } = await supabase
                 .from(ticketTable)
                 .select('*')
                 .eq('raffle_id', raffle.id);
 
-            if (data && data.length > 0) {
-                const pool: ParticipantTicket[] = data.map(t => ({
-                    ticketNumber: t.ticket_number || `#A${Math.floor(100 + Math.random() * 900)}`,
+            if (ticketsData && ticketsData.length > 0) {
+                const pool: ParticipantTicket[] = ticketsData.map(t => ({
+                    ticketNumber: t.ticket_number || `#T${Math.floor(100 + Math.random() * 900)}`,
                     name: t.user_name || t.driver_name || 'Participante Oficial',
                     phone: t.phone || '',
                     trips: Math.floor(45 + Math.random() * 200),
                     rating: 4.8 + Math.round(Math.random() * 20) / 100
                 }));
                 setTicketsPool(pool);
+            } else if (activeTab === 'clients') {
+                // Fetch REAL clients from Supabase `profiles`
+                const { data: realProfiles } = await supabase
+                    .from('profiles')
+                    .select('id, full_name, email, phone, photo_url, points')
+                    .or('role.eq.cliente,role.is.null')
+                    .order('created_at', { ascending: false });
+
+                const clientList = (realProfiles || []).filter(p => p.full_name || p.email || p.phone);
+                
+                if (clientList.length > 0) {
+                    const clientPool: ParticipantTicket[] = [];
+                    const targetTotal = Math.max(15, clientList.length * 2);
+                    let ticketIndex = 1;
+                    while (clientPool.length < targetTotal) {
+                        for (const u of clientList) {
+                            if (clientPool.length >= targetTotal && clientPool.length >= 12) break;
+                            const name = u.full_name || (u.email ? u.email.split('@')[0] : `Cliente #${u.id.slice(0, 4)}`);
+                            const points = Number(u.points) || 10;
+                            clientPool.push({
+                                ticketNumber: `#C${String(ticketIndex).padStart(3, '0')}`,
+                                name,
+                                phone: u.phone || '',
+                                photoUrl: u.photo_url || undefined,
+                                trips: Math.max(1, Math.floor(points / 5)),
+                                rating: 5.0
+                            });
+                            ticketIndex++;
+                        }
+                    }
+                    setTicketsPool(clientPool);
+                } else {
+                    const { data: allUsers } = await supabase
+                        .from('profiles')
+                        .select('id, full_name, email, phone')
+                        .limit(20);
+                    const pool = (allUsers || []).map((u, i) => ({
+                        ticketNumber: `#C${String(i + 101)}`,
+                        name: u.full_name || u.email?.split('@')[0] || `Usuario ${u.id.slice(0, 4)}`,
+                        phone: u.phone || '',
+                        trips: 15,
+                        rating: 4.9
+                    }));
+                    setTicketsPool(pool);
+                }
             } else {
-                // Generate a lively demo pool if no tickets purchased yet
-                const demoLetters = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'J', 'K'];
-                const demoNames = [
-                    'Carlos Eduardo Mendoza', 'Alejandra Briceño', 'José Gregorio Ramos', 'María Fernanda Colmenares',
-                    'Luis Alberto Naranjo', 'Daniela Valentina Gómez', 'Rafael Enrique Silva', 'Yusneidy del Carmen Toro',
-                    'Andrés David Castillo', 'Patricia Elena Rivas', 'Franklin Jesús Quintero', 'Carla Vanessa Morillo',
-                    'Héctor José Romero', 'Stefany Carolina Pérez', 'Gabriel Antonio Medina', 'Yelitza Coromoto Díaz',
-                    'Miguel Ángel Parra', 'Roselis Victoria Morales', 'Jhony Alexander Rangel', 'Daniela Milagros Vivas'
-                ];
-                const demoPool: ParticipantTicket[] = demoNames.map((name, i) => {
-                    const letter = demoLetters[i % demoLetters.length];
-                    const num = 100 + (i * 37) % 899;
-                    return {
-                        ticketNumber: `#${letter}${num}`,
-                        name,
-                        trips: 50 + (i * 12) % 300,
-                        rating: 4.85 + (i % 3) * 0.05
-                    };
-                });
-                setTicketsPool(demoPool);
+                // Fetch REAL drivers from Supabase `drivers` or `delivery_drivers`
+                const { data: realDrivers } = await supabase
+                    .from('drivers')
+                    .select('id, full_name, phone, rating, total_trips, points, vehicle_brand');
+
+                let driverList = (realDrivers || []).filter(d => d.full_name || d.phone);
+
+                if (driverList.length === 0) {
+                    const { data: delivDrivers } = await supabase
+                        .from('delivery_drivers')
+                        .select('id, full_name, phone, vehicle_brand');
+                    if (delivDrivers) driverList = delivDrivers.filter(d => d.full_name || d.phone);
+                }
+
+                if (driverList.length > 0) {
+                    const driverPool: ParticipantTicket[] = [];
+                    const targetTotal = Math.max(15, driverList.length * 2);
+                    let ticketIndex = 1;
+                    while (driverPool.length < targetTotal) {
+                        for (const d of driverList) {
+                            if (driverPool.length >= targetTotal && driverPool.length >= 12) break;
+                            const name = d.full_name || `Piloto ${d.id.slice(0, 4)}`;
+                            const trips = Number(d.total_trips) || Math.floor(25 + ticketIndex * 7);
+                            const rating = Number(d.rating) || 4.92;
+                            driverPool.push({
+                                ticketNumber: `#P${String(ticketIndex).padStart(3, '0')}`,
+                                name,
+                                phone: d.phone || '',
+                                trips,
+                                rating
+                            });
+                            ticketIndex++;
+                        }
+                    }
+                    setTicketsPool(driverPool);
+                } else {
+                    const { data: anyProfiles } = await supabase.from('profiles').select('id, full_name, email, phone').limit(15);
+                    const pool = (anyProfiles || []).map((u, i) => ({
+                        ticketNumber: `#P${String(i + 101)}`,
+                        name: u.full_name || `Piloto Oficial #${u.id.slice(0, 4)}`,
+                        phone: u.phone || '',
+                        trips: 45,
+                        rating: 4.95
+                    }));
+                    setTicketsPool(pool);
+                }
             }
         } catch (e) {
-            console.error("Error fetching tickets for presentation:", e);
+            console.error("Error fetching real participants for presentation:", e);
         }
 
         setIsPresentationMode(true);
@@ -512,14 +583,14 @@ export default function RafflesManager() {
         playFanfareSound();
         triggerConfettiExplosion();
 
-        // Pick lucky participant
+        // Pick lucky participant from real tickets pool
         const chosen = ticketsPool.length > 0 
             ? ticketsPool[Math.floor(Math.random() * ticketsPool.length)]
             : {
-                ticketNumber: '#A120',
-                name: 'Carlos Eduardo Mendoza',
-                trips: 184,
-                rating: 4.95
+                ticketNumber: '#001',
+                name: 'Participante Registrado',
+                trips: 10,
+                rating: 5.0
             };
 
         const currentPrizeList = presentationRaffle?.prizes && presentationRaffle.prizes.length > 0 

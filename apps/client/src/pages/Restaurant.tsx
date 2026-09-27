@@ -47,7 +47,7 @@ export default function RestaurantPage() {
     }
   });
 
-  const toggleFavoriteProduct = (product: any) => {
+  const toggleFavoriteProduct = async (product: any) => {
     try {
       const raw = localStorage.getItem('un2x3_favorite_products');
       const list: any[] = raw ? JSON.parse(raw) : [];
@@ -73,6 +73,17 @@ export default function RestaurantPage() {
         toast.success('¡Producto añadido a favoritos! ❤️');
       }
       localStorage.setItem('un2x3_favorite_products', JSON.stringify(updated));
+
+      const uid = user?.id || user?.uid;
+      if (uid) {
+        await supabase
+          .from('profiles')
+          .update({
+            favorite_products: updated,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', uid);
+      }
     } catch (e) {
       console.error("Error saving favorite product:", e);
     }
@@ -233,17 +244,23 @@ export default function RestaurantPage() {
           })) as Product[];
           setProducts(fetchedProducts);
 
-          // Check if it's in user favorites
+          // Check if it's in user favorites and sync favorite products
           if (uid) {
             try {
               const { data: userSnap } = await supabase
                 .from('profiles')
-                .select('favorites')
+                .select('favorites, favorite_products')
                 .eq('id', uid)
                 .maybeSingle();
               if (userSnap) {
-                const favs = userSnap.favorites || [];
+                const favs = Array.isArray(userSnap.favorites) ? userSnap.favorites : [];
                 setIsFavorite(favs.includes(id));
+                localStorage.setItem('un2x3_favorites', JSON.stringify(favs));
+
+                if (Array.isArray(userSnap.favorite_products)) {
+                  setFavoriteProductIds(userSnap.favorite_products.map((p: any) => typeof p === 'string' ? p : p.id));
+                  localStorage.setItem('un2x3_favorite_products', JSON.stringify(userSnap.favorite_products));
+                }
               }
 
               // Also check following status
@@ -502,7 +519,7 @@ export default function RestaurantPage() {
   const toggleFavorite = async () => {
     const uid = user?.id || user?.uid;
     if (!uid) {
-      alert("Inicia sesión para guardar tus restaurantes favoritos.");
+      toast.error("Inicia sesión para guardar tus lugares favoritos.");
       return;
     }
     try {
@@ -512,14 +529,17 @@ export default function RestaurantPage() {
         .eq('id', uid)
         .maybeSingle();
 
-      let favs: string[] = profile?.favorites || [];
+      let favs: string[] = Array.isArray(profile?.favorites) ? profile.favorites : [];
       if (isFavorite) {
         setIsFavorite(false); // Optimistic UI update
         favs = favs.filter(f => f !== id);
+        toast.success("Lugar eliminado de favoritos");
       } else {
         setIsFavorite(true);
         if (id && !favs.includes(id)) favs.push(id);
+        toast.success("¡Lugar añadido a favoritos! ❤️");
       }
+      localStorage.setItem('un2x3_favorites', JSON.stringify(favs));
       await supabase
         .from('profiles')
         .update({ favorites: favs, updated_at: new Date().toISOString() })
@@ -1268,6 +1288,19 @@ export default function RestaurantPage() {
                           style={{ backgroundImage: `url("${productImages[0] || ''}")` }}
                         ></div>
                       )}
+
+                      {/* Favorite Button on Product Card */}
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          toggleFavoriteProduct(product);
+                        }}
+                        className="absolute top-2 left-2 z-20 w-8 h-8 bg-white/95 backdrop-blur-md rounded-full flex items-center justify-center shadow-md hover:scale-110 active:scale-90 transition-all border border-slate-100"
+                        title="Guardar en favoritos"
+                      >
+                        <Heart className={`w-4 h-4 transition-colors ${favoriteProductIds.includes(product.id) ? 'text-red-500 fill-red-500' : 'text-slate-400 hover:text-red-500'}`} />
+                      </button>
 
                       {/* Restaurant Logo Overlay on Product */}
                       {restaurant.logoUrl && (

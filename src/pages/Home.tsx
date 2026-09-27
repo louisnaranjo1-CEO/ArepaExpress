@@ -44,8 +44,65 @@ interface Category {
 }
 
 export default function Home() {
-  const { userData } = useAuth();
+  const { user, userData } = useAuth();
   const navigate = useNavigate();
+  const [favoriteStoreIds, setFavoriteStoreIds] = useState<string[]>(() => {
+    try {
+      const raw = localStorage.getItem('un2x3_favorites');
+      return raw ? JSON.parse(raw) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  useEffect(() => {
+    const uid = user?.id || user?.uid;
+    if (uid) {
+      supabase.from('profiles').select('favorites').eq('id', uid).maybeSingle()
+        .then(({ data }) => {
+          if (data && Array.isArray(data.favorites)) {
+            setFavoriteStoreIds(data.favorites);
+            localStorage.setItem('un2x3_favorites', JSON.stringify(data.favorites));
+          }
+        }).catch(console.error);
+    }
+  }, [user]);
+
+  const handleToggleFavoriteStore = async (storeId: string, e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    vibrate(40);
+    const uid = user?.id || user?.uid;
+
+    const exists = favoriteStoreIds.includes(storeId);
+    const updated = exists
+      ? favoriteStoreIds.filter(id => id !== storeId)
+      : [...favoriteStoreIds, storeId];
+
+    setFavoriteStoreIds(updated);
+    localStorage.setItem('un2x3_favorites', JSON.stringify(updated));
+
+    if (exists) {
+      toast.success('Lugar eliminado de favoritos');
+    } else {
+      toast.success('¡Lugar añadido a favoritos! ❤️');
+    }
+
+    if (uid) {
+      try {
+        await supabase
+          .from('profiles')
+          .update({
+            favorites: updated,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', uid);
+      } catch (err) {
+        console.error("Error updating favorite in database:", err);
+      }
+    }
+  };
+
   const [restaurants, setRestaurants] = useState<Restaurant[]>([]);
   const [banners, setBanners] = useState<any[]>([]);
   const [selectedBannerForModal, setSelectedBannerForModal] = useState<any | null>(null);
@@ -1030,9 +1087,14 @@ export default function Home() {
                         <span className="text-xs font-bold text-slate-900">{restaurant.rating}</span>
                         <span className="text-[10px] text-slate-500">({restaurant.reviews}+)</span>
                         </div>
-                        <div className="absolute top-3 right-3 z-20 bg-white p-1.5 rounded-full shadow-sm cursor-pointer hover:scale-110 transition-transform">
-                        <Heart className={`w-5 h-5 transition-colors ${false ? 'text-accent fill-accent' : 'text-slate-400 hover:text-accent hover:fill-accent'}`} />
-                        </div>
+                        <button
+                          type="button"
+                          onClick={(e) => handleToggleFavoriteStore(restaurant.id, e)}
+                          className="absolute top-3 right-3 z-20 bg-white/95 backdrop-blur-sm p-1.5 rounded-full shadow-md cursor-pointer hover:scale-110 active:scale-90 transition-all border border-slate-100"
+                          title="Guardar en favoritos"
+                        >
+                          <Heart className={`w-5 h-5 transition-colors ${favoriteStoreIds.includes(restaurant.id) ? 'text-red-500 fill-red-500' : 'text-slate-400 hover:text-red-500'}`} />
+                        </button>
 
                         {restaurant.hasCashea && (
                         <div className="absolute top-3 right-12 z-20 w-10 h-10 bg-yellow-400 backdrop-blur rounded-xl p-1.5 shadow-xl border border-white/20 flex items-center justify-center animate-in zoom-in duration-500 hover:scale-110 transition-transform">
