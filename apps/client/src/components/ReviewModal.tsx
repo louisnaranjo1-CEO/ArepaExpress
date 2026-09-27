@@ -20,6 +20,7 @@ export default function ReviewModal({ isOpen, onClose, restaurantId, orderId, on
     const [comment, setComment] = useState('');
     const [photos, setPhotos] = useState<File[]>([]);
     const [photoPreviews, setPhotoPreviews] = useState<string[]>([]);
+    const [isAnonymous, setIsAnonymous] = useState(false);
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
@@ -108,8 +109,9 @@ export default function ReviewModal({ isOpen, onClose, restaurantId, orderId, on
             // Save review in Supabase
             const reviewData = {
                 user_id: user.id,
-                user_name: userData?.displayName || 'Usuario',
-                user_avatar: userData?.photoURL || '',
+                user_name: isAnonymous ? 'Cliente Anónimo' : (userData?.displayName || 'Usuario'),
+                user_avatar: isAnonymous ? '' : (userData?.photoURL || ''),
+                is_anonymous: isAnonymous,
                 rating,
                 comment,
                 photos: photoURLs,
@@ -265,6 +267,20 @@ export default function ReviewModal({ isOpen, onClose, restaurantId, orderId, on
                                 </label>
                             </div>
                         )}
+
+                        {/* Anonymous Toggle Switch */}
+                        <label className="flex items-center justify-between gap-3 p-3.5 bg-slate-50 border border-slate-200 rounded-2xl cursor-pointer select-none hover:bg-slate-100 transition-colors">
+                            <div className="flex-1">
+                                <span className="text-xs font-black text-slate-800 block">Publicar de forma anónima</span>
+                                <span className="text-[10px] text-slate-500 font-medium">Oculta tu nombre y foto de perfil en la reseña pública.</span>
+                            </div>
+                            <input
+                                type="checkbox"
+                                checked={isAnonymous}
+                                onChange={(e) => setIsAnonymous(e.target.checked)}
+                                className="w-5 h-5 accent-primary rounded-lg cursor-pointer"
+                            />
+                        </label>
 
                         <button
                             type="submit"

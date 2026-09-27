@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, Star, UploadCloud, Image as ImageIcon, Trash2 } from 'lucide-react';
+import { X, Star, UploadCloud, Trash2 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import toast from 'react-hot-toast';
@@ -20,6 +20,7 @@ export default function ReviewModal({ isOpen, onClose, restaurantId, orderId, on
     const [comment, setComment] = useState('');
     const [photos, setPhotos] = useState<File[]>([]);
     const [photoPreviews, setPhotoPreviews] = useState<string[]>([]);
+    const [isAnonymous, setIsAnonymous] = useState(false);
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
@@ -107,9 +108,10 @@ export default function ReviewModal({ isOpen, onClose, restaurantId, orderId, on
 
             // Save review in Supabase
             const reviewData = {
-                user_id: user.id || user.uid,
-                user_name: userData?.displayName || user.displayName || 'Usuario',
-                user_avatar: user.photoURL || '',
+                user_id: user.id,
+                user_name: isAnonymous ? 'Cliente Anónimo' : (userData?.displayName || 'Usuario'),
+                user_avatar: isAnonymous ? '' : (userData?.photoURL || ''),
+                is_anonymous: isAnonymous,
                 rating,
                 comment,
                 photos: photoURLs,
@@ -139,6 +141,23 @@ export default function ReviewModal({ isOpen, onClose, restaurantId, orderId, on
             }
             
             await supabase.from('orders').update(updateData).eq('id', orderId);
+
+            // Notify business in real time about the new review
+            try {
+                const reviewerName = userData?.displayName || 'Un cliente';
+                await supabase.from('notifications').insert({
+                    restaurant_id: restaurantId,
+                    user_id: user.id,
+                    type: 'new_review',
+                    title: `¡Nueva reseña (${rating}★)!`,
+                    message: `${reviewerName} ha valorado tu negocio con ${rating} estrellas: "${comment.slice(0, 80)}${comment.length > 80 ? '...' : ''}"`,
+                    body: `${reviewerName} ha valorado tu negocio con ${rating} estrellas: "${comment.slice(0, 80)}${comment.length > 80 ? '...' : ''}"`,
+                    read: false,
+                    created_at: new Date().toISOString()
+                });
+            } catch (notifErr) {
+                console.warn("Could not insert review notification:", notifErr);
+            }
 
             toast.success("¡Reseña enviada con éxito!");
             onReviewSubmitted();
@@ -248,6 +267,20 @@ export default function ReviewModal({ isOpen, onClose, restaurantId, orderId, on
                                 </label>
                             </div>
                         )}
+
+                        {/* Anonymous Toggle Switch */}
+                        <label className="flex items-center justify-between gap-3 p-3.5 bg-slate-50 border border-slate-200 rounded-2xl cursor-pointer select-none hover:bg-slate-100 transition-colors">
+                            <div className="flex-1">
+                                <span className="text-xs font-black text-slate-800 block">Publicar de forma anónima</span>
+                                <span className="text-[10px] text-slate-500 font-medium">Oculta tu nombre y foto de perfil en la reseña pública.</span>
+                            </div>
+                            <input
+                                type="checkbox"
+                                checked={isAnonymous}
+                                onChange={(e) => setIsAnonymous(e.target.checked)}
+                                className="w-5 h-5 accent-primary rounded-lg cursor-pointer"
+                            />
+                        </label>
 
                         <button
                             type="submit"

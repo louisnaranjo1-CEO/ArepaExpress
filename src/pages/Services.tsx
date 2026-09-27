@@ -352,6 +352,7 @@ export default function Services() {
 
     const [userCity, setUserCity] = useState<string>(() => localStorage.getItem('userCity') || 'Valencia');
     const [userState, setUserState] = useState<string>(() => localStorage.getItem('userState') || 'Carabobo');
+    const [zoneFilter, setZoneFilter] = useState<'all' | 'local' | 'nacional'>('all');
 
     // Sync detected GPS location from localStorage or Supabase profile
     useEffect(() => {
@@ -460,6 +461,10 @@ export default function Services() {
             // 1. National numbers are ALWAYS visible everywhere in Venezuela
             const isNational = item.scope === 'nacional';
 
+            // Respect zone filter toggle if set to local or nacional
+            if (zoneFilter === 'local' && isNational) return false;
+            if (zoneFilter === 'nacional' && !isNational) return false;
+
             const itemState = (item.state || '').trim().toLowerCase();
             const itemCity = (item.city || '').trim().toLowerCase();
             const itemZone = (item.zone || '').trim().toLowerCase();
@@ -508,7 +513,7 @@ export default function Services() {
 
             return matchesCategory && matchesQuery;
         });
-    }, [allServices, userCity, userState, selectedCategory, searchQuery]);
+    }, [allServices, userCity, userState, selectedCategory, searchQuery, zoneFilter]);
 
     const handleCall = (phone: string) => {
         vibrate(40);
@@ -630,11 +635,27 @@ export default function Services() {
 
             {/* Services List */}
             <div className="px-5 pt-3 space-y-3">
-                <div className="flex items-center justify-between text-xs font-bold text-slate-500 px-1">
+                <div className="flex flex-wrap items-center justify-between gap-2 text-xs font-bold text-slate-500 px-1">
                     <span>{filteredServices.length} contactos de emergencia</span>
-                    <span className="text-[10px] text-rose-600 font-black uppercase">
-                        Zona: {zoneFilter === 'local' ? userCity : zoneFilter === 'nacional' ? 'Venezuela' : 'Total'}
-                    </span>
+                    <div className="flex items-center gap-1 bg-slate-200/70 p-1 rounded-xl">
+                        {(['all', 'local', 'nacional'] as const).map((z) => (
+                            <button
+                                key={z}
+                                type="button"
+                                onClick={() => {
+                                    vibrate(15);
+                                    setZoneFilter(z);
+                                }}
+                                className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-lg transition-all ${
+                                    zoneFilter === z
+                                        ? 'bg-rose-600 text-white shadow-xs'
+                                        : 'text-slate-600 hover:text-slate-900'
+                                }`}
+                            >
+                                {z === 'local' ? (userCity || 'Local') : z === 'nacional' ? 'Venezuela' : 'Total'}
+                            </button>
+                        ))}
+                    </div>
                 </div>
 
                 {filteredServices.length === 0 ? (

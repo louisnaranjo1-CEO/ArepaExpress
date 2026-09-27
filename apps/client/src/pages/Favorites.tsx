@@ -32,6 +32,112 @@ export default function Favorites() {
     });
     const [loading, setLoading] = useState(true);
     const [activatingNotifications, setActivatingNotifications] = useState(false);
+    const [hasNotificationPermission, setHasNotificationPermission] = useState(() => {
+        if (typeof window !== 'undefined') {
+            const notifGranted = 'Notification' in window && Notification.permission === 'granted';
+            const localFlag = localStorage.getItem('notifications_enabled') === 'true' || localStorage.getItem('un2x3_notifications_granted') === 'true';
+            return notifGranted || localFlag;
+        }
+        return false;
+    });
+
+    useEffect(() => {
+        if (typeof window !== 'undefined' && 'Notification' in window) {
+            if (Notification.permission === 'granted') {
+                setHasNotificationPermission(true);
+            }
+        }
+        if ((userData as any)?.notifications_enabled || (userData as any)?.notificationsEnabled || ((userData as any)?.fcm_tokens?.length ?? 0) > 0) {
+            setHasNotificationPermission(true);
+        }
+    }, [userData]);
+
+    const isNotificationGranted = hasNotificationPermission || 
+        (userData as any)?.notifications_enabled === true || 
+        (userData as any)?.notificationsEnabled === true || 
+        ((userData as any)?.fcm_tokens?.length ?? 0) > 0 || 
+        (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted');
+
+    // Suscripción Realtime estricta: solo notificaciones de negocios seguidos (promociones, cambios de precio, nuevos productos)
+    useEffect(() => {
+        if (!user) return;
+        const followedIds = Object.keys(followedMap);
+        if (followedIds.length === 0) return;
+
+        const channel = supabase
+            .channel(`user_favorites_notifs_${user.id}`)
+            .on('postgres_changes', {
+                event: 'INSERT',
+                schema: 'public',
+                table: 'notifications',
+                filter: `user_id=eq.${user.id}`
+            }, (payload: any) => {
+                const notif = payload.new;
+                if (!notif) return;
+                const restId = notif.restaurant_id || notif.restaurantId;
+                
+                // Filtrar estrictamente: solo notificaciones pertenecientes a negocios seguidos
+                if (restId && followedMap[restId]) {
+                    const prefs = followedMap[restId];
+                    const type = (notif.type || '').toLowerCase();
+                    const title = (notif.title || '').toLowerCase();
+                    const body = (notif.body || '').toLowerCase();
+
+                    const isPromo = type.includes('promo') || title.includes('promo') || body.includes('descuento') || body.includes('oferta');
+                    const isPriceDrop = type.includes('price') || title.includes('precio') || body.includes('bajó') || body.includes('rebaja');
+                    const isNewProd = type.includes('product') || title.includes('nuevo') || body.includes('nuevo plato');
+
+                    // Descartar si el usuario desactivó esa preferencia específica para este negocio
+                    if ((isPromo && prefs.notify_promotions === false) ||
+                        (isPriceDrop && prefs.notify_price_drops === false) ||
+                        (isNewProd && prefs.notify_new_products === false)) {
+                        return;
+                    }
+
+                    toast((t) => (
+                        <div className="flex items-center gap-3">
+                            <span className="text-xl">🏷️</span>
+                            <div className="flex-1">
+                                <p className="font-black text-xs text-slate-900 leading-tight">{notif.title}</p>
+                                <p className="text-[11px] text-slate-600 mt-0.5 leading-snug">{notif.body}</p>
+                            </div>
+                        </div>
+                    ), { duration: 6000, position: 'top-center' });
+                }
+            })
+            .subscribe();
+
+        return () => {
+            supabase.removeChannel(channel);
+        };
+    }, [user, followedMap]);
+
+    const handleActivateNotifications = async () => {
+        if (!user) {
+            toast.error("Debes iniciar sesión para activar las notificaciones.");
+            return;
+        }
+
+        setActivatingNotifications(true);
+        try {
+            const res = await requestNotificationPermission(user.id);
+            if (res.success) {
+                setHasNotificationPermission(true);
+                localStorage.setItem('notifications_enabled', 'true');
+                localStorage.setItem('un2x3_notifications_granted', 'true');
+                toast.success("¡Notificaciones activadas con éxito! 🎉");
+            } else {
+                toast.error(res.error || "No pudimos activar las notificaciones.");
+            }
+        } catch (error) {
+            console.error("Error activating notifications:", error);
+            toast.error("Ocurrió un error al activar las notificaciones.");
+        } finally {
+            setActivatingNotifications(false);
+        }
+    };
+
+    const hasFavorites = favorites.length > 0;
 
     const removeFavoriteProduct = async (productId: string) => {
         try {
@@ -252,29 +358,7 @@ export default function Favorites() {
         fetchFavorites();
     }, [user]);
 
-    const handleActivateNotifications = async () => {
-        if (!user) {
-            toast.error("Debes iniciar sesión para activar las notificaciones.");
-            return;
-        }
 
-        setActivatingNotifications(true);
-        try {
-            const res = await requestNotificationPermission(user.id);
-            if (res.success) {
-                toast.success("¡Notificaciones activadas con éxito! 🎉");
-            } else {
-                toast.error(res.error || "No pudimos activar las notificaciones.");
-            }
-        } catch (error) {
-            console.error("Error activating notifications:", error);
-            toast.error("Ocurrió un error al activar las notificaciones.");
-        } finally {
-            setActivatingNotifications(false);
-        }
-    };
-
-    const hasFavorites = favorites.length > 0;
 
     return (
         <div className="pb-24 animate-in fade-in duration-500 min-h-screen bg-slate-50">
@@ -601,7 +685,7 @@ export default function Favorites() {
                 </div>
             )}
 
-            {!(userData as any)?.fcm_tokens?.length && (
+            {!isNotificationGranted && (
                 <div className="px-6 mt-8 mb-4 max-w-sm mx-auto">
                     <div className="bg-gradient-to-r from-orange-400 to-primary rounded-[32px] p-8 text-white shadow-xl hover:-translate-y-1 transition-transform cursor-pointer">
                         <h3 className="text-xl font-black leading-tight mb-2">¿Quieres ver más <br />lugares?</h3>

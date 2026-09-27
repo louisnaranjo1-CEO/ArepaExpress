@@ -1,4 +1,4 @@
-import { ArrowLeft, ShoppingCart, MapPin, CreditCard, Trash2, Minus, Plus, ArrowRight, CheckCircle2, Gift, AlertCircle, Award, X } from 'lucide-react';
+import { ArrowLeft, ShoppingCart, MapPin, CreditCard, Trash2, Minus, Plus, ArrowRight, CheckCircle2, Gift, AlertCircle, Award, X, Store, Bike, Navigation, Loader2 } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useCart } from '../context/CartContext';
 import { useAuth } from '../context/AuthContext';
@@ -12,6 +12,11 @@ import DemoAlertModal from '../components/DemoAlertModal';
 import DualPrice from '../components/DualPrice';
 import LocationRequiredModal from '../components/LocationRequiredModal';
 import { calculateDynamicFare } from '../lib/pricing';
+import { GoogleMap, useJsApiLoader, Marker } from '@react-google-maps/api';
+import { GOOGLE_MAPS_API_KEY, GOOGLE_MAPS_LIBRARIES } from '../lib/mapsConfig';
+import { googleMapsDarkStyles } from '../lib/weather';
+import { Geolocation } from '@capacitor/geolocation';
+import { Capacitor } from '@capacitor/core';
 
 interface CartProps {
   hideHeader?: boolean;
@@ -53,6 +58,61 @@ export default function Cart({ hideHeader = false }: CartProps) {
   const [selectedAddress, setSelectedAddress] = useState<any>(null);
   const [showAddressSelector, setShowAddressSelector] = useState(false);
   const [showMapPicker, setShowMapPicker] = useState(false);
+
+  const { isLoaded: isMapLoaded } = useJsApiLoader({
+    id: 'google-map-script',
+    googleMapsApiKey: GOOGLE_MAPS_API_KEY,
+    libraries: GOOGLE_MAPS_LIBRARIES
+  });
+
+  const [gpsCoords, setGpsCoords] = useState<{ lat: number; lng: number } | null>(null);
+  const [isLocatingGps, setIsLocatingGps] = useState(false);
+  const [manualReference, setManualReference] = useState('');
+
+  const fetchCurrentLocation = async () => {
+    setIsLocatingGps(true);
+    let coords: { lat: number; lng: number } | null = null;
+    if (Capacitor.isNativePlatform()) {
+      try {
+        const perm = await Geolocation.requestPermissions();
+        if (perm.location === 'granted') {
+          const pos = await Geolocation.getCurrentPosition({ enableHighAccuracy: true, timeout: 10000 });
+          coords = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+        }
+      } catch (e) {
+        console.warn("Native GPS error in Cart:", e);
+      }
+    }
+    if (!coords && typeof navigator !== 'undefined' && navigator.geolocation) {
+      try {
+        coords = await new Promise<{ lat: number; lng: number } | null>((resolve) => {
+          navigator.geolocation.getCurrentPosition(
+            (p) => resolve({ lat: p.coords.latitude, lng: p.coords.longitude }),
+            () => resolve(null),
+            { enableHighAccuracy: true, timeout: 10000 }
+          );
+        });
+      } catch (e) {
+        console.warn("Web GPS error in Cart:", e);
+      }
+    }
+
+    const finalCoords = coords || { lat: 8.9326, lng: -67.4264 };
+    setGpsCoords(finalCoords);
+    setSelectedAddress((prev: any) => ({
+      name: prev?.name || 'Ubicación GPS detectada',
+      lat: finalCoords.lat,
+      lng: finalCoords.lng,
+      reference: prev?.reference || manualReference || ''
+    }));
+    setIsLocatingGps(false);
+  };
+
+  useEffect(() => {
+    if (currentStep === 2 && !gpsCoords && !isLocatingGps && deliveryMethod !== 'pickup') {
+      fetchCurrentLocation();
+    }
+  }, [currentStep, deliveryMethod]);
 
   const [restaurantRewards, setRestaurantRewards] = useState<any[]>([]);
   const [selectedReward, setSelectedReward] = useState<any>(null);
@@ -227,7 +287,11 @@ export default function Cart({ hideHeader = false }: CartProps) {
   };
 
   const feeInfo = calculateDeliveryFeeInfo();
-  const deliveryFee = (isWaiter || deliveryMethod === 'pickup') ? 0 : feeInfo.clientFee;
+  const freeDeliveryMin = Number(restaurantData?.free_delivery_min_amount ?? restaurantData?.freeDeliveryMinAmount ?? 0);
+  const isFreeDeliveryEnabled = Boolean(restaurantData?.free_delivery_enabled ?? restaurantData?.freeDeliveryEnabled);
+  const isFreeDeliveryQualified = isFreeDeliveryEnabled && freeDeliveryMin > 0 && cartSubtotalUSD >= freeDeliveryMin;
+  
+  const deliveryFee = (isWaiter || deliveryMethod === 'pickup' || isFreeDeliveryQualified) ? 0 : feeInfo.clientFee;
   const driverPayout = (isWaiter || deliveryMethod === 'pickup') ? 0 : feeInfo.driverPayout;
   const currentShift = feeInfo.shift;
   const finalTotal = (deliveryMethod === 'app_delivery') ? deliveryFee : (cartSubtotalUSD + deliveryFee);
@@ -358,21 +422,67 @@ export default function Cart({ hideHeader = false }: CartProps) {
       if (insErr) throw insErr;
       setOrderId(newOrderId);
 
-      // Auto-insert first chat message from the restaurant
+      // Contexto automático: Inyectar todo el carrito de compras en el primer mensaje del chat transaccional
       if (!isWaiter) {
           try {
-              await supabase.from('messages').insert({
+              const itemsListText = items.map(item => {
+                const itemNote = (item as any).notes ? ` - 📝 ${(item as any).notes}` : '';
+                const variantText = (item as any).variant ? ` [${(item as any).variant}]` : '';
+                let modifiersText = '';
+                if (item.modifiersConfig) {
+                  const mods = Object.entries(item.modifiersConfig).map(([k, v]: [string, any]) => `${k}: ${v.map((o: any) => o.name).join(', ')}`).join(' | ');
+                  if (mods) modifiersText = `\n   👉 ${mods}`;
+                }
+                const priceDisplay = item.consultPrice || !item.price
+                  ? 'Consultar precio'
+                  : `$${((item.price || 0) * item.quantity).toFixed(2)} (${(((item.price || 0) * item.quantity) * bcvRate).toFixed(2)} Bs)`;
+                return `• ${item.quantity}x ${item.name}${variantText} (${priceDisplay})${itemNote}${modifiersText}`;
+              }).join('\n');
+
+              const methodLabel = deliveryMethod === 'pickup' ? '🏪 Retiro en tienda (PickUp)' : '🛵 Delivery a domicilio';
+              const locationInfo = deliveryMethod === 'pickup'
+                ? `📍 Retiro en: ${rData?.address || rData?.location?.address || 'Sede del comercio'}`
+                : `📍 Entrega: ${selectedAddress?.name || 'Ubicación GPS'}${selectedAddress?.reference ? `\n🏠 Ref: ${selectedAddress.reference}` : ''}${selectedAddress?.lat ? `\n🗺️ Mapa: https://www.google.com/maps?q=${selectedAddress.lat},${selectedAddress.lng}` : ''}`;
+
+              const cartSummaryMessage = `🛒 *NUEVO PEDIDO GENERADO (#${newOrderId.slice(0, 8).toUpperCase()})*\n` +
+                `━━━━━━━━━━━━━━━━━━━━\n` +
+                `${itemsListText}\n` +
+                `━━━━━━━━━━━━━━━━━━━━\n` +
+                `📦 *Método de entrega:* ${methodLabel}\n` +
+                `${locationInfo}\n` +
+                (orderNote.trim() ? `📝 *Nota general:* ${orderNote.trim()}\n` : '') +
+                `💵 *Subtotal estimado:* $${cartSubtotalUSD.toFixed(2)} (${(cartSubtotalUSD * bcvRate).toFixed(2)} Bs)\n` +
+                (deliveryMethod !== 'pickup' ? `🛵 *Tarifa Delivery estim.:* $${deliveryFee.toFixed(2)} (${(deliveryFee * bcvRate).toFixed(2)} Bs)\n` : '') +
+                `💰 *Total estimado:* $${finalTotal.toFixed(2)} (${(finalTotal * bcvRate).toFixed(2)} Bs)\n` +
+                `━━━━━━━━━━━━━━━━━━━━\n` +
+                `⚠️ *Esperando confirmación del comercio para verificar disponibilidad y monto total.*`;
+
+              await supabase.from('messages').insert([
+                {
                   order_id: newOrderId,
                   orderId: newOrderId,
-                  text: '¡Hola! Gracias por tu pedido. Estamos revisando la disponibilidad de tus productos. En un momento te confirmaremos.',
+                  text: cartSummaryMessage,
+                  sender_id: user?.id || 'system',
+                  senderId: user?.id || 'system',
+                  sender_name: 'Sistema Deliexpress',
+                  senderName: 'Sistema Deliexpress',
+                  sender_role: 'system',
+                  senderRole: 'system',
+                  created_at: new Date().toISOString()
+                },
+                {
+                  order_id: newOrderId,
+                  orderId: newOrderId,
+                  text: `¡Hola! Gracias por tu pedido a ${rData?.name || 'nuestro negocio'}. Estamos revisando la disponibilidad y monto total. Te confirmaremos por este chat.`,
                   sender_id: restaurantId,
                   senderId: restaurantId,
                   sender_name: rData?.name || 'Comercio',
                   senderName: rData?.name || 'Comercio',
                   sender_role: 'restaurant',
                   senderRole: 'restaurant',
-                  created_at: new Date().toISOString()
-              });
+                  created_at: new Date(Date.now() + 1000).toISOString()
+                }
+              ]);
           } catch(e) {
              console.error('Error adding welcome chat message', e);
           }
@@ -644,119 +754,171 @@ export default function Cart({ hideHeader = false }: CartProps) {
                   </div>
                 ) : (
                   <div className="space-y-4">
-                     {restaurantData?.businessType !== 'hotel' && (
-                       <div className="flex gap-2 p-1 bg-slate-50 rounded-2xl border border-slate-200">
-                          {restaurantData?.appDelivery && (
-                            <button
-                              onClick={() => setDeliveryMethod('app_delivery')}
-                              className={`flex-1 py-3 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all ${
-                                deliveryMethod === 'app_delivery' ? 'bg-primary text-slate-900 shadow-lg' : 'text-slate-400 hover:text-slate-600'
-                              }`}
-                            >
-                              Delivery Un 2x3
-                            </button>
-                          )}
-                          {restaurantData?.ownDelivery && (
-                            <button
-                              onClick={() => setDeliveryMethod('own_delivery')}
-                              className={`flex-1 py-3 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all ${
-                                deliveryMethod === 'own_delivery' ? 'bg-primary text-slate-900 shadow-lg' : 'text-slate-400 hover:text-slate-600'
-                              }`}
-                            >
-                              Delivery Local
-                            </button>
-                          )}
-                          {restaurantData?.pickupOnly && (
-                            <button
-                              onClick={() => setDeliveryMethod('pickup')}
-                              className={`flex-1 py-3 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all ${
-                                deliveryMethod === 'pickup' ? 'bg-primary text-slate-900 shadow-lg' : 'text-slate-400 hover:text-slate-600'
-                              }`}
-                            >
-                              PickUp
-                            </button>
-                          )}
+                     {/* 2 Opciones claras y obligatorias de entrega */}
+                     <div className="space-y-2">
+                       <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-1">
+                         Método de Entrega (Obligatorio)
+                       </label>
+                       <div className="grid grid-cols-2 gap-3">
+                         <button
+                           type="button"
+                           onClick={() => setDeliveryMethod('pickup')}
+                           className={`p-4 rounded-3xl border-2 transition-all flex flex-col items-center text-center gap-2 cursor-pointer ${
+                             deliveryMethod === 'pickup'
+                               ? 'border-primary bg-primary/10 text-slate-900 shadow-md ring-2 ring-primary/30 font-black'
+                               : 'border-slate-200 bg-white text-slate-500 hover:border-slate-300 font-bold'
+                           }`}
+                         >
+                           <div className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-colors ${deliveryMethod === 'pickup' ? 'bg-primary text-slate-900' : 'bg-slate-100 text-slate-500'}`}>
+                             <Store className="w-6 h-6" />
+                           </div>
+                           <span className="text-xs uppercase tracking-wider">Retiro en tienda</span>
+                           <span className="text-[10px] text-slate-400">PickUp sin costo</span>
+                         </button>
+
+                         <button
+                           type="button"
+                           onClick={() => {
+                             setDeliveryMethod('app_delivery');
+                             if (!gpsCoords) fetchCurrentLocation();
+                           }}
+                           className={`p-4 rounded-3xl border-2 transition-all flex flex-col items-center text-center gap-2 cursor-pointer ${
+                             deliveryMethod !== 'pickup'
+                               ? 'border-primary bg-primary/10 text-slate-900 shadow-md ring-2 ring-primary/30 font-black'
+                               : 'border-slate-200 bg-white text-slate-500 hover:border-slate-300 font-bold'
+                           }`}
+                         >
+                           <div className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-colors ${deliveryMethod !== 'pickup' ? 'bg-primary text-slate-900' : 'bg-slate-100 text-slate-500'}`}>
+                             <Bike className="w-6 h-6" />
+                           </div>
+                           <span className="text-xs uppercase tracking-wider">Delivery</span>
+                           <span className="text-[10px] text-slate-400">A tu dirección</span>
+                         </button>
+                       </div>
+                     </div>
+
+                     {/* Vista Retiro en Tienda */}
+                     {deliveryMethod === 'pickup' && (
+                       <div className="p-6 bg-blue-50/50 rounded-3xl border border-blue-100 text-center animate-in fade-in slide-in-from-bottom-2 space-y-2">
+                         <div className="w-12 h-12 bg-blue-100 text-blue-600 rounded-2xl flex items-center justify-center mx-auto mb-2">
+                           <Store className="w-6 h-6" />
+                         </div>
+                         <p className="font-black text-slate-900 text-sm uppercase tracking-tight">Retiro en Mostrador</p>
+                         <p className="text-xs font-bold text-slate-600 max-w-xs mx-auto leading-relaxed">
+                           {restaurantData?.address || restaurantData?.location?.address || 'Dirección de la sede del negocio'}
+                         </p>
+                         <span className="inline-block bg-blue-100 text-blue-800 text-[10px] font-black px-3 py-1 rounded-full uppercase tracking-wider">
+                           Sin costo de envío
+                         </span>
                        </div>
                      )}
 
-                     {deliveryMethod === 'app_delivery' && (
-                         <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2">
-                             <p className="font-bold text-slate-800 text-sm uppercase tracking-wider pl-2">Dirección de Entrega</p>
-                             
-                             {selectedAddress && selectedAddress.lat ? (
-                                 <div className="bg-slate-50 p-4 border border-slate-200 rounded-2xl flex justify-between items-center group">
-                                     <div className="flex-1">
-                                        <div className="flex items-center gap-2 mb-1">
-                                            <MapPin className="w-4 h-4 text-slate-900" />
-                                            <p className="font-bold text-slate-900 leading-none">{selectedAddress.name}</p>
-                                        </div>
-                                        <p className="text-xs text-slate-500 font-medium pl-6 leading-tight">
-                                            <span className="font-bold text-slate-400">Ref:</span> {selectedAddress.reference || "Sin referencia adicional"}
-                                        </p>
-                                     </div>
-                                     <button onClick={() => setShowMapPicker(true)} className="text-slate-900 text-xs font-bold uppercase tracking-widest pl-4 hover:underline">Cambiar</button>
-                                 </div>
-                             ) : (
-                                 <button onClick={() => setShowMapPicker(true)} className="w-full flex items-center justify-center gap-2 py-5 bg-primary/10 text-slate-900 rounded-2xl font-black border border-primary/20 hover:bg-primary/20 transition-all">
-                                     <MapPin className="w-5 h-5" />
-                                     Ubicar en Mapa
-                                 </button>
-                             )}
-                             
-                             <p className="text-[10px] text-slate-400 font-bold uppercase text-center px-4 leading-normal">
-                                Para asegurar una entrega exitosa, verifica que tu punto de referencia sea descriptivo (Ej. Casa amarilla con rejas blancas).
-                             </p>
+                     {/* Vista Delivery con Geolocalización Automática y Mapa */}
+                     {deliveryMethod !== 'pickup' && (
+                       <div className="space-y-3 animate-in fade-in slide-in-from-bottom-2">
+                         <div className="flex items-center justify-between px-1">
+                           <p className="font-black text-slate-800 text-xs uppercase tracking-wider flex items-center gap-1.5">
+                             <MapPin className="w-4 h-4 text-primary" /> Dirección de Entrega (GPS)
+                           </p>
+                           <button
+                             type="button"
+                             onClick={fetchCurrentLocation}
+                             disabled={isLocatingGps}
+                             className="text-[10px] font-black uppercase text-primary hover:underline flex items-center gap-1 cursor-pointer"
+                           >
+                             {isLocatingGps ? <Loader2 className="w-3 h-3 animate-spin" /> : <Navigation className="w-3 h-3" />}
+                             {isLocatingGps ? 'Obteniendo GPS...' : 'Actualizar GPS'}
+                           </button>
                          </div>
-                     )}
 
-                     {deliveryMethod === 'own_delivery' && (
-                         <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2">
-                            <div className="p-4 bg-yellow-50 text-yellow-800 rounded-2xl border border-yellow-200 text-xs font-medium relative overflow-hidden">
-                                <div className="absolute top-0 right-0 p-2 opacity-10">
-                                    <AlertCircle className="w-16 h-16" />
-                                </div>
-                                <span className="font-black text-sm block mb-1">¡Aviso importante!</span>
-                                Este proveedor cuenta con su propio delivery ajeno a Un 2x3, por lo que deberás cancelarle la totalidad del pago por WhatsApp. Lamentablemente los proveedores con delivery independiente no cuentan con el sistema de rastreo de Un 2x3, por lo que el mapa está deshabilitado.
-                            </div>
-                            <p className="font-bold text-slate-800 text-sm uppercase tracking-wider pl-2">Ingresa tu dirección manualmente</p>
-                            <textarea
-                                className="w-full bg-white border border-slate-200 p-4 rounded-2xl text-sm min-h-[100px] outline-none focus:border-primary/50"
-                                placeholder="Escribe tu dirección completa y puntos de referencia aquí..."
-                                value={selectedAddress?.name && !selectedAddress.lat ? selectedAddress.name : ''}
-                                onChange={(e) => setSelectedAddress({ name: e.target.value, reference: '', lat: null, lng: null })}
-                            />
-                         </div>
-                     )}
-
-                     {deliveryMethod === 'pickup' && (
-                         <div className="p-6 bg-blue-50/50 rounded-2xl border border-blue-100 text-center animate-in fade-in slide-in-from-bottom-2">
-                             <div className="w-12 h-12 bg-blue-100 text-blue-500 rounded-full flex items-center justify-center mx-auto mb-3">
-                                <ShoppingCart className="w-6 h-6" />
+                         {/* Google Maps: Confirmación visual de lectura (optimizado) */}
+                         <div className="w-full h-44 rounded-3xl overflow-hidden border border-slate-200 shadow-xs relative bg-slate-100">
+                           {isMapLoaded && (gpsCoords || selectedAddress?.lat) ? (
+                             <GoogleMap
+                               mapContainerStyle={{ width: '100%', height: '100%' }}
+                               center={gpsCoords || { lat: selectedAddress.lat, lng: selectedAddress.lng }}
+                               zoom={16}
+                               options={{
+                                 disableDefaultUI: true,
+                                 zoomControl: false,
+                                 streetViewControl: false,
+                                 mapTypeControl: false,
+                                 fullscreenControl: false,
+                                 draggable: false, // Solo confirmación visual de lectura
+                                 scrollwheel: false,
+                                 disableDoubleClickZoom: true,
+                                 styles: googleMapsDarkStyles
+                               }}
+                             >
+                               <Marker position={gpsCoords || { lat: selectedAddress.lat, lng: selectedAddress.lng }} />
+                             </GoogleMap>
+                           ) : (
+                             <div className="w-full h-full flex flex-col items-center justify-center text-slate-400 text-xs font-bold gap-2">
+                               <Loader2 className="w-6 h-6 animate-spin text-primary" />
+                               <span>Detectando tu ubicación GPS automáticamente...</span>
                              </div>
-                             <p className="font-black text-slate-800 uppercase tracking-tight">PickUp</p>
-                             <p className="text-sm font-medium text-slate-500 mt-2 mx-auto max-w-[200px]">
-                                 {restaurantData?.location?.address || 'Dirección del restaurante'}
-                             </p>
+                           )}
+
+                           <button
+                             type="button"
+                             onClick={() => setShowMapPicker(true)}
+                             className="absolute bottom-2 right-2 bg-white/95 backdrop-blur-xs text-slate-900 text-[10px] font-black px-3 py-1.5 rounded-xl shadow-md border border-slate-200 hover:bg-white flex items-center gap-1 cursor-pointer"
+                           >
+                             <MapPin className="w-3.5 h-3.5 text-primary" /> Ajustar pin
+                           </button>
                          </div>
+
+                         {/* TextInput opcional debajo del mapa para referencias manuales */}
+                         <div className="space-y-1">
+                           <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-1">
+                             Punto de Referencia (Opcional)
+                           </label>
+                           <input
+                             type="text"
+                             placeholder="Ej. Casa amarilla con rejas blancas, timbre negro, frente a la plaza..."
+                             value={manualReference}
+                             onChange={(e) => {
+                               setManualReference(e.target.value);
+                               setSelectedAddress((prev: any) => ({
+                                 ...prev,
+                                 name: prev?.name || 'Ubicación GPS detectada',
+                                 lat: gpsCoords?.lat || prev?.lat,
+                                 lng: gpsCoords?.lng || prev?.lng,
+                                 reference: e.target.value
+                               }));
+                             }}
+                             className="w-full bg-slate-50 border border-slate-200 focus:border-primary p-3.5 rounded-2xl outline-none font-bold text-xs text-slate-800 transition-all placeholder:text-slate-400"
+                           />
+                         </div>
+
+                         <p className="text-[10px] text-slate-400 font-bold uppercase text-center px-4 leading-normal">
+                           Para asegurar una entrega exitosa, verifica que tu punto de referencia sea descriptivo.
+                         </p>
+                       </div>
                      )}
                   </div>
                 )}
                 
                 <button 
                   onClick={() => {
-                      if (!isWaiter && deliveryMethod === 'app_delivery' && (!selectedAddress || !selectedAddress.lat) && restaurantData?.businessType !== 'hotel') {
-                          alert("Por favor selecciona una dirección de entrega en el mapa.");
-                          return;
-                      }
-                      if (!isWaiter && deliveryMethod === 'own_delivery' && (!selectedAddress || !selectedAddress.name) && restaurantData?.businessType !== 'hotel') {
-                          alert("Por favor escribe una dirección de entrega válida.");
-                          return;
+                      if (!isWaiter && deliveryMethod !== 'pickup' && (!selectedAddress || !selectedAddress.lat) && restaurantData?.businessType !== 'hotel') {
+                          if (gpsCoords) {
+                            setSelectedAddress({
+                              name: 'Ubicación GPS detectada',
+                              lat: gpsCoords.lat,
+                              lng: gpsCoords.lng,
+                              reference: manualReference
+                            });
+                          } else {
+                            alert("Por favor habilita el GPS o selecciona tu ubicación en el mapa.");
+                            return;
+                          }
                       }
                       setCurrentStep(3);
                   }} 
-                  className="w-full bg-primary text-slate-900 py-4 rounded-2xl font-bold mt-2"
+                  className="w-full bg-primary text-slate-900 py-4.5 rounded-2xl font-black text-xs uppercase tracking-widest shadow-lg shadow-primary/20 hover:scale-[1.01] active:scale-95 transition-all mt-2 cursor-pointer"
                 >
-                  Confirmar Datos
+                  Confirmar Datos y Continuar
                 </button>
               </div>
             )}
@@ -925,12 +1087,37 @@ export default function Cart({ hideHeader = false }: CartProps) {
                       </div>
 
                       {!isWaiter && (deliveryMethod === 'app_delivery' || deliveryMethod === 'own_delivery') && restaurantData?.businessType !== 'hotel' && (
-                        <div className="flex justify-between items-center bg-primary p-4 rounded-2xl shadow-lg border border-primary/20">
-                          <span className="text-xs uppercase tracking-widest text-black font-black">Transporte Un 2x3</span>
-                          <div className="text-right">
-                            <DualPrice usdAmount={deliveryFee} usdClassName="text-2xl font-black text-black" bsClassName="text-[10px] text-black" showDivider={false} />
-                            <span className="text-[9px] block mt-1 text-black font-black uppercase tracking-widest">Pago al Delivery</span>
+                        <div className="space-y-2">
+                          <div className={`flex justify-between items-center p-4 rounded-2xl shadow-lg border transition-all ${
+                            isFreeDeliveryQualified 
+                              ? 'bg-emerald-500 text-white border-emerald-400' 
+                              : 'bg-primary text-black border-primary/20'
+                          }`}>
+                            <div>
+                              <span className="text-xs uppercase tracking-widest font-black block">Transporte Un 2x3</span>
+                              {isFreeDeliveryQualified && (
+                                <span className="text-[10px] font-bold text-emerald-100 flex items-center gap-1">
+                                  🎉 ¡Promoción Delivery Gratis aplicada!
+                                </span>
+                              )}
+                            </div>
+                            <div className="text-right">
+                              {isFreeDeliveryQualified ? (
+                                <span className="text-2xl font-black text-white">$0.00</span>
+                              ) : (
+                                <DualPrice usdAmount={deliveryFee} usdClassName="text-2xl font-black text-black" bsClassName="text-[10px] text-black" showDivider={false} />
+                              )}
+                              <span className="text-[9px] block mt-0.5 font-black uppercase tracking-widest opacity-80">Pago al Delivery</span>
+                            </div>
                           </div>
+
+                          {isFreeDeliveryEnabled && freeDeliveryMin > 0 && !isFreeDeliveryQualified && (
+                            <div className="bg-amber-500/15 border border-amber-400/40 p-2.5 rounded-xl text-center">
+                              <span className="text-[11px] font-bold text-amber-300">
+                                🛵 Agrega ${(freeDeliveryMin - cartSubtotalUSD).toFixed(2)} USD más a tu orden para Delivery Gratis
+                              </span>
+                            </div>
+                          )}
                         </div>
                       )}
                     </div>
