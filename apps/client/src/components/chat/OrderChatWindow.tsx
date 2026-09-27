@@ -4,7 +4,7 @@ import {
   Send, Image as ImageIcon, CheckCircle, Receipt, Clock, CreditCard, Gift, Phone, Store, Bike, 
   Paperclip, AlertTriangle, RefreshCw, Plus, X, MessageCircle, Copy, ChevronDown, ChevronUp, 
   Loader2, Mic, MicOff, Square, Play, Video, UserCheck, ShieldCheck, UploadCloud, Check, 
-  Car, Sparkles, Navigation, MapPin, User, ArrowRight
+  Car, Sparkles, Navigation, MapPin, User, ArrowRight, ArrowLeft
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
@@ -27,6 +27,8 @@ interface OrderChatWindowProps {
   restaurantId: string;
   orderInfo: any;
   customCollectionPath?: string;
+  className?: string;
+  onClose?: () => void;
 }
 
 export default function OrderChatWindow({
@@ -36,7 +38,9 @@ export default function OrderChatWindow({
   currentUserName,
   restaurantId,
   orderInfo,
-  customCollectionPath
+  customCollectionPath,
+  className,
+  onClose
 }: OrderChatWindowProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [newMessage, setNewMessage] = useState('');
@@ -418,21 +422,28 @@ export default function OrderChatWindow({
       if (payProofFile) {
         const ext = payProofFile.name.split('.').pop() || 'jpg';
         const fileName = `payment_${orderId}_${Date.now()}.${ext}`;
-        const filePath = `order_chat/${fileName}`;
-        const { error: upErr } = await supabase.storage.from('documents').upload(filePath, payProofFile);
+        const filePath = `payment_proofs/${fileName}`;
+        const { error: upErr } = await supabase.storage.from('store_assets').upload(filePath, payProofFile, { upsert: true });
         if (upErr) {
-          proofUrl = await new Promise<string>((resolve) => {
-            const reader = new FileReader();
-            reader.onload = () => resolve(reader.result as string);
-            reader.readAsDataURL(payProofFile);
-          });
+          const { error: upErr2 } = await supabase.storage.from('documents').upload(filePath, payProofFile, { upsert: true });
+          if (!upErr2) {
+            const { data } = supabase.storage.from('documents').getPublicUrl(filePath);
+            proofUrl = data.publicUrl;
+          } else {
+            proofUrl = await new Promise<string>((resolve) => {
+              const reader = new FileReader();
+              reader.onload = () => resolve(reader.result as string);
+              reader.readAsDataURL(payProofFile);
+            });
+          }
         } else {
-          const { data } = supabase.storage.from('documents').getPublicUrl(filePath);
+          const { data } = supabase.storage.from('store_assets').getPublicUrl(filePath);
           proofUrl = data.publicUrl;
         }
       }
 
       await supabase.from('orders').update({
+        status: 'pending_verification',
         payment_status: 'verifying',
         payment_reference: payReferenceCode.trim() || null,
         paymentReference: payReferenceCode.trim() || null,
@@ -924,7 +935,7 @@ export default function OrderChatWindow({
   };
 
   return (
-    <div className="flex flex-col h-[520px] sm:h-[600px] bg-slate-50 rounded-3xl overflow-hidden border-2 border-slate-200 shadow-2xl relative">
+    <div className={`flex flex-col h-full w-full bg-slate-50 overflow-hidden relative ${className || ''}`}>
       {/* Hidden file input for receipt/capture/video upload */}
       <input
         type="file"
@@ -936,16 +947,25 @@ export default function OrderChatWindow({
 
       {/* Chat header */}
       <div className="bg-white p-3 border-b border-slate-200 flex items-center justify-between z-10 shrink-0 shadow-sm">
-        <div className="flex items-center gap-2.5">
-          <div className={`w-10 h-10 rounded-2xl flex items-center justify-center ${currentUserRole === 'client' ? 'bg-primary/20 text-slate-900' : 'bg-slate-900 text-white'}`}>
+        <div className="flex items-center gap-2.5 min-w-0 flex-1">
+          {onClose && (
+            <button
+              onClick={onClose}
+              className="w-9 h-9 bg-slate-100 hover:bg-slate-200 rounded-xl flex items-center justify-center text-slate-700 active:scale-95 transition-all mr-1 shrink-0"
+              title="Volver"
+            >
+              <ArrowLeft className="w-5 h-5" />
+            </button>
+          )}
+          <div className={`w-10 h-10 rounded-2xl flex items-center justify-center shrink-0 ${currentUserRole === 'client' ? 'bg-primary/20 text-slate-900' : 'bg-slate-900 text-white'}`}>
             {currentUserRole === 'client' ? <Store className="w-5 h-5" /> : <Receipt className="w-5 h-5" />}
           </div>
-          <div>
-            <h3 className="font-black text-slate-900 leading-none text-sm">
+          <div className="min-w-0 flex-1">
+            <h3 className="font-black text-slate-900 leading-none text-sm truncate">
               {currentUserRole === 'client' ? (liveOrder?.restaurant_name || orderInfo?.restaurantName || 'Comercio') : (liveOrder?.user_name || orderInfo?.userName || 'Cliente')}
             </h3>
-            <p className="text-[10px] text-slate-500 font-bold uppercase mt-1 tracking-wider flex items-center gap-1">
-              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+            <p className="text-[10px] text-slate-500 font-bold uppercase mt-1 tracking-wider flex items-center gap-1 truncate">
+              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse shrink-0"></span>
               {currentUserRole === 'client' ? 'En línea • Comercio' : 'Chat en Vivo'}
             </p>
           </div>
@@ -1083,7 +1103,7 @@ export default function OrderChatWindow({
       )}
 
       {/* Messages area */}
-      <div ref={messagesContainerRef} className="flex-1 overflow-y-auto p-4 space-y-3">
+      <div ref={messagesContainerRef} className="flex-1 overflow-y-auto p-4 space-y-3 min-h-0">
         {messages.length === 0 && (
           <div className="text-center text-slate-400 font-medium text-xs mt-8 space-y-2">
             <Store className="w-10 h-10 mx-auto text-slate-300" />
@@ -1230,7 +1250,7 @@ export default function OrderChatWindow({
       )}
 
       {/* Input area */}
-      <div className="p-3 bg-white border-t border-slate-200 shrink-0">
+      <div className="p-3 bg-white border-t border-slate-200 shrink-0 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
         {isRecordingVoice ? (
           <div className="flex items-center justify-between gap-3 bg-red-50 border-2 border-red-300 p-2.5 rounded-2xl animate-in fade-in">
             <div className="flex items-center gap-2.5">

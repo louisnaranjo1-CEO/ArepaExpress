@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Search, Filter, Clock, MapPin, ChevronRight, Bike, Truck, CheckCircle, Loader2, Bell, ExternalLink, X, ShoppingCart, Plus, Minus, Trash2, User, CreditCard, Store, ShoppingBag, Users, Upload, Image as ImageIcon, DollarSign, Edit, MessageCircle, Package } from 'lucide-react';
+import { Search, Filter, Clock, MapPin, ChevronRight, Bike, Truck, CheckCircle, Loader2, Bell, ExternalLink, X, ShoppingCart, Plus, Minus, Trash2, User, CreditCard, Store, ShoppingBag, Users, Upload, Image as ImageIcon, DollarSign, Edit, MessageCircle, Package, Eye, Download, Star, Sparkles, Navigation } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../context/AuthContext';
 import { printToUsbDevice, formatTicket, PrintOrder } from '../../lib/usb-printer';
@@ -71,6 +71,10 @@ export default function Orders() {
     const [dispatchType, setDispatchType] = useState<'platform' | 'own'>('own');
     const [selectedDriver, setSelectedDriver] = useState<string>('');
     const [drivers, setDrivers] = useState<any[]>([]);
+    const [prepMinutes, setPrepMinutes] = useState<number>(20);
+    const [driverSearch, setDriverSearch] = useState<string>('');
+    const [driverCategoryFilter, setDriverCategoryFilter] = useState<'all' | 'moto' | 'carro' | 'confort'>('all');
+    const [previewImageModal, setPreviewImageModal] = useState<string | null>(null);
     
     // Radar UI State
     const [radarOrderId, setRadarOrderId] = useState<string | null>(null);
@@ -335,9 +339,67 @@ export default function Orders() {
         return () => clearInterval(interval);
     }, [radarOrderId, orders]);
 
+    const fetchActiveDrivers = async () => {
+        try {
+            const { data: driversData, error: dErr } = await supabase
+                .from('drivers')
+                .select(`
+                    id,
+                    full_name,
+                    phone,
+                    vehicle_type,
+                    vehicle_brand,
+                    vehicle_model,
+                    vehicle_color,
+                    vehicle_plate,
+                    vehicle_image_url,
+                    rating,
+                    total_trips,
+                    is_online,
+                    availability,
+                    current_location,
+                    is_comfort_eligible
+                `);
+
+            if (dErr) console.warn("Error fetching drivers:", dErr);
+
+            if (driversData && driversData.length > 0) {
+                const driverIds = driversData.map(d => d.id);
+                const { data: profilesData } = await supabase
+                    .from('profiles')
+                    .select('id, photo_url')
+                    .in('id', driverIds);
+
+                const photoMap = new Map((profilesData || []).map(p => [p.id, p.photo_url]));
+
+                const enriched = driversData.map(d => ({
+                    ...d,
+                    photo_url: photoMap.get(d.id) || d.vehicle_image_url || null
+                }));
+                setDrivers(enriched);
+            }
+        } catch (e) {
+            console.warn("Error loading drivers:", e);
+        }
+    };
+
+    const getDriverPayout = (order: Order | null, driverVehicleType: string = 'moto'): number => {
+        if (!order) return 1.5;
+        const dist = (order as any).distance || 2.0;
+        const vType = driverVehicleType === 'confort' ? 'confort' : (driverVehicleType === 'carro' ? 'carro' : 'moto');
+        const baseFare = vType === 'confort' ? 3.5 : (vType === 'carro' ? 2.5 : 1.5);
+        const baseKm = 2.0;
+        const pricePerKm = vType === 'confort' ? 0.8 : (vType === 'carro' ? 0.6 : 0.5);
+        const extraKm = Math.max(0, dist - baseKm);
+        const totalFare = baseFare + (extraKm * pricePerKm);
+        const payout = Number((totalFare * 0.85).toFixed(2));
+        return Math.max(1.20, payout);
+    };
+
     useEffect(() => {
         if (!user || !rid) return;
         fetchOrders();
+        fetchActiveDrivers();
 
         const channel = supabase
             .channel(`orders_page_${rid}`)
@@ -515,37 +577,78 @@ export default function Orders() {
         if (!selectedOrderForDispatch) return;
         setIsAccepting(true);
         try {
+            const driverObj = drivers.find(d => d.id === selectedDriver);
+            const payout = driverObj ? getDriverPayout(selectedOrderForDispatch, driverObj.vehicle_type) : 1.50;
+
             const updates: any = {
-                status: dispatchType === 'platform' ? 'buscando_piloto' : 'delivering',
+                status: 'delivering',
                 updated_at: new Date().toISOString()
             };
 
-            if (dispatchType === 'platform') {
-                if (selectedDriver) {
-                    updates.preferred_driver_id = selectedDriver;
-                    updates.preferred_driver_expires_at = new Date(Date.now() + 60000).toISOString();
-                } else {
-                    updates.preferred_driver_id = null;
-                    updates.preferred_driver_expires_at = null;
-                }
-            }
+            if (driverObj) {
+                updates.driver_id = driverObj.id;
+                updates.delivery_driver_id = driverObj.id;
+                updates.driver_name = driverObj.full_name || 'Conductor';
+                updates.driver_payout = payout;
+                updates.dispatched_at = new Date().toISOString();
 
-            await supabase.from('orders').update(updates).eq('id', selectedOrderForDispatch.id);
-            
-            if (dispatchType === 'platform') {
+                // Enlazar transport_requests para el repartidor
+                try {
+                    await supabase.from('transport_requests').upsert({
+                        order_id: selectedOrderForDispatch.id,
+                        restaurant_id: rid,
+                        restaurant_name: (selectedOrderForDispatch as any).restaurantName || 'Comercio',
+                        user_id: selectedOrderForDispatch.userId,
+                        user_name: selectedOrderForDispatch.userName || 'Cliente',
+                        user_phone: selectedOrderForDispatch.userPhone || '',
+                        driver_id: driverObj.id,
+                        assigned_driver_id: driverObj.id,
+                        driver_name: driverObj.full_name,
+                        driver_phone: driverObj.phone,
+                        driver_photo: driverObj.photo_url,
+                        vehicle_type: driverObj.vehicle_type || 'moto',
+                        status: 'in_progress',
+                        price: payout,
+                        driver_payout: payout,
+                        destination: selectedOrderForDispatch.deliveryCoords || { address: selectedOrderForDispatch.deliveryAddress },
+                        created_at: new Date().toISOString(),
+                        updated_at: new Date().toISOString()
+                    });
+                } catch (trErr) {
+                    console.warn("Transport request link err:", trErr);
+                }
+
+                // Chat message
+                try {
+                    await supabase.from('messages').insert({
+                        order_id: selectedOrderForDispatch.id,
+                        sender_id: user?.uid,
+                        sender_name: 'Restaurante',
+                        sender_role: 'restaurant',
+                        text: `🛵 *¡Tu pedido va en camino!* Repartidor asignado: *${driverObj.full_name}* (${driverObj.vehicle_brand || ''} ${driverObj.vehicle_model || ''}). Sigue su ubicación en el mapa.`,
+                        created_at: new Date().toISOString()
+                    });
+                } catch (mErr) {
+                    console.warn("Message err:", mErr);
+                }
+            } else {
+                updates.status = 'buscando_piloto';
                 setRadarOrderId(selectedOrderForDispatch.id);
             }
 
+            await supabase.from('orders').update(updates).eq('id', selectedOrderForDispatch.id);
+
             vibrateSelection();
+            toast.success(driverObj ? `¡Despachado con ${driverObj.full_name}!` : "Despacho abierto al radar.");
 
             setDispatchModalOpen(false);
             setSelectedOrderForDispatch(null);
-            setDispatchType('own');
             setSelectedDriver('');
+            setDriverSearch('');
             fetchOrders();
         } catch (error) {
             console.error("Error setting delivering status:", error);
-            alert("Error al despachar.");
+            toast.error("Error al despachar.");
         } finally {
             setIsAccepting(false);
         }
@@ -754,15 +857,31 @@ export default function Orders() {
         if (!selectedOrderForVerify) return;
         setIsVerifying(true);
         try {
-            const nextStatus = (selectedOrderForVerify.source !== 'waiter' && selectedOrderForVerify.deliveryAddress !== 'PickUp' && (selectedOrderForVerify as any).type !== 'takeout') 
-                ? 'awaiting_delivery_payment' 
-                : 'preparing';
+            const nextStatus = 'preparing';
+            const readyAt = new Date(Date.now() + prepMinutes * 60 * 1000).toISOString();
 
             await supabase.from('orders').update({ 
                 status: nextStatus,
                 payment_status: 'paid',
+                preparation_time_minutes: prepMinutes,
+                estimated_ready_at: readyAt,
                 updated_at: new Date().toISOString()
             }).eq('id', selectedOrderForVerify.id);
+
+            // Anunciar en el chat el tiempo de cocina asignado
+            try {
+                await supabase.from('messages').insert({
+                    order_id: selectedOrderForVerify.id,
+                    sender_id: user?.uid,
+                    sender_name: 'Restaurante',
+                    sender_role: 'restaurant',
+                    text: `👨‍🍳 *¡Pago verificado y comanda iniciada!* Tiempo estimado de preparación: *${prepMinutes} minutos*. Sigue la cuenta regresiva en vivo en tu pantalla.`,
+                    action: 'payment_confirmed',
+                    created_at: new Date().toISOString()
+                });
+            } catch (mErr) {
+                console.warn("Message err:", mErr);
+            }
 
             // Otorgar puntos por consumo (2.5 por cada $) si no se han otorgado
             if (selectedOrderForVerify.userId && selectedOrderForVerify.userId !== 'pos_customer' && !(selectedOrderForVerify as any).pointsCredited) {
@@ -777,11 +896,9 @@ export default function Orders() {
                 }
             }
 
-            if (nextStatus === 'preparing') {
-                await handlePrintOrder(selectedOrderForVerify.id, selectedOrderForVerify as any);
-            }
+            await handlePrintOrder(selectedOrderForVerify.id, selectedOrderForVerify as any);
 
-            toast.success("Pago de restaurante acreditado.");
+            toast.success(`Pago acreditado. Cocina: ${prepMinutes} min.`);
             setVerificationSuccess(true);
             fetchOrders();
             
@@ -789,7 +906,7 @@ export default function Orders() {
                 setVerifyModalOpen(false);
                 setSelectedOrderForVerify(null);
                 setVerificationSuccess(false);
-            }, 2000);
+            }, 1800);
 
         } catch (error) {
             console.error("Error verifying payment:", error);
@@ -1232,13 +1349,52 @@ export default function Orders() {
                                 <span className="font-black text-slate-700">{order.paymentReference || 'N/A'}</span>
                             </div>
                             {order.paymentProofUrl && (
-                                <button 
-                                    onClick={() => window.open(order.paymentProofUrl, '_blank')}
-                                    className="w-full flex items-center justify-center gap-2 py-2 bg-white rounded-xl text-xs font-black text-slate-600 hover:bg-slate-100 transition-colors border border-slate-200 shadow-sm"
-                                >
-                                    <ImageIcon className="w-4 h-4" />
-                                    Ver Comprobante
-                                </button>
+                                <div className="mt-2 p-2.5 bg-white border border-slate-200 rounded-2xl flex items-center gap-3 shadow-xs">
+                                    <div 
+                                        onClick={() => setPreviewImageModal(order.paymentProofUrl || null)}
+                                        className="w-16 h-16 rounded-xl overflow-hidden bg-slate-100 border border-slate-200 shrink-0 cursor-zoom-in group relative"
+                                        title="Clic para ampliar comprobante"
+                                    >
+                                        <img 
+                                            src={order.paymentProofUrl} 
+                                            alt="Comprobante" 
+                                            className="w-full h-full object-cover group-hover:scale-110 transition-transform" 
+                                        />
+                                        <div className="absolute inset-0 bg-black/25 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
+                                            <Eye className="w-5 h-5 text-white" />
+                                        </div>
+                                    </div>
+                                    <div className="flex-1 min-w-0">
+                                        <p className="text-[10px] font-black uppercase text-slate-400 tracking-wider">Captura Adjunta</p>
+                                        <p className="text-xs font-black text-slate-800 truncate">Comprobante de Pago</p>
+                                        <div className="flex items-center gap-3 mt-1.5">
+                                            <button
+                                                type="button"
+                                                onClick={() => setPreviewImageModal(order.paymentProofUrl || null)}
+                                                className="text-[11px] font-black text-blue-600 hover:text-blue-700 flex items-center gap-1 active:scale-95"
+                                            >
+                                                <Eye className="w-3.5 h-3.5" /> Ampliar
+                                            </button>
+                                            <a
+                                                href={order.paymentProofUrl}
+                                                download={`comprobante_${order.id.slice(-6)}.jpg`}
+                                                target="_blank"
+                                                rel="noreferrer"
+                                                className="text-[11px] font-black text-emerald-600 hover:text-emerald-700 flex items-center gap-1 active:scale-95"
+                                            >
+                                                <Download className="w-3.5 h-3.5" /> Descargar
+                                            </a>
+                                        </div>
+                                    </div>
+                                    {!order.restaurantPaid && (
+                                        <button
+                                            onClick={() => handleVerifyPayment(order.id)}
+                                            className="bg-primary hover:bg-primary/90 text-slate-900 px-3.5 py-2.5 rounded-xl text-xs font-black shrink-0 active:scale-95 shadow-sm transition-all"
+                                        >
+                                            Validar
+                                        </button>
+                                    )}
+                                </div>
                             )}
                         </div>
                     )}
@@ -1301,17 +1457,17 @@ export default function Orders() {
                             <MessageCircle className="w-5 h-5 text-slate-700" />
                             <span>Chat</span>
                         </button>
-                        {order.status === 'awaiting_payment' ? (
+                        {(order.status === 'awaiting_payment' && !order.paymentProofUrl) ? (
                             <div className="flex-1 bg-emerald-50 text-emerald-700 py-4 rounded-2xl font-black border border-emerald-200 flex flex-col items-center justify-center gap-1">
                                 <span className="flex items-center gap-2"><CheckCircle className="w-4 h-4 text-emerald-500" /> Stock Confirmado</span>
                                 <span className="text-[10px] font-bold text-emerald-500 uppercase tracking-widest">Esperando Pago del Cliente</span>
                             </div>
-                        ) : order.status === 'pending_verification' ? (
+                        ) : (order.status === 'pending_verification' || order.paymentProofUrl || (order as any).payment_status === 'verifying') ? (
                             <button
                                 onClick={() => handleVerifyPayment(order.id)}
                                 className="flex-1 bg-primary text-slate-900 py-4 rounded-2xl font-black shadow-lg shadow-primary/20 hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-2"
                             >
-                                <CheckCircle className="w-5 h-5" /> Validar Pago
+                                <CheckCircle className="w-5 h-5" /> Validar Pago e Iniciar Cocina
                             </button>
                         ) : order.status === 'awaiting_delivery_payment' ? (
                             <div className="flex-1 bg-amber-50 text-amber-600 py-4 rounded-2xl font-black border border-amber-100 flex flex-col items-center justify-center group relative overflow-hidden">
@@ -1350,27 +1506,38 @@ export default function Orders() {
                 )}
                 
                 {(order.status === 'preparing' || order.status === 'buscando_piloto' || order.status === 'piloto_asignado') && (
-                    <div className="flex w-full gap-2">
-                        <button
-                            onClick={() => updateStatus(order.id, 'buscando_piloto')}
-                            className="flex-1 bg-indigo-500 text-white py-4 rounded-2xl font-black shadow-lg shadow-indigo-500/20 hover:scale-[1.02] transition-all flex items-center justify-center gap-2"
-                        >
-                            <Bell className="w-5 h-5" /> Alertar Delivery
-                        </button>
-                        <button
-                            onClick={() => updateStatus(order.id, 'delivering')}
-                            className="flex-1 bg-slate-900 text-white py-4 rounded-2xl font-black shadow-lg shadow-slate-900/20 hover:scale-[1.02] transition-all flex items-center justify-center gap-2"
-                        >
-                            <Truck className="w-5 h-5" /> Enviado
-                        </button>
-                        <button
-                            onClick={() => setChatOrderId(order.id)}
-                            className="px-4 bg-slate-100 text-slate-700 py-4 rounded-2xl font-black hover:bg-slate-200 transition-all flex items-center justify-center gap-1.5 border border-slate-200 shadow-sm"
-                            title="Abrir Chat"
-                        >
-                            <MessageCircle className="w-5 h-5 text-slate-700" />
-                            <span>Chat</span>
-                        </button>
+                    <div className="flex flex-col w-full gap-2.5">
+                        {order.status === 'preparing' && (
+                            <div className="bg-amber-50 border border-amber-200 px-3.5 py-2 rounded-2xl flex items-center justify-between text-xs">
+                                <div className="flex items-center gap-2 text-amber-900 font-black">
+                                    <Clock className="w-4 h-4 text-amber-600 animate-spin" />
+                                    <span>Preparación en Cocina</span>
+                                </div>
+                                <span className="bg-amber-200/80 text-amber-900 px-2.5 py-0.5 rounded-full font-black text-[11px]">
+                                    {(order as any).preparation_time_minutes || 20} min est.
+                                </span>
+                            </div>
+                        )}
+                        <div className="flex w-full gap-2">
+                            <button
+                                onClick={() => {
+                                    setSelectedOrderForDispatch(order);
+                                    setDispatchModalOpen(true);
+                                    fetchActiveDrivers();
+                                }}
+                                className="flex-1 bg-amber-500 hover:bg-amber-600 text-slate-950 py-4 rounded-2xl font-black shadow-lg shadow-amber-500/20 hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-2"
+                            >
+                                <Bike className="w-5 h-5" /> Despachar Repartidor
+                            </button>
+                            <button
+                                onClick={() => setChatOrderId(order.id)}
+                                className="px-4 bg-slate-100 text-slate-700 py-4 rounded-2xl font-black hover:bg-slate-200 transition-all flex items-center justify-center gap-1.5 border border-slate-200 shadow-sm"
+                                title="Abrir Chat"
+                            >
+                                <MessageCircle className="w-5 h-5 text-slate-700" />
+                                <span>Chat</span>
+                            </button>
+                        </div>
                     </div>
                 )}
 
@@ -1847,84 +2014,217 @@ export default function Orders() {
 
             {/* Dispatch Order Modal */}
             {dispatchModalOpen && selectedOrderForDispatch && (
-                <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center bg-slate-900/40 backdrop-blur-sm sm:px-4">
-                    <div className="bg-white rounded-t-[40px] sm:rounded-3xl p-6 w-full max-w-sm shadow-2xl animate-in slide-in-from-bottom sm:zoom-in-95 duration-200 flex flex-col max-h-[90vh]">
-                        <div className="w-12 h-1.5 bg-slate-200 rounded-full mx-auto mb-6 sm:hidden shrink-0"></div>
-                        <div className="flex justify-between items-center mb-6 shrink-0">
-                            <h3 className="text-xl font-black text-slate-900">Despachar Pedido</h3>
-                            <button onClick={() => setDispatchModalOpen(false)} className="text-slate-400 hover:text-slate-600">
+                <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center bg-slate-900/50 backdrop-blur-sm sm:px-4">
+                    <div className="bg-white rounded-t-[40px] sm:rounded-3xl p-6 w-full max-w-lg shadow-2xl animate-in slide-in-from-bottom sm:zoom-in-95 duration-200 flex flex-col max-h-[92vh]">
+                        <div className="w-12 h-1.5 bg-slate-200 rounded-full mx-auto mb-4 sm:hidden shrink-0"></div>
+                        
+                        <div className="flex justify-between items-center mb-4 shrink-0">
+                            <div>
+                                <h3 className="text-xl font-black text-slate-900 flex items-center gap-2">
+                                    <Truck className="w-6 h-6 text-primary" /> Centro de Despacho
+                                </h3>
+                                <p className="text-xs text-slate-500 font-bold">Orden #{selectedOrderForDispatch.id.slice(0, 8)} • Destino: {selectedOrderForDispatch.deliveryAddress || 'Dirección registrada'}</p>
+                            </div>
+                            <button onClick={() => setDispatchModalOpen(false)} className="text-slate-400 hover:text-slate-600 p-2">
                                 <X className="w-6 h-6" />
                             </button>
                         </div>
-                        <div className="grid grid-cols-2 gap-3 mb-6">
+
+                        {/* Free delivery badge if shop covers delivery */}
+                        {((selectedOrderForDispatch as any).freeDelivery || restaurantConfig?.free_delivery) && (
+                            <div className="mb-4 p-3 bg-gradient-to-r from-amber-500/10 to-yellow-500/20 border border-amber-300 rounded-2xl flex items-center gap-3">
+                                <Sparkles className="w-5 h-5 text-amber-600 shrink-0" />
+                                <div className="text-xs text-amber-900">
+                                    <span className="font-black">¡Envío Gratis Activado!</span> La tienda asume el flete del conductor. El cliente no verá tarifas de envío.
+                                </div>
+                            </div>
+                        )}
+
+                        <div className="grid grid-cols-2 gap-3 mb-4 shrink-0">
                             <button
                                 onClick={() => setDispatchType('own')}
-                                className={`flex flex-col items-center gap-2 p-4 rounded-2xl border-2 font-bold transition-all ${dispatchType === 'own' ? 'border-primary bg-primary/5 text-slate-900' : 'border-slate-100 text-slate-500 hover:bg-slate-50'}`}
+                                className={`flex flex-col items-center gap-2 p-3.5 rounded-2xl border-2 font-bold transition-all ${dispatchType === 'own' ? 'border-primary bg-primary/10 text-slate-900 shadow-sm' : 'border-slate-100 text-slate-500 hover:bg-slate-50'}`}
                             >
-                                <Store className="w-6 h-6" />
-                                <span className="text-xs text-center">Propio / Cliente recoge</span>
+                                <Store className="w-5 h-5" />
+                                <span className="text-xs text-center font-black">Propio / Retiro en Tienda</span>
                             </button>
                             <button
                                 onClick={() => setDispatchType('platform')}
-                                className={`flex flex-col items-center gap-2 p-4 rounded-2xl border-2 font-bold transition-all ${dispatchType === 'platform' ? 'border-blue-500 bg-blue-50 text-blue-600' : 'border-slate-100 text-slate-500 hover:bg-slate-50'}`}
+                                className={`flex flex-col items-center gap-2 p-3.5 rounded-2xl border-2 font-bold transition-all ${dispatchType === 'platform' ? 'border-blue-500 bg-blue-50 text-blue-700 shadow-sm' : 'border-slate-100 text-slate-500 hover:bg-slate-50'}`}
                             >
-                                <Users className="w-6 h-6" />
-                                <span className="text-xs text-center">Motorizado de App</span>
+                                <Users className="w-5 h-5" />
+                                <span className="text-xs text-center font-black">Driver de la Plataforma</span>
                             </button>
                         </div>
 
                         {dispatchType === 'platform' ? (
-                            <div className="mb-6 space-y-3">
-                                <div className="p-3.5 bg-slate-50 rounded-2xl border border-slate-200">
-                                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-1.5">
-                                        Asignación de Motorizado
-                                    </label>
-                                    <select
-                                        value={selectedDriver}
-                                        onChange={(e) => setSelectedDriver(e.target.value)}
-                                        className="w-full bg-white border border-slate-200 p-2.5 rounded-xl font-bold text-xs text-slate-800 outline-none focus:border-blue-500 transition-all cursor-pointer"
-                                    >
-                                        <option value="">Radar Abierto (Todos los conductores)</option>
-                                        {drivers.map((drv) => (
-                                            <option key={drv.id} value={drv.id}>
-                                                ⭐ Conductor Preferido: {drv.full_name || drv.name || drv.email} {drv.phone ? `(${drv.phone})` : ''}
-                                            </option>
-                                        ))}
-                                    </select>
+                            <div className="flex-1 overflow-y-auto space-y-3 pr-1 min-h-[220px]">
+                                {/* Vehicle Category Filter Tabs */}
+                                <div className="flex gap-1.5 p-1 bg-slate-100 rounded-2xl shrink-0 overflow-x-auto">
+                                    {[
+                                        { id: 'all', label: 'Todos' },
+                                        { id: 'moto', label: '🛵 Moto Taxi' },
+                                        { id: 'carro', label: '🚗 Taxi Eco' },
+                                        { id: 'confort', label: '✨ Confort' }
+                                    ].map(cat => (
+                                        <button
+                                            key={cat.id}
+                                            type="button"
+                                            onClick={() => setDriverCategoryFilter(cat.id as any)}
+                                            className={`flex-1 py-1.5 px-2.5 rounded-xl font-black text-[11px] whitespace-nowrap transition-all ${
+                                                driverCategoryFilter === cat.id 
+                                                    ? 'bg-white text-slate-900 shadow-sm' 
+                                                    : 'text-slate-500 hover:text-slate-900'
+                                            }`}
+                                        >
+                                            {cat.label}
+                                        </button>
+                                    ))}
                                 </div>
 
-                                {selectedDriver ? (
-                                    <div className="flex flex-col items-center justify-center p-4 bg-amber-50 rounded-2xl border border-amber-200">
-                                        <div className="w-10 h-10 bg-amber-100 text-amber-600 rounded-full flex items-center justify-center mb-2">
-                                            <Clock className="w-5 h-5 animate-spin" />
-                                        </div>
-                                        <h4 className="font-black text-amber-900 text-xs text-center mb-1">60s de Exclusividad</h4>
-                                        <p className="text-[10px] text-amber-700 text-center leading-relaxed">
-                                            El conductor preferido tendrá 60 segundos exclusivos para aceptar. Si no responde a tiempo, la orden se abrirá automáticamente al radar general.
-                                        </p>
-                                    </div>
-                                ) : (
-                                    <div className="flex flex-col items-center justify-center p-4 bg-blue-50 rounded-2xl border border-blue-200">
-                                        <div className="w-10 h-10 bg-blue-100 text-blue-500 rounded-full flex items-center justify-center mb-2 relative">
-                                            <div className="absolute inset-0 bg-blue-400 rounded-full animate-ping opacity-20"></div>
+                                {/* Driver Search Bar */}
+                                <div className="relative shrink-0">
+                                    <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                                    <input 
+                                        type="text"
+                                        placeholder="Buscar conductor de confianza por nombre..."
+                                        value={driverSearch}
+                                        onChange={(e) => setDriverSearch(e.target.value)}
+                                        className="w-full bg-slate-50 border border-slate-200 pl-10 pr-4 py-2.5 rounded-xl text-xs font-bold text-slate-800 placeholder-slate-400 outline-none focus:border-blue-500 focus:bg-white transition-all"
+                                    />
+                                    {driverSearch && (
+                                        <button onClick={() => setDriverSearch('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400">
+                                            <X className="w-3.5 h-3.5" />
+                                        </button>
+                                    )}
+                                </div>
+
+                                {/* Radar General Option */}
+                                <div 
+                                    onClick={() => setSelectedDriver('')}
+                                    className={`p-3.5 rounded-2xl border-2 cursor-pointer transition-all flex items-center justify-between ${
+                                        selectedDriver === '' 
+                                            ? 'border-blue-500 bg-blue-50/80 shadow-sm' 
+                                            : 'border-slate-100 bg-slate-50/60 hover:bg-slate-100'
+                                    }`}
+                                >
+                                    <div className="flex items-center gap-3">
+                                        <div className="w-10 h-10 rounded-2xl bg-blue-500 text-white flex items-center justify-center relative shadow-md shadow-blue-500/20">
+                                            <div className="absolute inset-0 rounded-2xl bg-blue-400 animate-ping opacity-25"></div>
                                             <Truck className="w-5 h-5 relative z-10" />
                                         </div>
-                                        <h4 className="font-black text-blue-900 text-xs text-center mb-1">Radar Abierto General</h4>
-                                        <p className="text-[10px] text-blue-700 text-center leading-relaxed">
-                                            Se notificará simultáneamente a todos los motorizados disponibles en un radio de 15km.
-                                        </p>
+                                        <div>
+                                            <h4 className="font-black text-xs text-slate-900 flex items-center gap-1.5">
+                                                Radar Abierto General
+                                                <span className="px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded-md text-[9px] font-black uppercase">Automático</span>
+                                            </h4>
+                                            <p className="text-[10px] text-slate-500 font-medium">Notifica a todos los motorizados disponibles en 15km</p>
+                                        </div>
                                     </div>
-                                )}
+                                    <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${selectedDriver === '' ? 'border-blue-500 bg-blue-500 text-white' : 'border-slate-300'}`}>
+                                        {selectedDriver === '' && <div className="w-2 h-2 rounded-full bg-white"></div>}
+                                    </div>
+                                </div>
+
+                                {/* Filtered Drivers List */}
+                                <div className="space-y-2">
+                                    <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1">
+                                        Conductores Disponibles ({drivers.filter(d => {
+                                            const matchesSearch = !driverSearch || (d.full_name || '').toLowerCase().includes(driverSearch.toLowerCase());
+                                            const matchesCat = driverCategoryFilter === 'all' || 
+                                                (driverCategoryFilter === 'moto' && (d.vehicle_type === 'moto' || !d.vehicle_type)) ||
+                                                (driverCategoryFilter === 'carro' && (d.vehicle_type === 'carro' || d.vehicle_type === 'taxi' || d.vehicle_type === 'auto')) ||
+                                                (driverCategoryFilter === 'confort' && (d.vehicle_type === 'confort' || d.is_comfort_eligible));
+                                            return matchesSearch && matchesCat;
+                                        }).length})
+                                    </div>
+
+                                    {drivers
+                                        .filter(d => {
+                                            const matchesSearch = !driverSearch || (d.full_name || '').toLowerCase().includes(driverSearch.toLowerCase());
+                                            const matchesCat = driverCategoryFilter === 'all' || 
+                                                (driverCategoryFilter === 'moto' && (d.vehicle_type === 'moto' || !d.vehicle_type)) ||
+                                                (driverCategoryFilter === 'carro' && (d.vehicle_type === 'carro' || d.vehicle_type === 'taxi' || d.vehicle_type === 'auto')) ||
+                                                (driverCategoryFilter === 'confort' && (d.vehicle_type === 'confort' || d.is_comfort_eligible));
+                                            return matchesSearch && matchesCat;
+                                        })
+                                        .map(drv => {
+                                            const payout = getDriverPayout(selectedOrderForDispatch, drv.vehicle_type);
+                                            const isSelected = selectedDriver === drv.id;
+                                            const vType = drv.vehicle_type === 'confort' ? 'Confort' : (drv.vehicle_type === 'carro' ? 'Auto Económico' : 'Moto Taxi');
+                                            
+                                            return (
+                                                <div 
+                                                    key={drv.id}
+                                                    onClick={() => setSelectedDriver(drv.id)}
+                                                    className={`p-3 rounded-2xl border-2 cursor-pointer transition-all flex items-center justify-between ${
+                                                        isSelected 
+                                                            ? 'border-primary bg-primary/10 shadow-sm ring-1 ring-primary' 
+                                                            : 'border-slate-100 bg-white hover:border-slate-200'
+                                                    }`}
+                                                >
+                                                    <div className="flex items-center gap-3">
+                                                        {/* Driver Photo */}
+                                                        <div className="relative">
+                                                            {drv.photo_url ? (
+                                                                <img 
+                                                                    src={drv.photo_url} 
+                                                                    alt={drv.full_name} 
+                                                                    className="w-11 h-11 rounded-2xl object-cover border border-slate-200 shadow-sm"
+                                                                />
+                                                            ) : (
+                                                                <div className="w-11 h-11 rounded-2xl bg-slate-100 flex items-center justify-center text-slate-500 font-black text-sm">
+                                                                    {drv.full_name ? drv.full_name.charAt(0).toUpperCase() : 'D'}
+                                                                </div>
+                                                            )}
+                                                            <div className="absolute -bottom-1 -right-1 bg-emerald-500 w-3 h-3 rounded-full border-2 border-white"></div>
+                                                        </div>
+
+                                                        <div>
+                                                            <div className="flex items-center gap-1.5">
+                                                                <h5 className="font-black text-xs text-slate-900">{drv.full_name || 'Conductor'}</h5>
+                                                                <span className="flex items-center text-[10px] font-black text-amber-500">
+                                                                    ⭐ {drv.rating ? Number(drv.rating).toFixed(1) : '5.0'}
+                                                                </span>
+                                                            </div>
+                                                            <p className="text-[10px] text-slate-500 font-bold">
+                                                                {vType} • {drv.vehicle_brand || ''} {drv.vehicle_model || ''} {drv.vehicle_plate ? `[${drv.vehicle_plate}]` : ''}
+                                                            </p>
+                                                            <p className="text-[10px] font-black text-emerald-600 mt-0.5">
+                                                                Tarifa calculada: ${payout.toFixed(2)} USD
+                                                            </p>
+                                                        </div>
+                                                    </div>
+
+                                                    <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${isSelected ? 'border-primary bg-primary text-slate-900' : 'border-slate-300'}`}>
+                                                        {isSelected && <div className="w-2 h-2 rounded-full bg-slate-900"></div>}
+                                                    </div>
+                                                </div>
+                                            );
+                                        })
+                                    }
+                                </div>
                             </div>
                         ) : null}
 
-                        <button
-                            onClick={handleConfirmDispatch}
-                            disabled={isAccepting}
-                            className={`w-full text-slate-900 py-4 rounded-2xl font-black shadow-lg hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-2 disabled:opacity-50 ${dispatchType === 'platform' ? 'bg-primary shadow-blue-500/20' : 'bg-primary shadow-primary/20'}`}
-                        >
-                            {isAccepting ? <Loader2 className="w-5 h-5 animate-spin" /> : <><Truck className="w-5 h-5" /> Enviar en Camino</>}
-                        </button>
+                        <div className="pt-4 mt-2 border-t border-slate-100 shrink-0">
+                            <button
+                                onClick={handleConfirmDispatch}
+                                disabled={isAccepting}
+                                className={`w-full py-4 rounded-2xl font-black shadow-lg hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-2 disabled:opacity-50 ${
+                                    selectedDriver 
+                                        ? 'bg-primary text-slate-900 shadow-primary/20' 
+                                        : 'bg-blue-600 text-white shadow-blue-500/20'
+                                }`}
+                            >
+                                {isAccepting ? <Loader2 className="w-5 h-5 animate-spin" /> : (
+                                    <>
+                                        <Truck className="w-5 h-5" /> 
+                                        {selectedDriver ? 'Asignar Conductor de Confianza y Despachar' : 'Abrir Radar y Despachar Pedido'}
+                                    </>
+                                )}
+                            </button>
+                        </div>
                     </div>
                 </div>
             )}
@@ -1943,28 +2243,28 @@ export default function Orders() {
                             animate={{ y: 0 }}
                             exit={{ y: "100%" }}
                             transition={{ type: "spring", bounce: 0, duration: 0.4 }}
-                            className="bg-white rounded-t-[40px] sm:rounded-[40px] p-8 w-full max-w-lg shadow-2xl relative overflow-hidden flex flex-col max-h-[90vh]"
+                            className="bg-white rounded-t-[40px] sm:rounded-[40px] p-6 sm:p-8 w-full max-w-lg shadow-2xl relative overflow-hidden flex flex-col max-h-[92vh]"
                         >
-                            <div className="w-12 h-1.5 bg-slate-200 rounded-full mx-auto mb-6 sm:hidden shrink-0"></div>
+                            <div className="w-12 h-1.5 bg-slate-200 rounded-full mx-auto mb-4 sm:hidden shrink-0"></div>
                             {verificationSuccess ? (
                                 <div className="py-12 flex flex-col items-center justify-center text-center animate-in zoom-in-50 duration-500">
                                     <div className="w-24 h-24 bg-emerald-500 text-white rounded-full flex items-center justify-center mb-6 shadow-xl shadow-emerald-500/20">
                                         <CheckCircle className="w-16 h-16" />
                                     </div>
-                                    <h3 className="text-4xl font-black text-slate-900 mb-2">PAGO ACREDITADO</h3>
-                                    <p className="text-slate-500 font-bold text-lg">El pedido ha sido procesado con éxito</p>
-                                    <div className="mt-8 px-6 py-3 bg-emerald-50 text-emerald-600 rounded-2xl font-black text-sm border border-emerald-100 italic">
-                                        Puntos asignados al cliente automáticamente ✨
+                                    <h3 className="text-3xl font-black text-slate-900 mb-2">PAGO ACREDITADO</h3>
+                                    <p className="text-slate-500 font-bold text-base">Comanda iniciada con {prepMinutes} min de preparación</p>
+                                    <div className="mt-6 px-6 py-3 bg-emerald-50 text-emerald-600 rounded-2xl font-black text-sm border border-emerald-100 italic">
+                                        Cuenta regresiva activada en vivo para el cliente ✨
                                     </div>
                                 </div>
                             ) : (
                                 <>
-                                    <div className="flex justify-between items-start mb-8">
+                                    <div className="flex justify-between items-start mb-6 shrink-0">
                                         <div>
                                             <h3 className="text-2xl font-black text-slate-900 tracking-tight">
-                                                {selectedOrderForVerify.status === 'verificando_pago_delivery' ? 'Validar Pago Delivery' : 'Validar Pago Restaurante'}
+                                                {selectedOrderForVerify.status === 'verificando_pago_delivery' ? 'Validar Pago Delivery' : 'Validar Pago y Preparar'}
                                             </h3>
-                                            <p className="text-slate-500 font-bold text-xs uppercase tracking-widest mt-1">Revisión de Comprobante</p>
+                                            <p className="text-slate-500 font-bold text-xs uppercase tracking-widest mt-1">Revisión de Comprobante & Cocina</p>
                                         </div>
                                         <button 
                                             onClick={() => setVerifyModalOpen(false)}
@@ -1974,28 +2274,25 @@ export default function Orders() {
                                         </button>
                                     </div>
 
-                                    <div className="space-y-6">
+                                    <div className="flex-1 overflow-y-auto space-y-4 pr-1">
                                         {/* Reference Info */}
-                                        <div className="p-6 bg-slate-50 rounded-[32px] border border-slate-100">
-                                            <div className="flex items-center gap-4 mb-4">
-                                                <div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center shadow-sm text-slate-400">
-                                                    <CreditCard className="w-6 h-6" />
+                                        <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100">
+                                            <div className="flex items-center justify-between mb-3">
+                                                <div className="flex items-center gap-3">
+                                                    <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center shadow-sm text-slate-400">
+                                                        <CreditCard className="w-5 h-5" />
+                                                    </div>
+                                                    <div>
+                                                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Referencia</p>
+                                                        <p className="text-base font-black text-slate-900">
+                                                            #{selectedOrderForVerify.status === 'verificando_pago_delivery' ? selectedOrderForVerify.deliveryPaymentReference : selectedOrderForVerify.paymentReference || 'N/A'}
+                                                        </p>
+                                                    </div>
                                                 </div>
-                                                <div>
-                                                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Referencia reported</p>
-                                                    <p className="text-xl font-black text-slate-900">
-                                                        #{selectedOrderForVerify.status === 'verificando_pago_delivery' ? selectedOrderForVerify.deliveryPaymentReference : selectedOrderForVerify.paymentReference || 'N/A'}
-                                                    </p>
-                                                </div>
-                                            </div>
-                                            
-                                            <div className="flex items-center gap-4">
-                                                <div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center shadow-sm text-slate-400">
-                                                    <DollarSign className="w-6 h-6" />
-                                                </div>
-                                                <div>
-                                                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Monto a Verificar</p>
-                                                    <p className="text-xl font-black text-emerald-600">
+
+                                                <div className="text-right">
+                                                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Monto</p>
+                                                    <p className="text-lg font-black text-emerald-600">
                                                         ${selectedOrderForVerify.status === 'verificando_pago_delivery' ? selectedOrderForVerify.deliveryFee?.toFixed(2) : selectedOrderForVerify.total?.toFixed(2)}
                                                     </p>
                                                 </div>
@@ -2003,47 +2300,108 @@ export default function Orders() {
                                         </div>
 
                                         {/* Proof Image */}
-                                        <div className="relative group">
-                                            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 ml-1">Comprobante (Captura)</p>
+                                        <div className="relative">
+                                            <div className="flex justify-between items-center mb-1.5 px-1">
+                                                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Comprobante de Pago</p>
+                                                {(selectedOrderForVerify.status === 'verificando_pago_delivery' ? selectedOrderForVerify.deliveryPaymentProofUrl : selectedOrderForVerify.paymentProofUrl) && (
+                                                    <div className="flex gap-2">
+                                                        <button 
+                                                            type="button"
+                                                            onClick={() => setPreviewImageModal(selectedOrderForVerify.status === 'verificando_pago_delivery' ? selectedOrderForVerify.deliveryPaymentProofUrl! : selectedOrderForVerify.paymentProofUrl!)}
+                                                            className="text-xs font-black text-blue-600 hover:text-blue-800 flex items-center gap-1"
+                                                        >
+                                                            <Eye className="w-3.5 h-3.5" /> Ampliar
+                                                        </button>
+                                                        <a 
+                                                            href={selectedOrderForVerify.status === 'verificando_pago_delivery' ? selectedOrderForVerify.deliveryPaymentProofUrl : selectedOrderForVerify.paymentProofUrl}
+                                                            target="_blank"
+                                                            rel="noopener noreferrer"
+                                                            download={`pago_${selectedOrderForVerify.id}.jpg`}
+                                                            className="text-xs font-black text-slate-600 hover:text-slate-900 flex items-center gap-1"
+                                                        >
+                                                            <Download className="w-3.5 h-3.5" /> Descargar
+                                                        </a>
+                                                    </div>
+                                                )}
+                                            </div>
+
                                             <div 
-                                                className="w-full h-64 rounded-[32px] bg-slate-100 border-2 border-slate-200 overflow-hidden cursor-zoom-in"
-                                                onClick={() => window.open(selectedOrderForVerify.status === 'verificando_pago_delivery' ? selectedOrderForVerify.deliveryPaymentProofUrl : selectedOrderForVerify.paymentProofUrl, '_blank')}
+                                                className="w-full h-44 rounded-2xl bg-slate-100 border-2 border-slate-200 overflow-hidden cursor-zoom-in relative group"
+                                                onClick={() => {
+                                                    const img = selectedOrderForVerify.status === 'verificando_pago_delivery' ? selectedOrderForVerify.deliveryPaymentProofUrl : selectedOrderForVerify.paymentProofUrl;
+                                                    if (img) setPreviewImageModal(img);
+                                                }}
                                             >
                                                 {(selectedOrderForVerify.status === 'verificando_pago_delivery' ? selectedOrderForVerify.deliveryPaymentProofUrl : selectedOrderForVerify.paymentProofUrl) ? (
-                                                    <img 
-                                                        src={selectedOrderForVerify.status === 'verificando_pago_delivery' ? selectedOrderForVerify.deliveryPaymentProofUrl : selectedOrderForVerify.paymentProofUrl} 
-                                                        alt="Comprobante de pago" 
-                                                        className="w-full h-full object-cover hover:scale-105 transition-transform duration-500"
-                                                    />
+                                                    <>
+                                                        <img 
+                                                            src={selectedOrderForVerify.status === 'verificando_pago_delivery' ? selectedOrderForVerify.deliveryPaymentProofUrl : selectedOrderForVerify.paymentProofUrl} 
+                                                            alt="Comprobante de pago" 
+                                                            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                                                        />
+                                                        <div className="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white text-xs font-bold gap-1">
+                                                            <Eye className="w-4 h-4" /> Toca para ampliar
+                                                        </div>
+                                                    </>
                                                 ) : (
-                                                    <div className="w-full h-full flex flex-col items-center justify-center text-slate-300">
-                                                        <ImageIcon className="w-12 h-12 mb-2" />
-                                                        <p className="font-bold text-sm">Sin imagen adjunta</p>
+                                                    <div className="w-full h-full flex flex-col items-center justify-center text-slate-400">
+                                                        <ImageIcon className="w-10 h-10 mb-1 opacity-50" />
+                                                        <p className="font-bold text-xs">Sin captura adjunta</p>
                                                     </div>
                                                 )}
                                             </div>
                                         </div>
 
+                                        {/* Kitchen Preparation Time Selector */}
+                                        <div className="p-4 bg-amber-500/10 border border-amber-300/60 rounded-2xl">
+                                            <div className="flex items-center gap-2 mb-2">
+                                                <Clock className="w-4 h-4 text-amber-600" />
+                                                <label className="text-xs font-black text-amber-950 uppercase tracking-wide">
+                                                    Tiempo de Preparación en Cocina:
+                                                </label>
+                                            </div>
+                                            <p className="text-[11px] text-amber-800 font-medium mb-3">
+                                                Al aprobar, se activará automáticamente un contador regresivo en vivo en la pantalla del cliente.
+                                            </p>
+
+                                            <div className="grid grid-cols-4 gap-2">
+                                                {[15, 20, 30, 45].map((mins) => (
+                                                    <button
+                                                        key={mins}
+                                                        type="button"
+                                                        onClick={() => setPrepMinutes(mins)}
+                                                        className={`py-2 rounded-xl font-black text-xs transition-all border ${
+                                                            prepMinutes === mins 
+                                                                ? 'bg-amber-500 text-slate-900 border-amber-600 shadow-md font-black scale-105' 
+                                                                : 'bg-white text-slate-700 border-amber-200 hover:bg-amber-50'
+                                                        }`}
+                                                    >
+                                                        {mins} min
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        </div>
+
                                         {/* Actions */}
-                                        <div className="grid grid-cols-2 gap-4 pt-4">
+                                        <div className="grid grid-cols-2 gap-3 pt-2">
                                             <button
                                                 onClick={() => {
-                                                    if(window.confirm("¿Seguro que deseas rechazar este pago?")) {
+                                                    if(window.confirm("¿Seguro que deseas rechazar este comprobante?")) {
                                                         const isDelivery = selectedOrderForVerify.status === 'verificando_pago_delivery';
                                                         updateStatus(selectedOrderForVerify.id, isDelivery ? 'awaiting_delivery_payment' : 'pendiente_pago');
                                                         setVerifyModalOpen(false);
                                                     }
                                                 }}
-                                                className="bg-slate-100 text-slate-500 py-4 rounded-2xl font-black hover:bg-red-50 hover:text-red-500 transition-all"
+                                                className="bg-slate-100 text-slate-500 py-3.5 rounded-2xl font-black hover:bg-red-50 hover:text-red-500 transition-all text-sm"
                                             >
                                                 Rechazar
                                             </button>
                                             <button
                                                 onClick={handleConfirmPayment}
                                                 disabled={isVerifying}
-                                                className="bg-primary text-slate-900 py-4 rounded-2xl font-black shadow-xl shadow-primary/20 hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+                                                className="bg-primary text-slate-900 py-3.5 rounded-2xl font-black shadow-xl shadow-primary/20 hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-2 disabled:opacity-50 text-sm"
                                             >
-                                                {isVerifying ? <Loader2 className="w-5 h-5 animate-spin" /> : <><CheckCircle className="w-5 h-5" /> Aprobar</>}
+                                                {isVerifying ? <Loader2 className="w-5 h-5 animate-spin" /> : <><CheckCircle className="w-5 h-5" /> Aprobar e Iniciar Cocina</>}
                                             </button>
                                         </div>
                                     </div>
@@ -2667,6 +3025,53 @@ export default function Orders() {
                     </motion.div>
                 </div>
             )}
+
+            {/* Image Preview Lightbox Modal */}
+            <AnimatePresence>
+                {previewImageModal && (
+                    <motion.div 
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        className="fixed inset-0 z-[200] flex items-center justify-center bg-black/85 backdrop-blur-md p-4"
+                        onClick={() => setPreviewImageModal(null)}
+                    >
+                        <motion.div 
+                            initial={{ scale: 0.9, opacity: 0 }}
+                            animate={{ scale: 1, opacity: 1 }}
+                            exit={{ scale: 0.9, opacity: 0 }}
+                            className="relative max-w-3xl max-h-[90vh] bg-slate-900 rounded-3xl p-3 shadow-2xl flex flex-col items-center"
+                            onClick={(e) => e.stopPropagation()}
+                        >
+                            <div className="absolute top-4 right-4 flex items-center gap-2 z-10">
+                                <a 
+                                    href={previewImageModal} 
+                                    download="comprobante_pago.jpg"
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="p-2.5 rounded-full bg-black/60 text-white hover:bg-black/80 transition-colors shadow-lg flex items-center gap-1.5 text-xs font-bold"
+                                    title="Descargar imagen"
+                                >
+                                    <Download className="w-4 h-4" />
+                                    <span>Descargar</span>
+                                </a>
+                                <button 
+                                    onClick={() => setPreviewImageModal(null)}
+                                    className="p-2.5 rounded-full bg-black/60 text-white hover:bg-black/80 transition-colors shadow-lg"
+                                >
+                                    <X className="w-5 h-5" />
+                                </button>
+                            </div>
+
+                            <img 
+                                src={previewImageModal} 
+                                alt="Comprobante ampliado" 
+                                className="max-w-full max-h-[82vh] object-contain rounded-2xl shadow-inner"
+                            />
+                        </motion.div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
         </div >
     );
 }

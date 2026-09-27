@@ -199,7 +199,22 @@ export default function ReviewModal({
                 updated_at: new Date().toISOString()
             }).eq('id', orderId);
 
-            // 4. Notify business about the review
+            // 4. Otorgar puntos de fidelización por compra al usuario
+            if (user?.id && !liveOrder?.points_credited && !liveOrder?.pointsCredited) {
+                const orderTotal = Number(liveOrder?.total || liveOrder?.subtotal || 10);
+                const pointsEarned = Math.round(orderTotal * 2.5);
+                try {
+                    const { data: prof } = await supabase.from('profiles').select('points').eq('id', user.id).maybeSingle();
+                    const currentPts = prof?.points || 0;
+                    await supabase.from('profiles').update({ points: currentPts + pointsEarned }).eq('id', user.id);
+                    await supabase.from('orders').update({ points_credited: true }).eq('id', orderId);
+                    toast.success(`✨ ¡Ganaste +${pointsEarned} puntos por tu compra!`);
+                } catch (ptsErr) {
+                    console.warn("Points error:", ptsErr);
+                }
+            }
+
+            // 5. Notify business about the review
             try {
                 await supabase.from('notifications').insert({
                     restaurant_id: restaurantId,

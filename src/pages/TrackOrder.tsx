@@ -15,7 +15,7 @@ import DualPrice from '../components/DualPrice';
 import OrderChatWindow from '../components/chat/OrderChatWindow';
 import { useAuth } from '../context/AuthContext';
 import { motion, AnimatePresence } from 'motion/react';
-import { GoogleMap, useJsApiLoader, Marker } from '@react-google-maps/api';
+import { GoogleMap, useJsApiLoader, Marker, DirectionsRenderer } from '@react-google-maps/api';
 import { GOOGLE_MAPS_API_KEY, GOOGLE_MAPS_LIBRARIES } from '../lib/mapsConfig';
 import { googleMapsDarkStyles } from '../lib/weather';
 
@@ -46,14 +46,14 @@ function calculateDistanceKm(lat1: number, lon1: number, lat2: number, lon2: num
 function getFlowStep(order: any, transportRequest: any): 1 | 2 | 3 | 4 {
     // Paso 4: En tránsito / Repartidor asignado en viaje / Entregado
     if (transportRequest) {
-        if (['in_progress', 'arriving', 'completed'].includes(transportRequest.status)) {
-            return 4;
-        }
-        if (transportRequest.status === 'accepted') {
+        if (['in_progress', 'arriving', 'completed', 'accepted'].includes(transportRequest.status)) {
             return 4;
         }
     }
-    if (['in_transit', 'delivering', 'delivered', 'completed'].includes(order?.status)) {
+    if (['in_transit', 'delivering', 'en_camino', 'on_way', 'delivered', 'completed'].includes(order?.status)) {
+        return 4;
+    }
+    if (order?.driver_id || order?.delivery_driver_id) {
         return 4;
     }
 
@@ -163,6 +163,37 @@ export default function TrackOrder() {
     const [deliverySettings, setDeliverySettings] = useState<any>(null);
     const [selectedVehicle, setSelectedVehicle] = useState<'moto' | 'carro' | 'ejecutivo'>('moto');
     const [isSubmittingDelivery, setIsSubmittingDelivery] = useState(false);
+    const [availableDrivers, setAvailableDrivers] = useState<any[]>([]);
+
+    // ── Kitchen Preparation Clock State (Pilar 2) ───────────────────────────
+    const [countdownSeconds, setCountdownSeconds] = useState<number>(0);
+    const [totalPrepSeconds, setTotalPrepSeconds] = useState<number>(1200);
+
+    // ── Directions & Game-style Smooth Interpolation State (Pilar 4) ────────
+    const [directionsResult, setDirectionsResult] = useState<google.maps.DirectionsResult | null>(null);
+    const [interpolatedPos, setInterpolatedPos] = useState<{ lat: number; lng: number } | null>(null);
+    const [vehicleBearing, setVehicleBearing] = useState<number>(0);
+    const animFrameRef = useRef<number | null>(null);
+    const currentPosRef = useRef<{ lat: number; lng: number } | null>(null);
+    const targetPosRef = useRef<{ lat: number; lng: number } | null>(null);
+    const routeCalculatedRef = useRef<boolean>(false);
+
+    // ── Kitchen Countdown Ticker (Pilar 2) ──────────────────────────────────
+    useEffect(() => {
+        if (!order?.estimated_ready_at) return;
+        const target = new Date(order.estimated_ready_at).getTime();
+        const prepMins = Number(order.preparation_time_minutes || 20);
+        setTotalPrepSeconds(prepMins * 60);
+
+        const updateTimer = () => {
+            const diff = Math.max(0, Math.floor((target - Date.now()) / 1000));
+            setCountdownSeconds(diff);
+        };
+
+        updateTimer();
+        const interval = setInterval(updateTimer, 1000);
+        return () => clearInterval(interval);
+    }, [order?.estimated_ready_at, order?.preparation_time_minutes]);
 
     // ── Auto-open review modal on delivery completion ────────────────────────
     useEffect(() => {
@@ -176,6 +207,27 @@ export default function TrackOrder() {
         }
     }, [order?.status]);
 
+    // ── Fetch available drivers for client-paid delivery ────────────────────
+    useEffect(() => {
+        const fetchDriversList = async () => {
+            try {
+                const { data } = await supabase
+                    .from('drivers')
+                    .select('id, full_name, phone, vehicle_type, vehicle_brand, vehicle_model, vehicle_plate, rating, is_active, is_online, profiles:user_id(photo_url)')
+                    .eq('is_active', true);
+                if (data) {
+                    setAvailableDrivers(data.map((d: any) => ({
+                        ...d,
+                        photo_url: d.profiles?.photo_url || null
+                    })));
+                }
+            } catch (e) {
+                console.warn("Could not fetch available drivers for client:", e);
+            }
+        };
+        fetchDriversList();
+    }, []);
+
     // ── Data Fetching + Realtime Subscriptions ───────────────────────────────
     useEffect(() => {
         if (!orderId) return;
@@ -183,6 +235,30 @@ export default function TrackOrder() {
         supabase.from('app_settings').select('*').eq('id', 'delivery_settings').maybeSingle().then(({ data }) => {
             if (data) setDeliverySettings(data);
         });
+
+        const fetchDriverData = async (dId: string) => {
+            if (!dId) return;
+            const { data: dData } = await supabase.from('delivery_drivers').select('*').eq('id', dId).maybeSingle();
+            if (dData) {
+                setDriver({ id: dData.id, ...dData } as DeliveryDriver);
+            } else {
+                const { data: driverRow } = await supabase.from('drivers').select('*').eq('id', dId).maybeSingle();
+                if (driverRow) {
+                    setDriver({
+                        id: driverRow.id,
+                        name: driverRow.full_name || 'Conductor',
+                        displayName: driverRow.full_name,
+                        phone: driverRow.phone,
+                        vehicle_type: driverRow.vehicle_type,
+                        vehicle_brand: driverRow.vehicle_brand,
+                        vehicle_model: driverRow.vehicle_model,
+                        vehicle_plate: driverRow.vehicle_plate,
+                        rating: driverRow.rating || 5.0,
+                        photo_url: driverRow.vehicle_image_url
+                    } as any);
+                }
+            }
+        };
 
         // 1. Fetch Order and Store
         supabase.from('orders').select('*').eq('id', orderId).maybeSingle().then(async ({ data: orderData }) => {
@@ -193,6 +269,8 @@ export default function TrackOrder() {
                     const { data: rData } = await supabase.from('comercios').select('*').eq('id', rId).maybeSingle();
                     if (rData) setRestaurant({ id: rData.id, ...rData });
                 }
+                const assignedDriver = orderData.driver_id || orderData.delivery_driver_id;
+                if (assignedDriver) fetchDriverData(assignedDriver);
             }
             setLoading(false);
         });
@@ -209,6 +287,8 @@ export default function TrackOrder() {
                             const { data: rData } = await supabase.from('comercios').select('*').eq('id', rId).maybeSingle();
                             if (rData) setRestaurant({ id: rData.id, ...rData });
                         }
+                        const assignedDriver = orderData.driver_id || orderData.delivery_driver_id;
+                        if (assignedDriver) fetchDriverData(assignedDriver);
                     }
                 }).subscribe();
 
@@ -225,10 +305,7 @@ export default function TrackOrder() {
                 const trData = trList[0];
                 setTransportRequest({ id: trData.id, ...trData });
                 const dId = trData.driver_id || trData.driverId;
-                if (dId) {
-                    const { data: dData } = await supabase.from('delivery_drivers').select('*').eq('id', dId).maybeSingle();
-                    if (dData) setDriver({ id: dData.id, ...dData } as DeliveryDriver);
-                }
+                if (dId) fetchDriverData(dId);
             }
         };
         fetchTransport();
@@ -241,10 +318,7 @@ export default function TrackOrder() {
                         const trData: any = payload.new;
                         setTransportRequest({ id: trData.id, ...trData });
                         const dId = trData.driver_id || trData.driverId;
-                        if (dId) {
-                            const { data: dData } = await supabase.from('delivery_drivers').select('*').eq('id', dId).maybeSingle();
-                            if (dData) setDriver({ id: dData.id, ...dData } as DeliveryDriver);
-                        }
+                        if (dId) fetchDriverData(dId);
                     }
                 }).subscribe();
 
@@ -254,22 +328,86 @@ export default function TrackOrder() {
         };
     }, [orderId, order?.transport_request_id]);
 
-    // ── Driver GPS Tracking ──────────────────────────────────────────────────
+    // ── Driver GPS Tracking & Realtime Updates (Pilar 4) ────────────────────
     useEffect(() => {
-        const driverId = transportRequest?.driver_id || transportRequest?.driverId;
+        const driverId = transportRequest?.driver_id || transportRequest?.driverId || order?.driver_id || order?.delivery_driver_id;
         if (!driverId) return;
 
         supabase.from('driver_locations').select('*').eq('driver_id', driverId).maybeSingle().then(({ data }) => {
-            if (data) setDriverLocation(data as any);
+            if (data) {
+                const lat = Number(data.latitude ?? data.lat);
+                const lng = Number(data.longitude ?? data.lng);
+                if (!isNaN(lat) && !isNaN(lng)) {
+                    setDriverLocation({ lat, lng });
+                }
+            }
         });
 
         const locChannel = supabase.channel(`driver_loc_${driverId}`)
             .on('postgres_changes', { event: '*', schema: 'public', table: 'driver_locations', filter: `driver_id=eq.${driverId}` },
-                (payload) => { if (payload.new) setDriverLocation(payload.new as any); })
+                (payload) => {
+                    if (payload.new) {
+                        const data = payload.new as any;
+                        const lat = Number(data.latitude ?? data.lat);
+                        const lng = Number(data.longitude ?? data.lng);
+                        if (!isNaN(lat) && !isNaN(lng)) {
+                            setDriverLocation({ lat, lng });
+                        }
+                    }
+                })
             .subscribe();
 
         return () => { supabase.removeChannel(locChannel); };
-    }, [transportRequest?.driver_id, transportRequest?.driverId]);
+    }, [transportRequest?.driver_id, transportRequest?.driverId, order?.driver_id, order?.delivery_driver_id]);
+
+    // ── Smooth 60fps Game-Style Vehicle Movement Interpolation (Pilar 4) ────
+    useEffect(() => {
+        if (!driverLocation) return;
+        targetPosRef.current = { lat: driverLocation.lat, lng: driverLocation.lng };
+
+        if (!currentPosRef.current) {
+            currentPosRef.current = { lat: driverLocation.lat, lng: driverLocation.lng };
+            setInterpolatedPos({ lat: driverLocation.lat, lng: driverLocation.lng });
+            return;
+        }
+
+        const animateVehicle = () => {
+            if (!currentPosRef.current || !targetPosRef.current) return;
+            const cur = currentPosRef.current;
+            const tgt = targetPosRef.current;
+
+            const dLat = tgt.lat - cur.lat;
+            const dLng = tgt.lng - cur.lng;
+            const dist = Math.hypot(dLat, dLng);
+
+            if (dist > 0.000002) {
+                // Calculate rotation heading (degrees)
+                const y = Math.sin((dLng * Math.PI) / 180) * Math.cos((tgt.lat * Math.PI) / 180);
+                const x =
+                    Math.cos((cur.lat * Math.PI) / 180) * Math.sin((tgt.lat * Math.PI) / 180) -
+                    Math.sin((cur.lat * Math.PI) / 180) * Math.cos((tgt.lat * Math.PI) / 180) * Math.cos((dLng * Math.PI) / 180);
+                const brng = (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
+                setVehicleBearing(brng);
+
+                // Interpolate smoothly (lerp 0.08)
+                cur.lat += dLat * 0.08;
+                cur.lng += dLng * 0.08;
+                setInterpolatedPos({ lat: cur.lat, lng: cur.lng });
+                animFrameRef.current = requestAnimationFrame(animateVehicle);
+            } else {
+                cur.lat = tgt.lat;
+                cur.lng = tgt.lng;
+                setInterpolatedPos({ lat: tgt.lat, lng: tgt.lng });
+            }
+        };
+
+        if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
+        animFrameRef.current = requestAnimationFrame(animateVehicle);
+
+        return () => {
+            if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
+        };
+    }, [driverLocation?.lat, driverLocation?.lng]);
 
     // ── User Geolocation (Stabilized) ──────────────────────────────────────
     useEffect(() => {
@@ -621,6 +759,65 @@ export default function TrackOrder() {
         || destCoords
         || originCoords
         || { lat: 8.9326, lng: -67.4264 };
+
+    // ── Single Route Calculation (google-maps-optimizer) ─────────────────────
+    useEffect(() => {
+        if (!isLoaded || !window.google || !originCoords || !destCoords || routeCalculatedRef.current) return;
+        routeCalculatedRef.current = true;
+
+        const directionsService = new window.google.maps.DirectionsService();
+        directionsService.route(
+            {
+                origin: originCoords,
+                destination: destCoords,
+                travelMode: window.google.maps.TravelMode.DRIVING,
+            },
+            (result, status) => {
+                if (status === window.google.maps.DirectionsStatus.OK && result) {
+                    setDirectionsResult(result);
+                } else {
+                    console.warn("Directions request error:", status);
+                }
+            }
+        );
+    }, [isLoaded, originCoords?.lat, originCoords?.lng, destCoords?.lat, destCoords?.lng]);
+
+    // ── Helper: 3D Vehicle Marker SVG Generator with Headlight and Pulse ───
+    const getVehicleSvgDataUri = (vType: string = 'moto', bearing: number = 0) => {
+        const isConfort = vType === 'confort' || vType === 'ejecutivo';
+        const isCarro = vType === 'carro' || vType === 'taxi';
+        const primaryColor = isConfort ? '#A855F7' : isCarro ? '#3B82F6' : '#F59E0B';
+
+        const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="68" height="68" viewBox="0 0 68 68">
+          <defs>
+            <radialGradient id="beaconGlow" cx="50%" cy="50%" r="50%">
+              <stop offset="0%" stop-color="${primaryColor}" stop-opacity="0.9"/>
+              <stop offset="60%" stop-color="${primaryColor}" stop-opacity="0.3"/>
+              <stop offset="100%" stop-color="${primaryColor}" stop-opacity="0"/>
+            </radialGradient>
+            <linearGradient id="headlightBeam" x1="50%" y1="100%" x2="50%" y2="0%">
+              <stop offset="0%" stop-color="#FEF08A" stop-opacity="0.8"/>
+              <stop offset="100%" stop-color="#FEF08A" stop-opacity="0"/>
+            </linearGradient>
+          </defs>
+          <circle cx="34" cy="34" r="30" fill="url(#beaconGlow)"/>
+          <g transform="rotate(${bearing} 34 34)">
+            <polygon points="34,26 14,0 54,0" fill="url(#headlightBeam)"/>
+            <rect x="22" y="16" width="24" height="34" rx="9" fill="#0F172A" stroke="${primaryColor}" stroke-width="2.5"/>
+            <circle cx="34" cy="22" r="3.5" fill="#38BDF8"/>
+            <circle cx="27" cy="45" r="2.5" fill="#EF4444"/>
+            <circle cx="41" cy="45" r="2.5" fill="#EF4444"/>
+            <line x1="26" y1="30" x2="42" y2="30" stroke="${primaryColor}" stroke-width="2" stroke-linecap="round"/>
+          </g>
+        </svg>`;
+        return 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svg);
+    };
+
+    const formatCountdown = (totalSec: number) => {
+        const mins = Math.floor(totalSec / 60);
+        const secs = totalSec % 60;
+        return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+    };
 
     // ── Loading & Not Found Screens ──────────────────────────────────────────
     if (loading) {
@@ -991,11 +1188,12 @@ export default function TrackOrder() {
     };
 
     // ═══════════════════════════════════════════════════════════════════════════
-    // PASO 3 — Selección de Repartidor (Delivery / Encomiendas)
+    // PASO 3 — Selección de Repartidor & Reloj de Preparación (Pilares 2 y 3)
     // ═══════════════════════════════════════════════════════════════════════════
     const renderStep3 = () => {
         const isBuscando = order.status === 'buscando_piloto' || transportRequest?.status === 'searching';
-        const isFreeDelivery = order.free_delivery === true;
+        const isFreeDelivery = order.free_delivery === true || restaurant?.free_delivery === true;
+        const isKitchenPreparing = order.status === 'preparing' || Boolean(order.estimated_ready_at);
 
         if (isPickup) {
             return (
@@ -1013,14 +1211,43 @@ export default function TrackOrder() {
                         </div>
                     </div>
                     <StepProgressHeader currentStep={currentStep} />
-                    <div className="px-4 pt-8 max-w-lg mx-auto text-center space-y-6">
+                    <div className="px-4 pt-6 max-w-lg mx-auto text-center space-y-5">
+                        {/* Kitchen Countdown Timer if preparing */}
+                        {isKitchenPreparing && (
+                            <div className="bg-gradient-to-br from-amber-500 via-amber-400 to-yellow-500 rounded-3xl p-5 text-slate-950 shadow-xl shadow-amber-500/20 text-left">
+                                <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-3">
+                                        <div className="w-11 h-11 bg-slate-950/15 rounded-2xl flex items-center justify-center">
+                                            <Clock className="w-6 h-6 animate-spin text-slate-950" />
+                                        </div>
+                                        <div>
+                                            <p className="text-[10px] font-black uppercase tracking-widest text-slate-950/70">Reloj de Cocina</p>
+                                            <h3 className="text-lg font-black leading-tight">Preparando tu Orden</h3>
+                                        </div>
+                                    </div>
+                                    <div className="text-right">
+                                        <div className="text-2xl font-black font-mono bg-slate-950 text-amber-300 px-3 py-1 rounded-xl shadow-inner inline-block">
+                                            {formatCountdown(countdownSeconds)}
+                                        </div>
+                                        <p className="text-[9px] font-black uppercase tracking-wider text-slate-950/70 mt-0.5">Faltan aprox.</p>
+                                    </div>
+                                </div>
+                                <div className="mt-3 w-full bg-slate-950/15 h-2 rounded-full overflow-hidden">
+                                    <div 
+                                        className="h-full bg-slate-950 rounded-full transition-all duration-1000"
+                                        style={{ width: `${Math.min(100, Math.max(5, ((totalPrepSeconds - countdownSeconds) / Math.max(1, totalPrepSeconds)) * 100))}%` }}
+                                    />
+                                </div>
+                            </div>
+                        )}
+
                         <div className="w-20 h-20 bg-emerald-50 text-emerald-600 rounded-full flex items-center justify-center mx-auto shadow-md">
                             <Store className="w-10 h-10" />
                         </div>
                         <div>
-                            <h2 className="text-2xl font-black text-slate-900">Preparando tu Orden</h2>
+                            <h2 className="text-2xl font-black text-slate-900">Retiro en Tienda</h2>
                             <p className="text-sm font-medium text-slate-500 mt-1 max-w-xs mx-auto">
-                                El negocio está preparando tus productos. Cuando esté listo, podrás pasar a retirarlo directamente.
+                                Cuando el contador llegue a cero, puedes pasar al local a retirar tu compra sin hacer cola.
                             </p>
                         </div>
 
@@ -1052,12 +1279,16 @@ export default function TrackOrder() {
                         <ArrowLeft className="w-5 h-5 text-slate-700" />
                     </button>
                     <div className="flex-1 min-w-0">
-                        <h1 className="text-base font-black text-slate-900 leading-tight">Escoger Repartidor</h1>
-                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Envío de Paquete · Paso 3</p>
+                        <h1 className="text-base font-black text-slate-900 leading-tight">
+                            {isKitchenPreparing ? 'Cocina & Despacho' : 'Escoger Repartidor'}
+                        </h1>
+                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                            {isFreeDelivery ? 'Envío Gratis Patrocinado' : 'Envío de Paquete'} · Paso 3
+                        </p>
                     </div>
                     {isFreeDelivery && (
-                        <span className="bg-emerald-100 text-emerald-700 font-black text-[10px] px-2.5 py-1 rounded-full uppercase">
-                            Envío Gratis
+                        <span className="bg-emerald-100 text-emerald-700 font-black text-[10px] px-2.5 py-1 rounded-full uppercase flex items-center gap-1">
+                            <Sparkles className="w-3 h-3" /> Envío Gratis
                         </span>
                     )}
                 </div>
@@ -1065,8 +1296,69 @@ export default function TrackOrder() {
                 <StepProgressHeader currentStep={currentStep} />
 
                 <div className="px-4 pt-5 space-y-4 max-w-lg mx-auto">
-                    {isBuscando ? (
-                        /* Radar de Búsqueda Activo */
+                    {/* Pilar 2: Reloj de Preparación en Cocina */}
+                    {isKitchenPreparing && (
+                        <div className="bg-gradient-to-br from-amber-500 via-amber-400 to-yellow-500 rounded-3xl p-5 text-slate-950 shadow-xl shadow-amber-500/25 relative overflow-hidden">
+                            <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-3">
+                                    <div className="w-12 h-12 bg-slate-950/15 rounded-2xl flex items-center justify-center shrink-0">
+                                        <Clock className="w-6 h-6 animate-spin text-slate-950" />
+                                    </div>
+                                    <div>
+                                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-950/70">Reloj de Cocina en Vivo</p>
+                                        <h3 className="text-xl font-black leading-tight">Preparando tu Pedido</h3>
+                                    </div>
+                                </div>
+                                <div className="text-right">
+                                    <div className="text-3xl font-black font-mono tracking-tight bg-slate-950 text-amber-300 px-3.5 py-1.5 rounded-2xl shadow-inner inline-block">
+                                        {formatCountdown(countdownSeconds)}
+                                    </div>
+                                    <p className="text-[9px] font-black uppercase tracking-wider text-slate-950/70 mt-1">Tiempo Restante</p>
+                                </div>
+                            </div>
+                            
+                            <p className="text-xs text-slate-950/80 font-bold mt-3">
+                                {countdownSeconds > 0 
+                                    ? '👨‍🍳 La cocina está elaborando tus platillos. El repartidor será despachado al terminar.' 
+                                    : '✨ ¡Tu comida está lista para ser despachada por el restaurante!'}
+                            </p>
+
+                            <div className="mt-3 w-full bg-slate-950/15 h-2 rounded-full overflow-hidden">
+                                <div 
+                                    className="h-full bg-slate-950 rounded-full transition-all duration-1000"
+                                    style={{ width: `${Math.min(100, Math.max(5, ((totalPrepSeconds - countdownSeconds) / Math.max(1, totalPrepSeconds)) * 100))}%` }}
+                                />
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Pilar 3: Caso Envío Gratis (El cliente nunca ve tarifas) */}
+                    {isFreeDelivery ? (
+                        <div className="bg-white rounded-3xl p-6 shadow-xs border-2 border-emerald-500/20 text-center space-y-4">
+                            <div className="w-16 h-16 bg-emerald-100 text-emerald-600 rounded-3xl flex items-center justify-center mx-auto shadow-md">
+                                <Sparkles className="w-9 h-9" />
+                            </div>
+                            <div>
+                                <h3 className="text-2xl font-black text-slate-900">¡Tu Envío es 100% GRATIS!</h3>
+                                <p className="text-xs font-bold text-slate-500 mt-1.5 max-w-sm mx-auto leading-relaxed">
+                                    La tienda se hace cargo del transporte asignando a su conductor de confianza (Moto, Taxi Económico o Confort). No tendrás que pagar nada por el delivery.
+                                </p>
+                            </div>
+
+                            <div className="p-4 bg-emerald-50 rounded-2xl border border-emerald-100 text-emerald-800 text-xs font-black flex items-center justify-center gap-2">
+                                <CheckCircle className="w-4 h-4 text-emerald-600 shrink-0" />
+                                En cuanto el negocio despache al driver, se activará el mapa en vivo automáticamente.
+                            </div>
+
+                            <button
+                                onClick={() => setShowChat(true)}
+                                className="w-full bg-slate-900 text-white font-black py-4 rounded-2xl hover:bg-slate-800 active:scale-98 transition-all flex items-center justify-center gap-2 text-sm shadow-xl shadow-slate-900/20"
+                            >
+                                <MessageSquare className="w-4 h-4 text-primary" /> Abrir Chat con la Tienda
+                            </button>
+                        </div>
+                    ) : isBuscando ? (
+                        /* Radar de Búsqueda Activo si el cliente paga */
                         <div className="bg-white rounded-3xl p-6 shadow-xs border border-slate-200/80 text-center space-y-5">
                             <div className="relative w-24 h-24 mx-auto flex items-center justify-center">
                                 <div className="absolute inset-0 rounded-full bg-primary/20 animate-ping opacity-60" />
@@ -1077,7 +1369,7 @@ export default function TrackOrder() {
                             <div>
                                 <h3 className="text-xl font-black text-slate-900">Buscando Repartidor Cercano...</h3>
                                 <p className="text-sm text-slate-500 font-medium mt-1 max-w-xs mx-auto">
-                                    Hemos enviado la solicitud a los repartidores disponibles en la zona. Te notificaremos al asignar uno.
+                                    Hemos enviado la solicitud a los repartidores disponibles en la zona. Te notificaremos al instante al asignar uno.
                                 </p>
                             </div>
                             <div className="p-3 bg-slate-50 rounded-2xl border border-slate-100 text-xs font-bold text-slate-600">
@@ -1085,79 +1377,71 @@ export default function TrackOrder() {
                             </div>
                         </div>
                     ) : (
-                        /* Módulo de Configuración de Envío de Paquetes */
+                        /* Pilar 3: Selección de Vehículo y Drivers cuando el cliente paga */
                         <>
-                            {/* Tarjeta de Origen y Destino Precargados Automáticamente */}
+                            {/* Ruta precargada */}
                             <div className="bg-white rounded-3xl p-5 shadow-xs border border-slate-200/80 space-y-4">
                                 <div className="flex items-center justify-between pb-2 border-b border-slate-100">
-                                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Ruta Precargada Automáticamente</p>
+                                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Ruta de Entrega</p>
                                     <span className="text-xs font-black text-primary bg-primary/10 px-2.5 py-1 rounded-full">
                                         {calculatedDistance} km de distancia
                                     </span>
                                 </div>
 
-                                {/* Origen: Tienda */}
                                 <div className="flex items-start gap-3">
                                     <div className="w-8 h-8 rounded-full bg-amber-100 text-amber-600 flex items-center justify-center shrink-0 mt-0.5">
                                         <Store className="w-4 h-4" />
                                     </div>
                                     <div className="flex-1 min-w-0">
-                                        <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">Punto de Retiro (Tienda)</span>
-                                        <p className="text-sm font-black text-slate-900 truncate">{restaurant?.name || order.restaurantName || 'Comercio'}</p>
-                                        <p className="text-xs text-slate-500 font-medium truncate">{restaurant?.address || restaurant?.location?.address || 'Dirección del comercio'}</p>
+                                        <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">Retiro (Tienda)</span>
+                                        <p className="text-sm font-black text-slate-900 truncate">{restaurant?.name || 'Comercio'}</p>
                                     </div>
                                 </div>
 
-                                {/* Línea conectora */}
                                 <div className="w-0.5 h-4 bg-slate-200 ml-4 -my-2" />
 
-                                {/* Destino: Cliente */}
                                 <div className="flex items-start gap-3">
                                     <div className="w-8 h-8 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center shrink-0 mt-0.5">
                                         <MapPin className="w-4 h-4" />
                                     </div>
                                     <div className="flex-1 min-w-0">
-                                        <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">Punto de Entrega (Tú)</span>
-                                        <p className="text-sm font-black text-slate-900 truncate">{order.deliveryAddress || order.address?.name || 'Tu dirección guardada'}</p>
-                                        {order.address?.reference && (
-                                            <p className="text-xs text-slate-500 font-medium truncate">{order.address.reference}</p>
-                                        )}
+                                        <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">Destino (Tú)</span>
+                                        <p className="text-sm font-black text-slate-900 truncate">{order.deliveryAddress || 'Tu dirección guardada'}</p>
                                     </div>
                                 </div>
                             </div>
 
-                            {/* Selector de Vehículo: Moto / Carro Económico / Carro Confort */}
+                            {/* Selector de Vehículo */}
                             <div className="bg-white rounded-3xl p-5 shadow-xs border border-slate-200/80 space-y-3">
-                                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Selecciona el Tipo de Transporte</p>
+                                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Selecciona el Tipo de Vehículo</p>
                                 <div className="grid grid-cols-3 gap-2.5">
                                     {[
-                                        { key: 'moto', label: 'Moto', icon: Bike, desc: 'Rápido', price: 2.5 },
-                                        { key: 'carro', label: 'Carro Eco', icon: Car, desc: 'Económico', price: 5.0 },
-                                        { key: 'ejecutivo', label: 'Carro Confort', icon: Sparkles, desc: 'Con A/A', price: 7.0 }
+                                        { key: 'moto', label: 'Moto Taxi', icon: Bike, desc: 'Rápido', basePrice: 2.5 },
+                                        { key: 'carro', label: 'Taxi Eco', icon: Car, desc: 'Económico', basePrice: 4.5 },
+                                        { key: 'ejecutivo', label: 'Carro Confort', icon: Sparkles, desc: 'Con A/A', basePrice: 7.0 }
                                     ].map((v) => {
                                         const isSel = selectedVehicle === v.key;
                                         const IconComp = v.icon;
-                                        const distance = calculatedDistance;
                                         const rates = deliverySettings?.transportRates?.[v.key] || [];
-                                        const rate = rates.find((r: any) => distance >= r.from && (distance <= r.to || !r.to));
-                                        const priceUsd = isFreeDelivery ? 0 : (rate ? (rate.clientPrice || rate.price) : v.price);
+                                        const rate = rates.find((r: any) => calculatedDistance >= r.from && (calculatedDistance <= r.to || !r.to));
+                                        const priceUsd = rate ? (rate.clientPrice || rate.price) : v.basePrice;
 
                                         return (
                                             <button
                                                 key={v.key}
                                                 type="button"
                                                 onClick={() => setSelectedVehicle(v.key as any)}
-                                                className={`p-3.5 rounded-2xl border-2 flex flex-col items-center gap-1.5 transition-all text-center ${
+                                                className={`p-3 rounded-2xl border-2 flex flex-col items-center gap-1.5 transition-all text-center ${
                                                     isSel
-                                                        ? 'border-primary bg-primary/10 text-slate-900 shadow-md shadow-primary/10 scale-102'
+                                                        ? 'border-primary bg-primary/10 text-slate-900 shadow-md shadow-primary/10 scale-102 font-black'
                                                         : 'border-slate-100 bg-slate-50 text-slate-500 hover:border-slate-200'
                                                 }`}
                                             >
-                                                <IconComp className={`w-6 h-6 ${isSel ? 'text-slate-900' : 'text-slate-400'}`} />
+                                                <IconComp className={`w-5 h-5 ${isSel ? 'text-slate-900' : 'text-slate-400'}`} />
                                                 <span className="text-xs font-black leading-tight">{v.label}</span>
                                                 <span className="text-[10px] font-bold text-slate-400 leading-none">{v.desc}</span>
-                                                <span className="text-xs font-black text-slate-900 mt-1">
-                                                    {isFreeDelivery ? 'GRATIS' : `$${priceUsd.toFixed(2)}`}
+                                                <span className="text-xs font-black text-slate-900 mt-0.5">
+                                                    ${priceUsd.toFixed(2)}
                                                 </span>
                                             </button>
                                         );
@@ -1165,13 +1449,49 @@ export default function TrackOrder() {
                                 </div>
                             </div>
 
-                            {/* Resumen de Productos */}
-                            <div className="bg-white rounded-3xl p-4 shadow-xs border border-slate-200/80 flex items-center justify-between text-xs">
-                                <span className="font-bold text-slate-500">Paquete a transportar:</span>
-                                <span className="font-black text-slate-800 truncate max-w-[200px]">
-                                    {(order.items || []).map((i: any) => `${i.quantity}x ${i.name}`).join(', ')}
-                                </span>
-                            </div>
+                            {/* Conductores Disponibles en la Zona */}
+                            {availableDrivers.length > 0 && (
+                                <div className="bg-white rounded-3xl p-5 shadow-xs border border-slate-200/80 space-y-3">
+                                    <div className="flex items-center justify-between">
+                                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Conductores en tu Zona</p>
+                                        <span className="text-[10px] font-black text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full">
+                                            {availableDrivers.length} Activos
+                                        </span>
+                                    </div>
+
+                                    <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                                        {availableDrivers.map((drv) => {
+                                            const vType = drv.vehicle_type === 'confort' ? 'Confort' : (drv.vehicle_type === 'carro' ? 'Auto Económico' : 'Moto Taxi');
+                                            return (
+                                                <div 
+                                                    key={drv.id}
+                                                    className="p-3 bg-slate-50 rounded-2xl border border-slate-100 flex items-center justify-between"
+                                                >
+                                                    <div className="flex items-center gap-3">
+                                                        <div className="w-10 h-10 rounded-2xl bg-white border border-slate-200 overflow-hidden flex items-center justify-center font-black text-slate-700">
+                                                            {drv.photo_url ? (
+                                                                <img src={drv.photo_url} alt={drv.full_name} className="w-full h-full object-cover" />
+                                                            ) : (
+                                                                drv.full_name?.charAt(0) || 'D'
+                                                            )}
+                                                        </div>
+                                                        <div>
+                                                            <div className="flex items-center gap-1.5">
+                                                                <span className="font-black text-xs text-slate-900">{drv.full_name}</span>
+                                                                <span className="text-[10px] text-amber-500 font-black">⭐ {drv.rating ? Number(drv.rating).toFixed(1) : '5.0'}</span>
+                                                            </div>
+                                                            <p className="text-[10px] text-slate-500 font-bold">
+                                                                {vType} • {drv.vehicle_brand || ''} {drv.vehicle_model || ''}
+                                                            </p>
+                                                        </div>
+                                                    </div>
+                                                    <span className="text-xs font-black text-emerald-600">Disponible</span>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                            )}
 
                             {/* Botón Principal: Confirmar y Solicitar Repartidor */}
                             <button
@@ -1182,7 +1502,7 @@ export default function TrackOrder() {
                                 {isSubmittingDelivery ? (
                                     <><Loader2 className="w-5 h-5 animate-spin text-primary" /> Solicitando repartidor...</>
                                 ) : (
-                                    <><Motorbike className="w-5 h-5 text-primary" /> Solicitar Repartidor Ahora</>
+                                    <><Motorbike className="w-5 h-5 text-primary" /> Confirmar y Solicitar Repartidor</>
                                 )}
                             </button>
 
@@ -1201,162 +1521,203 @@ export default function TrackOrder() {
     };
 
     // ═══════════════════════════════════════════════════════════════════════════
-    // PASO 4 — En Camino / Entrega (Tracking en Vivo y Calificación)
+    // PASO 4 — Tracking en Vivo Tipo Videojuego (Pantalla Completa - Pilar 4)
     // ═══════════════════════════════════════════════════════════════════════════
     const renderStep4 = () => {
         const isDelivered = ['delivered', 'completed'].includes(order.status) || transportRequest?.status === 'completed';
-        const driverName = driver?.name || driver?.displayName || transportRequest?.driver_name || 'Repartidor';
-        const driverPhone = driver?.phone || driver?.phoneNumber || transportRequest?.driver_phone;
+        const driverName = driver?.name || driver?.displayName || transportRequest?.driver_name || order.driver_name || 'Repartidor';
+        const driverPhone = driver?.phone || driver?.phoneNumber || transportRequest?.driver_phone || order.driver_phone;
+        const driverPhoto = driver?.photo_url || transportRequest?.driver_photo || null;
+        const driverRating = driver?.rating || 5.0;
+        const vehicleModel = driver?.vehicle_model || transportRequest?.vehicle_model || '';
+        const vehiclePlate = driver?.vehicle_plate || transportRequest?.vehicle_plate || '';
+        const vehicleType = transportRequest?.vehicle_type || order.vehicle_type || driver?.vehicle_type || 'moto';
+        const vehicleLabel = vehicleType === 'confort' || vehicleType === 'ejecutivo' ? 'Carro Confort' : (vehicleType === 'carro' ? 'Taxi Económico' : 'Moto Taxi');
 
         return (
-            <div className="w-full h-full overflow-y-auto overflow-x-hidden bg-slate-50 pb-28">
-                {/* AppBar */}
-                <div className="bg-white px-4 py-4 flex items-center gap-3 sticky top-0 z-30 shadow-xs border-b border-slate-100">
-                    <button
-                        onClick={() => window.history.length > 1 ? window.history.back() : navigate('/')}
-                        className="w-10 h-10 bg-slate-100 rounded-full flex items-center justify-center active:scale-95 transition-transform"
-                    >
-                        <ArrowLeft className="w-5 h-5 text-slate-700" />
-                    </button>
-                    <div className="flex-1 min-w-0">
-                        <h1 className="text-base font-black text-slate-900 leading-tight">
-                            {isDelivered ? '¡Pedido Entregado!' : 'En Camino a tu Ubicación'}
-                        </h1>
-                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Rastreo en Vivo · Paso 4</p>
-                    </div>
-                    {!isDelivered && (
-                        <div className="flex items-center gap-1.5 bg-emerald-50 border border-emerald-200/80 px-3 py-1.5 rounded-full">
-                            <span className="w-2 h-2 bg-emerald-500 rounded-full animate-ping" />
-                            <span className="text-[10px] font-black uppercase text-emerald-700">En Vivo</span>
-                        </div>
-                    )}
-                </div>
-
-                <StepProgressHeader currentStep={currentStep} />
-
-                {/* Mapa Interactivo con Tracking en Tiempo Real */}
-                <div className="h-72 w-full relative overflow-hidden bg-slate-200">
+            <div className="fixed inset-0 z-40 w-full h-[100dvh] max-h-[100dvh] bg-slate-950 overflow-hidden flex flex-col select-none">
+                {/* 1. Full Screen Google Map with Dark or Custom Styles */}
+                <div className="absolute inset-0 z-0 w-full h-full">
                     {isLoaded ? (
                         <GoogleMap
                             mapContainerStyle={{ width: '100%', height: '100%' }}
-                            center={mapCenter}
-                            zoom={driverLocation ? 16 : 14}
-                            options={mapOptions}
+                            center={interpolatedPos || mapCenter}
+                            zoom={16}
+                            options={{
+                                ...mapOptions,
+                                disableDefaultUI: true,
+                                zoomControl: false,
+                                streetViewControl: false,
+                                mapTypeControl: false,
+                                fullscreenControl: false
+                            }}
                         >
-                            {/* Marcador del Destino (Cliente) */}
+                            {/* Polyline Route Calculated ONCE (google-maps-optimizer) */}
+                            {directionsResult && (
+                                <DirectionsRenderer
+                                    directions={directionsResult}
+                                    options={{
+                                        suppressMarkers: true,
+                                        preserveViewport: true,
+                                        polylineOptions: {
+                                            strokeColor: '#F59E0B',
+                                            strokeWeight: 6,
+                                            strokeOpacity: 0.9,
+                                        }
+                                    }}
+                                />
+                            )}
+
+                            {/* Client Destination Marker */}
                             {destCoords && (
                                 <Marker
                                     position={destCoords}
                                     icon={{
                                         url: 'https://cdn-icons-png.flaticon.com/512/1004/1004285.png',
-                                        scaledSize: window.google ? new window.google.maps.Size(34, 34) : undefined
+                                        scaledSize: window.google ? new window.google.maps.Size(36, 36) : undefined
                                     }}
                                 />
                             )}
 
-                            {/* Marcador de la Tienda (Origen) */}
+                            {/* Store Origin Marker */}
                             {originCoords && (
                                 <Marker
                                     position={originCoords}
                                     icon={{
                                         url: 'https://cdn-icons-png.flaticon.com/512/3081/3081559.png',
-                                        scaledSize: window.google ? new window.google.maps.Size(32, 32) : undefined
+                                        scaledSize: window.google ? new window.google.maps.Size(34, 34) : undefined
                                     }}
                                 />
                             )}
 
-                            {/* Marcador del Conductor en Tiempo Real */}
-                            {driverLocation && (
+                            {/* Video-Game Interpolated 3D Vehicle Marker */}
+                            {(interpolatedPos || driverLocation) && (
                                 <Marker
-                                    position={driverLocation}
+                                    position={interpolatedPos || driverLocation!}
                                     icon={{
-                                        url: 'https://cdn-icons-png.flaticon.com/512/3209/3209935.png',
-                                        scaledSize: window.google ? new window.google.maps.Size(46, 46) : undefined
+                                        url: getVehicleSvgDataUri(vehicleType, vehicleBearing),
+                                        anchor: window.google ? new window.google.maps.Point(34, 34) : undefined,
+                                        scaledSize: window.google ? new window.google.maps.Size(68, 68) : undefined
                                     }}
                                 />
                             )}
                         </GoogleMap>
                     ) : (
-                        <div className="absolute inset-0 flex items-center justify-center">
-                            <Loader2 className="w-8 h-8 animate-spin text-slate-400" />
+                        <div className="w-full h-full flex flex-col items-center justify-center bg-slate-900 text-white gap-2">
+                            <Loader2 className="w-8 h-8 animate-spin text-primary" />
+                            <p className="text-xs font-bold text-slate-400">Iniciando satélite GPS...</p>
                         </div>
                     )}
+                </div>
 
-                    {/* Logo de la tienda en esquina superior izquierda */}
-                    <div className="absolute top-3 left-3 z-10">
-                        <div className="w-12 h-12 bg-white rounded-2xl shadow-lg flex items-center justify-center border border-slate-200 overflow-hidden">
-                            {restaurant?.logoUrl
-                                ? <img src={restaurant.logoUrl} alt="Logo" className="w-full h-full object-cover" />
-                                : <Store className="w-6 h-6 text-slate-700" />}
-                        </div>
+                {/* 2. Top Floating Glass Header */}
+                <div className="absolute top-4 inset-x-4 z-20 flex items-center justify-between pointer-events-none">
+                    <button
+                        onClick={() => window.history.length > 1 ? window.history.back() : navigate('/')}
+                        className="w-11 h-11 bg-slate-900/85 backdrop-blur-md rounded-2xl border border-white/10 text-white flex items-center justify-center shadow-xl active:scale-95 transition-transform pointer-events-auto"
+                        title="Volver"
+                    >
+                        <ArrowLeft className="w-5 h-5" />
+                    </button>
+
+                    <div className="px-4 py-2 rounded-full bg-slate-900/85 backdrop-blur-md border border-white/10 text-white flex items-center gap-2 shadow-xl">
+                        <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-ping" />
+                        <span className="text-xs font-black tracking-wide">
+                            {isDelivered ? '¡Pedido Entregado!' : 'En Camino a tu Ubicación'}
+                        </span>
+                    </div>
+
+                    <div className="w-11 h-11 bg-slate-900/85 backdrop-blur-md rounded-2xl border border-white/10 shadow-xl flex items-center justify-center overflow-hidden pointer-events-auto">
+                        {restaurant?.logoUrl
+                            ? <img src={restaurant.logoUrl} alt="Logo" className="w-full h-full object-cover" />
+                            : <Store className="w-5 h-5 text-primary" />}
                     </div>
                 </div>
 
-                <div className="px-4 -mt-4 relative z-10 space-y-4 max-w-lg mx-auto">
-                    {/* Tarjeta de Éxito y Calificación al Finalizar */}
-                    {isDelivered ? (
-                        <div className="bg-white rounded-3xl p-6 shadow-xl border-2 border-emerald-500/30 text-center space-y-4">
-                            <div className="w-16 h-16 bg-emerald-100 text-emerald-600 rounded-3xl flex items-center justify-center mx-auto shadow-md">
-                                <CheckCircle2 className="w-9 h-9" />
-                            </div>
-                            <div>
-                                <h3 className="text-2xl font-black text-slate-900">¡Pedido Entregado con Éxito!</h3>
-                                <p className="text-sm font-medium text-slate-500 mt-1">Esperamos que disfrutes tu compra. ¿Cómo fue tu experiencia?</p>
-                            </div>
+                {/* 3. Floating Action Buttons (Right Side) */}
+                <div className="absolute right-4 bottom-64 z-20 flex flex-col gap-3">
+                    {/* Open Order Chat */}
+                    <button
+                        onClick={() => setShowChat(true)}
+                        className="w-12 h-12 bg-slate-900/90 backdrop-blur-md text-white rounded-2xl border border-white/15 flex items-center justify-center shadow-2xl active:scale-95 transition-all group"
+                        title="Abrir Chat con Negocio y Driver"
+                    >
+                        <MessageSquare className="w-5 h-5 text-primary group-hover:scale-110 transition-transform" />
+                    </button>
 
-                            <button
-                                onClick={() => setShowReviewModal(true)}
-                                className="w-full bg-primary text-slate-900 font-black py-4 rounded-2xl hover:scale-[1.01] active:scale-98 transition-all flex items-center justify-center gap-2 text-base shadow-xl shadow-primary/20"
-                            >
-                                <Star className="w-5 h-5" /> Calificar Tienda y Repartidor
-                            </button>
-
-                            <button
-                                onClick={() => navigate('/')}
-                                className="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold py-3.5 rounded-2xl text-xs transition-colors"
-                            >
-                                Volver al Inicio
-                            </button>
-                        </div>
-                    ) : (
-                        /* Datos del Repartidor Asignado */
-                        <>
-                            <div className="bg-white rounded-3xl p-5 shadow-xs border border-slate-200/80 space-y-3">
-                                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Datos del Repartidor</p>
-                                <div className="flex items-center gap-3.5">
-                                    <div className="w-14 h-14 bg-slate-100 rounded-2xl flex items-center justify-center text-slate-700 border border-slate-200 shrink-0">
-                                        <Motorbike className="w-7 h-7" />
-                                    </div>
-                                    <div className="flex-1 min-w-0">
-                                        <p className="font-black text-base text-slate-900 truncate">{driverName}</p>
-                                        <p className="text-xs font-bold text-emerald-600 uppercase">
-                                            {transportRequest?.status === 'in_progress' ? '🚴 En camino a tu dirección'
-                                                : transportRequest?.status === 'arriving' ? '🏪 Llegando a la tienda'
-                                                : '🚀 Asignado al viaje'}
-                                        </p>
-                                    </div>
-                                    {driverPhone && (
-                                        <a
-                                            href={`tel:${driverPhone}`}
-                                            className="w-12 h-12 bg-emerald-50 text-emerald-600 rounded-2xl flex items-center justify-center border border-emerald-100 active:scale-95 transition-transform shrink-0"
-                                            title="Llamar al repartidor"
-                                        >
-                                            <Phone className="w-5 h-5" />
-                                        </a>
-                                    )}
-                                </div>
-                            </div>
-
-                            {/* Resumen del Destino */}
-                            <div className="bg-white rounded-3xl p-4 shadow-xs border border-slate-200/80 flex items-start gap-3 text-xs">
-                                <MapPin className="w-4 h-4 text-primary shrink-0 mt-0.5" />
-                                <div>
-                                    <span className="font-bold text-slate-400 uppercase tracking-wider block">Entregando en</span>
-                                    <p className="font-black text-slate-800 text-sm">{order.deliveryAddress || order.address?.name}</p>
-                                </div>
-                            </div>
-                        </>
+                    {/* Direct Call to Driver */}
+                    {driverPhone && (
+                        <a
+                            href={`tel:${driverPhone}`}
+                            className="w-12 h-12 bg-emerald-500 text-white rounded-2xl shadow-2xl flex items-center justify-center active:scale-95 transition-all shadow-emerald-500/30"
+                            title="Llamar al repartidor"
+                        >
+                            <Phone className="w-5 h-5" />
+                        </a>
                     )}
+
+                    {/* Direct Call to Restaurant */}
+                    {(restaurant?.phone || restaurant?.phone_number) && (
+                        <a
+                            href={`tel:${restaurant.phone || restaurant.phone_number}`}
+                            className="w-12 h-12 bg-slate-900/90 backdrop-blur-md text-amber-400 rounded-2xl border border-white/15 flex items-center justify-center shadow-2xl active:scale-95 transition-all"
+                            title="Llamar a la tienda"
+                        >
+                            <Store className="w-5 h-5" />
+                        </a>
+                    )}
+                </div>
+
+                {/* 4. Bottom Docked Card with Driver Info & "¿Recibiste tu pedido?" Button */}
+                <div className="absolute bottom-4 inset-x-4 z-20 max-w-lg mx-auto">
+                    <div className="bg-slate-900/90 backdrop-blur-xl border border-white/15 rounded-[32px] p-5 shadow-2xl text-white space-y-3.5">
+                        <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-3">
+                                <div className="relative">
+                                    {driverPhoto ? (
+                                        <img src={driverPhoto} alt={driverName} className="w-12 h-12 rounded-2xl object-cover border-2 border-primary/50 shadow-md" />
+                                    ) : (
+                                        <div className="w-12 h-12 rounded-2xl bg-slate-800 border-2 border-primary/40 flex items-center justify-center text-primary font-black text-base">
+                                            {driverName.charAt(0).toUpperCase()}
+                                        </div>
+                                    )}
+                                    <span className="absolute -bottom-1 -right-1 w-3.5 h-3.5 bg-emerald-500 rounded-full border-2 border-slate-900" />
+                                </div>
+
+                                <div>
+                                    <div className="flex items-center gap-1.5">
+                                        <h4 className="font-black text-sm text-white leading-tight">{driverName}</h4>
+                                        <span className="text-[10px] font-black text-amber-400 flex items-center">
+                                            ⭐ {driverRating ? Number(driverRating).toFixed(1) : '5.0'}
+                                        </span>
+                                    </div>
+                                    <p className="text-[11px] text-slate-300 font-bold mt-0.5">
+                                        {vehicleLabel} • {vehicleModel} {vehiclePlate ? `[${vehiclePlate}]` : ''}
+                                    </p>
+                                </div>
+                            </div>
+
+                            <div className="text-right">
+                                <span className="text-[9px] font-black uppercase tracking-wider text-slate-400 block">Distancia</span>
+                                <span className="text-sm font-black text-primary">{calculatedDistance} km</span>
+                            </div>
+                        </div>
+
+                        {/* Destination Pill */}
+                        <div className="flex items-center gap-2 text-xs text-slate-300 bg-white/5 p-2.5 rounded-2xl border border-white/5">
+                            <MapPin className="w-3.5 h-3.5 text-primary shrink-0" />
+                            <span className="font-bold truncate">{order.deliveryAddress || 'Tu dirección registrada'}</span>
+                        </div>
+
+                        {/* Confirmation and Review CTA Button (Pilar 5) */}
+                        <button
+                            onClick={() => setShowReviewModal(true)}
+                            className="w-full bg-primary text-slate-950 font-black py-3.5 rounded-2xl hover:scale-[1.01] active:scale-[0.98] transition-all flex items-center justify-center gap-2 text-sm shadow-xl shadow-primary/30"
+                        >
+                            <CheckCircle2 className="w-4 h-4 text-slate-950" />
+                            {isDelivered ? 'Calificar Tienda y Repartidor' : '¿Recibiste tu pedido? Confirmar y Calificar'}
+                        </button>
+                    </div>
                 </div>
             </div>
         );
@@ -1406,33 +1767,9 @@ export default function TrackOrder() {
                         animate={{ opacity: 1, y: 0 }}
                         exit={{ opacity: 0, y: '100%' }}
                         transition={{ type: 'spring', damping: 28, stiffness: 300 }}
-                        className="fixed inset-0 z-50 bg-slate-50 flex flex-col"
+                        className="fixed inset-0 z-50 bg-slate-50 flex flex-col h-[100dvh] max-h-[100dvh] overflow-hidden"
                     >
-                        <div className="bg-white px-4 py-4 flex items-center gap-3 shadow-sm border-b border-slate-100 shrink-0">
-                            <button
-                                onClick={() => setShowChat(false)}
-                                className="w-10 h-10 bg-slate-100 rounded-full flex items-center justify-center active:scale-95 transition-transform"
-                            >
-                                <ArrowLeft className="w-5 h-5 text-slate-700" />
-                            </button>
-                            <div className="flex items-center gap-3 flex-1 min-w-0">
-                                <div className="w-10 h-10 bg-slate-100 rounded-2xl flex items-center justify-center overflow-hidden border border-slate-200 shrink-0">
-                                    {restaurant?.logoUrl
-                                        ? <img src={restaurant.logoUrl} alt="Logo" className="w-full h-full object-cover" />
-                                        : <Store className="w-6 h-6 text-slate-600" />}
-                                </div>
-                                <div className="min-w-0">
-                                    <p className="font-black text-slate-900 truncate leading-tight">{restaurant?.name || 'Tienda'}</p>
-                                    <p className="text-[10px] font-bold text-emerald-600 uppercase tracking-widest flex items-center gap-1">
-                                        <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-ping" /> Chat en vivo
-                                    </p>
-                                </div>
-                            </div>
-                            <div className="bg-primary/10 px-3 py-1.5 rounded-full">
-                                <span className="text-[10px] font-black text-slate-900 uppercase">#{orderId?.slice(-5).toUpperCase()}</span>
-                            </div>
-                        </div>
-                        <div className="flex-1 overflow-hidden">
+                        <div className="flex-1 overflow-hidden flex flex-col min-h-0">
                             <OrderChatWindow
                                 orderId={orderId!}
                                 currentUserRole="client"
@@ -1440,6 +1777,7 @@ export default function TrackOrder() {
                                 currentUserName={order.userName || 'Cliente'}
                                 restaurantId={order.restaurantId || order.restaurant_id}
                                 orderInfo={order}
+                                onClose={() => setShowChat(false)}
                             />
                         </div>
                     </motion.div>

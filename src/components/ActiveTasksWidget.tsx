@@ -178,7 +178,7 @@ export default function ActiveTasksWidget() {
                 let ordersQuery = supabase
                     .from('orders')
                     .select('*')
-                    .in('status', ['pending', 'pendiente_pago', 'pending_verification', 'action_required', 'awaiting_payment', 'awaiting_delivery_payment', 'verificando_pago_delivery', 'confirmed', 'preparing', 'buscando_piloto', 'en_camino', 'ready', 'on_way', 'in_transit', 'arrived'])
+                    .in('status', ['pending', 'pendiente_pago', 'pending_verification', 'action_required', 'awaiting_payment', 'awaiting_delivery_payment', 'verificando_pago_delivery', 'confirmed', 'preparing', 'buscando_piloto', 'delivering', 'en_camino', 'ready', 'on_way', 'in_transit', 'arrived'])
                     .order('created_at', { ascending: false })
                     .limit(3);
 
@@ -383,25 +383,28 @@ export default function ActiveTasksWidget() {
                     badgeStatus = 'Pagar Envío';
                     badgeColor = 'bg-orange-300 text-slate-950 font-black';
                 } else if (['confirmed', 'preparing'].includes(o.status)) {
-                    subtitle = '🔥 ¡El comercio está preparando tu comida con esmero!';
+                    let prepTxt = '🔥 ¡El comercio está preparando tu comida!';
+                    if (o.estimated_ready_at) {
+                        const diffMins = Math.max(0, Math.ceil((new Date(o.estimated_ready_at).getTime() - Date.now()) / 60000));
+                        prepTxt = diffMins > 0 ? `👨‍🍳 En cocina • Faltan aprox. ${diffMins} min` : '👨‍🍳 Comida casi lista para empaque';
+                    }
+                    subtitle = prepTxt;
                     badgeStatus = 'En Cocina';
-                    badgeColor = 'bg-emerald-300 text-slate-950 font-black animate-pulse';
+                    badgeColor = 'bg-amber-400 text-slate-950 font-black animate-pulse';
                 } else if (['buscando_piloto'].includes(o.status)) {
                     subtitle = '📡 Conectando con pilotos de delivery cercanos...';
                     badgeStatus = 'Buscando Piloto';
                     badgeColor = 'bg-amber-300 text-slate-950 font-black animate-pulse';
-                } else if (['en_camino'].includes(o.status)) {
-                    subtitle = '🛵 Piloto va en camino al local a retirar tu pedido';
-                    badgeStatus = 'Piloto Asignado';
-                    badgeColor = 'bg-sky-300 text-slate-950 font-black';
+                } else if (['en_camino', 'delivering', 'on_way', 'in_transit'].includes(o.status)) {
+                    subtitle = o.driver_name 
+                        ? `🛵 Tu pedido va en camino con ${o.driver_name}. Toca aquí para seguirlo.`
+                        : '🛵 Tu pedido va en camino. Toca aquí para seguirlo en vivo.';
+                    badgeStatus = 'En Camino';
+                    badgeColor = 'bg-primary text-slate-950 font-black animate-pulse';
                 } else if (['ready'].includes(o.status)) {
                     subtitle = '¡Listo en el comercio! Esperando retiro del piloto';
                     badgeStatus = 'Listo';
                     badgeColor = 'bg-emerald-300 text-slate-950 font-black';
-                } else if (['on_way', 'in_transit'].includes(o.status)) {
-                    subtitle = '🛵 ¡Tu pedido va en camino a tu dirección de entrega!';
-                    badgeStatus = 'En Camino';
-                    badgeColor = 'bg-emerald-300 text-slate-950 font-black animate-pulse';
                 } else if (['arrived'].includes(o.status)) {
                     subtitle = '🔔 ¡El repartidor está afuera en tu puerta!';
                     badgeStatus = '¡Afuera!';
@@ -417,6 +420,8 @@ export default function ActiveTasksWidget() {
                     badgeStatus,
                     badgeColor,
                     price: parseFloat(o.total || 0),
+                    driverName: o.driver_name,
+                    driverPhone: o.driver_phone,
                     destinationName: o.delivery_address?.address || o.deliveryAddress?.address || 'Entrega a domicilio',
                     createdAt: o.created_at,
                     url: `/track/${o.id}`

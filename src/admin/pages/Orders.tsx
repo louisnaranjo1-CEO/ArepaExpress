@@ -1,10 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { Search, Filter, Clock, MapPin, ChevronRight, Bike, Truck, CheckCircle, Loader2, Bell, ExternalLink, X, ShoppingCart, Plus, Minus, Trash2, User, CreditCard, Store, ShoppingBag, Users, Upload, Image as ImageIcon, DollarSign, Edit } from 'lucide-react';
-import { db } from '../../lib/firebase';
-import { collection, query, where, onSnapshot, orderBy, doc, updateDoc, getDocs, increment, addDoc, serverTimestamp, getDoc } from 'firebase/firestore';
+import { Search, Filter, Clock, MapPin, ChevronRight, Bike, Truck, CheckCircle, Loader2, Bell, ExternalLink, X, ShoppingCart, Plus, Minus, Trash2, User, CreditCard, Store, ShoppingBag, Users, Upload, Image as ImageIcon, DollarSign, Edit, MessageCircle, Package, Eye, Download, Star, Sparkles, Navigation } from 'lucide-react';
+import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../context/AuthContext';
 import { printToUsbDevice, formatTicket, PrintOrder } from '../../lib/usb-printer';
-import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { motion, AnimatePresence } from 'motion/react';
 import toast from 'react-hot-toast';
 import ComandaPreview from '../components/ComandaPreview';
@@ -25,18 +23,30 @@ interface Order {
     userId: string;
     items: OrderItem[];
     total: number;
+    subtotal?: number;
+    deliveryFee?: number;
+    tip?: number;
     status: 'pending' | 'pendiente_pago' | 'preparing' | 'delivering' | 'delivered' | 'rejected';
     paymentStatus?: 'sold' | 'not_sold';
     createdAt: any;
     deliveryAddress: string;
+    deliveryCoords?: { lat: number; lng: number } | null;
     paymentMethod?: string;
     paymentReference?: string;
     paymentProofUrl?: string;
     userName?: string;
+    userPhone?: string;
     source?: string;
     waiterId?: string;
     waiterName?: string;
     tableNumber?: string;
+    orderType?: string;
+    orderNote?: string;
+    notes?: string;
+    clientDNI?: string;
+    stockConfirmed?: boolean;
+    preferred_driver_id?: string | null;
+    preferred_driver_expires_at?: string | null;
 }
 
 export default function Orders() {
@@ -61,9 +71,14 @@ export default function Orders() {
     const [dispatchType, setDispatchType] = useState<'platform' | 'own'>('own');
     const [selectedDriver, setSelectedDriver] = useState<string>('');
     const [drivers, setDrivers] = useState<any[]>([]);
+    const [prepMinutes, setPrepMinutes] = useState<number>(20);
+    const [driverSearch, setDriverSearch] = useState<string>('');
+    const [driverCategoryFilter, setDriverCategoryFilter] = useState<'all' | 'moto' | 'carro' | 'confort'>('all');
+    const [previewImageModal, setPreviewImageModal] = useState<string | null>(null);
     
     // Radar UI State
     const [radarOrderId, setRadarOrderId] = useState<string | null>(null);
+    const [preferredCountdown, setPreferredCountdown] = useState<number>(0);
 
     // Payment Proofs State
     const [referenceInputs, setReferenceInputs] = useState<Record<string, string>>({});
@@ -97,13 +112,15 @@ export default function Orders() {
         if (!selectedOrderForClose) return;
         setIsAccepting(true);
         try {
+            const finalTotal = (selectedOrderForClose.subtotal || selectedOrderForClose.total || 0) + ((selectedOrderForClose as any).deliveryFee || 0) + closeTip;
             const updates: any = {
-                paymentMethod: paymentMethod,
-                paymentStatus: 'sold',
+                payment_method: paymentMethod,
+                payment_status: 'sold',
                 tip: closeTip,
-                total: selectedOrderForClose.subtotal + ((selectedOrderForClose as any).deliveryFee || 0) + closeTip
+                total: finalTotal,
+                updated_at: new Date().toISOString()
             };
-            await updateDoc(doc(db, 'orders', selectedOrderForClose.id), updates);
+            await supabase.from('orders').update(updates).eq('id', selectedOrderForClose.id);
             setCloseSaleModalOpen(false);
             setSelectedOrderForClose(null);
             setCloseTip(0);
@@ -117,47 +134,57 @@ export default function Orders() {
 
     useEffect(() => {
         const fetchDrivers = async () => {
-             const usersRef = collection(db, 'users');
-             const q = query(usersRef, where('role', '==', 'delivery'));
-             const snap = await getDocs(q);
-             setDrivers(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+            const { data } = await supabase.from('profiles').select('*').eq('role', 'delivery');
+            setDrivers(data || []);
         };
         fetchDrivers();
 
         if (user && rid) {
-            // Real-time Tables for Admin
-            const tablesRef = collection(db, 'restaurants', rid, 'tables');
-            const unsubscribeTables = onSnapshot(tablesRef, (snapshot) => {
-                const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-                data.sort((a: any, b: any) => {
+            const fetchTables = async () => {
+                const { data } = await supabase.from('restaurant_tables').select('*').eq('restaurant_id', rid);
+                const sorted = (data || []).map((t: any) => ({
+                    id: t.id,
+                    number: t.table_number || t.number || '',
+                    capacity: t.capacity || 4,
+                    status: t.status || 'available',
+                    currentOrderId: t.current_order_id
+                }));
+                sorted.sort((a: any, b: any) => {
                     const numA = parseInt(a.number, 10);
                     const numB = parseInt(b.number, 10);
                     if (!isNaN(numA) && !isNaN(numB)) return numA - numB;
                     return (a.number || '').localeCompare(b.number || '');
                 });
-                setTables(data);
-            });
+                setTables(sorted);
+            };
+            fetchTables();
 
-            // Fetch Waiters
+            const tableChannel = supabase
+                .channel(`orders_tables_${rid}`)
+                .on('postgres_changes', { event: '*', schema: 'public', table: 'restaurant_tables', filter: `restaurant_id=eq.${rid}` }, () => {
+                    fetchTables();
+                })
+                .subscribe();
+
             const fetchWaiters = async () => {
-                const waitersRef = collection(db, 'restaurants', rid, 'waiters');
-                const snap = await getDocs(waitersRef);
-                setWaiters(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+                const { data } = await supabase.from('waiters').select('*').eq('restaurant_id', rid);
+                setWaiters(data || []);
             };
             fetchWaiters();
 
-            return () => unsubscribeTables();
+            return () => {
+                supabase.removeChannel(tableChannel);
+            };
         }
-    }, [user]);
+    }, [user, rid]);
 
     const [restaurantConfig, setRestaurantConfig] = useState<any>(null);
 
     useEffect(() => {
         if (!user || !rid) return;
         const fetchConfig = async () => {
-            const docRef = doc(db, 'restaurants', rid);
-            const snap = await getDoc(docRef);
-            if (snap.exists()) setRestaurantConfig(snap.data());
+            const { data } = await supabase.from('comercios').select('*').eq('id', rid).single();
+            if (data) setRestaurantConfig(data);
         };
         fetchConfig();
     }, [user, rid]);
@@ -198,16 +225,24 @@ export default function Orders() {
     useEffect(() => {
         if (!user || !showPOS || !rid) return;
         const fetchPosProducts = async () => {
-            const productsRef = collection(db, 'restaurants', rid, 'products');
-            const q = query(productsRef);
-            const snapshot = await getDocs(q);
+            const { data } = await supabase.from('products').select('*').eq('restaurant_id', rid);
             const items: any[] = [];
             const cats = new Set<string>();
-            snapshot.forEach(doc => {
-                const data = doc.data();
-                if (data.isActive !== false) {
-                    items.push({ id: doc.id, ...data });
-                    if (data.category) cats.add(data.category);
+            (data || []).forEach((p: any) => {
+                if (p.is_active !== false) {
+                    const prod = {
+                        id: p.id,
+                        name: p.name,
+                        price: Number(p.price) || 0,
+                        promoPrice: Number(p.promo_price) || 0,
+                        category: p.category_name || p.category || '',
+                        image: p.image_url || p.image || '',
+                        variants: p.variants || [],
+                        modifiers: p.modifiers || [],
+                        isActive: p.is_active
+                    };
+                    items.push(prod);
+                    if (prod.category) cats.add(prod.category);
                 }
             });
             setPosProducts(items);
@@ -215,73 +250,182 @@ export default function Orders() {
         };
 
         fetchPosProducts();
-    }, [user, showPOS]);
+    }, [user, showPOS, rid]);
+
+    const fetchOrders = async () => {
+        if (!rid) return;
+        try {
+            const { data, error } = await supabase
+                .from('orders')
+                .select('*')
+                .eq('restaurant_id', rid)
+                .order('created_at', { ascending: false });
+
+            if (error) {
+                console.error("Error fetching orders:", error);
+                return;
+            }
+
+            const items: Order[] = (data || []).map((o: any) => ({
+                id: o.id,
+                userId: o.user_id,
+                items: o.items || [],
+                total: Number(o.total) || 0,
+                subtotal: Number(o.subtotal) || Number(o.total) || 0,
+                deliveryFee: Number(o.delivery_fee) || 0,
+                tip: Number(o.tip) || 0,
+                status: o.status,
+                paymentStatus: o.payment_status || 'not_sold',
+                createdAt: o.created_at ? { toDate: () => new Date(o.created_at) } : { toDate: () => new Date() },
+                deliveryAddress: o.delivery_address || (typeof o.shipping_address === 'string' ? o.shipping_address : o.shipping_address?.address || ''),
+                deliveryCoords: o.delivery_coords || (o.shipping_address?.lat ? { lat: Number(o.shipping_address.lat), lng: Number(o.shipping_address.lng) } : null),
+                paymentMethod: o.payment_method || '',
+                paymentReference: o.payment_reference || '',
+                paymentProofUrl: o.payment_proof_url || '',
+                userName: o.user_name || '',
+                userPhone: o.user_phone || '',
+                source: o.source || '',
+                waiterId: o.waiter_id || '',
+                waiterName: o.waiter_name || '',
+                tableNumber: o.table_number || '',
+                orderType: o.order_type || o.delivery_method || '',
+                notes: o.notes || o.order_note || '',
+                orderNote: o.order_note || o.notes || '',
+                clientDNI: o.client_dni || o.user_cedula || '',
+                preferred_driver_id: o.preferred_driver_id,
+                preferred_driver_expires_at: o.preferred_driver_expires_at
+            }));
+
+            // Sound on new pending order or incoming payment proof to verify
+            const hasNewActionable = items.some(o => {
+                const prev = orders.find(p => p.id === o.id);
+                if ((o.status === 'pending' || o.status === 'pendiente_pago') && !prev) return true;
+                if (o.status === 'pending_verification' && prev?.status !== 'pending_verification') return true;
+                return false;
+            });
+            if (hasNewActionable && orders.length > 0) {
+                const audio = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3');
+                audio.play().catch(e => console.log("Audio play blocked"));
+            }
+
+            setOrders(items);
+        } catch (err) {
+            console.error("Error in fetchOrders:", err);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    // Preferred driver 60s countdown timer
+    useEffect(() => {
+        if (!radarOrderId) {
+            setPreferredCountdown(0);
+            return;
+        }
+        const radarOrder = orders.find(o => o.id === radarOrderId);
+        if (!radarOrder || !radarOrder.preferred_driver_expires_at) {
+            setPreferredCountdown(0);
+            return;
+        }
+
+        const updateTimer = () => {
+            const exp = new Date(radarOrder.preferred_driver_expires_at!).getTime();
+            const diff = Math.max(0, Math.ceil((exp - Date.now()) / 1000));
+            setPreferredCountdown(diff);
+        };
+
+        updateTimer();
+        const interval = setInterval(updateTimer, 1000);
+        return () => clearInterval(interval);
+    }, [radarOrderId, orders]);
+
+    const fetchActiveDrivers = async () => {
+        try {
+            const { data: driversData, error: dErr } = await supabase
+                .from('drivers')
+                .select(`
+                    id,
+                    full_name,
+                    phone,
+                    vehicle_type,
+                    vehicle_brand,
+                    vehicle_model,
+                    vehicle_color,
+                    vehicle_plate,
+                    vehicle_image_url,
+                    rating,
+                    total_trips,
+                    is_online,
+                    availability,
+                    current_location,
+                    is_comfort_eligible
+                `);
+
+            if (dErr) console.warn("Error fetching drivers:", dErr);
+
+            if (driversData && driversData.length > 0) {
+                const driverIds = driversData.map(d => d.id);
+                const { data: profilesData } = await supabase
+                    .from('profiles')
+                    .select('id, photo_url')
+                    .in('id', driverIds);
+
+                const photoMap = new Map((profilesData || []).map(p => [p.id, p.photo_url]));
+
+                const enriched = driversData.map(d => ({
+                    ...d,
+                    photo_url: photoMap.get(d.id) || d.vehicle_image_url || null
+                }));
+                setDrivers(enriched);
+            }
+        } catch (e) {
+            console.warn("Error loading drivers:", e);
+        }
+    };
+
+    const getDriverPayout = (order: Order | null, driverVehicleType: string = 'moto'): number => {
+        if (!order) return 1.5;
+        const dist = (order as any).distance || 2.0;
+        const vType = driverVehicleType === 'confort' ? 'confort' : (driverVehicleType === 'carro' ? 'carro' : 'moto');
+        const baseFare = vType === 'confort' ? 3.5 : (vType === 'carro' ? 2.5 : 1.5);
+        const baseKm = 2.0;
+        const pricePerKm = vType === 'confort' ? 0.8 : (vType === 'carro' ? 0.6 : 0.5);
+        const extraKm = Math.max(0, dist - baseKm);
+        const totalFare = baseFare + (extraKm * pricePerKm);
+        const payout = Number((totalFare * 0.85).toFixed(2));
+        return Math.max(1.20, payout);
+    };
 
     useEffect(() => {
         if (!user || !rid) return;
+        fetchOrders();
+        fetchActiveDrivers();
 
-        const ordersRef = collection(db, 'orders');
-        const q = query(
-            ordersRef,
-            where('restaurantId', '==', rid),
-            orderBy('createdAt', 'desc')
-        );
+        const channel = supabase
+            .channel(`orders_page_${rid}`)
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'orders', filter: `restaurant_id=eq.${rid}` }, () => {
+                fetchOrders();
+            })
+            .subscribe();
 
-        const setupSnapshot = (currentQuery: any, isFallback = false) => {
-            return onSnapshot(currentQuery, (snapshot: any) => {
-                const items: Order[] = [];
-                snapshot.forEach((doc) => {
-                    items.push({ id: doc.id, ...doc.data() } as Order);
-                });
-
-                // Manual sort if fallback
-                if (isFallback) {
-                    items.sort((a, b) => {
-                        const timeA = a.createdAt?.toMillis() || 0;
-                        const timeB = b.createdAt?.toMillis() || 0;
-                        return timeB - timeA;
-                    });
-                }
-
-                // Check for new pending orders for sound
-                const hasNewPending = items.some(o => (o.status === 'pending' || o.status === 'pendiente_pago') && (!orders.find(prev => prev.id === o.id)));
-                if (hasNewPending && orders.length > 0) {
-                    const audio = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3');
-                    audio.play().catch(e => console.log("Audio play blocked"));
-                }
-
-                setOrders(items);
-                setLoading(false);
-            }, (error: any) => {
-                console.error(`Error listening to orders ${isFallback ? '(fallback)' : '(primary)'}:`, error);
-                
-                // If primary query fails due to missing index, try fallback without sort
-                if (!isFallback && error.code === 'failed-precondition') {
-                    console.warn("Retrying without sort - likely missing index");
-                    const fallbackQ = query(
-                        ordersRef,
-                        where('restaurantId', '==', rid)
-                    );
-                    setupSnapshot(fallbackQ, true);
-                } else {
-                    setLoading(false);
-                }
-            });
+        return () => {
+            supabase.removeChannel(channel);
         };
-
-        const unsubscribe = setupSnapshot(q);
-
-        return () => unsubscribe();
-    }, [user, orders.length]);
+    }, [user, rid]);
 
     const handlePrintOrder = async (orderId: string, orderData: Order) => {
         if (!user || !rid) return;
         setPrintingOrderId(orderId);
         try {
-            // Obtener todas las impresoras configuradas
-            const printersRef = collection(db, 'restaurants', rid, 'printers');
-            const snapshot = await getDocs(printersRef);
-            const printers = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() as any }));
+            const { data: printersData } = await supabase.from('printers').select('*').eq('restaurant_id', rid);
+            const printers = (printersData || []).map((p: any) => ({
+                id: p.id,
+                name: p.name,
+                categories: p.categories || [],
+                isActive: p.is_active ?? true,
+                vendorId: p.vendor_id,
+                productId: p.product_id
+            }));
 
             // Promesas de impresión
             const printPromises: Promise<boolean>[] = [];
@@ -311,7 +455,7 @@ export default function Orders() {
                         userName: orderData.userName,
                         items: itemsForThisPrinter.map(i => ({ name: i.name, quantity: i.quantity, price: i.price, notes: (i as any).notes })),
                         stationName: printer.name,
-                        createdAt: orderData.createdAt?.toDate ? orderData.createdAt.toDate() : new Date(),
+                        createdAt: orderData.createdAt?.toDate ? orderData.createdAt.toDate() : (orderData.createdAt ? new Date(orderData.createdAt) : new Date()),
                         orderNote: (orderData as any).orderNote,
                         tableNumber: (orderData as any).tableNumber
                     } as any;
@@ -374,77 +518,42 @@ export default function Orders() {
         try {
             const updates: any = { 
                 status: 'preparing', 
-                paymentMethod: paymentMethod,
-                paymentStatus: (paymentMethod === 'Crédito (2x3)') ? 'pending' : 'sold'
+                payment_method: paymentMethod,
+                payment_status: (paymentMethod === 'Crédito (2x3)') ? 'pending' : 'sold',
+                updated_at: new Date().toISOString()
             };
 
             // Process optional Pago Móvil reference and screenshot
             if (paymentMethod === 'Pago Móvil') {
                 const refVal = referenceInputs[selectedOrderForAccept.id];
                 const file = proofUploadFiles[selectedOrderForAccept.id];
-                if (refVal) updates.paymentReference = refVal;
+                if (refVal) updates.payment_reference = refVal;
                 
                 if (file) {
-                    const storage = getStorage();
-                    const fileRef = ref(storage, `payment_proofs/${selectedOrderForAccept.id}_${Date.now()}`);
-                    await uploadBytes(fileRef, file);
-                    const url = await getDownloadURL(fileRef);
-                    updates.paymentProofUrl = url;
+                    const ext = file.name.split('.').pop() || 'png';
+                    const filePath = `payment_proofs/${selectedOrderForAccept.id}_${Date.now()}.${ext}`;
+                    const { error: upErr } = await supabase.storage.from('store_assets').upload(filePath, file, { upsert: true });
+                    if (!upErr) {
+                        const { data: urlData } = supabase.storage.from('store_assets').getPublicUrl(filePath);
+                        updates.payment_proof_url = urlData.publicUrl;
+                    }
                 }
             }
 
-            // 2x3 Logic
-            if (paymentMethod === 'Crédito (2x3)' && restaurantConfig?.hasTwoByThree) {
-                const total = selectedOrderForAccept.total;
-                const initialPct = restaurantConfig.twoByThreeInitial || 50;
-                const installmentsCount = restaurantConfig.twoByThreeInstallments || 2;
-                
-                const initialAmount = total * (initialPct / 100);
-                const remaining = total - initialAmount;
-                const installmentAmount = remaining / installmentsCount;
-
-                const installments = [];
-                // Cuota Inicial
-                installments.push({
-                    id: 'init_' + Date.now(),
-                    amount: initialAmount,
-                    status: 'pending',
-                    dueDate: new Date().toISOString(),
-                    type: 'initial'
-                });
-
-                // Cuotas restantes
-                let nextDate = new Date();
-                for (let i = 0; i < installmentsCount; i++) {
-                    nextDate = new Date(nextDate.getTime() + 15 * 24 * 60 * 60 * 1000); // 15 días (quincenal)
-                    installments.push({
-                        id: `inst_${i}_` + Date.now(),
-                        amount: installmentAmount,
-                        status: 'pending',
-                        dueDate: nextDate.toISOString(),
-                        type: 'installment',
-                        number: i + 1
-                    });
-                }
-                updates.installments = installments;
-                updates.isTwoByThree = true;
-            }
-
-            const orderRef = doc(db, 'orders', selectedOrderForAccept.id);
-            
             // Si el pago ya es exitoso (sold), otorgar puntos
-            if (updates.paymentStatus === 'sold' && selectedOrderForAccept.userId && selectedOrderForAccept.userId !== 'pos_customer') {
-                const pointsToAdd = selectedOrderForAccept.total * 2.5;
-                const userRef = doc(db, 'users', selectedOrderForAccept.userId);
-                await updateDoc(userRef, {
-                    points: increment(pointsToAdd),
-                    [`restaurantPoints.${rid}`]: increment(pointsToAdd)
-                });
-                updates.pointsCredited = true;
-                console.log(`Puntos otorgados al aceptar: ${pointsToAdd}`);
+            if (updates.payment_status === 'sold' && selectedOrderForAccept.userId && selectedOrderForAccept.userId !== 'pos_customer') {
+                const pointsToAdd = Math.round(selectedOrderForAccept.total * 2.5);
+                try {
+                    const { data: prof } = await supabase.from('profiles').select('points').eq('id', selectedOrderForAccept.userId).single();
+                    const currentPoints = prof?.points || 0;
+                    await supabase.from('profiles').update({ points: currentPoints + pointsToAdd }).eq('id', selectedOrderForAccept.userId);
+                    updates.points_credited = true;
+                } catch (pErr) {
+                    console.warn("Points update note:", pErr);
+                }
             }
 
-            await updateDoc(orderRef, updates);
+            await supabase.from('orders').update(updates).eq('id', selectedOrderForAccept.id);
             
             const orderTemp = { ...selectedOrderForAccept, ...updates };
             
@@ -453,9 +562,9 @@ export default function Orders() {
             setAcceptModalOpen(false);
             setSelectedOrderForAccept(null);
             
-            // Mostrar modal de vista previa de comanda en lugar de imprimir directo
+            // Mostrar modal de vista previa de comanda
             setSelectedOrderForComanda(orderTemp as Order);
-            
+            fetchOrders();
         } catch (error) {
             console.error("Error setting preparing status:", error);
             alert("Error al procesar el pedido.");
@@ -468,30 +577,78 @@ export default function Orders() {
         if (!selectedOrderForDispatch) return;
         setIsAccepting(true);
         try {
-            const updates: any = {};
-            if (dispatchType === 'platform') {
-                updates.status = 'buscando_piloto';
-                // Trigger backend search
-            } else {
-                updates.status = 'delivering';
-            }
+            const driverObj = drivers.find(d => d.id === selectedDriver);
+            const payout = driverObj ? getDriverPayout(selectedOrderForDispatch, driverObj.vehicle_type) : 1.50;
 
-            const orderRef = doc(db, 'orders', selectedOrderForDispatch.id);
-            await updateDoc(orderRef, updates);
-            
-            if (dispatchType === 'platform') {
+            const updates: any = {
+                status: 'delivering',
+                updated_at: new Date().toISOString()
+            };
+
+            if (driverObj) {
+                updates.driver_id = driverObj.id;
+                updates.delivery_driver_id = driverObj.id;
+                updates.driver_name = driverObj.full_name || 'Conductor';
+                updates.driver_payout = payout;
+                updates.dispatched_at = new Date().toISOString();
+
+                // Enlazar transport_requests para el repartidor
+                try {
+                    await supabase.from('transport_requests').upsert({
+                        order_id: selectedOrderForDispatch.id,
+                        restaurant_id: rid,
+                        restaurant_name: (selectedOrderForDispatch as any).restaurantName || 'Comercio',
+                        user_id: selectedOrderForDispatch.userId,
+                        user_name: selectedOrderForDispatch.userName || 'Cliente',
+                        user_phone: selectedOrderForDispatch.userPhone || '',
+                        driver_id: driverObj.id,
+                        assigned_driver_id: driverObj.id,
+                        driver_name: driverObj.full_name,
+                        driver_phone: driverObj.phone,
+                        driver_photo: driverObj.photo_url,
+                        vehicle_type: driverObj.vehicle_type || 'moto',
+                        status: 'in_progress',
+                        price: payout,
+                        driver_payout: payout,
+                        destination: selectedOrderForDispatch.deliveryCoords || { address: selectedOrderForDispatch.deliveryAddress },
+                        created_at: new Date().toISOString(),
+                        updated_at: new Date().toISOString()
+                    });
+                } catch (trErr) {
+                    console.warn("Transport request link err:", trErr);
+                }
+
+                // Chat message
+                try {
+                    await supabase.from('messages').insert({
+                        order_id: selectedOrderForDispatch.id,
+                        sender_id: user?.uid,
+                        sender_name: 'Restaurante',
+                        sender_role: 'restaurant',
+                        text: `🛵 *¡Tu pedido va en camino!* Repartidor asignado: *${driverObj.full_name}* (${driverObj.vehicle_brand || ''} ${driverObj.vehicle_model || ''}). Sigue su ubicación en el mapa.`,
+                        created_at: new Date().toISOString()
+                    });
+                } catch (mErr) {
+                    console.warn("Message err:", mErr);
+                }
+            } else {
+                updates.status = 'buscando_piloto';
                 setRadarOrderId(selectedOrderForDispatch.id);
             }
 
+            await supabase.from('orders').update(updates).eq('id', selectedOrderForDispatch.id);
+
             vibrateSelection();
+            toast.success(driverObj ? `¡Despachado con ${driverObj.full_name}!` : "Despacho abierto al radar.");
 
             setDispatchModalOpen(false);
             setSelectedOrderForDispatch(null);
-            setDispatchType('own');
             setSelectedDriver('');
+            setDriverSearch('');
+            fetchOrders();
         } catch (error) {
             console.error("Error setting delivering status:", error);
-            alert("Error al despachar.");
+            toast.error("Error al despachar.");
         } finally {
             setIsAccepting(false);
         }
@@ -505,18 +662,20 @@ export default function Orders() {
 
         setIsUploadingProof(prev => ({...prev, [orderId]: true}));
         try {
-            const updates: any = {};
-            if (refVal) updates.paymentReference = refVal;
+            const updates: any = { updated_at: new Date().toISOString() };
+            if (refVal) updates.payment_reference = refVal;
             
             if (file) {
-                const storage = getStorage();
-                const fileRef = ref(storage, `payment_proofs/${orderId}_${Date.now()}`);
-                await uploadBytes(fileRef, file);
-                const url = await getDownloadURL(fileRef);
-                updates.paymentProofUrl = url;
+                const ext = file.name.split('.').pop() || 'png';
+                const filePath = `payment_proofs/${orderId}_${Date.now()}.${ext}`;
+                const { error: upErr } = await supabase.storage.from('store_assets').upload(filePath, file, { upsert: true });
+                if (!upErr) {
+                    const { data: urlData } = supabase.storage.from('store_assets').getPublicUrl(filePath);
+                    updates.payment_proof_url = urlData.publicUrl;
+                }
             }
             
-            await updateDoc(doc(db, 'orders', orderId), updates);
+            await supabase.from('orders').update(updates).eq('id', orderId);
             
             setReferenceInputs(prev => ({...prev, [orderId]: ''}));
             setProofUploadFiles(prev => {
@@ -524,6 +683,7 @@ export default function Orders() {
                 delete next[orderId];
                 return next;
             });
+            fetchOrders();
             alert("Comprobante guardado exitosamente");
         } catch(e) {
             console.error(e);
@@ -541,12 +701,15 @@ export default function Orders() {
             const fee = (selectedOrderForEdit as any).deliveryFee || 0;
             const updates = {
                 items: editOrderItems,
+                subtotal: newTotal,
                 total: newTotal + fee,
-                orderNote: editOrderNote
+                notes: editOrderNote,
+                updated_at: new Date().toISOString()
             };
-            await updateDoc(doc(db, 'orders', selectedOrderForEdit.id), updates);
+            await supabase.from('orders').update(updates).eq('id', selectedOrderForEdit.id);
             setEditModalOpen(false);
             setSelectedOrderForEdit(null);
+            fetchOrders();
         } catch(e) {
             console.error(e);
             alert("Error al editar");
@@ -619,16 +782,13 @@ export default function Orders() {
 
     const handleConfirmStock = async (orderId: string) => {
         try {
-            const orderRef = doc(db, 'orders', orderId);
             const missing = missingItemsByOrder[orderId] || [];
             
             if (missing.length > 0) {
-                // Hay items faltantes, pasar a action_required
-                await updateDoc(orderRef, { 
+                await supabase.from('orders').update({ 
                     status: 'action_required', 
-                    missingItems: missing,
-                    stockConfirmed: true 
-                });
+                    updated_at: new Date().toISOString()
+                }).eq('id', orderId);
                 
                 const orderTemp = orders.find(o => o.id === orderId);
                 const missingNames = orderTemp?.items
@@ -636,30 +796,27 @@ export default function Orders() {
                     .map(i => i.name)
                     .join(', ');
 
-                await addDoc(collection(db, `orders/${orderId}/messages`), {
+                await supabase.from('messages').insert({
+                    order_id: orderId,
                     text: `⚠️ *Atención:* Lamentablemente no contamos con stock de: *${missingNames}*. Por favor, selecciona una opción en tu pantalla para continuar con el pedido.`,
-                    senderId: user.uid,
-                    senderName: 'Restaurante',
-                    senderRole: 'restaurant',
-                    createdAt: serverTimestamp()
+                    sender_id: user?.uid,
+                    sender_name: 'Restaurante',
+                    sender_role: 'restaurant',
+                    created_at: new Date().toISOString()
                 });
                 
                 toast.success("Pedido marcado con falta de stock. El cliente ha sido notificado.");
             } else {
-                // Stock completo, permitir pago
-                await updateDoc(orderRef, { 
+                await supabase.from('orders').update({ 
                     status: 'awaiting_payment',
-                    stockConfirmed: true 
-                });
+                    updated_at: new Date().toISOString()
+                }).eq('id', orderId);
 
                 // Enviar mensaje de pago
-                const restaurantRef = doc(db, 'restaurants', rid);
-                const restaurantSnap = await getDoc(restaurantRef);
+                const { data: restaurantData } = await supabase.from('comercios').select('*').eq('id', rid).single();
                 
-                if (restaurantSnap.exists()) {
-                    const restaurantData = restaurantSnap.data();
-                    const methods = restaurantData.paymentMethods || [];
-                    
+                if (restaurantData) {
+                    const methods = restaurantData.payment_methods || [];
                     let paymentMsg = "✅ *Stock confirmado.* Ya puedes realizar tu pago:\n\n";
                     if (methods.length > 0) {
                         methods.forEach((m: any) => {
@@ -670,16 +827,18 @@ export default function Orders() {
                         paymentMsg += "Por favor contacta con el restaurante para los métodos de pago.";
                     }
 
-                    await addDoc(collection(db, `orders/${orderId}/messages`), {
+                    await supabase.from('messages').insert({
+                        order_id: orderId,
                         text: paymentMsg,
-                        senderId: user.uid,
-                        senderName: 'Restaurante',
-                        senderRole: 'restaurant',
-                        createdAt: serverTimestamp()
+                        sender_id: user?.uid,
+                        sender_name: 'Restaurante',
+                        sender_role: 'restaurant',
+                        created_at: new Date().toISOString()
                     });
                 }
                 toast.success("Stock confirmado. El cliente ahora puede pagar.");
             }
+            fetchOrders();
         } catch (error) {
             console.error("Error confirming stock:", error);
             toast.error("Error al confirmar stock");
@@ -698,46 +857,56 @@ export default function Orders() {
         if (!selectedOrderForVerify) return;
         setIsVerifying(true);
         try {
-            const orderRef = doc(db, 'orders', selectedOrderForVerify.id);
-            
-            // Verificación de Pago de RESTAURANTE (La del delivery se hace en C-Panel)
-            const nextStatus = (selectedOrderForVerify.source !== 'waiter' && selectedOrderForVerify.deliveryAddress !== 'PickUp' && selectedOrderForVerify.type !== 'takeout') 
-                ? 'awaiting_delivery_payment' 
-                : 'preparing';
+            const nextStatus = 'preparing';
+            const readyAt = new Date(Date.now() + prepMinutes * 60 * 1000).toISOString();
 
-            await updateDoc(orderRef, { 
+            await supabase.from('orders').update({ 
                 status: nextStatus,
-                paymentStatus: 'paid',
-                restaurantPaymentStatus: 'paid',
-                restaurantPaid: true, // Flag para UI de "Pago Acreditado"
-                verifiedAt: serverTimestamp()
-            });
+                payment_status: 'paid',
+                preparation_time_minutes: prepMinutes,
+                estimated_ready_at: readyAt,
+                updated_at: new Date().toISOString()
+            }).eq('id', selectedOrderForVerify.id);
+
+            // Anunciar en el chat el tiempo de cocina asignado
+            try {
+                await supabase.from('messages').insert({
+                    order_id: selectedOrderForVerify.id,
+                    sender_id: user?.uid,
+                    sender_name: 'Restaurante',
+                    sender_role: 'restaurant',
+                    text: `👨‍🍳 *¡Pago verificado y comanda iniciada!* Tiempo estimado de preparación: *${prepMinutes} minutos*. Sigue la cuenta regresiva en vivo en tu pantalla.`,
+                    action: 'payment_confirmed',
+                    created_at: new Date().toISOString()
+                });
+            } catch (mErr) {
+                console.warn("Message err:", mErr);
+            }
 
             // Otorgar puntos por consumo (2.5 por cada $) si no se han otorgado
             if (selectedOrderForVerify.userId && selectedOrderForVerify.userId !== 'pos_customer' && !(selectedOrderForVerify as any).pointsCredited) {
-                const pointsToAdd = selectedOrderForVerify.total * 2.5;
-                const userRef = doc(db, 'users', selectedOrderForVerify.userId);
-                await updateDoc(userRef, {
-                    points: increment(pointsToAdd),
-                    [`restaurantPoints.${rid}`]: increment(pointsToAdd)
-                });
-                await updateDoc(orderRef, { pointsCredited: true });
+                const pointsToAdd = Math.round(selectedOrderForVerify.total * 2.5);
+                try {
+                    const { data: prof } = await supabase.from('profiles').select('points').eq('id', selectedOrderForVerify.userId).single();
+                    const currentPoints = prof?.points || 0;
+                    await supabase.from('profiles').update({ points: currentPoints + pointsToAdd }).eq('id', selectedOrderForVerify.userId);
+                    await supabase.from('orders').update({ points_credited: true }).eq('id', selectedOrderForVerify.id);
+                } catch (pErr) {
+                    console.warn("Points note:", pErr);
+                }
             }
 
-            if (nextStatus === 'preparing') {
-                await handlePrintOrder(selectedOrderForVerify.id, selectedOrderForVerify as any);
-            }
+            await handlePrintOrder(selectedOrderForVerify.id, selectedOrderForVerify as any);
 
-            toast.success("Pago de restaurante acreditado.");
-
+            toast.success(`Pago acreditado. Cocina: ${prepMinutes} min.`);
             setVerificationSuccess(true);
+            fetchOrders();
             
-            // Cerrar modal automáticamente tras 2 segundos
             setTimeout(() => {
                 setVerifyModalOpen(false);
                 setSelectedOrderForVerify(null);
                 setVerificationSuccess(false);
-            }, 2000);
+            }, 1800);
 
         } catch (error) {
             console.error("Error verifying payment:", error);
@@ -749,46 +918,40 @@ export default function Orders() {
 
     const updateStatus = async (orderId: string, newStatus: string, paymentStatus?: string) => {
         try {
-            const orderRef = doc(db, 'orders', orderId);
             const orderTemp = orders.find(o => o.id === orderId);
 
-            // Si pasa a preprando, imprimimos los tickets correspondientes
             if (newStatus === 'preparing' && orderTemp) {
                 await handlePrintOrder(orderId, orderTemp);
             }
 
-            const updates: any = { status: newStatus };
+            const updates: any = { status: newStatus, updated_at: new Date().toISOString() };
             if (paymentStatus) {
-                updates.paymentStatus = paymentStatus;
+                updates.payment_status = paymentStatus;
 
-                // Si la venta es exitosa, se otorgan puntos al usuario (2.5 puntos por cada $)
                 if (paymentStatus === 'sold' && orderTemp?.userId && orderTemp.userId !== 'pos_customer' && !(orderTemp as any).pointsCredited) {
                     try {
-                        const pointsToAdd = orderTemp.total * 2.5;
-                        const userRef = doc(db, 'users', orderTemp.userId);
-                        await updateDoc(userRef, {
-                            points: increment(pointsToAdd),
-                            [`restaurantPoints.${rid}`]: increment(pointsToAdd)
-                        });
-                        updates.pointsCredited = true;
-                        console.log(`Se sumaron ${pointsToAdd} puntos al usuario ${orderTemp.userId}`);
+                        const pointsToAdd = Math.round(orderTemp.total * 2.5);
+                        const { data: prof } = await supabase.from('profiles').select('points').eq('id', orderTemp.userId).single();
+                        const currentPoints = prof?.points || 0;
+                        await supabase.from('profiles').update({ points: currentPoints + pointsToAdd }).eq('id', orderTemp.userId);
+                        updates.points_credited = true;
                     } catch (pointsError) {
                         console.error("Error al sumar puntos al usuario:", pointsError);
                     }
                 }
             }
-            await updateDoc(orderRef, updates);
+            await supabase.from('orders').update(updates).eq('id', orderId);
 
             if (newStatus === 'rejected') vibrateWarning();
             else vibrateSelection();
-            
+            fetchOrders();
         } catch (error) {
             console.error("Error updating order status:", error);
         }
     };
 
     const handleCreatePOSOrder = async () => {
-        if (!user) return;
+        if (!user || !rid) return;
         if (posCart.length === 0) return alert("El carrito está vacío");
         if (posOrderType === 'delivery' && !posDeliveryAddress) return alert("Ingresa la dirección de envío");
 
@@ -806,61 +969,57 @@ export default function Orders() {
             const total = subtotal + posDeliveryFee;
 
             let deliveryAddressStr = posOrderType === 'local' ? 'Consumo Local' : posOrderType === 'takeout' ? 'Para Llevar' : posDeliveryAddress;
-
             let targetOrderRefId = '';
 
             if (posEditingOrderId) {
-                // Update existing order
-                const orderRef = doc(db, 'orders', posEditingOrderId);
-                await updateDoc(orderRef, {
+                const orderPayload: any = {
                     items,
+                    subtotal,
                     total,
-                    userName: posClientName || 'Cliente en mostrador',
-                    clientId: posClientDNI || '',
-                    deliveryAddress: deliveryAddressStr,
-                    deliveryFee: posDeliveryFee,
-                    waiterId: selectedWaiter?.id || '',
-                    waiterName: selectedWaiter?.name || '',
-                    tableId: posOrderType === 'local' ? (selectedTable?.id || '') : '',
-                    tableNumber: posOrderType === 'local' ? (selectedTable?.number || '') : '',
-                    updatedAt: serverTimestamp()
-                });
+                    user_name: posClientName || 'Cliente en mostrador',
+                    client_dni: posClientDNI || '',
+                    delivery_address: deliveryAddressStr,
+                    delivery_fee: posDeliveryFee,
+                    waiter_id: selectedWaiter?.id || '',
+                    waiter_name: selectedWaiter?.name || '',
+                    table_number: posOrderType === 'local' ? (selectedTable?.number || '') : '',
+                    updated_at: new Date().toISOString()
+                };
+                await supabase.from('orders').update(orderPayload).eq('id', posEditingOrderId);
                 targetOrderRefId = posEditingOrderId;
                 toast.success("Pedido actualizado");
             } else {
-                // Create new order
-                const newOrderRef = await addDoc(collection(db, 'orders'), {
-                    restaurantId: rid,
-                    userId: 'pos_customer',
-                    userName: posClientName || 'Cliente en mostrador',
-                    clientId: posClientDNI || '',
+                const newOrderPayload: any = {
+                    restaurant_id: rid,
+                    user_id: null,
+                    user_name: posClientName || 'Cliente en mostrador',
+                    client_dni: posClientDNI || '',
                     items,
+                    subtotal,
                     total,
                     status: 'preparing',
-                    paymentStatus: posOrderType === 'local' ? 'paid' : 'sold', // Local needs to stay active for table status
-                    createdAt: serverTimestamp(),
-                    deliveryAddress: deliveryAddressStr,
+                    payment_status: posOrderType === 'local' ? 'paid' : 'sold',
+                    delivery_address: deliveryAddressStr,
                     source: 'pos',
-                    type: posOrderType,
-                    deliveryFee: posDeliveryFee,
-                    waiterId: selectedWaiter?.id || '',
-                    waiterName: selectedWaiter?.name || '',
-                    tableId: posOrderType === 'local' ? (selectedTable?.id || '') : '',
-                    tableNumber: posOrderType === 'local' ? (selectedTable?.number || '') : '',
-                });
-                targetOrderRefId = newOrderRef.id;
+                    order_type: posOrderType,
+                    delivery_fee: posDeliveryFee,
+                    waiter_id: selectedWaiter?.id || '',
+                    waiter_name: selectedWaiter?.name || '',
+                    table_number: posOrderType === 'local' ? (selectedTable?.number || '') : '',
+                    created_at: new Date().toISOString()
+                };
+                const { data: insData, error: insErr } = await supabase.from('orders').insert(newOrderPayload).select().single();
+                if (insErr) throw insErr;
+                targetOrderRefId = insData?.id || '';
                 toast.success("Pedido creado");
             }
 
             // Update Table Status if local
             if (posOrderType === 'local' && selectedTable) {
-                const tableRef = doc(db, 'restaurants', rid, 'tables', selectedTable.id);
-                await updateDoc(tableRef, {
+                await supabase.from('restaurant_tables').update({
                     status: 'occupied',
-                    lastOrderId: targetOrderRefId,
-                    waiterId: selectedWaiter?.id || '',
-                    waiterName: selectedWaiter?.name || ''
-                });
+                    current_order_id: targetOrderRefId
+                }).eq('id', selectedTable.id);
             }
 
             const printData = {
@@ -890,9 +1049,8 @@ export default function Orders() {
             setWaiterSearch('');
             setTableSearch('');
 
-            // Mostramos la vista previa antes de mandar a la impresora
             setSelectedOrderForComanda(printData);
-
+            fetchOrders();
         } catch (error) {
             console.error("Error creando orden POS:", error);
             alert("Error al procesar la venta");
@@ -976,26 +1134,23 @@ export default function Orders() {
     const [showTableModal, setShowTableModal] = useState(false);
 
     const handleAssignWaiter = async (tableId: string, waiter: { id: string, name: string } | null) => {
-        if (!user) return;
+        if (!user || !rid) return;
         try {
-            const tableRef = doc(db, 'restaurants', rid as string, 'tables', tableId);
-            await updateDoc(tableRef, {
-                waiterId: waiter ? waiter.id : '',
-                waiterName: waiter ? waiter.name : '',
-                status: waiter ? 'occupied' : 'free'
-            });
+            await supabase.from('restaurant_tables').update({
+                status: waiter ? 'occupied' : 'available'
+            }).eq('id', tableId);
 
-            // Si hay una orden activa en esta mesa, actualizarla también
-            const activeOrder = orders.find(o => o.tableId === tableId && (o.status === 'occupied' || o.status === 'calling' || o.status === 'preparing'));
+            const activeOrder = orders.find(o => (o as any).tableId === tableId && (o.status === 'occupied' || o.status === 'calling' || o.status === 'preparing'));
             if (activeOrder) {
-                await updateDoc(doc(db, 'orders', activeOrder.id), {
-                    waiterId: waiter ? waiter.id : '',
-                    waiterName: waiter ? waiter.name : ''
-                });
+                await supabase.from('orders').update({
+                    waiter_id: waiter ? waiter.id : '',
+                    waiter_name: waiter ? waiter.name : ''
+                }).eq('id', activeOrder.id);
             }
 
             setShowTableModal(false);
             setSelectedTable(null);
+            fetchOrders();
         } catch (error) {
             console.error("Error assigning waiter:", error);
             alert("Error al asignar mesero");
@@ -1066,45 +1221,53 @@ export default function Orders() {
         );
     };
     const renderOrderCard = (order: any) => (
-        <div key={order.id} className="bg-white rounded-[35px] p-8 border border-slate-100 shadow-sm hover:shadow-xl transition-all group relative overflow-hidden">
+        <div key={order.id} className="bg-white rounded-2xl sm:rounded-[32px] p-3.5 sm:p-6 border border-slate-100 shadow-sm hover:shadow-md transition-all group relative overflow-hidden">
             {order.paymentStatus === 'sold' && (
-                <div className="absolute top-0 right-0 p-4">
-                    <span className="bg-green-100 text-green-600 text-[10px] font-black px-3 py-1 rounded-full uppercase tracking-widest">Venta Exitosa</span>
+                <div className="absolute top-0 right-0 p-3 sm:p-4">
+                    <span className="bg-green-100 text-green-700 text-[9px] sm:text-[10px] font-black px-2.5 py-0.5 rounded-full uppercase tracking-wider">Venta Exitosa</span>
                 </div>
             )}
             {order.paymentStatus === 'not_sold' && (
-                <div className="absolute top-0 right-0 p-4">
-                    <span className="bg-red-100 text-red-600 text-[10px] font-black px-3 py-1 rounded-full uppercase tracking-widest">No Vendido</span>
+                <div className="absolute top-0 right-0 p-3 sm:p-4">
+                    <span className="bg-red-100 text-red-600 text-[9px] sm:text-[10px] font-black px-2.5 py-0.5 rounded-full uppercase tracking-wider">No Vendido</span>
                 </div>
             )}
 
-            <div className="flex justify-between items-start mb-6">
+            <div className="flex justify-between items-start mb-3 sm:mb-5">
                 <div>
-                    <div className="flex items-center gap-2 mb-1">
-                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">PEDIDO #{order.id.slice(-6).toUpperCase()}</span>
+                    <div className="flex items-center gap-1.5 mb-1">
+                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">#{order.id.slice(-6).toUpperCase()}</span>
                         {order.source === 'waiter' ? (
-                            <span className="bg-yellow-400 text-black text-[10px] font-black px-2 py-0.5 rounded-md uppercase tracking-widest flex items-center gap-1">
+                            <span className="bg-slate-900 text-white text-[9px] font-black px-1.5 py-0.5 rounded uppercase tracking-wider flex items-center gap-1">
                                 Mesero
                             </span>
                         ) : (
-                            <span className="bg-yellow-400 text-black text-[10px] font-black px-2 py-0.5 rounded-md uppercase tracking-widest flex items-center gap-1">
-                                App
+                            <span className="bg-emerald-600 text-white text-[9px] font-black px-1.5 py-0.5 rounded uppercase tracking-wider flex items-center gap-1">
+                                App Delivery
                             </span>
                         )}
                     </div>
-                    <h3 className="text-xl font-black text-slate-900">{order.userName || 'Usuario de Deliexpress'}</h3>
-                    <p className="text-sm text-slate-400 font-bold flex items-center gap-1 mt-1">
-                        <Clock className="w-4 h-4" />
-                        {order.createdAt?.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                    </p>
+                    <h3 className="text-base sm:text-lg font-black text-slate-900">{order.userName || 'Usuario de Deliexpress'}</h3>
+                    <div className="flex flex-wrap items-center gap-2 mt-0.5">
+                        <p className="text-xs text-slate-400 font-bold flex items-center gap-1">
+                            <Clock className="w-3.5 h-3.5" />
+                            {order.createdAt?.toDate ? order.createdAt.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : (order.createdAt ? new Date(order.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '')}
+                        </p>
+                        {order.userPhone && (
+                            <span className="text-xs font-bold text-slate-600 bg-slate-100 px-2 py-0.5 rounded-lg">📞 {order.userPhone}</span>
+                        )}
+                        {order.clientDNI && (
+                            <span className="text-[10px] font-bold text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded">CI: {order.clientDNI}</span>
+                        )}
+                    </div>
                 </div>
                 <div className="text-right">
-                    <p className="text-2xl font-black text-slate-900">${order.total.toFixed(2)}</p>
-                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Total Cobrado</p>
+                    <p className="text-xl sm:text-2xl font-black text-slate-900">${order.total.toFixed(2)}</p>
+                    <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Total Cobrado</p>
                 </div>
             </div>
 
-            <div className="space-y-3 mb-6">
+            <div className="space-y-2 mb-3 sm:mb-5">
                 {order.items.map((item: any, idx: number) => {
                     const isMissing = (missingItemsByOrder[order.id] || []).includes(item.id);
                     return (
@@ -1139,9 +1302,26 @@ export default function Orders() {
                 </div>
             )}
 
-            <div className="flex items-start gap-3 p-4 bg-slate-50 rounded-2xl mb-8">
-                <MapPin className="w-5 h-5 text-slate-900 shrink-0" />
-                <p className="text-sm font-bold text-slate-600 leading-relaxed italic">{order.deliveryAddress}</p>
+            <div className="flex items-start justify-between gap-3 p-4 bg-slate-50 rounded-2xl mb-8">
+                <div className="flex items-start gap-3">
+                    <MapPin className="w-5 h-5 text-slate-900 shrink-0 mt-0.5" />
+                    <div>
+                        <p className="text-sm font-bold text-slate-700 leading-relaxed italic">{order.deliveryAddress || 'Sin dirección especificada'}</p>
+                        {order.userPhone && (
+                            <p className="text-xs font-bold text-slate-500 mt-1">📞 Contacto: {order.userPhone}</p>
+                        )}
+                    </div>
+                </div>
+                {order.deliveryCoords?.lat && (
+                    <a
+                        href={`https://www.google.com/maps?q=${order.deliveryCoords.lat},${order.deliveryCoords.lng}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="shrink-0 bg-primary/20 hover:bg-primary text-slate-900 px-3 py-1.5 rounded-xl font-black text-xs transition-all flex items-center gap-1 shadow-xs cursor-pointer"
+                    >
+                        🗺️ Ver GPS
+                    </a>
+                )}
             </div>
 
             {/* Payment Details Block */}
@@ -1169,13 +1349,52 @@ export default function Orders() {
                                 <span className="font-black text-slate-700">{order.paymentReference || 'N/A'}</span>
                             </div>
                             {order.paymentProofUrl && (
-                                <button 
-                                    onClick={() => window.open(order.paymentProofUrl, '_blank')}
-                                    className="w-full flex items-center justify-center gap-2 py-2 bg-white rounded-xl text-xs font-black text-slate-600 hover:bg-slate-100 transition-colors border border-slate-200 shadow-sm"
-                                >
-                                    <ImageIcon className="w-4 h-4" />
-                                    Ver Comprobante
-                                </button>
+                                <div className="mt-2 p-2.5 bg-white border border-slate-200 rounded-2xl flex items-center gap-3 shadow-xs">
+                                    <div 
+                                        onClick={() => setPreviewImageModal(order.paymentProofUrl || null)}
+                                        className="w-16 h-16 rounded-xl overflow-hidden bg-slate-100 border border-slate-200 shrink-0 cursor-zoom-in group relative"
+                                        title="Clic para ampliar comprobante"
+                                    >
+                                        <img 
+                                            src={order.paymentProofUrl} 
+                                            alt="Comprobante" 
+                                            className="w-full h-full object-cover group-hover:scale-110 transition-transform" 
+                                        />
+                                        <div className="absolute inset-0 bg-black/25 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
+                                            <Eye className="w-5 h-5 text-white" />
+                                        </div>
+                                    </div>
+                                    <div className="flex-1 min-w-0">
+                                        <p className="text-[10px] font-black uppercase text-slate-400 tracking-wider">Captura Adjunta</p>
+                                        <p className="text-xs font-black text-slate-800 truncate">Comprobante de Pago</p>
+                                        <div className="flex items-center gap-3 mt-1.5">
+                                            <button
+                                                type="button"
+                                                onClick={() => setPreviewImageModal(order.paymentProofUrl || null)}
+                                                className="text-[11px] font-black text-blue-600 hover:text-blue-700 flex items-center gap-1 active:scale-95"
+                                            >
+                                                <Eye className="w-3.5 h-3.5" /> Ampliar
+                                            </button>
+                                            <a
+                                                href={order.paymentProofUrl}
+                                                download={`comprobante_${order.id.slice(-6)}.jpg`}
+                                                target="_blank"
+                                                rel="noreferrer"
+                                                className="text-[11px] font-black text-emerald-600 hover:text-emerald-700 flex items-center gap-1 active:scale-95"
+                                            >
+                                                <Download className="w-3.5 h-3.5" /> Descargar
+                                            </a>
+                                        </div>
+                                    </div>
+                                    {!order.restaurantPaid && (
+                                        <button
+                                            onClick={() => handleVerifyPayment(order.id)}
+                                            className="bg-primary hover:bg-primary/90 text-slate-900 px-3.5 py-2.5 rounded-xl text-xs font-black shrink-0 active:scale-95 shadow-sm transition-all"
+                                        >
+                                            Validar
+                                        </button>
+                                    )}
+                                </div>
                             )}
                         </div>
                     )}
@@ -1228,21 +1447,27 @@ export default function Orders() {
                    </div>
                 )}
 
-                {(order.status === 'pending' || order.status === 'pendiente_pago' || order.status === 'pending_verification' || order.status === 'awaiting_delivery_payment') && (
+                {(order.status === 'pending' || order.status === 'pendiente_pago' || order.status === 'pending_verification' || order.status === 'awaiting_delivery_payment' || order.status === 'awaiting_payment') && (
                     <>
                         <button
                             onClick={() => setChatOrderId(order.id)}
-                            className="px-6 bg-slate-100 text-slate-500 py-4 rounded-2xl font-black hover:bg-slate-200 transition-all flex items-center justify-center gap-2"
-                            title="Chatear"
+                            className="px-5 bg-slate-100 text-slate-800 py-4 rounded-2xl font-black hover:bg-slate-200 active:scale-95 transition-all flex items-center justify-center gap-2 border border-slate-200 shadow-sm"
+                            title="Abrir Chat con Cliente"
                         >
-                            <Bell className="w-5 h-5" />
+                            <MessageCircle className="w-5 h-5 text-slate-700" />
+                            <span>Chat</span>
                         </button>
-                        {order.status === 'pending_verification' ? (
+                        {(order.status === 'awaiting_payment' && !order.paymentProofUrl) ? (
+                            <div className="flex-1 bg-emerald-50 text-emerald-700 py-4 rounded-2xl font-black border border-emerald-200 flex flex-col items-center justify-center gap-1">
+                                <span className="flex items-center gap-2"><CheckCircle className="w-4 h-4 text-emerald-500" /> Stock Confirmado</span>
+                                <span className="text-[10px] font-bold text-emerald-500 uppercase tracking-widest">Esperando Pago del Cliente</span>
+                            </div>
+                        ) : (order.status === 'pending_verification' || order.paymentProofUrl || (order as any).payment_status === 'verifying') ? (
                             <button
                                 onClick={() => handleVerifyPayment(order.id)}
                                 className="flex-1 bg-primary text-slate-900 py-4 rounded-2xl font-black shadow-lg shadow-primary/20 hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-2"
                             >
-                                <CheckCircle className="w-5 h-5" /> Validar Pago
+                                <CheckCircle className="w-5 h-5" /> Validar Pago e Iniciar Cocina
                             </button>
                         ) : order.status === 'awaiting_delivery_payment' ? (
                             <div className="flex-1 bg-amber-50 text-amber-600 py-4 rounded-2xl font-black border border-amber-100 flex flex-col items-center justify-center group relative overflow-hidden">
@@ -1269,7 +1494,7 @@ export default function Orders() {
                                 )}
                             </button>
                         )}
-                        {!order.restaurantPaid && (
+                        {order.status !== 'awaiting_payment' && !order.restaurantPaid && (
                             <button
                                 onClick={() => updateStatus(order.id, 'rejected')}
                                 className="px-6 bg-slate-100 text-slate-500 py-4 rounded-2xl font-black hover:bg-red-50 hover:text-red-500 transition-all"
@@ -1281,29 +1506,58 @@ export default function Orders() {
                 )}
                 
                 {(order.status === 'preparing' || order.status === 'buscando_piloto' || order.status === 'piloto_asignado') && (
-                    <div className="flex w-full gap-2">
-                        <button
-                            onClick={() => updateStatus(order.id, 'buscando_piloto')}
-                            className="flex-1 bg-indigo-500 text-white py-4 rounded-2xl font-black shadow-lg shadow-indigo-500/20 hover:scale-[1.02] transition-all flex items-center justify-center gap-2"
-                        >
-                            <Bell className="w-5 h-5" /> Alertar Delivery
-                        </button>
-                        <button
-                            onClick={() => updateStatus(order.id, 'delivering')}
-                            className="flex-1 bg-slate-900 text-white py-4 rounded-2xl font-black shadow-lg shadow-slate-900/20 hover:scale-[1.02] transition-all flex items-center justify-center gap-2"
-                        >
-                            <Truck className="w-5 h-5" /> Enviado
-                        </button>
+                    <div className="flex flex-col w-full gap-2.5">
+                        {order.status === 'preparing' && (
+                            <div className="bg-amber-50 border border-amber-200 px-3.5 py-2 rounded-2xl flex items-center justify-between text-xs">
+                                <div className="flex items-center gap-2 text-amber-900 font-black">
+                                    <Clock className="w-4 h-4 text-amber-600 animate-spin" />
+                                    <span>Preparación en Cocina</span>
+                                </div>
+                                <span className="bg-amber-200/80 text-amber-900 px-2.5 py-0.5 rounded-full font-black text-[11px]">
+                                    {(order as any).preparation_time_minutes || 20} min est.
+                                </span>
+                            </div>
+                        )}
+                        <div className="flex w-full gap-2">
+                            <button
+                                onClick={() => {
+                                    setSelectedOrderForDispatch(order);
+                                    setDispatchModalOpen(true);
+                                    fetchActiveDrivers();
+                                }}
+                                className="flex-1 bg-amber-500 hover:bg-amber-600 text-slate-950 py-4 rounded-2xl font-black shadow-lg shadow-amber-500/20 hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-2"
+                            >
+                                <Bike className="w-5 h-5" /> Despachar Repartidor
+                            </button>
+                            <button
+                                onClick={() => setChatOrderId(order.id)}
+                                className="px-4 bg-slate-100 text-slate-700 py-4 rounded-2xl font-black hover:bg-slate-200 transition-all flex items-center justify-center gap-1.5 border border-slate-200 shadow-sm"
+                                title="Abrir Chat"
+                            >
+                                <MessageCircle className="w-5 h-5 text-slate-700" />
+                                <span>Chat</span>
+                            </button>
+                        </div>
                     </div>
                 )}
 
                 {order.status === 'delivering' && (
-                    <button
-                        onClick={() => updateStatus(order.id, 'delivered')}
-                        className="flex-1 bg-green-500 text-white py-4 rounded-2xl font-black shadow-lg shadow-green-500/20 hover:scale-[1.02] active:scale-[0.98] transition-all"
-                    >
-                        Confirmar Entrega
-                    </button>
+                    <div className="flex w-full gap-2">
+                        <button
+                            onClick={() => updateStatus(order.id, 'delivered')}
+                            className="flex-1 bg-green-500 text-white py-4 rounded-2xl font-black shadow-lg shadow-green-500/20 hover:scale-[1.02] active:scale-[0.98] transition-all"
+                        >
+                            Confirmar Entrega
+                        </button>
+                        <button
+                            onClick={() => setChatOrderId(order.id)}
+                            className="px-4 bg-slate-100 text-slate-700 py-4 rounded-2xl font-black hover:bg-slate-200 transition-all flex items-center justify-center gap-1.5 border border-slate-200 shadow-sm"
+                            title="Abrir Chat"
+                        >
+                            <MessageCircle className="w-5 h-5 text-slate-700" />
+                            <span>Chat</span>
+                        </button>
+                    </div>
                 )}
                 {order.status === 'delivered' && !order.paymentStatus && (
                     <div className="flex w-full gap-2">
@@ -1319,6 +1573,13 @@ export default function Orders() {
                         >
                             <X className="w-4 h-4" /> No Vendido
                         </button>
+                        <button
+                            onClick={() => setChatOrderId(order.id)}
+                            className="px-4 bg-slate-100 text-slate-700 py-3 rounded-xl font-black hover:bg-slate-200 transition-all flex items-center justify-center border border-slate-200"
+                            title="Abrir Chat"
+                        >
+                            <MessageCircle className="w-4 h-4 text-slate-700" />
+                        </button>
                     </div>
                 )}
                 {order.status === 'delivered' && order.paymentStatus === 'pending' && order.source === 'waiter' && (
@@ -1329,12 +1590,6 @@ export default function Orders() {
                         <DollarSign className="w-5 h-5" /> Cerrar Venta y Cobrar
                     </button>
                 )}
-                <button 
-                  onClick={() => setChatOrderId(order.id)}
-                  className="p-4 bg-slate-100 text-slate-400 rounded-2xl hover:bg-slate-200 transition-colors"
-                >
-                    <Bell className="w-5 h-5" />
-                </button>
                 {chatOrderId === order.id && (
                     <div className="fixed inset-0 z-[200] flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-4">
                         <div className="w-full max-w-lg relative">
@@ -1398,25 +1653,25 @@ export default function Orders() {
             </div>
 
             {/* Status Tabs */}
-            <div className="grid grid-cols-2 lg:grid-cols-5 gap-2 p-2 bg-slate-100 rounded-[30px]">
+            <div className="flex items-center gap-1.5 p-1.5 bg-slate-100 rounded-2xl overflow-x-auto no-scrollbar">
                 {[
                     { id: 'pending', label: 'Pendientes', icon: Bell, color: 'bg-emerald-500' },
-                    { id: 'delivering', label: 'Camino', icon: Truck, color: 'bg-emerald-700' },
+                    { id: 'delivering', label: 'En Camino', icon: Truck, color: 'bg-emerald-700' },
                     { id: 'delivered', label: 'Entregados', icon: CheckCircle, color: 'bg-emerald-500' },
-                    { id: 'tables', label: 'Mesas', icon: Users, color: 'bg-primary' },
+                    { id: 'tables', label: 'Mesas', icon: Users, color: 'bg-slate-900' },
                     { id: 'rejected', label: 'Rechazados', icon: X, color: 'bg-slate-500' },
                 ].map((tab) => (
                     <button
                         key={tab.id}
                         onClick={() => setActiveTab(tab.id as any)}
-                        className={`flex items-center justify-center gap-2 p-4 rounded-[25px] font-black transition-all ${activeTab === tab.id
-                            ? 'bg-white shadow-lg text-slate-900'
-                            : 'text-slate-500 hover:bg-white/50'
+                        className={`flex items-center justify-center gap-1.5 px-3 py-2 sm:px-4 sm:py-2.5 rounded-xl font-black text-xs transition-all whitespace-nowrap shrink-0 sm:flex-1 ${activeTab === tab.id
+                            ? 'bg-white shadow-sm text-slate-900'
+                            : 'text-slate-500 hover:text-slate-700 hover:bg-white/50'
                             }`}
                     >
-                        <tab.icon className={`w-5 h-5 ${activeTab === tab.id ? 'text-slate-900' : ''}`} />
-                        <span className="hidden xl:inline">{tab.label}</span>
-                        <span className={`ml-1 text-[10px] px-2 py-0.5 rounded-full ${tab.id === 'tables' ? 'bg-slate-900 text-white' : 'text-white ' + tab.color}`}>
+                        <tab.icon className={`w-4 h-4 ${activeTab === tab.id ? 'text-slate-900' : 'text-slate-400'}`} />
+                        <span>{tab.label}</span>
+                        <span className={`text-[10px] font-black px-1.5 py-0.2 rounded-full ${tab.id === 'tables' ? 'bg-slate-900 text-white' : 'text-white ' + tab.color}`}>
                             {(stats as any)[tab.id]}
                         </span>
                     </button>
@@ -1424,13 +1679,13 @@ export default function Orders() {
             </div>
 
             <div className="relative">
-                <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
+                <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                 <input
                     type="text"
                     placeholder="Buscar por ID de pedido o dirección..."
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
-                    className="w-full bg-white border border-slate-200 p-4 pl-12 rounded-2xl outline-none focus:border-primary transition-all font-bold text-slate-700 shadow-sm"
+                    className="w-full bg-white border border-slate-200 p-2.5 sm:p-3.5 pl-10 rounded-xl sm:rounded-2xl outline-none focus:border-primary transition-all font-bold text-xs sm:text-sm text-slate-700 shadow-sm"
                 />
             </div>
 
@@ -1465,8 +1720,8 @@ export default function Orders() {
                         <div className="space-y-6">
                             <div className="flex items-center gap-4 px-2">
                                 <div className="h-px flex-1 bg-emerald-100"></div>
-                                <h2 className="text-xl font-black text-emerald-500 flex items-center gap-2 uppercase tracking-widest bg-emerald-50 px-6 py-2 rounded-full border border-emerald-100">
-                                    <Truck className="w-6 h-6" /> 🚚 App / Delivery Express ({filteredOrders.filter(o => o.source !== 'waiter').length})
+                                <h2 className="text-xl font-black text-emerald-600 flex items-center gap-2 uppercase tracking-widest bg-emerald-50 px-6 py-2 rounded-full border border-emerald-100">
+                                    <Package className="w-6 h-6 text-emerald-600" /> 📦 Pedidos Entrantes ({filteredOrders.filter(o => o.source !== 'waiter').length})
                                 </h2>
                                 <div className="h-px flex-1 bg-emerald-100"></div>
                             </div>
@@ -1759,52 +2014,217 @@ export default function Orders() {
 
             {/* Dispatch Order Modal */}
             {dispatchModalOpen && selectedOrderForDispatch && (
-                <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center bg-slate-900/40 backdrop-blur-sm sm:px-4">
-                    <div className="bg-white rounded-t-[40px] sm:rounded-3xl p-6 w-full max-w-sm shadow-2xl animate-in slide-in-from-bottom sm:zoom-in-95 duration-200 flex flex-col max-h-[90vh]">
-                        <div className="w-12 h-1.5 bg-slate-200 rounded-full mx-auto mb-6 sm:hidden shrink-0"></div>
-                        <div className="flex justify-between items-center mb-6 shrink-0">
-                            <h3 className="text-xl font-black text-slate-900">Despachar Pedido</h3>
-                            <button onClick={() => setDispatchModalOpen(false)} className="text-slate-400 hover:text-slate-600">
+                <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center bg-slate-900/50 backdrop-blur-sm sm:px-4">
+                    <div className="bg-white rounded-t-[40px] sm:rounded-3xl p-6 w-full max-w-lg shadow-2xl animate-in slide-in-from-bottom sm:zoom-in-95 duration-200 flex flex-col max-h-[92vh]">
+                        <div className="w-12 h-1.5 bg-slate-200 rounded-full mx-auto mb-4 sm:hidden shrink-0"></div>
+                        
+                        <div className="flex justify-between items-center mb-4 shrink-0">
+                            <div>
+                                <h3 className="text-xl font-black text-slate-900 flex items-center gap-2">
+                                    <Truck className="w-6 h-6 text-primary" /> Centro de Despacho
+                                </h3>
+                                <p className="text-xs text-slate-500 font-bold">Orden #{selectedOrderForDispatch.id.slice(0, 8)} • Destino: {selectedOrderForDispatch.deliveryAddress || 'Dirección registrada'}</p>
+                            </div>
+                            <button onClick={() => setDispatchModalOpen(false)} className="text-slate-400 hover:text-slate-600 p-2">
                                 <X className="w-6 h-6" />
                             </button>
                         </div>
-                        <div className="grid grid-cols-2 gap-3 mb-6">
+
+                        {/* Free delivery badge if shop covers delivery */}
+                        {((selectedOrderForDispatch as any).freeDelivery || restaurantConfig?.free_delivery) && (
+                            <div className="mb-4 p-3 bg-gradient-to-r from-amber-500/10 to-yellow-500/20 border border-amber-300 rounded-2xl flex items-center gap-3">
+                                <Sparkles className="w-5 h-5 text-amber-600 shrink-0" />
+                                <div className="text-xs text-amber-900">
+                                    <span className="font-black">¡Envío Gratis Activado!</span> La tienda asume el flete del conductor. El cliente no verá tarifas de envío.
+                                </div>
+                            </div>
+                        )}
+
+                        <div className="grid grid-cols-2 gap-3 mb-4 shrink-0">
                             <button
                                 onClick={() => setDispatchType('own')}
-                                className={`flex flex-col items-center gap-2 p-4 rounded-2xl border-2 font-bold transition-all ${dispatchType === 'own' ? 'border-primary bg-primary/5 text-slate-900' : 'border-slate-100 text-slate-500 hover:bg-slate-50'}`}
+                                className={`flex flex-col items-center gap-2 p-3.5 rounded-2xl border-2 font-bold transition-all ${dispatchType === 'own' ? 'border-primary bg-primary/10 text-slate-900 shadow-sm' : 'border-slate-100 text-slate-500 hover:bg-slate-50'}`}
                             >
-                                <Store className="w-6 h-6" />
-                                <span className="text-xs text-center">Propio / Cliente recoge</span>
+                                <Store className="w-5 h-5" />
+                                <span className="text-xs text-center font-black">Propio / Retiro en Tienda</span>
                             </button>
                             <button
                                 onClick={() => setDispatchType('platform')}
-                                className={`flex flex-col items-center gap-2 p-4 rounded-2xl border-2 font-bold transition-all ${dispatchType === 'platform' ? 'border-blue-500 bg-blue-50 text-blue-600' : 'border-slate-100 text-slate-500 hover:bg-slate-50'}`}
+                                className={`flex flex-col items-center gap-2 p-3.5 rounded-2xl border-2 font-bold transition-all ${dispatchType === 'platform' ? 'border-blue-500 bg-blue-50 text-blue-700 shadow-sm' : 'border-slate-100 text-slate-500 hover:bg-slate-50'}`}
                             >
-                                <Users className="w-6 h-6" />
-                                <span className="text-xs text-center">Motorizado de App</span>
+                                <Users className="w-5 h-5" />
+                                <span className="text-xs text-center font-black">Driver de la Plataforma</span>
                             </button>
                         </div>
 
                         {dispatchType === 'platform' ? (
-                            <div className="mb-6 flex flex-col items-center justify-center p-6 bg-slate-50 rounded-2xl border border-slate-200">
-                                <div className="w-16 h-16 bg-blue-100 text-blue-500 rounded-full flex items-center justify-center mb-4 relative">
-                                    <div className="absolute inset-0 bg-blue-400 rounded-full animate-ping opacity-20"></div>
-                                    <Truck className="w-8 h-8 relative z-10" />
+                            <div className="flex-1 overflow-y-auto space-y-3 pr-1 min-h-[220px]">
+                                {/* Vehicle Category Filter Tabs */}
+                                <div className="flex gap-1.5 p-1 bg-slate-100 rounded-2xl shrink-0 overflow-x-auto">
+                                    {[
+                                        { id: 'all', label: 'Todos' },
+                                        { id: 'moto', label: '🛵 Moto Taxi' },
+                                        { id: 'carro', label: '🚗 Taxi Eco' },
+                                        { id: 'confort', label: '✨ Confort' }
+                                    ].map(cat => (
+                                        <button
+                                            key={cat.id}
+                                            type="button"
+                                            onClick={() => setDriverCategoryFilter(cat.id as any)}
+                                            className={`flex-1 py-1.5 px-2.5 rounded-xl font-black text-[11px] whitespace-nowrap transition-all ${
+                                                driverCategoryFilter === cat.id 
+                                                    ? 'bg-white text-slate-900 shadow-sm' 
+                                                    : 'text-slate-500 hover:text-slate-900'
+                                            }`}
+                                        >
+                                            {cat.label}
+                                        </button>
+                                    ))}
                                 </div>
-                                <h4 className="font-black text-slate-800 text-center mb-2">Asignación por Radar</h4>
-                                <p className="text-xs text-slate-500 text-center leading-relaxed">
-                                    Se buscará automáticamente al motorizado más cercano en un radio de 15km usando el sistema de Radar.
-                                </p>
+
+                                {/* Driver Search Bar */}
+                                <div className="relative shrink-0">
+                                    <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                                    <input 
+                                        type="text"
+                                        placeholder="Buscar conductor de confianza por nombre..."
+                                        value={driverSearch}
+                                        onChange={(e) => setDriverSearch(e.target.value)}
+                                        className="w-full bg-slate-50 border border-slate-200 pl-10 pr-4 py-2.5 rounded-xl text-xs font-bold text-slate-800 placeholder-slate-400 outline-none focus:border-blue-500 focus:bg-white transition-all"
+                                    />
+                                    {driverSearch && (
+                                        <button onClick={() => setDriverSearch('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400">
+                                            <X className="w-3.5 h-3.5" />
+                                        </button>
+                                    )}
+                                </div>
+
+                                {/* Radar General Option */}
+                                <div 
+                                    onClick={() => setSelectedDriver('')}
+                                    className={`p-3.5 rounded-2xl border-2 cursor-pointer transition-all flex items-center justify-between ${
+                                        selectedDriver === '' 
+                                            ? 'border-blue-500 bg-blue-50/80 shadow-sm' 
+                                            : 'border-slate-100 bg-slate-50/60 hover:bg-slate-100'
+                                    }`}
+                                >
+                                    <div className="flex items-center gap-3">
+                                        <div className="w-10 h-10 rounded-2xl bg-blue-500 text-white flex items-center justify-center relative shadow-md shadow-blue-500/20">
+                                            <div className="absolute inset-0 rounded-2xl bg-blue-400 animate-ping opacity-25"></div>
+                                            <Truck className="w-5 h-5 relative z-10" />
+                                        </div>
+                                        <div>
+                                            <h4 className="font-black text-xs text-slate-900 flex items-center gap-1.5">
+                                                Radar Abierto General
+                                                <span className="px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded-md text-[9px] font-black uppercase">Automático</span>
+                                            </h4>
+                                            <p className="text-[10px] text-slate-500 font-medium">Notifica a todos los motorizados disponibles en 15km</p>
+                                        </div>
+                                    </div>
+                                    <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${selectedDriver === '' ? 'border-blue-500 bg-blue-500 text-white' : 'border-slate-300'}`}>
+                                        {selectedDriver === '' && <div className="w-2 h-2 rounded-full bg-white"></div>}
+                                    </div>
+                                </div>
+
+                                {/* Filtered Drivers List */}
+                                <div className="space-y-2">
+                                    <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1">
+                                        Conductores Disponibles ({drivers.filter(d => {
+                                            const matchesSearch = !driverSearch || (d.full_name || '').toLowerCase().includes(driverSearch.toLowerCase());
+                                            const matchesCat = driverCategoryFilter === 'all' || 
+                                                (driverCategoryFilter === 'moto' && (d.vehicle_type === 'moto' || !d.vehicle_type)) ||
+                                                (driverCategoryFilter === 'carro' && (d.vehicle_type === 'carro' || d.vehicle_type === 'taxi' || d.vehicle_type === 'auto')) ||
+                                                (driverCategoryFilter === 'confort' && (d.vehicle_type === 'confort' || d.is_comfort_eligible));
+                                            return matchesSearch && matchesCat;
+                                        }).length})
+                                    </div>
+
+                                    {drivers
+                                        .filter(d => {
+                                            const matchesSearch = !driverSearch || (d.full_name || '').toLowerCase().includes(driverSearch.toLowerCase());
+                                            const matchesCat = driverCategoryFilter === 'all' || 
+                                                (driverCategoryFilter === 'moto' && (d.vehicle_type === 'moto' || !d.vehicle_type)) ||
+                                                (driverCategoryFilter === 'carro' && (d.vehicle_type === 'carro' || d.vehicle_type === 'taxi' || d.vehicle_type === 'auto')) ||
+                                                (driverCategoryFilter === 'confort' && (d.vehicle_type === 'confort' || d.is_comfort_eligible));
+                                            return matchesSearch && matchesCat;
+                                        })
+                                        .map(drv => {
+                                            const payout = getDriverPayout(selectedOrderForDispatch, drv.vehicle_type);
+                                            const isSelected = selectedDriver === drv.id;
+                                            const vType = drv.vehicle_type === 'confort' ? 'Confort' : (drv.vehicle_type === 'carro' ? 'Auto Económico' : 'Moto Taxi');
+                                            
+                                            return (
+                                                <div 
+                                                    key={drv.id}
+                                                    onClick={() => setSelectedDriver(drv.id)}
+                                                    className={`p-3 rounded-2xl border-2 cursor-pointer transition-all flex items-center justify-between ${
+                                                        isSelected 
+                                                            ? 'border-primary bg-primary/10 shadow-sm ring-1 ring-primary' 
+                                                            : 'border-slate-100 bg-white hover:border-slate-200'
+                                                    }`}
+                                                >
+                                                    <div className="flex items-center gap-3">
+                                                        {/* Driver Photo */}
+                                                        <div className="relative">
+                                                            {drv.photo_url ? (
+                                                                <img 
+                                                                    src={drv.photo_url} 
+                                                                    alt={drv.full_name} 
+                                                                    className="w-11 h-11 rounded-2xl object-cover border border-slate-200 shadow-sm"
+                                                                />
+                                                            ) : (
+                                                                <div className="w-11 h-11 rounded-2xl bg-slate-100 flex items-center justify-center text-slate-500 font-black text-sm">
+                                                                    {drv.full_name ? drv.full_name.charAt(0).toUpperCase() : 'D'}
+                                                                </div>
+                                                            )}
+                                                            <div className="absolute -bottom-1 -right-1 bg-emerald-500 w-3 h-3 rounded-full border-2 border-white"></div>
+                                                        </div>
+
+                                                        <div>
+                                                            <div className="flex items-center gap-1.5">
+                                                                <h5 className="font-black text-xs text-slate-900">{drv.full_name || 'Conductor'}</h5>
+                                                                <span className="flex items-center text-[10px] font-black text-amber-500">
+                                                                    ⭐ {drv.rating ? Number(drv.rating).toFixed(1) : '5.0'}
+                                                                </span>
+                                                            </div>
+                                                            <p className="text-[10px] text-slate-500 font-bold">
+                                                                {vType} • {drv.vehicle_brand || ''} {drv.vehicle_model || ''} {drv.vehicle_plate ? `[${drv.vehicle_plate}]` : ''}
+                                                            </p>
+                                                            <p className="text-[10px] font-black text-emerald-600 mt-0.5">
+                                                                Tarifa calculada: ${payout.toFixed(2)} USD
+                                                            </p>
+                                                        </div>
+                                                    </div>
+
+                                                    <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${isSelected ? 'border-primary bg-primary text-slate-900' : 'border-slate-300'}`}>
+                                                        {isSelected && <div className="w-2 h-2 rounded-full bg-slate-900"></div>}
+                                                    </div>
+                                                </div>
+                                            );
+                                        })
+                                    }
+                                </div>
                             </div>
                         ) : null}
 
-                        <button
-                            onClick={handleConfirmDispatch}
-                            disabled={isAccepting}
-                            className={`w-full text-slate-900 py-4 rounded-2xl font-black shadow-lg hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-2 disabled:opacity-50 ${dispatchType === 'platform' ? 'bg-primary shadow-blue-500/20' : 'bg-primary shadow-primary/20'}`}
-                        >
-                            {isAccepting ? <Loader2 className="w-5 h-5 animate-spin" /> : <><Truck className="w-5 h-5" /> Enviar en Camino</>}
-                        </button>
+                        <div className="pt-4 mt-2 border-t border-slate-100 shrink-0">
+                            <button
+                                onClick={handleConfirmDispatch}
+                                disabled={isAccepting}
+                                className={`w-full py-4 rounded-2xl font-black shadow-lg hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-2 disabled:opacity-50 ${
+                                    selectedDriver 
+                                        ? 'bg-primary text-slate-900 shadow-primary/20' 
+                                        : 'bg-blue-600 text-white shadow-blue-500/20'
+                                }`}
+                            >
+                                {isAccepting ? <Loader2 className="w-5 h-5 animate-spin" /> : (
+                                    <>
+                                        <Truck className="w-5 h-5" /> 
+                                        {selectedDriver ? 'Asignar Conductor de Confianza y Despachar' : 'Abrir Radar y Despachar Pedido'}
+                                    </>
+                                )}
+                            </button>
+                        </div>
                     </div>
                 </div>
             )}
@@ -1823,28 +2243,28 @@ export default function Orders() {
                             animate={{ y: 0 }}
                             exit={{ y: "100%" }}
                             transition={{ type: "spring", bounce: 0, duration: 0.4 }}
-                            className="bg-white rounded-t-[40px] sm:rounded-[40px] p-8 w-full max-w-lg shadow-2xl relative overflow-hidden flex flex-col max-h-[90vh]"
+                            className="bg-white rounded-t-[40px] sm:rounded-[40px] p-6 sm:p-8 w-full max-w-lg shadow-2xl relative overflow-hidden flex flex-col max-h-[92vh]"
                         >
-                            <div className="w-12 h-1.5 bg-slate-200 rounded-full mx-auto mb-6 sm:hidden shrink-0"></div>
+                            <div className="w-12 h-1.5 bg-slate-200 rounded-full mx-auto mb-4 sm:hidden shrink-0"></div>
                             {verificationSuccess ? (
                                 <div className="py-12 flex flex-col items-center justify-center text-center animate-in zoom-in-50 duration-500">
                                     <div className="w-24 h-24 bg-emerald-500 text-white rounded-full flex items-center justify-center mb-6 shadow-xl shadow-emerald-500/20">
                                         <CheckCircle className="w-16 h-16" />
                                     </div>
-                                    <h3 className="text-4xl font-black text-slate-900 mb-2">PAGO ACREDITADO</h3>
-                                    <p className="text-slate-500 font-bold text-lg">El pedido ha sido procesado con éxito</p>
-                                    <div className="mt-8 px-6 py-3 bg-emerald-50 text-emerald-600 rounded-2xl font-black text-sm border border-emerald-100 italic">
-                                        Puntos asignados al cliente automáticamente ✨
+                                    <h3 className="text-3xl font-black text-slate-900 mb-2">PAGO ACREDITADO</h3>
+                                    <p className="text-slate-500 font-bold text-base">Comanda iniciada con {prepMinutes} min de preparación</p>
+                                    <div className="mt-6 px-6 py-3 bg-emerald-50 text-emerald-600 rounded-2xl font-black text-sm border border-emerald-100 italic">
+                                        Cuenta regresiva activada en vivo para el cliente ✨
                                     </div>
                                 </div>
                             ) : (
                                 <>
-                                    <div className="flex justify-between items-start mb-8">
+                                    <div className="flex justify-between items-start mb-6 shrink-0">
                                         <div>
                                             <h3 className="text-2xl font-black text-slate-900 tracking-tight">
-                                                {selectedOrderForVerify.status === 'verificando_pago_delivery' ? 'Validar Pago Delivery' : 'Validar Pago Restaurante'}
+                                                {selectedOrderForVerify.status === 'verificando_pago_delivery' ? 'Validar Pago Delivery' : 'Validar Pago y Preparar'}
                                             </h3>
-                                            <p className="text-slate-500 font-bold text-xs uppercase tracking-widest mt-1">Revisión de Comprobante</p>
+                                            <p className="text-slate-500 font-bold text-xs uppercase tracking-widest mt-1">Revisión de Comprobante & Cocina</p>
                                         </div>
                                         <button 
                                             onClick={() => setVerifyModalOpen(false)}
@@ -1854,28 +2274,25 @@ export default function Orders() {
                                         </button>
                                     </div>
 
-                                    <div className="space-y-6">
+                                    <div className="flex-1 overflow-y-auto space-y-4 pr-1">
                                         {/* Reference Info */}
-                                        <div className="p-6 bg-slate-50 rounded-[32px] border border-slate-100">
-                                            <div className="flex items-center gap-4 mb-4">
-                                                <div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center shadow-sm text-slate-400">
-                                                    <CreditCard className="w-6 h-6" />
+                                        <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100">
+                                            <div className="flex items-center justify-between mb-3">
+                                                <div className="flex items-center gap-3">
+                                                    <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center shadow-sm text-slate-400">
+                                                        <CreditCard className="w-5 h-5" />
+                                                    </div>
+                                                    <div>
+                                                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Referencia</p>
+                                                        <p className="text-base font-black text-slate-900">
+                                                            #{selectedOrderForVerify.status === 'verificando_pago_delivery' ? selectedOrderForVerify.deliveryPaymentReference : selectedOrderForVerify.paymentReference || 'N/A'}
+                                                        </p>
+                                                    </div>
                                                 </div>
-                                                <div>
-                                                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Referencia reported</p>
-                                                    <p className="text-xl font-black text-slate-900">
-                                                        #{selectedOrderForVerify.status === 'verificando_pago_delivery' ? selectedOrderForVerify.deliveryPaymentReference : selectedOrderForVerify.paymentReference || 'N/A'}
-                                                    </p>
-                                                </div>
-                                            </div>
-                                            
-                                            <div className="flex items-center gap-4">
-                                                <div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center shadow-sm text-slate-400">
-                                                    <DollarSign className="w-6 h-6" />
-                                                </div>
-                                                <div>
-                                                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Monto a Verificar</p>
-                                                    <p className="text-xl font-black text-emerald-600">
+
+                                                <div className="text-right">
+                                                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Monto</p>
+                                                    <p className="text-lg font-black text-emerald-600">
                                                         ${selectedOrderForVerify.status === 'verificando_pago_delivery' ? selectedOrderForVerify.deliveryFee?.toFixed(2) : selectedOrderForVerify.total?.toFixed(2)}
                                                     </p>
                                                 </div>
@@ -1883,47 +2300,108 @@ export default function Orders() {
                                         </div>
 
                                         {/* Proof Image */}
-                                        <div className="relative group">
-                                            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 ml-1">Comprobante (Captura)</p>
+                                        <div className="relative">
+                                            <div className="flex justify-between items-center mb-1.5 px-1">
+                                                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Comprobante de Pago</p>
+                                                {(selectedOrderForVerify.status === 'verificando_pago_delivery' ? selectedOrderForVerify.deliveryPaymentProofUrl : selectedOrderForVerify.paymentProofUrl) && (
+                                                    <div className="flex gap-2">
+                                                        <button 
+                                                            type="button"
+                                                            onClick={() => setPreviewImageModal(selectedOrderForVerify.status === 'verificando_pago_delivery' ? selectedOrderForVerify.deliveryPaymentProofUrl! : selectedOrderForVerify.paymentProofUrl!)}
+                                                            className="text-xs font-black text-blue-600 hover:text-blue-800 flex items-center gap-1"
+                                                        >
+                                                            <Eye className="w-3.5 h-3.5" /> Ampliar
+                                                        </button>
+                                                        <a 
+                                                            href={selectedOrderForVerify.status === 'verificando_pago_delivery' ? selectedOrderForVerify.deliveryPaymentProofUrl : selectedOrderForVerify.paymentProofUrl}
+                                                            target="_blank"
+                                                            rel="noopener noreferrer"
+                                                            download={`pago_${selectedOrderForVerify.id}.jpg`}
+                                                            className="text-xs font-black text-slate-600 hover:text-slate-900 flex items-center gap-1"
+                                                        >
+                                                            <Download className="w-3.5 h-3.5" /> Descargar
+                                                        </a>
+                                                    </div>
+                                                )}
+                                            </div>
+
                                             <div 
-                                                className="w-full h-64 rounded-[32px] bg-slate-100 border-2 border-slate-200 overflow-hidden cursor-zoom-in"
-                                                onClick={() => window.open(selectedOrderForVerify.status === 'verificando_pago_delivery' ? selectedOrderForVerify.deliveryPaymentProofUrl : selectedOrderForVerify.paymentProofUrl, '_blank')}
+                                                className="w-full h-44 rounded-2xl bg-slate-100 border-2 border-slate-200 overflow-hidden cursor-zoom-in relative group"
+                                                onClick={() => {
+                                                    const img = selectedOrderForVerify.status === 'verificando_pago_delivery' ? selectedOrderForVerify.deliveryPaymentProofUrl : selectedOrderForVerify.paymentProofUrl;
+                                                    if (img) setPreviewImageModal(img);
+                                                }}
                                             >
                                                 {(selectedOrderForVerify.status === 'verificando_pago_delivery' ? selectedOrderForVerify.deliveryPaymentProofUrl : selectedOrderForVerify.paymentProofUrl) ? (
-                                                    <img 
-                                                        src={selectedOrderForVerify.status === 'verificando_pago_delivery' ? selectedOrderForVerify.deliveryPaymentProofUrl : selectedOrderForVerify.paymentProofUrl} 
-                                                        alt="Comprobante de pago" 
-                                                        className="w-full h-full object-cover hover:scale-105 transition-transform duration-500"
-                                                    />
+                                                    <>
+                                                        <img 
+                                                            src={selectedOrderForVerify.status === 'verificando_pago_delivery' ? selectedOrderForVerify.deliveryPaymentProofUrl : selectedOrderForVerify.paymentProofUrl} 
+                                                            alt="Comprobante de pago" 
+                                                            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                                                        />
+                                                        <div className="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white text-xs font-bold gap-1">
+                                                            <Eye className="w-4 h-4" /> Toca para ampliar
+                                                        </div>
+                                                    </>
                                                 ) : (
-                                                    <div className="w-full h-full flex flex-col items-center justify-center text-slate-300">
-                                                        <ImageIcon className="w-12 h-12 mb-2" />
-                                                        <p className="font-bold text-sm">Sin imagen adjunta</p>
+                                                    <div className="w-full h-full flex flex-col items-center justify-center text-slate-400">
+                                                        <ImageIcon className="w-10 h-10 mb-1 opacity-50" />
+                                                        <p className="font-bold text-xs">Sin captura adjunta</p>
                                                     </div>
                                                 )}
                                             </div>
                                         </div>
 
+                                        {/* Kitchen Preparation Time Selector */}
+                                        <div className="p-4 bg-amber-500/10 border border-amber-300/60 rounded-2xl">
+                                            <div className="flex items-center gap-2 mb-2">
+                                                <Clock className="w-4 h-4 text-amber-600" />
+                                                <label className="text-xs font-black text-amber-950 uppercase tracking-wide">
+                                                    Tiempo de Preparación en Cocina:
+                                                </label>
+                                            </div>
+                                            <p className="text-[11px] text-amber-800 font-medium mb-3">
+                                                Al aprobar, se activará automáticamente un contador regresivo en vivo en la pantalla del cliente.
+                                            </p>
+
+                                            <div className="grid grid-cols-4 gap-2">
+                                                {[15, 20, 30, 45].map((mins) => (
+                                                    <button
+                                                        key={mins}
+                                                        type="button"
+                                                        onClick={() => setPrepMinutes(mins)}
+                                                        className={`py-2 rounded-xl font-black text-xs transition-all border ${
+                                                            prepMinutes === mins 
+                                                                ? 'bg-amber-500 text-slate-900 border-amber-600 shadow-md font-black scale-105' 
+                                                                : 'bg-white text-slate-700 border-amber-200 hover:bg-amber-50'
+                                                        }`}
+                                                    >
+                                                        {mins} min
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        </div>
+
                                         {/* Actions */}
-                                        <div className="grid grid-cols-2 gap-4 pt-4">
+                                        <div className="grid grid-cols-2 gap-3 pt-2">
                                             <button
                                                 onClick={() => {
-                                                    if(window.confirm("¿Seguro que deseas rechazar este pago?")) {
+                                                    if(window.confirm("¿Seguro que deseas rechazar este comprobante?")) {
                                                         const isDelivery = selectedOrderForVerify.status === 'verificando_pago_delivery';
                                                         updateStatus(selectedOrderForVerify.id, isDelivery ? 'awaiting_delivery_payment' : 'pendiente_pago');
                                                         setVerifyModalOpen(false);
                                                     }
                                                 }}
-                                                className="bg-slate-100 text-slate-500 py-4 rounded-2xl font-black hover:bg-red-50 hover:text-red-500 transition-all"
+                                                className="bg-slate-100 text-slate-500 py-3.5 rounded-2xl font-black hover:bg-red-50 hover:text-red-500 transition-all text-sm"
                                             >
                                                 Rechazar
                                             </button>
                                             <button
                                                 onClick={handleConfirmPayment}
                                                 disabled={isVerifying}
-                                                className="bg-primary text-slate-900 py-4 rounded-2xl font-black shadow-xl shadow-primary/20 hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+                                                className="bg-primary text-slate-900 py-3.5 rounded-2xl font-black shadow-xl shadow-primary/20 hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-2 disabled:opacity-50 text-sm"
                                             >
-                                                {isVerifying ? <Loader2 className="w-5 h-5 animate-spin" /> : <><CheckCircle className="w-5 h-5" /> Aprobar</>}
+                                                {isVerifying ? <Loader2 className="w-5 h-5 animate-spin" /> : <><CheckCircle className="w-5 h-5" /> Aprobar e Iniciar Cocina</>}
                                             </button>
                                         </div>
                                     </div>
@@ -2198,35 +2676,6 @@ export default function Orders() {
                                         )}
                                     </div>
 
-                                    {/* Waiter Selection */}
-                                    <div className="space-y-2 pt-2 border-t border-slate-100">
-                                        <label className="text-[10px] font-black text-slate-400 uppercase ml-1 flex items-center gap-2">
-                                            <Users className="w-3 h-3" /> Mesero Asignado
-                                        </label>
-                                        <div className="relative">
-                                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3 h-3 text-slate-400" />
-                                            <input
-                                                type="text"
-                                                placeholder="Buscar mesero..."
-                                                value={waiterSearch}
-                                                onChange={(e) => setWaiterSearch(e.target.value)}
-                                                className="w-full bg-slate-50 border border-slate-200 py-2 pl-8 pr-4 rounded-xl outline-none focus:border-primary text-xs font-bold"
-                                            />
-                                        </div>
-                                        <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
-                                            {waiters
-                                                .filter(w => w.name.toLowerCase().includes(waiterSearch.toLowerCase()))
-                                                .map(waiter => (
-                                                    <button
-                                                        key={waiter.id}
-                                                        onClick={() => setSelectedWaiter(selectedWaiter?.id === waiter.id ? null : waiter)}
-                                                        className={`px-3 py-2 rounded-xl text-xs font-black whitespace-nowrap transition-all border ${selectedWaiter?.id === waiter.id ? 'bg-primary text-slate-900 border-primary' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'}`}
-                                                    >
-                                                        {waiter.name}
-                                                    </button>
-                                                ))}
-                                        </div>
-                                    </div>
 
                                     {/* Table Selection (Only for Local) */}
                                     {posOrderType === 'local' && (
@@ -2341,6 +2790,10 @@ export default function Orders() {
                         {(() => {
                             const radarOrder = orders.find(o => o.id === radarOrderId);
                             const isFound = radarOrder && (radarOrder.status === 'delivering' || radarOrder.status as any === 'asignado');
+                            const hasPreferred = !!radarOrder?.preferred_driver_id && preferredCountdown > 0;
+                            const preferredDriverName = hasPreferred 
+                                ? (drivers.find(d => d.id === radarOrder?.preferred_driver_id)?.full_name || 'Conductor asignado')
+                                : null;
                             
                             return (
                                 <>
@@ -2349,6 +2802,13 @@ export default function Orders() {
                                             <div className="w-24 h-24 bg-green-100 text-green-500 rounded-full flex items-center justify-center animate-in zoom-in duration-300">
                                                 <CheckCircle className="w-12 h-12" />
                                             </div>
+                                        ) : hasPreferred ? (
+                                            <>
+                                                <div className="absolute inset-0 bg-amber-400/20 rounded-full animate-ping" style={{ animationDuration: '1.5s' }}></div>
+                                                <div className="w-20 h-20 bg-amber-500 text-white rounded-full flex items-center justify-center relative z-10 shadow-lg shadow-amber-500/30">
+                                                    <Clock className="w-10 h-10 animate-pulse" />
+                                                </div>
+                                            </>
                                         ) : (
                                             <>
                                                 <div className="absolute inset-0 bg-emerald-500/20 rounded-full animate-ping" style={{ animationDuration: '2s' }}></div>
@@ -2362,12 +2822,31 @@ export default function Orders() {
                                     </div>
                                     
                                     <h3 className="text-2xl font-black text-slate-800 mb-2">
-                                        {isFound ? '¡Piloto Encontrado!' : 'Buscando Delivery...'}
+                                        {isFound 
+                                            ? '¡Piloto Encontrado!' 
+                                            : hasPreferred 
+                                            ? 'Conductor Preferido' 
+                                            : 'Buscando Delivery...'}
                                     </h3>
+
+                                    {hasPreferred && !isFound && (
+                                        <div className="bg-amber-50 border border-amber-200 rounded-2xl p-3 mb-4 w-full">
+                                            <p className="text-xs font-bold text-amber-800 flex items-center justify-center gap-1.5 mb-1">
+                                                <Clock className="w-3.5 h-3.5 text-amber-600 animate-spin" />
+                                                Esperando respuesta del conductor asignado:
+                                            </p>
+                                            <p className="text-2xl font-black text-amber-900">
+                                                {preferredCountdown}s
+                                            </p>
+                                            <p className="text-[10px] text-amber-600 mt-1">antes de abrir a radar general</p>
+                                        </div>
+                                    )}
                                     
                                     <p className="text-sm text-slate-500 mb-8 max-w-[250px] mx-auto leading-relaxed">
                                         {isFound 
                                             ? `El motorizado ${radarOrder?.waiterName || ''} ha aceptado el pedido y está en camino.` 
+                                            : hasPreferred
+                                            ? `Esperando confirmación exclusiva de ${preferredDriverName} (${preferredCountdown}s restantes).`
                                             : 'Notificando a todos los motorizados disponibles en un radio de 15km.'}
                                     </p>
 
@@ -2546,6 +3025,53 @@ export default function Orders() {
                     </motion.div>
                 </div>
             )}
+
+            {/* Image Preview Lightbox Modal */}
+            <AnimatePresence>
+                {previewImageModal && (
+                    <motion.div 
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        className="fixed inset-0 z-[200] flex items-center justify-center bg-black/85 backdrop-blur-md p-4"
+                        onClick={() => setPreviewImageModal(null)}
+                    >
+                        <motion.div 
+                            initial={{ scale: 0.9, opacity: 0 }}
+                            animate={{ scale: 1, opacity: 1 }}
+                            exit={{ scale: 0.9, opacity: 0 }}
+                            className="relative max-w-3xl max-h-[90vh] bg-slate-900 rounded-3xl p-3 shadow-2xl flex flex-col items-center"
+                            onClick={(e) => e.stopPropagation()}
+                        >
+                            <div className="absolute top-4 right-4 flex items-center gap-2 z-10">
+                                <a 
+                                    href={previewImageModal} 
+                                    download="comprobante_pago.jpg"
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="p-2.5 rounded-full bg-black/60 text-white hover:bg-black/80 transition-colors shadow-lg flex items-center gap-1.5 text-xs font-bold"
+                                    title="Descargar imagen"
+                                >
+                                    <Download className="w-4 h-4" />
+                                    <span>Descargar</span>
+                                </a>
+                                <button 
+                                    onClick={() => setPreviewImageModal(null)}
+                                    className="p-2.5 rounded-full bg-black/60 text-white hover:bg-black/80 transition-colors shadow-lg"
+                                >
+                                    <X className="w-5 h-5" />
+                                </button>
+                            </div>
+
+                            <img 
+                                src={previewImageModal} 
+                                alt="Comprobante ampliado" 
+                                className="max-w-full max-h-[82vh] object-contain rounded-2xl shadow-inner"
+                            />
+                        </motion.div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
         </div >
     );
 }
