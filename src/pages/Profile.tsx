@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { User, Mail, MapPin, CreditCard, LogOut, ShoppingBag, Settings, ChevronRight, ChevronDown, Clock, FileText, Bell, Navigation, X, Shield, UploadCloud, Star, Wallet, Gift, Award, MessageSquareWarning, Plus, Send, AlertCircle, CheckCircle, Store, Handshake, Fingerprint, Calendar, Trash2, AlertTriangle } from 'lucide-react';
+import { User, Mail, MapPin, CreditCard, LogOut, ShoppingBag, Settings, ChevronRight, ChevronDown, Clock, FileText, Bell, Navigation, X, Shield, UploadCloud, Star, Wallet, Gift, Award, MessageSquareWarning, Plus, Send, AlertCircle, CheckCircle, Store, Handshake, Fingerprint, Calendar, Trash2, AlertTriangle, Ticket } from 'lucide-react';
 import { Geolocation } from '@capacitor/geolocation';
 import { Capacitor } from '@capacitor/core';
 import { isDemoMode, UN2X3_LOGO } from '../lib/env';
@@ -101,6 +101,35 @@ export default function Profile() {
     const [selectedDetailActivity, setSelectedDetailActivity] = useState<any | null>(null);
     const [activeChatRequestId, setActiveChatRequestId] = useState<string | null>(null);
     const [showAllActivities, setShowAllActivities] = useState(false);
+    const [activeRaffle, setActiveRaffle] = useState<any>(null);
+    const [clientFooterText, setClientFooterText] = useState('Hecho con ❤️ en Venezuela');
+    const [warningModalConfig, setWarningModalConfig] = useState<{
+        title: string;
+        description: string;
+        onConfirm: () => void;
+    } | null>(null);
+
+    useEffect(() => {
+        supabase
+            .from('raffles')
+            .select('*')
+            .or('status.eq.active,is_active.eq.true')
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .maybeSingle()
+            .then(({ data }) => {
+                if (data) setActiveRaffle(data);
+            });
+
+        supabase
+            .from('app_branding')
+            .select('client_footer_text')
+            .eq('id', 'current')
+            .maybeSingle()
+            .then(({ data }) => {
+                if (data?.client_footer_text) setClientFooterText(data.client_footer_text);
+            });
+    }, []);
 
     const getActivityCategoryMeta = (activity: any) => {
         if (activity.type === 'transport') {
@@ -637,48 +666,77 @@ export default function Profile() {
         navigate('/');
     };
 
-    const handleToggleNotifications = async () => {
+    const confirmDisableNotifications = async () => {
         const uid = user?.id || (user as any)?.uid;
         if (!uid) return;
         setUpdatingNotifications(true);
         try {
-            const isEnabled = Boolean(
-                userData?.notificationsEnabled || 
-                userData?.notifications_enabled || 
-                (userData?.fcmTokens && userData.fcmTokens.length > 0) ||
-                (userData?.fcm_tokens && userData.fcm_tokens.length > 0)
-            );
-            if (isEnabled) {
-                await disableNotifications(uid);
-                localStorage.setItem('notifications_enabled', 'false');
+            await disableNotifications(uid);
+            localStorage.setItem('notifications_enabled', 'false');
+            await supabase.from('profiles').update({
+                notifications_enabled: false,
+                notificationsEnabled: false,
+                updated_at: new Date().toISOString()
+            }).eq('id', uid);
+            setUserData((prev: any) => ({
+                ...prev,
+                notificationsEnabled: false,
+                notifications_enabled: false,
+                fcmTokens: [],
+                fcm_tokens: []
+            }));
+            await refreshUserData();
+            toast.success("Notificaciones desactivadas");
+        } catch (err) {
+            console.error("Error toggling notifications", err);
+            toast.error("Ocurrió un error al procesar tu solicitud.");
+        } finally {
+            setUpdatingNotifications(false);
+        }
+    };
+
+    const handleToggleNotifications = async () => {
+        const uid = user?.id || (user as any)?.uid;
+        if (!uid) return;
+        const isEnabled = Boolean(
+            userData?.notificationsEnabled !== false && 
+            userData?.notifications_enabled !== false && 
+            localStorage.getItem('notifications_enabled') !== 'false'
+        );
+
+        if (isEnabled) {
+            setWarningModalConfig({
+                title: "¿Desactivar Notificaciones?",
+                description: "Para garantizar el funcionamiento de los pedidos, la seguridad de tu cuenta y el rastreo de rutas, es necesario que mantengas estas opciones activadas.",
+                onConfirm: confirmDisableNotifications
+            });
+            return;
+        }
+
+        setUpdatingNotifications(true);
+        try {
+            const result = await requestNotificationPermission(uid);
+            if (result.success) {
+                localStorage.setItem('notifications_enabled', 'true');
+                await supabase.from('profiles').update({
+                    notifications_enabled: true,
+                    notificationsEnabled: true,
+                    updated_at: new Date().toISOString()
+                }).eq('id', uid);
                 setUserData((prev: any) => ({
                     ...prev,
-                    notificationsEnabled: false,
-                    notifications_enabled: false,
-                    fcmTokens: [],
-                    fcm_tokens: []
+                    notificationsEnabled: true,
+                    notifications_enabled: true
                 }));
                 await refreshUserData();
-                toast.success("Notificaciones desactivadas");
-            } else {
-                const result = await requestNotificationPermission(uid);
-                if (result.success) {
-                    localStorage.setItem('notifications_enabled', 'true');
-                    setUserData((prev: any) => ({
-                        ...prev,
-                        notificationsEnabled: true,
-                        notifications_enabled: true
-                    }));
-                    await refreshUserData();
-                    sendAppNotification({
-                        title: '🔔 ¡Notificaciones Activadas!',
-                        body: 'Te avisaremos cuando tu conductor vaya en camino, llegue o haya avances en tus compras.',
-                        soundType: 'client'
-                    });
-                    toast.success("Notificaciones activadas con éxito 🎉");
-                } else if (result.error) {
-                    toast.error(result.error);
-                }
+                sendAppNotification({
+                    title: '🔔 ¡Notificaciones Activadas!',
+                    body: 'Te avisaremos cuando tu conductor vaya en camino, llegue o haya avances en tus compras.',
+                    soundType: 'client'
+                });
+                toast.success("Notificaciones activadas con éxito 🎉");
+            } else if (result.error) {
+                toast.error(result.error);
             }
         } catch (err) {
             console.error("Error toggling notifications", err);
@@ -1460,7 +1518,7 @@ export default function Profile() {
 
                 <div className="px-6 -mt-8">
                     <div className="bg-white rounded-3xl p-6 shadow-xl shadow-slate-200/50 space-y-6">
-                        <div className="grid grid-cols-4 gap-2">
+                        <div className="grid grid-cols-3 gap-3">
                             <div
                                 onClick={() => setShowRewardsModal(true)}
                                 className="bg-amber-50 p-3 rounded-2xl flex flex-col items-center justify-center gap-1.5 group cursor-pointer hover:bg-amber-100 transition-colors border border-amber-200/50"
@@ -1476,19 +1534,53 @@ export default function Profile() {
                                 <span className="text-[10px] font-bold text-slate-600 text-center leading-tight">Pedidos</span>
                             </div>
                             <div
-                                onClick={() => setShowAddressPicker(true)}
-                                className={`p-3 rounded-2xl flex flex-col items-center justify-center gap-1.5 group cursor-pointer transition-colors ${userData?.address ? 'bg-green-50 hover:bg-green-100' : 'bg-blue-50 hover:bg-blue-100'}`}
-                            >
-                                <MapPin className={`w-6 h-6 group-hover:scale-110 transition-transform ${userData?.address ? 'text-green-500' : 'text-blue-500'}`} />
-                                <span className="text-[10px] font-bold text-slate-600 text-center leading-tight">Direcciones</span>
-                            </div>
-                            <div
                                 onClick={() => navigate('/rewards')}
                                 className="bg-primary/5 p-3 rounded-2xl flex flex-col items-center justify-center gap-1.5 group cursor-pointer hover:bg-primary/10 transition-colors border border-primary/10"
                             >
                                 <Gift className="w-6 h-6 text-slate-900 group-hover:scale-110 transition-transform" />
                                 <span className="text-[10px] font-bold text-slate-900 text-center leading-tight">Regalos</span>
                             </div>
+                        </div>
+
+                        {/* Tarjeta del Próximo Sorteo Activo o Próximamente */}
+                        <div className="bg-gradient-to-r from-amber-500/10 via-amber-500/5 to-slate-50 border border-amber-200/80 rounded-2xl p-4 flex items-center justify-between gap-3 shadow-sm">
+                            <div className="flex items-center gap-3">
+                                <div className="w-11 h-11 rounded-2xl bg-amber-500 text-slate-950 flex items-center justify-center shrink-0 shadow-sm font-black text-xl">
+                                    🎁
+                                </div>
+                                <div>
+                                    {activeRaffle ? (
+                                        <>
+                                            <span className="text-[10px] font-black uppercase text-amber-700 tracking-wider block">
+                                                {activeRaffle.sundde_permit ? `Sorteo Oficial • SUNDDE ${activeRaffle.sundde_permit}` : 'Gran Sorteo Activo 🎉'}
+                                            </span>
+                                            <h4 className="text-sm font-black text-slate-900 leading-snug">
+                                                {activeRaffle.title}
+                                            </h4>
+                                            <p className="text-[11px] text-slate-600 font-medium mt-0.5">
+                                                Premio: <strong className="text-amber-800">{activeRaffle.prize_name || activeRaffle.description || 'Premios Especiales'}</strong>
+                                                {activeRaffle.draw_date && ` • ${new Date(activeRaffle.draw_date).toLocaleDateString()}`}
+                                            </p>
+                                        </>
+                                    ) : (
+                                        <>
+                                            <h4 className="text-sm font-black text-slate-900 leading-snug">
+                                                ¡Muy pronto una gran noticia!
+                                            </h4>
+                                            <p className="text-[11px] text-slate-500 font-medium mt-0.5">
+                                                Acumula puntos con cada viaje o compra para participar en los próximos sorteos.
+                                            </p>
+                                        </>
+                                    )}
+                                </div>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => navigate('/rewards')}
+                                className="shrink-0 px-3 py-2 bg-[#FFB800] hover:bg-amber-400 text-slate-950 font-black text-xs rounded-xl shadow-sm transition-all active:scale-95"
+                            >
+                                Canjear
+                            </button>
                         </div>
 
                         {myCredits.length > 0 && (
@@ -1740,8 +1832,8 @@ export default function Profile() {
 
                                     const itemsToRender = showAllActivities ? filtered : filtered.slice(0, 2);
 
-                                    return (
-                                        <div className="space-y-3">
+                                     return (
+                                        <div className="space-y-2">
                                             {itemsToRender.map(activity => {
                                                 const meta = getActivityCategoryMeta(activity);
                                                 const actDate = activity.created_at ? new Date(activity.created_at) : (activity.createdAt?.toDate ? activity.createdAt.toDate() : (activity.createdAt ? new Date(activity.createdAt) : null));
@@ -1751,7 +1843,7 @@ export default function Profile() {
                                                 const amountUsd = isRecharge ? (activity.amount || 0) : isTransport ? (parseFloat((activity as any).price || activity.fare || 0)) : (parseFloat(activity.total || 0) + parseFloat((activity as any).deliveryFee || (activity as any).delivery_fee || 0));
                                                 const amountBs = bcvRate > 0 ? (amountUsd * bcvRate).toFixed(2) : null;
 
-                                                 return (
+                                                return (
                                                     <div 
                                                         key={activity.id} 
                                                         onClick={() => setSelectedDetailActivity(activity)}
@@ -1854,14 +1946,14 @@ export default function Profile() {
                                         </div>
                                     </div>
                                     <div
-                                        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${userData?.notificationsEnabled || userData?.notifications_enabled || (userData?.fcmTokens && userData.fcmTokens.length > 0) || (userData?.fcm_tokens && userData.fcm_tokens.length > 0) || localStorage.getItem('notifications_enabled') === 'true' ? 'bg-green-500' : 'bg-slate-300'
+                                        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${userData?.notificationsEnabled !== false && userData?.notifications_enabled !== false && localStorage.getItem('notifications_enabled') !== 'false' ? 'bg-green-500' : 'bg-slate-300'
                                             }`}
                                     >
                                         {updatingNotifications ? (
                                             <div className="ml-1 w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
                                         ) : (
                                             <span
-                                                className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${userData?.notificationsEnabled || userData?.notifications_enabled || (userData?.fcmTokens && userData.fcmTokens.length > 0) || (userData?.fcm_tokens && userData.fcm_tokens.length > 0) || localStorage.getItem('notifications_enabled') === 'true' ? 'translate-x-6' : 'translate-x-1'
+                                                className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${userData?.notificationsEnabled !== false && userData?.notifications_enabled !== false && localStorage.getItem('notifications_enabled') !== 'false' ? 'translate-x-6' : 'translate-x-1'
                                                     }`}
                                             />
                                         )}
@@ -1872,51 +1964,64 @@ export default function Profile() {
                                     onClick={async () => {
                                         const uid = user?.id || user?.uid;
                                         if (!uid) return;
+                                        const isCurrentlyActive = Boolean(userData?.biometricLockEnabled || userData?.biometric_lock_enabled || localStorage.getItem('biometric_lock_enabled') === 'true');
+                                        if (isCurrentlyActive) {
+                                            setWarningModalConfig({
+                                                title: "¿Desactivar Bloqueo Biométrico?",
+                                                description: "Para garantizar el funcionamiento de los pedidos, la seguridad de tu cuenta y el rastreo de rutas, es necesario que mantengas estas opciones activadas.",
+                                                onConfirm: async () => {
+                                                    setUpdatingBiometrics(true);
+                                                    try {
+                                                        localStorage.setItem('biometric_lock_enabled', 'false');
+                                                        await supabase.from('profiles').update({
+                                                            biometricLockEnabled: false,
+                                                            biometric_lock_enabled: false,
+                                                            updated_at: new Date().toISOString()
+                                                        }).eq('id', uid);
+                                                        setUserData((prev) => prev ? {
+                                                            ...prev,
+                                                            biometricLockEnabled: false,
+                                                            biometric_lock_enabled: false
+                                                        } : prev);
+                                                        sessionStorage.removeItem('deliexpress_is_unlocked');
+                                                        setIsUnlocked(true);
+                                                        toast.success('Bloqueo biométrico desactivado');
+                                                    } catch (err: any) {
+                                                        console.error("Error setting up biometrics:", err);
+                                                        toast.error(err.message || 'Error al configurar biometría');
+                                                    } finally {
+                                                        setUpdatingBiometrics(false);
+                                                    }
+                                                }
+                                            });
+                                            return;
+                                        }
+
                                         setUpdatingBiometrics(true);
                                         try {
-                                            const isCurrentlyActive = Boolean(userData?.biometricLockEnabled || userData?.biometric_lock_enabled || localStorage.getItem('biometric_lock_enabled') === 'true');
-                                            if (isCurrentlyActive) {
-                                                // Disable
-                                                localStorage.setItem('biometric_lock_enabled', 'false');
+                                            const email = user?.email || userData?.email || '';
+                                            const biometricData = await registerBiometric(uid, email);
+                                            if (biometricData) {
+                                                localStorage.setItem('biometric_lock_enabled', 'true');
                                                 await supabase.from('profiles').update({
-                                                    biometricLockEnabled: false,
-                                                    biometric_lock_enabled: false,
+                                                    biometricLockEnabled: true,
+                                                    biometric_lock_enabled: true,
+                                                    biometricCredentialId: biometricData.id,
+                                                    biometric_credential_id: biometricData.id,
                                                     updated_at: new Date().toISOString()
                                                 }).eq('id', uid);
                                                 setUserData((prev) => prev ? {
                                                     ...prev,
-                                                    biometricLockEnabled: false,
-                                                    biometric_lock_enabled: false
+                                                    biometricLockEnabled: true,
+                                                    biometric_lock_enabled: true,
+                                                    biometricCredentialId: biometricData.id,
+                                                    biometric_credential_id: biometricData.id
                                                 } : prev);
-                                                sessionStorage.removeItem('deliexpress_is_unlocked');
+                                                sessionStorage.removeItem('deliexpress_is_unlocked', 'true');
                                                 setIsUnlocked(true);
-                                                toast.success('Bloqueo biométrico desactivado');
+                                                toast.success('Bloqueo biométrico activado');
                                             } else {
-                                                // Enable
-                                                const email = user?.email || userData?.email || '';
-                                                const biometricData = await registerBiometric(uid, email);
-                                                if (biometricData) {
-                                                    localStorage.setItem('biometric_lock_enabled', 'true');
-                                                    await supabase.from('profiles').update({
-                                                        biometricLockEnabled: true,
-                                                        biometric_lock_enabled: true,
-                                                        biometricCredentialId: biometricData.id,
-                                                        biometric_credential_id: biometricData.id,
-                                                        updated_at: new Date().toISOString()
-                                                    }).eq('id', uid);
-                                                    setUserData((prev) => prev ? {
-                                                        ...prev,
-                                                        biometricLockEnabled: true,
-                                                        biometric_lock_enabled: true,
-                                                        biometricCredentialId: biometricData.id,
-                                                        biometric_credential_id: biometricData.id
-                                                    } : prev);
-                                                    sessionStorage.setItem('deliexpress_is_unlocked', 'true');
-                                                    setIsUnlocked(true);
-                                                    toast.success('Bloqueo biométrico activado');
-                                                } else {
-                                                    toast.error('No se pudo activar la biometría');
-                                                }
+                                                toast.error('No se pudo activar la biometría');
                                             }
                                         } catch (err: any) {
                                             console.error("Error setting up biometrics:", err);
@@ -1955,91 +2060,104 @@ export default function Profile() {
                                     onClick={async () => {
                                         const uid = user?.id || (user as any)?.uid;
                                         if (!uid) return;
+                                        const isCurrentlyAllowed = Boolean(userData?.location_permissions_allowed !== false && userData?.locationPermissionsAllowed !== false && localStorage.getItem('locationPermissionsAllowed') !== 'false');
+                                        if (isCurrentlyAllowed) {
+                                            setWarningModalConfig({
+                                                title: "¿Desactivar Ubicación en Línea?",
+                                                description: "Para garantizar el funcionamiento de los pedidos, la seguridad de tu cuenta y el rastreo de rutas, es necesario que mantengas estas opciones activadas.",
+                                                onConfirm: async () => {
+                                                    setUpdatingLocation(true);
+                                                    try {
+                                                        await supabase.from('profiles').update({
+                                                            location_permissions_allowed: false,
+                                                            locationPermissionsAllowed: false,
+                                                            updated_at: new Date().toISOString()
+                                                        }).eq('id', uid);
+                                                        setUserData((prev: any) => ({ ...prev, location_permissions_allowed: false, locationPermissionsAllowed: false }));
+                                                        localStorage.setItem('locationPermissionsAllowed', 'false');
+                                                        await refreshUserData();
+                                                        toast.success('Ubicación en tiempo real desactivada');
+                                                    } catch (err: any) {
+                                                        console.error('Error toggling location permission:', err);
+                                                        toast.error(err?.message || 'Error al desactivar ubicación');
+                                                    } finally {
+                                                        setUpdatingLocation(false);
+                                                    }
+                                                }
+                                            });
+                                            return;
+                                        }
+
                                         setUpdatingLocation(true);
                                         try {
-                                            const isCurrentlyAllowed = Boolean(userData?.location_permissions_allowed ?? userData?.locationPermissionsAllowed ?? (localStorage.getItem('locationPermissionsAllowed') === 'true'));
-                                            if (isCurrentlyAllowed) {
-                                                // Disable
-                                                await supabase.from('profiles').update({
-                                                    location_permissions_allowed: false,
-                                                    locationPermissionsAllowed: false,
-                                                    updated_at: new Date().toISOString()
-                                                }).eq('id', uid);
-                                                setUserData((prev: any) => ({ ...prev, location_permissions_allowed: false, locationPermissionsAllowed: false }));
-                                                localStorage.setItem('locationPermissionsAllowed', 'false');
-                                                await refreshUserData();
-                                                toast.success('Ubicación en tiempo real desactivada');
+                                            let granted = false;
+                                            let userCoords: { lat: number; lng: number } | null = null;
+
+                                            if (Capacitor.isNativePlatform()) {
+                                                try {
+                                                    const permission = await Geolocation.requestPermissions();
+                                                    granted = permission.location === 'granted';
+                                                    if (granted) {
+                                                        const pos = await Geolocation.getCurrentPosition();
+                                                        userCoords = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+                                                    }
+                                                } catch (capErr) {
+                                                    console.warn('Capacitor geolocation permission error:', capErr);
+                                                }
                                             } else {
-                                                // Enable
-                                                let granted = false;
-                                                let userCoords: { lat: number; lng: number } | null = null;
-
-                                                if (Capacitor.isNativePlatform()) {
-                                                    try {
-                                                        const permission = await Geolocation.requestPermissions();
-                                                        granted = permission.location === 'granted';
-                                                        if (granted) {
-                                                            const pos = await Geolocation.getCurrentPosition();
-                                                            userCoords = { lat: pos.coords.latitude, lng: pos.coords.longitude };
-                                                        }
-                                                    } catch (capErr) {
-                                                        console.warn('Capacitor geolocation permission error:', capErr);
-                                                    }
-                                                } else {
-                                                    if (!navigator.geolocation) {
-                                                        toast.error('Tu navegador no soporta geolocalización');
-                                                        return;
-                                                    }
-                                                    userCoords = await new Promise<{ lat: number; lng: number } | null>((resolve) => {
-                                                        navigator.geolocation.getCurrentPosition(
-                                                            (pos) => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
-                                                            (geoErr) => {
-                                                                console.warn('High accuracy geolocation failed, trying standard accuracy:', geoErr);
-                                                                navigator.geolocation.getCurrentPosition(
-                                                                    (pos) => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
-                                                                    (fallbackErr) => {
-                                                                        console.warn('Fallback geolocation failed:', fallbackErr);
-                                                                        const savedLat = localStorage.getItem('userLat');
-                                                                        const savedLng = localStorage.getItem('userLng');
-                                                                        if (savedLat && savedLng) {
-                                                                            resolve({ lat: parseFloat(savedLat), lng: parseFloat(savedLng) });
-                                                                        } else {
-                                                                            resolve(null);
-                                                                        }
-                                                                    },
-                                                                    { enableHighAccuracy: false, timeout: 8000, maximumAge: 300000 }
-                                                                );
-                                                            },
-                                                            { enableHighAccuracy: true, timeout: 6000, maximumAge: 60000 }
-                                                        );
-                                                    });
-                                                    granted = !!userCoords;
+                                                if (!navigator.geolocation) {
+                                                    toast.error('Tu navegador no soporta geolocalización');
+                                                    return;
                                                 }
+                                                userCoords = await new Promise<{ lat: number; lng: number } | null>((resolve) => {
+                                                    navigator.geolocation.getCurrentPosition(
+                                                        (pos) => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+                                                        (geoErr) => {
+                                                            console.warn('High accuracy geolocation failed, trying standard accuracy:', geoErr);
+                                                            navigator.geolocation.getCurrentPosition(
+                                                                (pos) => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+                                                                (fallbackErr) => {
+                                                                    console.warn('Fallback geolocation failed:', fallbackErr);
+                                                                    const savedLat = localStorage.getItem('userLat');
+                                                                    const savedLng = localStorage.getItem('userLng');
+                                                                    if (savedLat && savedLng) {
+                                                                        resolve({ lat: parseFloat(savedLat), lng: parseFloat(savedLng) });
+                                                                    } else {
+                                                                        resolve(null);
+                                                                    }
+                                                                },
+                                                                { enableHighAccuracy: false, timeout: 8000, maximumAge: 300000 }
+                                                            );
+                                                        },
+                                                        { enableHighAccuracy: true, timeout: 6000, maximumAge: 60000 }
+                                                    );
+                                                });
+                                                granted = !!userCoords;
+                                            }
 
-                                                if (granted) {
-                                                    const payload: any = {
-                                                        location_permissions_allowed: true,
-                                                        locationPermissionsAllowed: true,
-                                                        updated_at: new Date().toISOString()
-                                                    };
-                                                    if (userCoords) {
-                                                        payload.coords = userCoords;
-                                                        localStorage.setItem('userLat', userCoords.lat.toString());
-                                                        localStorage.setItem('userLng', userCoords.lng.toString());
-                                                    }
-                                                    await supabase.from('profiles').update(payload).eq('id', uid);
-                                                    setUserData((prev: any) => ({ 
-                                                        ...prev, 
-                                                        location_permissions_allowed: true, 
-                                                        locationPermissionsAllowed: true,
-                                                        coords: userCoords || prev?.coords 
-                                                    }));
-                                                    localStorage.setItem('locationPermissionsAllowed', 'true');
-                                                    await refreshUserData();
-                                                    toast.success('Ubicación en tiempo real activada');
-                                                } else {
-                                                    toast.error('Se requiere permiso de ubicación para activar esta función');
+                                            if (granted) {
+                                                const payload: any = {
+                                                    location_permissions_allowed: true,
+                                                    locationPermissionsAllowed: true,
+                                                    updated_at: new Date().toISOString()
+                                                };
+                                                if (userCoords) {
+                                                    payload.coords = userCoords;
+                                                    localStorage.setItem('userLat', userCoords.lat.toString());
+                                                    localStorage.setItem('userLng', userCoords.lng.toString());
                                                 }
+                                                await supabase.from('profiles').update(payload).eq('id', uid);
+                                                setUserData((prev: any) => ({ 
+                                                    ...prev, 
+                                                    location_permissions_allowed: true, 
+                                                    locationPermissionsAllowed: true,
+                                                    coords: userCoords || prev?.coords 
+                                                }));
+                                                localStorage.setItem('locationPermissionsAllowed', 'true');
+                                                await refreshUserData();
+                                                toast.success('Ubicación en tiempo real activada');
+                                            } else {
+                                                toast.error('Se requiere permiso de ubicación para activar esta función');
                                             }
                                         } catch (err: any) {
                                             console.error('Error toggling location permission:', err);
@@ -2060,14 +2178,14 @@ export default function Profile() {
                                         </div>
                                     </div>
                                     <div
-                                        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${userData?.locationPermissionsAllowed || userData?.location_permissions_allowed || localStorage.getItem('locationPermissionsAllowed') === 'true' ? 'bg-emerald-500' : 'bg-slate-300'
+                                        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${userData?.location_permissions_allowed !== false && userData?.locationPermissionsAllowed !== false && localStorage.getItem('locationPermissionsAllowed') !== 'false' ? 'bg-emerald-500' : 'bg-slate-300'
                                             }`}
                                     >
                                         {updatingLocation ? (
                                             <div className="ml-1 w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
                                         ) : (
                                             <span
-                                                className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${userData?.locationPermissionsAllowed || userData?.location_permissions_allowed || localStorage.getItem('locationPermissionsAllowed') === 'true' ? 'translate-x-6' : 'translate-x-1'
+                                                className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${userData?.location_permissions_allowed !== false && userData?.locationPermissionsAllowed !== false && localStorage.getItem('locationPermissionsAllowed') !== 'false' ? 'translate-x-6' : 'translate-x-1'
                                                     }`}
                                             />
                                         )}
@@ -2157,7 +2275,7 @@ export default function Profile() {
                     onClick={() => window.location.href = 'https://deliexpress.app'}
                 >
                     <img src={UN2X3_LOGO} alt="Deliexpress" className="h-12 mx-auto mb-2" />
-                    <p className="text-[10px] uppercase tracking-widest font-bold text-slate-400">Hecho con ❤️ en Venezuela</p>
+                    <p className="text-[10px] uppercase tracking-widest font-bold text-slate-400">{clientFooterText}</p>
                 </div>
             </div>
 
@@ -2728,98 +2846,26 @@ export default function Profile() {
                                 </div>
 
                                 {/* Transparent Info Banner */}
-                                <div className="bg-amber-50 border border-amber-200/80 p-3.5 rounded-2xl text-xs text-amber-900 leading-relaxed space-y-1">
-                                    <p className="font-black text-[11px] flex items-center gap-1.5">
-                                        <Gift className="w-4 h-4 text-amber-600" />
-                                        ¡Cero intermediación, 100% beneficios!
+                                <div className="bg-amber-50 border border-amber-200/80 p-4 rounded-2xl text-xs text-amber-900 leading-relaxed space-y-2">
+                                    <p className="font-black text-xs flex items-center gap-1.5 text-amber-950">
+                                        <Gift className="w-4 h-4 text-amber-600 shrink-0" />
+                                        ¡Tus puntos valen grandes premios!
                                     </p>
-                                    <p className="text-[10px] text-amber-800">
-                                        Pagas tus viajes y pedidos directo al conductor o comercio en Efectivo o Pago Móvil. Con cada compra sumas puntos para canjear descuentos y premios.
+                                    <p className="text-[11px] text-amber-800 leading-relaxed">
+                                        Pagas directo al conductor o comercio. Con cada compra y viaje acumulas puntos para participar en los Sorteos Oficiales y Concursos de la plataforma.
                                     </p>
                                 </div>
 
-                                {/* Rewards Catalog */}
-                                <div className="space-y-3">
-                                    <h4 className="text-[10px] font-black uppercase text-slate-400 tracking-widest ml-1">
-                                        Catálogo de Premios Canjeables
-                                    </h4>
-
-                                    {/* Reward 1 */}
-                                    <div className="bg-slate-50 border border-slate-100 rounded-2xl p-3.5 flex items-center justify-between gap-3">
-                                        <div className="flex items-center gap-3">
-                                            <div className="w-10 h-10 rounded-xl bg-amber-100 text-amber-700 flex items-center justify-center font-black text-sm shrink-0">
-                                                $1
-                                            </div>
-                                            <div>
-                                                <p className="text-xs font-black text-slate-800">$1 Desc. en Viajes</p>
-                                                <p className="text-[10px] text-slate-400 font-bold">Válido en Taxi o Mototaxi</p>
-                                            </div>
-                                        </div>
-                                        <button
-                                            onClick={() => handleRedeemReward('$1 Desc. en Viajes', 50)}
-                                            className="px-3 py-1.5 bg-primary text-slate-900 font-black text-[11px] rounded-xl active:scale-95 transition-transform shrink-0"
-                                        >
-                                            50 pts
-                                        </button>
-                                    </div>
-
-                                    {/* Reward 2 */}
-                                    <div className="bg-slate-50 border border-slate-100 rounded-2xl p-3.5 flex items-center justify-between gap-3">
-                                        <div className="flex items-center gap-3">
-                                            <div className="w-10 h-10 rounded-xl bg-blue-100 text-blue-700 flex items-center justify-center font-black text-xs shrink-0">
-                                                FREE
-                                            </div>
-                                            <div>
-                                                <p className="text-xs font-black text-slate-800">Envío Gratis</p>
-                                                <p className="text-[10px] text-slate-400 font-bold">En restaurantes aliados</p>
-                                            </div>
-                                        </div>
-                                        <button
-                                            onClick={() => handleRedeemReward('Envío Gratis', 80)}
-                                            className="px-3 py-1.5 bg-primary text-slate-900 font-black text-[11px] rounded-xl active:scale-95 transition-transform shrink-0"
-                                        >
-                                            80 pts
-                                        </button>
-                                    </div>
-
-                                    {/* Reward 3 */}
-                                    <div className="bg-slate-50 border border-slate-100 rounded-2xl p-3.5 flex items-center justify-between gap-3">
-                                        <div className="flex items-center gap-3">
-                                            <div className="w-10 h-10 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center font-black text-sm shrink-0">
-                                                $3
-                                            </div>
-                                            <div>
-                                                <p className="text-xs font-black text-slate-800">$3 Desc. en Comida</p>
-                                                <p className="text-[10px] text-slate-400 font-bold">En pedidos superiores a $10</p>
-                                            </div>
-                                        </div>
-                                        <button
-                                            onClick={() => handleRedeemReward('$3 Desc. en Comida', 120)}
-                                            className="px-3 py-1.5 bg-primary text-slate-900 font-black text-[11px] rounded-xl active:scale-95 transition-transform shrink-0"
-                                        >
-                                            120 pts
-                                        </button>
-                                    </div>
-
-                                    {/* Reward 4 */}
-                                    <div className="bg-slate-50 border border-slate-100 rounded-2xl p-3.5 flex items-center justify-between gap-3">
-                                        <div className="flex items-center gap-3">
-                                            <div className="w-10 h-10 rounded-xl bg-purple-100 text-purple-700 flex items-center justify-center font-black text-sm shrink-0">
-                                                $5
-                                            </div>
-                                            <div>
-                                                <p className="text-xs font-black text-slate-800">$5 Desc. Carro Confort</p>
-                                                <p className="text-[10px] text-slate-400 font-bold">Viajes ejecutivos premium</p>
-                                            </div>
-                                        </div>
-                                        <button
-                                            onClick={() => handleRedeemReward('$5 Desc. Carro Confort', 200)}
-                                            className="px-3 py-1.5 bg-primary text-slate-900 font-black text-[11px] rounded-xl active:scale-95 transition-transform shrink-0"
-                                        >
-                                            200 pts
-                                        </button>
-                                    </div>
-                                </div>
+                                <button
+                                    onClick={() => {
+                                        setShowRewardsModal(false);
+                                        navigate('/rewards');
+                                    }}
+                                    className="w-full py-3.5 bg-primary hover:bg-amber-400 text-slate-900 font-black text-xs rounded-2xl shadow-lg shadow-primary/20 active:scale-95 transition-all flex items-center justify-center gap-2 cursor-pointer"
+                                >
+                                    <Ticket className="w-4 h-4" />
+                                    Ver Sorteos y Activaciones Disponibles
+                                </button>
                             </div>
                         </motion.div>
                     </div>
@@ -3015,6 +3061,43 @@ export default function Profile() {
                             onClose={() => setActiveChatRequestId(null)}
                             readOnly={true}
                         />
+                    </div>
+                </div>
+            )}
+
+            {/* Modal de Advertencia al intentar desactivar ajustes críticos */}
+            {warningModalConfig && (
+                <div className="fixed inset-0 z-[120] bg-slate-950/70 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
+                    <div className="bg-white rounded-3xl p-6 max-w-sm w-full shadow-2xl border border-slate-100 flex flex-col items-center text-center">
+                        <div className="w-16 h-16 bg-amber-100 rounded-full flex items-center justify-center mb-4">
+                            <AlertTriangle className="w-8 h-8 text-amber-600" />
+                        </div>
+                        <h4 className="text-lg font-black text-slate-900 mb-2">
+                            {warningModalConfig.title}
+                        </h4>
+                        <p className="text-xs text-slate-600 font-medium leading-relaxed mb-6">
+                            {warningModalConfig.description}
+                        </p>
+                        <div className="w-full flex flex-col gap-2">
+                            <button
+                                type="button"
+                                onClick={() => setWarningModalConfig(null)}
+                                className="w-full py-3.5 bg-emerald-600 hover:bg-emerald-700 text-white font-black text-sm rounded-2xl shadow-lg shadow-emerald-600/20 active:scale-95 transition-all"
+                            >
+                                Entendido, Mantener Activado
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    const action = warningModalConfig.onConfirm;
+                                    setWarningModalConfig(null);
+                                    action();
+                                }}
+                                className="w-full py-2.5 text-xs font-bold text-rose-500 hover:bg-rose-50 rounded-xl transition-colors"
+                            >
+                                Desactivar de todos modos
+                            </button>
+                        </div>
                     </div>
                 </div>
             )}

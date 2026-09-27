@@ -1518,7 +1518,7 @@ export default function Profile() {
 
                 <div className="px-6 -mt-8">
                     <div className="bg-white rounded-3xl p-6 shadow-xl shadow-slate-200/50 space-y-6">
-                        <div className="grid grid-cols-4 gap-2">
+                        <div className="grid grid-cols-3 gap-3">
                             <div
                                 onClick={() => setShowRewardsModal(true)}
                                 className="bg-amber-50 p-3 rounded-2xl flex flex-col items-center justify-center gap-1.5 group cursor-pointer hover:bg-amber-100 transition-colors border border-amber-200/50"
@@ -1532,13 +1532,6 @@ export default function Profile() {
                             >
                                 <ShoppingBag className="w-6 h-6 text-orange-500 group-hover:scale-110 transition-transform" />
                                 <span className="text-[10px] font-bold text-slate-600 text-center leading-tight">Pedidos</span>
-                            </div>
-                            <div
-                                onClick={() => setShowAddressPicker(true)}
-                                className={`p-3 rounded-2xl flex flex-col items-center justify-center gap-1.5 group cursor-pointer transition-colors ${userData?.address ? 'bg-green-50 hover:bg-green-100' : 'bg-blue-50 hover:bg-blue-100'}`}
-                            >
-                                <MapPin className={`w-6 h-6 group-hover:scale-110 transition-transform ${userData?.address ? 'text-green-500' : 'text-blue-500'}`} />
-                                <span className="text-[10px] font-bold text-slate-600 text-center leading-tight">Direcciones</span>
                             </div>
                             <div
                                 onClick={() => navigate('/rewards')}

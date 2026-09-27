@@ -1,6 +1,6 @@
 # Blueprint Arquitectónico y Diagramas de Flujo del Sistema
 
-Este documento describe la arquitectura base, los ciclos de vida de negocio y las pipelines de infraestructura críticas para el funcionamiento de "Un 2x3". El sistema se divide funcionalmente en Ride-Hailing, E-Commerce con Despacho, y Tracking GPS, operando bajo un entorno híbrido React/Capacitor/Flutter respaldado por Supabase y Firebase.
+Este documento describe la arquitectura base, los ciclos de vida de negocio y las pipelines de infraestructura críticas para el funcionamiento de "Un 2x3". El sistema se divide funcionalmente en Ride-Hailing, E-Commerce con Despacho, y Tracking GPS, operando bajo un entorno híbrido React/Capacitor/Flutter respaldado exclusivamente por Supabase (PostgreSQL, Realtime, Storage, Auth), optimizado para alto rendimiento y máxima eficiencia operativa.
 
 ## 1. Flujo de Ride-Hailing (Taxi)
 El ciclo de vida del servicio de transporte desde la solicitud inicial hasta la confirmación del pago.
@@ -117,8 +117,8 @@ graph TD
     end
 
     subgraph Infrastructure
-        WS_Out --> |WSS| S_RLS[Supabase Realtime / Firebase]
-        S_RLS --> |Event: UPDATE| DB[(PostgreSQL / Firestore)]
+        WS_Out --> |WSS| S_RLS[Supabase Realtime]
+        S_RLS --> |Event: UPDATE| DB[(PostgreSQL)]
     end
 
     subgraph Consumers

@@ -730,13 +730,27 @@ export default function ActiveTasksWidget() {
                                 </div>
 
                                 {/* Subtitle / Realtime Description */}
-                                <p
-                                    className={`text-xs font-bold leading-snug mb-2 ${
-                                        task.type === 'order' || isArriving || isInProgress ? 'text-slate-100' : isExpired ? 'text-rose-900 font-black' : 'text-slate-900'
-                                    }`}
-                                >
-                                    {isExpired ? '⚠️ No encontramos conductores disponibles en este momento.' : task.subtitle}
-                                </p>
+                                {task.type === 'order' ? (
+                                    <div className="mb-2.5 p-2.5 rounded-2xl bg-white/10 border border-white/15 flex items-start gap-2.5 backdrop-blur-md">
+                                        <MessageCircle className="w-4 h-4 text-primary shrink-0 mt-0.5 animate-bounce" />
+                                        <div className="min-w-0 flex-1">
+                                            <p className="text-[11px] font-bold text-slate-100 leading-snug">
+                                                {task.subtitle}
+                                            </p>
+                                            <span className="text-[9px] font-black text-primary uppercase tracking-wider block mt-1">
+                                                💬 Toca para entrar al chat en vivo y administrar tu compra
+                                            </span>
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <p
+                                        className={`text-xs font-bold leading-snug mb-2 ${
+                                            isArriving || isInProgress ? 'text-slate-100' : isExpired ? 'text-rose-900 font-black' : 'text-slate-900'
+                                        }`}
+                                    >
+                                        {isExpired ? '⚠️ No encontramos conductores disponibles en este momento.' : task.subtitle}
+                                    </p>
+                                )}
 
                                 {/* Pastilla con ofertas recibidas para Muchacho e' Mandao */}
                                 {isMandado && isSearching && hasBids && (
@@ -796,7 +810,7 @@ export default function ActiveTasksWidget() {
                                     </div>
                                 )}
 
-                                {/* Destination row */}
+                                {/* Destination / Action row */}
                                 <div
                                     className={`pt-2 border-t flex items-center justify-between text-[11px] font-bold ${
                                         task.type === 'order' || isArriving || isInProgress
@@ -804,13 +818,13 @@ export default function ActiveTasksWidget() {
                                             : 'border-black/10 text-slate-800'
                                     }`}
                                 >
-                                    <div className="flex items-center gap-1.5 truncate max-w-[200px]">
-                                        <MapPin className="w-3.5 h-3.5 shrink-0 opacity-75" />
+                                    <div className="flex items-center gap-1.5 truncate max-w-[190px]">
+                                        <MapPin className={`w-3.5 h-3.5 shrink-0 ${task.type === 'order' ? 'text-primary' : 'opacity-75'}`} />
                                         <span className="truncate">{task.destinationName}</span>
                                     </div>
 
-                                    <div className="flex items-center gap-1 shrink-0 font-black uppercase text-[10px] tracking-wider group-hover:translate-x-0.5 transition-transform">
-                                        <span>Ver mapa en vivo</span>
+                                    <div className={`flex items-center gap-1 shrink-0 font-black uppercase text-[10px] tracking-wider transition-transform ${task.type === 'order' ? 'text-primary' : ''}`}>
+                                        <span>{task.type === 'order' ? 'Entrar al Chat y Administrar' : 'Ver mapa en vivo'}</span>
                                         <ArrowRight className="w-3.5 h-3.5" />
                                     </div>
                                 </div>

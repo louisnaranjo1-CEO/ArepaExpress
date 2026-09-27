@@ -1,4 +1,4 @@
-import { ArrowLeft, ShoppingCart, MapPin, CreditCard, Trash2, Minus, Plus, ArrowRight, CheckCircle2, Gift, AlertCircle, Award, X, Store, Bike, Navigation, Loader2 } from 'lucide-react';
+import { ArrowLeft, ShoppingCart, MapPin, CreditCard, Trash2, Minus, Plus, ArrowRight, CheckCircle2, Gift, AlertCircle, Award, X, Store, Bike, Navigation, Loader2, MessageCircle } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useCart } from '../context/CartContext';
 import { useAuth } from '../context/AuthContext';
@@ -28,6 +28,25 @@ export default function Cart({ hideHeader = false }: CartProps) {
   const navigate = useNavigate();
   const [isCheckingOut, setIsCheckingOut] = useState(false);
   const [orderId, setOrderId] = useState<string | null>(null);
+
+  // Fidelization Config from Superadmin (app_settings -> fidelization)
+  const [fidelizationConfig, setFidelizationConfig] = useState<{ pointsPerDollar: number; pointsEnabled: boolean }>({
+    pointsPerDollar: 1,
+    pointsEnabled: true
+  });
+
+  useEffect(() => {
+    supabase.from('app_settings').select('*').eq('id', 'fidelization').maybeSingle()
+      .then(({ data }) => {
+        if (data?.data) {
+          setFidelizationConfig({
+            pointsPerDollar: data.data.pointsPerDollar !== undefined ? Number(data.data.pointsPerDollar) : 1,
+            pointsEnabled: data.data.pointsEnabled !== undefined ? Boolean(data.data.pointsEnabled) : true
+          });
+        }
+      })
+      .catch((e) => console.warn('Error fetching fidelization config in Cart:', e));
+  }, []);
   const [purchaseConfirmed, setPurchaseConfirmed] = useState<boolean | null>(null);
   const [whatsappLink, setWhatsappLink] = useState<string | null>(null);
   const [restaurantData, setRestaurantData] = useState<any>(null);
@@ -421,6 +440,9 @@ export default function Cart({ hideHeader = false }: CartProps) {
       const { error: insErr } = await supabase.from('orders').insert(orderData);
       if (insErr) throw insErr;
       setOrderId(newOrderId);
+      try {
+        localStorage.setItem('active_order_id', newOrderId);
+      } catch (e) {}
 
       // Contexto automático: Inyectar todo el carrito de compras en el primer mensaje del chat transaccional
       if (!isWaiter) {
@@ -1003,7 +1025,8 @@ export default function Cart({ hideHeader = false }: CartProps) {
 
                   {/* Dynamic Incentives Banners */}
                   {(() => {
-                    const pointsToEarn = Math.floor(cartSubtotalUSD * 2.5);
+                    if (!fidelizationConfig.pointsEnabled) return null;
+                    const pointsToEarn = Math.floor(cartSubtotalUSD * (fidelizationConfig.pointsPerDollar || 1));
                     const businessName = restaurantData?.name || 'este establecimiento';
                     const userGender = userData?.gender || 'masculine';
                     const selfDone = userGender === 'feminine' ? 'misma' : 'mismo';
@@ -1049,8 +1072,6 @@ export default function Cart({ hideHeader = false }: CartProps) {
                               </div>
                             </div>
                           )}
-
-
                         </>
                       );
                     }
@@ -1086,38 +1107,29 @@ export default function Cart({ hideHeader = false }: CartProps) {
                         </div>
                       </div>
 
-                      {!isWaiter && (deliveryMethod === 'app_delivery' || deliveryMethod === 'own_delivery') && restaurantData?.businessType !== 'hotel' && (
-                        <div className="space-y-2">
-                          <div className={`flex justify-between items-center p-4 rounded-2xl shadow-lg border transition-all ${
-                            isFreeDeliveryQualified 
-                              ? 'bg-emerald-500 text-white border-emerald-400' 
-                              : 'bg-primary text-black border-primary/20'
-                          }`}>
-                            <div>
-                              <span className="text-xs uppercase tracking-widest font-black block">Transporte Un 2x3</span>
-                              {isFreeDeliveryQualified && (
-                                <span className="text-[10px] font-bold text-emerald-100 flex items-center gap-1">
-                                  🎉 ¡Promoción Delivery Gratis aplicada!
-                                </span>
-                              )}
+                      {!isWaiter && restaurantData?.businessType !== 'hotel' && (
+                        <div className="bg-gradient-to-br from-amber-400/20 via-primary/10 to-amber-500/20 border-2 border-primary/40 p-4 rounded-2xl shadow-lg relative overflow-hidden backdrop-blur-md">
+                          <div className="flex items-start gap-3">
+                            <div className="w-11 h-11 rounded-2xl bg-primary text-slate-900 flex items-center justify-center shrink-0 shadow-md">
+                              <MessageCircle className="w-6 h-6" />
                             </div>
-                            <div className="text-right">
-                              {isFreeDeliveryQualified ? (
-                                <span className="text-2xl font-black text-white">$0.00</span>
-                              ) : (
-                                <DualPrice usdAmount={deliveryFee} usdClassName="text-2xl font-black text-black" bsClassName="text-[10px] text-black" showDivider={false} />
-                              )}
-                              <span className="text-[9px] block mt-0.5 font-black uppercase tracking-widest opacity-80">Pago al Delivery</span>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center justify-between gap-2">
+                                <span className="text-xs font-black uppercase tracking-wider text-slate-900 flex items-center gap-1.5">
+                                  Canal Directo con la Tienda
+                                  <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[9px] font-black bg-emerald-500 text-white animate-pulse">
+                                    En Vivo
+                                  </span>
+                                </span>
+                              </div>
+                              <p className="text-[11px] text-slate-600 font-medium mt-1 leading-snug">
+                                Tu pedido se gestiona directamente en el <strong className="text-slate-900 font-bold">Chat en Vivo</strong> con {restaurantData?.name || 'la tienda'}. Allí coordinas entrega, opciones de transporte, confirmación y estatus en tiempo real.
+                              </p>
+                              <div className="mt-2.5 flex items-center gap-2 text-[10px] font-black text-amber-900/80 bg-amber-400/20 px-2.5 py-1.5 rounded-xl border border-amber-400/30">
+                                💬 Al confirmar entrarás directo al chat para dar seguimiento y administrar tu compra.
+                              </div>
                             </div>
                           </div>
-
-                          {isFreeDeliveryEnabled && freeDeliveryMin > 0 && !isFreeDeliveryQualified && (
-                            <div className="bg-amber-500/15 border border-amber-400/40 p-2.5 rounded-xl text-center">
-                              <span className="text-[11px] font-bold text-amber-300">
-                                🛵 Agrega ${(freeDeliveryMin - cartSubtotalUSD).toFixed(2)} USD más a tu orden para Delivery Gratis
-                              </span>
-                            </div>
-                          )}
                         </div>
                       )}
                     </div>
@@ -1158,8 +1170,8 @@ export default function Cart({ hideHeader = false }: CartProps) {
                       </span>
                     ) : (
                       <>
-                        {restaurantData?.businessType === 'hotel' ? <CheckCircle2 className="w-5 h-5" /> : <ArrowRight className="w-5 h-5" />}
-                        {isWaiter ? 'Enviar Comanda' : (restaurantData?.businessType === 'hotel' ? 'Confirmar Reservación' : (items.some(i => i.consultPrice || !i.price) ? 'Confirmar y Pedir' : 'Confirmar Pedido'))}
+                        {restaurantData?.businessType === 'hotel' ? <CheckCircle2 className="w-5 h-5" /> : <MessageCircle className="w-5 h-5" />}
+                        {isWaiter ? 'Enviar Comanda' : (restaurantData?.businessType === 'hotel' ? 'Confirmar Reservación' : 'Entrar al Chat y Administrar Compra')}
                       </>
                     )}
                   </button>
