@@ -74,11 +74,11 @@ export default function AdminAuth() {
     };
 
     return (
-        <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-6 relative overflow-hidden">
+        <div className="min-h-screen bg-[#FFDE00] flex flex-col items-center justify-center p-6 relative overflow-hidden">
             {/* Background elements */}
             <div className="absolute top-0 left-0 w-full h-full overflow-hidden pointer-events-none -z-10">
-                <div className="absolute top-[-10%] right-[-10%] w-[40%] h-[40%] bg-primary/10 rounded-full blur-3xl animate-pulse"></div>
-                <div className="absolute bottom-[-10%] left-[-10%] w-[40%] h-[40%] bg-orange-400/10 rounded-full blur-3xl animate-pulse delay-700"></div>
+                <div className="absolute top-[-10%] right-[-10%] w-[40%] h-[40%] bg-black/5 rounded-full blur-3xl"></div>
+                <div className="absolute bottom-[-10%] left-[-10%] w-[40%] h-[40%] bg-white/20 rounded-full blur-3xl"></div>
             </div>
 
             <div className="w-full max-w-md animate-in fade-in slide-in-from-bottom-8 duration-700">
@@ -93,46 +93,46 @@ export default function AdminAuth() {
                             className="h-full object-contain"
                         />
                     </div>
-                    <h1 className="text-3xl font-black text-slate-900 tracking-tight">Administra tu negocio <span className="text-slate-900">en un 2x3</span></h1>
-                    <p className="text-slate-500 mt-2 font-medium">
+                    <h1 className="text-3xl font-black text-black tracking-tight">Administra tu cuenta <span className="text-black">en un 2x3</span></h1>
+                    <p className="text-black/80 mt-2 font-bold">
                         {isLogin ? 'Ingresa para gestionar tu negocio' : 'Registra tu negocio y empieza a vender'}
                     </p>
                 </div>
 
-                <div className="bg-white rounded-[40px] p-8 shadow-2xl shadow-slate-200/60 border border-slate-100">
+                <div className="bg-white rounded-[40px] p-8 shadow-2xl shadow-black/10 border border-black/10 text-black">
                     <form onSubmit={handleSubmit} className="space-y-4">
                         {!isLogin && (
                             <div className="space-y-4 animate-in fade-in zoom-in-95 duration-300">
                                 <div className="relative">
-                                    <Building2 className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
+                                    <Building2 className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-500" />
                                     <input
                                         type="text"
                                         placeholder={businessType === 'restaurant' ? "Nombre del Restaurante" : "Nombre del Hotel / Posada"}
                                         value={restaurantName}
                                         onChange={(e) => setRestaurantName(e.target.value)}
                                         required
-                                        className="w-full bg-slate-50 border-2 border-transparent focus:border-primary focus:bg-white p-4 pl-12 rounded-2xl outline-none transition-all font-bold text-slate-700"
+                                        className="w-full bg-slate-50 border-2 border-slate-200 focus:border-black focus:bg-white p-4 pl-12 rounded-2xl outline-none transition-all font-bold text-black"
                                     />
                                 </div>
                                 <div className="relative">
-                                    <FileText className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
+                                    <FileText className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-500" />
                                     <input
                                         type="text"
                                         placeholder="RIF (Ej: J-12345678-9)"
                                         value={rif}
                                         onChange={(e) => setRif(e.target.value)}
                                         required
-                                        className="w-full bg-slate-50 border-2 border-transparent focus:border-primary focus:bg-white p-4 pl-12 rounded-2xl outline-none transition-all font-bold text-slate-700"
+                                        className="w-full bg-slate-50 border-2 border-slate-200 focus:border-black focus:bg-white p-4 pl-12 rounded-2xl outline-none transition-all font-bold text-black"
                                     />
                                 </div>
-                                <div className="grid grid-cols-2 gap-3 p-1.5 bg-slate-50 rounded-2xl border border-slate-100/50">
+                                <div className="grid grid-cols-2 gap-3 p-1.5 bg-slate-50 rounded-2xl border border-slate-200">
                                     <button
                                         type="button"
                                         onClick={() => setBusinessType('restaurant')}
                                         className={`flex items-center justify-center gap-2 py-3 rounded-xl font-bold transition-all ${
                                             businessType === 'restaurant' 
-                                            ? 'bg-white text-primary shadow-sm ring-1 ring-slate-200' 
-                                            : 'text-slate-400 hover:text-slate-600'
+                                            ? 'bg-black text-white shadow-sm ring-1 ring-black' 
+                                            : 'text-black/60 hover:text-black'
                                         }`}
                                     >
                                         <Store className="w-4 h-4" />
@@ -143,8 +143,8 @@ export default function AdminAuth() {
                                         onClick={() => setBusinessType('hotel')}
                                         className={`flex items-center justify-center gap-2 py-3 rounded-xl font-bold transition-all ${
                                             businessType === 'hotel' 
-                                            ? 'bg-white text-primary shadow-sm ring-1 ring-slate-200' 
-                                            : 'text-slate-400 hover:text-slate-600'
+                                            ? 'bg-black text-white shadow-sm ring-1 ring-black' 
+                                            : 'text-black/60 hover:text-black'
                                         }`}
                                     >
                                         <Hotel className="w-4 h-4" />
@@ -155,26 +155,26 @@ export default function AdminAuth() {
                         )}
 
                         <div className="relative">
-                            <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
+                            <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-500" />
                             <input
                                 type="email"
                                 placeholder="Correo Institucional"
                                 value={email}
                                 onChange={(e) => setEmail(e.target.value)}
                                 required
-                                className="w-full bg-slate-50 border-2 border-transparent focus:border-primary focus:bg-white p-4 pl-12 rounded-2xl outline-none transition-all font-bold text-slate-700"
+                                className="w-full bg-slate-50 border-2 border-slate-200 focus:border-black focus:bg-white p-4 pl-12 rounded-2xl outline-none transition-all font-bold text-black"
                             />
                         </div>
 
                         <div className="relative">
-                            <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
+                            <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-500" />
                             <input
                                 type="password"
                                 placeholder="Contraseña"
                                 value={password}
                                 onChange={(e) => setPassword(e.target.value)}
                                 required
-                                className="w-full bg-slate-50 border-2 border-transparent focus:border-primary focus:bg-white p-4 pl-12 rounded-2xl outline-none transition-all font-bold text-slate-700"
+                                className="w-full bg-slate-50 border-2 border-slate-200 focus:border-black focus:bg-white p-4 pl-12 rounded-2xl outline-none transition-all font-bold text-black"
                             />
                         </div>
 
@@ -187,7 +187,7 @@ export default function AdminAuth() {
                                         setForgotSuccess(false);
                                         setShowForgotModal(true);
                                     }}
-                                    className="text-xs font-bold text-slate-400 hover:text-primary transition-colors"
+                                    className="text-xs font-bold text-black/70 hover:text-black transition-colors"
                                 >
                                     ¿Olvidaste tu contraseña?
                                 </button>
@@ -203,14 +203,14 @@ export default function AdminAuth() {
                         <button
                             type="submit"
                             disabled={loading}
-                            className="w-full bg-primary text-slate-900 py-4 rounded-2xl font-black shadow-xl shadow-primary/30 hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-70 disabled:hover:scale-100 flex items-center justify-center gap-2 group mt-6"
+                            className="w-full bg-[#FFDE00] border-2 border-black text-black py-4 rounded-2xl font-black shadow-lg hover:bg-yellow-400 active:scale-[0.98] transition-all disabled:opacity-70 disabled:hover:scale-100 flex items-center justify-center gap-2 group mt-6 cursor-pointer"
                         >
                             {loading ? (
-                                <div className="w-6 h-6 border-3 border-white border-t-transparent rounded-full animate-spin"></div>
+                                <div className="w-6 h-6 border-3 border-black border-t-transparent rounded-full animate-spin"></div>
                             ) : (
                                 <>
                                     <span>{isLogin ? 'Entrar al Panel' : (businessType === 'restaurant' ? 'Registrar Restaurante' : 'Registrar Hotel')}</span>
-                                    <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
+                                    <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform stroke-[2.5]" />
                                 </>
                             )}
                         </button>
@@ -219,15 +219,15 @@ export default function AdminAuth() {
                     <div className="mt-8 flex flex-col items-center gap-4">
                         <div className="relative w-full flex items-center justify-center">
                             <div className="absolute inset-0 flex items-center">
-                                <div className="w-full border-t border-slate-100"></div>
+                                <div className="w-full border-t border-slate-200"></div>
                             </div>
-                            <span className="relative px-4 bg-white text-slate-400 text-xs font-bold uppercase tracking-widest">O continúa con</span>
+                            <span className="relative px-4 bg-white text-black font-black text-xs uppercase tracking-widest">O continúa con</span>
                         </div>
 
                         <button
                             onClick={handleGoogleAuth}
                             disabled={loading}
-                            className="w-full bg-white border-2 border-slate-100 text-slate-600 py-4 rounded-2xl font-black flex items-center justify-center gap-3 hover:bg-slate-50 transition-all active:scale-[0.98] disabled:opacity-50"
+                            className="w-full bg-white border-2 border-slate-200 text-black py-4 rounded-2xl font-black flex items-center justify-center gap-3 hover:bg-slate-50 transition-all active:scale-[0.98] disabled:opacity-50 cursor-pointer shadow-sm"
                         >
                             <svg className="w-5 h-5" viewBox="0 0 24 24">
                                 <path
@@ -253,7 +253,7 @@ export default function AdminAuth() {
                         <div className="w-full h-px bg-slate-100 hidden"></div>
                         <button
                             onClick={() => setIsLogin(!isLogin)}
-                            className="text-slate-500 font-bold hover:text-slate-900 transition-colors flex items-center gap-2"
+                            className="text-black font-black hover:opacity-80 transition-opacity flex items-center gap-2 mt-2"
                         >
                             {isLogin ? (
                                 <>

@@ -125,8 +125,10 @@ export default function RestaurantPage() {
   const isWaiter = localStorage.getItem('isWaiter') === 'true';
   const waiterData = JSON.parse(localStorage.getItem('waiterData') || '{}');
 
-  const { items, storeCarts, addItem, clearCart, clearStoreCart } = useCart();
-  const storeItems = (restaurant?.id && storeCarts[restaurant.id]) ? storeCarts[restaurant.id] : [];
+  const { items, storeCarts, addItem, clearCart, clearStoreCart, setActiveRestaurantId } = useCart();
+  const storeItems = (restaurant?.id && storeCarts[restaurant.id]?.length) 
+    ? storeCarts[restaurant.id] 
+    : items.filter(it => it.restaurantId === restaurant?.id);
   const storeTotalItems = storeItems.reduce((acc: number, it: any) => acc + (it.quantity || 0), 0);
   const storeTotalPrice = storeItems.reduce((acc: number, it: any) => acc + ((it.price || 0) * (it.quantity || 0)), 0);
 
@@ -700,9 +702,54 @@ export default function RestaurantPage() {
     window.open(`https://wa.me/${number}?text=${encodeURIComponent(text)}`, '_blank');
   };
 
-  const getRestaurantStatus = () => {
-    if (!restaurant || !restaurant.workingHours || restaurant.workingHours.length === 0) return { isOpen: true, text: 'Abierto' };
+  const normalizeWorkingHours = (wh: any): Array<{ day: string; open: string; close: string; closed: boolean }> => {
+    const defaultDays = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
+    if (!wh) {
+      return defaultDays.map(day => ({ day, open: '08:00', close: '22:00', closed: false }));
+    }
+    if (Array.isArray(wh)) {
+      return wh.map(item => ({
+        day: item.day || 'Lunes',
+        open: item.open || '08:00',
+        close: item.close || '22:00',
+        closed: Boolean(item.closed)
+      }));
+    }
+    if (typeof wh === 'object') {
+      const dayMap: Record<string, string> = {
+        lunes: 'Lunes', monday: 'Lunes', mon: 'Lunes',
+        martes: 'Martes', tuesday: 'Martes', tue: 'Martes',
+        miercoles: 'Miércoles', miércoles: 'Miércoles', wednesday: 'Miércoles', wed: 'Miércoles',
+        jueves: 'Jueves', thursday: 'Jueves', thu: 'Jueves',
+        viernes: 'Viernes', friday: 'Viernes', fri: 'Viernes',
+        sabado: 'Sábado', sábado: 'Sábado', saturday: 'Sábado', sat: 'Sábado',
+        domingo: 'Domingo', sunday: 'Domingo', sun: 'Domingo'
+      };
+      return defaultDays.map(day => {
+        const matchKey = Object.keys(wh).find(k => {
+          const clean = k.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+          const dayClean = day.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+          return clean === dayClean || dayMap[clean] === day;
+        });
+        const val = matchKey ? wh[matchKey] : null;
+        if (!val) {
+          return { day, open: '08:00', close: '22:00', closed: false };
+        }
+        return {
+          day,
+          open: val.open || '08:00',
+          close: val.close || '22:00',
+          closed: Boolean(val.closed)
+        };
+      });
+    }
+    return defaultDays.map(day => ({ day, open: '08:00', close: '22:00', closed: false }));
+  };
 
+  const getRestaurantStatus = () => {
+    if (!restaurant) return { isOpen: true, text: 'Abierto', todaySchedule: { open: '08:00', close: '22:00', closed: false } };
+
+    const hoursList = normalizeWorkingHours(restaurant.workingHours);
     const now = new Date();
     const days = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
     const currentDay = days[now.getDay()];
@@ -710,11 +757,26 @@ export default function RestaurantPage() {
     const minutes = now.getMinutes().toString().padStart(2, '0');
     const currentTimeStr = `${hours}:${minutes}`;
 
-    const todaySchedule = restaurant.workingHours.find((day: any) => day.day === currentDay);
+    const todaySchedule = hoursList.find(d => d.day.toLowerCase() === currentDay.toLowerCase()) || {
+      day: currentDay,
+      open: '08:00',
+      close: '22:00',
+      closed: false
+    };
 
-    if (!todaySchedule || todaySchedule.closed) return { isOpen: false, text: 'Cerrado' };
+    if (todaySchedule.closed) return { isOpen: false, text: 'Cerrado', todaySchedule };
 
-    const isOpen = currentTimeStr >= todaySchedule.open && currentTimeStr <= todaySchedule.close;
+    let isOpen = false;
+    if (todaySchedule.open && todaySchedule.close) {
+      if (todaySchedule.open <= todaySchedule.close) {
+        isOpen = currentTimeStr >= todaySchedule.open && currentTimeStr <= todaySchedule.close;
+      } else {
+        isOpen = currentTimeStr >= todaySchedule.open || currentTimeStr <= todaySchedule.close;
+      }
+    } else {
+      isOpen = true;
+    }
+
     return { isOpen, text: isOpen ? 'Abierto' : 'Cerrado', todaySchedule };
   };
 
@@ -1410,30 +1472,26 @@ export default function RestaurantPage() {
             type="button"
             onClick={() => {
               vibrate(30);
-              setIsStoreCartOpen(true);
+              if (restaurant?.id) {
+                setActiveRestaurantId(restaurant.id);
+              }
+              navigate('/cart');
             }}
-            className="w-full bg-primary hover:bg-emerald-600 active:bg-emerald-700 text-slate-900 rounded-2xl p-4 shadow-xl shadow-emerald-500/40 flex items-center justify-between transition-all ring-4 ring-white/10 backdrop-blur-sm active:scale-95"
+            className="w-full bg-[#FFDE00] hover:bg-yellow-400 active:bg-yellow-500 text-slate-950 rounded-2xl p-4 shadow-xl shadow-primary/30 flex items-center justify-between transition-all ring-4 ring-black/5 active:scale-95 cursor-pointer border border-black/10"
           >
             <div className="flex items-center gap-3">
-              <div className="bg-white/20 px-3 py-1 rounded-lg text-sm font-black flex items-center justify-center min-w-[36px]">{storeTotalItems}</div>
-              <span className="font-black text-base uppercase tracking-wider">
+              <div className="bg-black text-[#FFDE00] px-3 py-1 rounded-xl text-sm font-black flex items-center justify-center min-w-[36px] shadow-sm">{storeTotalItems}</div>
+              <span className="font-black text-base uppercase tracking-wider text-black">
                 {isWaiter ? 'Ver Comanda' : (restaurant.businessType === 'hotel' ? 'Ver Reservación' : (restaurant.businessType === 'store' || restaurant.businessType === 'tienda' ? 'Ver mi carrito' : 'Ver mi orden'))}
               </span>
             </div>
             <div className="flex items-center gap-2">
-              <span className="text-[10px] font-bold opacity-80 uppercase tracking-widest">Total</span>
-              <DualPrice usdAmount={storeTotalPrice} usdClassName="font-black text-xl leading-none" />
+              <span className="text-[10px] font-black opacity-80 uppercase tracking-widest text-black">Total</span>
+              <DualPrice usdAmount={storeTotalPrice} usdClassName="font-black text-xl leading-none text-black" />
             </div>
           </button>
         </div>
       )}
-
-      {/* Store Cart Drawer */}
-      <StoreCartDrawer
-        isOpen={isStoreCartOpen}
-        onClose={() => setIsStoreCartOpen(false)}
-        restaurant={restaurant}
-      />
 
       {/* Job Opportunities Modal */}
       <AnimatePresence>
@@ -1543,7 +1601,7 @@ export default function RestaurantPage() {
               </div>
 
               <div className="p-6 space-y-3 bg-white">
-                {restaurant.workingHours.map((wh: any, idx: number) => {
+                {normalizeWorkingHours(restaurant?.workingHours).map((wh: any, idx: number) => {
                   const days = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
                   const currentDay = days[new Date().getDay()];
                   const isToday = wh.day === currentDay;
