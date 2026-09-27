@@ -1286,7 +1286,7 @@ export default function Orders() {
                    </div>
                 )}
 
-                {(order.status === 'pending' || order.status === 'pendiente_pago' || order.status === 'pending_verification' || order.status === 'awaiting_delivery_payment') && (
+                {(order.status === 'pending' || order.status === 'pendiente_pago' || order.status === 'pending_verification' || order.status === 'awaiting_delivery_payment' || order.status === 'awaiting_payment') && (
                     <>
                         <button
                             onClick={() => setChatOrderId(order.id)}
@@ -1296,7 +1296,12 @@ export default function Orders() {
                             <MessageCircle className="w-5 h-5 text-slate-700" />
                             <span>Chat</span>
                         </button>
-                        {order.status === 'pending_verification' ? (
+                        {order.status === 'awaiting_payment' ? (
+                            <div className="flex-1 bg-emerald-50 text-emerald-700 py-4 rounded-2xl font-black border border-emerald-200 flex flex-col items-center justify-center gap-1">
+                                <span className="flex items-center gap-2"><CheckCircle className="w-4 h-4 text-emerald-500" /> Stock Confirmado</span>
+                                <span className="text-[10px] font-bold text-emerald-500 uppercase tracking-widest">Esperando Pago del Cliente</span>
+                            </div>
+                        ) : order.status === 'pending_verification' ? (
                             <button
                                 onClick={() => handleVerifyPayment(order.id)}
                                 className="flex-1 bg-primary text-slate-900 py-4 rounded-2xl font-black shadow-lg shadow-primary/20 hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-2"
@@ -1328,7 +1333,7 @@ export default function Orders() {
                                 )}
                             </button>
                         )}
-                        {!order.restaurantPaid && (
+                        {order.status !== 'awaiting_payment' && !order.restaurantPaid && (
                             <button
                                 onClick={() => updateStatus(order.id, 'rejected')}
                                 className="px-6 bg-slate-100 text-slate-500 py-4 rounded-2xl font-black hover:bg-red-50 hover:text-red-500 transition-all"
@@ -2308,35 +2313,6 @@ export default function Orders() {
                                         )}
                                     </div>
 
-                                    {/* Waiter Selection */}
-                                    <div className="space-y-2 pt-2 border-t border-slate-100">
-                                        <label className="text-[10px] font-black text-slate-400 uppercase ml-1 flex items-center gap-2">
-                                            <Users className="w-3 h-3" /> Mesero Asignado
-                                        </label>
-                                        <div className="relative">
-                                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3 h-3 text-slate-400" />
-                                            <input
-                                                type="text"
-                                                placeholder="Buscar mesero..."
-                                                value={waiterSearch}
-                                                onChange={(e) => setWaiterSearch(e.target.value)}
-                                                className="w-full bg-slate-50 border border-slate-200 py-2 pl-8 pr-4 rounded-xl outline-none focus:border-primary text-xs font-bold"
-                                            />
-                                        </div>
-                                        <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
-                                            {waiters
-                                                .filter(w => w.name.toLowerCase().includes(waiterSearch.toLowerCase()))
-                                                .map(waiter => (
-                                                    <button
-                                                        key={waiter.id}
-                                                        onClick={() => setSelectedWaiter(selectedWaiter?.id === waiter.id ? null : waiter)}
-                                                        className={`px-3 py-2 rounded-xl text-xs font-black whitespace-nowrap transition-all border ${selectedWaiter?.id === waiter.id ? 'bg-primary text-slate-900 border-primary' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'}`}
-                                                    >
-                                                        {waiter.name}
-                                                    </button>
-                                                ))}
-                                        </div>
-                                    </div>
 
                                     {/* Table Selection (Only for Local) */}
                                     {posOrderType === 'local' && (

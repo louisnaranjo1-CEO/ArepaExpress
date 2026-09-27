@@ -79,65 +79,7 @@ export default function TrackOrder() {
     const [deliverySettings, setDeliverySettings] = useState<any>(null);
     const [selectedVehicle, setSelectedVehicle] = useState<'moto' | 'carro'>('moto');
 
-    // Option B: Driver Proposal by Client while waiting
-    const [availableDrivers, setAvailableDrivers] = useState<any[]>([]);
-    const [showDriverProposalModal, setShowDriverProposalModal] = useState(false);
-    const [loadingDriversProposal, setLoadingDriversProposal] = useState(false);
-    const [proposingDriver, setProposingDriver] = useState(false);
 
-    const fetchDriversForProposal = async () => {
-        setLoadingDriversProposal(true);
-        try {
-            const { data } = await supabase.from('delivery_drivers').select('*');
-            if (data && data.length > 0) {
-                setAvailableDrivers(data);
-            } else {
-                const { data: profs } = await supabase.from('profiles').select('*').eq('role', 'driver');
-                setAvailableDrivers(profs || []);
-            }
-        } catch (e) {
-            console.error(e);
-        } finally {
-            setLoadingDriversProposal(false);
-        }
-    };
-
-    const handleProposeDriver = async (drv: any) => {
-        if (!orderId) return;
-        const driverName = drv.name || drv.displayName || drv.fullName || drv.full_name || 'Driver';
-        setProposingDriver(true);
-        try {
-            await supabase.from('orders').update({
-                preferred_driver_id: drv.id,
-                preferredDriverId: drv.id,
-                preferred_driver_name: driverName,
-                preferredDriverName: driverName,
-                updated_at: new Date().toISOString()
-            }).eq('id', orderId);
-
-            await supabase.from('messages').insert({
-                order_id: orderId,
-                orderId: orderId,
-                text: `🛵 *Sugerencia de Repartidor:* He propuesto a **${driverName}** como conductor de mi preferencia (sujeto a confirmación del negocio).`,
-                sender_id: user?.uid || 'guest',
-                senderId: user?.uid || 'guest',
-                sender_name: order?.userName || user?.displayName || 'Cliente',
-                senderName: order?.userName || user?.displayName || 'Cliente',
-                sender_role: 'client',
-                senderRole: 'client',
-                created_at: new Date().toISOString(),
-                createdAt: new Date().toISOString()
-            });
-
-            toast.success(`Has sugerido a ${driverName}`);
-            setShowDriverProposalModal(false);
-        } catch (e) {
-            console.error(e);
-            toast.error('Error al proponer repartidor');
-        } finally {
-            setProposingDriver(false);
-        }
-    };
 
     useEffect(() => {
         if (order) {
@@ -368,11 +310,6 @@ export default function TrackOrder() {
     const handleRestaurantPaid = async () => {
         if(!orderId || !order) return;
         
-        if (!paymentReference) {
-            toast.error('Por favor ingresa el número de referencia del pago.');
-            return;
-        }
-
         setIsUploading(true);
         try {
             const updates: any = {
@@ -924,37 +861,6 @@ export default function TrackOrder() {
                         </div>
                     )}
 
-                    {/* Client Driver Proposal Option while waiting */}
-                    {order.deliveryMethod !== 'pickup' && order.delivery_method !== 'pickup' && order.status !== 'cancelled' && order.status !== 'delivered' && !order.driver_id && !order.driverId && (
-                        <div className="mt-4 bg-slate-50 border border-slate-200 p-3 rounded-2xl flex items-center justify-between text-xs animate-in fade-in">
-                            <div className="flex items-center gap-2.5">
-                                <div className="w-8 h-8 rounded-xl bg-primary/20 text-slate-900 flex items-center justify-center shrink-0">
-                                    <Motorbike className="w-4 h-4" />
-                                </div>
-                                <div>
-                                    <span className="font-black text-slate-800 block text-xs">
-                                        {order.preferred_driver_name || order.preferredDriverName 
-                                            ? `Conductor sugerido: ${order.preferred_driver_name || order.preferredDriverName}`
-                                            : '¿Tienes un conductor de confianza?'}
-                                    </span>
-                                    <p className="text-[10px] text-slate-400 font-bold">
-                                        {order.preferred_driver_name || order.preferredDriverName 
-                                            ? 'Pendiente de confirmación por la tienda'
-                                            : 'Puedes sugerir qué driver quieres para tu entrega'}
-                                    </p>
-                                </div>
-                            </div>
-                            <button
-                                onClick={() => {
-                                    fetchDriversForProposal();
-                                    setShowDriverProposalModal(true);
-                                }}
-                                className="bg-white hover:bg-slate-100 text-slate-900 font-black px-3 py-1.5 rounded-xl border border-slate-200 shadow-sm shrink-0 active:scale-95 transition-all text-xs"
-                            >
-                                {order.preferred_driver_name || order.preferredDriverName ? 'Cambiar' : 'Sugerir'}
-                            </button>
-                        </div>
-                    )}
 
                     {/* Chat Window always visible until delivered/cancelled */}
                     {order.status !== 'cancelled' && order.status !== 'delivered' && (
@@ -1302,7 +1208,7 @@ export default function TrackOrder() {
                                         <div className="space-y-3">
                                             <input 
                                                 type="text" 
-                                                placeholder="Referencia (últimos 6 dígitos)"
+                                                placeholder="Referencia (últimos 6 dígitos) - Opcional"
                                                 value={paymentReference}
                                                 onChange={(e) => setPaymentReference(e.target.value)}
                                                 className="w-full bg-slate-50 border-2 border-slate-100 px-4 py-3 rounded-2xl text-sm font-bold outline-none focus:border-primary transition-all text-slate-700"
@@ -1311,7 +1217,7 @@ export default function TrackOrder() {
                                         
                                         <button 
                                             onClick={handleRestaurantPaid}
-                                            disabled={isUploading || !paymentReference}
+                                            disabled={isUploading}
                                             className="w-full bg-primary text-slate-900 py-4 rounded-2xl font-black shadow-xl shadow-primary/20 hover:scale-[1.02] active:scale-95 transition-all text-lg flex items-center justify-center gap-2 disabled:opacity-50"
                                         >
                                             {isUploading ? <Loader2 className="w-6 h-6 animate-spin text-slate-900" /> : <><Upload className="w-6 h-6" /> Informar Pago</>}
@@ -1806,72 +1712,6 @@ export default function TrackOrder() {
                 </div>
             )}
 
-            {/* Modal: Client Driver Proposal (Option B) */}
-            {showDriverProposalModal && (
-                <div className="fixed inset-0 bg-slate-950/70 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in">
-                    <div className="bg-white rounded-3xl p-5 w-full max-w-sm max-h-[85%] flex flex-col shadow-2xl border border-slate-200 animate-in zoom-in-95">
-                        <div className="flex items-center justify-between pb-3 border-b border-slate-100 mb-3">
-                            <div>
-                                <h4 className="font-black text-slate-900 text-sm flex items-center gap-1.5">
-                                    <Motorbike className="w-4 h-4 text-primary" /> Proponer Repartidor
-                                </h4>
-                                <p className="text-[10px] text-slate-500 font-bold">
-                                    Sujeto a confirmación por el administrador del local
-                                </p>
-                            </div>
-                            <button
-                                onClick={() => setShowDriverProposalModal(false)}
-                                className="w-7 h-7 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 hover:bg-slate-200"
-                            >
-                                <X className="w-4 h-4" />
-                            </button>
-                        </div>
-
-                        <div className="flex-1 overflow-y-auto space-y-2 pr-1 text-xs">
-                            {loadingDriversProposal ? (
-                                <div className="text-center py-8 text-slate-400">
-                                    <Loader2 className="w-6 h-6 animate-spin mx-auto text-primary" />
-                                    <span className="text-[10px] font-bold mt-2 block">Cargando conductores disponibles...</span>
-                                </div>
-                            ) : availableDrivers.length === 0 ? (
-                                <p className="text-center py-6 text-slate-400 font-bold text-xs">No hay conductores registrados en este momento.</p>
-                            ) : (
-                                availableDrivers.map((drv: any) => {
-                                    const dName = drv.name || drv.displayName || drv.fullName || drv.full_name || 'Driver';
-                                    const isChosen = (order?.preferred_driver_id || order?.preferredDriverId) === drv.id;
-                                    return (
-                                        <div
-                                            key={drv.id}
-                                            onClick={() => handleProposeDriver(drv)}
-                                            className={`p-3 rounded-2xl border flex items-center justify-between cursor-pointer transition-all active:scale-95 ${
-                                                isChosen
-                                                    ? 'bg-primary/10 border-primary text-slate-900 shadow-sm'
-                                                    : 'bg-slate-50 border-slate-200/80 hover:bg-slate-100'
-                                            }`}
-                                        >
-                                            <div className="flex items-center gap-2.5">
-                                                <div className="w-8 h-8 rounded-xl bg-slate-200 flex items-center justify-center text-slate-700">
-                                                    <Motorbike className="w-4 h-4" />
-                                                </div>
-                                                <div>
-                                                    <p className="font-black text-xs text-slate-900">{dName}</p>
-                                                    <span className="text-[10px] text-slate-400 font-bold">{drv.vehicleType || drv.vehicle_type || 'Moto'}</span>
-                                                </div>
-                                            </div>
-                                            <button
-                                                disabled={proposingDriver}
-                                                className="bg-primary text-slate-900 font-black text-[10px] px-2.5 py-1.5 rounded-xl shadow-sm"
-                                            >
-                                                {isChosen ? 'Seleccionado' : 'Proponer'}
-                                            </button>
-                                        </div>
-                                    );
-                                })
-                            )}
-                        </div>
-                    </div>
-                </div>
-            )}
 
             <ReviewModal
                 isOpen={showReviewModal}
