@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Search, Filter, Clock, MapPin, ChevronRight, Bike, Truck, CheckCircle, Loader2, Bell, ExternalLink, X, ShoppingCart, Plus, Minus, Trash2, User, CreditCard, Store, ShoppingBag, Users, Upload, Image as ImageIcon, DollarSign, Edit } from 'lucide-react';
+import { Search, Filter, Clock, MapPin, ChevronRight, Bike, Truck, CheckCircle, Loader2, Bell, ExternalLink, X, ShoppingCart, Plus, Minus, Trash2, User, CreditCard, Store, ShoppingBag, Users, Upload, Image as ImageIcon, DollarSign, Edit, MessageCircle, Package } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../context/AuthContext';
 import { printToUsbDevice, formatTicket, PrintOrder } from '../../lib/usb-printer';
@@ -1290,10 +1290,11 @@ export default function Orders() {
                     <>
                         <button
                             onClick={() => setChatOrderId(order.id)}
-                            className="px-6 bg-slate-100 text-slate-500 py-4 rounded-2xl font-black hover:bg-slate-200 transition-all flex items-center justify-center gap-2"
-                            title="Chatear"
+                            className="px-5 bg-slate-100 text-slate-800 py-4 rounded-2xl font-black hover:bg-slate-200 active:scale-95 transition-all flex items-center justify-center gap-2 border border-slate-200 shadow-sm"
+                            title="Abrir Chat con Cliente"
                         >
-                            <Bell className="w-5 h-5" />
+                            <MessageCircle className="w-5 h-5 text-slate-700" />
+                            <span>Chat</span>
                         </button>
                         {order.status === 'pending_verification' ? (
                             <button
@@ -1352,16 +1353,34 @@ export default function Orders() {
                         >
                             <Truck className="w-5 h-5" /> Enviado
                         </button>
+                        <button
+                            onClick={() => setChatOrderId(order.id)}
+                            className="px-4 bg-slate-100 text-slate-700 py-4 rounded-2xl font-black hover:bg-slate-200 transition-all flex items-center justify-center gap-1.5 border border-slate-200 shadow-sm"
+                            title="Abrir Chat"
+                        >
+                            <MessageCircle className="w-5 h-5 text-slate-700" />
+                            <span>Chat</span>
+                        </button>
                     </div>
                 )}
 
                 {order.status === 'delivering' && (
-                    <button
-                        onClick={() => updateStatus(order.id, 'delivered')}
-                        className="flex-1 bg-green-500 text-white py-4 rounded-2xl font-black shadow-lg shadow-green-500/20 hover:scale-[1.02] active:scale-[0.98] transition-all"
-                    >
-                        Confirmar Entrega
-                    </button>
+                    <div className="flex w-full gap-2">
+                        <button
+                            onClick={() => updateStatus(order.id, 'delivered')}
+                            className="flex-1 bg-green-500 text-white py-4 rounded-2xl font-black shadow-lg shadow-green-500/20 hover:scale-[1.02] active:scale-[0.98] transition-all"
+                        >
+                            Confirmar Entrega
+                        </button>
+                        <button
+                            onClick={() => setChatOrderId(order.id)}
+                            className="px-4 bg-slate-100 text-slate-700 py-4 rounded-2xl font-black hover:bg-slate-200 transition-all flex items-center justify-center gap-1.5 border border-slate-200 shadow-sm"
+                            title="Abrir Chat"
+                        >
+                            <MessageCircle className="w-5 h-5 text-slate-700" />
+                            <span>Chat</span>
+                        </button>
+                    </div>
                 )}
                 {order.status === 'delivered' && !order.paymentStatus && (
                     <div className="flex w-full gap-2">
@@ -1377,6 +1396,13 @@ export default function Orders() {
                         >
                             <X className="w-4 h-4" /> No Vendido
                         </button>
+                        <button
+                            onClick={() => setChatOrderId(order.id)}
+                            className="px-4 bg-slate-100 text-slate-700 py-3 rounded-xl font-black hover:bg-slate-200 transition-all flex items-center justify-center border border-slate-200"
+                            title="Abrir Chat"
+                        >
+                            <MessageCircle className="w-4 h-4 text-slate-700" />
+                        </button>
                     </div>
                 )}
                 {order.status === 'delivered' && order.paymentStatus === 'pending' && order.source === 'waiter' && (
@@ -1387,12 +1413,6 @@ export default function Orders() {
                         <DollarSign className="w-5 h-5" /> Cerrar Venta y Cobrar
                     </button>
                 )}
-                <button 
-                  onClick={() => setChatOrderId(order.id)}
-                  className="p-4 bg-slate-100 text-slate-400 rounded-2xl hover:bg-slate-200 transition-colors"
-                >
-                    <Bell className="w-5 h-5" />
-                </button>
                 {chatOrderId === order.id && (
                     <div className="fixed inset-0 z-[200] flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-4">
                         <div className="w-full max-w-lg relative">
@@ -1523,8 +1543,8 @@ export default function Orders() {
                         <div className="space-y-6">
                             <div className="flex items-center gap-4 px-2">
                                 <div className="h-px flex-1 bg-emerald-100"></div>
-                                <h2 className="text-xl font-black text-emerald-500 flex items-center gap-2 uppercase tracking-widest bg-emerald-50 px-6 py-2 rounded-full border border-emerald-100">
-                                    <Truck className="w-6 h-6" /> 🚚 App / Delivery Express ({filteredOrders.filter(o => o.source !== 'waiter').length})
+                                <h2 className="text-xl font-black text-emerald-600 flex items-center gap-2 uppercase tracking-widest bg-emerald-50 px-6 py-2 rounded-full border border-emerald-100">
+                                    <Package className="w-6 h-6 text-emerald-600" /> 📦 Pedidos Entrantes ({filteredOrders.filter(o => o.source !== 'waiter').length})
                                 </h2>
                                 <div className="h-px flex-1 bg-emerald-100"></div>
                             </div>

@@ -1,21 +1,33 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { ShoppingBag, Clock, ChevronRight, Bike, Navigation } from 'lucide-react';
+import { ShoppingBag, Clock, ChevronRight, Bike, Navigation, Store, MessageCircle, ArrowRight } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
+import { useCurrency } from '../context/CurrencyContext';
+import { sendAppNotification } from '../services/nativeNotificationService';
 import Cart from './Cart';
 
 type TabType = 'cart' | 'active';
 
 export default function Orders() {
     const [searchParams, setSearchParams] = useSearchParams();
-    const initialTab = (searchParams.get('tab') as TabType) || 'cart';
-    const [activeTab, setActiveTab] = useState<TabType>(initialTab);
-    const { user } = useAuth();
+    const tabParam = searchParams.get('tab') as TabType;
+    const [activeTab, setActiveTab] = useState<TabType>(tabParam || 'cart');
+    const { user, userData } = useAuth();
+    const { bcvRate } = useCurrency();
     const [activeOrders, setActiveOrders] = useState<any[]>([]);
     const [restaurantLogos, setRestaurantLogos] = useState<Record<string, string>>({});
     const [loadingOrders, setLoadingOrders] = useState(true);
+    const notifiedOrdersRef = useRef<Set<string>>(new Set());
     const navigate = useNavigate();
+
+    const isValidUUID = (str?: string | null): boolean =>
+        Boolean(str && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(str));
+
+    const rawUserId = user?.id || user?.uid || (userData as any)?.id || (userData as any)?.uid;
+    const authUUID = isValidUUID(rawUserId) ? rawUserId : null;
+    const localOrderId = localStorage.getItem('active_order_id');
+    const validLocalOrderUUID = isValidUUID(localOrderId) ? localOrderId : null;
 
     const formatOrderDate = (dateVal: any) => {
         if (!dateVal) return 'Hoy';
@@ -25,21 +37,51 @@ export default function Orders() {
     };
 
     useEffect(() => {
-        if (!user) return;
-        const uid = user.id || user.uid;
-
         const fetchOrders = async () => {
             try {
-                const { data, error } = await supabase
+                if (!authUUID && !validLocalOrderUUID) {
+                    setActiveOrders([]);
+                    setLoadingOrders(false);
+                    return;
+                }
+
+                let ordersQuery = supabase
                     .from('orders')
                     .select('*')
-                    .or(`user_id.eq.${uid},userId.eq.${uid}`)
                     .not('status', 'in', '("completed","cancelled","rejected","delivered")')
                     .order('created_at', { ascending: false })
                     .limit(10);
 
+                if (authUUID && validLocalOrderUUID && authUUID !== validLocalOrderUUID) {
+                    ordersQuery = ordersQuery.or(`user_id.eq.${authUUID},userId.eq.${authUUID},id.eq.${validLocalOrderUUID}`);
+                } else if (authUUID) {
+                    ordersQuery = ordersQuery.or(`user_id.eq.${authUUID},userId.eq.${authUUID}`);
+                } else if (validLocalOrderUUID) {
+                    ordersQuery = ordersQuery.eq('id', validLocalOrderUUID);
+                }
+
+                const { data, error } = await ordersQuery;
+
                 if (!error && data) {
                     setActiveOrders(data);
+
+                    // If active orders exist and no explicit tab was requested in URL, switch to active orders tab
+                    if (data.length > 0 && !tabParam) {
+                        setActiveTab('active');
+                    }
+
+                    // Status bar native notification for mobile drawer
+                    const pendingOrder = data.find((o: any) => o.status === 'pendiente_pago' || o.status === 'pending');
+                    if (pendingOrder && !notifiedOrdersRef.current.has(pendingOrder.id)) {
+                        notifiedOrdersRef.current.add(pendingOrder.id);
+                        sendAppNotification({
+                            title: `Pedido pendiente por pagar (#${pendingOrder.id.slice(0, 6).toUpperCase()})`,
+                            body: `${pendingOrder.restaurant_name || 'Comercio'} • $${Number(pendingOrder.total || 0).toFixed(2)} - Toca para entrar al chat y reportar tu pago.`,
+                            tag: `active-order-${pendingOrder.id}`,
+                            soundType: 'client',
+                            onClick: () => navigate(`/track/${pendingOrder.id}`)
+                        }).catch(() => {});
+                    }
                 }
             } catch (err) {
                 console.error("Error fetching active orders:", err);
@@ -50,8 +92,9 @@ export default function Orders() {
 
         fetchOrders();
 
+        const channelId = authUUID || validLocalOrderUUID || 'client_orders';
         const channel = supabase
-            .channel(`client_orders_${uid}`)
+            .channel(`client_orders_${channelId}`)
             .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, () => {
                 fetchOrders();
             })
@@ -60,7 +103,7 @@ export default function Orders() {
         return () => {
             supabase.removeChannel(channel);
         };
-    }, [user]);
+    }, [authUUID, validLocalOrderUUID, tabParam]);
 
     // Fetch restaurant logos when orders change
     useEffect(() => {
@@ -194,74 +237,151 @@ export default function Orders() {
                             <h2 className="text-xs font-black text-slate-400 uppercase tracking-[0.2em]">Rastreo en Tiempo Real</h2>
                             <span className="text-[10px] font-bold text-slate-900 bg-primary/10 px-2 py-0.5 rounded-full">{activeOrders.length} {activeOrders.length === 1 ? 'Activo' : 'Activos'}</span>
                         </div>
-                        {activeOrders.map((order) => (
-                            <div
-                                key={order.id}
-                                onClick={() => navigate(`/track/${order.id}`)}
-                                className="bg-white rounded-3xl p-5 shadow-xl shadow-slate-200/40 border border-slate-100 group active:scale-[0.98] transition-all cursor-pointer overflow-hidden relative"
-                            >
-                                <div className="absolute top-0 right-0 w-24 h-24 bg-primary/5 rounded-full -mr-12 -mt-12 transition-transform group-hover:scale-110"></div>
-                                
-                                <div className="flex justify-between items-start mb-4 relative z-10">
-                                    <div className="flex items-center gap-3">
-                                        <div className="w-14 h-14 bg-slate-50 rounded-2xl flex items-center justify-center text-slate-400 group-hover:bg-primary/10 transition-all overflow-hidden border border-slate-100 shadow-inner">
-                                            {restaurantLogos[order.restaurant_id || order.restaurantId] ? (
-                                                <img src={restaurantLogos[order.restaurant_id || order.restaurantId]} alt="Logo" className="w-full h-full object-cover" />
-                                            ) : (
-                                                <ShoppingBag className="w-7 h-7" />
-                                            )}
+                        {activeOrders.map((order) => {
+                            const isPendingPayment = order.status === 'pending' || order.status === 'pendiente_pago';
+                            const orderTotal = Number(order.total || 0);
+                            const bsTotal = bcvRate > 0 ? (orderTotal * bcvRate).toFixed(0) : '0';
+                            const deliveryLabel = order.delivery_method === 'pickup' 
+                                ? 'Retiro en tienda (PickUp)' 
+                                : (order.delivery_address || order.address?.name || 'Entrega a domicilio');
+
+                            // High-visibility Material 3 Card for Pending Payment Orders (Synced with Home card)
+                            if (isPendingPayment) {
+                                return (
+                                    <div
+                                        key={order.id}
+                                        onClick={() => navigate(`/track/${order.id}`)}
+                                        className="bg-gradient-to-r from-red-600 via-orange-600 to-amber-500 text-white rounded-3xl p-5 shadow-2xl shadow-orange-500/25 border border-orange-400/30 cursor-pointer active:scale-[0.98] transition-all overflow-hidden relative"
+                                    >
+                                        <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full -mr-16 -mt-16 pointer-events-none"></div>
+
+                                        {/* Header Row: Store + POR PAGAR Badge + Total */}
+                                        <div className="flex items-center justify-between gap-2 mb-3 relative z-10">
+                                            <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                                                <div className="w-10 h-10 rounded-2xl bg-white/20 backdrop-blur-md flex items-center justify-center shrink-0 border border-white/20">
+                                                    <Store className="w-5 h-5 text-white" />
+                                                </div>
+                                                <div className="min-w-0">
+                                                    <p className="font-black text-sm uppercase tracking-wide truncate">
+                                                        {order.restaurant_name || order.restaurantName || 'Comercio'}
+                                                    </p>
+                                                    <p className="text-[10px] text-white/80 font-bold uppercase tracking-tight">
+                                                        {formatOrderDate(order.created_at || order.createdAt)}
+                                                    </p>
+                                                </div>
+                                            </div>
+
+                                            <div className="flex items-center gap-2 shrink-0">
+                                                <span className="bg-yellow-400 text-slate-950 font-black px-2.5 py-1 rounded-full text-[10px] uppercase tracking-wider shadow-sm animate-pulse">
+                                                    POR PAGAR
+                                                </span>
+                                                <div className="text-right bg-white/20 backdrop-blur-md px-2.5 py-1 rounded-xl border border-white/20">
+                                                    <div className="text-xs font-black leading-tight">
+                                                        ${orderTotal.toFixed(2)}
+                                                    </div>
+                                                    <div className="text-[9px] font-bold text-white/80 leading-none">
+                                                        {bsTotal} Bs
+                                                    </div>
+                                                </div>
+                                            </div>
                                         </div>
-                                        <div>
-                                            <p className="font-black text-slate-900 group-hover:text-slate-900 transition-colors text-lg">#{order.id.slice(-6).toUpperCase()}</p>
-                                            <p className="text-sm font-bold text-slate-900 truncate max-w-[150px]">{order.restaurant_name || order.restaurantName || 'Restaurante'}</p>
-                                            <p className="text-[10px] text-slate-400 font-bold uppercase tracking-tight mt-0.5">
-                                                {formatOrderDate(order.created_at || order.createdAt)}
+
+                                        {/* Frosted Chat Link Banner */}
+                                        <div className="mb-3 p-3 rounded-2xl bg-white/15 border border-white/20 backdrop-blur-md flex items-start gap-2.5 relative z-10">
+                                            <MessageCircle className="w-4 h-4 text-yellow-300 shrink-0 mt-0.5 animate-bounce" />
+                                            <div className="min-w-0 flex-1">
+                                                <p className="text-xs font-bold text-white leading-snug">
+                                                    Pago pendiente • Toca para revisar datos y reportar tu pago
+                                                </p>
+                                                <span className="text-[10px] font-black text-yellow-300 uppercase tracking-wider block mt-1">
+                                                    💬 TOCA PARA ENTRAR AL CHAT EN VIVO Y ADMINISTRAR TU COMPRA
+                                                </span>
+                                            </div>
+                                        </div>
+
+                                        {/* Bottom Action Bar */}
+                                        <div className="pt-2 border-t border-white/15 flex items-center justify-between text-[11px] font-bold relative z-10">
+                                            <div className="flex items-center gap-1.5 truncate max-w-[190px] text-white/90">
+                                                <Navigation className="w-3.5 h-3.5 text-yellow-300 shrink-0" />
+                                                <span className="truncate">{deliveryLabel}</span>
+                                            </div>
+                                            <div className="flex items-center gap-1 text-yellow-300 font-black uppercase text-[10px] tracking-wider shrink-0 hover:translate-x-1 transition-transform">
+                                                <span>ENTRAR AL CHAT Y ADMINISTRAR</span>
+                                                <ArrowRight className="w-3.5 h-3.5" />
+                                            </div>
+                                        </div>
+                                    </div>
+                                );
+                            }
+
+                            // Standard Card for Orders in Preparation / In Transit / Arriving
+                            return (
+                                <div
+                                    key={order.id}
+                                    onClick={() => navigate(`/track/${order.id}`)}
+                                    className="bg-white rounded-3xl p-5 shadow-xl shadow-slate-200/40 border border-slate-100 group active:scale-[0.98] transition-all cursor-pointer overflow-hidden relative"
+                                >
+                                    <div className="absolute top-0 right-0 w-24 h-24 bg-primary/5 rounded-full -mr-12 -mt-12 transition-transform group-hover:scale-110"></div>
+                                    
+                                    <div className="flex justify-between items-start mb-4 relative z-10">
+                                        <div className="flex items-center gap-3">
+                                            <div className="w-14 h-14 bg-slate-50 rounded-2xl flex items-center justify-center text-slate-400 group-hover:bg-primary/10 transition-all overflow-hidden border border-slate-100 shadow-inner">
+                                                {restaurantLogos[order.restaurant_id || order.restaurantId] ? (
+                                                    <img src={restaurantLogos[order.restaurant_id || order.restaurantId]} alt="Logo" className="w-full h-full object-cover" />
+                                                ) : (
+                                                    <ShoppingBag className="w-7 h-7" />
+                                                )}
+                                            </div>
+                                            <div>
+                                                <p className="font-black text-slate-900 group-hover:text-slate-900 transition-colors text-lg">#{order.id.slice(-6).toUpperCase()}</p>
+                                                <p className="text-sm font-bold text-slate-900 truncate max-w-[150px]">{order.restaurant_name || order.restaurantName || 'Restaurante'}</p>
+                                                <p className="text-[10px] text-slate-400 font-bold uppercase tracking-tight mt-0.5">
+                                                    {formatOrderDate(order.created_at || order.createdAt)}
+                                                </p>
+                                            </div>
+                                        </div>
+                                        <span className={`px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-wider ${
+                                            order.status === 'preparing' || order.status === 'accepted' ? 'bg-orange-100 text-orange-600 shadow-sm shadow-orange-100' :
+                                            order.status === 'in_transit' || order.status === 'driver_assigned' || order.status === 'arriving' ? 'bg-emerald-100 text-emerald-600 shadow-sm shadow-emerald-100' :
+                                            'bg-slate-100 text-slate-600'
+                                        }`}>
+                                            {order.status === 'preparing' ? 'Preparando' :
+                                             order.status === 'accepted' ? 'Confirmado' :
+                                             order.status === 'driver_assigned' ? 'Piloto Asignado' :
+                                             order.status === 'in_transit' ? 'En Camino' :
+                                             order.status === 'arriving' ? 'Llegando' : order.status}
+                                        </span>
+                                    </div>
+
+                                    <div className="space-y-3 mb-5 relative z-10">
+                                        <div className="flex items-center gap-2 text-slate-600">
+                                            <Navigation className="w-3.5 h-3.5 text-slate-400" />
+                                            <p className="text-xs font-bold truncate flex-1">{deliveryLabel}</p>
+                                        </div>
+                                        <div className="flex items-center gap-2 text-slate-400">
+                                            <div className="flex -space-x-2">
+                                                {order.items?.slice(0, 3).map((item: any, i: number) => (
+                                                    <div key={i} className="w-7 h-7 rounded-full bg-slate-100 border-2 border-white flex items-center justify-center text-[8px] font-black text-slate-500 overflow-hidden">
+                                                        {item.quantity}x
+                                                    </div>
+                                                ))}
+                                            </div>
+                                            <p className="text-[10px] font-bold uppercase tracking-tighter">
+                                                {order.items?.length || 0} productos • Total: ${orderTotal.toFixed(2)} ({bsTotal} Bs)
                                             </p>
                                         </div>
                                     </div>
-                                    <span className={`px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-wider ${
-                                        order.status === 'pending' || order.status === 'pendiente_pago' ? 'bg-amber-100 text-amber-600' :
-                                        order.status === 'preparing' || order.status === 'accepted' ? 'bg-orange-100 text-orange-600 shadow-sm shadow-orange-100' :
-                                        order.status === 'in_transit' || order.status === 'driver_assigned' || order.status === 'arriving' ? 'bg-emerald-100 text-emerald-600 shadow-sm shadow-emerald-100' :
-                                        'bg-slate-100 text-slate-600'
-                                    }`}>
-                                        {order.status === 'pending' ? 'Buscando Local' :
-                                         order.status === 'pendiente_pago' ? 'Pago Pendiente' :
-                                         order.status === 'preparing' ? 'Preparando' :
-                                         order.status === 'accepted' ? 'Confirmado' :
-                                         order.status === 'driver_assigned' ? 'Piloto Asignado' :
-                                         order.status === 'in_transit' ? 'En Camino' :
-                                         order.status === 'arriving' ? 'Llegando' : order.status}
-                                    </span>
-                                </div>
 
-                                <div className="space-y-3 mb-5 relative z-10">
-                                    <div className="flex items-center gap-2 text-slate-600">
-                                        <Navigation className="w-3.5 h-3.5 text-slate-400" />
-                                        <p className="text-xs font-bold truncate flex-1">{order.address?.name || 'Dirección de Entrega'}</p>
-                                    </div>
-                                    <div className="flex items-center gap-2 text-slate-400">
-                                        <div className="flex -space-x-2">
-                                            {order.items?.slice(0, 3).map((item: any, i: number) => (
-                                                <div key={i} className="w-7 h-7 rounded-full bg-slate-100 border-2 border-white flex items-center justify-center text-[8px] font-black text-slate-500 overflow-hidden">
-                                                    {item.quantity}x
-                                                </div>
-                                            ))}
-                                        </div>
-                                        <p className="text-[10px] font-bold uppercase tracking-tighter">
-                                            {order.items?.length || 0} productos • Total: {order.total ? Number(order.total).toLocaleString('es-VE', { style: 'currency', currency: 'USD' }) : '$0.00'}
-                                        </p>
+                                    <div className="flex items-center gap-3 pt-4 border-t border-slate-50 relative z-10">
+                                        <button className="flex-1 bg-primary text-slate-900 py-3 rounded-2xl font-black text-[10px] uppercase tracking-widest flex items-center justify-center gap-2 shadow-lg shadow-primary/20 group-hover:bg-orange-600 transition-all">
+                                            <MessageCircle className="w-4 h-4" />
+                                            Ver Seguimiento & Chat
+                                            <ChevronRight className="w-4 h-4" />
+                                        </button>
                                     </div>
                                 </div>
-
-                                <div className="flex items-center gap-3 pt-4 border-t border-slate-50 relative z-10">
-                                    <button className="flex-1 bg-primary text-slate-900 py-3 rounded-2xl font-black text-[10px] uppercase tracking-widest flex items-center justify-center gap-2 shadow-lg shadow-primary/20 group-hover:bg-orange-600 transition-all">
-                                        Ver Seguimiento
-                                        <ChevronRight className="w-4 h-4" />
-                                    </button>
-                                </div>
-                            </div>
-                        ))}
+                            );
+                        })}
                     </div>
                 )}
             </div>

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { LogOut, DollarSign, CheckCircle, Clock, X, Loader2, Store, CreditCard, User, Plus, Edit, ClipboardList, MapPin, Instagram, Youtube, Music2, ExternalLink, Star, MessageSquare, Bike, Bell, Truck, Search, Utensils, ShoppingCart, Trash2, Minus, ChevronDown, Check, History, AlertCircle, Receipt, Image as ImageIcon, Lock } from 'lucide-react';
+import { LogOut, DollarSign, CheckCircle, Clock, X, Loader2, Store, CreditCard, User, Plus, Edit, ClipboardList, MapPin, Instagram, Youtube, Music2, ExternalLink, Star, MessageSquare, Bike, Bell, Truck, Search, Utensils, ShoppingCart, Trash2, Minus, ChevronDown, Check, History, AlertCircle, Receipt, Image as ImageIcon, Lock, Package } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useNavigate } from 'react-router-dom';
 import { printToUsbDevice, formatTicket, PrintOrder } from '../../lib/usb-printer';
@@ -1729,8 +1729,8 @@ ESTADO: ${order.status.toUpperCase()}
                                     <div className="space-y-6">
                                         <div className="flex items-center gap-4">
                                             <h2 className="text-sm font-black text-emerald-500 uppercase tracking-[0.3em] flex items-center gap-2 whitespace-nowrap">
-                                                <Truck className="w-4 h-4" />
-                                                🚚 App / Delivery Express ({filteredOrders.filter(o => o.source !== 'waiter').length})
+                                                <Package className="w-4 h-4 text-emerald-600" />
+                                                📦 Pedidos Entrantes ({filteredOrders.filter(o => o.source !== 'waiter').length})
                                             </h2>
                                             <div className="h-px flex-1 bg-emerald-100"></div>
                                         </div>

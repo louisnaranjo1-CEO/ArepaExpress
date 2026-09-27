@@ -1,6 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from '../../lib/supabase';
-import { Send, Image as ImageIcon, CheckCircle, Receipt, Clock, CreditCard, Gift, Phone, Store, Bike, Paperclip, AlertTriangle, RefreshCw, Plus, X, MessageCircle, Copy, ChevronDown, ChevronUp, Loader2, Mic, MicOff, Square, Play, Video, UserCheck, ShieldCheck, UploadCloud, Check } from 'lucide-react';
+import { 
+  Send, Image as ImageIcon, CheckCircle, Receipt, Clock, CreditCard, Gift, Phone, Store, Bike, 
+  Paperclip, AlertTriangle, RefreshCw, Plus, X, MessageCircle, Copy, ChevronDown, ChevronUp, 
+  Loader2, Mic, MicOff, Square, Play, Video, UserCheck, ShieldCheck, UploadCloud, Check, 
+  Car, Sparkles, Navigation, MapPin, User, ArrowRight
+} from 'lucide-react';
 import toast from 'react-hot-toast';
 
 interface Message {
@@ -11,7 +16,7 @@ interface Message {
   senderName: string;
   senderRole: 'client' | 'restaurant' | 'system' | 'delivery';
   createdAt: any;
-  action?: 'payment_confirmed' | 'payment_reminder' | 'items_modified' | 'voice_note';
+  action?: 'payment_confirmed' | 'payment_reminder' | 'items_modified' | 'voice_note' | 'dispatch_requested';
 }
 
 interface OrderChatWindowProps {
@@ -47,9 +52,11 @@ export default function OrderChatWindow({
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Live synced order object
+  // Live synced order & store info
   const [liveOrder, setLiveOrder] = useState<any>(orderInfo || {});
+  const [storeData, setStoreData] = useState<any>(null);
   const [prepCountdownStr, setPrepCountdownStr] = useState<string>('');
+  const [bcvRate, setBcvRate] = useState<number>(855.66);
 
   // Voice note recording states
   const [isRecordingVoice, setIsRecordingVoice] = useState(false);
@@ -58,7 +65,7 @@ export default function OrderChatWindow({
   const audioChunksRef = useRef<Blob[]>([]);
   const recordingTimerRef = useRef<any>(null);
 
-  // "Ya pagué" verification modal states (strict: receipt or valid reference required)
+  // "Ya pagué" verification modal states (strict: receipt or valid reference required, or pickup at store)
   const [showPayModal, setShowPayModal] = useState(false);
   const [payProofFile, setPayProofFile] = useState<File | null>(null);
   const [payProofPreview, setPayProofPreview] = useState<string | null>(null);
@@ -66,23 +73,48 @@ export default function OrderChatWindow({
   const [payNotes, setPayNotes] = useState('');
   const [submittingPayment, setSubmittingPayment] = useState(false);
 
-  // Preparation tool modal state
+  // Preparation tool modal state (Store)
   const [showPrepTimeModal, setShowPrepTimeModal] = useState(false);
   const [customPrepMinutes, setCustomPrepMinutes] = useState(20);
 
-  // Driver Dispatch modal state
-  const [showDispatchModal, setShowDispatchModal] = useState(false);
+  // Modalidad A: Driver Dispatch modal state (Store assigns driver)
+  const [showStoreDispatchModal, setShowStoreDispatchModal] = useState(false);
   const [driversList, setDriversList] = useState<any[]>([]);
   const [selectedDriverId, setSelectedDriverId] = useState<string>('');
   const [loadingDrivers, setLoadingDrivers] = useState(false);
-  const [dispatching, setDispatching] = useState(false);
+  const [dispatchingStore, setDispatchingStore] = useState(false);
+
+  // Modalidad B: Client Dispatch modal state (Client chooses vehicle category)
+  const [showClientDispatchModal, setShowClientDispatchModal] = useState(false);
+  const [clientSelectedCategory, setClientSelectedCategory] = useState<'moto' | 'carro' | 'confort'>('moto');
+  const [clientReferenceNote, setClientReferenceNote] = useState('');
+  const [submittingClientDispatch, setSubmittingClientDispatch] = useState(false);
 
   const isStoreRole = currentUserRole === 'restaurant' || (currentUserRole as string) === 'cashier';
+
+  // Fetch BCV Rate
+  useEffect(() => {
+    const fetchBCV = async () => {
+      try {
+        const res = await fetch('https://ve.dolarapi.com/v1/dolares/oficial');
+        if (res.ok) {
+          const data = await res.json();
+          if (data?.promedio) setBcvRate(Number(data.promedio));
+        }
+      } catch (e) {
+        console.warn('Could not fetch BCV rate, using fallback:', e);
+      }
+    };
+    fetchBCV();
+  }, []);
 
   useEffect(() => {
     if (orderInfo) {
       setLiveOrder(orderInfo);
       if (orderInfo.items) setOrderItems(orderInfo.items);
+      if (orderInfo.delivery_address_reference || orderInfo.address?.reference) {
+        setClientReferenceNote(orderInfo.delivery_address_reference || orderInfo.address?.reference || '');
+      }
     }
   }, [orderInfo]);
 
@@ -122,24 +154,31 @@ export default function OrderChatWindow({
     return () => clearTimeout(timer);
   }, []);
 
+  // Fetch store data (coordinates, free delivery rules, etc.)
   useEffect(() => {
-    const fetchRestaurantData = async () => {
+    const fetchStore = async () => {
       if (!restaurantId) return;
       try {
-        const { data: resDoc } = await supabase
+        const { data } = await supabase
           .from('comercios')
-          .select('cashea_qr_url, casheaQrUrl')
+          .select('*')
           .eq('id', restaurantId)
           .maybeSingle();
 
-        if (resDoc && (resDoc.cashea_qr_url || resDoc.casheaQrUrl)) {
-          setCasheaQrUrl(resDoc.cashea_qr_url || resDoc.casheaQrUrl);
+        if (data) {
+          setStoreData(data);
+          if (data.cashea_qr_url || data.casheaQrUrl) {
+            setCasheaQrUrl(data.cashea_qr_url || data.casheaQrUrl);
+          }
         }
-      } catch (e) { console.error("Error fetching cashea QR", e); }
+      } catch (e) {
+        console.error("Error fetching store data:", e);
+      }
     };
-    fetchRestaurantData();
+    fetchStore();
   }, [restaurantId]);
 
+  // Realtime messages & order sync
   useEffect(() => {
     const fetchMessages = async () => {
       try {
@@ -191,7 +230,6 @@ export default function OrderChatWindow({
       })
       .subscribe();
 
-    // Also listen to order updates for stock and status changes
     const orderSub = supabase.channel(`order_chat_sync_${orderId}`)
       .on('postgres_changes', {
         event: '*',
@@ -214,7 +252,11 @@ export default function OrderChatWindow({
     };
   }, [orderId, customCollectionPath]);
 
-  const handleSendMessage = async (text: string, actionUrl?: string, actionType?: 'payment_confirmed' | 'payment_reminder' | 'items_modified' | 'voice_note') => {
+  const handleSendMessage = async (
+    text: string, 
+    actionUrl?: string, 
+    actionType?: 'payment_confirmed' | 'payment_reminder' | 'items_modified' | 'voice_note' | 'dispatch_requested'
+  ) => {
     if ((!text.trim() && !actionUrl && !actionType) || sending) return;
     setSending(true);
 
@@ -416,6 +458,33 @@ export default function OrderChatWindow({
     }
   };
 
+  // Pickup Mode: Select card payment / POS on store arrival
+  const handleSelectPickupCardPayment = async () => {
+    setSubmittingPayment(true);
+    try {
+      await supabase.from('orders').update({
+        status: 'preparing',
+        payment_method: 'card_on_pickup',
+        payment_status: 'conditionally_paid',
+        conditionally_paid: true,
+        restaurant_payment_client_confirmed: true,
+        restaurantPaymentClientConfirmed: true,
+        updated_at: new Date().toISOString()
+      }).eq('id', orderId);
+
+      const payMsgText = `🏪 *PAGO EN EL LOCAL SELECCIONADO*\nEl cliente pagará con tarjeta / punto de venta en el establecimiento al momento del retiro. Orden marcada como en preparación condicional.`;
+      await handleSendMessage(payMsgText, undefined, 'payment_confirmed');
+
+      toast.success("Has seleccionado pago con punto de venta al retirar en el local. ¡Tu orden se está preparando!");
+      setShowPayModal(false);
+    } catch (e) {
+      console.error(e);
+      toast.error("Error al registrar método de pago en tienda.");
+    } finally {
+      setSubmittingPayment(false);
+    }
+  };
+
   // Preparation Time Tool for Store
   const handleSetPrepTime = async (minutes: number) => {
     try {
@@ -438,7 +507,7 @@ export default function OrderChatWindow({
     }
   };
 
-  // Driver Dispatch Tool for Store
+  // Modalidad A: Store Driver Dispatch
   const fetchDrivers = async () => {
     setLoadingDrivers(true);
     try {
@@ -456,7 +525,7 @@ export default function OrderChatWindow({
     }
   };
 
-  const handleDispatchOrder = async () => {
+  const handleStoreDispatchOrder = async () => {
     const chosenDriver = driversList.find(d => d.id === selectedDriverId) || 
       (liveOrder?.preferred_driver_id && { id: liveOrder.preferred_driver_id, name: liveOrder.preferred_driver_name });
 
@@ -465,7 +534,7 @@ export default function OrderChatWindow({
       return;
     }
 
-    setDispatching(true);
+    setDispatchingStore(true);
     try {
       const driverName = chosenDriver.name || chosenDriver.displayName || chosenDriver.full_name || 'Repartidor de la Red';
       await supabase.from('orders').update({
@@ -478,14 +547,120 @@ export default function OrderChatWindow({
         updated_at: new Date().toISOString()
       }).eq('id', orderId);
 
-      await handleSendMessage(`🛵 *¡Tu pedido ha sido despachado!* Repartidor asignado: **${driverName}**. Va en camino con tu entrega.`);
+      await handleSendMessage(`🛵 *¡Tu pedido ha sido despachado!* Repartidor asignado por la tienda: **${driverName}**. Va en camino hacia tu dirección.`);
       toast.success(`Pedido despachado con ${driverName}`);
-      setShowDispatchModal(false);
+      setShowStoreDispatchModal(false);
     } catch (e) {
       console.error(e);
       toast.error("Error al despachar pedido");
     } finally {
-      setDispatching(false);
+      setDispatchingStore(false);
+    }
+  };
+
+  // Helper: Haversine distance in km
+  const calculateDistanceKm = (lat1?: number, lon1?: number, lat2?: number, lon2?: number): number => {
+    if (!lat1 || !lon1 || !lat2 || !lon2) return 2.0; // fallback standard 2 km
+    const R = 6371;
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLon = (lon2 - lon1) * Math.PI / 180;
+    const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+              Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+              Math.sin(dLon/2) * Math.sin(dLon/2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    return Number((R * c).toFixed(1));
+  };
+
+  // Store & Client Coords
+  const storeCoords = storeData?.coordinates || storeData?.location?.coords || { lat: 8.9242, lng: -67.4293 };
+  const clientCoords = liveOrder?.delivery_coords || liveOrder?.address?.coords || { lat: 8.9280, lng: -67.4250 };
+  const orderDistanceKm = liveOrder?.distance || calculateDistanceKm(storeCoords.lat, storeCoords.lng, clientCoords.lat, clientCoords.lng);
+
+  // Calculate live fares for Modalidad B
+  const calculateFare = (cat: 'moto' | 'carro' | 'confort'): number => {
+    const dist = Math.max(1, orderDistanceKm);
+    if (cat === 'moto') {
+      return Number(Math.max(1.50, 1.50 + dist * 0.50).toFixed(2));
+    } else if (cat === 'carro') {
+      return Number(Math.max(2.50, 2.50 + dist * 0.80).toFixed(2));
+    } else {
+      return Number(Math.max(3.50, 3.50 + dist * 1.20).toFixed(2));
+    }
+  };
+
+  // Modalidad B: Client submits dispatch request
+  const handleClientSubmitDispatch = async () => {
+    setSubmittingClientDispatch(true);
+    const selectedFare = calculateFare(clientSelectedCategory);
+    const categoryTitle = clientSelectedCategory === 'moto' 
+      ? 'Moto Encomienda' 
+      : clientSelectedCategory === 'confort' 
+      ? 'Carro Confort VIP' 
+      : 'Carro Económico';
+
+    try {
+      const transportData: any = {
+        type: 'delivery_envios',
+        service_category: clientSelectedCategory === 'moto' ? 'mototaxi' : clientSelectedCategory === 'confort' ? 'carro_confort' : 'taxi_driver',
+        order_id: orderId,
+        restaurant_id: restaurantId,
+        restaurant_name: liveOrder?.restaurant_name || storeData?.name || 'Comercio',
+        user_id: currentUserId,
+        user_name: liveOrder?.user_name || currentUserName,
+        user_phone: liveOrder?.user_phone || '',
+        user_cedula: liveOrder?.user_cedula || '',
+        origin: {
+          address: storeData?.address || storeData?.location?.address || 'Sede del comercio',
+          coords: storeCoords
+        },
+        destination: {
+          address: liveOrder?.delivery_address || liveOrder?.address?.name || 'Dirección de Entrega',
+          reference: clientReferenceNote.trim() || liveOrder?.address?.reference || '',
+          coords: clientCoords
+        },
+        distance: orderDistanceKm,
+        client_total: selectedFare,
+        driver_payout: Number((selectedFare * 0.8).toFixed(2)),
+        service_fee: Number((selectedFare * 0.2).toFixed(2)),
+        status: 'searching',
+        payment_method: 'pago_movil',
+        created_at: new Date().toISOString()
+      };
+
+      const { data: newTr, error: trErr } = await supabase
+        .from('transport_requests')
+        .insert(transportData)
+        .select('id')
+        .single();
+
+      if (trErr) throw trErr;
+
+      const trId = newTr?.id;
+
+      await supabase.from('orders').update({
+        transport_request_id: trId || null,
+        delivery_fee: selectedFare,
+        driver_payout: Number((selectedFare * 0.8).toFixed(2)),
+        status: 'buscando_piloto',
+        order_note: clientReferenceNote.trim() || liveOrder?.order_note || null,
+        updated_at: new Date().toISOString()
+      }).eq('id', orderId);
+
+      const msgText = `🛵 *SOLICITUD DE ENVÍO INICIADA*\n` +
+        `• Categoría: **${categoryTitle}**\n` +
+        `• Tarifa: **$${selectedFare.toFixed(2)} USD** (${(selectedFare * bcvRate).toFixed(0)} Bs)\n` +
+        (clientReferenceNote.trim() ? `• Referencia de entrega: ${clientReferenceNote.trim()}\n` : '') +
+        `\n*Notificando a conductores disponibles de la red para asignar la entrega.*`;
+
+      await handleSendMessage(msgText, undefined, 'dispatch_requested');
+
+      toast.success(`¡Solicitud de envío enviada! Buscando conductor ${categoryTitle}...`);
+      setShowClientDispatchModal(false);
+    } catch (e: any) {
+      console.error(e);
+      toast.error('Error al procesar solicitud de envío.');
+    } finally {
+      setSubmittingClientDispatch(false);
     }
   };
 
@@ -504,17 +679,12 @@ export default function OrderChatWindow({
         updated_at: new Date().toISOString()
       }).eq('id', orderId);
 
-      if (!currentSoldOut) {
-        await handleSendMessage(
-          `⚠️ El producto "${targetItem?.name || 'solicitado'}" ha sido marcado como AGOTADO por el negocio. Puedes sustituirlo pulsando "Sustituir producto".`,
-          undefined,
-          'items_modified'
-        );
-        toast.success('Producto marcado como agotado');
-      } else {
-        await handleSendMessage(`✅ El producto "${targetItem?.name || 'solicitado'}" vuelve a estar disponible.`);
-        toast.success('Producto restablecido como disponible');
-      }
+      const statusMsg = !currentSoldOut 
+        ? `⚠️ *PRODUCTO AGOTADO:* "${targetItem?.name}". Por favor selecciona un sustituto o coordinemos por aquí.`
+        : `✅ *PRODUCTO DISPONIBLE:* "${targetItem?.name}". Hay stock disponible.`;
+
+      await handleSendMessage(statusMsg, undefined, 'items_modified');
+      toast.success(!currentSoldOut ? 'Marcado como agotado' : 'Marcado como disponible');
     } catch (e) {
       console.error(e);
       toast.error('Error al actualizar disponibilidad');
@@ -525,13 +695,17 @@ export default function OrderChatWindow({
     setSubstitutingItem(item);
     setShowSubstituteModal(true);
     setLoadingProducts(true);
+
     try {
-      const { data: prods } = await supabase
+      const { data } = await supabase
         .from('products')
         .select('*')
         .eq('restaurant_id', restaurantId)
-        .eq('available', true);
-      setRestaurantProducts(prods || []);
+        .eq('is_available', true);
+
+      if (data) {
+        setRestaurantProducts(data.filter((p: any) => p.id !== item.id));
+      }
     } catch (e) {
       console.error(e);
     } finally {
@@ -541,12 +715,12 @@ export default function OrderChatWindow({
 
   const handleSelectReplacement = async (newProduct: any) => {
     if (!substitutingItem) return;
+
     const updatedItems = orderItems.map(it => {
       if (it.id === substitutingItem.id) {
         return {
-          id: `prod_${newProduct.id}_${Date.now()}`,
-          productId: newProduct.id,
-          restaurantId: newProduct.restaurant_id || restaurantId,
+          ...it,
+          id: newProduct.id,
           name: newProduct.name,
           price: newProduct.price,
           quantity: substitutingItem.quantity || 1,
@@ -599,18 +773,6 @@ export default function OrderChatWindow({
   };
 
   const handleOpenWhatsAppFallback = () => {
-    try {
-      const stored = localStorage.getItem(`wa_fallback_${orderId}`);
-      if (stored) {
-        const parsed = JSON.parse(stored);
-        if (parsed.number && parsed.message) {
-          window.open(`https://wa.me/${parsed.number}?text=${encodeURIComponent(parsed.message)}`, '_blank');
-          return;
-        }
-      }
-    } catch (e) {}
-
-    // Fallback if no stored template
     if (orderInfo?.restaurantPhone || orderInfo?.restaurantWhatsapp) {
       const num = (orderInfo.restaurantPhone || orderInfo.restaurantWhatsapp).replace(/\D/g, '');
       const msg = `Hola, tengo una orden activa en la app (ID: ${orderId.slice(0, 8)}). Quisiera coordinar el pedido.`;
@@ -621,11 +783,11 @@ export default function OrderChatWindow({
   const confirmPayment = async () => {
     if (!isStoreRole) return;
 
-    const isPickup = orderInfo?.deliveryMethod === 'pickup' || orderInfo?.delivery_method === 'pickup';
+    const isPickup = liveOrder?.delivery_method === 'pickup' || liveOrder?.deliveryMethod === 'pickup';
     const nextStatus = isPickup ? 'preparing' : 'awaiting_delivery_driver';
     const confirmMsg = isPickup
       ? '¡Pago confirmado! Tu orden está en preparación. Te notificaremos cuando puedas pasar a retirarla en el local.'
-      : '¡Pago de productos verificado con éxito! Ahora puedes solicitar tu conductor de delivery en la pantalla para la entrega.';
+      : '¡Pago de productos verificado con éxito! Ahora puedes procesar el envío de tu paquete con un repartidor.';
 
     await handleSendMessage(confirmMsg, undefined, 'payment_confirmed');
 
@@ -643,21 +805,60 @@ export default function OrderChatWindow({
     }
   };
 
+  // Stock Confirmation Tool for Store
+  const handleConfirmStoreStock = async () => {
+    try {
+      await supabase.from('orders').update({
+        stock_confirmed: true,
+        stockConfirmed: true,
+        updated_at: new Date().toISOString()
+      }).eq('id', orderId);
+
+      await handleSendMessage("✅ *STOCK CONFIRMADO POR EL COMERCIO:*\nTodos los productos de tu pedido están disponibles y apartados. Puedes proceder con el pago con total tranquilidad.");
+      toast.success("Stock confirmado al cliente.");
+    } catch (e) {
+      console.error(e);
+      toast.error("Error al confirmar stock");
+    }
+  };
+
+  // Financial and Qualification Calculations
+  const isPickupOrder = liveOrder?.delivery_method === 'pickup' || liveOrder?.deliveryMethod === 'pickup';
+  const orderSubtotal = Number(liveOrder?.subtotal || liveOrder?.total || 0);
+  const isFreeDeliveryConfigured = Boolean(storeData?.free_delivery_enabled);
+  const freeDeliveryMinAmount = Number(storeData?.free_delivery_min_amount || 0);
+  const qualifiesForFreeDelivery = isFreeDeliveryConfigured && orderSubtotal >= freeDeliveryMinAmount && freeDeliveryMinAmount > 0;
+  const isPaidOrConditionallyPaid = Boolean(
+    liveOrder?.restaurant_payment_client_confirmed || 
+    liveOrder?.restaurantPaymentClientConfirmed || 
+    liveOrder?.conditionally_paid || 
+    ['preparing', 'awaiting_delivery_driver', 'buscando_piloto', 'delivering', 'delivered', 'completed'].includes(liveOrder?.status)
+  );
+
   const renderMessageContent = (msg: Message) => {
     if (msg.action === 'payment_confirmed') {
       return (
-        <div className="bg-emerald-100 border border-emerald-200 p-4 rounded-2xl text-center shadow-sm w-full mx-4 my-2">
-          <CheckCircle className="w-8 h-8 text-emerald-600 mx-auto mb-2" />
-          <p className="text-emerald-900 font-black text-sm leading-snug">{msg.text}</p>
+        <div className="bg-emerald-50 border border-emerald-200 p-4 rounded-2xl text-center shadow-sm w-full mx-2 my-2 animate-in zoom-in-95">
+          <CheckCircle className="w-7 h-7 text-emerald-600 mx-auto mb-1.5" />
+          <p className="text-emerald-900 font-black text-xs leading-snug whitespace-pre-wrap">{msg.text}</p>
+        </div>
+      );
+    }
+
+    if (msg.action === 'dispatch_requested') {
+      return (
+        <div className="bg-indigo-50 border border-indigo-200 p-4 rounded-2xl text-center shadow-sm w-full mx-2 my-2 animate-in zoom-in-95">
+          <Bike className="w-7 h-7 text-indigo-600 mx-auto mb-1.5" />
+          <p className="text-indigo-900 font-black text-xs leading-snug whitespace-pre-wrap">{msg.text}</p>
         </div>
       );
     }
 
     if (msg.action === 'items_modified') {
       return (
-        <div className="bg-amber-100 border border-amber-300 p-3.5 rounded-2xl text-center shadow-sm w-full mx-4 my-1">
+        <div className="bg-amber-100 border border-amber-300 p-3.5 rounded-2xl text-center shadow-sm w-full mx-2 my-1">
           <AlertTriangle className="w-6 h-6 text-amber-600 mx-auto mb-1.5" />
-          <p className="text-amber-900 font-bold text-xs leading-snug">{msg.text}</p>
+          <p className="text-amber-900 font-bold text-xs leading-snug whitespace-pre-wrap">{msg.text}</p>
         </div>
       );
     }
@@ -674,7 +875,6 @@ export default function OrderChatWindow({
     }
 
     const isMe = msg.senderRole === currentUserRole || (isStoreRole && msg.senderRole === 'restaurant');
-
     const isVoiceNote = msg.action === 'voice_note' || (msg.imageUrl && (msg.imageUrl.includes('voice_') || msg.imageUrl.endsWith('.webm') || msg.imageUrl.endsWith('.ogg') || msg.imageUrl.endsWith('.mp3')));
     const isVideo = msg.imageUrl && (msg.imageUrl.includes('video_') || msg.imageUrl.endsWith('.mp4') || msg.imageUrl.endsWith('.mov'));
 
@@ -706,7 +906,7 @@ export default function OrderChatWindow({
   };
 
   return (
-    <div className="flex flex-col h-[580px] bg-slate-50 rounded-3xl overflow-hidden border-2 border-slate-200 shadow-xl relative">
+    <div className="flex flex-col h-[620px] bg-slate-50 rounded-3xl overflow-hidden border-2 border-slate-200 shadow-2xl relative">
       {/* Hidden file input for receipt/capture/video upload */}
       <input
         type="file"
@@ -717,35 +917,33 @@ export default function OrderChatWindow({
       />
 
       {/* Chat header */}
-      <div className="bg-white p-3.5 border-b border-slate-200 flex items-center justify-between z-10 shrink-0 shadow-sm">
-        <div className="flex items-center gap-3">
-          <div className={`w-11 h-11 rounded-2xl flex items-center justify-center ${currentUserRole === 'client' ? 'bg-primary/20 text-slate-900' : 'bg-slate-900 text-white'}`}>
+      <div className="bg-white p-3 border-b border-slate-200 flex items-center justify-between z-10 shrink-0 shadow-sm">
+        <div className="flex items-center gap-2.5">
+          <div className={`w-10 h-10 rounded-2xl flex items-center justify-center ${currentUserRole === 'client' ? 'bg-primary/20 text-slate-900' : 'bg-slate-900 text-white'}`}>
             {currentUserRole === 'client' ? <Store className="w-5 h-5" /> : <Receipt className="w-5 h-5" />}
           </div>
           <div>
             <h3 className="font-black text-slate-900 leading-none text-sm">
-              {currentUserRole === 'client' ? (orderInfo?.restaurantName || 'Atención al Cliente') : (orderInfo?.userName || 'Cliente')}
+              {currentUserRole === 'client' ? (liveOrder?.restaurant_name || orderInfo?.restaurantName || 'Comercio') : (liveOrder?.user_name || orderInfo?.userName || 'Cliente')}
             </h3>
-            <p className="text-[10px] text-slate-500 font-bold uppercase mt-1 tracking-wider flex items-center gap-1.5">
+            <p className="text-[10px] text-slate-500 font-bold uppercase mt-1 tracking-wider flex items-center gap-1">
               <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
               {currentUserRole === 'client' ? 'En línea • Comercio' : 'Chat en Vivo'}
             </p>
           </div>
         </div>
 
-        {/* Toggle Products Card */}
-        {orderItems.length > 0 && (
-          <button
-            onClick={() => setShowItemsList(!showItemsList)}
-            className="flex items-center gap-1 text-xs font-black text-slate-700 bg-slate-100 px-3 py-1.5 rounded-xl border border-slate-200 hover:bg-slate-200 transition-colors"
-          >
-            <span>Productos ({orderItems.length})</span>
-            {showItemsList ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
-          </button>
-        )}
+        {/* Toggle Pinned Summary Card */}
+        <button
+          onClick={() => setShowItemsList(!showItemsList)}
+          className="flex items-center gap-1.5 text-xs font-black text-slate-700 bg-slate-100 px-3 py-1.5 rounded-xl border border-slate-200 hover:bg-slate-200 transition-colors"
+        >
+          <span>Resumen ({orderItems.length})</span>
+          {showItemsList ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+        </button>
       </div>
 
-      {/* Countdown Timer Header Banner (Real-time synchronized) */}
+      {/* Countdown Timer Banner */}
       {prepCountdownStr && (
         <div className="bg-gradient-to-r from-amber-500 via-orange-500 to-amber-600 text-white px-4 py-2 flex items-center justify-between text-xs font-black shadow-md z-10 shrink-0 animate-in slide-in-from-top-2">
           <div className="flex items-center gap-2">
@@ -758,77 +956,135 @@ export default function OrderChatWindow({
         </div>
       )}
 
-      {/* Interactive Stock / Order Items Bar */}
-      {showItemsList && orderItems.length > 0 && (
-        <div className="bg-slate-100/90 border-b border-slate-200 p-2.5 max-h-40 overflow-y-auto space-y-1.5 shrink-0">
-          {orderItems.map((item: any, idx: number) => {
-            const isSoldOut = !!item.isSoldOut;
-            return (
-              <div
-                key={item.id || idx}
-                className={`flex items-center justify-between gap-2 p-2 rounded-xl text-xs transition-all ${
-                  isSoldOut
-                    ? 'bg-red-50/90 border border-red-200 text-red-700'
-                    : 'bg-white border border-slate-200/80 text-slate-800'
-                }`}
-              >
-                <div className="flex items-center gap-2 min-w-0 flex-1">
-                  {item.image && (
-                    <img src={item.image} alt={item.name} className="w-8 h-8 rounded-lg object-cover shrink-0 border border-slate-200" />
-                  )}
-                  <div className="min-w-0 flex-1">
-                    <p className={`font-black truncate ${isSoldOut ? 'line-through text-red-600' : 'text-slate-800'}`}>
-                      {item.quantity}x {item.name}
-                    </p>
-                    <span className="text-[10px] text-slate-400 font-bold">
-                      ${((item.price || 0) * (item.quantity || 1)).toFixed(2)} USD
-                    </span>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-1.5 shrink-0">
-                  {isSoldOut && (
-                    <span className="text-[10px] font-black bg-red-100 text-red-700 px-2 py-0.5 rounded-md uppercase">
-                      Agotado
-                    </span>
-                  )}
-
-                  {/* For Client: Replacement quick action */}
-                  {currentUserRole === 'client' && isSoldOut && (
-                    <button
-                      onClick={() => handleOpenSubstituteModal(item)}
-                      className="bg-amber-400 hover:bg-amber-500 text-slate-950 px-2.5 py-1 rounded-lg text-[10px] font-black flex items-center gap-1 shadow-sm transition-transform active:scale-95"
-                    >
-                      <Plus className="w-3 h-3" /> Sustituir
-                    </button>
-                  )}
-
-                  {/* For Restaurant/Cashier: Stock toggle button */}
-                  {isStoreRole && (
-                    <button
-                      onClick={() => handleToggleSoldOut(item.id, isSoldOut)}
-                      className={`px-2.5 py-1 rounded-lg text-[10px] font-black transition-all active:scale-95 ${
-                        isSoldOut
-                          ? 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm'
-                          : 'bg-red-50 hover:bg-red-100 text-red-600 border border-red-200'
-                      }`}
-                    >
-                      {isSoldOut ? '✅ Hay Stock' : '⚠️ Agotado'}
-                    </button>
+      {/* PINNED VISUAL ORDER SUMMARY CARD (Customer Name, Cédula, Products, Quantities, Amounts in $ and Bs) */}
+      {showItemsList && (
+        <div className="bg-white border-b-2 border-slate-200 p-3.5 space-y-2.5 shrink-0 max-h-56 overflow-y-auto shadow-sm">
+          {/* Top Info: Client Name, Cédula and Delivery Method */}
+          <div className="flex items-center justify-between gap-2 pb-2 border-b border-slate-100 text-xs">
+            <div className="flex items-center gap-2 min-w-0 flex-1">
+              <div className="w-7 h-7 rounded-xl bg-slate-100 flex items-center justify-center shrink-0">
+                <User className="w-4 h-4 text-slate-600" />
+              </div>
+              <div className="min-w-0">
+                <p className="font-black text-slate-900 text-xs truncate">
+                  {liveOrder?.user_name || orderInfo?.userName || 'Cliente'}
+                </p>
+                <div className="flex items-center gap-2 text-[10px] text-slate-500 font-bold">
+                  <span>CI: {liveOrder?.user_cedula || orderInfo?.userCedula || 'No especificada'}</span>
+                  {(liveOrder?.user_phone || orderInfo?.userPhone) && (
+                    <span>• 📞 {liveOrder?.user_phone || orderInfo?.userPhone}</span>
                   )}
                 </div>
               </div>
-            );
-          })}
+            </div>
+
+            <div className="shrink-0 text-right">
+              <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider inline-flex items-center gap-1 ${
+                isPickupOrder ? 'bg-purple-100 text-purple-700' : 'bg-emerald-100 text-emerald-700'
+              }`}>
+                {isPickupOrder ? '🏪 Retiro en Tienda' : '🛵 Entrega a Domicilio'}
+              </span>
+            </div>
+          </div>
+
+          {/* Products List Breakdown */}
+          <div className="space-y-1.5">
+            {orderItems.map((item: any, idx: number) => {
+              const isSoldOut = !!item.isSoldOut;
+              const itemTotal = (item.price || 0) * (item.quantity || 1);
+              const itemTotalBs = bcvRate > 0 ? (itemTotal * bcvRate).toFixed(0) : '0';
+
+              return (
+                <div
+                  key={item.id || idx}
+                  className={`flex items-center justify-between gap-2 p-2 rounded-xl text-xs transition-all ${
+                    isSoldOut
+                      ? 'bg-red-50 border border-red-200 text-red-700'
+                      : 'bg-slate-50 border border-slate-100 text-slate-800'
+                  }`}
+                >
+                  <div className="flex items-center gap-2 min-w-0 flex-1">
+                    <span className="font-black text-slate-900 bg-white px-1.5 py-0.5 rounded border border-slate-200 text-[10px]">
+                      {item.quantity}x
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <p className={`font-black text-xs truncate ${isSoldOut ? 'line-through text-red-600' : 'text-slate-900'}`}>
+                        {item.name}
+                      </p>
+                      <span className="text-[10px] text-slate-500 font-bold">
+                        ${itemTotal.toFixed(2)} USD • {itemTotalBs} Bs
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    {isSoldOut && (
+                      <span className="text-[9px] font-black bg-red-100 text-red-700 px-2 py-0.5 rounded-md uppercase">
+                        Agotado
+                      </span>
+                    )}
+
+                    {/* For Client: Replacement quick action */}
+                    {currentUserRole === 'client' && isSoldOut && (
+                      <button
+                        onClick={() => handleOpenSubstituteModal(item)}
+                        className="bg-amber-400 hover:bg-amber-500 text-slate-950 px-2 py-1 rounded-lg text-[10px] font-black flex items-center gap-1 shadow-sm active:scale-95"
+                      >
+                        <Plus className="w-3 h-3" /> Sustituir
+                      </button>
+                    )}
+
+                    {/* For Restaurant/Cashier: Stock toggle button */}
+                    {isStoreRole && (
+                      <button
+                        onClick={() => handleToggleSoldOut(item.id, isSoldOut)}
+                        className={`px-2 py-1 rounded-lg text-[10px] font-black transition-all active:scale-95 ${
+                          isSoldOut
+                            ? 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm'
+                            : 'bg-red-50 hover:bg-red-100 text-red-600 border border-red-200'
+                        }`}
+                      >
+                        {isSoldOut ? '✅ Hay Stock' : '⚠️ Agotado'}
+                      </button>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Financial Totals & Status */}
+          <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-xs font-bold">
+            <div className="flex items-center gap-2">
+              <span className="text-slate-500 text-[11px]">Total Orden:</span>
+              <span className="text-slate-900 font-black text-sm">
+                ${Number(liveOrder?.total || orderSubtotal).toFixed(2)} USD
+              </span>
+              <span className="text-slate-500 text-[10px]">
+                ({bcvRate > 0 ? ((Number(liveOrder?.total || orderSubtotal)) * bcvRate).toFixed(0) : '0'} Bs)
+              </span>
+            </div>
+
+            {/* Quick stock confirm for store */}
+            {isStoreRole && !(liveOrder?.stock_confirmed || liveOrder?.stockConfirmed) && (
+              <button
+                onClick={handleConfirmStoreStock}
+                className="bg-blue-600 hover:bg-blue-700 text-white font-black text-[10px] px-2.5 py-1 rounded-xl flex items-center gap-1 shadow-sm active:scale-95"
+              >
+                <CheckCircle className="w-3.5 h-3.5" /> Confirmar Stock
+              </button>
+            )}
+          </div>
         </div>
       )}
 
       {/* Messages area */}
       <div className="flex-1 overflow-y-auto p-4 space-y-3">
         {messages.length === 0 && (
-          <div className="text-center text-slate-400 font-medium text-xs mt-12 space-y-2">
+          <div className="text-center text-slate-400 font-medium text-xs mt-8 space-y-2">
             <Store className="w-10 h-10 mx-auto text-slate-300" />
-            <p>Escribe tu mensaje para iniciar la conversación en tiempo real.</p>
+            <p className="font-bold text-slate-500">Conversación en Vivo</p>
+            <p className="text-[11px] text-slate-400">Coordina detalles del producto, confirma tu pago y gestiona el despacho.</p>
           </div>
         )}
         {messages.map((msg) => (
@@ -855,26 +1111,62 @@ export default function OrderChatWindow({
         </div>
       )}
 
-      {/* Quick Actions (for Client: "Ya pagué" Action Bar) */}
-      {currentUserRole === 'client' && !liveOrder?.restaurant_payment_client_confirmed && !liveOrder?.restaurantPaymentClientConfirmed && (
-        <div className="bg-amber-50 border-t border-amber-200 p-2.5 px-4 flex items-center justify-between gap-2 shrink-0">
-          <div className="flex items-center gap-2">
-            <CreditCard className="w-4 h-4 text-amber-600 shrink-0" />
-            <span className="text-xs font-bold text-amber-900">¿Realizaste el pago de tu pedido?</span>
-          </div>
-          <button
-            onClick={() => setShowPayModal(true)}
-            className="bg-primary hover:bg-primary/90 text-slate-900 font-black px-3.5 py-1.5 rounded-xl text-xs flex items-center gap-1.5 shadow-md active:scale-95 transition-all shrink-0"
-          >
-            <CheckCircle className="w-4 h-4 text-slate-900" /> Ya pagué
-          </button>
+      {/* ACTION BAR: Client (Ya pagué / Procesar Envío) */}
+      {currentUserRole === 'client' && (
+        <div className="shrink-0 bg-white border-t border-slate-200">
+          {/* State 1: Client has not reported payment yet */}
+          {!isPaidOrConditionallyPaid && (
+            <div className="bg-amber-50 p-2.5 px-4 flex items-center justify-between gap-2 border-b border-amber-200">
+              <div className="flex items-center gap-2">
+                <CreditCard className="w-4 h-4 text-amber-600 shrink-0" />
+                <span className="text-xs font-bold text-amber-900">¿Realizaste el pago de tu pedido?</span>
+              </div>
+              <button
+                onClick={() => setShowPayModal(true)}
+                className="bg-primary hover:bg-primary/90 text-slate-900 font-black px-4 py-2 rounded-xl text-xs flex items-center gap-1.5 shadow-md active:scale-95 transition-all shrink-0"
+              >
+                <CheckCircle className="w-4 h-4 text-slate-900" /> Ya pagué
+              </button>
+            </div>
+          )}
+
+          {/* State 2: Payment confirmed / verified */}
+          {isPaidOrConditionallyPaid && !isPickupOrder && (
+            <div className="p-2.5 px-4 bg-slate-50 flex items-center justify-between gap-3 border-b border-slate-200">
+              {qualifiesForFreeDelivery ? (
+                <div className="flex items-center gap-2 text-emerald-800">
+                  <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />
+                  <span className="text-[11px] font-bold">
+                    🎁 ¡Envío Gratis activo! La tienda cubre el delivery y está coordinando el conductor.
+                  </span>
+                </div>
+              ) : (
+                <>
+                  <div className="flex items-center gap-2 text-slate-700 min-w-0">
+                    <Bike className="w-4 h-4 text-primary shrink-0" />
+                    <span className="text-[11px] font-bold truncate">
+                      {liveOrder?.status === 'buscando_piloto' 
+                        ? 'Buscando conductor para tu entrega...' 
+                        : 'Pago listo. Ahora solicita tu vehículo de entrega.'}
+                    </span>
+                  </div>
+                  <button
+                    onClick={() => setShowClientDispatchModal(true)}
+                    className="bg-slate-950 hover:bg-slate-900 text-white font-black px-4 py-2 rounded-xl text-xs flex items-center gap-1.5 shadow-md active:scale-95 transition-all shrink-0"
+                  >
+                    <Bike className="w-4 h-4 text-primary" /> Procesar Envío
+                  </button>
+                </>
+              )}
+            </div>
+          )}
         </div>
       )}
 
-      {/* Quick Actions (for Store / Cashier) */}
+      {/* ACTION BAR: Store / Cashier */}
       {isStoreRole && (
         <div className="bg-white p-2.5 border-t border-slate-200 flex items-center gap-2 overflow-x-auto whitespace-nowrap scrollbar-hide shadow-sm z-10 w-full shrink-0">
-          {!orderInfo?.restaurantPaymentClientConfirmed && (
+          {!isPaidOrConditionallyPaid && (
             <>
               <button
                 onClick={handleSendPagoMovilInfo}
@@ -913,16 +1205,21 @@ export default function OrderChatWindow({
             <Clock className="w-3.5 h-3.5" /> ⏱️ Tiempo Prep.
           </button>
 
-          {/* Store dispatch tool (if delivery) */}
-          {(liveOrder?.deliveryMethod !== 'pickup' && liveOrder?.delivery_method !== 'pickup') && (
+          {/* Modalidad A: Store dispatch button (especially when free shipping applies) */}
+          {!isPickupOrder && (
             <button
               onClick={() => {
                 fetchDrivers();
-                setShowDispatchModal(true);
+                setShowStoreDispatchModal(true);
               }}
-              className="shrink-0 bg-slate-900 hover:bg-slate-800 text-white font-black px-3.5 py-1.5 rounded-xl text-xs flex items-center gap-1.5 shadow-sm active:scale-95 transition-all ml-auto"
+              className={`shrink-0 font-black px-3.5 py-1.5 rounded-xl text-xs flex items-center gap-1.5 shadow-sm active:scale-95 transition-all ml-auto ${
+                qualifiesForFreeDelivery
+                  ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                  : 'bg-slate-900 hover:bg-slate-800 text-white'
+              }`}
             >
-              <Bike className="w-3.5 h-3.5 text-primary" /> 🛵 Enviar Pedido
+              <Bike className="w-3.5 h-3.5 text-primary" />
+              {qualifiesForFreeDelivery ? '🎁 Despachar (Envío Gratis)' : '🛵 Despachar Driver'}
             </button>
           )}
         </div>
@@ -1004,17 +1301,17 @@ export default function OrderChatWindow({
         )}
       </div>
 
-      {/* Modal: "Ya pagué" Strict Verification for Client */}
+      {/* MODAL 1: "Ya pagué" Native Bottom Sheet with Pago Móvil / Reference / Retiro en Tienda */}
       {showPayModal && (
-        <div className="absolute inset-0 bg-slate-950/70 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in">
-          <div className="bg-white rounded-3xl p-5 w-full max-w-sm max-h-[90%] flex flex-col shadow-2xl border border-slate-200 animate-in zoom-in-95">
+        <div className="absolute inset-0 bg-slate-950/70 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-3 animate-in fade-in">
+          <div className="bg-white rounded-t-[32px] sm:rounded-3xl p-5 w-full max-w-sm max-h-[90%] flex flex-col shadow-2xl border border-slate-200 animate-in slide-in-from-bottom-5 sm:zoom-in-95">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100 mb-3">
               <div>
                 <h4 className="font-black text-slate-900 text-sm flex items-center gap-1.5">
-                  <CreditCard className="w-4 h-4 text-primary" /> Reportar Pago Realizado
+                  <CreditCard className="w-4 h-4 text-primary" /> Reportar Pago
                 </h4>
                 <p className="text-[10px] text-slate-500 font-bold">
-                  Comprobante o referencia obligatoria para validación
+                  Comprobante, referencia o pago directo en tienda
                 </p>
               </div>
               <button
@@ -1025,11 +1322,31 @@ export default function OrderChatWindow({
               </button>
             </div>
 
-            <div className="flex-1 overflow-y-auto space-y-3 pr-1 text-xs">
+            <div className="flex-1 overflow-y-auto space-y-3.5 pr-1 text-xs">
+              {/* Pickup Mode: Option for Card/POS at Store */}
+              {isPickupOrder && (
+                <div className="p-3.5 rounded-2xl bg-purple-50 border-2 border-purple-200 space-y-2">
+                  <div className="flex items-center gap-2 text-purple-900 font-black">
+                    <Store className="w-4 h-4 text-purple-600" />
+                    <span>Pago en el Establecimiento</span>
+                  </div>
+                  <p className="text-[11px] text-purple-700 font-semibold leading-relaxed">
+                    Si vas a retirar tu pedido en la tienda, puedes cancelar directamente en caja con tarjeta de débito/crédito o punto de venta.
+                  </p>
+                  <button
+                    onClick={handleSelectPickupCardPayment}
+                    disabled={submittingPayment}
+                    className="w-full bg-purple-600 hover:bg-purple-700 text-white font-black py-2.5 rounded-xl text-xs shadow-md active:scale-95 transition-all flex items-center justify-center gap-1.5"
+                  >
+                    <CreditCard className="w-4 h-4" /> Pago con tarjeta / Punto de venta en el lugar
+                  </button>
+                </div>
+              )}
+
               {/* Receipt File upload */}
               <div>
                 <label className="font-black text-slate-700 block mb-1 text-[11px]">
-                  Capture o Foto del Comprobante:
+                  Subir Captura o Foto del Pago Móvil:
                 </label>
                 {payProofPreview ? (
                   <div className="relative border-2 border-emerald-300 rounded-2xl overflow-hidden bg-slate-50 p-1">
@@ -1047,8 +1364,8 @@ export default function OrderChatWindow({
                 ) : (
                   <label className="border-2 border-dashed border-slate-300 hover:border-primary rounded-2xl p-4 flex flex-col items-center justify-center gap-2 cursor-pointer bg-slate-50 transition-colors">
                     <UploadCloud className="w-8 h-8 text-slate-400" />
-                    <span className="font-black text-slate-600 text-[11px]">Subir captura de pago</span>
-                    <span className="text-[9px] text-slate-400">Formatos JPG, PNG, WEBP</span>
+                    <span className="font-black text-slate-600 text-[11px]">Subir comprobante / captura</span>
+                    <span className="text-[9px] text-slate-400">JPG, PNG o WEBP</span>
                     <input
                       type="file"
                       accept="image/*"
@@ -1094,11 +1411,11 @@ export default function OrderChatWindow({
                 />
               </div>
 
-              {/* Validation Warning */}
+              {/* Validation Alert */}
               {!payProofFile && payReferenceCode.trim().length < 4 && (
                 <div className="bg-red-50 border border-red-200 p-2.5 rounded-xl text-[10px] font-bold text-red-700 flex items-center gap-1.5">
                   <AlertTriangle className="w-4 h-4 shrink-0" />
-                  <span>Obligatorio: Adjunta la captura o escribe al menos 4 caracteres de referencia.</span>
+                  <span>Adjunta la captura o ingresa al menos 4 dígitos de referencia.</span>
                 </div>
               )}
             </div>
@@ -1107,7 +1424,7 @@ export default function OrderChatWindow({
               <button
                 onClick={handleConfirmPaid}
                 disabled={submittingPayment || (!payProofFile && payReferenceCode.trim().length < 4)}
-                className="w-full bg-primary hover:bg-primary-hover text-slate-900 font-black py-3 rounded-2xl text-xs flex items-center justify-center gap-2 shadow-lg disabled:opacity-50 active:scale-95 transition-all"
+                className="w-full bg-primary hover:bg-primary/90 text-slate-900 font-black py-3 rounded-2xl text-xs flex items-center justify-center gap-2 shadow-lg disabled:opacity-50 active:scale-95 transition-all"
               >
                 {submittingPayment ? (
                   <Loader2 className="w-4 h-4 animate-spin" />
@@ -1122,7 +1439,294 @@ export default function OrderChatWindow({
         </div>
       )}
 
-      {/* Modal: Set Preparation Time for Store */}
+      {/* MODAL 2: Modalidad B - Client Dispatch Bottom Sheet (Moto, Carro Económico, Confort) */}
+      {showClientDispatchModal && (
+        <div className="absolute inset-0 bg-slate-950/70 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-3 animate-in fade-in">
+          <div className="bg-white rounded-t-[32px] sm:rounded-3xl p-5 w-full max-w-sm max-h-[92%] flex flex-col shadow-2xl border border-slate-200 animate-in slide-in-from-bottom-5 sm:zoom-in-95">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100 mb-3">
+              <div>
+                <h4 className="font-black text-slate-900 text-sm flex items-center gap-1.5">
+                  <Bike className="w-4 h-4 text-primary" /> Procesar Envío de Pedido
+                </h4>
+                <p className="text-[10px] text-slate-500 font-bold">
+                  Selecciona la categoría de transporte para tu entrega
+                </p>
+              </div>
+              <button
+                onClick={() => setShowClientDispatchModal(false)}
+                className="w-7 h-7 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 hover:bg-slate-200"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto space-y-3 pr-1 text-xs">
+              {/* Origin & Destination Route Card */}
+              <div className="p-3 bg-slate-50 border border-slate-200 rounded-2xl space-y-2">
+                <div className="flex items-start gap-2">
+                  <Store className="w-4 h-4 text-slate-500 shrink-0 mt-0.5" />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[10px] text-slate-400 font-black uppercase">Origen (Comercio):</p>
+                    <p className="font-black text-slate-800 text-xs truncate">
+                      {liveOrder?.restaurant_name || storeData?.name || 'Comercio'}
+                    </p>
+                    <p className="text-[10px] text-slate-500 truncate">
+                      {storeData?.address || 'Sede del comercio'}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="h-px bg-slate-200 my-1" />
+
+                <div className="flex items-start gap-2">
+                  <Navigation className="w-4 h-4 text-primary shrink-0 mt-0.5" />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[10px] text-slate-400 font-black uppercase">Destino (Tu Ubicación):</p>
+                    <p className="font-black text-slate-800 text-xs truncate">
+                      {liveOrder?.delivery_address || liveOrder?.address?.name || 'Dirección del cliente'}
+                    </p>
+                    <span className="text-[10px] text-slate-500">
+                      Distancia estimada: ~{orderDistanceKm} km
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Written Reference Input */}
+              <div>
+                <label className="text-[11px] font-black text-slate-700 block mb-1">
+                  Referencia de entrega (Opcional):
+                </label>
+                <input
+                  type="text"
+                  placeholder="Ej: Portón verde, casa de dos pisos..."
+                  value={clientReferenceNote}
+                  onChange={(e) => setClientReferenceNote(e.target.value)}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 outline-none focus:border-primary focus:bg-white"
+                />
+              </div>
+
+              {/* Category Selector: Moto, Carro Económico, Confort */}
+              <div className="space-y-2">
+                <label className="text-[11px] font-black text-slate-700 block">
+                  Elige la categoría de transporte:
+                </label>
+
+                {/* 1. Moto */}
+                {(() => {
+                  const fare = calculateFare('moto');
+                  const isSelected = clientSelectedCategory === 'moto';
+                  return (
+                    <div
+                      onClick={() => setClientSelectedCategory('moto')}
+                      className={`p-3 rounded-2xl border-2 flex items-center justify-between cursor-pointer transition-all ${
+                        isSelected
+                          ? 'bg-amber-50 border-amber-400 shadow-md shadow-amber-500/10'
+                          : 'bg-white border-slate-200 hover:border-slate-300'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2.5">
+                        <div className={`w-9 h-9 rounded-xl flex items-center justify-center ${isSelected ? 'bg-amber-400 text-slate-950 font-black' : 'bg-slate-100 text-slate-700'}`}>
+                          <Bike className="w-5 h-5" />
+                        </div>
+                        <div>
+                          <p className="font-black text-slate-900 text-xs">Moto Encomienda</p>
+                          <span className="text-[10px] text-slate-500 font-medium">Rápido y ágil para paquetes</span>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <p className="font-black text-slate-900 text-xs">${fare.toFixed(2)} USD</p>
+                        <span className="text-[9px] text-slate-500 font-bold">{(fare * bcvRate).toFixed(0)} Bs</span>
+                      </div>
+                    </div>
+                  );
+                })()}
+
+                {/* 2. Carro Económico */}
+                {(() => {
+                  const fare = calculateFare('carro');
+                  const isSelected = clientSelectedCategory === 'carro';
+                  return (
+                    <div
+                      onClick={() => setClientSelectedCategory('carro')}
+                      className={`p-3 rounded-2xl border-2 flex items-center justify-between cursor-pointer transition-all ${
+                        isSelected
+                          ? 'bg-amber-50 border-amber-400 shadow-md shadow-amber-500/10'
+                          : 'bg-white border-slate-200 hover:border-slate-300'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2.5">
+                        <div className={`w-9 h-9 rounded-xl flex items-center justify-center ${isSelected ? 'bg-amber-400 text-slate-950 font-black' : 'bg-slate-100 text-slate-700'}`}>
+                          <Car className="w-5 h-5" />
+                        </div>
+                        <div>
+                          <p className="font-black text-slate-900 text-xs">Carro Económico</p>
+                          <span className="text-[10px] text-slate-500 font-medium">Mayor capacidad y protección</span>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <p className="font-black text-slate-900 text-xs">${fare.toFixed(2)} USD</p>
+                        <span className="text-[9px] text-slate-500 font-bold">{(fare * bcvRate).toFixed(0)} Bs</span>
+                      </div>
+                    </div>
+                  );
+                })()}
+
+                {/* 3. Confort VIP */}
+                {(() => {
+                  const fare = calculateFare('confort');
+                  const isSelected = clientSelectedCategory === 'confort';
+                  return (
+                    <div
+                      onClick={() => setClientSelectedCategory('confort')}
+                      className={`p-3 rounded-2xl border-2 flex items-center justify-between cursor-pointer transition-all ${
+                        isSelected
+                          ? 'bg-purple-50 border-purple-400 shadow-md shadow-purple-500/10'
+                          : 'bg-white border-slate-200 hover:border-slate-300'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2.5">
+                        <div className={`w-9 h-9 rounded-xl flex items-center justify-center ${isSelected ? 'bg-purple-600 text-white font-black' : 'bg-purple-100 text-purple-700'}`}>
+                          <Sparkles className="w-5 h-5" />
+                        </div>
+                        <div>
+                          <p className="font-black text-slate-900 text-xs">Confort VIP</p>
+                          <span className="text-[10px] text-slate-500 font-medium">Climatizado A/A, unidad premium</span>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <p className="font-black text-slate-900 text-xs">${fare.toFixed(2)} USD</p>
+                        <span className="text-[9px] text-slate-500 font-bold">{(fare * bcvRate).toFixed(0)} Bs</span>
+                      </div>
+                    </div>
+                  );
+                })()}
+              </div>
+            </div>
+
+            <div className="pt-3 border-t border-slate-100 mt-2">
+              <button
+                onClick={handleClientSubmitDispatch}
+                disabled={submittingClientDispatch}
+                className="w-full bg-slate-950 hover:bg-slate-900 text-white font-black py-3 rounded-2xl text-xs flex items-center justify-center gap-2 shadow-lg disabled:opacity-50 active:scale-95 transition-all"
+              >
+                {submittingClientDispatch ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <>
+                    <Bike className="w-4 h-4 text-primary" /> Confirmar y Solicitar Conductor
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 3: Modalidad A - Store Driver Dispatch Modal */}
+      {showStoreDispatchModal && (
+        <div className="absolute inset-0 bg-slate-950/70 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in">
+          <div className="bg-white rounded-3xl p-5 w-full max-w-sm max-h-[90%] flex flex-col shadow-2xl border border-slate-200 animate-in zoom-in-95">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100 mb-3">
+              <div>
+                <h4 className="font-black text-slate-900 text-sm flex items-center gap-1.5">
+                  <Bike className="w-4 h-4 text-primary" /> Asignar y Despachar Pedido
+                </h4>
+                <p className="text-[10px] text-slate-500 font-bold">
+                  Selecciona el driver de la red para despachar
+                </p>
+              </div>
+              <button
+                onClick={() => setShowStoreDispatchModal(false)}
+                className="w-7 h-7 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 hover:bg-slate-200"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto space-y-3 pr-1 text-xs">
+              {/* Free Delivery Commission Notice */}
+              <div className={`p-2.5 rounded-2xl border ${
+                qualifiesForFreeDelivery
+                  ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
+                  : 'bg-slate-100 border-slate-200 text-slate-700'
+              }`}>
+                <p className="text-[10px] font-black uppercase tracking-wider flex items-center gap-1">
+                  <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" /> Esquema de Envío:
+                </p>
+                <p className="text-[11px] font-bold mt-1">
+                  {qualifiesForFreeDelivery
+                    ? `🎁 Envío Gratis activo: El monto de compra ($${orderSubtotal.toFixed(2)}) califica. El negocio asume la tarifa del driver.`
+                    : `🛵 Tarifa de delivery calculada: $${Number(liveOrder?.delivery_fee || liveOrder?.deliveryFee || 2.0).toFixed(2)}.`}
+                </p>
+              </div>
+
+              {/* Drivers List */}
+              <div className="space-y-1.5">
+                <label className="text-[11px] font-black text-slate-700 block">
+                  Conductores Registrados Disponibles:
+                </label>
+                {loadingDrivers ? (
+                  <div className="text-center py-6 text-slate-400">
+                    <Loader2 className="w-5 h-5 animate-spin mx-auto text-primary" />
+                    <span className="text-[10px] font-bold mt-1 block">Buscando conductores...</span>
+                  </div>
+                ) : driversList.length === 0 ? (
+                  <p className="text-slate-400 text-center py-4 text-[11px]">No hay repartidores conectados en este momento.</p>
+                ) : (
+                  driversList.map((drv: any) => {
+                    const isSelected = selectedDriverId === drv.id;
+                    const name = drv.name || drv.displayName || drv.full_name || 'Driver';
+                    return (
+                      <div
+                        key={drv.id}
+                        onClick={() => setSelectedDriverId(drv.id)}
+                        className={`p-2.5 rounded-2xl border flex items-center justify-between cursor-pointer transition-all ${
+                          isSelected
+                            ? 'bg-primary/10 border-primary shadow-sm'
+                            : 'bg-slate-50 border-slate-200 hover:bg-slate-100'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2">
+                          <Bike className="w-4 h-4 text-slate-700" />
+                          <div>
+                            <p className="font-black text-slate-900 text-xs">{name}</p>
+                            <span className="text-[10px] text-slate-400 font-bold">{drv.vehicleType || drv.vehicle_type || 'Moto'}</span>
+                          </div>
+                        </div>
+                        <input
+                          type="radio"
+                          checked={isSelected}
+                          onChange={() => setSelectedDriverId(drv.id)}
+                          className="accent-primary"
+                        />
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </div>
+
+            <div className="pt-3 border-t border-slate-100 mt-2">
+              <button
+                onClick={handleStoreDispatchOrder}
+                disabled={dispatchingStore || !selectedDriverId}
+                className="w-full bg-slate-950 hover:bg-slate-900 text-white font-black py-3 rounded-2xl text-xs flex items-center justify-center gap-2 shadow-lg disabled:opacity-50 active:scale-95 transition-all"
+              >
+                {dispatchingStore ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <>
+                    <Bike className="w-4 h-4 text-primary" /> Confirmar y Despachar
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 4: Preparation Time Modal for Store */}
       {showPrepTimeModal && (
         <div className="absolute inset-0 bg-slate-950/70 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in">
           <div className="bg-white rounded-3xl p-5 w-full max-w-sm flex flex-col shadow-2xl border border-slate-200 animate-in zoom-in-95">
@@ -1187,124 +1791,7 @@ export default function OrderChatWindow({
         </div>
       )}
 
-      {/* Modal: Driver Dispatch for Store */}
-      {showDispatchModal && (
-        <div className="absolute inset-0 bg-slate-950/70 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in">
-          <div className="bg-white rounded-3xl p-5 w-full max-w-sm max-h-[90%] flex flex-col shadow-2xl border border-slate-200 animate-in zoom-in-95">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100 mb-3">
-              <div>
-                <h4 className="font-black text-slate-900 text-sm flex items-center gap-1.5">
-                  <Bike className="w-4 h-4 text-primary" /> Asignar y Despachar Pedido
-                </h4>
-                <p className="text-[10px] text-slate-500 font-bold">
-                  Selecciona el driver de la red para la entrega
-                </p>
-              </div>
-              <button
-                onClick={() => setShowDispatchModal(false)}
-                className="w-7 h-7 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 hover:bg-slate-200"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            <div className="flex-1 overflow-y-auto space-y-3 pr-1 text-xs">
-              {/* Client Driver Preference Highlight */}
-              {liveOrder?.preferred_driver_name && (
-                <div className="bg-blue-50 border border-blue-200 p-2.5 rounded-2xl">
-                  <p className="text-[10px] font-black text-blue-800 uppercase tracking-wider flex items-center gap-1">
-                    <UserCheck className="w-3.5 h-3.5 text-blue-600" /> Preferencia del Cliente:
-                  </p>
-                  <p className="text-xs font-black text-blue-900 mt-1">
-                    {liveOrder.preferred_driver_name}
-                  </p>
-                  <button
-                    onClick={() => setSelectedDriverId(liveOrder.preferred_driver_id || '')}
-                    className="mt-1.5 bg-blue-600 text-white font-black px-2.5 py-1 rounded-xl text-[10px] hover:bg-blue-700 active:scale-95"
-                  >
-                    Seleccionar este Driver
-                  </button>
-                </div>
-              )}
-
-              {/* Free Delivery Commission Notice */}
-              <div className="bg-slate-100 border border-slate-200 p-2.5 rounded-2xl">
-                <p className="text-[10px] font-black text-slate-700 uppercase tracking-wider flex items-center gap-1">
-                  <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" /> Esquema de Tarifa:
-                </p>
-                <p className="text-[11px] font-bold text-slate-600 mt-1">
-                  {liveOrder?.free_delivery || liveOrder?.deliveryFee === 0
-                    ? '🎁 Envío Gratis activo: El comercio asume la comisión de despacho.'
-                    : `🛵 Tarifa de delivery cubierta por el cliente: $${Number(liveOrder?.deliveryFee || 0).toFixed(2)}.`}
-                </p>
-              </div>
-
-              {/* Drivers List */}
-              <div className="space-y-1.5">
-                <label className="text-[11px] font-black text-slate-700 block">
-                  Repartidores Disponibles:
-                </label>
-                {loadingDrivers ? (
-                  <div className="text-center py-6 text-slate-400">
-                    <Loader2 className="w-5 h-5 animate-spin mx-auto text-primary" />
-                    <span className="text-[10px] font-bold mt-1 block">Buscando conductores...</span>
-                  </div>
-                ) : driversList.length === 0 ? (
-                  <p className="text-slate-400 text-center py-4 text-[11px]">No hay repartidores conectados en este momento.</p>
-                ) : (
-                  driversList.map((drv: any) => {
-                    const isSelected = selectedDriverId === drv.id;
-                    const name = drv.name || drv.displayName || drv.full_name || 'Driver';
-                    return (
-                      <div
-                        key={drv.id}
-                        onClick={() => setSelectedDriverId(drv.id)}
-                        className={`p-2.5 rounded-2xl border flex items-center justify-between cursor-pointer transition-all ${
-                          isSelected
-                            ? 'bg-primary/10 border-primary shadow-sm'
-                            : 'bg-slate-50 border-slate-200 hover:bg-slate-100'
-                        }`}
-                      >
-                        <div className="flex items-center gap-2">
-                          <Bike className="w-4 h-4 text-slate-700" />
-                          <div>
-                            <p className="font-black text-slate-900 text-xs">{name}</p>
-                            <span className="text-[10px] text-slate-400 font-bold">{drv.vehicleType || drv.vehicle_type || 'Moto'}</span>
-                          </div>
-                        </div>
-                        <input
-                          type="radio"
-                          checked={isSelected}
-                          onChange={() => setSelectedDriverId(drv.id)}
-                          className="accent-primary"
-                        />
-                      </div>
-                    );
-                  })
-                )}
-              </div>
-            </div>
-
-            <div className="pt-3 border-t border-slate-100 mt-2">
-              <button
-                onClick={handleDispatchOrder}
-                disabled={dispatching || (!selectedDriverId && !liveOrder?.preferred_driver_id)}
-                className="w-full bg-slate-950 hover:bg-slate-900 text-white font-black py-3 rounded-2xl text-xs flex items-center justify-center gap-2 shadow-lg disabled:opacity-50 active:scale-95 transition-all"
-              >
-                {dispatching ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                ) : (
-                  <>
-                    <Bike className="w-4 h-4 text-primary" /> Confirmar y Despachar
-                  </>
-                )}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Modal: Quick Product Substitution for Client */}
+      {/* MODAL 5: Quick Product Substitution Modal */}
       {showSubstituteModal && (
         <div className="absolute inset-0 bg-slate-950/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in">
           <div className="bg-white rounded-3xl p-5 w-full max-w-sm max-h-[85%] flex flex-col shadow-2xl border border-slate-200 animate-in zoom-in-95">

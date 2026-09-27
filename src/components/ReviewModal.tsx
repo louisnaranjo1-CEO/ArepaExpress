@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, Star, UploadCloud, Trash2 } from 'lucide-react';
+import { X, Star, UploadCloud, Trash2, Store, Bike, UserCheck, Shield } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import toast from 'react-hot-toast';
@@ -10,24 +10,68 @@ interface ReviewModalProps {
     onClose: () => void;
     restaurantId: string;
     orderId: string;
+    orderInfo?: any;
     onReviewSubmitted: () => void;
 }
 
-export default function ReviewModal({ isOpen, onClose, restaurantId, orderId, onReviewSubmitted }: ReviewModalProps) {
+export default function ReviewModal({ 
+    isOpen, 
+    onClose, 
+    restaurantId, 
+    orderId, 
+    orderInfo,
+    onReviewSubmitted 
+}: ReviewModalProps) {
     const { user, userData } = useAuth();
+    const [liveOrder, setLiveOrder] = useState<any>(orderInfo || null);
+    
+    // Store review state
     const [rating, setRating] = useState(0);
     const [hoverRating, setHoverRating] = useState(0);
     const [comment, setComment] = useState('');
     const [photos, setPhotos] = useState<File[]>([]);
     const [photoPreviews, setPhotoPreviews] = useState<string[]>([]);
+    
+    // Driver review state (if delivery)
+    const [driverRating, setDriverRating] = useState(0);
+    const [hoverDriverRating, setHoverDriverRating] = useState(0);
+    const [driverComment, setDriverComment] = useState('');
+    
+    // Privacy selector: Visible Name vs Anonymous Mode
     const [isAnonymous, setIsAnonymous] = useState(false);
+    
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
     const MAX_PHOTOS = 3;
     const MAX_FILE_SIZE_MB = 2;
 
+    // Fetch order details if not provided to identify driver and delivery method
+    useEffect(() => {
+        if (!isOpen || !orderId) return;
+        if (!orderInfo) {
+            supabase
+                .from('orders')
+                .select('*')
+                .eq('id', orderId)
+                .maybeSingle()
+                .then(({ data }) => {
+                    if (data) setLiveOrder(data);
+                });
+        } else {
+            setLiveOrder(orderInfo);
+        }
+    }, [isOpen, orderId, orderInfo]);
+
     if (!isOpen) return null;
+
+    const hasDriver = Boolean(
+        liveOrder?.delivery_method !== 'pickup' &&
+        liveOrder?.deliveryMethod !== 'pickup' &&
+        (liveOrder?.driver_id || liveOrder?.delivery_driver_id || liveOrder?.driver_name || liveOrder?.driverName)
+    );
+
+    const driverName = liveOrder?.driver_name || liveOrder?.driverName || 'Repartidor';
 
     const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const files = Array.from(e.target.files || []) as File[];
@@ -74,12 +118,12 @@ export default function ReviewModal({ isOpen, onClose, restaurantId, orderId, on
         }
 
         if (rating === 0) {
-            setError("Por favor, selecciona una calificación (estrellas).");
+            setError("Por favor, califica al comercio con al menos 1 estrella.");
             return;
         }
 
-        if (comment.trim().length < 5) {
-            setError("Por favor, escribe un comentario un poco más largo.");
+        if (comment.trim().length < 4) {
+            setError("Por favor, escribe un breve comentario sobre tu experiencia.");
             return;
         }
 
@@ -106,14 +150,17 @@ export default function ReviewModal({ isOpen, onClose, restaurantId, orderId, on
                 photoURLs.push(pubData.publicUrl);
             }
 
-            // Save review in Supabase
-            const reviewData = {
+            const authorName = isAnonymous ? 'Cliente Anónimo' : (userData?.displayName || 'Usuario');
+            const authorAvatar = isAnonymous ? '' : (userData?.photoURL || '');
+
+            // 1. Save store review in Supabase
+            const storeReviewData = {
                 user_id: user.id,
-                user_name: isAnonymous ? 'Cliente Anónimo' : (userData?.displayName || 'Usuario'),
-                user_avatar: isAnonymous ? '' : (userData?.photoURL || ''),
+                user_name: authorName,
+                user_avatar: authorAvatar,
                 is_anonymous: isAnonymous,
                 rating,
-                comment,
+                comment: comment.trim(),
                 photos: photoURLs,
                 created_at: new Date().toISOString(),
                 is_hidden: false,
@@ -121,37 +168,46 @@ export default function ReviewModal({ isOpen, onClose, restaurantId, orderId, on
                 restaurant_id: restaurantId
             };
 
-            const { error: insertErr } = await supabase.from('reviews').insert([reviewData]);
-            if (insertErr) throw insertErr;
+            const { error: insertStoreErr } = await supabase.from('reviews').insert([storeReviewData]);
+            if (insertStoreErr) throw insertStoreErr;
 
-            // Update order to mark as reviewed and completed if delivered
-            const { data: orderSnap } = await supabase
-                .from('orders')
-                .select('status')
-                .eq('id', orderId)
-                .maybeSingle();
-
-            const updateData: any = {
-                has_reviewed: true,
-                hasReviewed: true
-            };
-            
-            if (orderSnap && orderSnap.status === 'delivered') {
-                updateData.status = 'completed';
+            // 2. If driver was rated, save driver review
+            const driverIdVal = liveOrder?.driver_id || liveOrder?.delivery_driver_id;
+            if (hasDriver && driverIdVal && driverRating > 0) {
+                try {
+                    await supabase.from('reviews').insert([{
+                        user_id: user.id,
+                        user_name: authorName,
+                        user_avatar: authorAvatar,
+                        is_anonymous: isAnonymous,
+                        driver_id: driverIdVal,
+                        rating: driverRating,
+                        comment: driverComment.trim() || `Calificación al conductor (${driverRating}★)`,
+                        order_id: orderId,
+                        created_at: new Date().toISOString()
+                    }]);
+                } catch (drvErr) {
+                    console.warn("Could not insert driver review record:", drvErr);
+                }
             }
-            
-            await supabase.from('orders').update(updateData).eq('id', orderId);
 
-            // Notify business in real time about the new review
+            // 3. Update order: mark as reviewed and completed
+            await supabase.from('orders').update({
+                has_reviewed: true,
+                hasReviewed: true,
+                status: 'completed',
+                updated_at: new Date().toISOString()
+            }).eq('id', orderId);
+
+            // 4. Notify business about the review
             try {
-                const reviewerName = userData?.displayName || 'Un cliente';
                 await supabase.from('notifications').insert({
                     restaurant_id: restaurantId,
                     user_id: user.id,
                     type: 'new_review',
                     title: `¡Nueva reseña (${rating}★)!`,
-                    message: `${reviewerName} ha valorado tu negocio con ${rating} estrellas: "${comment.slice(0, 80)}${comment.length > 80 ? '...' : ''}"`,
-                    body: `${reviewerName} ha valorado tu negocio con ${rating} estrellas: "${comment.slice(0, 80)}${comment.length > 80 ? '...' : ''}"`,
+                    message: `${authorName} ha valorado tu negocio con ${rating} estrellas: "${comment.slice(0, 80)}${comment.length > 80 ? '...' : ''}"`,
+                    body: `${authorName} ha valorado tu negocio con ${rating} estrellas: "${comment.slice(0, 80)}${comment.length > 80 ? '...' : ''}"`,
                     read: false,
                     created_at: new Date().toISOString()
                 });
@@ -159,11 +215,12 @@ export default function ReviewModal({ isOpen, onClose, restaurantId, orderId, on
                 console.warn("Could not insert review notification:", notifErr);
             }
 
-            toast.success("¡Reseña enviada con éxito!");
+            toast.success("¡Gracias por tu valoración! Ciclo completado 🎉");
             onReviewSubmitted();
+            onClose();
         } catch (err: any) {
             console.error("Error submitting review:", err);
-            toast.error(`Error al publicar la reseña: ${err.message || 'Inténtalo de nuevo'}`);
+            setError(`Error al publicar la reseña: ${err.message || 'Inténtalo de nuevo'}`);
         } finally {
             setIsSubmitting(false);
         }
@@ -176,29 +233,43 @@ export default function ReviewModal({ isOpen, onClose, restaurantId, orderId, on
                     initial={{ opacity: 0, scale: 0.95, y: 20 }}
                     animate={{ opacity: 1, scale: 1, y: 0 }}
                     exit={{ opacity: 0, scale: 0.95, y: 20 }}
-                    className="bg-white rounded-[32px] w-full max-w-lg shadow-2xl overflow-hidden my-auto"
+                    className="bg-white rounded-[32px] w-full max-w-lg shadow-2xl overflow-hidden my-auto max-h-[92vh] flex flex-col"
                 >
-                    <div className="p-6 border-b border-slate-50 flex items-center justify-between bg-slate-50/50">
+                    <div className="p-5 border-b border-slate-100 flex items-center justify-between bg-slate-50/50 shrink-0">
                         <div>
-                            <h3 className="text-xl font-black text-slate-900 leading-none">Tu Experiencia</h3>
-                            <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-2">Valora tu pedido</p>
+                            <h3 className="text-xl font-black text-slate-900 leading-none">Calificar Experiencia</h3>
+                            <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1.5">
+                                Cierre de ciclo • #{orderId.slice(-6).toUpperCase()}
+                            </p>
                         </div>
                         <button onClick={onClose} disabled={isSubmitting} className="p-2 hover:bg-slate-200 rounded-xl transition-all disabled:opacity-50">
                             <X className="w-5 h-5 text-slate-400" />
                         </button>
                     </div>
 
-                    <form onSubmit={handleSubmit} className="p-6 space-y-6">
+                    <form onSubmit={handleSubmit} className="p-6 space-y-6 overflow-y-auto flex-1 text-xs">
                         {error && (
-                            <div className="p-4 bg-red-50 text-red-600 rounded-2xl text-xs font-bold animate-in shake-in duration-300 border border-red-100">
+                            <div className="p-3.5 bg-red-50 text-red-600 rounded-2xl text-xs font-bold animate-in shake-in duration-300 border border-red-100">
                                 {error}
                             </div>
                         )}
 
-                        {/* Rating Stars */}
-                        <div className="flex flex-col items-center gap-2">
-                            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Calificación</span>
-                            <div className="flex items-center gap-1">
+                        {/* SECTION 1: Calificación del Comercio */}
+                        <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200/80 space-y-3">
+                            <div className="flex items-center gap-2">
+                                <div className="w-8 h-8 rounded-xl bg-primary/20 flex items-center justify-center text-slate-900">
+                                    <Store className="w-4 h-4" />
+                                </div>
+                                <div>
+                                    <h4 className="font-black text-slate-900 text-xs">Calificación del Comercio</h4>
+                                    <p className="text-[10px] text-slate-400 font-bold">
+                                        {liveOrder?.restaurant_name || 'Comercio'}
+                                    </p>
+                                </div>
+                            </div>
+
+                            {/* Stars */}
+                            <div className="flex items-center justify-center gap-1.5 py-1">
                                 {[1, 2, 3, 4, 5].map((star) => (
                                     <button
                                         key={star}
@@ -206,10 +277,10 @@ export default function ReviewModal({ isOpen, onClose, restaurantId, orderId, on
                                         onMouseEnter={() => setHoverRating(star)}
                                         onMouseLeave={() => setHoverRating(0)}
                                         onClick={() => setRating(star)}
-                                        className="p-1.5 transition-transform hover:scale-110 active:scale-95"
+                                        className="p-1 transition-transform hover:scale-115 active:scale-95"
                                     >
                                         <Star
-                                            className={`w-8 h-8 transition-colors ${
+                                            className={`w-7 h-7 transition-colors ${
                                                 star <= (hoverRating || rating)
                                                     ? 'fill-amber-400 text-amber-400'
                                                     : 'text-slate-200'
@@ -218,45 +289,88 @@ export default function ReviewModal({ isOpen, onClose, restaurantId, orderId, on
                                     </button>
                                 ))}
                             </div>
-                        </div>
 
-                        {/* Comment Input */}
-                        <div className="space-y-1.5">
-                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">
-                                Comentario
-                            </label>
+                            {/* Store Comment Input */}
                             <textarea
                                 value={comment}
                                 onChange={(e) => setComment(e.target.value)}
-                                placeholder="Cuéntanos más sobre la calidad de la comida, el empaque..."
-                                className="w-full bg-slate-50 border-2 border-slate-100 focus:border-primary p-4 rounded-2xl outline-none font-bold text-slate-700 transition-all text-sm min-h-[100px] resize-none"
+                                placeholder="¿Qué tal la calidad del producto, presentación y preparación?..."
+                                className="w-full bg-white border border-slate-200 focus:border-primary p-3 rounded-xl outline-none font-bold text-slate-700 transition-all text-xs min-h-[70px] resize-none"
                             />
                         </div>
 
-                        {/* Photo Previews */}
-                        {photoPreviews.length > 0 && (
-                            <div className="flex gap-3 overflow-x-auto pb-2">
-                                {photoPreviews.map((preview, i) => (
-                                    <div key={i} className="relative w-20 h-20 rounded-2xl overflow-hidden border border-slate-200 shrink-0 group">
-                                        <img src={preview} alt="Upload preview" className="w-full h-full object-cover" />
-                                        <button
-                                            type="button"
-                                            onClick={() => removePhoto(i)}
-                                            className="absolute top-1 right-1 bg-black/60 p-1 rounded-full text-white opacity-0 group-hover:opacity-100 transition-opacity"
-                                        >
-                                            <Trash2 className="w-3.5 h-3.5" />
-                                        </button>
+                        {/* SECTION 2: Calificación del Conductor (if delivery) */}
+                        {hasDriver && (
+                            <div className="bg-indigo-50/60 p-4 rounded-2xl border border-indigo-100 space-y-3">
+                                <div className="flex items-center gap-2">
+                                    <div className="w-8 h-8 rounded-xl bg-indigo-500 text-white flex items-center justify-center">
+                                        <Bike className="w-4 h-4" />
                                     </div>
-                                ))}
+                                    <div>
+                                        <h4 className="font-black text-slate-900 text-xs">Calificación del Conductor</h4>
+                                        <p className="text-[10px] text-slate-500 font-bold">
+                                            {driverName}
+                                        </p>
+                                    </div>
+                                </div>
+
+                                <div className="flex items-center justify-center gap-1.5 py-1">
+                                    {[1, 2, 3, 4, 5].map((star) => (
+                                        <button
+                                            key={star}
+                                            type="button"
+                                            onMouseEnter={() => setHoverDriverRating(star)}
+                                            onMouseLeave={() => setHoverDriverRating(0)}
+                                            onClick={() => setDriverRating(star)}
+                                            className="p-1 transition-transform hover:scale-115 active:scale-95"
+                                        >
+                                            <Star
+                                                className={`w-7 h-7 transition-colors ${
+                                                    star <= (hoverDriverRating || driverRating)
+                                                        ? 'fill-indigo-500 text-indigo-500'
+                                                        : 'text-slate-200'
+                                                }`}
+                                            />
+                                        </button>
+                                    ))}
+                                </div>
+
+                                <input
+                                    type="text"
+                                    value={driverComment}
+                                    onChange={(e) => setDriverComment(e.target.value)}
+                                    placeholder="Comentario sobre la puntualidad o trato del repartidor..."
+                                    className="w-full bg-white border border-indigo-200 focus:border-indigo-400 p-2.5 rounded-xl outline-none font-bold text-slate-700 text-xs"
+                                />
                             </div>
                         )}
 
-                        {/* Photo Input Button */}
-                        {photos.length < MAX_PHOTOS && (
-                            <div>
-                                <label className="flex items-center justify-center gap-2 p-3 bg-slate-50 border-2 border-dashed border-slate-200 rounded-2xl cursor-pointer hover:border-primary transition-all text-xs font-bold text-slate-500">
-                                    <UploadCloud className="w-4 h-4" />
-                                    <span>Agregar Fotos ({photos.length}/{MAX_PHOTOS})</span>
+                        {/* Photos Upload */}
+                        <div>
+                            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1">
+                                Fotos de tu pedido ({photos.length}/{MAX_PHOTOS}):
+                            </span>
+                            {photoPreviews.length > 0 && (
+                                <div className="flex gap-2 overflow-x-auto pb-2 mb-2">
+                                    {photoPreviews.map((preview, i) => (
+                                        <div key={i} className="relative w-16 h-16 rounded-xl overflow-hidden border border-slate-200 shrink-0 group">
+                                            <img src={preview} alt="Upload preview" className="w-full h-full object-cover" />
+                                            <button
+                                                type="button"
+                                                onClick={() => removePhoto(i)}
+                                                className="absolute top-1 right-1 bg-black/60 p-1 rounded-full text-white hover:bg-red-500 transition-colors"
+                                            >
+                                                <Trash2 className="w-3 h-3" />
+                                            </button>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+
+                            {photos.length < MAX_PHOTOS && (
+                                <label className="flex items-center justify-center gap-2 p-2.5 bg-slate-50 border-2 border-dashed border-slate-200 rounded-xl cursor-pointer hover:border-primary transition-all text-xs font-bold text-slate-500">
+                                    <UploadCloud className="w-4 h-4 text-slate-400" />
+                                    <span>Adjuntar fotos del producto</span>
                                     <input
                                         type="file"
                                         accept="image/*"
@@ -265,34 +379,63 @@ export default function ReviewModal({ isOpen, onClose, restaurantId, orderId, on
                                         className="hidden"
                                     />
                                 </label>
-                            </div>
-                        )}
-
-                        {/* Anonymous Toggle Switch */}
-                        <label className="flex items-center justify-between gap-3 p-3.5 bg-slate-50 border border-slate-200 rounded-2xl cursor-pointer select-none hover:bg-slate-100 transition-colors">
-                            <div className="flex-1">
-                                <span className="text-xs font-black text-slate-800 block">Publicar de forma anónima</span>
-                                <span className="text-[10px] text-slate-500 font-medium">Oculta tu nombre y foto de perfil en la reseña pública.</span>
-                            </div>
-                            <input
-                                type="checkbox"
-                                checked={isAnonymous}
-                                onChange={(e) => setIsAnonymous(e.target.checked)}
-                                className="w-5 h-5 accent-primary rounded-lg cursor-pointer"
-                            />
-                        </label>
-
-                        <button
-                            type="submit"
-                            disabled={isSubmitting || rating === 0}
-                            className="w-full py-4 bg-primary text-slate-900 rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl shadow-primary/20 hover:scale-[1.01] active:scale-95 transition-all disabled:opacity-50 flex items-center justify-center gap-2"
-                        >
-                            {isSubmitting ? (
-                                <div className="w-5 h-5 border-2 border-slate-900 border-t-transparent rounded-full animate-spin"></div>
-                            ) : (
-                                'Enviar Reseña'
                             )}
-                        </button>
+                        </div>
+
+                        {/* SECTION 3: Privacy Selector (Visible vs Anonymous) */}
+                        <div className="space-y-1.5">
+                            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">
+                                ¿Cómo deseas que aparezca tu reseña?
+                            </span>
+                            <div className="grid grid-cols-2 gap-2">
+                                <button
+                                    type="button"
+                                    onClick={() => setIsAnonymous(false)}
+                                    className={`p-3 rounded-2xl border-2 flex items-center gap-2 text-left transition-all ${
+                                        !isAnonymous
+                                            ? 'bg-primary/10 border-primary text-slate-900 shadow-sm'
+                                            : 'bg-slate-50 border-slate-200 text-slate-600'
+                                    }`}
+                                >
+                                    <UserCheck className="w-4 h-4 text-primary shrink-0" />
+                                    <div>
+                                        <p className="font-black text-xs">Nombre Visible</p>
+                                        <p className="text-[9px] opacity-75 truncate">{userData?.displayName || 'Tu perfil'}</p>
+                                    </div>
+                                </button>
+
+                                <button
+                                    type="button"
+                                    onClick={() => setIsAnonymous(true)}
+                                    className={`p-3 rounded-2xl border-2 flex items-center gap-2 text-left transition-all ${
+                                        isAnonymous
+                                            ? 'bg-slate-900 border-slate-900 text-white shadow-sm'
+                                            : 'bg-slate-50 border-slate-200 text-slate-600'
+                                    }`}
+                                >
+                                    <Shield className="w-4 h-4 text-amber-400 shrink-0" />
+                                    <div>
+                                        <p className="font-black text-xs">Modo Anónimo</p>
+                                        <p className="text-[9px] opacity-75">Oculta tus datos</p>
+                                    </div>
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* Submit Button */}
+                        <div className="pt-2 border-t border-slate-100">
+                            <button
+                                type="submit"
+                                disabled={isSubmitting || rating === 0}
+                                className="w-full py-4 bg-primary text-slate-900 rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl shadow-primary/20 hover:scale-[1.01] active:scale-95 transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+                            >
+                                {isSubmitting ? (
+                                    <div className="w-5 h-5 border-2 border-slate-900 border-t-transparent rounded-full animate-spin"></div>
+                                ) : (
+                                    'Publicar Valoración'
+                                )}
+                            </button>
+                        </div>
                     </form>
                 </motion.div>
             </div>

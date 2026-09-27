@@ -152,8 +152,12 @@ export default function TrackOrder() {
     }, [order?.deliveryMethod, order?.vehicleType, order?.address?.name, order?.address?.reference]);
 
     useEffect(() => {
-        if (order && order.status === 'delivered' && !order.hasReviewed) {
-            setShowReviewModal(true);
+        if (order && !order.hasReviewed && !order.has_reviewed) {
+            const isDelivered = order.status === 'delivered';
+            const isPickupDone = (order.deliveryMethod === 'pickup' || order.delivery_method === 'pickup') && (order.status === 'ready' || order.status === 'completed');
+            if (isDelivered || isPickupDone) {
+                setShowReviewModal(true);
+            }
         }
     }, [order]);
 
@@ -1745,6 +1749,19 @@ export default function TrackOrder() {
                     )}
                 </div>
 
+                {/* Pickup Completion & Rating Trigger */}
+                {(order.deliveryMethod === 'pickup' || order.delivery_method === 'pickup') && !order.hasReviewed && !order.has_reviewed && (
+                    <div className="px-2 pt-4">
+                        <button 
+                            onClick={() => setShowReviewModal(true)}
+                            className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-black py-4 rounded-2xl shadow-xl shadow-emerald-600/20 active:scale-95 transition-all flex items-center justify-center gap-2"
+                        >
+                            <CheckCircle2 className="w-5 h-5" />
+                            Ya retiré mi compra • Calificar y Cerrar
+                        </button>
+                    </div>
+                )}
+
                 {/* Cancel Order Button at the end */}
                 {(order.status === 'pending' || order.status === 'pendiente_pago') && !order.restaurantPaymentClientConfirmed && (
                     <div className="px-2 pt-4 border-t border-slate-100 mt-4">
@@ -1858,8 +1875,9 @@ export default function TrackOrder() {
             <ReviewModal
                 isOpen={showReviewModal}
                 onClose={() => setShowReviewModal(false)}
-                restaurantId={order.restaurantId}
+                restaurantId={order.restaurantId || order.restaurant_id}
                 orderId={orderId!}
+                orderInfo={order}
                 onReviewSubmitted={() => setShowReviewModal(false)}
             />
 
