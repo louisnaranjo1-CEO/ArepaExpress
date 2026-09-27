@@ -380,61 +380,38 @@ export default function Cart({ hideHeader = false }: CartProps) {
 
       const orderData: any = {
         id: newOrderId,
-        user_id: isWaiter ? (waiterData.id || 'waiter') : (user?.uid || 'guest_' + Date.now()),
-        userId: isWaiter ? (waiterData.id || 'waiter') : (user?.uid || 'guest_' + Date.now()),
+        user_id: isWaiter ? (waiterData.id || 'waiter') : (user?.id || user?.uid || 'guest_' + Date.now()),
         user_name: isWaiter ? (customerName || `Cliente Mesa ${tableNumber || 'N/A'}`) : (user?.displayName || guestName || 'Cliente Invitado'),
-        userName: isWaiter ? (customerName || `Cliente Mesa ${tableNumber || 'N/A'}`) : (user?.displayName || guestName || 'Cliente Invitado'),
         user_phone: isWaiter ? '' : (userData?.phone || (guestPhone ? `+58${guestPhone}` : '')),
-        userPhone: isWaiter ? '' : (userData?.phone || (guestPhone ? `+58${guestPhone}` : '')),
         user_cedula: isWaiter ? '' : (userData?.cedula || (guestCedula ? `${guestCedulaType}-${guestCedula}` : '')),
-        userCedula: isWaiter ? '' : (userData?.cedula || (guestCedula ? `${guestCedulaType}-${guestCedula}` : '')),
         user_email: isWaiter ? (waiterData.email || 'N/A') : (user?.email || 'N/A'),
-        userEmail: isWaiter ? (waiterData.email || 'N/A') : (user?.email || 'N/A'),
         restaurant_id: restaurantId,
-        restaurantId,
         restaurant_name: rData?.name || 'Deliexpress Restaurant',
-        restaurantName: rData?.name || 'Deliexpress Restaurant',
         restaurant_city: rData?.location?.city || '',
-        restaurantCity: rData?.location?.city || '',
         source: isWaiter ? 'waiter' : 'client',
         waiter_id: isWaiter ? (waiterData.id || null) : null,
-        waiterId: isWaiter ? (waiterData.id || null) : null,
         waiter_name: isWaiter ? (waiterData.name || null) : null,
-        waiterName: isWaiter ? (waiterData.name || null) : null,
-        table: isWaiter ? (tableNumber || null) : null,
-        table_id: isWaiter ? (tableId || null) : null,
-        tableId: isWaiter ? (tableId || null) : null,
         table_number: isWaiter ? (tableNumber || null) : null,
-        tableNumber: isWaiter ? (tableNumber || null) : null,
+        table_id: isWaiter ? (tableId || null) : null,
         items: sanitizedItems,
         subtotal: cartSubtotalUSD || 0, 
         delivery_fee: deliveryFee || 0, 
-        deliveryFee: deliveryFee || 0, 
         driver_payout: driverPayout || 0, 
-        driverPayout: driverPayout || 0,
         delivery_shift: currentShift || 'day', 
-        deliveryShift: currentShift || 'day',
         distance: distance || 0,
         total: finalTotal || 0, 
         commission_amount: storeCommission,
-        commissionAmount: storeCommission,
         delivery_method: deliveryMethod,
-        deliveryMethod: deliveryMethod,
         status: isWaiter ? 'preparing' : 'pendiente_pago', 
         payment_status: isWaiter ? paymentStatus : 'pending',
-        paymentStatus: isWaiter ? paymentStatus : 'pending',
         notified: false,
         delivery_address: addressStr, 
-        deliveryAddress: addressStr,
         delivery_coords: (!isWaiter && deliveryMethod === 'app_delivery' && selectedAddress && selectedAddress.lat) ? { lat: selectedAddress.lat, lng: selectedAddress.lng } : null,
-        deliveryCoords: (!isWaiter && deliveryMethod === 'app_delivery' && selectedAddress && selectedAddress.lat) ? { lat: selectedAddress.lat, lng: selectedAddress.lng } : null,
         created_at: new Date().toISOString(), 
-        createdAt: new Date().toISOString(),
-        order_note: orderNote.trim() || '',
-        orderNote: orderNote.trim() || ''
+        order_note: orderNote.trim() || ''
       };
 
-      // Remove any undefined keys at the root level
+      // Remove any undefined or null keys that are not needed
       Object.keys(orderData).forEach(key => (orderData as any)[key] === undefined && delete (orderData as any)[key]);
 
       const { error: insErr } = await supabase.from('orders').insert(orderData);
@@ -1078,54 +1055,62 @@ export default function Cart({ hideHeader = false }: CartProps) {
                     return null;
                   })()}
 
-                  <div className="p-6 bg-slate-900 text-white">
-                    <div className="space-y-4 mb-4 font-bold text-white">
-                      <div className="flex justify-between items-center bg-white/5 p-3 rounded-xl">
-                        <span className="text-sm uppercase tracking-wider text-white/70">{restaurantData?.businessType === 'hotel' ? 'Subtotal Servicios' : 'Subtotal Productos'}</span>
+                  {/* Tarjeta Limpia de Resumen de Productos y Total */}
+                  <div className="p-6 bg-slate-50/80 border-t border-slate-100 text-slate-900 rounded-b-3xl">
+                    <div className="space-y-4">
+                      {/* Subtotal Productos */}
+                      <div className="flex justify-between items-center bg-white p-4 rounded-2xl border border-slate-100 shadow-sm">
+                        <div>
+                          <span className="text-xs uppercase tracking-wider text-slate-500 font-black block">
+                            {restaurantData?.businessType === 'hotel' ? 'Subtotal Servicios' : 'Subtotal Productos'}
+                          </span>
+                          <span className="text-[11px] font-bold text-slate-400 block mt-0.5">
+                            Pago a {restaurantData?.name || 'la tienda'}
+                          </span>
+                        </div>
                         <div className="text-right">
                           {items.some(i => i.consultPrice || !i.price) ? (
                             cartSubtotalUSD > 0 ? (
                               <>
                                 <div className="flex items-baseline justify-end gap-1.5">
-                                  <DualPrice usdAmount={cartSubtotalUSD} usdClassName="text-xl font-black text-white" bsClassName="text-[10px] text-white/50" showDivider={false} />
-                                  <span className="text-xs font-black text-amber-400">+ Consultar</span>
+                                  <DualPrice usdAmount={cartSubtotalUSD} usdClassName="text-xl font-black text-slate-900" bsClassName="text-[10px] text-slate-500 font-bold" showDivider={false} />
+                                  <span className="text-xs font-black text-amber-600">+ Consultar</span>
                                 </div>
-                                <span className="text-[10px] block mt-1 text-amber-300 font-medium">Incluye productos por consultar precio</span>
+                                <span className="text-[10px] block mt-1 text-amber-600 font-bold">Incluye productos por consultar</span>
                               </>
                             ) : (
                               <>
-                                <span className="text-lg font-black text-amber-400">Consultar precio</span>
-                                <span className="text-[10px] block mt-1 text-white/50 font-medium">Precio final acordado con el negocio</span>
+                                <span className="text-lg font-black text-amber-600">Consultar precio</span>
+                                <span className="text-[10px] block mt-0.5 text-slate-400 font-medium">Acordado con el comercio</span>
                               </>
                             )
                           ) : (
-                            <>
-                              <DualPrice usdAmount={cartSubtotalUSD} usdClassName="text-xl font-black text-white" bsClassName="text-[10px] text-white/50" showDivider={false} />
-                              <span className="text-[10px] block mt-1 text-white/40 font-black uppercase tracking-widest">Total a pagar a {restaurantData?.name || 'el restaurante'}</span>
-                            </>
+                            <DualPrice usdAmount={cartSubtotalUSD} usdClassName="text-2xl font-black text-slate-900" bsClassName="text-xs text-slate-500 font-bold" showDivider={false} />
                           )}
                         </div>
                       </div>
 
+                      {/* Tarjeta Luminosa y Estética de Atención y Chat Directo */}
                       {!isWaiter && restaurantData?.businessType !== 'hotel' && (
-                        <div className="bg-gradient-to-br from-amber-400/20 via-primary/10 to-amber-500/20 border-2 border-primary/40 p-4 rounded-2xl shadow-lg relative overflow-hidden backdrop-blur-md">
-                          <div className="flex items-start gap-3">
-                            <div className="w-11 h-11 rounded-2xl bg-primary text-slate-900 flex items-center justify-center shrink-0 shadow-md">
-                              <MessageCircle className="w-6 h-6" />
+                        <div className="bg-white border-2 border-primary/40 p-4.5 rounded-2xl shadow-sm relative overflow-hidden">
+                          <div className="flex items-start gap-3.5">
+                            <div className="w-12 h-12 rounded-2xl bg-primary text-slate-950 flex items-center justify-center shrink-0 shadow-md">
+                              <MessageCircle className="w-6 h-6 stroke-[2.2]" />
                             </div>
                             <div className="flex-1 min-w-0">
-                              <div className="flex items-center justify-between gap-2">
-                                <span className="text-xs font-black uppercase tracking-wider text-slate-900 flex items-center gap-1.5">
+                              <div className="flex items-center justify-between gap-2 flex-wrap">
+                                <span className="text-xs font-black uppercase tracking-wider text-slate-900">
                                   Canal Directo con la Tienda
-                                  <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[9px] font-black bg-emerald-500 text-white animate-pulse">
-                                    En Vivo
-                                  </span>
+                                </span>
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-black bg-emerald-100 text-emerald-800 border border-emerald-200">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                                  En Vivo
                                 </span>
                               </div>
-                              <p className="text-[11px] text-slate-600 font-medium mt-1 leading-snug">
-                                Tu pedido se gestiona directamente en el <strong className="text-slate-900 font-bold">Chat en Vivo</strong> con {restaurantData?.name || 'la tienda'}. Allí coordinas entrega, opciones de transporte, confirmación y estatus en tiempo real.
+                              <p className="text-xs text-slate-600 font-medium mt-1 leading-relaxed">
+                                Tu compra se gestiona en tiempo real mediante el <strong className="text-slate-900 font-bold">Chat en Vivo</strong> con {restaurantData?.name || 'el comercio'}. Allí coordinas entrega, opciones de transporte, confirmación y estatus.
                               </p>
-                              <div className="mt-2.5 flex items-center gap-2 text-[10px] font-black text-amber-900/80 bg-amber-400/20 px-2.5 py-1.5 rounded-xl border border-amber-400/30">
+                              <div className="mt-3 flex items-center gap-2 text-[11px] font-black text-slate-800 bg-amber-50/90 px-3 py-2 rounded-xl border border-amber-200/60">
                                 💬 Al confirmar entrarás directo al chat para dar seguimiento y administrar tu compra.
                               </div>
                             </div>

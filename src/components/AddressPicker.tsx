@@ -1,9 +1,30 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { X, MapPin, Navigation, Check } from 'lucide-react';
-import L from 'leaflet';
-import 'leaflet/dist/leaflet.css';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
+import { GoogleMap, useJsApiLoader, Marker, Autocomplete } from '@react-google-maps/api';
+import { X, MapPin, Navigation, Check, Search, Loader2 } from 'lucide-react';
+import { GOOGLE_MAPS_API_KEY, GOOGLE_MAPS_LIBRARIES } from '../lib/mapsConfig';
+import { googleMapsDarkStyles } from '../lib/weather';
 import { Geolocation } from '@capacitor/geolocation';
 import { Capacitor } from '@capacitor/core';
+
+const containerStyle = {
+    width: '100%',
+    height: '380px'
+};
+
+const defaultCenter = {
+    lat: 8.9326, // Calabozo, Guárico, Venezuela
+    lng: -67.4264
+};
+
+const mapOptions: google.maps.MapOptions = {
+    disableDefaultUI: true,
+    zoomControl: false,
+    streetViewControl: false,
+    mapTypeControl: false,
+    fullscreenControl: false,
+    clickableIcons: true,
+    styles: googleMapsDarkStyles
+};
 
 interface AddressPickerProps {
     onClose: () => void;
@@ -13,99 +34,31 @@ interface AddressPickerProps {
     subtitle?: string;
 }
 
-const defaultCenter = {
-    lat: 8.9326, // Calabozo, Guárico, Venezuela
-    lng: -67.4264
-};
-
-// Marcador SVG personalizado para Leaflet
-const createCustomPin = () => {
-    return L.divIcon({
-        className: 'custom-map-pin',
-        html: `
-            <div style="position: relative; transform: translate(-50%, -100%); cursor: pointer;">
-                <div style="background-color: #FACC15; color: #0F172A; width: 44px; height: 44px; border-radius: 50%; display: flex; align-items: center; justify-content: center; box-shadow: 0 10px 25px rgba(0,0,0,0.3); border: 3px solid #ffffff;">
-                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                        <path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/>
-                        <circle cx="12" cy="10" r="3"/>
-                    </svg>
-                </div>
-                <div style="width: 4px; height: 10px; background-color: #0F172A; margin: -2px auto 0 auto; border-radius: 2px;"></div>
-                <div style="width: 14px; height: 6px; background-color: rgba(0,0,0,0.25); border-radius: 50%; margin: 0 auto; filter: blur(1px);"></div>
-            </div>
-        `,
-        iconSize: [44, 54],
-        iconAnchor: [22, 54]
-    });
-};
-
 export default function AddressPicker({ onClose, onSave, initialData, title, subtitle }: AddressPickerProps) {
+    const { isLoaded, loadError } = useJsApiLoader({
+        id: 'google-map-script',
+        googleMapsApiKey: GOOGLE_MAPS_API_KEY,
+        libraries: GOOGLE_MAPS_LIBRARIES
+    });
+
     const [position, setPosition] = useState(initialData ? { lat: initialData.lat, lng: initialData.lng } : defaultCenter);
+    const [userLocation, setUserLocation] = useState<google.maps.LatLngLiteral | null>(null);
     const [reference, setReference] = useState(initialData?.reference || '');
-    const [locating, setLocating] = useState(false);
+    const [map, setMap] = useState<google.maps.Map | null>(null);
+    const [isLocating, setIsLocating] = useState(false);
+    const [searchQuery, setSearchQuery] = useState('');
+    const autocompleteRef = useRef<google.maps.places.Autocomplete | null>(null);
 
-    const mapContainerRef = useRef<HTMLDivElement>(null);
-    const mapInstanceRef = useRef<L.Map | null>(null);
-    const markerRef = useRef<L.Marker | null>(null);
-
-    // Inicializar Leaflet con OpenStreetMap 100% gratuito
-    useEffect(() => {
-        if (!mapContainerRef.current) return;
-
-        if (mapInstanceRef.current) {
-            mapInstanceRef.current.remove();
-            mapInstanceRef.current = null;
-        }
-
-        const map = L.map(mapContainerRef.current, {
-            center: [position.lat, position.lng],
-            zoom: 16,
-            zoomControl: false
-        });
-
-        // OpenStreetMap gratuito sin API Key ni cobros
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            maxZoom: 19,
-            attribution: '&copy; OpenStreetMap'
-        }).addTo(map);
-
-        L.control.zoom({ position: 'topright' }).addTo(map);
-
-        const marker = L.marker([position.lat, position.lng], {
-            icon: createCustomPin(),
-            draggable: true
-        }).addTo(map);
-
-        marker.on('dragend', () => {
-            const latlng = marker.getLatLng();
-            setPosition({ lat: latlng.lat, lng: latlng.lng });
-        });
-
-        map.on('click', (e: L.LeafletMouseEvent) => {
-            marker.setLatLng(e.latlng);
-            setPosition({ lat: e.latlng.lat, lng: e.latlng.lng });
-        });
-
-        mapInstanceRef.current = map;
-        markerRef.current = marker;
-
-        const resizeTimeout = setTimeout(() => {
-            map.invalidateSize();
-        }, 250);
-
-        if (!initialData) {
-            handleGpsCenter();
-        }
-
-        return () => {
-            clearTimeout(resizeTimeout);
-            map.remove();
-            mapInstanceRef.current = null;
-        };
+    const onLoad = useCallback(function callback(map: google.maps.Map) {
+        setMap(map);
     }, []);
 
-    const handleGpsCenter = async () => {
-        setLocating(true);
+    const onUnmount = useCallback(function callback() {
+        setMap(null);
+    }, []);
+
+    const handleCurrentLocation = useCallback(async () => {
+        setIsLocating(true);
         let coords: { lat: number; lng: number } | null = null;
 
         if (Capacitor.isNativePlatform()) {
@@ -136,14 +89,59 @@ export default function AddressPicker({ onClose, onSave, initialData, title, sub
 
         if (coords) {
             setPosition(coords);
-            if (markerRef.current) markerRef.current.setLatLng([coords.lat, coords.lng]);
-            if (mapInstanceRef.current) {
-                mapInstanceRef.current.setView([coords.lat, coords.lng], 16);
-                mapInstanceRef.current.invalidateSize();
+            setUserLocation(coords);
+            if (map) {
+                map.panTo(coords);
+                map.setZoom(17);
             }
         }
-        setLocating(false);
+        setIsLocating(false);
+    }, [map]);
+
+    useEffect(() => {
+        if (!initialData) {
+            handleCurrentLocation();
+        }
+    }, [handleCurrentLocation, initialData]);
+
+    const executeSearch = (customQuery?: string) => {
+        const queryToSearch = customQuery || searchQuery;
+        if (!queryToSearch || !queryToSearch.trim() || !window.google?.maps) return;
+
+        if (map && window.google.maps.places) {
+            const service = new window.google.maps.places.PlacesService(map);
+            service.findPlaceFromQuery(
+                {
+                    query: queryToSearch,
+                    fields: ['name', 'geometry', 'formatted_address']
+                },
+                (results, status) => {
+                    if (status === window.google.maps.places.PlacesServiceStatus.OK && results && results[0]?.geometry?.location) {
+                        const place = results[0];
+                        const newPos = {
+                            lat: place.geometry.location.lat(),
+                            lng: place.geometry.location.lng()
+                        };
+                        setPosition(newPos);
+                        map.panTo(newPos);
+                        map.setZoom(17);
+                        if (place.formatted_address && !reference) {
+                            setReference(place.formatted_address);
+                        }
+                    }
+                }
+            );
+        }
     };
+
+    const onClick = useCallback((e: google.maps.MapMouseEvent) => {
+        if (e.latLng) {
+            setPosition({
+                lat: e.latLng.lat(),
+                lng: e.latLng.lng()
+            });
+        }
+    }, []);
 
     const handleSave = () => {
         if (!position) return;
@@ -168,34 +166,146 @@ export default function AddressPicker({ onClose, onSave, initialData, title, sub
                             {title || 'Toca el mapa para marcar'}
                         </h2>
                         <p className="text-[11px] text-slate-500 font-bold uppercase tracking-wider">
-                            {subtitle || 'Mueve el pin a tu punto exacto de entrega'}
+                            {subtitle || 'Mueve el marcador o busca un lugar'}
                         </p>
                     </div>
                     <button
                         onClick={onClose}
-                        className="w-10 h-10 bg-slate-100 rounded-full flex items-center justify-center text-slate-400 hover:bg-red-50 hover:text-red-500 transition-colors"
+                        className="w-10 h-10 bg-slate-100 rounded-full flex items-center justify-center text-slate-400 hover:bg-red-50 hover:text-red-500 transition-colors cursor-pointer"
                     >
                         <X className="w-5 h-5" />
                     </button>
                 </div>
 
-                {/* Map Container - OpenStreetMap gratis */}
-                <div className="relative w-full h-[360px] bg-slate-100">
-                    <div ref={mapContainerRef} className="w-full h-full" style={{ zIndex: 1 }} />
+                {/* Places Search Bar */}
+                {isLoaded && window.google?.maps?.places && (
+                    <div className="px-5 pt-3 pb-2 bg-white">
+                        <div className="relative flex items-center">
+                            <Autocomplete
+                                onLoad={(autocomplete) => { autocompleteRef.current = autocomplete; }}
+                                onPlaceChanged={() => {
+                                    if (autocompleteRef.current) {
+                                        const place = autocompleteRef.current.getPlace();
+                                        if (place.geometry?.location) {
+                                            const newPos = {
+                                                lat: place.geometry.location.lat(),
+                                                lng: place.geometry.location.lng()
+                                            };
+                                            setPosition(newPos);
+                                            if (map) {
+                                                map.panTo(newPos);
+                                                map.setZoom(17);
+                                            }
+                                            if (place.formatted_address && !reference) {
+                                                setReference(place.formatted_address);
+                                            }
+                                        }
+                                    }
+                                }}
+                                className="w-full"
+                            >
+                                <div className="relative flex items-center w-full">
+                                    <input
+                                        type="text"
+                                        placeholder="Buscar negocio, restaurante, local o calle..."
+                                        value={searchQuery}
+                                        onChange={(e) => setSearchQuery(e.target.value)}
+                                        onKeyDown={(e) => {
+                                            if (e.key === 'Enter') {
+                                                e.preventDefault();
+                                                executeSearch();
+                                            }
+                                        }}
+                                        className="w-full bg-slate-100/80 border border-slate-200 focus:border-primary focus:bg-white p-3 pl-11 pr-10 rounded-2xl outline-none font-bold text-xs text-slate-800 transition-all shadow-inner"
+                                    />
+                                    <button
+                                        type="button"
+                                        onClick={() => executeSearch()}
+                                        className="absolute left-3 text-slate-500 hover:text-slate-900"
+                                    >
+                                        <Search className="w-4 h-4" />
+                                    </button>
+                                    {searchQuery && (
+                                        <button
+                                            type="button"
+                                            onClick={() => setSearchQuery('')}
+                                            className="absolute right-3 text-slate-400 hover:text-slate-600 p-1"
+                                        >
+                                            <X className="w-4 h-4" />
+                                        </button>
+                                    )}
+                                </div>
+                            </Autocomplete>
+                        </div>
+                    </div>
+                )}
 
-                    {/* GPS Button */}
+                {/* Map Container */}
+                <div className="relative w-full h-[360px] bg-slate-100">
+                    {isLoaded ? (
+                        <GoogleMap
+                            mapContainerStyle={containerStyle}
+                            center={position}
+                            zoom={16}
+                            onLoad={onLoad}
+                            onUnmount={onUnmount}
+                            onClick={onClick}
+                            options={mapOptions}
+                        >
+                            <Marker
+                                position={position}
+                                draggable={true}
+                                onDragEnd={(e) => {
+                                    if (e.latLng) {
+                                        setPosition({ lat: e.latLng.lat(), lng: e.latLng.lng() });
+                                    }
+                                }}
+                            />
+
+                            {userLocation && (
+                                <Marker
+                                    position={userLocation}
+                                    icon={{
+                                        path: google.maps.SymbolPath.CIRCLE,
+                                        fillColor: '#4285F4',
+                                        fillOpacity: 1,
+                                        strokeColor: 'white',
+                                        strokeWeight: 2,
+                                        scale: 7
+                                    }}
+                                    zIndex={1}
+                                />
+                            )}
+                        </GoogleMap>
+                    ) : loadError ? (
+                        <div style={containerStyle} className="bg-slate-100 flex flex-col items-center justify-center gap-2 p-6 text-center">
+                            <MapPin className="w-8 h-8 text-amber-500" />
+                            <span className="text-xs font-bold text-slate-600">Verifica tu conexión para cargar el mapa</span>
+                        </div>
+                    ) : (
+                        <div style={containerStyle} className="bg-slate-100 flex flex-col items-center justify-center gap-2">
+                            <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin"></div>
+                            <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">Cargando Google Maps...</span>
+                        </div>
+                    )}
+
+                    {/* Real-time locate button */}
                     <button
                         type="button"
-                        onClick={handleGpsCenter}
-                        disabled={locating}
-                        className="absolute bottom-4 right-4 bg-white hover:bg-slate-50 rounded-2xl shadow-xl flex items-center gap-2 text-slate-900 border border-slate-200/80 active:scale-95 transition-all px-3.5 py-2.5 z-[500] font-black text-xs"
+                        onClick={handleCurrentLocation}
+                        disabled={isLocating}
+                        className="absolute bottom-4 right-4 bg-white/95 backdrop-blur-md rounded-2xl shadow-xl flex items-center gap-2 text-slate-900 border border-slate-200 active:scale-95 transition-all px-3.5 py-2.5 z-10 font-black text-xs cursor-pointer disabled:opacity-70"
                     >
-                        <Navigation className={`w-4 h-4 text-primary fill-primary/30 ${locating ? 'animate-spin' : ''}`} />
-                        <span>{locating ? "Localizando..." : "Ubicación en tiempo real"}</span>
+                        {isLocating ? (
+                            <Loader2 className="w-4 h-4 text-primary animate-spin" />
+                        ) : (
+                            <Navigation className="w-4 h-4 fill-primary text-primary" />
+                        )}
+                        <span>{isLocating ? "Obteniendo GPS..." : "Ubicación en tiempo real"}</span>
                     </button>
                 </div>
 
-                {/* Reference Only - Sin campo de Nombre */}
+                {/* Solo Punto de Referencia (Nombre eliminado) */}
                 <div className="p-5 space-y-3.5 overflow-y-auto">
                     <div>
                         <label className="text-xs font-black text-slate-700 uppercase tracking-widest ml-1">
@@ -203,7 +313,7 @@ export default function AddressPicker({ onClose, onSave, initialData, title, sub
                         </label>
                         <input
                             type="text"
-                            placeholder="Ej: Edificio azul, Apto 4B, frente a la plaza..."
+                            placeholder="Ej: Casa amarilla con rejas blancas, timbre negro, Apto 4B..."
                             value={reference}
                             onChange={(e) => setReference(e.target.value)}
                             className="w-full bg-slate-50 border-2 border-slate-200 focus:border-primary focus:bg-white px-4 py-3.5 rounded-2xl outline-none font-bold text-slate-800 transition-all text-sm mt-1"

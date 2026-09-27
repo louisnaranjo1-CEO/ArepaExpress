@@ -222,50 +222,31 @@ export default function StoreCartDrawer({ isOpen, onClose, restaurant }: StoreCa
             const orderData: any = {
                 id: newOrderId,
                 user_id: clientUserId,
-                userId: clientUserId,
                 user_name: clientName,
-                userName: clientName,
                 user_phone: clientPhone,
-                userPhone: clientPhone,
                 user_cedula: clientCedula,
-                userCedula: clientCedula,
                 user_email: clientEmail,
-                userEmail: clientEmail,
                 restaurant_id: restaurantId,
-                restaurantId: restaurantId,
                 restaurant_name: restaurant?.name || 'Comercio',
-                restaurantName: restaurant?.name || 'Comercio',
                 restaurant_city: restaurant?.location?.city || '',
-                restaurantCity: restaurant?.location?.city || '',
                 source: 'client',
                 items: sanitizedItems,
                 subtotal: cartSubtotalUSD,
                 delivery_fee: deliveryFee,
-                deliveryFee: deliveryFee,
                 driver_payout: driverPayout,
-                driverPayout: driverPayout,
                 distance: distance || 1,
                 total: finalTotal,
                 commission_amount: storeCommission,
-                commissionAmount: storeCommission,
                 delivery_method: deliveryMethod,
-                deliveryMethod: deliveryMethod,
                 status: 'pendiente_pago',
                 payment_status: 'pending',
-                paymentStatus: 'pending',
                 notified: false,
                 delivery_address: addressStr,
-                deliveryAddress: addressStr,
                 delivery_coords: (deliveryMethod === 'app_delivery' && selectedAddress?.lat) 
                     ? { lat: selectedAddress.lat, lng: selectedAddress.lng } 
                     : null,
-                deliveryCoords: (deliveryMethod === 'app_delivery' && selectedAddress?.lat) 
-                    ? { lat: selectedAddress.lat, lng: selectedAddress.lng } 
-                    : null,
                 order_note: orderNote.trim(),
-                orderNote: orderNote.trim(),
-                created_at: new Date().toISOString(),
-                createdAt: new Date().toISOString()
+                created_at: new Date().toISOString()
             };
 
             // Insert into Supabase
