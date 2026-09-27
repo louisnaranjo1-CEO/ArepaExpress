@@ -23,18 +23,28 @@ interface Order {
     userId: string;
     items: OrderItem[];
     total: number;
+    subtotal?: number;
+    deliveryFee?: number;
+    tip?: number;
     status: 'pending' | 'pendiente_pago' | 'preparing' | 'delivering' | 'delivered' | 'rejected';
     paymentStatus?: 'sold' | 'not_sold';
     createdAt: any;
     deliveryAddress: string;
+    deliveryCoords?: { lat: number; lng: number } | null;
     paymentMethod?: string;
     paymentReference?: string;
     paymentProofUrl?: string;
     userName?: string;
+    userPhone?: string;
     source?: string;
     waiterId?: string;
     waiterName?: string;
     tableNumber?: string;
+    orderType?: string;
+    orderNote?: string;
+    notes?: string;
+    clientDNI?: string;
+    stockConfirmed?: boolean;
     preferred_driver_id?: string | null;
     preferred_driver_expires_at?: string | null;
 }
@@ -264,16 +274,19 @@ export default function Orders() {
                 paymentStatus: o.payment_status || 'not_sold',
                 createdAt: o.created_at ? { toDate: () => new Date(o.created_at) } : { toDate: () => new Date() },
                 deliveryAddress: o.delivery_address || (typeof o.shipping_address === 'string' ? o.shipping_address : o.shipping_address?.address || ''),
+                deliveryCoords: o.delivery_coords || (o.shipping_address?.lat ? { lat: Number(o.shipping_address.lat), lng: Number(o.shipping_address.lng) } : null),
                 paymentMethod: o.payment_method || '',
                 paymentReference: o.payment_reference || '',
                 paymentProofUrl: o.payment_proof_url || '',
                 userName: o.user_name || '',
+                userPhone: o.user_phone || '',
                 source: o.source || '',
                 waiterId: o.waiter_id || '',
                 waiterName: o.waiter_name || '',
                 tableNumber: o.table_number || '',
-                orderType: o.order_type || '',
-                notes: o.notes || '',
+                orderType: o.order_type || o.delivery_method || '',
+                notes: o.notes || o.order_note || '',
+                orderNote: o.order_note || o.notes || '',
                 clientDNI: o.client_dni || o.user_cedula || '',
                 preferred_driver_id: o.preferred_driver_id,
                 preferred_driver_expires_at: o.preferred_driver_expires_at
@@ -1113,10 +1126,18 @@ export default function Orders() {
                         )}
                     </div>
                     <h3 className="text-base sm:text-lg font-black text-slate-900">{order.userName || 'Usuario de Deliexpress'}</h3>
-                    <p className="text-xs text-slate-400 font-bold flex items-center gap-1 mt-0.5">
-                        <Clock className="w-3.5 h-3.5" />
-                        {order.createdAt?.toDate ? order.createdAt.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : (order.createdAt ? new Date(order.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '')}
-                    </p>
+                    <div className="flex flex-wrap items-center gap-2 mt-0.5">
+                        <p className="text-xs text-slate-400 font-bold flex items-center gap-1">
+                            <Clock className="w-3.5 h-3.5" />
+                            {order.createdAt?.toDate ? order.createdAt.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : (order.createdAt ? new Date(order.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '')}
+                        </p>
+                        {order.userPhone && (
+                            <span className="text-xs font-bold text-slate-600 bg-slate-100 px-2 py-0.5 rounded-lg">📞 {order.userPhone}</span>
+                        )}
+                        {order.clientDNI && (
+                            <span className="text-[10px] font-bold text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded">CI: {order.clientDNI}</span>
+                        )}
+                    </div>
                 </div>
                 <div className="text-right">
                     <p className="text-xl sm:text-2xl font-black text-slate-900">${order.total.toFixed(2)}</p>
@@ -1159,9 +1180,26 @@ export default function Orders() {
                 </div>
             )}
 
-            <div className="flex items-start gap-3 p-4 bg-slate-50 rounded-2xl mb-8">
-                <MapPin className="w-5 h-5 text-slate-900 shrink-0" />
-                <p className="text-sm font-bold text-slate-600 leading-relaxed italic">{order.deliveryAddress}</p>
+            <div className="flex items-start justify-between gap-3 p-4 bg-slate-50 rounded-2xl mb-8">
+                <div className="flex items-start gap-3">
+                    <MapPin className="w-5 h-5 text-slate-900 shrink-0 mt-0.5" />
+                    <div>
+                        <p className="text-sm font-bold text-slate-700 leading-relaxed italic">{order.deliveryAddress || 'Sin dirección especificada'}</p>
+                        {order.userPhone && (
+                            <p className="text-xs font-bold text-slate-500 mt-1">📞 Contacto: {order.userPhone}</p>
+                        )}
+                    </div>
+                </div>
+                {order.deliveryCoords?.lat && (
+                    <a
+                        href={`https://www.google.com/maps?q=${order.deliveryCoords.lat},${order.deliveryCoords.lng}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="shrink-0 bg-primary/20 hover:bg-primary text-slate-900 px-3 py-1.5 rounded-xl font-black text-xs transition-all flex items-center gap-1 shadow-xs cursor-pointer"
+                    >
+                        🗺️ Ver GPS
+                    </a>
+                )}
             </div>
 
             {/* Payment Details Block */}

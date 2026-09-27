@@ -123,7 +123,17 @@ export function useGlobalAudioAlerts(role?: 'cpanel' | 'restaurant' | 'delivery'
           table: 'orders',
           filter: `restaurant_id=eq.${userId}`
         }, (payload: any) => {
-          if (payload.new?.status === 'pending') {
+          if (['pending', 'pendiente_pago', 'confirmed', 'preparing'].includes(payload.new?.status)) {
+            playAlert();
+          }
+        })
+        .on('postgres_changes', {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'notifications',
+          filter: `restaurant_id=eq.${userId}`
+        }, (payload: any) => {
+          if (payload.new?.type === 'order') {
             playAlert();
           }
         })

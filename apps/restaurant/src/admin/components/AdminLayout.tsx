@@ -129,20 +129,25 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
                 },
                 (payload) => {
                     const data = payload.new as any;
-                    if (data.status === 'pending' || data.status === 'confirmed') {
+                    if (['pending', 'pendiente_pago', 'confirmed', 'preparing'].includes(data.status)) {
+                        const itemsSummary = Array.isArray(data.items)
+                            ? `${data.items.length} prod.: ` + data.items.map((i: any) => `${i.quantity || 1}x ${i.name}`).slice(0, 2).join(', ')
+                            : '';
+                        const method = (data.delivery_method === 'pickup' || data.order_type === 'pickup') ? 'PickUp' : 'Delivery';
                         const newNotification = {
                             id: data.id,
                             type: 'order',
                             title: '¡Nuevo Pedido!',
-                            message: `Has recibido un nuevo pedido de ${data.user_name || 'Cliente'} por $${Number(data.total || 0).toFixed(2)}`,
+                            message: `Pedido de ${data.user_name || 'Cliente'} por $${Number(data.total || 0).toFixed(2)} (${method})${itemsSummary ? ` • ${itemsSummary}` : ''}`,
                             createdAt: Date.now(),
+                            orderId: data.id
                         };
 
-                        setNotifications(prev => [...prev, newNotification]);
+                        setNotifications(prev => [newNotification, ...prev]);
 
                         setTimeout(() => {
                             setNotifications(prev => prev.filter(n => n.id !== data.id));
-                        }, 8000);
+                        }, 12000);
                     }
                 }
             )
@@ -616,7 +621,18 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
                 {/* Notifications Toast Container */}
                 <div className="fixed top-24 right-6 z-[100] flex flex-col gap-3 pointer-events-none">
                     {notifications.map(notification => (
-                        <div key={notification.id} className="bg-white rounded-2xl shadow-2xl border border-primary/20 p-4 w-80 animate-in slide-in-from-right-8 fade-in pointer-events-auto flex gap-3 items-start">
+                        <div 
+                            key={notification.id} 
+                            onClick={() => {
+                                if (notification.type === 'order' || notification.orderId) {
+                                    navigate('/orders');
+                                } else {
+                                    navigate('/notifications');
+                                }
+                                setNotifications(prev => prev.filter(n => n.id !== notification.id));
+                            }}
+                            className="bg-white rounded-2xl shadow-2xl border border-primary/20 p-4 w-84 animate-in slide-in-from-right-8 fade-in pointer-events-auto flex gap-3 items-start cursor-pointer hover:border-primary transition-all hover:scale-[1.02] active:scale-95"
+                        >
                             <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
                                 {notification.type === 'new_follower' ? (
                                     <UserCheck className="w-5 h-5 text-primary" />
@@ -629,9 +645,13 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
                             <div className="flex-1 min-w-0">
                                 <h4 className="font-black text-slate-900 text-sm">{notification.title}</h4>
                                 <p className="text-xs font-medium text-slate-500 mt-0.5 line-clamp-2">{notification.message}</p>
+                                <span className="text-[10px] font-bold text-primary block mt-1">Toca para ver detalles →</span>
                             </div>
                             <button
-                                onClick={() => setNotifications(prev => prev.filter(n => n.id !== notification.id))}
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    setNotifications(prev => prev.filter(n => n.id !== notification.id));
+                                }}
                                 className="text-slate-400 hover:text-slate-600"
                             >
                                 <X className="w-4 h-4" />

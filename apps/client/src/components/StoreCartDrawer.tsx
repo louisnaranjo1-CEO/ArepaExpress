@@ -219,12 +219,20 @@ export default function StoreCartDrawer({ isOpen, onClose, restaurant }: StoreCa
             if (cartSubtotalUSD > 20) storeCommission = 0.75;
             else if (cartSubtotalUSD >= 10) storeCommission = 0.55;
 
+            const isUUID = (str: any) => typeof str === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(str);
+            const validUserId = isUUID(clientUserId) ? clientUserId : null;
+
+            const coords = (deliveryMethod === 'app_delivery' && selectedAddress?.lat) 
+                ? { lat: Number(selectedAddress.lat), lng: Number(selectedAddress.lng) } 
+                : null;
+
             const orderData: any = {
                 id: newOrderId,
-                user_id: clientUserId,
+                user_id: validUserId,
                 user_name: clientName,
                 user_phone: clientPhone,
                 user_cedula: clientCedula,
+                client_dni: clientCedula,
                 user_email: clientEmail,
                 restaurant_id: restaurantId,
                 restaurant_name: restaurant?.name || 'Comercio',
@@ -238,20 +246,59 @@ export default function StoreCartDrawer({ isOpen, onClose, restaurant }: StoreCa
                 total: finalTotal,
                 commission_amount: storeCommission,
                 delivery_method: deliveryMethod,
+                order_type: deliveryMethod,
                 status: 'pendiente_pago',
                 payment_status: 'pending',
                 notified: false,
                 delivery_address: addressStr,
-                delivery_coords: (deliveryMethod === 'app_delivery' && selectedAddress?.lat) 
-                    ? { lat: selectedAddress.lat, lng: selectedAddress.lng } 
-                    : null,
+                shipping_address: coords ? { address: addressStr, lat: coords.lat, lng: coords.lng, reference: selectedAddress?.reference || '' } : { address: addressStr },
+                delivery_coords: coords,
+                notes: orderNote.trim(),
                 order_note: orderNote.trim(),
                 created_at: new Date().toISOString()
             };
 
+            // Remove any undefined keys
+            Object.keys(orderData).forEach(key => (orderData as any)[key] === undefined && delete (orderData as any)[key]);
+
             // Insert into Supabase
             const { error: insErr } = await supabase.from('orders').insert(orderData);
             if (insErr) throw insErr;
+
+            // Notification for restaurant
+            try {
+                const itemsSummary = Array.isArray(sanitizedItems)
+                    ? sanitizedItems.map((i: any) => `${i.quantity || 1}x ${i.name}`).join(', ')
+                    : '';
+
+                await supabase.from('notifications').insert({
+                    restaurant_id: restaurantId,
+                    restaurant_name: restaurant?.name || 'Comercio',
+                    title: `¡Nuevo Pedido (#${newOrderId.slice(0, 8).toUpperCase()})!`,
+                    body: `${clientName} ha realizado un nuevo pedido por $${finalTotal.toFixed(2)}. ${itemsSummary ? `Productos: ${itemsSummary}. ` : ''}Método: ${deliveryMethod === 'pickup' ? 'Retiro en Tienda' : 'Delivery'}.`,
+                    message: `Nuevo pedido de ${clientName} por $${finalTotal.toFixed(2)} (${deliveryMethod === 'pickup' ? 'PickUp' : 'Delivery'})`,
+                    type: 'order',
+                    read: false,
+                    data: {
+                        order_id: newOrderId,
+                        order_number: newOrderId.slice(0, 8).toUpperCase(),
+                        user_name: clientName,
+                        user_phone: clientPhone,
+                        user_cedula: clientCedula,
+                        total: finalTotal,
+                        subtotal: cartSubtotalUSD,
+                        delivery_fee: deliveryFee,
+                        items: sanitizedItems,
+                        delivery_method: deliveryMethod,
+                        delivery_address: addressStr,
+                        delivery_coords: coords,
+                        order_note: orderNote.trim()
+                    },
+                    created_at: new Date().toISOString()
+                });
+            } catch (notifErr) {
+                console.warn("Could not insert notification for restaurant:", notifErr);
+            }
 
             // Welcome chat message
             try {

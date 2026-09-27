@@ -378,12 +378,24 @@ export default function Cart({ hideHeader = false }: CartProps) {
         storeCommission = 0.30;
       }
 
+      const isUUID = (str: any) => typeof str === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(str);
+      const validUserId = isUUID(user?.id) ? user.id : (isUUID(user?.uid) ? user.uid : null);
+
+      const clientName = isWaiter ? (customerName || `Cliente Mesa ${tableNumber || 'N/A'}`) : (user?.displayName || guestName || 'Cliente Invitado');
+      const clientPhone = isWaiter ? '' : (userData?.phone || (guestPhone ? `+58${guestPhone}` : ''));
+      const clientCedula = isWaiter ? '' : (userData?.cedula || (guestCedula ? `${guestCedulaType}-${guestCedula}` : ''));
+
+      const coords = (!isWaiter && deliveryMethod === 'app_delivery' && selectedAddress && selectedAddress.lat)
+        ? { lat: Number(selectedAddress.lat), lng: Number(selectedAddress.lng) }
+        : null;
+
       const orderData: any = {
         id: newOrderId,
-        user_id: isWaiter ? (waiterData.id || 'waiter') : (user?.id || user?.uid || 'guest_' + Date.now()),
-        user_name: isWaiter ? (customerName || `Cliente Mesa ${tableNumber || 'N/A'}`) : (user?.displayName || guestName || 'Cliente Invitado'),
-        user_phone: isWaiter ? '' : (userData?.phone || (guestPhone ? `+58${guestPhone}` : '')),
-        user_cedula: isWaiter ? '' : (userData?.cedula || (guestCedula ? `${guestCedulaType}-${guestCedula}` : '')),
+        user_id: validUserId,
+        user_name: clientName,
+        user_phone: clientPhone,
+        user_cedula: clientCedula,
+        client_dni: clientCedula,
         user_email: isWaiter ? (waiterData.email || 'N/A') : (user?.email || 'N/A'),
         restaurant_id: restaurantId,
         restaurant_name: rData?.name || 'Deliexpress Restaurant',
@@ -402,16 +414,19 @@ export default function Cart({ hideHeader = false }: CartProps) {
         total: finalTotal || 0, 
         commission_amount: storeCommission,
         delivery_method: deliveryMethod,
+        order_type: deliveryMethod,
         status: isWaiter ? 'preparing' : 'pendiente_pago', 
         payment_status: isWaiter ? paymentStatus : 'pending',
         notified: false,
         delivery_address: addressStr, 
-        delivery_coords: (!isWaiter && deliveryMethod === 'app_delivery' && selectedAddress && selectedAddress.lat) ? { lat: selectedAddress.lat, lng: selectedAddress.lng } : null,
+        shipping_address: coords ? { address: addressStr, lat: coords.lat, lng: coords.lng, reference: selectedAddress?.reference || '' } : { address: addressStr },
+        delivery_coords: coords,
         created_at: new Date().toISOString(), 
+        notes: orderNote.trim() || '',
         order_note: orderNote.trim() || ''
       };
 
-      // Remove any undefined or null keys that are not needed
+      // Remove any undefined keys that are not needed
       Object.keys(orderData).forEach(key => (orderData as any)[key] === undefined && delete (orderData as any)[key]);
 
       const { error: insErr } = await supabase.from('orders').insert(orderData);
@@ -420,6 +435,43 @@ export default function Cart({ hideHeader = false }: CartProps) {
       try {
         localStorage.setItem('active_order_id', newOrderId);
       } catch (e) {}
+
+      // Notificación instantánea para la app del negocio con todos los datos
+      if (!isWaiter && restaurantId) {
+        try {
+          const itemsSummary = Array.isArray(sanitizedItems)
+            ? sanitizedItems.map((i: any) => `${i.quantity || 1}x ${i.name}`).join(', ')
+            : '';
+
+          await supabase.from('notifications').insert({
+            restaurant_id: restaurantId,
+            restaurant_name: rData?.name || 'Comercio',
+            title: `¡Nuevo Pedido (#${newOrderId.slice(0, 8).toUpperCase()})!`,
+            body: `${clientName} ha realizado un nuevo pedido por $${finalTotal.toFixed(2)}. ${itemsSummary ? `Productos: ${itemsSummary}. ` : ''}Método: ${deliveryMethod === 'pickup' ? 'Retiro en Tienda' : 'Delivery'}.`,
+            message: `Nuevo pedido de ${clientName} por $${finalTotal.toFixed(2)} (${deliveryMethod === 'pickup' ? 'PickUp' : 'Delivery'})`,
+            type: 'order',
+            read: false,
+            data: {
+              order_id: newOrderId,
+              order_number: newOrderId.slice(0, 8).toUpperCase(),
+              user_name: clientName,
+              user_phone: clientPhone,
+              user_cedula: clientCedula,
+              total: finalTotal,
+              subtotal: cartSubtotalUSD,
+              delivery_fee: deliveryFee,
+              items: sanitizedItems,
+              delivery_method: deliveryMethod,
+              delivery_address: addressStr,
+              delivery_coords: coords,
+              order_note: orderNote.trim() || ''
+            },
+            created_at: new Date().toISOString()
+          });
+        } catch (notifErr) {
+          console.warn("Could not insert notification into notifications table:", notifErr);
+        }
+      }
 
       // Contexto automático: Inyectar todo el carrito de compras en el primer mensaje del chat transaccional
       if (!isWaiter) {

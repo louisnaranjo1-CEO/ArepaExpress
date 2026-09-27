@@ -273,12 +273,16 @@ export default function Cart({ hideHeader = false }: CartProps) {
 
       const newOrderId = (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : `order_${Date.now()}`;
 
+      const isUUID = (str: any) => typeof str === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(str);
+      const validUserId = isUUID(waiterData?.id) ? waiterData.id : (isUUID(user?.uid) ? user.uid : null);
+
       const orderData: any = {
         id: newOrderId,
-        user_id: isWaiter ? (waiterData.id || 'waiter') : (user?.uid || 'guest_' + Date.now()),
+        user_id: validUserId,
         user_name: isWaiter ? (customerName || `Cliente Mesa ${tableNumber || 'N/A'}`) : (user?.displayName || guestName || 'Cliente Invitado'),
         user_phone: isWaiter ? '' : (userData?.phone || guestPhone || ''),
         user_cedula: isWaiter ? '' : (userData?.cedula || guestCedula || ''),
+        client_dni: isWaiter ? '' : (userData?.cedula || guestCedula || ''),
         user_email: isWaiter ? (waiterData.email || 'N/A') : (user?.email || 'N/A'),
         restaurant_id: restaurantId,
         restaurant_name: rData?.name || 'Deliexpress Restaurant',
@@ -301,6 +305,7 @@ export default function Cart({ hideHeader = false }: CartProps) {
         delivery_address: addressStr, 
         delivery_coords: (!isWaiter && deliveryMethod === 'app_delivery' && selectedAddress && selectedAddress.lat) ? { lat: selectedAddress.lat, lng: selectedAddress.lng } : null,
         created_at: new Date().toISOString(), 
+        notes: orderNote.trim() || '',
         order_note: orderNote.trim() || ''
       };
 

@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Bell, Users, ShoppingBag, Star, Truck, Volume2, VolumeX, CheckCircle, Clock, Filter, Trash2, Settings, ShieldCheck, Sparkles } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../context/AuthContext';
@@ -90,13 +90,45 @@ export default function Notifications() {
                 },
                 (payload) => {
                     const data = payload.new as any;
+                    const itemsSummary = Array.isArray(data.items)
+                        ? `${data.items.length} prod.: ` + data.items.map((i: any) => `${i.quantity || 1}x ${i.name}`).slice(0, 2).join(', ')
+                        : '';
+                    const method = (data.delivery_method === 'pickup' || data.order_type === 'pickup') ? 'PickUp' : 'Delivery';
                     const item: NotificationItem = {
                         id: `o_${data.id}`,
                         type: 'order',
                         title: '¡Nuevo Pedido Entrante!',
-                        message: `Pedido de ${data.user_name || 'Cliente'} por $${Number(data.total || 0).toFixed(2)}`,
+                        message: `Pedido de ${data.user_name || 'Cliente'} por $${Number(data.total || 0).toFixed(2)} (${method})${itemsSummary ? ` • ${itemsSummary}` : ''}`,
                         date: new Date(data.created_at || Date.now()),
-                        read: false
+                        read: false,
+                        data: data
+                    };
+                    setNotifications(prev => [item, ...prev]);
+                    if (prefs.soundEnabled) playNotificationSound();
+                }
+            )
+            .subscribe();
+
+        // 3. Notifications Table Realtime Listener
+        const notifsTableChannel = supabase.channel(`notifs-table-${rid}`)
+            .on(
+                'postgres_changes',
+                {
+                    event: 'INSERT',
+                    schema: 'public',
+                    table: 'notifications',
+                    filter: `restaurant_id=eq.${rid}`
+                },
+                (payload) => {
+                    const data = payload.new as any;
+                    const item: NotificationItem = {
+                        id: `n_${data.id || Date.now()}`,
+                        type: data.type === 'order' ? 'order' : 'general',
+                        title: data.title || 'Nueva Notificación',
+                        message: data.body || data.message || '',
+                        date: new Date(data.created_at || Date.now()),
+                        read: false,
+                        data: data.data
                     };
                     setNotifications(prev => [item, ...prev]);
                     if (prefs.soundEnabled) playNotificationSound();
@@ -107,6 +139,7 @@ export default function Notifications() {
         return () => {
             supabase.removeChannel(followersChannel);
             supabase.removeChannel(ordersChannel);
+            supabase.removeChannel(notifsTableChannel);
         };
     }, [rid, prefs.soundEnabled]);
 
@@ -156,19 +189,24 @@ export default function Notifications() {
             // B. Recent Orders
             const { data: orders } = await supabase
                 .from('orders')
-                .select('id, user_name, total, status, created_at')
+                .select('id, user_name, total, status, items, delivery_method, order_type, created_at')
                 .eq('restaurant_id', rid)
                 .order('created_at', { ascending: false })
                 .limit(25);
 
             (orders || []).forEach((o: any) => {
+                const itemsSummary = Array.isArray(o.items) && o.items.length > 0
+                    ? ` • ${o.items.length} prod.: ` + o.items.map((it: any) => `${it.quantity || 1}x ${it.name}`).slice(0, 2).join(', ')
+                    : '';
+                const method = (o.delivery_method === 'pickup' || o.order_type === 'pickup') ? 'PickUp' : 'Delivery';
                 feed.push({
                     id: `ord_${o.id}`,
                     type: 'order',
                     title: o.status === 'delivered' ? 'Pedido Entregado' : 'Nuevo Pedido',
-                    message: `${o.user_name || 'Cliente'} - Total: $${Number(o.total || 0).toFixed(2)} (${o.status})`,
+                    message: `${o.user_name || 'Cliente'} - Total: $${Number(o.total || 0).toFixed(2)} (${method})${itemsSummary}`,
                     date: new Date(o.created_at || Date.now()),
-                    read: true
+                    read: true,
+                    data: o
                 });
             });
 
