@@ -819,6 +819,8 @@ export default function OrderChatWindow({
         updated_at: new Date().toISOString()
       }).eq('id', orderId);
 
+      setLiveOrder((prev: any) => ({ ...prev, stock_confirmed: true, stockConfirmed: true }));
+
       await handleSendMessage("✅ *STOCK CONFIRMADO POR EL COMERCIO:*\nTodos los productos de tu pedido están disponibles y apartados. Puedes proceder con el pago con total tranquilidad.");
       toast.success("Stock confirmado al cliente.");
     } catch (e) {
@@ -844,6 +846,11 @@ export default function OrderChatWindow({
     liveOrder?.restaurantPaymentClientConfirmed || 
     liveOrder?.conditionally_paid || 
     ['preparing', 'awaiting_delivery_driver', 'buscando_piloto', 'delivering', 'delivered', 'completed'].includes(liveOrder?.status)
+  );
+  const isStockConfirmed = Boolean(
+    liveOrder?.stock_confirmed ||
+    liveOrder?.stockConfirmed ||
+    (liveOrder?.status && !['pending', 'action_required'].includes(liveOrder.status))
   );
 
   const renderMessageContent = (msg: Message) => {
@@ -1044,20 +1051,6 @@ export default function OrderChatWindow({
                         <Plus className="w-3 h-3" /> Sustituir
                       </button>
                     )}
-
-                    {/* For Restaurant/Cashier: Stock toggle button */}
-                    {isStoreRole && (
-                      <button
-                        onClick={() => handleToggleSoldOut(item.id, isSoldOut)}
-                        className={`px-2 py-1 rounded-lg text-[10px] font-black transition-all active:scale-95 ${
-                          isSoldOut
-                            ? 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm'
-                            : 'bg-red-50 hover:bg-red-100 text-red-600 border border-red-200'
-                        }`}
-                      >
-                        {isSoldOut ? '✅ Hay Stock' : '⚠️ Agotado'}
-                      </button>
-                    )}
                   </div>
                 </div>
               );
@@ -1077,7 +1070,7 @@ export default function OrderChatWindow({
             </div>
 
             {/* Quick stock confirm for store */}
-            {isStoreRole && !(liveOrder?.stock_confirmed || liveOrder?.stockConfirmed) && (
+            {isStoreRole && !isStockConfirmed && (
               <button
                 onClick={handleConfirmStoreStock}
                 className="bg-blue-600 hover:bg-blue-700 text-white font-black text-[10px] px-2.5 py-1 rounded-xl flex items-center gap-1 shadow-sm active:scale-95"

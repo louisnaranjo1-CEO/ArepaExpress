@@ -49,27 +49,41 @@ function getFlowStep(order: any, transportRequest: any): 1 | 2 | 3 | 4 {
         if (['in_progress', 'arriving', 'completed'].includes(transportRequest.status)) {
             return 4;
         }
+        if (transportRequest.status === 'accepted') {
+            return 4;
+        }
     }
     if (['in_transit', 'delivering', 'delivered', 'completed'].includes(order?.status)) {
         return 4;
     }
 
-    // Paso 3: Selección de repartidor o preparación
-    if (transportRequest?.status === 'accepted') return 4;
+    // Paso 3: Selección de repartidor o preparación (pago verificado/confirmado)
     if (transportRequest?.status === 'searching') return 3;
-    if ([
-        'awaiting_delivery_payment',
-        'verificando_pago_delivery',
-        'buscando_piloto',
-        'finding_driver',
-        'driver_assigned',
-        'preparing'
-    ].includes(order?.status)) {
+    if (
+        [
+            'awaiting_delivery_driver',
+            'buscando_piloto',
+            'finding_driver',
+            'driver_assigned',
+            'preparing',
+            'ready',
+            'paid',
+            'payment_confirmed',
+            'awaiting_delivery_payment',
+            'verificando_pago_delivery'
+        ].includes(order?.status) ||
+        order?.payment_status === 'paid' ||
+        order?.payment_status === 'approved'
+    ) {
         return 3;
     }
 
     // Paso 2: Pago al negocio (stock verificado o comprobante reportado)
-    if (['awaiting_payment', 'pending_verification', 'pendiente_pago'].includes(order?.status)) {
+    if (
+        ['awaiting_payment', 'pending_verification', 'pendiente_pago'].includes(order?.status) ||
+        order?.stock_confirmed ||
+        order?.stockConfirmed
+    ) {
         return 2;
     }
 
@@ -78,6 +92,39 @@ function getFlowStep(order: any, transportRequest: any): 1 | 2 | 3 | 4 {
 }
 
 const STEP_LABELS = ['Confirmación', 'Pago', 'Envío', 'En camino'];
+
+const StepProgressHeader: React.FC<{ currentStep: number }> = ({ currentStep }) => (
+    <div className="bg-white px-4 pt-3 pb-3 border-b border-slate-100 shrink-0">
+        <div className="flex items-center justify-between">
+            {STEP_LABELS.map((label, i) => {
+                const stepNum = i + 1;
+                const isDone = stepNum < currentStep;
+                const isActive = stepNum === currentStep;
+                return (
+                    <React.Fragment key={stepNum}>
+                        <div className="flex flex-col items-center gap-1">
+                            <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-black transition-all duration-300 ${
+                                isDone ? 'bg-emerald-500 text-white shadow-md shadow-emerald-500/30'
+                                : isActive ? 'bg-primary text-slate-900 shadow-md shadow-primary/30 ring-4 ring-primary/20'
+                                : 'bg-slate-100 text-slate-400'
+                            }`}>
+                                {isDone ? <CheckCircle className="w-4 h-4" /> : stepNum}
+                            </div>
+                            <span className={`text-[9px] font-black uppercase tracking-wider ${
+                                isActive ? 'text-slate-900' : isDone ? 'text-emerald-600' : 'text-slate-400'
+                            }`}>{label}</span>
+                        </div>
+                        {i < STEP_LABELS.length - 1 && (
+                            <div className={`flex-1 h-0.5 mx-2 -mt-4 rounded-full transition-all duration-500 ${
+                                stepNum < currentStep ? 'bg-emerald-500' : 'bg-slate-200'
+                            }`} />
+                        )}
+                    </React.Fragment>
+                );
+            })}
+        </div>
+    </div>
+);
 
 export default function TrackOrder() {
     const { isLoaded } = useJsApiLoader({
@@ -224,13 +271,32 @@ export default function TrackOrder() {
         return () => { supabase.removeChannel(locChannel); };
     }, [transportRequest?.driver_id, transportRequest?.driverId]);
 
-    // ── User Geolocation ─────────────────────────────────────────────────────
+    // ── User Geolocation (Stabilized) ──────────────────────────────────────
     useEffect(() => {
         if (!navigator.geolocation) return;
-        const watchId = navigator.geolocation.watchPosition(
+
+        navigator.geolocation.getCurrentPosition(
             (pos) => setUserLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
-            (err) => console.error('Geolocation error:', err),
-            { enableHighAccuracy: true }
+            (err) => console.warn('Initial geolocation warning:', err),
+            { enableHighAccuracy: true, timeout: 10000 }
+        );
+
+        const watchId = navigator.geolocation.watchPosition(
+            (pos) => {
+                const newLat = pos.coords.latitude;
+                const newLng = pos.coords.longitude;
+                setUserLocation(prev => {
+                    if (!prev) return { lat: newLat, lng: newLng };
+                    const dLat = Math.abs(prev.lat - newLat);
+                    const dLng = Math.abs(prev.lng - newLng);
+                    if (dLat > 0.00015 || dLng > 0.00015) {
+                        return { lat: newLat, lng: newLng };
+                    }
+                    return prev;
+                });
+            },
+            (err) => console.warn('Geolocation watch warning:', err),
+            { enableHighAccuracy: true, maximumAge: 5000 }
         );
         return () => navigator.geolocation.clearWatch(watchId);
     }, []);
@@ -591,197 +657,7 @@ export default function TrackOrder() {
         );
     }
 
-    // ── Step Progress Indicator ──────────────────────────────────────────────
-    const StepProgressHeader = () => (
-        <div className="bg-white px-4 pt-3 pb-3 border-b border-slate-100 shrink-0">
-            <div className="flex items-center justify-between">
-                {STEP_LABELS.map((label, i) => {
-                    const stepNum = i + 1;
-                    const isDone = stepNum < currentStep;
-                    const isActive = stepNum === currentStep;
-                    return (
-                        <React.Fragment key={stepNum}>
-                            <div className="flex flex-col items-center gap-1">
-                                <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-black transition-all duration-300 ${
-                                    isDone ? 'bg-emerald-500 text-white shadow-md shadow-emerald-500/30'
-                                    : isActive ? 'bg-primary text-slate-900 shadow-md shadow-primary/30 ring-4 ring-primary/20'
-                                    : 'bg-slate-100 text-slate-400'
-                                }`}>
-                                    {isDone ? <CheckCircle className="w-4 h-4" /> : stepNum}
-                                </div>
-                                <span className={`text-[9px] font-black uppercase tracking-wider ${
-                                    isActive ? 'text-slate-900' : isDone ? 'text-emerald-600' : 'text-slate-400'
-                                }`}>{label}</span>
-                            </div>
-                            {i < STEP_LABELS.length - 1 && (
-                                <div className={`flex-1 h-0.5 mx-2 -mt-4 rounded-full transition-all duration-500 ${
-                                    stepNum < currentStep ? 'bg-emerald-500' : 'bg-slate-200'
-                                }`} />
-                            )}
-                        </React.Fragment>
-                    );
-                })}
-            </div>
-        </div>
-    );
 
-    // ── Floating Chat Button ─────────────────────────────────────────────────
-    const ChatFAB = () => (
-        order.status !== 'cancelled' && order.status !== 'delivered' && order.status !== 'completed' ? (
-            <motion.button
-                initial={{ scale: 0 }}
-                animate={{ scale: 1 }}
-                whileHover={{ scale: 1.05 }}
-                whileTap={{ scale: 0.95 }}
-                onClick={() => setShowChat(true)}
-                className="fixed bottom-6 right-5 z-40 bg-slate-900 text-white p-4 rounded-full shadow-2xl shadow-slate-900/40 flex items-center gap-2 border-2 border-white"
-                title="Abrir Chat"
-            >
-                <MessageSquare className="w-6 h-6 text-primary" />
-                <span className="text-xs font-black pr-1 hidden sm:inline">Chat</span>
-            </motion.button>
-        ) : null
-    );
-
-    // ── Fullscreen Chat Overlay ──────────────────────────────────────────────
-    const ChatOverlay = () => (
-        <AnimatePresence>
-            {showChat && (
-                <motion.div
-                    initial={{ opacity: 0, y: '100%' }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: '100%' }}
-                    transition={{ type: 'spring', damping: 28, stiffness: 300 }}
-                    className="fixed inset-0 z-50 bg-slate-50 flex flex-col"
-                >
-                    <div className="bg-white px-4 py-4 flex items-center gap-3 shadow-sm border-b border-slate-100 shrink-0">
-                        <button
-                            onClick={() => setShowChat(false)}
-                            className="w-10 h-10 bg-slate-100 rounded-full flex items-center justify-center active:scale-95 transition-transform"
-                        >
-                            <ArrowLeft className="w-5 h-5 text-slate-700" />
-                        </button>
-                        <div className="flex items-center gap-3 flex-1 min-w-0">
-                            <div className="w-10 h-10 bg-slate-100 rounded-2xl flex items-center justify-center overflow-hidden border border-slate-200 shrink-0">
-                                {restaurant?.logoUrl
-                                    ? <img src={restaurant.logoUrl} alt="Logo" className="w-full h-full object-cover" />
-                                    : <Store className="w-6 h-6 text-slate-600" />}
-                            </div>
-                            <div className="min-w-0">
-                                <p className="font-black text-slate-900 truncate leading-tight">{restaurant?.name || 'Tienda'}</p>
-                                <p className="text-[10px] font-bold text-emerald-600 uppercase tracking-widest flex items-center gap-1">
-                                    <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-ping" /> Chat en vivo
-                                </p>
-                            </div>
-                        </div>
-                        <div className="bg-primary/10 px-3 py-1.5 rounded-full">
-                            <span className="text-[10px] font-black text-slate-900 uppercase">#{orderId?.slice(-5).toUpperCase()}</span>
-                        </div>
-                    </div>
-                    <div className="flex-1 overflow-hidden">
-                        <OrderChatWindow
-                            orderId={orderId!}
-                            currentUserRole="client"
-                            currentUserId={user?.uid || 'guest'}
-                            currentUserName={order.userName || 'Cliente'}
-                            restaurantId={order.restaurantId || order.restaurant_id}
-                            orderInfo={order}
-                        />
-                    </div>
-                </motion.div>
-            )}
-        </AnimatePresence>
-    );
-
-    // ── Modal de Datos de Pago Móvil con Copiado Rápido ──────────────────────
-    const PagoMovilDataModal = () => {
-        const bsAmount = (itemsTotal * bcvRate).toFixed(2);
-        const copyAll = () => {
-            if (!pagoMovilMethod) return;
-            const fullText = `Banco: ${pagoMovilMethod.bank}\nTeléfono: ${pagoMovilMethod.phone}\nCédula/RIF: ${pagoMovilMethod.rif}\nTitular: ${pagoMovilMethod.owner}\nMonto: ${bsAmount} Bs`;
-            navigator.clipboard.writeText(fullText);
-            toast.success('¡Todos los datos copiados! Pégalos en tu banco.', { duration: 4000 });
-        };
-
-        return (
-            <AnimatePresence>
-                {showPagoMovilModal && (
-                    <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4">
-                        <motion.div
-                            initial={{ y: '100%', opacity: 0 }}
-                            animate={{ y: 0, opacity: 1 }}
-                            exit={{ y: '100%', opacity: 0 }}
-                            className="bg-white rounded-t-[2.5rem] sm:rounded-3xl w-full max-w-lg p-6 max-h-[90vh] overflow-y-auto space-y-4 shadow-2xl"
-                        >
-                            {/* Modal Header */}
-                            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-                                <div>
-                                    <h3 className="font-black text-slate-900 text-lg flex items-center gap-2">
-                                        <Wallet className="w-5 h-5 text-primary" /> Datos de Pago Móvil
-                                    </h3>
-                                    <p className="text-xs text-slate-400 font-bold">{restaurant?.name || 'Comercio'}</p>
-                                </div>
-                                <button
-                                    onClick={() => setShowPagoMovilModal(false)}
-                                    className="w-9 h-9 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 hover:bg-slate-200"
-                                >
-                                    <X className="w-5 h-5" />
-                                </button>
-                            </div>
-
-                            {/* Monto Destacado */}
-                            <div className="bg-gradient-to-br from-primary/20 via-primary/10 to-amber-50 rounded-2xl p-4 border-2 border-primary/30 text-center">
-                                <p className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-1">Monto Exacto en Bolívares</p>
-                                <p className="text-3xl font-black text-slate-900">{bsAmount} Bs</p>
-                                <p className="text-xs font-bold text-slate-500 mt-1">Equivalente a ${itemsTotal.toFixed(2)} USD (Tasa BCV)</p>
-                            </div>
-
-                            {/* Campos Copiables */}
-                            {pagoMovilMethod ? (
-                                <div className="space-y-2.5">
-                                    {[
-                                        { label: 'Banco', val: pagoMovilMethod.bank },
-                                        { label: 'Teléfono', val: pagoMovilMethod.phone },
-                                        { label: 'Cédula / RIF', val: pagoMovilMethod.rif },
-                                        { label: 'Titular', val: pagoMovilMethod.owner },
-                                    ].map((f, idx) => (
-                                        <div
-                                            key={idx}
-                                            onClick={() => {
-                                                navigator.clipboard.writeText(f.val);
-                                                toast.success(`${f.label} copiado`);
-                                            }}
-                                            className="group bg-slate-50 hover:bg-primary/5 active:scale-98 transition-all p-3.5 rounded-2xl border border-slate-200 flex items-center justify-between cursor-pointer"
-                                        >
-                                            <div>
-                                                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">{f.label}</span>
-                                                <span className="text-sm font-black text-slate-800">{f.val}</span>
-                                            </div>
-                                            <div className="w-8 h-8 rounded-xl bg-white flex items-center justify-center shadow-xs border border-slate-200 group-hover:border-primary text-slate-500 group-hover:text-slate-900 transition-colors">
-                                                <Copy className="w-4 h-4" />
-                                            </div>
-                                        </div>
-                                    ))}
-
-                                    {/* Botón Maestro Copiar Todos los Datos */}
-                                    <button
-                                        onClick={copyAll}
-                                        className="w-full bg-slate-900 text-white font-black py-4 rounded-2xl hover:bg-slate-800 active:scale-95 transition-all shadow-xl shadow-slate-900/20 flex items-center justify-center gap-2 mt-4 text-sm"
-                                    >
-                                        <Copy className="w-4 h-4 text-primary" /> Copiar Todos los Datos para el Banco
-                                    </button>
-                                </div>
-                            ) : (
-                                <div className="p-4 bg-amber-50 border border-amber-200 rounded-2xl text-center">
-                                    <p className="text-sm font-bold text-amber-700">El negocio no tiene configurado Pago Móvil automático. Usa el chat para solicitar los datos directamente.</p>
-                                </div>
-                            )}
-                        </motion.div>
-                    </div>
-                )}
-            </AnimatePresence>
-        );
-    };
 
     // ═══════════════════════════════════════════════════════════════════════════
     // PASO 1 — Confirmación de Stock y Orden
@@ -806,7 +682,7 @@ export default function TrackOrder() {
                 </div>
             </div>
 
-            <StepProgressHeader />
+            <StepProgressHeader currentStep={currentStep} />
 
             <div className="px-4 pt-5 space-y-4 max-w-lg mx-auto">
                 {/* Botón Prominente: [Ir al Chat con la Tienda] */}
@@ -962,7 +838,7 @@ export default function TrackOrder() {
                     </div>
                 </div>
 
-                <StepProgressHeader />
+                <StepProgressHeader currentStep={currentStep} />
 
                 <div className="px-4 pt-5 space-y-4 max-w-lg mx-auto">
                     {/* Tarjeta de Monto */}
@@ -1136,7 +1012,7 @@ export default function TrackOrder() {
                             <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">PickUp · Paso 3</p>
                         </div>
                     </div>
-                    <StepProgressHeader />
+                    <StepProgressHeader currentStep={currentStep} />
                     <div className="px-4 pt-8 max-w-lg mx-auto text-center space-y-6">
                         <div className="w-20 h-20 bg-emerald-50 text-emerald-600 rounded-full flex items-center justify-center mx-auto shadow-md">
                             <Store className="w-10 h-10" />
@@ -1186,7 +1062,7 @@ export default function TrackOrder() {
                     )}
                 </div>
 
-                <StepProgressHeader />
+                <StepProgressHeader currentStep={currentStep} />
 
                 <div className="px-4 pt-5 space-y-4 max-w-lg mx-auto">
                     {isBuscando ? (
@@ -1356,7 +1232,7 @@ export default function TrackOrder() {
                     )}
                 </div>
 
-                <StepProgressHeader />
+                <StepProgressHeader currentStep={currentStep} />
 
                 {/* Mapa Interactivo con Tracking en Tiempo Real */}
                 <div className="h-72 w-full relative overflow-hidden bg-slate-200">
@@ -1506,13 +1382,153 @@ export default function TrackOrder() {
             </AnimatePresence>
 
             {/* Botón Flotante para abrir Chat */}
-            <ChatFAB />
+            {order.status !== 'cancelled' && order.status !== 'delivered' && order.status !== 'completed' && (
+                <motion.button
+                    initial={{ scale: 0 }}
+                    animate={{ scale: 1 }}
+                    whileHover={{ scale: 1.05 }}
+                    whileTap={{ scale: 0.95 }}
+                    onClick={() => setShowChat(true)}
+                    className="fixed bottom-6 right-5 z-40 bg-slate-900 text-white p-4 rounded-full shadow-2xl shadow-slate-900/40 flex items-center gap-2 border-2 border-white"
+                    title="Abrir Chat"
+                >
+                    <MessageSquare className="w-6 h-6 text-primary" />
+                    <span className="text-xs font-black pr-1 hidden sm:inline">Chat</span>
+                </motion.button>
+            )}
 
             {/* Chat en Pantalla Completa */}
-            <ChatOverlay />
+            <AnimatePresence>
+                {showChat && (
+                    <motion.div
+                        key="chat-overlay"
+                        initial={{ opacity: 0, y: '100%' }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: '100%' }}
+                        transition={{ type: 'spring', damping: 28, stiffness: 300 }}
+                        className="fixed inset-0 z-50 bg-slate-50 flex flex-col"
+                    >
+                        <div className="bg-white px-4 py-4 flex items-center gap-3 shadow-sm border-b border-slate-100 shrink-0">
+                            <button
+                                onClick={() => setShowChat(false)}
+                                className="w-10 h-10 bg-slate-100 rounded-full flex items-center justify-center active:scale-95 transition-transform"
+                            >
+                                <ArrowLeft className="w-5 h-5 text-slate-700" />
+                            </button>
+                            <div className="flex items-center gap-3 flex-1 min-w-0">
+                                <div className="w-10 h-10 bg-slate-100 rounded-2xl flex items-center justify-center overflow-hidden border border-slate-200 shrink-0">
+                                    {restaurant?.logoUrl
+                                        ? <img src={restaurant.logoUrl} alt="Logo" className="w-full h-full object-cover" />
+                                        : <Store className="w-6 h-6 text-slate-600" />}
+                                </div>
+                                <div className="min-w-0">
+                                    <p className="font-black text-slate-900 truncate leading-tight">{restaurant?.name || 'Tienda'}</p>
+                                    <p className="text-[10px] font-bold text-emerald-600 uppercase tracking-widest flex items-center gap-1">
+                                        <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-ping" /> Chat en vivo
+                                    </p>
+                                </div>
+                            </div>
+                            <div className="bg-primary/10 px-3 py-1.5 rounded-full">
+                                <span className="text-[10px] font-black text-slate-900 uppercase">#{orderId?.slice(-5).toUpperCase()}</span>
+                            </div>
+                        </div>
+                        <div className="flex-1 overflow-hidden">
+                            <OrderChatWindow
+                                orderId={orderId!}
+                                currentUserRole="client"
+                                currentUserId={user?.uid || 'guest'}
+                                currentUserName={order.userName || 'Cliente'}
+                                restaurantId={order.restaurantId || order.restaurant_id}
+                                orderInfo={order}
+                            />
+                        </div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
 
-            {/* Modal de Pago Móvil con Copiado Rápido */}
-            <PagoMovilDataModal />
+            {/* Modal de Datos de Pago Móvil con Copiado Rápido */}
+            <AnimatePresence>
+                {showPagoMovilModal && (
+                    <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4">
+                        <motion.div
+                            key="pago-movil-modal"
+                            initial={{ y: '100%', opacity: 0 }}
+                            animate={{ y: 0, opacity: 1 }}
+                            exit={{ y: '100%', opacity: 0 }}
+                            className="bg-white rounded-t-[2.5rem] sm:rounded-3xl w-full max-w-lg p-6 max-h-[90vh] overflow-y-auto space-y-4 shadow-2xl"
+                        >
+                            {/* Modal Header */}
+                            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+                                <div>
+                                    <h3 className="font-black text-slate-900 text-lg flex items-center gap-2">
+                                        <Wallet className="w-5 h-5 text-primary" /> Datos de Pago Móvil
+                                    </h3>
+                                    <p className="text-xs text-slate-400 font-bold">{restaurant?.name || 'Comercio'}</p>
+                                </div>
+                                <button
+                                    onClick={() => setShowPagoMovilModal(false)}
+                                    className="w-9 h-9 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 hover:bg-slate-200"
+                                >
+                                    <X className="w-5 h-5" />
+                                </button>
+                            </div>
+
+                            {/* Monto Destacado */}
+                            <div className="bg-gradient-to-br from-primary/20 via-primary/10 to-amber-50 rounded-2xl p-4 border-2 border-primary/30 text-center">
+                                <p className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-1">Monto Exacto en Bolívares</p>
+                                <p className="text-3xl font-black text-slate-900">{(itemsTotal * bcvRate).toFixed(2)} Bs</p>
+                                <p className="text-xs font-bold text-slate-500 mt-1">Equivalente a ${itemsTotal.toFixed(2)} USD (Tasa BCV)</p>
+                            </div>
+
+                            {/* Campos Copiables */}
+                            {pagoMovilMethod ? (
+                                <div className="space-y-2.5">
+                                    {[
+                                        { label: 'Banco', val: pagoMovilMethod.bank },
+                                        { label: 'Teléfono', val: pagoMovilMethod.phone },
+                                        { label: 'Cédula / RIF', val: pagoMovilMethod.rif },
+                                        { label: 'Titular', val: pagoMovilMethod.owner },
+                                    ].map((f, idx) => (
+                                        <div
+                                            key={idx}
+                                            onClick={() => {
+                                                navigator.clipboard.writeText(f.val);
+                                                toast.success(`${f.label} copiado`);
+                                            }}
+                                            className="group bg-slate-50 hover:bg-primary/5 active:scale-98 transition-all p-3.5 rounded-2xl border border-slate-200 flex items-center justify-between cursor-pointer"
+                                        >
+                                            <div>
+                                                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">{f.label}</span>
+                                                <span className="text-sm font-black text-slate-800">{f.val}</span>
+                                            </div>
+                                            <div className="w-8 h-8 rounded-xl bg-white flex items-center justify-center shadow-xs border border-slate-200 group-hover:border-primary text-slate-500 group-hover:text-slate-900 transition-colors">
+                                                <Copy className="w-4 h-4" />
+                                            </div>
+                                        </div>
+                                    ))}
+
+                                    {/* Botón Maestro Copiar Todos los Datos */}
+                                    <button
+                                        onClick={() => {
+                                            const bsAmount = (itemsTotal * bcvRate).toFixed(2);
+                                            const fullText = `Banco: ${pagoMovilMethod.bank}\nTeléfono: ${pagoMovilMethod.phone}\nCédula/RIF: ${pagoMovilMethod.rif}\nTitular: ${pagoMovilMethod.owner}\nMonto: ${bsAmount} Bs`;
+                                            navigator.clipboard.writeText(fullText);
+                                            toast.success('¡Todos los datos copiados! Pégalos en tu banco.', { duration: 4000 });
+                                        }}
+                                        className="w-full bg-slate-900 text-white font-black py-4 rounded-2xl hover:bg-slate-800 active:scale-95 transition-all shadow-xl shadow-slate-900/20 flex items-center justify-center gap-2 mt-4 text-sm"
+                                    >
+                                        <Copy className="w-4 h-4 text-primary" /> Copiar Todos los Datos para el Banco
+                                    </button>
+                                </div>
+                            ) : (
+                                <div className="p-4 bg-amber-50 border border-amber-200 rounded-2xl text-center">
+                                    <p className="text-sm font-bold text-amber-700">El negocio no tiene configurado Pago Móvil automático. Usa el chat para solicitar los datos directamente.</p>
+                                </div>
+                            )}
+                        </motion.div>
+                    </div>
+                )}
+            </AnimatePresence>
 
             {/* Modal de Calificación */}
             <ReviewModal

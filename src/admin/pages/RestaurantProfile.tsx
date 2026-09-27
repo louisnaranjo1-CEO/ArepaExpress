@@ -44,9 +44,10 @@ import {
 import VerificationModal from '../components/VerificationModal';
 import { useAuth } from '../../context/AuthContext';
 import AddressPicker from '../../components/AddressPicker';
-import { VENEZUELA_DATA, VENEZUELA_STATES } from '../../lib/venezuelaData';
+import { VENEZUELA_DATA, VENEZUELA_STATES, VENEZUELAN_BANKS } from '../../lib/venezuelaData';
 import { supabase } from '../../lib/supabase';
 import { GLOBAL_CATEGORIES, CATEGORY_SECTORS } from '../../lib/constants';
+import toast from 'react-hot-toast';
 
 const getCategoryEmoji = (name: string): string => {
     if (!name) return '🏪';
@@ -138,6 +139,8 @@ export default function RestaurantProfile() {
     const [businessTypeSearch, setBusinessTypeSearch] = useState('');
     const [ownDelivery, setOwnDelivery] = useState(false);
     const [appDelivery, setAppDelivery] = useState(false);
+    const [freeDeliveryEnabled, setFreeDeliveryEnabled] = useState(false);
+    const [freeDeliveryMinAmount, setFreeDeliveryMinAmount] = useState<number | ''>(20);
     const [pickupOnly, setPickupOnly] = useState(false);
     const [deliveryTime, setDeliveryTime] = useState('20-40 min');
     const [logoUrl, setLogoUrl] = useState('');
@@ -195,6 +198,8 @@ export default function RestaurantProfile() {
     const [existingRifUrl, setExistingRifUrl] = useState('');
     const [isTogglingVisibility, setIsTogglingVisibility] = useState(false);
     const [isVerificationModalOpen, setIsVerificationModalOpen] = useState(false);
+    const [isSavingPaymentMethods, setIsSavingPaymentMethods] = useState(false);
+    const [paymentMethodsSaved, setPaymentMethodsSaved] = useState(false);
 
     useEffect(() => {
         if (!user || !rid) return;
@@ -248,6 +253,8 @@ export default function RestaurantProfile() {
 
                     setOwnDelivery(data.own_delivery ?? data.ownDelivery ?? false);
                     setAppDelivery(data.app_delivery ?? data.appDelivery ?? false);
+                    setFreeDeliveryEnabled(data.free_delivery_enabled ?? data.freeDeliveryEnabled ?? false);
+                    setFreeDeliveryMinAmount(data.free_delivery_min_amount ?? data.freeDeliveryMinAmount ?? 20);
                     setPickupOnly(data.pickup_only ?? data.pickupOnly ?? false);
                     setDeliveryTime(data.delivery_time || data.deliveryTime || '30-45 min');
                     setLogoUrl(data.logo_url || data.logoUrl || data.image || '');
@@ -503,6 +510,8 @@ export default function RestaurantProfile() {
                 business_type: finalBusinessType,
                 own_delivery: ownDelivery || false,
                 app_delivery: appDelivery || false,
+                free_delivery_enabled: freeDeliveryEnabled || false,
+                free_delivery_min_amount: freeDeliveryMinAmount === '' ? 0 : Number(freeDeliveryMinAmount),
                 pickup_only: pickupOnly || false,
                 delivery_time: deliveryTime || '30-45 min',
                 logo_url: currentLogoUrl || '',
@@ -625,6 +634,34 @@ export default function RestaurantProfile() {
         const newMethods = [...paymentMethods];
         newMethods[index] = { ...newMethods[index], [field]: value };
         setPaymentMethods(newMethods);
+    };
+
+    const handleSavePaymentMethods = async () => {
+        if (!rid) {
+            toast.error("ID de comercio no encontrado");
+            return;
+        }
+        setIsSavingPaymentMethods(true);
+        try {
+            const { error: saveErr } = await supabase
+                .from('comercios')
+                .update({
+                    payment_methods: paymentMethods || [],
+                    updated_at: new Date().toISOString()
+                })
+                .eq('id', rid);
+
+            if (saveErr) throw saveErr;
+
+            toast.success("¡Métodos de pago guardados exitosamente!");
+            setPaymentMethodsSaved(true);
+            setTimeout(() => setPaymentMethodsSaved(false), 3000);
+        } catch (error: any) {
+            console.error("Error saving payment methods:", error);
+            toast.error(error.message || "Error al guardar métodos de pago en la base de datos.");
+        } finally {
+            setIsSavingPaymentMethods(false);
+        }
     };
 
     if (loading) {
@@ -1332,6 +1369,50 @@ export default function RestaurantProfile() {
                         </div>
 
                         <div className="space-y-4">
+                            {/* Delivery Gratis por Consumo Mínimo */}
+                            <div className="p-4 rounded-2xl border-2 border-slate-100 bg-slate-50 space-y-3">
+                                <div
+                                    className="flex items-center justify-between cursor-pointer"
+                                    onClick={() => setFreeDeliveryEnabled(!freeDeliveryEnabled)}
+                                >
+                                    <div className="flex items-center gap-3">
+                                        <div className={`w-12 h-12 rounded-xl flex items-center justify-center transition-all ${freeDeliveryEnabled ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-500/30' : 'bg-white text-slate-400 border border-slate-200'}`}>
+                                            <Truck className="w-6 h-6" />
+                                        </div>
+                                        <div>
+                                            <p className="font-black text-slate-900 text-sm">Delivery Gratis por Consumo Mínimo</p>
+                                            <p className="text-[10px] text-slate-500 font-medium">
+                                                {freeDeliveryEnabled ? '✓ Activo: Tu negocio asume el costo al superar el monto' : 'Inactivo: El cliente siempre paga el delivery'}
+                                            </p>
+                                        </div>
+                                    </div>
+                                    <div className={`w-12 h-6 rounded-full relative transition-colors ${freeDeliveryEnabled ? 'bg-emerald-500' : 'bg-slate-300'}`}>
+                                        <div className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow-sm transition-all ${freeDeliveryEnabled ? 'left-7' : 'left-1'}`} />
+                                    </div>
+                                </div>
+
+                                {freeDeliveryEnabled && (
+                                    <div className="pt-3 border-t border-slate-200/80 animate-fade-in space-y-1.5">
+                                        <label className="text-xs font-black text-slate-700">Monto Mínimo de Compra ($ USD)</label>
+                                        <div className="relative">
+                                            <span className="absolute left-4 top-1/2 -translate-y-1/2 font-black text-slate-400">$</span>
+                                            <input
+                                                type="number"
+                                                min="1"
+                                                step="0.5"
+                                                value={freeDeliveryMinAmount}
+                                                onChange={(e) => setFreeDeliveryMinAmount(e.target.value === '' ? '' : Number(e.target.value))}
+                                                placeholder="20.00"
+                                                className="w-full bg-white border border-slate-200 focus:border-emerald-500 p-3 pl-8 rounded-xl font-mono font-bold text-slate-900 text-sm outline-none"
+                                            />
+                                        </div>
+                                        <p className="text-[10px] text-slate-400">
+                                            Si el subtotal del carrito del cliente alcanza o supera este monto, el costo del delivery será <strong>$0.00</strong>.
+                                        </p>
+                                    </div>
+                                )}
+                            </div>
+
                             <div
                                 className={`flex items-center justify-between p-4 rounded-2xl cursor-pointer group transition-all border-2 ${hasCashea ? 'bg-yellow-50 border-yellow-200 shadow-lg shadow-yellow-100/50' : 'bg-slate-50 border-transparent hover:border-slate-100'}`}
                                 onClick={() => setHasCashea(!hasCashea)}
@@ -1589,20 +1670,20 @@ export default function RestaurantProfile() {
                                     Añadir Método
                                 </button>
                                 <button
-                                    onClick={handleSave}
-                                    disabled={isSaving}
+                                    onClick={handleSavePaymentMethods}
+                                    disabled={isSavingPaymentMethods}
                                     className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-black shadow-lg transition-all ${
-                                        saved ? 'bg-emerald-500 text-white shadow-emerald-500/20' : 'bg-slate-900 text-white hover:bg-slate-800 shadow-slate-900/20 active:scale-95'
+                                        paymentMethodsSaved ? 'bg-emerald-500 text-white shadow-emerald-500/20' : 'bg-slate-900 text-white hover:bg-slate-800 shadow-slate-900/20 active:scale-95'
                                     }`}
                                 >
-                                    {isSaving ? (
+                                    {isSavingPaymentMethods ? (
                                         <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                                    ) : saved ? (
+                                    ) : paymentMethodsSaved ? (
                                         <Check className="w-3 h-3" />
                                     ) : (
                                         <Save className="w-3 h-3 text-primary" />
                                     )}
-                                    {saved ? '¡Guardado!' : 'Guardar Datos'}
+                                    {paymentMethodsSaved ? '¡Guardado!' : 'Guardar Datos'}
                                 </button>
                             </div>
                         </div>
@@ -1614,7 +1695,13 @@ export default function RestaurantProfile() {
                                     <p className="text-slate-400 text-sm font-medium">Configura cómo tus clientes pueden pagarte.</p>
                                 </div>
                             ) : (
-                                paymentMethods.map((method, idx) => (
+                                paymentMethods.map((method, idx) => {
+                                    const currentRif = method.rif || '';
+                                    const prefixMatch = currentRif.match(/^([JVGEjvge])[-_.\s]?(.*)$/);
+                                    const rifPrefix = prefixMatch ? prefixMatch[1].toUpperCase() : 'J';
+                                    const rifNumber = prefixMatch ? prefixMatch[2] : currentRif.replace(/^[JVGEjvge]-?/, '');
+
+                                    return (
                                     <div key={idx} className="bg-slate-50 p-6 rounded-3xl border border-slate-100 space-y-4 relative group font-bold">
                                         <button
                                             onClick={() => removePaymentMethod(idx)}
@@ -1641,17 +1728,22 @@ export default function RestaurantProfile() {
 
                                             {method.type === 'Pago Móvil' && (
                                                 <div className="grid grid-cols-2 gap-3">
-                                                    <div className="space-y-1">
-                                                        <label className="text-[10px] font-black text-slate-400 uppercase ml-1">Banco</label>
-                                                        <input
-                                                            type="text"
-                                                            value={method.bank}
+                                                    <div className="space-y-1 col-span-2 sm:col-span-1">
+                                                        <label className="text-[10px] font-black text-slate-400 uppercase ml-1">Banco (Código y Nombre)</label>
+                                                        <select
+                                                            value={method.bank || ''}
                                                             onChange={(e) => updatePaymentMethod(idx, 'bank', e.target.value)}
                                                             className="w-full bg-white border border-slate-200 p-3 rounded-xl outline-none focus:border-primary font-bold text-slate-700 text-sm"
-                                                            placeholder="Ej: Banesco"
-                                                        />
+                                                        >
+                                                            <option value="">-- Selecciona el Banco --</option>
+                                                            {VENEZUELAN_BANKS.map((b) => (
+                                                                <option key={b.code} value={`${b.code} - ${b.name}`}>
+                                                                    {b.code} ({b.name})
+                                                                </option>
+                                                            ))}
+                                                        </select>
                                                     </div>
-                                                    <div className="space-y-1">
+                                                    <div className="space-y-1 col-span-2 sm:col-span-1">
                                                         <label className="text-[10px] font-black text-slate-400 uppercase ml-1">Teléfono</label>
                                                         <input
                                                             type="text"
@@ -1661,28 +1753,52 @@ export default function RestaurantProfile() {
                                                             placeholder="0412..."
                                                         />
                                                     </div>
-                                                    <div className="space-y-1">
-                                                        <label className="text-[10px] font-black text-slate-400 uppercase ml-1">Cédula / RIF</label>
-                                                        <input
-                                                            type="text"
-                                                            value={method.rif}
-                                                            onChange={(e) => updatePaymentMethod(idx, 'rif', e.target.value)}
-                                                            className="w-full bg-white border border-slate-200 p-3 rounded-xl outline-none focus:border-primary font-bold text-slate-700 text-sm"
-                                                            placeholder="V-123..."
-                                                        />
+                                                    <div className="space-y-1 col-span-2 sm:col-span-1">
+                                                        <label className="text-[10px] font-black text-slate-400 uppercase ml-1 flex items-center justify-between">
+                                                            <span>Cédula / RIF</span>
+                                                            <span className="text-[9px] font-black text-primary bg-primary/10 px-1.5 py-0.5 rounded">
+                                                                {rifPrefix === 'J' ? 'Jurídico (J)' : rifPrefix === 'G' ? 'Gobierno (G)' : 'Natural (' + rifPrefix + ')'}
+                                                            </span>
+                                                        </label>
+                                                        <div className="flex gap-2">
+                                                            <select
+                                                                value={rifPrefix}
+                                                                onChange={(e) => {
+                                                                    const newPref = e.target.value;
+                                                                    updatePaymentMethod(idx, 'rif', `${newPref}-${rifNumber}`);
+                                                                }}
+                                                                className="bg-white border border-slate-200 p-3 rounded-xl outline-none focus:border-primary font-black text-slate-700 text-xs w-28 shrink-0"
+                                                            >
+                                                                <option value="J">J (Jurídico)</option>
+                                                                <option value="V">V (Natural)</option>
+                                                                <option value="E">E (Extranjero)</option>
+                                                                <option value="G">G (Gobierno)</option>
+                                                            </select>
+                                                            <input
+                                                                type="text"
+                                                                value={rifNumber}
+                                                                onChange={(e) => {
+                                                                    const clean = e.target.value.replace(/[^0-9]/g, '');
+                                                                    updatePaymentMethod(idx, 'rif', `${rifPrefix}-${clean}`);
+                                                                }}
+                                                                className="w-full bg-white border border-slate-200 p-3 rounded-xl outline-none focus:border-primary font-bold text-slate-700 text-sm"
+                                                                placeholder="Ej: 26177935"
+                                                            />
+                                                        </div>
                                                     </div>
-                                                    <div className="space-y-1">
+                                                    <div className="space-y-1 col-span-2 sm:col-span-1">
                                                         <label className="text-[10px] font-black text-slate-400 uppercase ml-1">Titular</label>
                                                         <input
                                                             type="text"
                                                             value={method.owner}
                                                             onChange={(e) => updatePaymentMethod(idx, 'owner', e.target.value)}
                                                             className="w-full bg-white border border-slate-200 p-3 rounded-xl outline-none focus:border-primary font-bold text-slate-700 text-sm"
-                                                            placeholder="Nombre..."
+                                                            placeholder="Nombre o Razón Social..."
                                                         />
                                                     </div>
                                                 </div>
                                             )}
+
 
                                             {method.type === 'Zelle' && (
                                                 <div className="grid grid-cols-2 gap-3">
@@ -1728,7 +1844,8 @@ export default function RestaurantProfile() {
                                             )}
                                         </div>
                                     </div>
-                                ))
+                                    );
+                                })
                             )}
                         </div>
                     </section>
